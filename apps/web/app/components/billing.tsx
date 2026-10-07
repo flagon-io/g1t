@@ -24,7 +24,7 @@ import {
   spendRange,
   wholeDollars,
 } from "../lib/billing";
-import { Button, ErrorText } from "./ui";
+import { ErrorText, SubmitButton } from "./ui";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 
 /** An error the action returned, for the section it belongs to. */
@@ -181,7 +181,6 @@ export function PlanCard({
   owner,
   enabled,
   live,
-  busy,
   meters,
   error,
 }: {
@@ -191,7 +190,6 @@ export function PlanCard({
   owner: boolean;
   enabled: boolean;
   live: boolean;
-  busy: boolean;
   /** This month's usage by meter, from billing's `usage_meters`. */
   meters: MeterUsage[] | null;
   error?: string;
@@ -271,25 +269,25 @@ export function PlanCard({
         <Form method="post" className="mt-5 flex flex-wrap items-center gap-3">
           <input type="hidden" name="feature" value={plan?.feature ?? "plan"} />
           {status.kind === "free" || status.kind === "trial" ? (
-            <Button variant="accent" type="submit" name="intent" value="subscribe" disabled={busy}>
+            <SubmitButton variant="accent" name="intent" value="subscribe" pending="Opening Stripe…">
               <CreditCard size={14} />
               Start the g1t plan
-            </Button>
+            </SubmitButton>
           ) : status.kind === "canceling" ? (
-            <Button variant="accent" type="submit" name="intent" value="resume" disabled={busy}>
+            <SubmitButton variant="accent" name="intent" value="resume" pending="Saving…">
               Keep the plan
-            </Button>
+            </SubmitButton>
           ) : null}
           {(status.kind === "paid" || status.kind === "canceling" || status.kind === "past_due") && (
-            <Button variant={status.kind === "past_due" ? "accent" : "quiet"} type="submit" name="intent" value="portal" disabled={busy}>
+            <SubmitButton variant={status.kind === "past_due" ? "accent" : "quiet"} name="intent" value="portal" pending="Opening Stripe…">
               {status.kind === "past_due" ? "Update payment on Stripe" : "Manage on Stripe"}
               <ArrowUpRight size={14} />
-            </Button>
+            </SubmitButton>
           )}
           {status.kind === "paid" && subscription && (
-            <Button variant="quiet" type="submit" name="intent" value="cancel" disabled={busy}>
+            <SubmitButton variant="quiet" name="intent" value="cancel" pending="Saving…">
               End at the end of the period
-            </Button>
+            </SubmitButton>
           )}
           {!live && (status.kind === "free" || status.kind === "trial") && (
             <span className="text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</span>
@@ -369,14 +367,12 @@ export function TrialCard({
   trialMicros,
   owner,
   enabled,
-  busy,
   error,
 }: {
   entitlements: Entitlements | null;
   trialMicros: number;
   owner: boolean;
   enabled: boolean;
-  busy: boolean;
   error?: string;
 }) {
   const verified = entitlements?.trialVerified ?? false;
@@ -397,10 +393,10 @@ export function TrialCard({
       {verified && left > 0 && <Meter label="Trial used" used={Math.max(0, trialMicros - left)} of={trialMicros} />}
       {!verified && enabled && owner && (
         <Form method="post" className="mt-4 flex flex-wrap items-center gap-3">
-          <Button variant="quiet" type="submit" name="intent" value="card-check" disabled={busy}>
+          <SubmitButton variant="quiet" name="intent" value="card-check" pending="Opening Stripe…">
             <ShieldCheck size={14} />
             Check a card
-          </Button>
+          </SubmitButton>
           <span className="text-xs text-faint">Trials come from a monthly pool; when it is given out, new ones start on the 1st.</span>
         </Form>
       )}
@@ -412,7 +408,7 @@ export function TrialCard({
 
 // --- Spend limit -----------------------------------------------------------------------
 
-export function SpendLimitCard({ limit, owner, busy, error }: { limit: Limit; owner: boolean; busy: boolean; error?: string }) {
+export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: boolean; error?: string }) {
   const range = spendRange(limit);
   const spent = limit.spentMicros ?? 0;
   const spendLimit = limit.spendLimitMicros;
@@ -513,9 +509,9 @@ export function SpendLimitCard({ limit, owner, busy, error }: { limit: Limit; ow
             </RadioGroup>
           </fieldset>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <Button variant="quiet" type="submit" disabled={busy}>
+            <SubmitButton variant="quiet" match={{ intent: "spend-limit" }} pending="Saving…">
               Save limit
-            </Button>
+            </SubmitButton>
             <a href="#raise" className="text-sm text-muted hover:text-fg">
               Need more? Raise my limit
             </a>
@@ -559,7 +555,7 @@ function RequestList({ requests }: { requests: LimitRequest[] }) {
   );
 }
 
-export function RaiseCard({ requests, owner, busy, error }: { requests: LimitRequest[]; owner: boolean; busy: boolean; error?: string }) {
+export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]; owner: boolean; error?: string }) {
   const mine = requests.filter((request) => request.kind === "limit");
   const waiting = mine.some((request) => request.status === "open");
   return (
@@ -592,9 +588,9 @@ export function RaiseCard({ requests, owner, busy, error }: { requests: LimitReq
               className={`${CONTROL} w-full`}
             />
           </label>
-          <Button variant="quiet" type="submit" disabled={busy}>
+          <SubmitButton variant="quiet" match={{ intent: "request", kind: "limit" }} pending="Sending…">
             Send the request
-          </Button>
+          </SubmitButton>
           <ErrorText>{error}</ErrorText>
         </Form>
       )}
@@ -607,7 +603,7 @@ export function RaiseCard({ requests, owner, busy, error }: { requests: LimitReq
 
 // --- Prepay -----------------------------------------------------------------------
 
-export function PrepayCard({ prepaidMicros, owner, live, busy, error }: { prepaidMicros: number; owner: boolean; live: boolean; busy: boolean; error?: string }) {
+export function PrepayCard({ prepaidMicros, owner, live, error }: { prepaidMicros: number; owner: boolean; live: boolean; error?: string }) {
   return (
     <Card
       id="prepay"
@@ -626,16 +622,17 @@ export function PrepayCard({ prepaidMicros, owner, live, busy, error }: { prepai
           <input type="hidden" name="intent" value="prepay" />
           <div className="flex flex-wrap items-center gap-2">
             {PREPAY.presets.map((amount) => (
-              <Button key={amount} variant="quiet" type="submit" name="amount" value={amount} disabled={busy}>
+              <SubmitButton key={amount} variant="quiet" name="amount" value={amount} match={{ intent: "prepay" }} pending="Opening Stripe…">
                 {wholeDollars(amount * 1_000_000)}
-              </Button>
+              </SubmitButton>
             ))}
             <span className="text-sm text-muted">or</span>
             <DollarInput name="custom" label="Amount to prepay in dollars" placeholder="250" />
-            <Button variant="accent" type="submit" disabled={busy}>
+            {/* An empty amount, so a preset's press is not this button's: the typed amount is used. */}
+            <SubmitButton variant="accent" name="amount" value="" match={{ intent: "prepay" }} pending="Opening Stripe…">
               <CreditCard size={14} />
               Prepay
-            </Button>
+            </SubmitButton>
           </div>
           <RadioGroup name="method" defaultValue="card" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
             <label className="flex cursor-pointer items-center gap-2">
@@ -659,7 +656,7 @@ export function PrepayCard({ prepaidMicros, owner, live, busy, error }: { prepai
 
 // --- Caps -----------------------------------------------------------------------
 
-export function CapsCard({ entitlements, owner, busy, error }: { entitlements: Entitlements; owner: boolean; busy: boolean; error?: string }) {
+export function CapsCard({ entitlements, owner, error }: { entitlements: Entitlements; owner: boolean; error?: string }) {
   return (
     <Card
       id="caps"
@@ -697,9 +694,9 @@ export function CapsCard({ entitlements, owner, busy, error }: { entitlements: E
             </span>
             <DollarInput name="issue" label="Issue cap in dollars" defaultValue={String(entitlements.issueCapMicros / 1_000_000)} />
           </label>
-          <Button variant="quiet" type="submit" disabled={busy}>
+          <SubmitButton variant="quiet" match={{ intent: "caps" }} pending="Saving…">
             Save caps
-          </Button>
+          </SubmitButton>
         </Form>
       )}
       <ErrorText>{error}</ErrorText>
@@ -713,7 +710,7 @@ export function CapsCard({ entitlements, owner, busy, error }: { entitlements: E
 
 // --- Overage -----------------------------------------------------------------------
 
-export function OverageCard({ requests, owner, busy, error }: { requests: LimitRequest[]; owner: boolean; busy: boolean; error?: string }) {
+export function OverageCard({ requests, owner, error }: { requests: LimitRequest[]; owner: boolean; error?: string }) {
   const mine = requests.filter((request) => request.kind === "overage");
   const waiting = mine.some((request) => request.status === "open");
   return (
@@ -734,9 +731,9 @@ export function OverageCard({ requests, owner, busy, error }: { requests: LimitR
             placeholder="An agent kept retrying a failing check on Tuesday night."
             className={`${CONTROL} w-full`}
           />
-          <Button variant="quiet" type="submit" disabled={busy}>
+          <SubmitButton variant="quiet" match={{ intent: "request", kind: "overage" }} pending="Sending…">
             Tell g1t
-          </Button>
+          </SubmitButton>
           <ErrorText>{error}</ErrorText>
         </Form>
       )}

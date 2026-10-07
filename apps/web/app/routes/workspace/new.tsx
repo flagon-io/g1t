@@ -2,7 +2,7 @@ import { Form, redirect } from "react-router";
 
 import type { Route } from "./+types/new";
 import { page } from "../../lib/meta";
-import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, nextPath, requireUser } from "../../lib/session.server";
 
@@ -73,7 +73,7 @@ export default function NewWorkspace({
           <Input name="displayName" maxLength={80} />
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
-        <Button type="submit">Create workspace</Button>
+        <SubmitButton pending="Creating…">Create workspace</SubmitButton>
       </Form>
     </main>
   );

@@ -3,7 +3,7 @@ import { Form, Link } from "react-router";
 
 import type { Invite, InvitesOverview } from "@g1t/contracts";
 
-import { Button, CopyLine, ErrorText, Field, Input, TimeAgo } from "./ui";
+import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { inviteFor, inviteLink, inviteState, moreInvitesMailto, remainingLine } from "../lib/invites";
 
 const TONE: Record<"pending" | "done" | "dead", string> = {
@@ -23,9 +23,9 @@ function InviteRow({ invite, origin }: { invite: Invite; origin: string }) {
           <Form method="post" className="ml-auto">
             <input type="hidden" name="intent" value="revoke-invite" />
             <input type="hidden" name="id" value={invite.id} />
-            <Button variant="quiet" type="submit">
+            <SubmitButton variant="quiet" match={{ intent: "revoke-invite", id: invite.id }} pending="Revoking…">
               Revoke
-            </Button>
+            </SubmitButton>
           </Form>
         )}
       </div>
@@ -112,7 +112,8 @@ export function InvitesSection({
           </p>
         </div>
       ) : (
-        <Form method="post" className="mt-4 space-y-3">
+        // Empty again once the invite is made; kept as filled in when it failed.
+        <Form method="post" key={created?.id ?? ""} className="mt-4 space-y-3">
           <input type="hidden" name="intent" value="create-invite" />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="grow">
@@ -138,7 +139,9 @@ export function InvitesSection({
                 </select>
               </label>
             )}
-            <Button type="submit">Create invite</Button>
+            <SubmitButton match={{ intent: "create-invite" }} pending="Creating…">
+              Create invite
+            </SubmitButton>
           </div>
           <p className="text-xs text-faint">
             With an email, the invite is sent there and only that address can use it.

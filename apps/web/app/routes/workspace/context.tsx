@@ -6,7 +6,9 @@ import { ENTITY_KINDS, type EntityKind } from "@g1t/contracts";
 
 import type { Route } from "./+types/context";
 import { page } from "../../lib/meta";
+import { useRefreshWhile } from "../../lib/refresh";
 import { CatalogView, ReviewQueue, ScorecardsView, SearchView, fixRule, reviewAction } from "../../components/context";
+import { SubmitButton } from "../../components/ui";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { context as hub, memoryReview, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -70,14 +72,16 @@ function Rebuild({ action, running }: { action: string; running: boolean }) {
   return (
     <fetcher.Form method="post" action={action} className="flex items-center gap-2">
       <input type="hidden" name="intent" value="backfill" />
-      <button
-        type="submit"
-        disabled={running || fetcher.state !== "idle"}
+      <SubmitButton
+        fetcher={fetcher}
+        match={{ intent: "backfill" }}
+        pending="Starting…"
+        disabled={running}
         className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-muted hover:border-line-strong hover:text-fg disabled:opacity-50"
       >
         <RefreshCw size={12} className={running ? "animate-spin" : ""} />
         {running ? "Building…" : "Rebuild"}
-      </button>
+      </SubmitButton>
       {fetcher.data?.error && <span className="text-xs text-danger">{fetcher.data.error}</span>}
     </fetcher.Form>
   );
@@ -89,6 +93,8 @@ export default function WorkspaceContext({ loaderData, params }: Route.Component
   const navigate = useNavigate();
   const backfill = status.backfill;
   const running = backfill?.status === "running";
+  // While it builds, the count of projects done keeps up on its own.
+  useRefreshWhile(running);
   const total = Object.values(status.counts).reduce((sum, n) => sum + (n ?? 0), 0);
   return (
     <div className="space-y-6">

@@ -1,5 +1,5 @@
 import { ArrowUpRight, CreditCard, FileText } from "lucide-react";
-import { Form, Link, data, redirect, useNavigation } from "react-router";
+import { Form, Link, data, redirect } from "react-router";
 
 import { MICROS_PER_DOLLAR, type WorkspaceInvoice } from "@g1t/contracts";
 
@@ -17,7 +17,7 @@ import {
   TrialCard,
 } from "../../components/billing";
 import { StatementView } from "../../components/statement";
-import { Button } from "../../components/ui";
+import { SubmitButton } from "../../components/ui";
 import {
   cardCheckResult,
   dollars,
@@ -209,7 +209,6 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
     loaderData;
   const { status } = account;
   const owner = role === "owner";
-  const busy = useNavigation().state === "submitting";
   const error = actionData as SectionError;
   const err = (section: string) => (error && error.section === section ? error.error : undefined);
   const standing = planStatus(plan, entitlements);
@@ -243,28 +242,27 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           owner={owner}
           enabled={status.enabled}
           live={status.live}
-          busy={busy}
           meters={meters}
           error={err("plan")}
         />
 
         {free && status.enabled && (
-          <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} busy={busy} error={err("trial")} />
+          <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} error={err("trial")} />
         )}
 
         {paying && limit && limit.trust !== "internal" && (
           <>
-            <SpendLimitCard limit={limit} owner={owner} busy={busy} error={err("limit")} />
-            <RaiseCard requests={requests} owner={owner} busy={busy} error={err("raise")} />
-            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live} busy={busy} error={err("prepay")} />
+            <SpendLimitCard limit={limit} owner={owner} error={err("limit")} />
+            <RaiseCard requests={requests} owner={owner} error={err("raise")} />
+            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live} error={err("prepay")} />
           </>
         )}
 
         {entitlements && (paying || standing.kind === "trial" || standing.kind === "comped" || standing.kind === "enterprise") && (
-          <CapsCard entitlements={entitlements} owner={owner} busy={busy} error={err("caps")} />
+          <CapsCard entitlements={entitlements} owner={owner} error={err("caps")} />
         )}
 
-        {paying && <OverageCard requests={requests} owner={owner} busy={busy} error={err("overage")} />}
+        {paying && <OverageCard requests={requests} owner={owner} error={err("overage")} />}
 
         {status.enabled && (
           <section className="mb-10 rounded-xl border border-line bg-surface p-5">
@@ -286,10 +284,10 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               </div>
               {owner && (
                 <Form method="post">
-                  <Button variant="quiet" type="submit" name="intent" value="portal" disabled={busy}>
+                  <SubmitButton variant="quiet" name="intent" value="portal" pending="Opening Stripe…">
                     <CreditCard size={14} />
                     Open Stripe billing
-                  </Button>
+                  </SubmitButton>
                 </Form>
               )}
             </div>

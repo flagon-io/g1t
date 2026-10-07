@@ -1,5 +1,5 @@
 import { BookOpen, Box, Trash2 } from "lucide-react";
-import { Form, Link, data, redirect, useNavigation } from "react-router";
+import { Form, Link, data, redirect } from "react-router";
 
 import { ECOSYSTEMS, type Ecosystem, type PackageVersion } from "@g1t/contracts";
 
@@ -7,7 +7,7 @@ import type { Route } from "./+types/package";
 import { Markdown } from "../../components/markdown";
 import { PackageIcon } from "../../components/package-icon";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
-import { Button, CopyLine, ErrorText, TimeAgo } from "../../components/ui";
+import { Button, CopyLine, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { page } from "../../lib/meta";
 import { ECOSYSTEM_LABEL, formatBytes, installCommands, shortDigest } from "../../lib/packages";
@@ -293,7 +293,6 @@ function artifactWord(version: PackageVersion): string {
 
 function Settings({ detail }: { detail: Route.ComponentProps["loaderData"]["detail"] }) {
   const { package: pkg } = detail;
-  const busy = useNavigation().state !== "idle";
   return (
     <section className="space-y-4 rounded-xl border border-line bg-surface p-5">
       <h2 className="text-sm font-semibold">Settings</h2>
@@ -318,9 +317,9 @@ function Settings({ detail }: { detail: Route.ComponentProps["loaderData"]["deta
             <option value="private">Private: workspace members</option>
             <option value="public">Public: anyone can pull</option>
           </select>
-          <Button type="submit" variant="quiet" disabled={busy}>
+          <SubmitButton variant="quiet" match={{ intent: "visibility" }} pending="Saving…">
             Save
-          </Button>
+          </SubmitButton>
         </Form>
       )}
       <Form method="post" className="flex flex-wrap items-center gap-2 text-sm">
@@ -335,9 +334,9 @@ function Settings({ detail }: { detail: Route.ComponentProps["loaderData"]["deta
           placeholder="none"
           className="h-8 w-56 rounded-md border border-line bg-bg px-2 font-mono text-sm placeholder:text-faint"
         />
-        <Button type="submit" variant="quiet" disabled={busy}>
+        <SubmitButton variant="quiet" match={{ intent: "link" }} pending="Saving…">
           {pkg.repo ? "Change link" : "Link"}
-        </Button>
+        </SubmitButton>
         <span className="text-xs text-faint">Empty to unlink. A linked package takes the repository's access.</span>
       </Form>
       {detail.permissions.delete && (

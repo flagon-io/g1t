@@ -1,5 +1,3 @@
-import { data } from "react-router";
-
 import type { Route } from "./+types/statement-entries";
 import { billing } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
@@ -14,6 +12,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     project: query.get("project"),
     before: query.get("before"),
   });
-  if (!entries.ok) throw data({ error: entries.error.message }, { status: 404 });
+  // Said beside the line that asked. As a 200: a fetcher shows any other
+  // status as an error page in place of the whole billing page.
+  if (!entries.ok) return Response.json({ error: entries.error.message }, { headers: { "cache-control": "no-store" } });
   return Response.json(entries.value, { headers: { "cache-control": "no-store" } });
 }
