@@ -11,6 +11,11 @@
 //
 //   CLOUDFLARE_API_TOKEN=<token with Account Analytics: Read> \
 //     node scripts/ops/artifacts-usage.mjs [--days 31] [--json]
+//     node scripts/ops/artifacts-usage.mjs --hours 2026-10-07
+//
+// --hours DAY shows one UTC day hour by hour (Cloudflare's operations and
+// errors against `git_operations`), and the errors by message and repository:
+// a fix that lands mid-day is judged on the hours after it.
 //
 // The D1 queries run through Wrangler with the same environment (so the
 // token needs D1: Read too), or with CLOUDFLARE_D1_TOKEN when that is set,
@@ -32,6 +37,11 @@ const option = (name, fallback) => {
 };
 const days = Math.min(31, Math.max(1, Number(option("--days", "31")) || 31));
 const asJson = flag("--json");
+const hoursOf = option("--hours", null);
+if (hoursOf && !/^\d{4}-\d{2}-\d{2}$/.test(hoursOf)) {
+  console.error("--hours takes a UTC day, YYYY-MM-DD");
+  process.exit(2);
+}
 
 const auth = cloudflareAuth();
 if (!auth) {
@@ -45,6 +55,90 @@ if (!auth) {
 const end = new Date();
 const start = new Date(end.getTime() - days * 24 * 3600 * 1000);
 const day = (date) => date.toISOString().slice(0, 10);
+
+async function graphql(query, variables) {
+  const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json", "user-agent": "g1t-ops" },
+    body: JSON.stringify({ query, variables: { accountTag: ACCOUNT_ID, ...variables } }),
+  });
+  const body = await response.json();
+  if (!response.ok || body.errors?.length) {
+    throw new Error(`GraphQL: ${response.status} ${JSON.stringify(body.errors ?? body).slice(0, 600)}`);
+  }
+  return body.data?.viewer?.accounts?.[0] ?? {};
+}
+
+/** One UTC day by the hour: Cloudflare's operations and errors against `git_operations`. */
+async function hourly(dayText) {
+  const from = `${dayText}T00:00:00Z`;
+  const to = new Date(Date.parse(from) + 24 * 3600 * 1000).toISOString();
+  const nsFilter = NAMESPACE ? `, repositoryNamespace: "${NAMESPACE.replace(/"/g, "")}"` : "";
+  const query = `query ArtifactsHours($accountTag: String!, $start: Time!, $end: Time!) {
+    viewer {
+      accounts(filter: { accountTag: $accountTag }) {
+        hours: artifactsEventsAdaptiveGroups(
+          limit: 10000
+          filter: { datetime_geq: $start, datetime_lt: $end${nsFilter} }
+          orderBy: [datetimeHour_ASC]
+        ) { count dimensions { datetimeHour eventKind eventType } }
+        errors: artifactsEventsAdaptiveGroups(
+          limit: 10000
+          filter: { datetime_geq: $start, datetime_lt: $end, eventKind: "error"${nsFilter} }
+          orderBy: [count_DESC]
+        ) { count dimensions { eventType errorMessage repositoryName } }
+      }
+    }
+  }`;
+  const [account, operations] = await Promise.all([
+    graphql(query, { start: from, end: to }),
+    d1(
+      `SELECT substr(hour, 12, 2) AS h, SUM(operations) AS operations FROM git_operations WHERE hour >= '${dayText}T00' AND hour <= '${dayText}T23' GROUP BY h`,
+    ),
+  ]);
+  const ours = Object.fromEntries(operations.map((row) => [row.h, Number(row.operations)]));
+  const types = ["pull", "push", "create", "fork", "delete"];
+  const byHour = {};
+  for (const group of account.hours ?? []) {
+    const { datetimeHour, eventKind, eventType } = group.dimensions;
+    const key = eventKind === "error" ? "errors" : eventType;
+    if (key !== "errors" && !types.includes(key)) continue;
+    const h = datetimeHour.slice(11, 13);
+    (byHour[h] ??= {})[key] = (byHour[h][key] ?? 0) + group.count;
+  }
+  console.log(`Artifacts by the hour, ${dayText} UTC${NAMESPACE ? ` (namespace ${NAMESPACE})` : ""}\n`);
+  console.log(["hour", ...types.map((t) => pad(`cf.${t}`, 9)), pad("cf.ops", 8), pad("g1t.ops", 8), pad("ratio", 6), pad("cf.errors", 10)].join(" "));
+  let cfTotal = 0;
+  let ourTotal = 0;
+  for (let i = 0; i < 24; i++) {
+    const h = String(i).padStart(2, "0");
+    const cf = byHour[h] ?? {};
+    const cfOps = types.reduce((total, t) => total + (cf[t] ?? 0), 0);
+    const mine = ours[h] ?? 0;
+    if (!cfOps && !mine && !cf.errors) continue;
+    cfTotal += cfOps;
+    ourTotal += mine;
+    console.log(
+      [h + "  ", ...types.map((t) => pad(cf[t] ?? 0, 9)), pad(cfOps, 8), pad(mine, 8), pad(mine ? (cfOps / mine).toFixed(2) : "n/a", 6), pad(cf.errors ?? 0, 10)].join(" "),
+    );
+  }
+  console.log(`\nday   cf.ops ${cfTotal}, g1t.ops ${ourTotal}${ourTotal ? `, ratio ${(cfTotal / ourTotal).toFixed(2)}` : ""}`);
+  const messages = {};
+  const repositories = {};
+  for (const group of account.errors ?? []) {
+    const { eventType, errorMessage, repositoryName } = group.dimensions;
+    const key = `${eventType}: ${errorMessage || "(no message)"}`;
+    messages[key] = (messages[key] ?? 0) + group.count;
+    repositories[repositoryName] = (repositories[repositoryName] ?? 0) + group.count;
+  }
+  console.log("\nErrors by message:");
+  for (const [message, count] of Object.entries(messages).sort((a, b) => b[1] - a[1])) console.log(`  ${pad(count, 6)}  ${message}`);
+  console.log("Errors by repository (top 8):");
+  for (const [name, count] of Object.entries(repositories).sort((a, b) => b[1] - a[1]).slice(0, 8)) console.log(`  ${pad(count, 6)}  ${name}`);
+  console.log(
+    "\ng1t.ops is what workspaces are counted for (billable meters only; nightly backups are g1t's own and not in it). An hour can straddle the two sides of a write by a few seconds.",
+  );
+}
 
 /** Cloudflare's own count, by day, event kind and type (and namespace). */
 async function cloudflare() {
@@ -63,16 +157,8 @@ async function cloudflare() {
       }
     }
   }`;
-  const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-    method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
-    body: JSON.stringify({ query, variables: { accountTag: ACCOUNT_ID, start: start.toISOString(), end: end.toISOString() } }),
-  });
-  const body = await response.json();
-  if (!response.ok || body.errors?.length) {
-    throw new Error(`GraphQL: ${response.status} ${JSON.stringify(body.errors ?? body).slice(0, 600)}`);
-  }
-  const groups = body.data?.viewer?.accounts?.[0]?.artifactsEventsAdaptiveGroups ?? [];
+  const account = await graphql(query, { start: start.toISOString(), end: end.toISOString() });
+  const groups = account.artifactsEventsAdaptiveGroups ?? [];
   return groups
     .filter((group) => !NAMESPACE || group.dimensions.repositoryNamespace === NAMESPACE)
     .map((group) => ({
@@ -199,7 +285,7 @@ async function main() {
   );
 }
 
-main().catch((error) => {
+(hoursOf ? hourly(hoursOf) : main()).catch((error) => {
   console.error(error.message);
   process.exit(1);
 });

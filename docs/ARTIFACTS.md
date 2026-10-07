@@ -348,6 +348,8 @@ competition entrant (due 2026-10-14) we can also ask the competition organisers.
   workspaces, because the 1 TB account limit would stop every push.
 - **Before agent volume ramps (about 1,000 pull requests a day):** R2 deletion, R3, R4, R5.
 - **Before a few thousand active workspaces:** R6, R7, R9, R10.
+- **Before git over SSH ships:** SSH's git operations are metered (see "where the gap came
+  from" under R1). Until then `crates/sshd` stays undeployed.
 - Everything else is resilience and exit planning, ideally done while the product is still invite-only.
 
 ## 9. What was built (2026-10-06)
@@ -384,6 +386,7 @@ export CLOUDFLARE_API_TOKEN=<token with Account Analytics: Read (and D1: Read, o
 node scripts/ops/artifacts-usage.mjs            # last 31 days, a table
 node scripts/ops/artifacts-usage.mjs --days 7 --json > usage.json
 ARTIFACTS_NAMESPACE=g1t node scripts/ops/artifacts-usage.mjs
+node scripts/ops/artifacts-usage.mjs --hours 2026-10-07   # one UTC day, hour by hour
 ```
 
 It prints, per day, Cloudflare's `pull`, `push`, `create`, `fork` and `delete` events and its
@@ -400,6 +403,8 @@ the ratio Cloudflare ÷ g1t for several combinations of meters. Read it like thi
   lost before they were written. Sandboxes are not it: every sandbox but a backup's clones,
   fetches and pushes through g1t's git endpoints (see "2026-10-07: where the gap came from").
 - Only days after the meters were deployed compare; before that only `git_operations` exists.
+- A fix that lands mid-day is judged with `--hours DAY`: Cloudflare's operations and errors
+  against `git_operations` hour by hour, then the day's errors by message and repository.
 - Binding calls do appear: Cloudflare's events include `read` and `token_create` actions (and
   `namespace_*`) besides the five documented ones. If Cloudflare says they are billed, map the
   `binding.*` meters in `operation_mapping`.
@@ -450,8 +455,21 @@ They do not. Read from the code:
   `git.info_refs`, `git.ls_refs`, `git.fetch` and `git.receive_pack`. Git an agent runs itself
   in its sandbox has the same remote and no other credential, so it is metered the same way.
 - `git_access` has no caller that is deployed: only `crates/sshd`, whose `/_internal/ssh/*`
-  endpoints do not exist yet. When git over SSH ships, its bridge talks to the store directly
-  and must report what it does (as backups do) or go through `git_http`.
+  endpoints do not exist yet. **SSH must not ship until its git is metered.** Its bridge
+  (`crates/sshd/src/git.rs`) talks to the store directly with the handed-out token, so nothing
+  in `git_http` sees it: every SSH clone, fetch and push would be an operation Cloudflare bills
+  and g1t never counts. Two ways to close it, either is enough:
+  1. Report, as backups do: when a session ends, sshd posts the service, the repo and the bytes
+     each way to a repos RPC that records `git.info_refs` plus `git.fetch` or
+     `git.receive_pack` against the repo's store key (`meters::record`, like `backups.rs`
+     `meter_fetch`). A session that dies before reporting is lost, so count the operation when
+     `git_access` hands out the token and add only the bytes from the report.
+  2. Send the bridge through `git_http` instead of the store, with the user's identity, so SSH
+     is metered, cached and protected (branch and push protection) like HTTPS. This also closes
+     M15 for SSH.
+
+  Building this is not small today: the Worker side (`/_internal/ssh/user` and
+  `/_internal/ssh/access`) does not exist either, so it belongs with shipping SSH.
 - The one sandbox that reads the store directly is a nightly backup (`backups.rs`
   `store.handout`): its runner reports the clone with `fetched_bytes`, metered as
   `internal.git.info_refs` and `internal.git.backup_fetch` (g1t's cost, never a workspace's).

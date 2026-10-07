@@ -4,6 +4,10 @@
 //!
 //! Connections arrive either as raw TCP or wrapped in a WebSocket, which is
 //! how they reach a Cloudflare Container when tunnelled through a Worker.
+//!
+//! Not deployed. Before it ships, its git operations must be metered: the
+//! bridge reaches the store directly, so `git_http` never counts them (see
+//! docs/ARTIFACTS.md, "where the gap came from").
 
 mod api;
 mod git;
