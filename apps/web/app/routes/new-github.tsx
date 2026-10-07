@@ -1,9 +1,9 @@
 import { ArrowLeft, Lock, Plus } from "lucide-react";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/new-github";
 import { GithubMark } from "../components/github";
-import { Button, ButtonLink, ErrorText, Pill } from "../components/ui";
+import { ButtonLink, ErrorText, Pill, SubmitButton } from "../components/ui";
 import { CheckboxOption } from "../components/ui/checkbox";
 import { FieldLegend, FieldSet } from "../components/ui/field";
 import { RadioCard, RadioGroup } from "../components/ui/radio-group";
@@ -61,7 +61,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const installationId = Number(form.get("installation"));
   if (form.get("intent") === "remove-installation") {
     const removed = await githubApp.removeInstallation(user, workspace, installationId);
-    if (!removed.ok) return { error: removed.error.message, results: [] };
+    // Shown by the list it was removed from, which is there with or without an account chosen.
+    if (!removed.ok) return { error: null, removeError: removed.error.message, results: [] };
     throw redirect(`/new/github?workspace=${encodeURIComponent(workspace)}`);
   }
   const mode = (["import", "mirror", "push"] as const).find((option) => option === form.get("mode")) ?? "import";
@@ -84,7 +85,6 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function NewFromGithub({ loaderData, actionData }: Route.ComponentProps) {
   const { workspace, workspaces, installations, installation, repositories, linked, owner } = loaderData;
-  const busy = useNavigation().state === "submitting";
   const here = `/new/github?workspace=${workspace}`;
   const names = new Map((repositories?.repositories ?? []).map((repo) => [repo.id, repo.fullName]));
   return (
@@ -191,9 +191,13 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                         <input type="hidden" name="intent" value="remove-installation" />
                         <input type="hidden" name="workspace" value={workspace} />
                         <input type="hidden" name="installation" value={item.id} />
-                        <button type="submit" className="text-xs text-faint hover:text-danger">
+                        <SubmitButton
+                          pending="Removing…"
+                          match={{ intent: "remove-installation", installation: String(item.id) }}
+                          className="inline-flex items-center gap-1 text-xs text-faint hover:text-danger disabled:opacity-50"
+                        >
                           Remove
-                        </button>
+                        </SubmitButton>
                       </Form>
                     )}
                     </span>
@@ -201,10 +205,12 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                 ))}
               </ul>
             )}
+            <ErrorText>{actionData && "removeError" in actionData ? actionData.removeError : null}</ErrorText>
           </section>
 
           {installation && (
             <Form method="post" className="mt-10 space-y-8">
+              <input type="hidden" name="intent" value="import" />
               <input type="hidden" name="workspace" value={workspace} />
               <input type="hidden" name="installation" value={installation.id} />
               <FieldSet>
@@ -294,9 +300,9 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
               )}
               <ErrorText>{actionData?.error}</ErrorText>
               <div className="flex items-center gap-3">
-                <Button type="submit" variant="accent" disabled={busy}>
-                  {busy ? "Bringing them across…" : "Bring to g1t"}
-                </Button>
+                <SubmitButton variant="accent" pending="Bringing them across…" match={{ intent: "import" }}>
+                  Bring to g1t
+                </SubmitButton>
                 <ButtonLink to={`/new?workspace=${workspace}`} variant="quiet">
                   Cancel
                 </ButtonLink>

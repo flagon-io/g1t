@@ -1,9 +1,9 @@
-import { ImageUp, Trash2 } from "lucide-react";
+import { ImageUp, LoaderCircle, Trash2 } from "lucide-react";
 import { useRef } from "react";
-import { Form, useNavigation } from "react-router";
+import { Form } from "react-router";
 
 import { AVATAR_ACCEPT } from "../lib/avatar-upload";
-import { Avatar, Button, ErrorText } from "./ui";
+import { Avatar, ErrorText, SubmitButton, usePending } from "./ui";
 
 /**
  * Uploading an avatar, as GitHub's settings do: the one shown now, a
@@ -25,10 +25,11 @@ export function AvatarField({
   error?: string;
   about: string;
 }) {
-  const navigation = useNavigation();
   const form = useRef<HTMLFormElement>(null);
-  const intent = navigation.formData?.get("intent");
-  const busy = navigation.state === "submitting" && (intent === "avatar" || intent === "remove-avatar");
+  // Working until the new picture (or the letter) is the one shown.
+  const uploading = usePending({ intent: "avatar" });
+  const removing = usePending({ intent: "remove-avatar" });
+  const busy = uploading || removing;
   return (
     <div className="flex items-start gap-4">
       <Avatar name={name} image={image} size={64} square={square} />
@@ -42,8 +43,12 @@ export function AvatarField({
                 busy ? "pointer-events-none opacity-50" : ""
               }`}
             >
-              <ImageUp size={15} />
-              {busy && intent === "avatar" ? "Uploading…" : image ? "Upload a new image" : "Upload an image"}
+              {uploading ? (
+                <LoaderCircle size={15} aria-hidden="true" className="animate-spin" />
+              ) : (
+                <ImageUp size={15} />
+              )}
+              {uploading ? "Uploading…" : image ? "Upload a new image" : "Upload an image"}
               <input
                 type="file"
                 name="avatar"
@@ -58,10 +63,10 @@ export function AvatarField({
           {image && (
             <Form method="post">
               <input type="hidden" name="intent" value="remove-avatar" />
-              <Button type="submit" variant="quiet" disabled={busy}>
+              <SubmitButton variant="quiet" pending="Removing…" match={{ intent: "remove-avatar" }} disabled={uploading}>
                 <Trash2 size={15} />
                 Remove
-              </Button>
+              </SubmitButton>
             </Form>
           )}
         </div>

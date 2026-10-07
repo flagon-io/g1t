@@ -3,7 +3,7 @@ import { Form, redirect, useSearchParams } from "react-router";
 
 import type { Route } from "./+types/applications";
 import { page } from "../../lib/meta";
-import { Button, ButtonLink, ErrorText, TimeAgo } from "../../components/ui";
+import { ButtonLink, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { DeleteButton } from "../../components/account-settings";
 import { AccessSummary, ScopeChecklist } from "../../components/token-scopes";
 import { grantFromForm } from "../../lib/token-scopes";
@@ -74,7 +74,7 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
                         Change access
                       </ButtonLink>
                     )}
-                    <DeleteButton intent="sign-out-application" id={application.id} label="Sign out" />
+                    <DeleteButton intent="sign-out-application" id={application.id} label="Sign out" pending="Signing out…" />
                   </div>
                 </div>
                 {open && (
@@ -88,7 +88,9 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
                     <ScopeChecklist initial={application.scopes} />
                     {actionData?.editing === application.id && <ErrorText>{actionData.error}</ErrorText>}
                     <div className="flex gap-2">
-                      <Button type="submit">Save access</Button>
+                      <SubmitButton pending="Saving…" match={{ intent: "update-application", id: application.id }}>
+                        Save access
+                      </SubmitButton>
                       <ButtonLink variant="quiet" to="." preventScrollReset>
                         Cancel
                       </ButtonLink>

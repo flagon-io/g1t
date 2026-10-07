@@ -22,7 +22,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   // Sensitive changes may first ask for the password (lib/emails.server.ts).
   if ((EMAIL_INTENTS as readonly string[]).includes(String(form.get("intent")))) {
-    return { emailAction: await emailAction(user, form, request) };
+    // Which form posted, so its answer shows beside it.
+    return { emailAction: await emailAction(user, form, request), emailIntent: String(form.get("intent")) };
   }
   return null;
 }
@@ -32,6 +33,7 @@ export default function EmailSettings({ loaderData, actionData }: Route.Componen
     <EmailsSection
       data={loaderData.emails}
       actionData={actionData?.emailAction}
+      intent={actionData?.emailIntent}
       hasPassword={loaderData.hasPassword}
     />
   );

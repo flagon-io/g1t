@@ -1,9 +1,9 @@
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/auth-github-username";
 import { AuthCard } from "../components/auth-card";
 import { GithubMark } from "../components/github";
-import { Button, ErrorText, Field, Input } from "../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { PENDING_COOKIE, cookie, readCookie } from "../lib/github";
 import { githubSignIn } from "../lib/github.server";
 import { page } from "../lib/meta";
@@ -44,7 +44,6 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function GithubUsername({ loaderData, actionData }: Route.ComponentProps) {
-  const busy = useNavigation().state === "submitting";
   return (
     <AuthCard
       title="Create your account"
@@ -84,9 +83,9 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
         )}
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">
-          <Button type="submit" disabled={busy}>
+          <SubmitButton pending="Creating account…">
             Create account
-          </Button>
+          </SubmitButton>
         </div>
       </Form>
     </AuthCard>

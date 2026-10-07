@@ -3,7 +3,7 @@ import { Form } from "react-router";
 
 import type { Route } from "./+types/keys";
 import { page } from "../../lib/meta";
-import { Button, ErrorText, Field, Input } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { DeleteButton } from "../../components/account-settings";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
@@ -51,7 +51,8 @@ export default function SshKeySettings({ loaderData, actionData }: Route.Compone
           </li>
         ))}
       </ul>
-      <Form method="post" className={`space-y-3 ${keys.length > 0 ? "mt-4" : ""}`}>
+      {/* Keyed on the list, so a key once added leaves the fields empty for the next. */}
+      <Form key={keys.length} method="post" className={`space-y-3 ${keys.length > 0 ? "mt-4" : ""}`}>
         <input type="hidden" name="intent" value="add-key" />
         <Field label="Title (optional)">
           <Input name="title" maxLength={100} />
@@ -60,7 +61,9 @@ export default function SshKeySettings({ loaderData, actionData }: Route.Compone
           <Input name="key" placeholder="ssh-ed25519 AAAA…" required />
         </Field>
         <ErrorText>{actionData?.keyError}</ErrorText>
-        <Button type="submit">Add SSH key</Button>
+        <SubmitButton pending="Adding…" match={{ intent: "add-key" }}>
+          Add SSH key
+        </SubmitButton>
       </Form>
     </section>
   );

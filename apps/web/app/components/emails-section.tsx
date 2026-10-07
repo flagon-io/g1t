@@ -5,18 +5,18 @@ import { type AccountEmails, type SecurityEvent, securityEventLabel } from "@g1t
 
 import { addressActions, backupChoices } from "../lib/emails";
 import type { EmailActionData } from "../lib/emails.server";
-import { Button, ErrorText, Field, Input, Pill, TimeAgo } from "./ui";
+import { ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
 import { SwitchCard } from "./ui/switch";
 
 /** One small form posting one intent about one address. */
-function AddressButton({ intent, email, label }: { intent: string; email: string; label: string }) {
+function AddressButton({ intent, email, label, pending }: { intent: string; email: string; label: string; pending: string }) {
   return (
     <Form method="post">
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="email" value={email} />
-      <Button variant="quiet" type="submit">
+      <SubmitButton variant="quiet" pending={pending} match={{ intent, email }}>
         {label}
-      </Button>
+      </SubmitButton>
     </Form>
   );
 }
@@ -64,7 +64,9 @@ function ConfirmItIsYou({ pending, hasPassword }: { pending: NonNullable<EmailAc
                 <Input name="password" type="password" autoComplete="current-password" required autoFocus />
               </Field>
             </div>
-            <Button type="submit">Confirm</Button>
+            <SubmitButton pending="Confirming…" match={{ intent: pending.intent }}>
+              Confirm
+            </SubmitButton>
           </div>
           <p className="text-xs text-faint">You will not be asked again for 10 minutes.</p>
         </Form>
@@ -78,17 +80,38 @@ function ConfirmItIsYou({ pending, hasPassword }: { pending: NonNullable<EmailAc
   );
 }
 
-/** A person's email addresses, in their account settings. */
+/** The answer to one form's post, under that form: what went wrong, or that it worked. */
+function Answer({ actionData }: { actionData: EmailActionData | undefined }) {
+  return (
+    <>
+      <ErrorText>{actionData?.emailError}</ErrorText>
+      {actionData?.emailNotice && (
+        <p role="status" className="mt-2 text-sm text-muted">
+          {actionData.emailNotice}
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * A person's email addresses, in their account settings. `intent` is the
+ * form that last posted, so its answer shows beside it.
+ */
 export function EmailsSection({
   data,
   actionData,
+  intent,
   hasPassword,
 }: {
   data: AccountEmails | null;
   actionData: EmailActionData | undefined;
+  intent?: string;
   hasPassword: boolean;
 }) {
   if (!data) return null;
+  const answerFor = (one: string) => (intent === one ? actionData : undefined);
+  const elsewhere = intent === "backup-email" || intent === "email-privacy";
   const backups = backupChoices(data.emails);
   const backup = data.emails.find((email) => email.backup);
   const full = data.emails.length >= data.limit;
@@ -123,16 +146,17 @@ export function EmailsSection({
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-                {can.resend && <AddressButton intent="resend-email" email={email.email} label="Resend link" />}
-                {can.makePrimary && <AddressButton intent="primary-email" email={email.email} label="Make primary" />}
-                {can.remove && <AddressButton intent="remove-email" email={email.email} label="Remove" />}
+                {can.resend && <AddressButton intent="resend-email" email={email.email} label="Resend link" pending="Sending…" />}
+                {can.makePrimary && <AddressButton intent="primary-email" email={email.email} label="Make primary" pending="Saving…" />}
+                {can.remove && <AddressButton intent="remove-email" email={email.email} label="Remove" pending="Removing…" />}
               </div>
             </li>
           );
         })}
       </ul>
 
-      <Form method="post" className="mt-4">
+      {/* Keyed on the list, so an address once added leaves the field empty. */}
+      <Form key={data.emails.length} method="post" className="mt-4">
         <input type="hidden" name="intent" value="add-email" />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="grow">
@@ -140,20 +164,15 @@ export function EmailsSection({
               <Input name="email" type="email" autoComplete="email" placeholder="you@example.com" required disabled={full} />
             </Field>
           </div>
-          <Button type="submit" disabled={full}>
+          <SubmitButton pending="Adding…" match={{ intent: "add-email" }} disabled={full}>
             Add
-          </Button>
+          </SubmitButton>
         </div>
         <p className="mt-1.5 text-xs text-faint">
           {full ? `You have ${data.limit} addresses, the most an account can have.` : "g1t sends it a link to confirm it."}
         </p>
       </Form>
-      <ErrorText>{actionData?.emailError}</ErrorText>
-      {actionData?.emailNotice && (
-        <p role="status" className="mt-2 text-sm text-muted">
-          {actionData.emailNotice}
-        </p>
-      )}
+      <Answer actionData={elsewhere ? undefined : actionData} />
 
       <div className="mt-8">
         <h2 className="font-medium">Backup address</h2>
@@ -178,10 +197,11 @@ export function EmailsSection({
               ))}
             </select>
           </label>
-          <Button variant="quiet" type="submit" disabled={backups.length === 0}>
+          <SubmitButton variant="quiet" pending="Saving…" match={{ intent: "backup-email" }} disabled={backups.length === 0}>
             Save
-          </Button>
+          </SubmitButton>
         </Form>
+        <Answer actionData={answerFor("backup-email")} />
         {backups.length === 0 && (
           <p className="mt-2 text-xs text-faint">Add and confirm a second address to choose a backup.</p>
         )}
@@ -203,11 +223,12 @@ export function EmailsSection({
             <p className="text-xs text-faint">
               Commits g1t makes for you now carry <span className="font-mono [overflow-wrap:anywhere]">{data.commitEmail}</span>.
             </p>
-            <Button variant="quiet" type="submit">
+            <SubmitButton variant="quiet" pending="Saving…" match={{ intent: "email-privacy" }}>
               Save
-            </Button>
+            </SubmitButton>
           </div>
         </Form>
+        <Answer actionData={answerFor("email-privacy")} />
       </div>
     </section>
   );

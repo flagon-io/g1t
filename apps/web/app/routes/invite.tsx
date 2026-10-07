@@ -1,5 +1,5 @@
 import { CircleAlert, Lock, Ticket } from "lucide-react";
-import { Form, Link, data, redirect, useNavigation } from "react-router";
+import { Form, Link, data, redirect } from "react-router";
 
 import type { InvitePreview, User } from "@g1t/contracts";
 
@@ -8,7 +8,7 @@ import { page } from "../lib/meta";
 import { Mark } from "../components/logo";
 import { ContinueWithGithub, OrDivider } from "../components/github";
 import { Honeypot } from "../components/honeypot";
-import { Avatar, Button, ButtonLink, ErrorText, Field, Input } from "../components/ui";
+import { Avatar, ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { githubSignInEnabled } from "../lib/github.server";
 import { identity } from "../lib/services.server";
 import { cleanCode, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
@@ -115,7 +115,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   const user = requireUser(context, request);
   const result = await identity.acceptInvite(user, code);
-  if (!result.ok) return data({ error: result.error.message }, { status: 422 });
+  // Said with a 200, so the page loads again and shows the invite as it
+  // now stands (used up, revoked) beside the reason: after a 4xx answer
+  // React Router keeps the page's data as it was.
+  if (!result.ok) return { error: result.error.message };
   throw landIn(request, invite, [], true);
 }
 
@@ -194,7 +197,6 @@ type Loaded = Route.ComponentProps["loaderData"];
 /** Signing up, on this page: the address the invite was sent to, a username, a password. */
 function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
   const invite = loaded.invite!;
-  const busy = useNavigation().state === "submitting";
   const here = `/invite/${loaded.code}`;
   const back = `${here}?accept=1`;
   const github = `/auth/github?${new URLSearchParams({ invite: loaded.code, next: back })}`;
@@ -247,13 +249,13 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
         </Field>
         <ErrorText>{error}</ErrorText>
         <div className="pt-1 *:w-full">
-          <Button type="submit" disabled={busy}>
+          <SubmitButton pending="Creating account…" match={{ intent: "register" }}>
             {invite.workspace
               ? `Create account and join ${invite.workspace.name}`
               : invite.repository
                 ? "Create account and accept"
                 : "Create account"}
-          </Button>
+          </SubmitButton>
         </div>
       </Form>
       <p className="mt-5 text-center text-sm text-muted">
@@ -281,11 +283,13 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
         Signed in as <span className="font-mono text-fg">{viewer.username}</span>
       </p>
     );
+    // Its own intent, which /logout ignores, so only its button says it is working.
     const signOut = (label: string, variant: "primary" | "quiet") => (
       <Form method="post" action={`/logout?next=${encodeURIComponent(here)}`}>
-        <Button type="submit" variant={variant}>
+        <input type="hidden" name="intent" value="sign-out" />
+        <SubmitButton variant={variant} pending="Signing out…" match={{ intent: "sign-out" }}>
           {label}
-        </Button>
+        </SubmitButton>
       </Form>
     );
     if (invite.forViewer === false) {
@@ -328,27 +332,36 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
       );
     }
     return (
-      <Form method="post" className="space-y-4">
-        <input type="hidden" name="intent" value="accept" />
-        {signedInAs}
-        {invite.forViewer === null && (
-          <p className="text-sm text-muted">This invite is for anyone with the link. Accepting uses it up.</p>
-        )}
-        <ErrorText>{error}</ErrorText>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit">{joinLabel(invite)}</Button>
-          <span className="text-sm text-muted">
-            Not you?{" "}
-            <button
-              type="submit"
-              formAction={`/logout?next=${encodeURIComponent(here)}`}
-              className="text-fg underline underline-offset-4"
-            >
-              Sign out
-            </button>
-          </span>
-        </div>
-      </Form>
+      <>
+        {/* "Not you?" posts this form, so it does not carry the accept form's intent. */}
+        <Form id="invite-sign-out" method="post" action={`/logout?next=${encodeURIComponent(here)}`} hidden>
+          <input type="hidden" name="intent" value="sign-out" />
+        </Form>
+        <Form method="post" className="space-y-4">
+          <input type="hidden" name="intent" value="accept" />
+          {signedInAs}
+          {invite.forViewer === null && (
+            <p className="text-sm text-muted">This invite is for anyone with the link. Accepting uses it up.</p>
+          )}
+          <ErrorText>{error}</ErrorText>
+          <div className="flex flex-wrap items-center gap-3">
+            <SubmitButton pending={invite.workspace ? "Joining…" : "Accepting…"} match={{ intent: "accept" }}>
+              {joinLabel(invite)}
+            </SubmitButton>
+            <span className="text-sm text-muted">
+              Not you?{" "}
+              <SubmitButton
+                form="invite-sign-out"
+                pending="Signing out…"
+                match={{ intent: "sign-out" }}
+                className="inline-flex items-center gap-1 text-fg underline underline-offset-4 disabled:opacity-50"
+              >
+                Sign out
+              </SubmitButton>
+            </span>
+          </div>
+        </Form>
+      </>
     );
   }
 

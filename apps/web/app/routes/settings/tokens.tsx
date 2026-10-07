@@ -6,7 +6,7 @@ import { presetScopes, type AccessToken } from "@g1t/contracts";
 import type { Route } from "./+types/tokens";
 import { page } from "../../lib/meta";
 import {
-  Button,
+  SubmitButton,
   ButtonLink,
   ErrorText,
   Field,
@@ -155,7 +155,9 @@ export default function TokenSettings({
       </ul>
 
       {!editing && (
+        // Keyed on the token just made, so the fields start over for the next.
         <Form
+          key={created?.id ?? "new"}
           method="post"
           className="mt-8 space-y-5 rounded-md border border-line p-4 sm:p-5"
         >
@@ -174,7 +176,9 @@ export default function TokenSettings({
           </div>
           <ScopeChecklist initial={presetScopes("agent")} />
           {!actionData?.editing && <ErrorText>{actionData?.error}</ErrorText>}
-          <Button type="submit">Create token</Button>
+          <SubmitButton pending="Creating…" match={{ intent: "add-token" }}>
+            Create token
+          </SubmitButton>
         </Form>
       )}
     </section>
@@ -246,7 +250,9 @@ function TokenRow({
           <ScopeChecklist initial={token.scopes} />
           <ErrorText>{error}</ErrorText>
           <div className="flex gap-2">
-            <Button type="submit">Save access</Button>
+            <SubmitButton pending="Saving…" match={{ intent: "update-token", id: token.id }}>
+              Save access
+            </SubmitButton>
             <ButtonLink variant="quiet" to="." preventScrollReset>
               Cancel
             </ButtonLink>

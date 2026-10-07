@@ -2,7 +2,7 @@ import { Form } from "react-router";
 
 import type { Route } from "./+types/github";
 import { page } from "../../lib/meta";
-import { Button, ErrorText, TimeAgo } from "../../components/ui";
+import { ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 import { GithubMark } from "../../components/github";
 import { githubSignIn } from "../../lib/github.server";
@@ -54,9 +54,9 @@ export default function GithubSettings({ loaderData, actionData }: Route.Compone
             )}
             <Form method="post">
               <input type="hidden" name="intent" value="unlink-github" />
-              <Button variant="quiet" type="submit" disabled={!github.hasPassword} title={github.hasPassword ? undefined : "GitHub is how you sign in. Set a password first."}>
+              <SubmitButton variant="quiet" pending="Unlinking…" match={{ intent: "unlink-github" }} disabled={!github.hasPassword} title={github.hasPassword ? undefined : "GitHub is how you sign in. Set a password first."}>
                 Unlink
-              </Button>
+              </SubmitButton>
             </Form>
           </div>
         </div>

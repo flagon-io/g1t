@@ -9,7 +9,7 @@ import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub, OrDivider } from "../components/github";
 import { Honeypot } from "../components/honeypot";
 import { githubSignInEnabled } from "../lib/github.server";
-import { Avatar, Button, ErrorText, Field, Input } from "../components/ui";
+import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { cleanCode, looksAutomated } from "../lib/invites";
 import { clientKey, registrationMode } from "../lib/registration.server";
@@ -187,7 +187,9 @@ function SignUpForm({
         </Field>
         <ErrorText>{error}</ErrorText>
         <div className="pt-2 *:w-full">
-          <Button type="submit">{invite?.workspace ? `Create account and join ${invite.workspace.slug}` : "Create account"}</Button>
+          <SubmitButton pending="Creating account…">
+            {invite?.workspace ? `Create account and join ${invite.workspace.slug}` : "Create account"}
+          </SubmitButton>
         </div>
       </Form>
     </>
@@ -262,7 +264,9 @@ function InviteOnly({
               </Field>
               <ErrorText>{actionData && "requestError" in actionData ? actionData.requestError : undefined}</ErrorText>
               <div className="*:w-full">
-                <Button type="submit">Request access</Button>
+                <SubmitButton pending="Sending…" match={{ intent: "request-access" }}>
+                  Request access
+                </SubmitButton>
               </div>
             </Form>
           </>

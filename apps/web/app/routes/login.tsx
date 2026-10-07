@@ -7,7 +7,7 @@ import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub, GithubMark, OrDivider } from "../components/github";
 import { PENDING_COOKIE, cookie, readCookie } from "../lib/github";
 import { githubSignIn, githubSignInEnabled } from "../lib/github.server";
-import { Button, ErrorText, Field, Input } from "../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
 import {
   assertSameOrigin,
@@ -101,7 +101,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">
-          <Button type="submit">Sign in</Button>
+          <SubmitButton pending="Signing in…">Sign in</SubmitButton>
         </div>
         <p className="text-center text-sm">
           <Link to="/forgot" className="text-muted hover:text-fg">
