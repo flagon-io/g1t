@@ -399,7 +399,12 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
     let cf_cost = sum(&|d| d.cf_cost_micros as f64);
     let own_cost = sum(&|d| d.own_cost_micros as f64);
     let value = sum(&|d| d.value_micros as f64);
-    let (cf_quantity, own_quantity) = (sum(&|d| d.cf_quantity), sum(&|d| d.own_quantity));
+    // Counts are compared from the first day g1t counted: before its meter
+    // was deployed there is only Cloudflare's side. A meter that never
+    // counted anything is compared over every day, so it still shows.
+    let first_counted = days.iter().filter(|d| d.own_quantity > 0.0).map(|d| d.day.as_str()).min();
+    let compared = |d: &&ProductDay| first_counted.is_none_or(|from| d.day.as_str() >= from);
+    let (cf_quantity, own_quantity) = days.iter().filter(compared).fold((0.0, 0.0), |(cf, own), d| (cf + d.cf_quantity, own + d.own_quantity));
     let mut out = Vec::new();
     if counted && cf_quantity > 0.0 {
         let delta = delta_percent(own_quantity, cf_quantity);
@@ -1821,6 +1826,22 @@ mod tests {
         assert_eq!(attribute(10, &[w("a", 3.0), w("b", 1.0), w("a", 0.0)]), vec![("a".into(), 8), ("b".into(), 2)]);
         assert!(attribute(10, &[w("a", 0.0)]).is_empty());
         assert!(attribute(0, &[w("a", 1.0)]).is_empty());
+    }
+
+    #[test]
+    fn counts_are_compared_from_the_day_g1t_started_counting() {
+        let on = |day: &str, cf: f64, own: f64| ProductDay { day: day.into(), bucket: "git".into(), cf_quantity: cf, own_quantity: own, ..ProductDay::default() };
+        // Five days of Cloudflare's count before g1t's meter, then two that match.
+        let days = vec![on("2026-10-01", 500.0, 0.0), on("2026-10-05", 300.0, 0.0), on("2026-10-06", 210.0, 231.0), on("2026-10-07", 450.0, 458.0)];
+        assert!(drifts("git", &days, 10.0, true, 0).iter().all(|d| d.kind != DriftKind::Count));
+        // A real gap on the days both counted still shows.
+        let days = vec![on("2026-10-01", 500.0, 0.0), on("2026-10-06", 400.0, 231.0), on("2026-10-07", 600.0, 300.0)];
+        let found = drifts("git", &days, 10.0, true, 0);
+        let count = found.iter().find(|d| d.kind == DriftKind::Count).unwrap();
+        assert_eq!((count.ours, count.cloudflare), (531.0, 1000.0));
+        // A meter that never counted is compared over every day.
+        let days = vec![on("2026-10-06", 400.0, 0.0)];
+        assert!(drifts("git", &days, 10.0, true, 0).iter().any(|d| d.kind == DriftKind::Count));
     }
 
     #[test]
