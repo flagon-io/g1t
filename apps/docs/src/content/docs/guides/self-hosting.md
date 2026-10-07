@@ -108,6 +108,7 @@ Set these in the environment, or in a `.env` file next to
 | `WAITLIST_NOTIFY_EMAIL` | (none) | Where a summary of new access requests goes, at most every 15 minutes. Empty sends none; requests still wait for you in the database. |
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the bundled MinIO, bucket `g1t-packages` | Where packages' files are kept: any S3-compatible store. Change the two keys before first start; MinIO is made with them. |
 | `S3_PUBLIC_ENDPOINT` | (none) | The store's address as clients reach it. When set, large layers are downloaded from it directly with a signed URL. |
+| `BACKUP_S3_BUCKET` | `g1t-backups` | The bucket on the same store that nightly repository backups (a `git bundle` of each repository whose branches or tags changed) are kept in. The bundles are cut by g1t's runner, which this installation does not run yet, so the bucket stays empty for now: copy the volumes, as below. |
 | `STATUS_PORT` | `8788` | The port the status page is published on |
 | `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
 | `INVITE_STAFF_WORKSPACES` | (none) | Workspace slugs, comma separated, whose owners can make invites without a limit. Set it to your own workspace before you switch to `invite`, so someone can invite the first people. |
@@ -186,7 +187,7 @@ across from GitHub, is in [GitHub](/guides/github/).
 | --- | --- |
 | `g1t_g1t-data` | Accounts, workspaces, issues and every other record, as SQLite files; the keys that seal stored secrets (`keys.env`) |
 | `g1t_g1t-git` | Your repositories, one bare git repository each |
-| `g1t_g1t-packages` | Container images' layers and other package files (MinIO) |
+| `g1t_g1t-packages` | Container images' layers and other package files, and the `g1t-backups` bucket (MinIO) |
 | `g1t_g1t-secrets` | The key the site and the git store share |
 
 To back up, stop g1t and copy the volumes:
