@@ -180,8 +180,9 @@ docker compose -f deploy/self-host/docker-compose.yml up --build
 Then open http://localhost:8787 and sign up. The confirmation mail is in
 Mailpit at http://localhost:8025. Repositories, push and clone, issues,
 pull requests and code browsing work, and the API and MCP server answer at
-http://localhost:8789; agents, deployments and context search are off in
-this version.
+http://localhost:8789; packages and container images are kept in the
+bundled S3-compatible store, RustFS. Agents, deployments and context search
+are off in this version.
 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) says what works and what is next.
 
 ### On Cloudflare

@@ -89,7 +89,7 @@ pub trait PackStore {
 /// Where packs are kept, by the names of the service's bindings and
 /// variables: the `GIT_PACKS` R2 bucket on Cloudflare or, when PACK_STORE
 /// is `s3`, the bucket PACK_S3_BUCKET names on the installation's
-/// S3-compatible store (`g1t-git-packs` on MinIO in the self-host compose
+/// S3-compatible store (`g1t-git-packs` on RustFS in the self-host compose
 /// file). On either an object exists only once it is whole: a `put` makes
 /// it in one write, and a multipart upload is nothing anyone can read
 /// until it is completed.

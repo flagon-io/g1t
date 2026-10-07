@@ -40,10 +40,11 @@ The user guide is `apps/docs/src/content/docs/guides/self-hosting.md`.
     answers "agents are off" instead of failing.
 - **Proven on this machine with Docker:** sign up, confirm the email
   through Mailpit, create a workspace and a repository, push and clone over
-  HTTP (the second clone from the clone pack cache in MinIO), open an
+  HTTP (the second clone from the clone pack cache in RustFS), open an
   issue, and browse code, commits and files in the site; then the REST API,
-  OAuth metadata and MCP on their own port, pull requests from a branch and
-  from a fork merged onto `main`, the merge queue taking a pull request and
+  OAuth metadata and MCP on their own port, an npm package published and
+  installed and a container image pushed and pulled through RustFS, pull
+  requests from a branch and from a fork merged onto `main`, the merge queue taking a pull request and
   giving it back, and every cron handler the scheduler runs. All of it runs
   against local storage. See [Phase 1: what works today](#3-phase-1-what-works-today).
 - **Long term:** keep workerd as the runtime, because it is what hosted
@@ -68,7 +69,7 @@ is graded:
 | **Workers runtime**, service bindings | Every service. Rust through `worker` 0.8 (`#[event(fetch\|queue\|scheduled)]`, `Env`, `Fetcher`); TS as `export default { fetch, queue, scheduled }` | woven (as a runtime), thin (as an API) | **workerd**: the same runtime, open source. Service bindings work as they do hosted. Calls are HTTP (`POST /rpc/<method>`), so a native port could use plain HTTP clients. |
 | **Workers RPC** (JS methods across a binding) | Only `RUNNER`: `RunnerService extends WorkerEntrypoint` (`services/runner/src/index.ts:626`). `apps/web` calls `env.RUNNER.enabled/run/plan/...` directly in 11 routes. | thin | workerd supports it. A native port needs these on `/rpc/*` as well; the runner already has a `fetch` shim for Rust callers. |
 | **D1** | System of record for 13 services. Rust: `env.d1("DB")`; TS: `D1Database`; `db.batch()` in `crates/kit` `rename` | woven (SQL), thin (API) | **SQLite files**. workerd/Miniflare implements D1 on SQLite, and the same `migrations/` apply with `wrangler d1 migrations apply --local`. A native port would need a `Database` port over `rusqlite`/`better-sqlite3`; the SQL is already SQLite, including FTS5. |
-| **KV** | `BLOBS`: Actions artifacts and cache (`apps/api/src/blobs.rs`, `apps/web/app/lib/artifacts.server.ts`). `AVATARS`: `services/identity/src/avatars.rs`, `apps/web/workers/app.ts`, `services/og`. `DOMAINS`: `services/deployments/src/domains.ts`, `services/pages` | thin | Miniflare KV on disk (SQLite plus blob files). Natively: a `BlobStore` port on the filesystem or S3/MinIO. |
+| **KV** | `BLOBS`: Actions artifacts and cache (`apps/api/src/blobs.rs`, `apps/web/app/lib/artifacts.server.ts`). `AVATARS`: `services/identity/src/avatars.rs`, `apps/web/workers/app.ts`, `services/og`. `DOMAINS`: `services/deployments/src/domains.ts`, `services/pages` | thin | Miniflare KV on disk (SQLite plus blob files). Natively: a `BlobStore` port on the filesystem or S3. |
 | **Queues**: the event bus | Producer: `services/events` `BUS.sendBatch` (`lib.rs:67`). The consumer writes the log, then fans out to every binding named `SUBSCRIBER_*` (`lib.rs:161`). Twelve consumers, one queue each. Private job queues in search (`g1t-search-jobs`) and context (`g1t-context-jobs`); consumers branch on the queue name. | woven | Miniflare Queues: in-process and persisted, which works today. Natively: a `Bus` port with a SQLite outbox and a poller per subscriber, or NATS/Redis Streams. At-least-once delivery and idempotent consumers are already the contract. |
 | **Durable Objects** | Only `AttemptSandbox` (runner), as the containers library's base class. Uses `ctx.storage.get/put/delete`, `schedule()` (alarm), `idFromName`/`idFromString`, DO RPC (`run`, `destroy`, `noteBlocked`). **Not used:** WebSocket hibernation, raw `alarm()`, `ctx.storage.sql`, `ctx.exports`. | woven, in the runner only | workerd supports Durable Objects (on-disk SQLite). Runner state can move to the sandbox supervisor (phase 2). |
 | **Containers** (`@cloudflare/containers`) | `services/runner`: one sandbox per agent run, Actions job and deploy build. `sleepAfter`, `start({ envVars, enableInternet })`, `onStop`. Image: `services/runner/Dockerfile` (node 24, git, toolchains, Claude Code, `g1t-runner`). | woven | **Docker or Podman** through the socket, with the same image. Wrangler can already run Containers locally through Docker; whether that covers outbound interception has to be tested. |
@@ -88,7 +89,7 @@ is graded:
 | **Static Assets** | `apps/web` (Vite plugin build), `apps/docs`, `apps/sudo` (`run_worker_first`) | thin | workerd serves them. |
 | **`placement`, `observability`, routes, custom domains** | every `wrangler.jsonc` | config only | Dropped by `deploy/self-host/configs.mjs`. |
 | **`cf-ray`** | Used as an audit request id, with a fallback: `services/repos/src/run_access.rs:131`, `apps/api/src/audit.rs:37` | thin | Falls back already. |
-| **R2** | `services/packages` (`BLOBS`: container layers and other package files), `services/repos` (`BACKUPS`: nightly backup bundles; `GIT_PACKS`: the clone pack cache), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the `BlobStore` port in `crates/blobstore` has an R2 adapter and an S3 one (`s3.rs`, SigV4 over fetch); each service names its own bucket (`BLOB_STORE`/`S3_BUCKET` for packages, `BACKUP_STORE`/`BACKUP_S3_BUCKET` for backups, `PACK_STORE`/`PACK_S3_BUCKET` for clone packs), run against MinIO in the compose file. |
+| **R2** | `services/packages` (`BLOBS`: container layers and other package files), `services/repos` (`BACKUPS`: nightly backup bundles; `GIT_PACKS`: the clone pack cache), the API's Actions cache (`ACTIONS_CACHE`), the runner's downloads | thin | **S3-compatible storage**: the `BlobStore` port in `crates/blobstore` has an R2 adapter and an S3 one (`s3.rs`, SigV4 over fetch); each service names its own bucket (`BLOB_STORE`/`S3_BUCKET` for packages, `BACKUP_STORE`/`BACKUP_S3_BUCKET` for backups, `PACK_STORE`/`PACK_S3_BUCKET` for clone packs), run against RustFS in the compose file. |
 | **Not used** | Hyperdrive, Workflows, Analytics Engine, Browser Rendering, Images, Turnstile, Secrets Store, `connect()`, HTMLRewriter, `request.cf` | — | — |
 
 ### By service
@@ -106,7 +107,7 @@ checks this table names every unit.
 | `apps/docs` | Static | — | Not run (docs.g1t.sh serves them) |
 | `apps/status` | TS Worker | Email Sending, cron; bound only to billing | Runs in a process of its own (`status.sh`), so it stays up when the site does not |
 | `services/identity` | Rust | Email Sending, KV `AVATARS` | Runs unchanged; `EMAIL` goes to the mail shim |
-| `services/repos` | Rust | **Artifacts**, **R2** (`BACKUPS`), Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store, backups to MinIO's `g1t-backups` bucket (`BACKUP_STORE=s3`), and the clone pack cache to `g1t-git-packs` (`PACK_STORE=s3`: the `PackStore` port in `src/pack_cache.rs` over the shared `BlobStore`, multipart, an object only once whole; `minio-setup` gives the bucket a rule that deletes packs after 7 days, and MinIO removes unfinished uploads after 24 hours). Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. Its nightly cron queues backups, but bundles are cut by the runner, which is off in phase 1: none are made yet |
+| `services/repos` | Rust | **Artifacts**, **R2** (`BACKUPS`), Cache API, optional KV `GIT_CACHE` with `REPOS_KEY`, optional R2 `GIT_PACKS` | Runs unchanged; `ARTIFACTS` goes to the git store, backups to the `g1t-backups` bucket in RustFS (`BACKUP_STORE=s3`), and the clone pack cache to `g1t-git-packs` (`PACK_STORE=s3`: the `PackStore` port in `src/pack_cache.rs` over the shared `BlobStore`, multipart, an object only once whole; `storage-setup` gives the bucket a lifecycle rule that deletes packs after 7 days and aborts uploads unfinished after a day). Without `GIT_CACHE` and `REPOS_KEY`, credentials and ref listings are kept per isolate only. Its nightly cron queues backups, but bundles are cut by the runner, which is off in phase 1: none are made yet |
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
@@ -116,7 +117,7 @@ checks this table names every unit.
 | `services/actions` | Rust | Queue, cron, `ACTIONS_KEY` | Runs; jobs need the runner, which is off |
 | `services/webhooks` | Rust | Queue, cron, `WEBHOOKS_KEY` | Runs; retries through `scheduler.mjs` |
 | `services/integrations` | Rust | Queue, `INTEGRATIONS_KEY` | Runs unchanged |
-| `services/packages` | Rust | **R2** (`BLOBS`), cron, queue, `PACKAGES_TOKEN_SECRET` | Runs with `BLOB_STORE=s3` against the compose file's MinIO (`deploy/self-host/configs.mjs`); no request size limit (`MAX_REQUEST_BYTES` 0 means none) |
+| `services/packages` | Rust | **R2** (`BLOBS`), cron, queue, `PACKAGES_TOKEN_SECRET` | Runs with `BLOB_STORE=s3` against the compose file's RustFS (`deploy/self-host/configs.mjs`); no request size limit (`MAX_REQUEST_BYTES` 0 means none) |
 | `services/deployments` | TS | Workers for Platforms, REST API, KV `DOMAINS`, cron | Runs with no API token: nothing deploys |
 | `services/runner` | TS | **Containers**, Durable Objects, outbound interception, AI Gateway, cron | Off: bound to the off Worker |
 | `services/context` | TS | **Vectorize**, **Workers AI**, Queues | Off: bound to the off Worker |
@@ -345,7 +346,7 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
 | Issues, pull requests, review | On | On | — |
 | Merge queue | On | Takes pull requests; testing and landing them needs sandboxes | Phase 2 |
 | Bringing a pull request up to date before it lands (catch-up) | On | Off: needs a sandbox | Phase 2 |
-| Clone pack cache | R2 | MinIO (`g1t-git-packs`) | — |
+| Clone pack cache | R2 | RustFS (`g1t-git-packs`) | — |
 | Site search (FTS5) | On | On | — |
 | Email | Email Sending | Mailpit, logged | SMTP relay |
 | Webhooks, integrations | On | On (retries through `scheduler.mjs`) | — |
@@ -417,9 +418,9 @@ on every page, but with `FREE_WHILE_BUILDING=true` and no Stripe key.
   replication. The repositories get hosted g1t's nightly bundles
   (docs/ARTIFACTS.md, R11) once the runner runs: the storage is already
   configured (`BACKUP_STORE=s3`, the `g1t-backups` bucket that
-  `minio-setup` makes, `BACKUP_S3_BUCKET` to choose another), and the
+  `storage-setup` makes, `BACKUP_S3_BUCKET` to choose another), and the
   restore drill reads a copy of that bucket
-  (`mc mirror local/g1t-backups ./copy`, then
+  (`aws --endpoint-url <S3_ENDPOINT> s3 sync s3://g1t-backups ./copy`, then
   `node scripts/ops/backup-restore-drill.mjs --bundles ./copy --repo-id <id> --live <bare repository>`).
 
 ## 3. Phase 1: what works today
@@ -428,7 +429,7 @@ Everything is in `deploy/self-host/`:
 
 | File | What it is |
 | --- | --- |
-| `docker-compose.yml` | `g1t` (every core Worker in one workerd on 8787, and the API in a second on 8789), `status`, `gitstore` (bare repositories), `minio` and `minio-setup` (packages, backups and clone packs, with the packs' expiry rule), and `mailpit` (mail). Volumes: `g1t-data`, `g1t-git`, `g1t-packages`, `g1t-status`, `g1t-secrets`. MinIO no longer publishes `minio/minio` or `minio/mc` images; `MINIO_IMAGE` (default `pgsty/minio`, a community build with `mc` in it) is the server. |
+| `docker-compose.yml` | `g1t` (every core Worker in one workerd on 8787, and the API in a second on 8789), `status`, `gitstore` (bare repositories), `rustfs` (S3-compatible storage for packages, backups and clone packs; `RUSTFS_IMAGE`, default `rustfs/rustfs:1.0.1`), `storage-setup` (the AWS CLI, `AWS_CLI_IMAGE`, default `amazon/aws-cli:2.37.10`: makes the three buckets and puts the packs' bucket's lifecycle rule, which expires `packs/` after 7 days and aborts multipart uploads unfinished after a day; RustFS's scanner applies it), and `mailpit` (mail). Volumes: `g1t-data`, `g1t-git`, `g1t-objects`, `g1t-status`, `g1t-secrets`. |
 | `Dockerfile` | Compiles the ten Rust services to WebAssembly with `worker-build`, as hosted does. Builds the site with React Router. The runtime image has Node, Wrangler, workerd and the built Workers. |
 | `Dockerfile.dockerignore` | Build-context rules for this image only (the root `.dockerignore` leaves out the site). |
 | `start.sh` | Makes the sealing keys once, writes the configs, applies migrations, runs `wrangler dev` with every config on `0.0.0.0:8787`, persisting to `/data/state`, and the API's `wrangler dev` on `0.0.0.0:8789` once the first answers. Starts `scheduler.mjs`. |
@@ -438,7 +439,7 @@ Everything is in `deploy/self-host/`:
 | `workers/artifacts/index.js` | The `ARTIFACTS` binding, implemented against the git store. |
 | `workers/mail/index.js` | The `EMAIL` binding: logs, then sends to Mailpit. |
 | `workers/off/index.js` | The runner and the context hub when they are off. |
-| `smoke.sh` | The end-to-end check, including the API, pull requests, the merge queue and (with `SCHEDULER_ONCE`) every cron handler. |
+| `smoke.sh` | The end-to-end check, including the clone pack cache, the API, an npm package published and installed, pull requests, the merge queue and (with `SCHEDULER_ONCE`) every cron handler. |
 
 Workers running: the site; identity, repos, work, events, projects, search,
 billing, security, actions, webhooks, integrations, packages and
@@ -460,11 +461,14 @@ On this machine (Windows 11, Docker Desktop 29.8, engine on Linux):
    The workspace context page answered 403 from the off stand-in, as
    intended.
 2. **With Docker Compose** (2026-10-07, `docker compose up --build`, with
-   `API_PORT=18789` because 8789 was taken on this machine). `smoke.sh`
+   `API_PORT=18789` because 8789 was taken on this machine; the store is
+   RustFS 1.0.1, its buckets made by `storage-setup`). `smoke.sh`
    passed every step: the ones above; a second clone answered from the pack
-   cache (`Server-Timing: pack;desc=hit`), with the packs in MinIO's
-   `g1t-git-packs` and its 7-day rule in place; an access token made in the
-   site; `GET /user`, the API index (`mcp_url`, `git_url`), the OAuth
+   cache (`Server-Timing: pack;desc=hit`), with the packs in RustFS's
+   `g1t-git-packs` and its lifecycle rule in place (packs expire after 7
+   days, unfinished uploads are aborted after 1); an access token made in the
+   site; an npm package published to the installation's registry and
+   installed back, its tarball in `g1t-packages`; `GET /user`, the API index (`mcp_url`, `git_url`), the OAuth
    metadata (`issuer` the API's address, `authorization_endpoint` on the
    site), MCP's 401 challenge and `tools/list`; a pull request from a branch
    and one from a fork (`create_pull_request` without a branch: a fork in
@@ -473,12 +477,19 @@ On this machine (Windows 11, Docker Desktop 29.8, engine on Linux):
    shown `waiting`, taken out (`unqueue`), the queue turned off and the
    pull request merged; and `scheduler.mjs --once`, every handler `ok`.
    The repository page's clone box and MCP line named the installation's
-   own addresses, with no social card tags.
-3. **The clone pack cache against MinIO without the stack.**
-   `node services/repos/dev/clone-check.mjs --s3` (MinIO in Docker):
-   misses then hits for full and shallow clones over protocol v2 and v0, a
-   miss after the refs version moves, five whole packs in the bucket (12 MB
-   each, so uploaded in parts), no unfinished upload, and the expiry rule.
+   own addresses, with no social card tags. By hand against the same
+   stack: `docker push` and `docker pull` of an image with a 20 MB layer
+   (uploaded in 10 MiB parts), the layer read back from `/v2/.../blobs/`
+   with a matching digest, the `g1t-backups` bucket present (empty: the
+   runner cuts bundles), no unfinished upload in any bucket, and the
+   guide's upgrade copy from an old MinIO volume into RustFS.
+3. **The clone pack cache against RustFS without the stack.**
+   `node services/repos/dev/clone-check.mjs --s3` (RustFS in Docker, the
+   bucket and lifecycle rule made with the AWS CLI): misses then hits for
+   full and shallow clones over protocol v2 and v0, a miss after the refs
+   version moves, five whole packs in the bucket (12 MB each, multipart
+   objects of 3 parts), each reading back at its listed size, no
+   unfinished upload, and both lifecycle rules.
 
 ### Not verified, or not working yet
 
@@ -521,9 +532,13 @@ Total to parity: about 10–13 weeks. Phase 1 alone is already a credible
   a registry directory, a development feature like the rest. If the API
   starts and a binding says `[not connected]`, restart the container. The
   phase 2 launcher serves both from one workerd.
-- **The MinIO image.** MinIO stopped publishing `minio/minio` and
-  `minio/mc`. The compose file uses a community build (`MINIO_IMAGE`,
-  `pgsty/minio`); any S3-compatible store can take its place.
+- **The object store.** The compose file runs RustFS (Apache-2.0),
+  pinned to a release tag, and makes its buckets with the AWS CLI
+  (Apache-2.0). Any S3-compatible store can take its place
+  (`S3_ENDPOINT`), given the same buckets and the packs' lifecycle rule.
+  Installations started before 2026-10-07 kept these files in MinIO, in
+  the `g1t-packages` volume; the guide's "Upgrade" section copies them
+  across.
 - **Cron goes through Wrangler's local API.** `scheduler.mjs` asks
   `/cdn-cgi/local/explorer/api/local/scheduled`, a development endpoint
   that may change between Wrangler releases (pinned by the lockfile).

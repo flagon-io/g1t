@@ -9,7 +9,7 @@
 // - ARTIFACTS (git storage) becomes a service binding to workers/artifacts,
 //   which keeps repositories in the git store (gitstore/server.mjs);
 // - EMAIL (Email Sending) becomes a service binding to workers/mail;
-// - the packages service keeps files in S3-compatible storage (MinIO)
+// - the packages service keeps files in S3-compatible storage (RustFS)
 //   instead of R2, and the repos service its nightly backups (a bucket of
 //   their own, BACKUP_S3_BUCKET);
 // - services that are off in this phase (agents, the context hub, the
@@ -216,13 +216,13 @@ function selfHosted(service) {
     // Access requests are summarised to your own address, not g1t.sh's.
     config.vars.WAITLIST_NOTIFY_EMAIL = process.env.WAITLIST_NOTIFY_EMAIL ?? "";
   }
-  // Packages' files go to the compose file's MinIO (or any S3-compatible
+  // Packages' files go to the compose file's RustFS (or any S3-compatible
   // store) instead of R2, with no request size limit, and package
   // addresses start with this installation's host.
   if (hosted.name === "g1t-packages") {
     Object.assign(config.vars, {
       BLOB_STORE: "s3",
-      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://minio:9000",
+      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://rustfs:9000",
       S3_BUCKET: process.env.S3_BUCKET ?? "g1t-packages",
       S3_REGION: process.env.S3_REGION ?? "us-east-1",
       S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
@@ -252,7 +252,7 @@ function selfHosted(service) {
       BACKUP_S3_BUCKET: process.env.BACKUP_S3_BUCKET ?? "g1t-backups",
       PACK_STORE: "s3",
       PACK_S3_BUCKET: process.env.PACK_S3_BUCKET ?? "g1t-git-packs",
-      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://minio:9000",
+      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://rustfs:9000",
       S3_REGION: process.env.S3_REGION ?? "us-east-1",
       S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
       S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY ?? "",

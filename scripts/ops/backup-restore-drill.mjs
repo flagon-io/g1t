@@ -21,8 +21,8 @@
 //                            backup's.
 //   --repo-id <id>           the repository by id (no database needed with --bundles).
 //   --bundles <dir>          read the bucket from a local copy (`backups/<id>/...`
-//                            under it, as `mc mirror` or `rclone copy` leave it)
-//                            instead of R2, e.g. a self-hosted MinIO's.
+//                            under it, as `aws s3 sync` or `rclone copy` leave it)
+//                            instead of R2, e.g. a self-hosted store's.
 //   --live <url or path>     the live repository to compare with; default
 //                            https://g1t.sh/<workspace>/<name>.git.
 //   --keep                   keep the temporary directory, and say where it is.

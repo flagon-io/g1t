@@ -1,5 +1,5 @@
 //! Object storage behind one port, `BlobStore`: R2 on Cloudflare, and any
-//! S3-compatible store (MinIO in the self-host compose file) elsewhere.
+//! S3-compatible store (RustFS in the self-host compose file) elsewhere.
 //!
 //! Every service that keeps objects names its own [`Config`]: the variable
 //! that chooses the store (`r2`, the default, or `s3`), the R2 bucket
