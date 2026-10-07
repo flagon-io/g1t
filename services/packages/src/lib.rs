@@ -358,7 +358,7 @@ impl Packages {
             }),
             description: p.description.clone(),
             versions: row.version_count,
-            latest: row.latest_tag.clone().or_else(|| row.latest_version.clone()),
+            latest: row.latest_tag.clone().or_else(|| row.latest_version.as_deref().and_then(db::newest_version)),
             size: row.bytes,
             downloads: p.downloads,
             created_at: p.created_at.clone(),

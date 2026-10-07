@@ -62,7 +62,55 @@ pub struct ListedRow {
     pub version_count: u32,
     pub bytes: u64,
     pub latest_tag: Option<String>,
+    /// Every version, newest published first, one per line: the summary
+    /// picks the highest of them (see `newest_version`).
     pub latest_version: Option<String>,
+}
+
+/// The version a listing calls latest: the highest stable one by number
+/// (`v3.0.2` over `1.0.0`, whatever order they were published in, as an
+/// import publishes every tag at once), else the highest pre-release, else
+/// the newest published when none reads as a number.
+pub fn newest_version(versions: &str) -> Option<String> {
+    // Stable over pre-release, then by number, then pre-releases by label.
+    let parse = |version: &str| -> Option<(bool, Vec<u64>, String)> {
+        let bare = version.strip_prefix('v').unwrap_or(version);
+        let (core, pre) = match bare.split_once(['-', '+']) {
+            Some((core, rest)) if bare.as_bytes()[core.len()] == b'-' => (core, rest.to_owned()),
+            Some((core, _)) => (core, String::new()),
+            None => (bare, String::new()),
+        };
+        let parts = core.split('.').map(|part| part.parse::<u64>().ok()).collect::<Option<Vec<_>>>()?;
+        Some((pre.is_empty(), parts, pre))
+    };
+    let list: Vec<&str> = versions.lines().map(str::trim).filter(|v| !v.is_empty()).collect();
+    list.iter()
+        .filter_map(|v| parse(v).map(|key| (key, *v)))
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, v)| v.to_owned())
+        .or_else(|| list.first().map(|v| (*v).to_owned()))
+}
+
+#[cfg(test)]
+mod newest_tests {
+    use super::newest_version;
+
+    #[test]
+    fn the_latest_is_the_highest_stable_version_not_the_last_published() {
+        assert_eq!(newest_version("1.0.0
+3.0.2
+2.0.0
+3.0.0").as_deref(), Some("3.0.2"));
+        assert_eq!(newest_version("v1.10.0
+v1.9.3").as_deref(), Some("v1.10.0"));
+        assert_eq!(newest_version("4.0.0-beta.1
+3.0.2").as_deref(), Some("3.0.2"));
+        assert_eq!(newest_version("4.0.0-beta.1
+4.0.0-alpha").as_deref(), Some("4.0.0-beta.1"));
+        assert_eq!(newest_version("dev-main
+nightly").as_deref(), Some("dev-main"));
+        assert_eq!(newest_version(""), None);
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -234,7 +282,7 @@ impl Db {
                (SELECT COALESCE(SUM(b.size), 0) FROM blobs b WHERE b.digest IN \
                   (SELECT vf.digest FROM version_files vf JOIN versions v ON v.id = vf.version_id WHERE v.package_id = p.id)) AS bytes, \
                (SELECT t.tag FROM tags t WHERE t.package_id = p.id ORDER BY t.tag = 'latest' DESC, t.updated_at DESC LIMIT 1) AS latest_tag, \
-               (SELECT v.version FROM versions v WHERE v.package_id = p.id ORDER BY v.published_at DESC LIMIT 1) AS latest_version \
+               (SELECT GROUP_CONCAT(version, char(10)) FROM                   (SELECT v.version FROM versions v WHERE v.package_id = p.id ORDER BY v.published_at DESC)) AS latest_version \
              FROM packages p WHERE p.workspace = ? AND p.workspace_deleted_at IS NULL",
             PACKAGE_COLUMNS.split(", ").map(|c| format!("p.{c}")).collect::<Vec<_>>().join(", ")
         );
