@@ -3,10 +3,10 @@
  * nothing proves a change works, and a button that opens a pull request
  * adding a starter workflow for the stack g1t finds (routes/repo/add-ci.ts).
  */
-import { FlaskConical, LoaderCircle, Plus } from "lucide-react";
+import { FlaskConical, Plus } from "lucide-react";
 import { useFetcher } from "react-router";
 
-import { Button, ErrorText } from "./ui";
+import { ErrorText, SubmitButton } from "./ui";
 
 export function AddCiPrompt({
   owner,
@@ -22,7 +22,7 @@ export function AddCiPrompt({
   compact?: boolean;
 }) {
   const fetcher = useFetcher<{ error?: string }>();
-  const adding = fetcher.state !== "idle";
+
   return (
     <div className={compact ? "flex gap-3 px-4 py-3" : "flex gap-3 rounded-xl border border-dashed border-line-strong bg-surface p-4"}>
       <FlaskConical size={16} className="mt-0.5 shrink-0 text-warn" />
@@ -34,10 +34,10 @@ export function AddCiPrompt({
         </p>
         {canAdd && (
           <fetcher.Form method="post" action={`/${owner}/${repo}/add-ci`} className="mt-3 flex flex-wrap items-center gap-3">
-            <Button variant="primary" type="submit" disabled={adding}>
-              {adding ? <LoaderCircle size={14} className="animate-spin" /> : <Plus size={14} />}
-              {adding ? "Opening a pull request…" : "Add CI"}
-            </Button>
+            <SubmitButton variant="primary" fetcher={fetcher} pending="Opening a pull request…">
+              <Plus size={14} />
+              Add CI
+            </SubmitButton>
             <span className="text-xs text-faint">
               Opens a pull request with a starter workflow for the stack g1t finds. You can change it before merging.
             </span>

@@ -21,7 +21,7 @@ import type {
   HighlightedLine,
 } from "../lib/diff";
 import { Markdown } from "./markdown";
-import { Avatar, Button, EmptyState, Textarea, TimeAgo } from "./ui";
+import { Avatar, Button, EmptyState, SubmitButton, Textarea, TimeAgo } from "./ui";
 import { Checkbox } from "./ui/checkbox";
 
 const ROW_STYLES: Record<DiffLine["kind"], string> = {
@@ -134,19 +134,28 @@ function Thread({
   open: boolean;
   onClose: () => void;
 }) {
+  // The box stays, saying it is posting, until the new comment shows above it.
+  const count = useRef(comments.length);
+  useEffect(() => {
+    if (comments.length > count.current) onClose();
+    count.current = comments.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new comment closes it
+  }, [comments.length]);
   return (
     <div className="max-w-2xl space-y-2">
       {comments.map((comment) => (
         <LineComment key={comment.id} comment={comment} />
       ))}
       {open && (
-        <Form method="post" className="space-y-2 font-sans" onSubmit={onClose}>
+        <Form method="post" className="space-y-2 font-sans">
           <input type="hidden" name="action" value="comment" />
           <input type="hidden" name="path" value={path} />
           <input type="hidden" name="line" value={line} />
           <Textarea name="body" rows={3} required autoFocus placeholder={`Comment on line ${line}`} />
           <div className="flex gap-2">
-            <Button type="submit">Comment</Button>
+            <SubmitButton match={{ action: "comment", path, line: String(line) }} pending="Commenting…">
+              Comment
+            </SubmitButton>
             <Button variant="quiet" type="button" onClick={onClose}>
               Cancel
             </Button>

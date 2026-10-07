@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { Sparkles } from "lucide-react";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
 import type { Plan } from "@g1t/contracts";
 
@@ -8,7 +8,7 @@ import type { Route } from "./+types/plans";
 import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
 import { page } from "../../lib/meta";
-import { Button, ComputeNote, EmptyState, ErrorText, Textarea, TimeAgo } from "../../components/ui";
+import { ComputeNote, EmptyState, ErrorText, SubmitButton, Textarea, TimeAgo } from "../../components/ui";
 import { computeNoteFor } from "../../lib/compute.server";
 import { work } from "../../lib/services.server";
 import {
@@ -58,7 +58,7 @@ const STATUS: Record<Plan["status"], string> = {
 export default function Plans({ loaderData, actionData, params }: Route.ComponentProps) {
   const { plans } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
-  const starting = useNavigation().state === "submitting";
+
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
       <div className="min-w-0">
@@ -79,10 +79,10 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
             }
           />
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="accent" type="submit" disabled={starting || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
+            <SubmitButton variant="accent" pending="Starting the planner…" disabled={!loaderData.can.run} title={whyNot(loaderData.can, "run")}>
               <Sparkles size={15} />
-              {starting ? "Starting the planner…" : "Plan it"}
-            </Button>
+              Plan it
+            </SubmitButton>
             <span className="text-xs text-muted">
               Nothing is opened until you have read the plan.
             </span>

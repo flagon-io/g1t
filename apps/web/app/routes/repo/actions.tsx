@@ -1,6 +1,6 @@
 import { AlertTriangle, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
-import { useState } from "react";
-import { Form, Link, useNavigation, useSearchParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Form, Link, useSearchParams } from "react-router";
 
 import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
 
@@ -8,7 +8,7 @@ import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
-import { Button, ComputeNote, EmptyState, ErrorText, TimeAgo } from "../../components/ui";
+import { Button, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { computeNoteFor } from "../../lib/compute.server";
@@ -178,7 +178,13 @@ function InputField({ name, spec }: { name: string; spec: DispatchInput }) {
 
 function RunWorkflow({ workflow }: { workflow: Workflow }) {
   const [open, setOpen] = useState(false);
-  const busy = useNavigation().state === "submitting";
+  // Open, saying it is starting, until the run shows below or the error does.
+  const running = usePending({ intent: "dispatch", workflow: workflow.id });
+  const was = useRef(false);
+  useEffect(() => {
+    if (was.current && !running) setOpen(false);
+    was.current = running;
+  }, [running]);
   const inputs = Object.entries(workflow.dispatch ?? {});
   const booleans = inputs.filter(([, spec]) => spec.type === "boolean").map(([name]) => name);
   return (
@@ -190,9 +196,9 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
       {open && (
         <Form
           method="post"
-          onSubmit={() => setOpen(false)}
           className="absolute right-0 z-20 mt-2 w-80 space-y-3 rounded-xl border border-line bg-surface p-4 shadow-xl"
         >
+          <input type="hidden" name="intent" value="dispatch" />
           <input type="hidden" name="workflow" value={workflow.id} />
           <input type="hidden" name="booleans" value={booleans.join(",")} />
           <label className="block">
@@ -207,10 +213,10 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
           {inputs.map(([name, spec]) => (
             <InputField key={name} name={name} spec={spec} />
           ))}
-          <Button type="submit" disabled={busy}>
+          <SubmitButton match={{ intent: "dispatch", workflow: workflow.id }} pending="Starting…">
             <PlayCircle size={14} />
             Run
-          </Button>
+          </SubmitButton>
         </Form>
       )}
     </div>
@@ -218,7 +224,6 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
 }
 
 function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow; base: string; member: boolean; manage: boolean }) {
-  const busy = useNavigation().state === "submitting";
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -239,9 +244,13 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
               <input type="hidden" name="intent" value="toggle" />
               <input type="hidden" name="workflow" value={workflow.id} />
               <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
-              <Button type="submit" variant="quiet" disabled={busy}>
+              <SubmitButton
+                variant="quiet"
+                match={{ intent: "toggle", workflow: workflow.id }}
+                pending={workflow.state === "active" ? "Turning off…" : "Turning on…"}
+              >
                 {workflow.state === "active" ? "Turn off" : "Turn on"}
-              </Button>
+              </SubmitButton>
             </Form>}
           </div>
         )}

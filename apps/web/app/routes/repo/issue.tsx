@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { Bot, ExternalLink, GitCommitHorizontal, GitMerge, Play, Sparkles } from "lucide-react";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
 import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
 
@@ -10,12 +10,12 @@ import { Markdown } from "../../components/markdown";
 import { AgentStepLine } from "../../components/agents";
 import {
   Avatar,
-  Button,
   CopyLine,
   EmptyState,
   ComputeNote,
   ErrorText,
   Input,
+  SubmitButton,
   Textarea,
   TimeAgo,
 } from "../../components/ui";
@@ -235,7 +235,6 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
   const { issue, pulls, comments, viewer, labels, agentsEnabled, members, canManage, can } = loaderData;
 
   // Follow agents at work without a manual reload.
-  const navigation = useNavigation();
   const running = pulls.some(
     (pull) =>
       pull.status === "draft" ||
@@ -253,7 +252,8 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
     );
   useRefreshWhile(Boolean(running || assigned));
 
-  const starting = navigation.formData?.get("action") === "run-hosted";
+  // A refusal to start g1t shows by its button; every other error below the discussion.
+  const runError = actionData && "action" in actionData && actionData.action === "run-hosted";
   const base = `/${params.owner}/${params.repo}`;
   const open = issue.state === "open";
   const reference = `${params.owner}/${params.repo}#${issue.number}`;
@@ -352,24 +352,24 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               <Form method="post" className="flex flex-wrap justify-end gap-2">
                 {open ? (
                   <>
-                    <Button variant="quiet" type="submit" name="action" value="close-not-planned">
+                    <SubmitButton variant="quiet" name="action" value="close-not-planned" pending="Closing…">
                       Close as not planned
-                    </Button>
-                    <Button variant="quiet" type="submit" name="action" value="close-completed">
+                    </SubmitButton>
+                    <SubmitButton variant="quiet" name="action" value="close-completed" pending="Closing…">
                       Close issue
-                    </Button>
+                    </SubmitButton>
                   </>
                 ) : (
-                  <Button variant="quiet" type="submit" name="action" value="reopen">
+                  <SubmitButton variant="quiet" name="action" value="reopen" pending="Reopening…">
                     Reopen issue
-                  </Button>
+                  </SubmitButton>
                 )}
               </Form>
             )}
           </div>
         </div>
         <div className="mt-2">
-          {!(actionData && "action" in actionData) && <ErrorText>{actionData?.error}</ErrorText>}
+          {!runError && <ErrorText>{actionData?.error}</ErrorText>}
         </div>
       </div>
 
@@ -489,10 +489,10 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             <Form method="post" className="mt-3 space-y-2">
               <input type="hidden" name="action" value="run-hosted" />
               <div className="*:w-full">
-                <Button variant="accent" type="submit" disabled={starting}>
+                <SubmitButton variant="accent" match={{ action: "run-hosted" }} pending="Starting a sandbox…">
                   <Sparkles size={14} />
-                  {starting ? "Starting a sandbox…" : "Assign to g1t"}
-                </Button>
+                  Assign to g1t
+                </SubmitButton>
               </div>
               <details>
                 <summary className="cursor-pointer text-xs text-faint hover:text-fg">
@@ -511,9 +511,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 agent and fixes. You get it back ready to merge.
               </p>
               <ComputeNote note={loaderData.computeNote} />
-              {actionData && "action" in actionData && actionData.action === "run-hosted" && (
-                <ErrorText>{actionData.error}</ErrorText>
-              )}
+              {runError && <ErrorText>{actionData.error}</ErrorText>}
             </Form>
           )}
 
@@ -547,9 +545,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                   ))}
                   <input type="hidden" name="assignee" value={viewer.username} />
                   <div className="*:w-full">
-                    <Button variant="quiet" type="submit">
+                    <SubmitButton variant="quiet" name="who" value="self" pending="Assigning…">
                       Assign yourself
-                    </Button>
+                    </SubmitButton>
                   </div>
                 </Form>
               )}
@@ -560,9 +558,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 <Form method="post" className="mt-2 space-y-2" key={issue.assignees.join()}>
                   <input type="hidden" name="action" value="assign" />
                   <PeoplePicker name="assignee" members={members} chosen={issue.assignees} />
-                  <Button variant="quiet" type="submit">
+                  <SubmitButton variant="quiet" name="who" value="picked" pending="Saving…">
                     Save assignees
-                  </Button>
+                  </SubmitButton>
                 </Form>
               </details>
             </div>
@@ -587,7 +585,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 </p>
                 <Input name="agent" placeholder="Who is working, e.g. claude-code" maxLength={60} />
                 <div className="*:w-full">
-                  <Button type="submit">Open pull request</Button>
+                  <SubmitButton match={{ action: "open-pull" }} pending="Opening…">
+                    Open pull request
+                  </SubmitButton>
                 </div>
                 <p className="text-xs text-muted">
                   Already pushed a branch?{" "}
@@ -631,9 +631,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 ))}
               </div>
               <Input name="labels" placeholder="New labels, comma separated" />
-              <Button variant="quiet" type="submit">
+              <SubmitButton variant="quiet" match={{ action: "labels" }} pending="Saving…">
                 Save labels
-              </Button>
+              </SubmitButton>
             </Form>
           </details>
         )}

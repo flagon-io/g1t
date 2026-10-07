@@ -28,7 +28,7 @@ import { useAddresses } from "../lib/addresses";
 import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch-up";
 import { duration } from "./actions";
 import { Elapsed, useRuns } from "./agents";
-import { Button, CopyLine, ErrorText, TimeAgo } from "./ui";
+import { Button, CopyLine, ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 // --- Output ---------------------------------------------------------------
@@ -408,10 +408,15 @@ export function ChecksSection({
               <Form method="post" key={status.context}>
                 <input type="hidden" name="action" value="rerun-workflow" />
                 <input type="hidden" name="run" value={runIdOf(status) ?? ""} />
-                <Button variant="quiet" type="submit" title={`Re-run the failed jobs of ${status.context}`}>
+                <SubmitButton
+                  variant="quiet"
+                  match={{ action: "rerun-workflow", run: runIdOf(status) ?? "" }}
+                  pending="Re-running…"
+                  title={`Re-run the failed jobs of ${status.context}`}
+                >
                   <RotateCw size={13} />
                   Re-run failed jobs{failedRuns.length > 1 ? ` of ${status.context}` : ""}
-                </Button>
+                </SubmitButton>
               </Form>
             ))}
         </div>

@@ -1,13 +1,13 @@
 import { AlertTriangle, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, ServerCog, Square, XCircle } from "lucide-react";
 import { type ReactNode } from "react";
-import { Form, Link, useLoaderData, useNavigation, useSearchParams } from "react-router";
+import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
 import type { Annotation, Job, StepState } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
 import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog } from "../../components/actions";
-import { Button, ErrorText, TimeAgo } from "../../components/ui";
+import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -184,7 +184,8 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   const { run, jobs, notes } = detail;
   const base = `/${params.owner}/${params.repo}`;
   const [search] = useSearchParams();
-  const busy = useNavigation().state === "submitting";
+  // One of the run's buttons is working: the others wait for it.
+  const busy = usePending();
   const live = run.status !== "completed";
   useRefreshWhile(live, 2500);
 
@@ -211,22 +212,22 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
           {member && !run.error && (
             <Form method="post" className="flex gap-2">
               {live ? (
-                <Button type="submit" name="intent" value="cancel" variant="quiet" disabled={busy}>
+                <SubmitButton name="intent" value="cancel" variant="quiet" disabled={busy} pending="Cancelling…">
                   <Square size={13} />
                   Cancel run
-                </Button>
+                </SubmitButton>
               ) : (
                 <>
                   {anyFailed && (
-                    <Button type="submit" name="intent" value="rerun-failed" variant="quiet" disabled={busy}>
+                    <SubmitButton name="intent" value="rerun-failed" variant="quiet" disabled={busy} pending="Re-running…">
                       <RotateCw size={13} />
                       Re-run failed jobs
-                    </Button>
+                    </SubmitButton>
                   )}
-                  <Button type="submit" name="intent" value="rerun" variant="quiet" disabled={busy}>
+                  <SubmitButton name="intent" value="rerun" variant="quiet" disabled={busy} pending="Re-running…">
                     <RotateCw size={13} />
                     Re-run all jobs
-                  </Button>
+                  </SubmitButton>
                 </>
               )}
             </Form>
@@ -307,7 +308,8 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
               </Link>
             ))}
           </nav>
-          {selected && <JobView key={selected.id} job={selected} base={base} />}
+          {/* Run again, a job keeps its id but its log starts afresh. */}
+          {selected && <JobView key={`${selected.id}:${run.attempt}`} job={selected} base={base} />}
         </div>
       )}
     </div>

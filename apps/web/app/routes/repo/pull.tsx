@@ -24,7 +24,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { Suspense } from "react";
-import { Await, Form, Link, redirect, useNavigation } from "react-router";
+import { Await, Form, Link, redirect } from "react-router";
 
 import {
   type Capability,
@@ -48,14 +48,15 @@ import { AgentPanel } from "../../components/agents";
 import { Markdown } from "../../components/markdown";
 import {
   Avatar,
-  Button,
   ButtonLink,
   CopyLine,
   EmptyState,
   ComputeNote,
   ErrorText,
+  SubmitButton,
   Textarea,
   TimeAgo,
+  usePending,
 } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { WorkflowStatuses } from "../../components/actions";
@@ -584,8 +585,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   ];
   // A catch-up: the click shows at once; the answer says whether it is
   // done already or a sandbox is on it.
-  const navigation = useNavigation();
-  const catchUpPending = navigation.state !== "idle" && navigation.formData?.get("action") === "update";
+  const catchUpPending = usePending({ action: "update" });
   const catchUp = actionData?.action === "update" ? actionData : null;
   const caughtUp = catchUp && "updated" in catchUp ? catchUp.updated : null;
   const agentCatchUp = catchUp && "agent" in catchUp ? catchUp.agent : null;
@@ -770,7 +770,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               {canRun &&
                 pull.runtime === "hosted" &&
                 (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
-                  <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30">
+                  // Keyed by the messages so the box empties once one shows below.
+                  <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30" key={messages.length}>
                     <p className="flex items-center gap-2 text-sm font-medium">
                       <Sparkles size={15} className="text-merged" />
                       Message the agent
@@ -789,7 +790,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         placeholder="Keep the old flag working too…"
                         className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-merged/60"
                       />
-                      <Button type="submit">Send</Button>
+                      <SubmitButton match={{ action: "message" }} pending="Sending…">
+                        Send
+                      </SubmitButton>
                     </div>
                   </Form>
                 )}
@@ -912,13 +915,16 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         Edit description
                       </summary>
                       <Form method="post" className="mt-3 space-y-2">
+                        <input type="hidden" name="action" value="describe" />
                         <Textarea
                           name="summary"
                           rows={6}
                           placeholder="What changed and why"
                           defaultValue={pull.body ?? ""}
                         />
-                        <Button type="submit">Save</Button>
+                        <SubmitButton match={{ action: "describe" }} pending="Saving…">
+                          Save
+                        </SubmitButton>
                       </Form>
                     </details>
                   )}
@@ -936,8 +942,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     </StatusRow>
                     {canManage && (
                       <Form method="post" className="space-y-2 px-4 py-3">
+                        <input type="hidden" name="action" value="ready" />
                         <Textarea name="summary" rows={3} placeholder="What changed and why" />
-                        <Button type="submit">Mark ready for review</Button>
+                        <SubmitButton match={{ action: "ready" }} pending="Marking ready…">
+                          Mark ready for review
+                        </SubmitButton>
                       </Form>
                     )}
                   </StatusBox>
@@ -1022,10 +1031,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {canUpdate && (
                           <Form method="post" className="mt-2">
                             <input type="hidden" name="action" value="update" />
-                            <Button variant="quiet" type="submit" disabled={catchUpPending}>
-                              {catchUpPending && <Loader size={14} className="animate-spin" />}
-                              {catchUpPending ? `Merging ${defaultBranch} in…` : `Catch up with ${defaultBranch} now`}
-                            </Button>
+                            <SubmitButton variant="quiet" match={{ action: "update" }} pending={`Merging ${defaultBranch} in…`}>
+                              Catch up with {defaultBranch} now
+                            </SubmitButton>
                           </Form>
                         )}
                         {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
@@ -1062,9 +1070,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           <Layers size={15} />
                           See the queue
                         </ButtonLink>
-                        <Button variant="quiet" type="submit" name="action" value="unqueue">
+                        <SubmitButton variant="quiet" name="action" value="unqueue" pending="Removing…">
                           Remove from the queue
-                        </Button>
+                        </SubmitButton>
                       </Form>
                     )}
                     {canMerge && !landing && lifecycle?.stage !== "queued" && (
@@ -1084,17 +1092,17 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           />
                         )}
                         <div className="flex flex-wrap items-center gap-3">
-                          <Button
+                          <SubmitButton
                             variant="accent"
-                            type="submit"
                             name="action"
                             value="merge"
                             disabled={mergeBlocked != null}
                             title={mergeBlocked ?? undefined}
+                            pending={mergeQueue ? "Adding to the queue…" : "Merging…"}
                           >
                             {mergeQueue ? <Layers size={15} /> : <GitMerge size={15} />}
                             {mergeQueue ? "Add to the merge queue" : `Merge into ${defaultBranch}`}
-                          </Button>
+                          </SubmitButton>
                           <span className={`text-xs ${mergeBlocked ? "text-danger" : "text-muted"}`}>
                             {mergeBlocked ?? (mergeQueue
                               ? `Tested together with everything ahead of it, then lands on ${defaultBranch}.`
@@ -1118,13 +1126,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 />
                 {canManage && active && (
                   <Form method="post" className="flex justify-end">
-                    <Button variant="quiet" type="submit" name="action" value="close">
+                    <SubmitButton variant="quiet" name="action" value="close" pending="Closing…">
                       Close pull request
-                    </Button>
+                    </SubmitButton>
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign"].includes(
+                  !["merge", "comment", "stack", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>
@@ -1161,12 +1169,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 <Form method="post" className="mt-3">
                   <input type="hidden" name="action" value="stack" />
                   <input type="hidden" name="branch" value={preview.branch} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-md border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                  <SubmitButton
+                    match={{ action: "stack" }}
+                    pending="Starting the builds…"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg disabled:opacity-50"
                   >
                     Preview them against this change
-                  </button>
+                  </SubmitButton>
                 </Form>
               )}
               {actionData?.action === "stack" &&
@@ -1224,10 +1233,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       <input key={name} type="hidden" name="reviewer" value={name} />
                     ))}
                     <div className="*:w-full">
-                      <Button variant="quiet" type="submit">
+                      <SubmitButton variant="quiet" match={{ action: "agent-review" }} pending="Asking g1t…">
                         <Sparkles size={14} className="text-accent" />
                         Request review from g1t
-                      </Button>
+                      </SubmitButton>
                     </div>
                     <ComputeNote note={loaderData.computeNote} />
                   </Form>
@@ -1246,9 +1255,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       members={members.filter((name) => name !== workOwner(pull).username)}
                       chosen={pull.reviewers.filter((name) => name !== "g1t")}
                     />
-                    <Button variant="quiet" type="submit">
+                    <SubmitButton variant="quiet" match={{ action: "reviewers" }} pending="Saving…">
                       Save reviewers
-                    </Button>
+                    </SubmitButton>
                   </Form>
                 </details>
               </div>
@@ -1281,9 +1290,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     ))}
                     <input type="hidden" name="assignee" value={viewer.username} />
                     <div className="*:w-full">
-                      <Button variant="quiet" type="submit">
+                      <SubmitButton variant="quiet" name="who" value="self" pending="Assigning…">
                         Assign yourself
-                      </Button>
+                      </SubmitButton>
                     </div>
                   </Form>
                 )}
@@ -1294,9 +1303,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
                     <input type="hidden" name="action" value="assign" />
                     <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
-                    <Button variant="quiet" type="submit">
+                    <SubmitButton variant="quiet" name="who" value="picked" pending="Saving…">
                       Save assignees
-                    </Button>
+                    </SubmitButton>
                   </Form>
                 </details>
               </div>
