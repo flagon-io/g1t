@@ -45,11 +45,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const base = asked.base ?? found.defaultBranch;
   const head = asked.head;
   if (!head || head === base) return { base, head, branches, comparison: null, commits: [], same: head === base };
-  const [compared, headLog, baseLog] = await Promise.all([
-    repos.compare(found.id, viewer, base, head),
-    repos.log(path, viewer, head, HEAD_DEPTH),
-    repos.log(path, viewer, base, BASE_DEPTH),
-  ]);
+  const [headLog, baseLog] = await Promise.all([repos.log(path, viewer, head, HEAD_DEPTH), repos.log(path, viewer, base, BASE_DEPTH)]);
   if (!headLog.ok || headLog.value.length === 0) throw new Response(`There is no branch, tag or commit named ${head}.`, { status: 404 });
   // What head has that base does not: its history down to the first commit base also has.
   const onBase = new Set(baseLog.ok ? baseLog.value.map((commit) => commit.hash) : []);
@@ -60,6 +56,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     author: commit.author.name,
     at: commit.authoredAt,
   }));
+  // The changes from where the two last agreed, as a pull request would
+  // bring them: what base gained since is not head taking it away. When
+  // that point is past what was read, the two tips are compared.
+  const mergeBase = shared === -1 ? base : headLog.value[shared]!.hash;
+  const compared = await repos.compare(found.id, viewer, mergeBase, head);
   const comparison: Comparison | null = compared.ok ? compared.value : null;
   return { base, head, branches, comparison, commits, same: false };
 }
