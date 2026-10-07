@@ -37,7 +37,13 @@
 	// unfinished uploads after 1:
 	//   npx wrangler r2 bucket create g1t-git-packs
 	//   npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1
-	"r2_buckets": [{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }],
+	// Nightly backups go to the second bucket: a git bundle per repository
+	// and a manifest of each chain (src/backups.rs). Made by
+	// `npx wrangler r2 bucket create g1t-backups`.
+	"r2_buckets": [
+		{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" },
+		{ "binding": "BACKUPS", "bucket_name": "g1t-backups" }
+	],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "EVENTS", "service": "g1t-events" },
@@ -95,10 +101,6 @@
 	// their last backup are queued for one (src/backups.rs, BACKUP_CRON);
 	// the runner's sweep starts them a few at a time.
 	"triggers": { "crons": ["23 * * * *", "53 2 * * *"] },
-	// Nightly backups: a git bundle per repository and a manifest of each
-	// chain (src/backups.rs). Made by
-	// `npx wrangler r2 bucket create g1t-backups`.
-	"r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "g1t-backups" }],
 	// A workspace renamed moves its repositories to the new slug; one
 	// deleted purges the repositories it left in Recently deleted.
 	"queues": {
