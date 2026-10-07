@@ -10,7 +10,7 @@ import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Button, ErrorText, Field, Input, TimeAgo } from "../../components/ui";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { DEPLOYS_CHOICES } from "../../lib/project-kind";
-import { deployments, projects } from "../../lib/services.server";
+import { deployments, identity, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 
@@ -28,8 +28,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     deployments.settings({ workspace: params.owner, slug: params.repo }, viewer).catch(() => null),
   ]);
   const found = unwrap(project);
-  // Who made it is kept as an id; name it only when it was the viewer.
-  return { project: found, deploymentsOn: deploys?.ok ? deploys.value.enabled : null, mine: viewer?.id === found.createdBy };
+  // Who made it is kept as an id: named by identity, or left out if it cannot say.
+  const names = await identity.usernames([found.createdBy]).catch(() => ({}) as Record<string, string>);
+  return {
+    project: found,
+    deploymentsOn: deploys?.ok ? deploys.value.enabled : null,
+    mine: viewer?.id === found.createdBy,
+    creator: names[found.createdBy] ?? null,
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -48,7 +54,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function ProjectSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { project, deploymentsOn, mine } = loaderData;
+  const { project, deploymentsOn, mine, creator } = loaderData;
   const [deploys, setDeploys] = useState<DeploysSetting>(project.deploys);
   // Not deploying while Deployments are on is refused: they are turned off first.
   const blocked = deploys === "no" && project.deploys !== "no" && deploymentsOn === true;
@@ -184,7 +190,17 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           </Button>
           {actionData && "saved" in actionData && <span className="text-sm text-accent">Saved.</span>}
           <span className="ml-auto text-xs text-faint">
-            Created {mine && "by you "}
+            Created{" "}
+            {mine ? (
+              "by you "
+            ) : creator ? (
+              <>
+                by{" "}
+                <Link to={`/${creator}`} className="text-muted hover:text-fg">
+                  {creator}
+                </Link>{" "}
+              </>
+            ) : null}
             <TimeAgo at={project.createdAt} />
           </span>
         </div>
