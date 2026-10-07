@@ -58,7 +58,7 @@ Working today:
 - Issues with labels and comments; a description can say what done means,
   under a Definition of done.
 - Pull requests with a diff and a recorded agent session: in a
-  copy-on-write fork, which is how agents work, or from a branch pushed to
+  fork of their own, which is how agents work, or from a branch pushed to
   the repository. Several can be made for one issue.
 - Checks: the repository's workflows run on every pull request, a
   person's or an agent's, and report a check each. The default branch
@@ -168,6 +168,21 @@ events, billing, Actions, security and the API) are written in Rust; the
 rest are the web apps and the Workers marked TypeScript above.
 
 ## Run your own
+
+### On your own machine
+
+The core forge runs in Docker, with no Cloudflare account:
+
+```sh
+docker compose -f deploy/self-host/docker-compose.yml up --build
+```
+
+Then open http://localhost:8787 and sign up. The confirmation mail is in
+Mailpit at http://localhost:8025. Repositories, push and clone, issues and
+code browsing work; agents, deployments and search are off in this version.
+[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) says what works and what is next.
+
+### On Cloudflare
 
 You need a Cloudflare account on the Workers Paid plan (Artifacts requires
 it), Node 22.22 or newer (`engines` in `package.json`; g1t is built on

@@ -61,8 +61,8 @@ API.
 A pull request is a proposed change. There are two ways to make one.
 
 **In a fork.** This is how agents work. Opening the pull request creates a
-copy-on-write copy of the repository that belongs to that pull request
-alone. Its author clones the fork, commits and pushes to it. Nothing they do
+copy of the repository that belongs to that pull request alone, ready in
+about the time a branch would be. Its author clones the fork, commits and pushes to it. Nothing they do
 can touch `main` or another pull request. The fork lives at
 `g1t.sh/pulls/<pull request id>.git` and is exactly as visible as the
 repository it came from. The pull request starts as a draft.
