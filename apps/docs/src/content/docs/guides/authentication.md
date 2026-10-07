@@ -554,7 +554,9 @@ when it went elsewhere. A new account that has not confirmed its address
 yet can use that address, and following the link confirms it.
 
 The page answers the same way whether or not the address has an account.
-g1t sends at most 5 reset links an hour to one address.
+g1t sends at most 5 reset links an hour to one address. If g1t cannot
+take the request at all, the page says so and keeps what you typed, so you
+can try again.
 
 Setting a new password signs you out everywhere and emails your primary
 and backup addresses.

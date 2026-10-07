@@ -103,13 +103,20 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (scopes.length === 0) {
     return { error: "Leave at least one box ticked, or deny." };
   }
-  const { code } = await identity.oauthAuthorize(user, {
-    clientId: checked.clientId,
-    clientName: checked.clientName,
-    redirectUri: checked.redirectUri,
-    codeChallenge: checked.codeChallenge,
-    scopes,
-  });
+  let code: string;
+  try {
+    ({ code } = await identity.oauthAuthorize(user, {
+      clientId: checked.clientId,
+      clientName: checked.clientName,
+      redirectUri: checked.redirectUri,
+      codeChallenge: checked.codeChallenge,
+      scopes,
+    }));
+  } catch (error) {
+    // The service's own words are for the log; the person can try again.
+    console.warn("oauth-authorize:", error);
+    return { error: "g1t could not approve this sign-in just now. Try again in a moment." };
+  }
   // `iss` is the API's origin, the issuer its metadata names (RFC 9207).
   throw redirect(
     callback(checked.redirectUri, { code, state: checked.state, iss: addresses().api }),

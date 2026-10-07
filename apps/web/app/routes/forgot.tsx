@@ -3,7 +3,7 @@ import { Form, Link } from "react-router";
 import type { Route } from "./+types/forgot";
 import { page } from "../lib/meta";
 import { AuthCard } from "../components/auth-card";
-import { Field, Input, SubmitButton } from "../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, clientOf } from "../lib/session.server";
 
@@ -14,8 +14,15 @@ export function meta(args: Route.MetaArgs) {
 export async function action({ request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const form = await request.formData();
-  await identity.requestPasswordReset(String(form.get("email") ?? ""), clientOf(request));
-  return { sent: true };
+  try {
+    await identity.requestPasswordReset(String(form.get("email") ?? ""), clientOf(request));
+  } catch (error) {
+    // Logged, never shown: what went wrong could say whether the address
+    // has an account. The person hears only that it did not go.
+    console.warn("forgot:", error);
+    return { sent: false, error: "We could not send a reset link just now. Try again in a few minutes." };
+  }
+  return { sent: true, error: null };
 }
 
 export default function Forgot({ actionData }: Route.ComponentProps) {
@@ -39,6 +46,7 @@ export default function Forgot({ actionData }: Route.ComponentProps) {
           <Field label="Email">
             <Input name="email" type="email" autoComplete="email" required autoFocus />
           </Field>
+          <ErrorText>{actionData?.error}</ErrorText>
           <div className="pt-2 *:w-full">
             <SubmitButton pending="Sending…">Send reset link</SubmitButton>
           </div>
