@@ -818,7 +818,7 @@ function RepoMenu({
           than one view shows them as tabs across its top. */}
       <Rule />
       <div className="space-y-px">
-        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
+        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
         <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
@@ -1209,7 +1209,8 @@ const SECTIONS: Record<string, string> = {
   access: "Access",
   invitations: "Invitation",
   repositories: "Repositories",
-  branches: "Branches and merging",
+  branches: "Branches",
+  tags: "Tags",
   dependencies: "Dependencies",
   code: "Files",
   secrets: "Secrets and variables",
@@ -1308,7 +1309,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
       // A settings page names which one: Settings / Secrets and variables.
       if (third === "settings" && fourth && SECTIONS[fourth]) {
-        trail.push({ label: SECTIONS[fourth]!, to: `${repo}/settings/${fourth}` });
+        trail.push({ label: fourth === "branches" ? "Branches and merging" : SECTIONS[fourth]!, to: `${repo}/settings/${fourth}` });
       }
     }
   }

@@ -37,6 +37,8 @@ export const SECTIONS: Section[] = [
     tabs: [
       { label: "Files", path: "code", also: ["tree", "blob"] },
       { label: "Commits", path: "commits", also: ["commit"] },
+      { label: "Branches", path: "branches" },
+      { label: "Tags", path: "tags" },
       ...soon("Code"),
     ],
   },

@@ -565,6 +565,49 @@ pub struct Branch {
     pub hash: String,
 }
 
+/// `last_commits`: which commit last changed each entry of a directory at
+/// `ref` (the default branch when absent). Returns `Outcome<LastCommits>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastCommitsArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+    #[serde(default)]
+    pub tree_path: String,
+}
+
+/// An entry of a directory and the commit that last changed it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LastCommit {
+    pub name: String,
+    pub commit: Commit,
+}
+
+/// The entries' last commits. `complete` is false when the history walked
+/// ran out before every entry was placed; those entries are left out.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LastCommits {
+    pub entries: Vec<LastCommit>,
+    pub complete: bool,
+}
+
+/// `tags`: the repository's tags, newest commit first, each with the
+/// commit it names. Returns `Outcome<Vec<Tag>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TagsArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+}
+
+/// A tag, and its commit when it could be read.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Tag {
+    pub name: String,
+    pub commit: Option<Commit>,
+}
+
 /// `branches`: the repository's branches, default branch first.
 /// Returns `Outcome<Vec<Branch>>`.
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { shownStep } from "./agent-step";
+import { shownStep } from "./agent-step.ts";
 
 test("a step that hands back a file says what was done, not where", () => {
   assert.equal(shownStep("Said: Done. The review is written to `/work/review.json`."), "Wrote its review.");

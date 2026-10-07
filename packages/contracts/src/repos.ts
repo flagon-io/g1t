@@ -234,6 +234,12 @@ export interface ReposApi {
   /** The repository's branches, default branch first. */
   branches(path: RepoPath, viewer: Viewer): Promise<Result<Branch[]>>;
 
+  /** Which commit last changed each entry of a directory at `ref` (the default branch when null). */
+  lastCommits(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<LastCommits>>;
+
+  /** The repository's tags, newest commit first, at most 100. */
+  tags(path: RepoPath, viewer: Viewer): Promise<Result<Tag[]>>;
+
   /**
    * Every file at `ref` (the default branch when null), at most `limit`
    * (10,000 at most). No viewer: check access first.
@@ -290,6 +296,12 @@ export type Blame = {
 
 /** A branch and the commit it points to. */
 export type Branch = { name: string; hash: string };
+
+/** Each entry's last commit; `complete` is false when some were not reached. */
+export type LastCommits = { entries: { name: string; commit: Commit }[]; complete: boolean };
+
+/** A tag, and its commit when it could be read. */
+export type Tag = { name: string; commit: Commit | null };
 
 /** Files at a commit, and whether there were more than were listed. */
 export type FileList = { commit: string | null; files: { path: string; hash: string | null }[]; truncated: boolean };

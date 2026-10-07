@@ -64,7 +64,6 @@ import {
   rankNeeds,
   stuckMinutes,
 } from "../../lib/mission";
-import { drift } from "../../lib/branches";
 import { agentWasAssigned, hasInstructions, productionChecklist, releaseChecklist } from "../../lib/checklist";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import { PUBLISH_GUIDES, hasRelease, libraryPackages, packageName, packagePath, publishGuide } from "../../lib/project-kind";
@@ -73,14 +72,12 @@ import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
+import { readBranches } from "../../lib/branches.server";
 
 const MAX_LANDED = 6;
 /** Branches read for the Active branches list, and shown. */
 const BRANCHES_READ = 10;
 const BRANCHES_SHOWN = 5;
-/** How far back each branch's history, and the default branch's, is read to count ahead and behind. */
-const BRANCH_DEPTH = 40;
-const MAIN_DEPTH = 120;
 /** A library's packages shown on its overview; the rest are a link away. */
 const PACKAGES_SHOWN = 3;
 
@@ -136,38 +133,19 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     async ([repo, branchList, pulls, deploys]): Promise<{ main: string; total: number; shown: ActiveBranch[] } | null> => {
       if (!repo?.ok || !branchList?.ok) return null;
       const main = repo.value.defaultBranch;
-      const pullList = pulls?.ok ? pulls.value : [];
-      const pullOn = new Map(pullList.filter((pull) => pull.branch).map((pull) => [pull.branch as string, pull]));
-      const others = branchList.value.filter((branch) => branch.name !== main);
-      if (others.length === 0) return { main, total: 0, shown: [] };
-      const read = [...others.filter((b) => pullOn.has(b.name)), ...others.filter((b) => !pullOn.has(b.name))].slice(0, BRANCHES_READ);
-      // By commit hash, not name: history from a commit never changes, so
-      // repos keeps it (services/repos/src/store.rs) and only new heads cost
-      // a walk.
-      const mainHead = branchList.value.find((branch) => branch.name === main)?.hash ?? main;
-      const [mainLog, ...logs] = await Promise.all([
-        soft(repos.log(path, viewer, mainHead, MAIN_DEPTH)),
-        ...read.map((branch) => soft(repos.log(path, viewer, branch.hash || branch.name, BRANCH_DEPTH))),
-      ]);
-      const mainHashes = mainLog?.ok ? mainLog.value.map((c) => c.hash) : [];
-      const previews = deploys?.ok ? deploys.value.live.filter((app) => app.kind === "preview") : [];
-      const shown = read
-        .map((branch, index): ActiveBranch => {
-          const history = logs[index]?.ok ? logs[index].value : [];
-          const head = history[0];
-          const moved = drift(history.map((c) => c.hash), mainHashes, BRANCH_DEPTH);
-          const pull = pullOn.get(branch.name);
-          return {
-            name: branch.name,
-            commit: head ? { hash: head.hash, message: head.message.split("\n")[0], author: head.author.name, at: head.authoredAt } : null,
-            ...moved,
-            pull: pull ? { number: pull.number, title: pull.title, checkStatus: pull.checkStatus, draft: pull.status === "draft" } : null,
-            preview: previews.find((app) => app.branch === branch.name || (pull != null && app.number === pull.number))?.url ?? null,
-          };
-        })
-        .sort((a, b) => Date.parse(b.commit?.at ?? "0") - Date.parse(a.commit?.at ?? "0"))
-        .slice(0, BRANCHES_SHOWN);
-      return { main, total: others.length, shown };
+      if (branchList.value.every((branch) => branch.name === main)) return { main, total: 0, shown: [] };
+      const read = await readBranches(
+        path,
+        viewer,
+        {
+          defaultBranch: main,
+          branches: branchList.value,
+          pulls: pulls?.ok ? pulls.value : [],
+          previews: deploys?.ok ? deploys.value.live.filter((app) => app.kind === "preview") : [],
+        },
+        BRANCHES_READ,
+      );
+      return { main, total: read.total, shown: read.shown.slice(0, BRANCHES_SHOWN) };
     },
   );
   // Active branches read several logs each: streamed, so the rest shows first.

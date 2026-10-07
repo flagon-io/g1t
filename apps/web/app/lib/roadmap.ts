@@ -81,29 +81,6 @@ export const ROADMAP: RoadmapItem[] = [
 
   // --- Code ---------------------------------------------------------------
   {
-    key: "branches",
-    title: "Branches",
-    section: "Code",
-    summary: "Every branch: who is on it, how far behind it is, and its preview.",
-    why: "With agents opening branches by the dozen, a list of names is not enough. Each branch shows its pull request, its checks, its live preview and how stale it is.",
-    plans: [
-      "Branches with their pull request, checks and preview address",
-      "Ahead and behind the default branch, with one-click catch-up by an agent",
-      "Protection rules: required checks, reviews and the merge queue",
-      "Stale branches cleaned up on a schedule you set",
-    ],
-    today: { label: "Pull requests", path: "pulls" },
-  },
-  {
-    key: "tags",
-    title: "Tags",
-    section: "Code",
-    summary: "Tags, and the releases made from them.",
-    why: "A tag marks a version of the code. Each links to its release notes and to the deployment that shipped it.",
-    plans: ["Tags with their commit, release and deployment", "Signed tags verified", "Rules for who may create and move them"],
-    today: { label: "Commits", path: "commits" },
-  },
-  {
     key: "compare",
     title: "Compare",
     section: "Code",

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inflateRawSync } from "node:zlib";
 
-import { crc32, zip } from "./zip";
+import { crc32, zip } from "./zip.ts";
 
 test("crc32 matches the standard check value", () => {
   assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);

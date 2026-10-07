@@ -117,6 +117,22 @@ git switch -c my-change
 git push origin my-change
 ```
 
+A repository's **Branches** tab, `g1t.sh/<workspace>/<repo>/branches`, lists
+every branch: the default one first, then those with a commit in the last 90
+days (**Active**), then the rest (**Stale**). Each shows its last commit, how
+many commits it is ahead of and behind the default branch, the pull request
+open on it with its checks, and its preview when it has one. A count with a
+`+` ran past how far back g1t reads, 40 commits on the branch and 120 on the
+default. Search narrows the list by name.
+
+The **Tags** tab lists tags newest first, up to 100, each with its commit
+and a ZIP of its files.
+
+On **Files**, each file and folder shows the commit that last changed it and
+when, from up to 300 commits of the branch's history; one changed before
+that shows none. The branch menu at the top switches branch and keeps the
+folder or file you are on.
+
 ## Pull request forks
 
 A pull request that was not opened from a branch has its own remote:

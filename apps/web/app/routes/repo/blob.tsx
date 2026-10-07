@@ -15,10 +15,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const file = params["*"] ?? "";
   const wantsBlame = new URL(request.url).searchParams.has("blame");
-  const [found, blame] = await Promise.all([
+  const [found, blame, list] = await Promise.all([
     repos.blob(path, viewer, params.ref, file),
     wantsBlame ? repos.blame(path, viewer, params.ref, file) : null,
+    // For the branch menu; the page still shows without it.
+    repos.branches(path, viewer).catch(() => null),
   ]);
+  const branches = list?.ok ? list.value : null;
   // A branch that was renamed: the same file on its new name.
   if (!found.ok && found.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   const blob = unwrap(found);
@@ -27,15 +30,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       blob,
       html: null,
       blame: { blame: blame.value, lines: await highlightLines(blob.path, blob.text) },
+      branches,
     };
   }
   return {
     blob,
     html: blob.text == null ? null : await highlightLines(blob.path, blob.text),
     blame: null,
+    branches,
   };
 }
 
 export default function Blob({ loaderData }: Route.ComponentProps) {
-  return <BlobView blob={loaderData.blob} html={loaderData.html} blame={loaderData.blame} />;
+  return <BlobView blob={loaderData.blob} html={loaderData.html} blame={loaderData.blame} branches={loaderData.branches} />;
 }

@@ -15,6 +15,7 @@ mod git_http;
 mod git_ops;
 mod import;
 mod land;
+mod last_commits;
 mod lifecycle;
 mod listing;
 mod meters;
@@ -57,6 +58,16 @@ pub(crate) const PULLS_NAMESPACE: &str = "pulls";
 const MAX_TEXT_BYTES: usize = 512 * 1024;
 /// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
+/// The most tags a repository's Tags page reads and lists.
+const MAX_TAGS_READ: usize = 100;
+
+/// One path segment, percent-encoded for a cache key.
+fn urlencoding_segment(segment: &str) -> String {
+    segment
+        .bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
 const MAX_DESCRIPTION_CHARS: usize = 200;
 pub(crate) const SOURCE: &str = "repos";
 pub(crate) const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
@@ -733,6 +744,65 @@ impl<S: GitStore> Repos<S> {
         let git = self.read_git(&repo).await?;
         let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
+    }
+
+    /// Which commit last changed each entry of a directory. Kept in this
+    /// colo's cache by repository, head commit and path: a commit's history
+    /// never changes, so an answer is good for as long as it is kept.
+    async fn last_commits(&self, a: g1t_contracts::repos::LastCommitsArgs) -> Result<Outcome<g1t_contracts::repos::LastCommits>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        let git = self.read_git(&repo).await?;
+        let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
+        let Some(head) = git.log(&git_ref, 1).await?.into_iter().next() else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such branch, tag or commit."));
+        };
+        let key = format!(
+            "https://last-commits.g1t.internal/{}/{}/{}",
+            repo.id,
+            head.hash,
+            a.tree_path.split('/').map(urlencoding_segment).collect::<Vec<_>>().join("/")
+        );
+        let cache = worker::Cache::default();
+        if let Ok(Some(mut kept)) = cache.get(key.as_str(), false).await {
+            if let Ok(found) = kept.json::<g1t_contracts::repos::LastCommits>().await {
+                return Ok(Outcome::Ok(found));
+            }
+        }
+        let (entries, complete) = last_commits::last_commits(&git, &head.hash, &a.tree_path).await?;
+        let found = g1t_contracts::repos::LastCommits { entries, complete };
+        if let Ok(mut response) = worker::Response::from_json(&found) {
+            let _ = response.headers_mut().set("cache-control", "max-age=604800");
+            let _ = cache.put(key.as_str(), response).await;
+        }
+        Ok(Outcome::Ok(found))
+    }
+
+    /// The repository's tags, newest commit first, at most 100.
+    async fn tags(&self, a: g1t_contracts::repos::TagsArgs) -> Result<Outcome<Vec<g1t_contracts::repos::Tag>>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let access = git.access(Scope::Read).await?;
+        let named: Vec<(String, String)> = refs::heads_and_tags(refs::all(&access).await?)
+            .into_iter()
+            .filter_map(|(name, hash)| name.strip_prefix("refs/tags/").map(|tag| (tag.to_owned(), hash)))
+            .collect();
+        let read = self.read_git(&repo).await?;
+        let commits = futures_util::future::join_all(named.iter().take(MAX_TAGS_READ).map(|(_, hash)| read.log(hash, 1))).await;
+        let mut tags: Vec<g1t_contracts::repos::Tag> = named
+            .into_iter()
+            .zip(commits.into_iter().map(|found| found.ok().and_then(|list| list.into_iter().next())).chain(std::iter::repeat(None)))
+            .map(|((name, _), commit)| g1t_contracts::repos::Tag { name, commit })
+            .collect();
+        tags.sort_by(|a, b| {
+            let at = |tag: &g1t_contracts::repos::Tag| tag.commit.as_ref().map(|c| c.authored_at.clone()).unwrap_or_default();
+            at(b).cmp(&at(a)).then_with(|| b.name.cmp(&a.name))
+        });
+        tags.truncate(MAX_TAGS_READ);
+        Ok(Outcome::Ok(tags))
     }
 
     /// The repository's branches, default branch first.
@@ -1921,6 +1991,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "branches" => reply(&repos.branches(args(body)?).await?),
+        "last_commits" => reply(&repos.last_commits(args(body)?).await?),
+        "tags" => reply(&repos.tags(args(body)?).await?),
         "head" => reply(&repos.head(args(body)?).await?),
         "behind" => reply(&repos.behind(args(body)?).await?),
         "divergence" => reply(&repos.divergence(args(body)?).await?),

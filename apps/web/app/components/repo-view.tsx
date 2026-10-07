@@ -1,7 +1,8 @@
-import { BookOpen, Check, ChevronDown, Code2, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal } from "lucide-react";
-import { Form, Link } from "react-router";
+import { BookOpen, Check, ChevronDown, Code2, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
+import { Suspense } from "react";
+import { Await, Form, Link } from "react-router";
 
-import type { Blame, BlobView as Blob, Branch, Commit, TreeView as Tree } from "@g1t/contracts";
+import type { Blame, BlobView as Blob, Branch, Commit, LastCommits, TreeView as Tree } from "@g1t/contracts";
 
 import { BlameView } from "./blame-view";
 import { CodeLines } from "./code-lines";
@@ -86,7 +87,20 @@ const BAR_BUTTON =
   "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-sm transition-colors hover:border-line-strong hover:bg-raised data-[state=open]:border-line-strong";
 
 /** Which branch is shown, and the others to switch to, at the same path. */
-function BranchMenu({ base, gitRef, path, branches }: { base: string; gitRef: string; path: string; branches: Branch[] }) {
+function BranchMenu({
+  base,
+  gitRef,
+  path,
+  branches,
+  view = "tree",
+}: {
+  base: string;
+  gitRef: string;
+  path: string;
+  branches: Branch[];
+  /** Whether `path` is a folder or a file. */
+  view?: "tree" | "blob";
+}) {
   const rest = path ? `/${encodePath(path)}` : "";
   return (
     <DropdownMenu>
@@ -99,7 +113,7 @@ function BranchMenu({ base, gitRef, path, branches }: { base: string; gitRef: st
         <DropdownMenuLabel>Switch branches</DropdownMenuLabel>
         {branches.map((branch) => (
           <DropdownMenuItem key={branch.name} asChild>
-            <Link to={`${base}/tree/${encodePath(branch.name)}${rest}`}>
+            <Link to={`${base}/${view}/${encodePath(branch.name)}${rest}`}>
               <Check className={branch.name === gitRef ? "" : "invisible"} />
               <span className="truncate font-mono text-[0.8125rem]">{branch.name}</span>
             </Link>
@@ -185,12 +199,16 @@ function CodeBar({
       ) : (
         <>
           {branches && (
-            <span className="inline-flex items-center gap-1.5 text-sm text-muted">
+            <Link to={`${base}/branches`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-accent">
               <GitBranch size={14} className="text-faint" />
               <span className="font-medium text-fg">{branches.length}</span>
               {branches.length === 1 ? "branch" : "branches"}
-            </span>
+            </Link>
           )}
+          <Link to={`${base}/tags`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-accent">
+            <TagIcon size={14} className="text-faint" />
+            Tags
+          </Link>
           <SearchCode repo={full} />
           <CodeButton path={full} gitRef={gitRef} />
         </>
@@ -199,7 +217,73 @@ function CodeBar({
   );
 }
 
-export function TreeView({ tree, branches = null }: { tree: Tree; branches?: Branch[] | null }) {
+/**
+ * The files of a directory, each with the commit that last changed it.
+ * `last` is undefined while those are still being read (the column holds
+ * its place), and null when they could not be.
+ */
+function FileRows({
+  base,
+  gitRef,
+  prefix,
+  entries,
+  last,
+}: {
+  base: string;
+  gitRef: string;
+  prefix: string;
+  entries: Tree["entries"];
+  last: LastCommits | null | undefined;
+}) {
+  const byName = new Map((last?.entries ?? []).map((entry) => [entry.name, entry.commit]));
+  return (
+    <ul className="divide-y divide-line text-sm">
+      {entries.map((entry) => {
+        const isTree = entry.kind === "tree";
+        const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
+        const commit = byName.get(entry.name);
+        return (
+          <li key={entry.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2 transition-colors hover:bg-surface sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]">
+            <Link
+              to={`${base}/${isTree ? "tree" : "blob"}/${gitRef}/${prefix}${encodeURIComponent(entry.name)}`}
+              className="flex min-w-0 items-center gap-3 hover:text-accent hover:underline"
+            >
+              <Icon size={15} className={`shrink-0 ${isTree ? "text-accent-dim" : "text-faint"}`} />
+              <span className="truncate font-mono text-[0.8125rem]">{entry.name}</span>
+            </Link>
+            <span className="hidden min-w-0 sm:block">
+              {commit ? (
+                <Link
+                  to={`${base}/commit/${commit.hash}`}
+                  className="block truncate text-muted hover:text-fg hover:underline"
+                  title={commit.message.split("\n")[0]}
+                >
+                  {commit.message.split("\n")[0]}
+                </Link>
+              ) : last === undefined ? (
+                <span aria-hidden="true" className="block h-3 w-40 max-w-full animate-pulse rounded bg-raised" />
+              ) : null}
+            </span>
+            <span className="text-right text-xs whitespace-nowrap text-faint">
+              {commit ? <TimeAgo at={commit.authoredAt} /> : last === undefined ? <span aria-hidden="true" className="inline-block h-3 w-12 animate-pulse rounded bg-raised" /> : null}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export function TreeView({
+  tree,
+  branches = null,
+  lastCommits = null,
+}: {
+  tree: Tree;
+  branches?: Branch[] | null;
+  /** Each entry's last commit, streamed in after the list. */
+  lastCommits?: Promise<LastCommits | null> | null;
+}) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
   const prefix = path ? `${encodePath(path)}/` : "";
@@ -234,26 +318,15 @@ export function TreeView({ tree, branches = null }: { tree: Tree; branches?: Bra
         <CodeBar base={base} repo={repo} gitRef={ref} path={path} branches={branches} />
         <div className="overflow-hidden rounded-xl border border-line">
           <CommitBar commit={head} base={base} />
-          <ul className="divide-y divide-line text-sm">
-            {entries.map((entry) => {
-              const isTree = entry.kind === "tree";
-              const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
-              return (
-                <li key={entry.name}>
-                  <Link
-                    to={`${base}/${isTree ? "tree" : "blob"}/${ref}/${prefix}${encodeURIComponent(entry.name)}`}
-                    className="flex items-center gap-3 px-4 py-2 transition-colors hover:bg-surface"
-                  >
-                    <Icon
-                      size={15}
-                      className={isTree ? "text-accent-dim" : "text-faint"}
-                    />
-                    <span className="font-mono text-[0.8125rem]">{entry.name}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          {lastCommits ? (
+            <Suspense fallback={<FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={undefined} />}>
+              <Await resolve={lastCommits} errorElement={<FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={null} />}>
+                {(last) => <FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={last} />}
+              </Await>
+            </Suspense>
+          ) : (
+            <FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={null} />
+          )}
         </div>
 
         {readme?.text != null && (
@@ -299,11 +372,19 @@ export function TreeView({ tree, branches = null }: { tree: Tree; branches?: Bra
               </Link>
             </li>
             {branches && (
-              <li className="flex items-center gap-2">
-                <GitBranch size={15} className="text-faint" />
-                {branches.length} {branches.length === 1 ? "branch" : "branches"}
+              <li>
+                <Link to={`${base}/branches`} className="inline-flex items-center gap-2 hover:text-fg">
+                  <GitBranch size={15} className="text-faint" />
+                  {branches.length} {branches.length === 1 ? "branch" : "branches"}
+                </Link>
               </li>
             )}
+            <li>
+              <Link to={`${base}/tags`} className="inline-flex items-center gap-2 hover:text-fg">
+                <TagIcon size={15} className="text-faint" />
+                Tags
+              </Link>
+            </li>
           </ul>
           <p className="mt-4 text-xs text-faint">
             Created <TimeAgo at={repo.createdAt} />
@@ -318,7 +399,10 @@ export function BlobView({
   blob,
   html,
   blame,
+  branches = null,
 }: {
+  /** For the branch menu; it shows the current branch alone without them. */
+  branches?: Branch[] | null;
   blob: Blob;
   /** Syntax-highlighted HTML per line, when the language is known. */
   html: string[] | null;
@@ -339,12 +423,16 @@ export function BlobView({
   );
   return (
     <div>
-      <Breadcrumbs
-        base={`/${repo.namespace}/${repo.name}`}
-        repo={repo.name}
-        gitRef={ref}
-        path={path}
-      />
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <BranchMenu
+          base={base}
+          gitRef={ref}
+          path={path}
+          branches={branches && branches.length > 0 ? branches : [{ name: ref, hash: "" }]}
+          view="blob"
+        />
+        <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />
+      </div>
       <div className="overflow-hidden rounded-xl border border-line">
         <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs text-muted">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}

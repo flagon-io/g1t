@@ -20,9 +20,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   ]);
   // A branch that was renamed: the same folder on its new name.
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
-  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null };
+  // Each entry's last commit walks history: streamed in after the list.
+  const lastCommits = repos
+    .lastCommits(path, viewer, params.ref, params["*"] ?? "")
+    .then((found) => (found.ok ? found.value : null))
+    .catch(() => null);
+  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null, lastCommits };
 }
 
 export default function Tree({ loaderData }: Route.ComponentProps) {
-  return <TreeView tree={loaderData.tree} branches={loaderData.branches} />;
+  return <TreeView tree={loaderData.tree} branches={loaderData.branches} lastCommits={loaderData.lastCommits} />;
 }

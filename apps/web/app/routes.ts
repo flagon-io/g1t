@@ -104,6 +104,8 @@ export default [
     route("blob/:ref/*", "routes/repo/blob.tsx"),
     route("archive/*", "routes/repo/archive.ts"),
     route("commits", "routes/repo/commits.tsx"),
+    route("branches", "routes/repo/branches.tsx"),
+    route("tags", "routes/repo/tags.tsx"),
     route("commit/:hash", "routes/repo/commit.tsx"),
     route("issues", "routes/repo/issues.tsx"),
     route("issues/new", "routes/repo/issue-new.tsx"),

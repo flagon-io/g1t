@@ -16,9 +16,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // For the branch menu; the page still shows without it.
     repos.branches(path, viewer).catch(() => null),
   ]);
-  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null };
+  // Each entry's last commit walks history: streamed in after the list.
+  const lastCommits = repos
+    .lastCommits(path, viewer, null, "")
+    .then((found) => (found.ok ? found.value : null))
+    .catch(() => null);
+  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null, lastCommits };
 }
 
 export default function Code({ loaderData }: Route.ComponentProps) {
-  return <TreeView tree={loaderData.tree} branches={loaderData.branches} />;
+  return <TreeView tree={loaderData.tree} branches={loaderData.branches} lastCommits={loaderData.lastCommits} />;
 }
