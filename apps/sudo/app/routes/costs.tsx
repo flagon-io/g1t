@@ -214,6 +214,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
     ["free use", o.givenFreeMicros ?? 0],
     ["trial", o.givenTrialMicros ?? 0],
     ["open-source pool", o.givenPoolMicros ?? 0],
+    ["discounts", o.givenDiscountMicros ?? 0],
   ].filter(([, micros]) => (micros as number) > 0) as [string, number][];
   const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
     {
