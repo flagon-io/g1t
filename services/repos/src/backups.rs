@@ -7,7 +7,7 @@
 //! again after [`Settings::full_every`] incremental ones, so a restore
 //! never reads a long chain. Bundles and a manifest that lists the chain
 //! are kept in object storage through the `BlobStore` port: the BACKUPS R2
-//! bucket hosted, any S3-compatible store (MinIO in the compose file)
+//! bucket hosted, any S3-compatible store (RustFS in the compose file)
 //! self-hosted, as BACKUP_STORE says.
 //!
 //! ```text

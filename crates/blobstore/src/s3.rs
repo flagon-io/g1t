@@ -1,5 +1,5 @@
 //! The S3 adapter, for self-hosted installations: any S3-compatible store
-//! (MinIO, Ceph, Garage, AWS) over fetch, signed with SigV4, path-style.
+//! (RustFS, Ceph, Garage, AWS) over fetch, signed with SigV4, path-style.
 //! S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_REGION say
 //! where, and the service's own variable (`Config::s3_bucket`) which
 //! bucket. Its public endpoint variable, when it names one and that is
@@ -13,7 +13,7 @@ use crate::sigv4::{Credentials, UNSIGNED, amz_date};
 use crate::{BlobStore, Config, Got, Part, Wanted, var};
 
 pub struct S3Store {
-    /// `http://minio:9000`, without a trailing slash.
+    /// `http://rustfs:9000`, without a trailing slash.
     endpoint: String,
     /// Where clients reach the same store, for signed URLs.
     public_endpoint: Option<String>,
@@ -249,7 +249,7 @@ mod tests {
         let xml = "<InitiateMultipartUploadResult><Bucket>b</Bucket><UploadId>abc-123</UploadId></InitiateMultipartUploadResult>";
         assert_eq!(xml_value(xml, "UploadId"), Some("abc-123"));
         assert_eq!(xml_value(xml, "Key"), None);
-        assert_eq!(host_of("http://minio:9000"), "minio:9000");
+        assert_eq!(host_of("http://rustfs:9000"), "rustfs:9000");
         assert_eq!(host_of("https://s3.example.com/base"), "s3.example.com");
     }
 }

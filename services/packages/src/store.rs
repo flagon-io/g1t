@@ -1,5 +1,5 @@
 //! Where packages' files are kept: the `BlobStore` port (crates/blobstore),
-//! with R2 behind it on Cloudflare and any S3-compatible storage (MinIO in
+//! with R2 behind it on Cloudflare and any S3-compatible storage (RustFS in
 //! the compose file) when self-hosted. BLOB_STORE chooses: `r2` (the
 //! default) or `s3`.
 //!

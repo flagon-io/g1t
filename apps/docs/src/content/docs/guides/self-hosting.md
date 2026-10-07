@@ -17,12 +17,12 @@ a private network, not yet for an installation on the open internet.
 | --- | --- |
 | Sign up, sign in, email confirmation | Works. Mail goes to the bundled Mailpit inbox. |
 | Workspaces, members, access tokens | Works |
-| Repositories: create, push and clone over HTTP, browse code, commits | Works. A fresh clone's pack is kept in the bundled MinIO, so the next clone of the same commit is served from there. |
+| Repositories: create, push and clone over HTTP, browse code, commits | Works. A fresh clone's pack is kept in the bundled object store, so the next clone of the same commit is served from there. |
 | Issues, comments, labels | Works |
 | Pull requests from a branch or from a fork, merged onto the default branch | Works, when the pull request is up to date with the default branch. Bringing one up to date first needs g1t's agent, which is off. |
 | The merge queue | Takes pull requests and shows them waiting. Testing and landing them needs g1t's agent, which is off: take a pull request out of the queue, or turn the queue off, to merge it. |
 | [The REST API](/reference/api/), OAuth and [MCP](/reference/mcp/) | Work, on a port of their own: `http://localhost:8789`, with the MCP server at `http://localhost:8789/mcp` |
-| [Container images](/guides/containers/): `docker login`, push and pull at your `PUBLIC_URL` | Works, kept in the bundled MinIO, with no limit on a layer's size or on pulls |
+| [Container images](/guides/containers/): `docker login`, push and pull at your `PUBLIC_URL` | Works, kept in the bundled object store, with no limit on a layer's size or on pulls |
 | Site search | Works |
 | A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
 | Webhooks, integrations | Work, retries included |
@@ -116,9 +116,11 @@ access token examples show your own addresses.
    the site.
 2. It makes an access token and calls the API, the OAuth metadata and the
    MCP server with it.
-3. It opens a pull request from a branch and one from a fork, through the
+3. It publishes an npm package to your installation's registry and
+   installs it back.
+4. It opens a pull request from a branch and one from a fork, through the
    API, and merges both onto `main`.
-4. It turns the merge queue on, merges a pull request into it, takes it
+5. It turns the merge queue on, merges a pull request into it, takes it
    out again, and merges it with the queue off.
 
 ```sh
@@ -135,7 +137,7 @@ SCHEDULER_ONCE="docker compose -f deploy/self-host/docker-compose.yml exec -T g1
 ```
 
 It prints `All checks passed` when every step worked. It needs `curl`,
-`git` and `node`.
+`git`, `node` and `npm`; `PACKAGES=off` skips the npm package.
 
 ## Settings
 
@@ -155,10 +157,11 @@ Set these in the environment, or in a `.env` file next to
 | `REGISTRATION_MODE` | `open` | `open`: anyone can make an account. `invite`: every new account needs an [invite](/guides/authentication/#invites), as on g1t.sh. |
 | `INVITES_PER_USER` | `5` | How many invites each person can have out, while `REGISTRATION_MODE` is `invite` |
 | `WAITLIST_NOTIFY_EMAIL` | (none) | Where a summary of new access requests goes, at most every 15 minutes. Empty sends none; requests still wait for you in the database. |
-| `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the bundled MinIO, bucket `g1t-packages` | Where packages' files are kept: any S3-compatible store. Change the two keys before first start; MinIO is made with them. |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the bundled RustFS, bucket `g1t-packages` | Where packages' files are kept: any S3-compatible store. Change the two keys before first start; RustFS is made with them. |
 | `S3_PUBLIC_ENDPOINT` | (none) | The store's address as clients reach it. When set, large layers are downloaded from it directly with a signed URL. |
-| `PACK_S3_BUCKET` | `g1t-git-packs` | The bucket on the same store that packs for fresh clones are kept in, so the next clone of the same commit is not built again. The bundled MinIO deletes packs after 7 days; on another store, give the bucket a rule that expires objects under `packs/` and unfinished multipart uploads. |
-| `MINIO_IMAGE` | `pgsty/minio:latest` | The MinIO server image the bundled store runs. MinIO no longer publishes its own images; this is a community build of the same server. |
+| `PACK_S3_BUCKET` | `g1t-git-packs` | The bucket on the same store that packs for fresh clones are kept in, so the next clone of the same commit is not built again. The bundled store deletes packs after 7 days, and uploads left unfinished after a day; on another store, give the bucket a lifecycle rule that does the same. |
+| `RUSTFS_IMAGE` | `rustfs/rustfs:1.0.1` | The image the bundled object store runs: [RustFS](https://rustfs.com), an S3-compatible server. |
+| `AWS_CLI_IMAGE` | `amazon/aws-cli:2.37.10` | The image `storage-setup` makes the buckets and the packs' lifecycle rule with. |
 | `BACKUP_S3_BUCKET` | `g1t-backups` | The bucket on the same store that nightly repository backups (a `git bundle` of each repository whose branches or tags changed) are kept in. The bundles are cut by g1t's runner, which this installation does not run yet, so the bucket stays empty for now: copy the volumes, as below. |
 | `STATUS_PORT` | `8788` | The port the status page is published on |
 | `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
@@ -238,7 +241,7 @@ across from GitHub, is in [GitHub](/guides/github/).
 | --- | --- |
 | `g1t_g1t-data` | Accounts, workspaces, issues and every other record, as SQLite files; the keys that seal stored secrets (`keys.env`) |
 | `g1t_g1t-git` | Your repositories, one bare git repository each |
-| `g1t_g1t-packages` | Container images' layers and other package files, the `g1t-backups` bucket and the clone packs in `g1t-git-packs` (MinIO) |
+| `g1t_g1t-objects` | The bundled object store (RustFS): container images' layers and other package files in `g1t-packages`, the `g1t-backups` bucket and the clone packs in `g1t-git-packs` |
 | `g1t_g1t-secrets` | The key the site and the git store share |
 
 To back up, stop g1t and copy the volumes:
@@ -262,6 +265,31 @@ and changes already applied are skipped:
 git pull
 docker compose -f deploy/self-host/docker-compose.yml up --build -d
 ```
+
+### Installations started before 7 October 2026
+
+These kept packages' files and backups in MinIO, in the `g1t_g1t-packages`
+volume. The bundled store is now RustFS, in `g1t_g1t-objects`, and starts
+empty. After the upgrade above, copy the old objects across (use your own
+`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` if you changed them):
+
+```sh
+docker run -d --name g1t-old-store --network g1t_default \
+  -v g1t_g1t-packages:/data -e MINIO_ROOT_USER=g1t \
+  -e MINIO_ROOT_PASSWORD=g1t-packages-secret pgsty/minio server /data
+docker run --rm --network g1t_default -e AWS_ACCESS_KEY_ID=g1t \
+  -e AWS_SECRET_ACCESS_KEY=g1t-packages-secret -e AWS_DEFAULT_REGION=us-east-1 \
+  --entrypoint sh amazon/aws-cli:2.37.10 -c '
+  for b in g1t-packages g1t-backups; do
+    aws --endpoint-url http://g1t-old-store:9000 s3 sync "s3://$b" "/tmp/$b" &&
+    aws --endpoint-url http://rustfs:9000 s3 sync "/tmp/$b" "s3://$b"
+  done'
+docker rm -f g1t-old-store
+```
+
+The clone packs are not copied: they are a cache, and are made again on
+the next clone. Once your images and packages pull, remove the old volume
+with `docker volume rm g1t_g1t-packages`.
 
 ## Stop and remove
 

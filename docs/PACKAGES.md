@@ -36,7 +36,7 @@ packages in site-wide search, and packages in the activity feed are not.
   `packages/contracts`. Other services talk to it over RPC and hear from it through events.
 - **Cloudflare in production, anything in a self-hosted install.** Files go through a
   `BlobStore` port. In production its adapter is R2; self-hosted it is S3-compatible storage
-  (MinIO in the compose file) or a local directory. Upload URLs (`presign`) are part of the port:
+  (RustFS in the compose file) or a local directory. Upload URLs (`presign`) are part of the port:
   R2 and S3 sign them, the disk adapter answers with a path back through the service.
   Metadata is D1, which self-hosting already runs (workerd's D1 over SQLite).
 - **Content-addressed.** Every file is stored once by its SHA-256 (`blobs/sha256/<hex>`). A
