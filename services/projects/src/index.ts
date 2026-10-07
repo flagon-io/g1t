@@ -17,6 +17,7 @@ import { parse as parseYaml } from "yaml";
 import { NEEDS, repoRef } from "./access";
 import { effectiveDescription, ownDescription } from "./description";
 import { type KindFacts, type RootFiles, MANIFESTS, deploysSetting, detectKind, goFilesToRead, resolveKind } from "./kind";
+import { MAX_PINS, MAX_RECENT, MAX_VISITS, placePin, recentAfterPins, reorderPins } from "./pins";
 import { renameStatements } from "./rename";
 import { moveStatements, slugOf, strandedQuery } from "./transfer";
 
@@ -46,6 +47,7 @@ import {
   type Project,
   type ProjectEcosystem,
   type ProjectGraph,
+  type ProjectShortcuts,
   type Repo,
   type Result,
   type ServiceBinding,
@@ -435,6 +437,135 @@ class Projects {
     await this.db.prepare("UPDATE projects SET deployments_on = ? WHERE id = ?").bind(a.enabled ? 1 : 0, a.projectId).run();
   }
 
+  // ---- Pinned and recent ---------------------------------------------------
+
+  /** The person's pins in the workspace, in order, as rows: hidden projects left out. */
+  private async pinRows(userId: string, workspace: string): Promise<Row[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT p.* FROM pins n JOIN projects p ON p.id = n.project_id
+         WHERE n.user_id = ? AND p.workspace = ? AND p.repo_deleted_at IS NULL ORDER BY n.position, n.pinned_at`,
+      )
+      .bind(userId, workspace.toLowerCase())
+      .all<Row>();
+    return rows.results;
+  }
+
+  /** Writes the person's pins in the workspace in this order, by project id. */
+  private async writePins(userId: string, order: string[], dropped: string[] = []): Promise<void> {
+    const at = now();
+    await this.db.batch([
+      ...dropped.map((id) => this.db.prepare("DELETE FROM pins WHERE user_id = ? AND project_id = ?").bind(userId, id)),
+      ...order.map((id, position) =>
+        this.db
+          .prepare(
+            `INSERT INTO pins (user_id, project_id, position, pinned_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT (user_id, project_id) DO UPDATE SET position = excluded.position`,
+          )
+          .bind(userId, id, position, at),
+      ),
+    ]);
+  }
+
+  /** The person behind a call about their own pins, or why there is none. */
+  private person(viewer: Viewer): Result<User> {
+    if (!viewer) return fail("unauthenticated", "Sign in to pin projects.");
+    if (viewer.kind && viewer.kind !== "user") return fail("forbidden", "Pins are a person's own: use a personal access token.");
+    return ok(viewer);
+  }
+
+  /** A project the person can see, for pinning. */
+  private async pinnable(actor: User, workspace: string, slug: string): Promise<Result<Row>> {
+    const row = await this.row(workspace, slug);
+    if (!row || !this.visible(row, actor)) return fail("not_found", "There is no such project.");
+    return ok(row);
+  }
+
+  async shortcuts(a: { workspace: string; viewer: Viewer }): Promise<ProjectShortcuts> {
+    const who = this.person(a.viewer);
+    if (!who.ok) return { pinned: [], recent: [] };
+    const workspace = a.workspace.toLowerCase();
+    const [pinned, visited] = await Promise.all([
+      this.pinRows(who.value.id, workspace),
+      this.db
+        .prepare(
+          `SELECT p.* FROM visits v JOIN projects p ON p.id = v.project_id
+           WHERE v.user_id = ? AND p.workspace = ? AND p.repo_deleted_at IS NULL ORDER BY v.visited_at DESC LIMIT ?`,
+        )
+        .bind(who.value.id, workspace, MAX_PINS + MAX_RECENT)
+        .all<Row>(),
+    ]);
+    const shown = (row: Row) => this.visible(row, who.value);
+    const pins = pinned.filter(shown);
+    return {
+      pinned: pins.map(toProject),
+      recent: recentAfterPins(visited.results.filter(shown), pins.map((row) => row.id)).map(toProject),
+    };
+  }
+
+  async pin(a: { actor: User; workspace: string; slug: string; position?: number | null }): Promise<Result<Project[]>> {
+    const who = this.person(a.actor);
+    if (!who.ok) return who;
+    const found = await this.pinnable(who.value, a.workspace, a.slug);
+    if (!found.ok) return found;
+    const current = await this.pinRows(who.value.id, found.value.workspace);
+    const order = placePin(
+      current.map((row) => row.id),
+      found.value.id,
+      a.position,
+    );
+    if (!order) return fail("conflict", `You can pin ${MAX_PINS} projects in a workspace. Unpin one first.`);
+    await this.writePins(who.value.id, order);
+    return ok((await this.pinRows(who.value.id, found.value.workspace)).filter((row) => this.visible(row, who.value)).map(toProject));
+  }
+
+  async unpin(a: { actor: User; workspace: string; slug: string }): Promise<Result<Project[]>> {
+    const who = this.person(a.actor);
+    if (!who.ok) return who;
+    const row = await this.row(a.workspace, a.slug);
+    if (!row) return fail("not_found", "There is no such project.");
+    const rest = (await this.pinRows(who.value.id, row.workspace)).map((pinned) => pinned.id).filter((id) => id !== row.id);
+    await this.writePins(who.value.id, rest, [row.id]);
+    return ok((await this.pinRows(who.value.id, row.workspace)).filter((pinned) => this.visible(pinned, who.value)).map(toProject));
+  }
+
+  async reorderPins(a: { actor: User; workspace: string; slugs: string[] }): Promise<Result<Project[]>> {
+    const who = this.person(a.actor);
+    if (!who.ok) return who;
+    if (!Array.isArray(a.slugs)) return fail("invalid", "Give the pinned projects' slugs, in order.");
+    const workspace = a.workspace.toLowerCase();
+    const current = await this.pinRows(who.value.id, workspace);
+    const idOf = new Map(current.map((row) => [row.slug, row.id]));
+    const wanted = a.slugs.map((slug) => idOf.get(String(slug).toLowerCase()) ?? String(slug));
+    const order = reorderPins(
+      current.map((row) => row.id),
+      wanted,
+    );
+    if (!order.ok) return fail("invalid", order.message);
+    await this.writePins(who.value.id, order.order);
+    return ok((await this.pinRows(who.value.id, workspace)).filter((row) => this.visible(row, who.value)).map(toProject));
+  }
+
+  async visited(a: { actor: User; projectId: string }): Promise<void> {
+    const who = this.person(a.actor);
+    if (!who.ok || !a.projectId) return;
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO visits (user_id, project_id, visited_at) VALUES (?, ?, ?)
+           ON CONFLICT (user_id, project_id) DO UPDATE SET visited_at = excluded.visited_at`,
+        )
+        .bind(who.value.id, a.projectId, now()),
+      // Only their latest few are kept.
+      this.db
+        .prepare(
+          `DELETE FROM visits WHERE user_id = ?1 AND project_id NOT IN
+             (SELECT project_id FROM visits WHERE user_id = ?1 ORDER BY visited_at DESC LIMIT ?2)`,
+        )
+        .bind(who.value.id, MAX_VISITS),
+    ]);
+  }
+
   // ---- App or library --------------------------------------------------
 
   /**
@@ -768,6 +899,9 @@ class Projects {
         this.db
           .prepare(`DELETE FROM dependencies WHERE project_id IN (${ids}) OR depends_on_id IN (${ids})`)
           .bind(event.data.repoId),
+        // Pins and visits of what is gone go with it.
+        this.db.prepare(`DELETE FROM pins WHERE project_id IN (${ids})`).bind(event.data.repoId),
+        this.db.prepare(`DELETE FROM visits WHERE project_id IN (${ids})`).bind(event.data.repoId),
         this.db.prepare("DELETE FROM projects WHERE repo_id = ?").bind(event.data.repoId),
       ]);
       return;
@@ -849,6 +983,8 @@ class Projects {
       const ids = "SELECT id FROM projects WHERE workspace = ?1";
       await this.db.batch([
         this.db.prepare(`DELETE FROM dependencies WHERE project_id IN (${ids}) OR depends_on_id IN (${ids})`).bind(slug),
+        this.db.prepare(`DELETE FROM pins WHERE project_id IN (${ids})`).bind(slug),
+        this.db.prepare(`DELETE FROM visits WHERE project_id IN (${ids})`).bind(slug),
         this.db.prepare("DELETE FROM projects WHERE workspace = ?").bind(slug),
         this.db.prepare("DELETE FROM backfilled WHERE workspace = ?").bind(slug),
       ]);
@@ -896,6 +1032,17 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
       return Response.json(await service.removeDependency(args));
     case "graph":
       return Response.json(await service.graph(args));
+    case "shortcuts":
+      return Response.json(await service.shortcuts(args));
+    case "pin":
+      return Response.json(await service.pin(args));
+    case "unpin":
+      return Response.json(await service.unpin(args));
+    case "reorder_pins":
+      return Response.json(await service.reorderPins(args));
+    case "visited":
+      await service.visited(args);
+      return Response.json(null);
     case "context_for_repo":
       return Response.json(await service.contextForRepo(args));
     default:

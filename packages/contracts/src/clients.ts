@@ -638,5 +638,10 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     addDependency: (actor, workspace, slug, on, as) => call("add_dependency", { actor, workspace, slug, on, as }),
     removeDependency: (actor, workspace, slug, on) => call("remove_dependency", { actor, workspace, slug, on }),
     graph: (projectId) => call("graph", { projectId }),
+    shortcuts: (workspace, viewer) => call("shortcuts", { workspace, viewer }),
+    pin: (actor, workspace, slug, position) => call("pin", { actor, workspace, slug, position: position ?? null }),
+    unpin: (actor, workspace, slug) => call("unpin", { actor, workspace, slug }),
+    reorderPins: (actor, workspace, slugs) => call("reorder_pins", { actor, workspace, slugs }),
+    visited: (actor, projectId) => call("visited", { actor, projectId }),
   };
 }

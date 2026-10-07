@@ -100,6 +100,13 @@ export type ProjectGraph = {
   usedBy: { id: string; slug: string; workspace: string; as: string | null }[];
 };
 
+/**
+ * What a person keeps at hand in a workspace: the projects they pinned, in
+ * their order, then the ones they opened last that they have not pinned.
+ * Only projects they can still see.
+ */
+export type ProjectShortcuts = { pinned: Project[]; recent: Project[] };
+
 export interface ProjectsApi {
   /** A workspace's projects, by name. Members, or anyone for public repositories. */
   list(workspace: string, viewer: Viewer): Promise<Result<Project[]>>;
@@ -128,4 +135,18 @@ export interface ProjectsApi {
   removeDependency(actor: User, workspace: string, slug: string, on: string): Promise<Result<Dependencies>>;
   /** For services: a project's dependencies by id. */
   graph(projectId: string): Promise<ProjectGraph>;
+  /** A person's pinned and recent projects in a workspace. Empty for anyone else. */
+  shortcuts(workspace: string, viewer: Viewer): Promise<ProjectShortcuts>;
+  /**
+   * Pins a project the person can see, at `position` (0 first) or at the
+   * end; pinning one already pinned moves it. A person's own, at most 8 a
+   * workspace. Returns their pins, in order.
+   */
+  pin(actor: User, workspace: string, slug: string, position?: number | null): Promise<Result<Project[]>>;
+  /** Unpins it. Returns their pins, in order. */
+  unpin(actor: User, workspace: string, slug: string): Promise<Result<Project[]>>;
+  /** Puts their pins in this order: every pinned project's slug, once. */
+  reorderPins(actor: User, workspace: string, slugs: string[]): Promise<Result<Project[]>>;
+  /** The person opened the project: it leads their recent ones. */
+  visited(actor: User, projectId: string): Promise<void>;
 }
