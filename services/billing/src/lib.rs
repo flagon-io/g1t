@@ -75,6 +75,17 @@ pub fn charge_micros(cost_usd: f64, margin_percent: u32) -> i64 {
     (cost_micros * f64::from(100 + margin_percent) / 100.0).ceil() as i64
 }
 
+/// What a cost g1t trusts (the price book's, or what AI Gateway priced a
+/// run at) is charged at: plus the margin, rounded up to a whole millionth.
+/// Unlike `charge_micros`, never capped: only a sandbox's own report is
+/// held to `MAX_RUN_COST_USD`, so a run that really cost more is charged
+/// for all of it once it is settled.
+pub fn margin_on(cost_micros: i64, margin_percent: u32) -> i64 {
+    let cost = i128::from(cost_micros.max(0));
+    let charge = (cost * i128::from(100 + margin_percent) + 99) / 100;
+    i64::try_from(charge).unwrap_or(i64::MAX)
+}
+
 fn hash(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
 }
@@ -743,7 +754,7 @@ impl Billing {
         // covers a free workspace's overrun (see `credits`). Agents are
         // never the open-source pool's.
         let base = charge_micros(a.cost_usd, self.margin_percent);
-        let (charge, terms_note) = self.charged(&run.workspace, base).await?;
+        let (charge, terms_note, discount) = self.charged(&run.workspace, base).await?;
         let month = credits::month_of(&rfc3339(now_ms()));
         let eligible = credits::eligible_for(Some(ComputeKind::Agent), None);
         let drawn = self.draw(&run.workspace, charge, &month, &eligible).await?;
@@ -768,6 +779,7 @@ impl Billing {
         )
         .await?;
         self.record_drawn(&a.run_id, &drawn).await?;
+        self.record_discount(&a.run_id, discount).await?;
         self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
         Ok(Outcome::Ok(true))
     }
@@ -847,7 +859,7 @@ impl Billing {
             None => None,
         };
         let cost = parts.map_or(seconds as f64 * cost_per_second * price_scale, |(cost, _)| cost).ceil() as i64;
-        let (charge, terms_note) = self.charged(&workspace, credits::with_margin(cost, self.margin_percent)).await?;
+        let (charge, terms_note, discount) = self.charged(&workspace, credits::with_margin(cost, self.margin_percent)).await?;
         let eligible = credits::eligible_for(a.kind, a.repo.as_deref());
         let drawn = self.draw(&workspace, charge, &credits::month_of(&timestamp), &eligible).await?;
         let charge = charge - drawn.total();
@@ -897,6 +909,7 @@ impl Billing {
                     ])?,
             ])
             .await?;
+        self.record_discount(&a.reference, discount).await?;
         self.count_spend(&workspace, cost, charge, &drawn).await;
         if let Some(reservation) = &a.reservation_id {
             self.settle_reservation(SettleArgs { reservation_id: reservation.clone(), actual_micros: cost }).await?;
@@ -955,18 +968,38 @@ impl Billing {
     /// What a workspace is charged for something that would be `base`:
     /// nothing while g1t is free, or as its account's terms say. With a
     /// note for the statement when it differs.
-    pub(crate) async fn charged(&self, workspace: &str, base: i64) -> Result<(i64, String)> {
+    /// A charge at cost plus the margin (`base`) on the account's terms:
+    /// what is charged, the note for the statement, and what a discount
+    /// gave away below `base`. That last is written on the entry
+    /// (`record_discount`) so the reconciliation counts it as given, never
+    /// as margin lost: a sold charge is worth at least its cost plus the
+    /// margin.
+    pub(crate) async fn charged(&self, workspace: &str, base: i64) -> Result<(i64, String, i64)> {
         if self.free {
-            return Ok((0, " (free while g1t is being built out)".to_owned()));
+            return Ok((0, " (free while g1t is being built out)".to_owned(), 0));
         }
         let terms = self.terms_of(workspace).await?;
-        let charge = terms.apply(base);
+        let (charge, discount) = terms.discounted(base);
         let note = match terms.kind {
             TermsKind::Comped => " (comped)".to_owned(),
             TermsKind::Custom if terms.discount_percent > 0 && base > 0 => format!(" ({}% off)", terms.discount_percent),
             _ => String::new(),
         };
-        Ok((charge, note))
+        Ok((charge, note, discount))
+    }
+
+    /// What a discount gave away on an entry, below cost plus the margin
+    /// (less than nothing on a correction down).
+    pub(crate) async fn record_discount(&self, reference: &str, micros: i64) -> Result<()> {
+        if micros == 0 {
+            return Ok(());
+        }
+        self.db
+            .prepare("UPDATE ledger SET discount_micros = ? WHERE reference = ?")
+            .bind(&[(micros as f64).into(), reference.into()])?
+            .run()
+            .await?;
+        Ok(())
     }
 }
 

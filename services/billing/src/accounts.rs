@@ -760,6 +760,29 @@ mod tests {
     }
 
     #[test]
+    fn a_discount_below_cost_plus_the_margin_is_counted_as_given() {
+        // $1 of model cost at 20%: $1.20 is the floor of what a sale is worth.
+        let base = crate::charge_micros(1.0, 20);
+        assert_eq!(base, 1_200_000);
+        // Standard: all of it sold, nothing given.
+        assert_eq!(terms(TermsKind::Standard, 0).discounted(base), (1_200_000, 0));
+        // 30% off: charged $0.84, under cost; the $0.36 below the floor is
+        // given, so charged plus given is never under cost plus the margin.
+        let (charged, given) = terms(TermsKind::Custom, 30).discounted(base);
+        assert_eq!((charged, given), (840_000, 360_000));
+        assert_eq!(charged + given, base);
+        // Over 100% is everything given, never a negative charge.
+        assert_eq!(terms(TermsKind::Custom, 250).discounted(base), (0, base));
+        // Comped is counted as comped by the reconciliation, not here.
+        assert_eq!(terms(TermsKind::Comped, 0).discounted(base), (0, 0));
+        // Every discount: charged plus given is the whole charge.
+        for percent in 0..=100 {
+            let (charged, given) = terms(TermsKind::Custom, percent).discounted(base);
+            assert_eq!(charged + given, base, "{percent}% off");
+        }
+    }
+
+    #[test]
     fn terms_read_plainly_in_the_audit_log() {
         let custom = Terms { ceiling_micros: Some(50_000_000), note: "Design partner".into(), ..terms(TermsKind::Custom, 20) };
         assert_eq!(describe(&custom), "custom (20% off, ceiling $50.00): Design partner");

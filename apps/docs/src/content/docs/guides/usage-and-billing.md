@@ -259,7 +259,9 @@ Prices keep themselves current as those costs move:
   difference appears on the statement as a correction, such as
   *Correction to "Work on acme/api#12": AI Gateway priced its 41 model
   requests at $0.0312, not $0.0298*. A run whose sandbox stopped without
-  reporting is charged from the gateway's logs instead of not at all.
+  reporting is charged from the gateway's logs instead of not at all. When
+  the gateway has no price for a model a run used, the run is never settled
+  below what its sandbox reported, and the correction says so.
 - **Cloudflare.** Every day, g1t checks what Cloudflare billed its account
   against what was used: Containers and the Durable Objects behind them
   against the seconds containers ran, Workers for Platforms per request
@@ -615,7 +617,9 @@ is public; custom terms change how you pay, not what things cost.
   charged, and usage is still recorded at what it cost, so the Usage page
   stays accurate.
 - **Custom**: a discount on usage, a limit of its own, or a larger share
-  of the pools, sometimes until a date.
+  of the pools, sometimes until a date. A discount comes off each usage
+  charge, and the statement line says how much off (*(20% off)*); prices
+  themselves stay the public ones.
 - **A longer audit log**: up to 400 days for every workspace the account
   pays for, in place of the plan's 7 or 90. See
   [how long it is kept](/guides/audit-log/#how-long-it-is-kept).

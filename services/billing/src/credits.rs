@@ -669,7 +669,7 @@ pub(crate) fn eligible_for(kind: Option<ComputeKind>, repo: Option<&str>) -> Eli
 
 /// A charge in millionths of a dollar for `micros` of cost plus `margin`.
 pub(crate) fn with_margin(cost_micros: i64, margin_percent: u32) -> i64 {
-    crate::charge_micros(cost_micros.max(0) as f64 / g1t_contracts::billing::MICROS_PER_DOLLAR as f64, margin_percent)
+    crate::margin_on(cost_micros, margin_percent)
 }
 
 #[cfg(test)]

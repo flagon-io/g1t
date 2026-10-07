@@ -111,19 +111,21 @@ pub(crate) struct OwnRow {
 
 /// What g1t gave away, by why: its own comped workspaces, free use (a
 /// free period, free allowances, overruns g1t covered), the trial, and the
-/// open-source pool. The Team plan's included usage is paid for by the
-/// plan's price, so it is sold, not given.
+/// open-source pool, and discounts on an account's terms (what they took
+/// below cost plus the margin, `ledger.discount_micros`). The Team plan's
+/// included usage is paid for by the plan's price, so it is sold, not given.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Given {
     pub comped: i64,
     pub free: i64,
     pub trial: i64,
     pub pool: i64,
+    pub discount: i64,
 }
 
 impl Given {
     pub fn total(&self) -> i64 {
-        self.comped + self.free + self.trial + self.pool
+        self.comped + self.free + self.trial + self.pool + self.discount
     }
 
     fn add(&mut self, other: &Given) {
@@ -131,6 +133,7 @@ impl Given {
         self.free += other.free;
         self.trial += other.trial;
         self.pool += other.pool;
+        self.discount += other.discount;
     }
 
     /// The same shares of `cost` as these are of `value`, at most all of it.
@@ -141,7 +144,13 @@ impl Given {
         }
         let given = cost as i128 * total.min(value) as i128 / value as i128;
         let part = |x: i64| (given * x.max(0) as i128 / total as i128) as i64;
-        Given { comped: part(self.comped), free: part(self.free), trial: part(self.trial), pool: part(self.pool) }
+        Given {
+            comped: part(self.comped),
+            free: part(self.free),
+            trial: part(self.trial),
+            pool: part(self.pool),
+            discount: part(self.discount),
+        }
     }
 }
 
@@ -368,6 +377,9 @@ pub(crate) enum DriftKind {
     Cost,
     /// Cloudflare charged for something nothing charges customers for.
     Leak,
+    /// Model usage AI Gateway put no price on: its cost is not what the
+    /// provider bills, so neither the ledger nor the gateway total has it.
+    Unpriced,
 }
 
 impl DriftKind {
@@ -376,6 +388,7 @@ impl DriftKind {
             DriftKind::Count => "count",
             DriftKind::Cost => "cost",
             DriftKind::Leak => "leak",
+            DriftKind::Unpriced => "unpriced",
         }
     }
 }
@@ -413,7 +426,12 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
         }
     }
     let enough = cf_cost.max(own_cost) >= min_cost_micros as f64;
-    if enough && !overhead && cf_cost > 0.0 && own_cost > 0.0 && !NOT_CLOUDFLARE.contains(&bucket) {
+    // Models: what AI Gateway priced g1t's own provider traffic at (its
+    // lines, as "Cloudflare's" side) against the ledger's model cost. Only
+    // once the gateway has been read; then the ledger having none of it is
+    // drift too (traffic no run was charged for).
+    let models = NOT_CLOUDFLARE.contains(&bucket) && cf_cost > 0.0;
+    if enough && !overhead && cf_cost > 0.0 && (own_cost > 0.0 || models) {
         let delta = delta_percent(own_cost, cf_cost);
         if delta.is_some_and(|d| d.abs() > threshold) {
             out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: cf_cost, delta_percent: delta });
@@ -423,6 +441,82 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
         out.push(Drift { bucket: bucket.into(), kind: DriftKind::Leak, ours: value, cloudflare: cf_cost, delta_percent: None });
     }
     out
+}
+
+/// What can make AI Gateway's cost differ from what the providers bill,
+/// said for staff: cache tokens (priced by the gateway at its own rates for
+/// them, which may lag the provider's), requests Cloudflare billed itself,
+/// models it has no price for, and runs settled short.
+fn caveat_notes(c: &costs::GatewayCaveats) -> Vec<String> {
+    let mut notes = Vec::new();
+    if c.cache_read_tokens > 0.0 || c.cache_write_tokens > 0.0 {
+        notes.push(format!(
+            "{} prompt-cache read and {} cache write tokens went through it: check its cost against the provider's invoice, since cache reads are billed far below input and writes above it",
+            crate::features::thousands(c.cache_read_tokens.round() as u64),
+            crate::features::thousands(c.cache_write_tokens.round() as u64)
+        ));
+    }
+    if c.wholesale_usd > 0.0 {
+        notes.push(format!(
+            "{} of it Cloudflare billed itself (unified billing): that part is on Cloudflare's bill, not a provider's",
+            dollars(micros(c.wholesale_usd))
+        ));
+    }
+    if !c.unpriced.is_empty() {
+        notes.push(format!("it has no price for {} (tokens used, $0)", c.unpriced.join(", ")));
+    }
+    if c.short_runs > 0 {
+        notes.push(format!("{} runs were settled at no less than the sandbox reported because the gateway could not price all of them", c.short_runs));
+    }
+    notes
+}
+
+/// The models drift's detail: the gateway's total against the ledger's.
+pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats) -> String {
+    let lower = drift.ours < drift.cloudflare;
+    let mut detail = format!(
+        "Models: AI Gateway priced g1t's own provider traffic at {} over the last {DRIFT_DAYS} days; the ledger's model cost for the same days is {} ({:+.1}%). {}",
+        dollars(drift.cloudflare as i64),
+        dollars(drift.ours as i64),
+        drift.delta_percent.unwrap_or(0.0),
+        if lower {
+            "Model calls g1t paid for were not charged: runs not yet settled, runs with no session, or calls with no run (the ledger catches up as runs settle; a gap that stays is a leak)."
+        } else {
+            "The ledger counts more than the gateway priced: runs that went to a provider without the gateway, or sandbox reports the gateway could not correct."
+        }
+    );
+    let notes = caveat_notes(caveats);
+    if !notes.is_empty() {
+        detail.push_str(" The gateway's cost may be off: ");
+        detail.push_str(&notes.join("; "));
+        detail.push('.');
+    }
+    detail
+}
+
+/// The unpriced drift's detail.
+pub(crate) fn unpriced_detail(caveats: &costs::GatewayCaveats) -> String {
+    format!(
+        "Models: AI Gateway's cost is not all of what the providers bill over the last {DRIFT_DAYS} days: {}. Runs on a model with no gateway price are charged no less than the sandbox reported; add the model's price to the gateway (or route away from it) so it is charged at cost.",
+        caveat_notes(&costs::GatewayCaveats { cache_read_tokens: 0.0, cache_write_tokens: 0.0, wholesale_usd: 0.0, ..caveats.clone() }).join("; ")
+    )
+}
+
+/// Model usage AI Gateway could not price over the window, as drift on
+/// the models bucket: models with tokens and no cost, or runs settled
+/// short. None when there is none.
+pub(crate) fn unpriced_drift(caveats: &costs::GatewayCaveats) -> Option<(Drift, String)> {
+    if caveats.unpriced.is_empty() && caveats.short_runs == 0 {
+        return None;
+    }
+    let drift = Drift {
+        bucket: NOT_CLOUDFLARE[0].into(),
+        kind: DriftKind::Unpriced,
+        ours: f64::from(caveats.short_runs),
+        cloudflare: caveats.unpriced.len() as f64,
+        delta_percent: None,
+    };
+    Some((drift, unpriced_detail(caveats)))
 }
 
 /// When the last `days` in a row (each with enough cost to say something)
@@ -651,6 +745,8 @@ struct MarginRow {
     given_trial_micros: Option<i64>,
     #[serde(default)]
     given_pool_micros: Option<i64>,
+    #[serde(default)]
+    given_discount_micros: Option<i64>,
 }
 
 impl From<MarginRow> for ProductDay {
@@ -669,6 +765,7 @@ impl From<MarginRow> for ProductDay {
                 free: r.given_free_micros.unwrap_or(0),
                 trial: r.given_trial_micros.unwrap_or(0),
                 pool: r.given_pool_micros.unwrap_or(0),
+                discount: r.given_discount_micros.unwrap_or(0),
             },
         }
     }
@@ -755,6 +852,7 @@ impl Billing {
             trial: Option<i64>,
             oss: Option<i64>,
             covered: Option<i64>,
+            discount: Option<i64>,
             cost: Option<i64>,
         }
         let charged_here = crate::storage::CHARGED_HERE.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ");
@@ -771,6 +869,7 @@ impl Billing {
                         SUM(COALESCE(trial_micros, 0)) AS trial,
                         SUM(COALESCE(oss_micros, 0)) AS oss,
                         SUM(COALESCE(given_micros, 0)) AS covered,
+                        SUM(COALESCE(discount_micros, 0)) AS discount,
                         SUM(COALESCE(cost_micros, 0)) AS cost
                  FROM ledger
                  WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND COALESCE(task, '') NOT IN ({charged_here})
@@ -789,14 +888,18 @@ impl Billing {
                 // to g1t. g1t's own workspaces are valued at price.
                 let cost = if r.own_provider == 1 { 0 } else { r.cost.unwrap_or(0) };
                 let cash = r.cash.unwrap_or(0);
-                let paid = cash + r.drawn.unwrap_or(0);
+                // A discount took its part below cost plus the margin: it is
+                // valued at price and that part counted as given, so a
+                // discounted sale never reads as margin lost.
+                let discount = r.discount.unwrap_or(0).max(0);
+                let paid = cash + r.drawn.unwrap_or(0) + discount;
                 let value = usage_value(r.internal == 1, cost, paid, self.margin_percent);
                 let given = if r.internal == 1 {
                     Given { comped: value, ..Given::default() }
                 } else if paid == 0 && cost > 0 {
                     Given { free: value, ..Given::default() }
                 } else {
-                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), comped: 0 }
+                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), comped: 0, discount }
                 };
                 if r.internal == 1 {
                     internal.insert(r.workspace.clone());
@@ -917,8 +1020,8 @@ impl Billing {
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, computed_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, computed_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&[
                             d.day.as_str().into(),
@@ -934,6 +1037,7 @@ impl Billing {
                             (d.given.free as f64).into(),
                             (d.given.trial as f64).into(),
                             (d.given.pool as f64).into(),
+                            (d.given.discount as f64).into(),
                             now.as_str().into(),
                         ])?,
                 );
@@ -975,6 +1079,41 @@ impl Billing {
             .collect())
     }
 
+    /// What AI Gateway's lines over the days, and the runs settled in them,
+    /// say about whether its cost is what the providers bill.
+    async fn gateway_caveats(&self, since: &str, until: &str) -> Result<costs::GatewayCaveats> {
+        #[derive(Deserialize)]
+        struct Line {
+            meter: String,
+            quantity: f64,
+            cost_usd: f64,
+        }
+        let lines: Vec<(String, f64, f64)> = self
+            .db
+            .prepare("SELECT meter, quantity, cost_usd FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3")
+            .bind(&[costs::SOURCE_GATEWAY.into(), since.into(), until.into()])?
+            .all()
+            .await?
+            .results::<Line>()?
+            .into_iter()
+            .map(|l| (l.meter, l.quantity, l.cost_usd))
+            .collect();
+        let mut caveats = costs::gateway_caveats(&lines);
+        #[derive(Deserialize)]
+        struct Short {
+            n: Option<f64>,
+        }
+        caveats.short_runs = self
+            .db
+            .prepare("SELECT COUNT(*) AS n FROM runs WHERE gateway_note IS NOT NULL AND settled_at >= ?1 AND settled_at <= ?2")
+            .bind(&[since.into(), format!("{until}T23:59:59.999Z").into()])?
+            .first::<Short>(None)
+            .await?
+            .and_then(|s| s.n)
+            .unwrap_or(0.0) as u32;
+        Ok(caveats)
+    }
+
     /// Drift over the last week, written to `cost_drift` (replacing the
     /// last run's), with unmapped Cloudflare meters as leaks.
     async fn find_drift(&self, until: &str) -> Result<Vec<(Drift, String)>> {
@@ -986,7 +1125,11 @@ impl Billing {
         for d in days {
             by.entry(d.bucket.clone()).or_default().push(d);
         }
+        let caveats = self.gateway_caveats(&since, until).await?;
         let mut found = Vec::new();
+        if let Some(drift) = unpriced_drift(&caveats) {
+            found.push(drift);
+        }
         for (bucket, days) in &by {
             let bucket_rules: Vec<&Rule> = rules.iter().filter(|r| &r.bucket == bucket).collect();
             let threshold = bucket_rules.iter().map(|r| r.drift_percent).fold(f64::INFINITY, f64::min);
@@ -995,6 +1138,7 @@ impl Billing {
             for drift in drifts(bucket, days, threshold, counted, settings.min_daily_cost_micros) {
                 let title = costs::bucket_title(bucket);
                 let detail = match drift.kind {
+                    DriftKind::Cost if NOT_CLOUDFLARE.contains(&bucket.as_str()) => models_detail(&drift, &caveats),
                     DriftKind::Count => format!(
                         "{title}: g1t counted {}, Cloudflare {} over the last {DRIFT_DAYS} days ({:+.1}%). Customers are charged for what g1t counts; check what Cloudflare counts as a unit and change the repos service's operation_mapping (set_operation_mapping).",
                         crate::features::thousands(drift.ours.max(0.0).round() as u64),
@@ -1010,10 +1154,16 @@ impl Billing {
                     DriftKind::Leak if bucket == UNMAPPED => {
                         format!("Cloudflare charged {} for meters no mapping claims. Map them on Costs & margin.", dollars(drift.cloudflare as i64))
                     }
+                    DriftKind::Leak if NOT_CLOUDFLARE.contains(&bucket.as_str()) => format!(
+                        "{title}: AI Gateway priced g1t's own provider traffic at {} over the last {DRIFT_DAYS} days and the ledger has no model charge for it, not even a comped or free one: model calls with no billing run behind them (a run started without a ticket, or something else using g1t's gateway).",
+                        dollars(drift.cloudflare as i64)
+                    ),
                     DriftKind::Leak => format!(
                         "{title}: Cloudflare charged {} over the last {DRIFT_DAYS} days and customers were charged nothing for it.",
                         dollars(drift.cloudflare as i64)
                     ),
+                    // Raised from the gateway's lines, not per bucket.
+                    DriftKind::Unpriced => unpriced_detail(&caveats),
                 };
                 found.push((drift, detail));
             }
@@ -1436,6 +1586,7 @@ impl Billing {
             overall.given_free_micros += d.given.free;
             overall.given_trial_micros += d.given.trial;
             overall.given_pool_micros += d.given.pool;
+            overall.given_discount_micros += d.given.discount;
             let sold = (d.cost() - d.given.total()).max(0);
             if OVERHEAD.contains(&d.bucket.as_str()) {
                 overall.plans_micros += d.cash_micros;
@@ -1865,9 +2016,54 @@ mod tests {
         let (days, workspaces) = fold(&[], &map, &[], &[], &[comped, trial, paying, free], &internal);
         let models = days.iter().find(|d| d.bucket == "models").unwrap();
         assert_eq!(models.cost(), 4_000_000);
-        assert_eq!(models.given, Given { comped: 1_000_000, free: 1_000_000, trial: 500_000, pool: 0 });
+        assert_eq!(models.given, Given { comped: 1_000_000, free: 1_000_000, trial: 500_000, pool: 0, discount: 0 });
         let given = |w: &str| workspaces.iter().find(|x| x.workspace == w).unwrap().given.total();
         assert_eq!((given("flagon"), given("acme"), given("beta"), given("gamma")), (1_000_000, 500_000, 0, 1_000_000));
+    }
+
+    #[test]
+    fn a_discounted_sale_keeps_its_margin_and_counts_the_discount_as_given() {
+        // $1 of model cost at 20%, sold to an account with 30% off: charged
+        // $0.84, and $0.36 below cost plus the margin given (as usage_rows
+        // reads the ledger: value at price, the discount part given).
+        let mut sale = usage("2026-10-15", "acme", "agent", 1_200_000, 840_000, 1_000_000);
+        sale.given = Given { discount: 360_000, ..Given::default() };
+        let (days, _) = fold(&[], &BTreeMap::new(), &[], &[], &[sale], &BTreeSet::new());
+        let models = days.iter().find(|d| d.bucket == "models").unwrap();
+        assert_eq!(models.value_micros, 1_200_000);
+        assert_eq!(models.given, Given { discount: 300_000, ..Given::default() });
+        // What was sold (cost less given) still makes the margin.
+        let sold = models.cost() - models.given.total();
+        assert_eq!(margin_percent(models.cash_micros, sold).map(|m| m.round()), Some(17.0));
+    }
+
+    #[test]
+    fn the_gateways_total_against_the_ledgers_model_cost_is_drift() {
+        // The gateway priced $5 of g1t's own traffic; the ledger has $3.
+        let short = drifts("models", &[day("models", 5_000_000, 3_000_000, 3_600_000, 0.0, 0.0)], 10.0, false, 100_000);
+        assert_eq!(short.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost]);
+        assert!((short[0].delta_percent.unwrap() + 40.0).abs() < 1e-9);
+        // Gateway traffic with nothing on the ledger at all: cost drift and a leak.
+        let none = drifts("models", &[day("models", 2_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000);
+        assert_eq!(none.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost, DriftKind::Leak]);
+        // Within the threshold, or before the gateway was ever read: nothing.
+        assert!(drifts("models", &[day("models", 1_050_000, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        assert!(drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        // The detail says which way and why it may be off.
+        let caveats = costs::GatewayCaveats { cache_read_tokens: 3_000_000.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
+        let detail = models_detail(&short[0], &caveats);
+        assert!(detail.contains("$5.00") && detail.contains("$3.00") && detail.contains("were not charged"), "{detail}");
+        assert!(detail.contains("3,000,000 prompt-cache read") && detail.contains("no price for anthropic_claude_new_1"), "{detail}");
+    }
+
+    #[test]
+    fn model_usage_the_gateway_cannot_price_is_drift_even_when_the_totals_agree() {
+        assert!(unpriced_drift(&costs::GatewayCaveats::default()).is_none());
+        // Cache tokens alone are a note on the cost drift, not drift.
+        assert!(unpriced_drift(&costs::GatewayCaveats { cache_write_tokens: 10.0, ..Default::default() }).is_none());
+        let (drift, detail) = unpriced_drift(&costs::GatewayCaveats { unpriced: vec!["anthropic_claude_new_1".into()], short_runs: 2, ..Default::default() }).unwrap();
+        assert_eq!((drift.bucket.as_str(), drift.kind.as_str()), ("models", "unpriced"));
+        assert!(detail.contains("no price for anthropic_claude_new_1") && detail.contains("2 runs were settled"), "{detail}");
     }
 
     #[test]

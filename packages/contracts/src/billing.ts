@@ -1082,6 +1082,8 @@ export type OverallMargin = {
   givenFreeMicros?: number;
   givenTrialMicros?: number;
   givenPoolMicros?: number;
+  /** What discounts on an account's terms took below cost plus the margin: given, not margin lost. */
+  givenDiscountMicros?: number;
   /** costMicros by who g1t pays: Cloudflare's bill (billed, after included allowances) and model providers (tokens, not on Cloudflare's bill). */
   /** What the plan's included usage paid for, at price: money in for usage, paid out of plansMicros. */
   includedMicros?: number;

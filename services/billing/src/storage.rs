@@ -270,7 +270,7 @@ impl Billing {
                 continue;
             }
             let base = credits::with_margin(cost, self.margin_percent);
-            let (charge, terms_note) = self.charged(&row.workspace, base).await?;
+            let (charge, terms_note, discount) = self.charged(&row.workspace, base).await?;
             let plan = self.has_plan(&row.workspace).await?;
             let drawn = self.draw(&row.workspace, charge, &row.month, &month_end_eligible(&row.source, plan)).await?;
             let detail = if row.source == "storage" {
@@ -294,6 +294,7 @@ impl Billing {
                 drawn,
             })
             .await?;
+            self.record_discount(&reference, discount).await?;
         }
         Ok(())
     }
