@@ -2072,13 +2072,15 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
 }
 
 /// Writes what this isolate metered once the answer has gone back, every
-/// few seconds at most (meters.rs).
+/// few seconds at most: now, or once it is due, waiting in this request's
+/// `wait_until` so nothing counted is left for a request that may never
+/// come (meters.rs).
 fn flush_later(env: &Env, ctx: &Context) {
-    if !meters::take_due() {
+    let Some(wait) = meters::plan_flush() else {
         return;
-    }
+    };
     if let Ok(db) = env.d1("DB") {
-        ctx.wait_until(async move { meters::flush(&db).await });
+        ctx.wait_until(async move { meters::flush_after(&db, wait).await });
     }
 }
 

@@ -10,14 +10,32 @@
 //! and changed without a deploy. What a workspace is counted for goes to
 //! `git_operations` by the hour, as before, which billing reads.
 //!
+//! Sandboxes (agents, checks, builds, workflow jobs) use git like anyone
+//! else: through g1t's git endpoints with a run credential, so their
+//! clones, fetches and pushes are metered here as `git.*`, whoever runs
+//! them in the sandbox, the agent included. Only a nightly backup's clone
+//! goes to the store directly (backups.rs), and its sandbox reports it.
+//! What is asked of a pull request's working copy (`pulls--<pull id>`,
+//! where agents clone and push) is counted for the workspace of the
+//! repository it came from, looked up when the counts are written
+//! (`Pending::attributed`); before 2026-10-07 it was counted for a
+//! workspace called `pulls`, which nobody is charged as.
+//!
 //! The same place keeps how the store answered, by the minute
 //! (`store_health`), for the status page's "Git storage" part.
 //!
 //! Nothing here is on the request path. Each isolate adds up what it saw in
 //! memory, and writes it all in one batch once the answer has gone back
-//! (`flush`, from `ctx.wait_until`). A failed write puts the counts back
-//! for the next one. What an isolate holds when it is evicted is lost: a
-//! few seconds' worth at most, since every request ends with a flush.
+//! (`flush`, from `ctx.wait_until`), every few seconds at most. A request
+//! that counts something before the next write is due plans that write in
+//! its own `wait_until`, which waits until it is (`plan_flush`,
+//! `flush_after`): what was counted is never left for a later request on
+//! the same isolate, which may never come. Before 2026-10-07 it was, and a
+//! clone's last request (its fetch, the one that is an operation) was the
+//! one most often lost when the isolate then went idle or a deploy
+//! replaced it. A failed write puts the counts back for the next one. What
+//! an isolate holds when it dies outright is lost: a few seconds' worth at
+//! most.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -126,6 +144,41 @@ impl Pending {
         }
     }
 
+    /// The pull requests whose working copies (`pulls--<pull id>`) are
+    /// counted for nobody's workspace yet: see [`Pending::attributed`].
+    pub fn unattributed_pulls(&self) -> Vec<String> {
+        let mut pulls: Vec<String> = self
+            .usage
+            .keys()
+            .filter(|place| place.workspace == crate::PULLS_NAMESPACE)
+            .filter_map(|place| working_copy(&place.repo).map(str::to_owned))
+            .collect();
+        pulls.sort();
+        pulls.dedup();
+        pulls
+    }
+
+    /// The same counts with each pull request's working copy counted for
+    /// the workspace of the repository it came from, as `owners` (pull id
+    /// to workspace) says. A working copy's path is `pulls/<pull id>`, so
+    /// what is asked of it (an agent's clone of it and its pushes to it, a
+    /// merge check, catching up, making and removing it) would otherwise be
+    /// counted for a workspace called `pulls`, which nobody is charged as.
+    /// One `owners` does not name stays as it was.
+    pub fn attributed(&self, owners: &HashMap<String, String>) -> Pending {
+        let mut out = Pending { usage: HashMap::with_capacity(self.usage.len()), health: self.health.clone() };
+        for (place, tally) in &self.usage {
+            let mut place = place.clone();
+            if place.workspace == crate::PULLS_NAMESPACE
+                && let Some(owner) = working_copy(&place.repo).and_then(|pull| owners.get(pull))
+            {
+                place.workspace = owner.clone();
+            }
+            out.add(place, tally.count, tally.bytes_in, tally.bytes_out);
+        }
+        out
+    }
+
     /// What each workspace is counted for, by the hour, under `mapping`.
     pub fn billable(&self, mapping: &Mapping) -> HashMap<(String, String), f64> {
         let mut out: HashMap<(String, String), f64> = HashMap::new();
@@ -232,6 +285,66 @@ fn workspace_of(key: &str, name: &str) -> String {
         .unwrap_or_else(|| name.split_once("--").map(|(workspace, _)| workspace.to_owned()).unwrap_or_default())
 }
 
+/// The pull id of a working copy's name in the store (`pulls--pul_7`).
+fn working_copy(name: &str) -> Option<&str> {
+    name.strip_prefix(crate::PULLS_NAMESPACE)?.strip_prefix("--").filter(|pull| !pull.is_empty())
+}
+
+/// How long the workspace a working copy is counted for is kept before it
+/// is read again (a workspace can be renamed).
+const PULL_OWNER_TTL_MS: u64 = 10 * 60 * 1000;
+
+thread_local! {
+    /// The workspace each pull request's working copy is counted for, by
+    /// pull id, as last read, and when.
+    static PULL_OWNERS: RefCell<HashMap<String, (String, u64)>> = RefCell::new(HashMap::new());
+}
+
+/// The workspace of the repository each of `pulls`' working copies came
+/// from: as kept for a while, else read in one query. Off the request
+/// path (from `flush`).
+async fn pull_owners(db: &D1Database, pulls: &[String]) -> Result<HashMap<String, String>> {
+    let now = g1t_kit::now_ms();
+    let mut owners = HashMap::new();
+    let mut missing = Vec::new();
+    PULL_OWNERS.with(|kept| {
+        let kept = kept.borrow();
+        for pull in pulls {
+            match kept.get(pull).filter(|(_, at)| now.saturating_sub(*at) < PULL_OWNER_TTL_MS) {
+                Some((owner, _)) => {
+                    owners.insert(pull.clone(), owner.clone());
+                }
+                None => missing.push(pull.clone()),
+            }
+        }
+    });
+    if missing.is_empty() {
+        return Ok(owners);
+    }
+    #[derive(Deserialize)]
+    struct Row {
+        pull: String,
+        workspace: String,
+    }
+    let rows = db
+        .prepare(
+            "SELECT f.name AS pull, s.namespace AS workspace FROM repos f JOIN repos s ON s.id = f.fork_of
+             WHERE f.namespace = ?1 AND f.name IN (SELECT value FROM json_each(?2))",
+        )
+        .bind(&[crate::PULLS_NAMESPACE.into(), serde_json::to_string(&missing)?.into()])?
+        .all()
+        .await?
+        .results::<Row>()?;
+    PULL_OWNERS.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        for row in &rows {
+            kept.insert(row.pull.clone(), (row.workspace.clone(), now));
+        }
+    });
+    owners.extend(rows.into_iter().map(|row| (row.pull, row.workspace)));
+    Ok(owners)
+}
+
 /// Counts one `meter` for the repository stored under `key`, with the
 /// bytes it sent and received.
 pub fn record(meter: &str, key: &str, bytes_in: u64, bytes_out: u64) {
@@ -282,30 +395,57 @@ fn hour_now() -> String {
 /// not each need one.
 const FLUSH_EVERY_MS: u64 = 5_000;
 const FLUSH_AT_PLACES: usize = 200;
+/// A planned write not begun after this long is taken as never coming (its
+/// request's `wait_until` was cut short), so another is planned.
+const PLAN_STALE_MS: u64 = 30_000;
 
 thread_local! {
     static LAST_FLUSH: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// When the write now waiting in some request's `wait_until` was planned.
+    static PLANNED: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
 }
 
-/// Whether a write is due: something waits, and the last write was a
-/// while ago or much has piled up.
-pub fn flush_due(waiting: usize, last: u64, now: u64) -> bool {
-    waiting > 0 && (now.saturating_sub(last) >= FLUSH_EVERY_MS || waiting >= FLUSH_AT_PLACES)
+/// How long the write a request should plan waits, in milliseconds, or
+/// `None` when it should plan none: nothing waits, or a write is planned
+/// already and has not gone stale. A pile-up is written at once, planned
+/// write or not.
+pub fn plan(waiting: usize, last: u64, planned: Option<u64>, now: u64) -> Option<u64> {
+    if waiting == 0 {
+        return None;
+    }
+    if waiting >= FLUSH_AT_PLACES {
+        return Some(0);
+    }
+    if planned.is_some_and(|at| now.saturating_sub(at) < PLAN_STALE_MS) {
+        return None;
+    }
+    Some(FLUSH_EVERY_MS.saturating_sub(now.saturating_sub(last)))
 }
 
-/// Whether this isolate should write what it counted now; if so, the
-/// write is taken as begun.
-pub fn take_due() -> bool {
+/// The write this request should plan, if any, as how long it waits (see
+/// [`plan`]); taken as planned. Never waits itself.
+pub fn plan_flush() -> Option<u64> {
     let now = g1t_kit::now_ms();
     let waiting = PENDING.with(|pending| {
         let pending = pending.borrow();
         pending.usage.len() + pending.health.len()
     });
-    let due = flush_due(waiting, LAST_FLUSH.with(std::cell::Cell::get), now);
-    if due {
-        LAST_FLUSH.with(|last| last.set(now));
+    let wait = plan(waiting, LAST_FLUSH.with(std::cell::Cell::get), PLANNED.with(std::cell::Cell::get), now)?;
+    if wait > 0 {
+        PLANNED.with(|planned| planned.set(Some(now)));
     }
-    due
+    Some(wait)
+}
+
+/// A planned write: waits `wait_ms`, then writes everything counted by
+/// then. For `ctx.wait_until`, after the answer has gone back.
+pub async fn flush_after(db: &D1Database, wait_ms: u64) {
+    if wait_ms > 0 {
+        worker::Delay::from(std::time::Duration::from_millis(wait_ms)).await;
+        PLANNED.with(|planned| planned.set(None));
+    }
+    LAST_FLUSH.with(|last| last.set(g1t_kit::now_ms()));
+    flush(db).await;
 }
 
 /// The mapping as this isolate last read it, else the defaults. Never
@@ -372,7 +512,20 @@ pub async fn flush(db: &D1Database) {
         return;
     }
     let mapping = mapping(db).await;
-    if let Err(error) = write(db, &taken, &mapping).await {
+    // Pull requests' working copies count for their repositories' workspaces.
+    let pulls = taken.unattributed_pulls();
+    let attributed = if pulls.is_empty() {
+        None
+    } else {
+        match pull_owners(db, &pulls).await {
+            Ok(owners) => Some(taken.attributed(&owners)),
+            Err(error) => {
+                worker::console_error!("working copies' workspaces not read, counted as they are: {error}");
+                None
+            }
+        }
+    };
+    if let Err(error) = write(db, attributed.as_ref().unwrap_or(&taken), &mapping).await {
         worker::console_error!("git store meters not written, kept for the next try: {error}");
         PENDING.with(|pending| pending.borrow_mut().merge(taken));
     }
@@ -572,11 +725,31 @@ mod tests {
 
     #[test]
     fn counts_are_written_now_and_then_not_on_every_request() {
-        assert!(!flush_due(0, 0, 100_000));
-        assert!(flush_due(1, 0, 100_000));
-        assert!(!flush_due(3, 100_000, 100_000 + FLUSH_EVERY_MS - 1));
-        assert!(flush_due(3, 100_000, 100_000 + FLUSH_EVERY_MS));
-        assert!(flush_due(FLUSH_AT_PLACES, 100_000, 100_001));
+        // At once only when the last write was a while ago or much has
+        // piled up; otherwise once it is due.
+        assert_eq!(plan(1, 0, None, 100_000), Some(0));
+        assert_eq!(plan(3, 100_000, None, 100_000 + FLUSH_EVERY_MS - 1), Some(1));
+        assert_eq!(plan(3, 100_000, None, 100_000 + FLUSH_EVERY_MS), Some(0));
+        assert_eq!(plan(FLUSH_AT_PLACES, 100_000, None, 100_001), Some(0));
+    }
+
+    #[test]
+    fn what_a_request_counts_is_written_even_if_no_request_follows() {
+        // Nothing waiting: nothing planned.
+        assert_eq!(plan(0, 0, None, 100_000), None);
+        // Due: written at once.
+        assert_eq!(plan(1, 0, None, 100_000), Some(0));
+        // Counted a second after the last write: the write is planned for
+        // when it is due, not left for the next request.
+        assert_eq!(plan(3, 100_000, None, 101_000), Some(FLUSH_EVERY_MS - 1_000));
+        // One planned already: the requests after it plan none...
+        assert_eq!(plan(3, 100_000, Some(101_000), 102_000), None);
+        // ...unless much has piled up, which is written at once,
+        assert_eq!(plan(FLUSH_AT_PLACES, 100_000, Some(101_000), 102_000), Some(0));
+        // or the planned one never began (its request was cut short).
+        assert_eq!(plan(3, 100_000, Some(101_000), 101_000 + PLAN_STALE_MS), Some(0));
+        // Never planned further off than the interval.
+        assert!(plan(1, 100_000, None, 100_000).is_some_and(|wait| wait <= FLUSH_EVERY_MS));
     }
 
     #[test]
@@ -614,6 +787,49 @@ mod tests {
         assert_eq!(changed[&("acme".to_owned(), "2026-10-14T09".to_owned())], 3.5);
         assert_eq!(Mapping::from_rows(&rows).cost("git.ls_refs"), 1.0);
         assert_eq!(Mapping::defaults().billable("binding.read_blob"), 0.0);
+    }
+
+    #[test]
+    fn a_working_copy_is_counted_for_its_repositorys_workspace() {
+        let copy = |meter: &str, pull: &str| Place {
+            hour: "2026-10-14T09".into(),
+            store: "g1t".into(),
+            repo: format!("pulls--{pull}"),
+            workspace: "pulls".into(),
+            meter: meter.into(),
+        };
+        let mut pending = Pending::default();
+        // A pull request's working copy is made, an agent's sandbox clones
+        // it and pushes to it, and checks clone it again; another pull
+        // request's repository is not found.
+        pending.meter(copy("binding.fork", "pul_7"), 0, 0);
+        pending.meter(copy("git.fetch", "pul_7"), 100, 9_000);
+        pending.meter(copy("git.receive_pack", "pul_7"), 4_000, 50);
+        pending.meter(copy("git.fetch", "pul_7"), 100, 9_000);
+        pending.meter(copy("git.fetch", "pul_8"), 0, 0);
+        pending.meter(place("2026-10-14T09", "acme", "git.fetch"), 0, 0);
+        pending.health("g1t", "2026-10-14T09:01", Outcome::Ok, 5);
+        assert_eq!(pending.unattributed_pulls(), ["pul_7", "pul_8"]);
+        // As they are: counted for a workspace called `pulls`.
+        let before = pending.billable(&Mapping::defaults());
+        assert_eq!(before[&("pulls".to_owned(), "2026-10-14T09".to_owned())], 5.0);
+
+        let owners = HashMap::from([("pul_7".to_owned(), "acme".to_owned())]);
+        let attributed = pending.attributed(&owners);
+        let billable = attributed.billable(&Mapping::defaults());
+        assert_eq!(billable[&("acme".to_owned(), "2026-10-14T09".to_owned())], 5.0);
+        assert_eq!(billable[&("pulls".to_owned(), "2026-10-14T09".to_owned())], 1.0);
+        // The meters keep the working copy's own name, with its workspace.
+        let mut counted = copy("git.fetch", "pul_7");
+        counted.workspace = "acme".into();
+        assert_eq!(attributed.usage[&counted], Tally { count: 2, bytes_in: 200, bytes_out: 18_000 });
+        assert_eq!(attributed.health.len(), 1);
+        assert_eq!(attributed.unattributed_pulls(), ["pul_8"]);
+        // Nothing else is a working copy.
+        assert_eq!(working_copy("pulls--pul_7"), Some("pul_7"));
+        assert_eq!(working_copy("pulls--"), None);
+        assert_eq!(working_copy("pullsx--pul_7"), None);
+        assert_eq!(working_copy("acme--pulls"), None);
     }
 
     #[test]

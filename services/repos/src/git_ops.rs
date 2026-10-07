@@ -21,9 +21,18 @@
 //! `GIT_OPERATIONS_FREE_HOURLY` (60) an hour, answered 429 with when to try
 //! again. Whether it is past its cap is decided from counts this isolate
 //! read a moment ago and has added to since, never by asking the database
-//! on the way (63 to 98 ms a request, measured). Pushes from agents'
-//! sandboxes go to the store directly and are counted as the store's
-//! meters see them, not here.
+//! on the way (63 to 98 ms a request, measured).
+//!
+//! Agents' sandboxes, checks, builds and workflow jobs clone, fetch and
+//! push through g1t's git endpoints (`https://g1t.sh/<path>.git`, with a
+//! run credential), never the store directly, so they are counted here
+//! like anyone's; so is git an agent runs itself in its sandbox. A pull
+//! request's working copy counts for the workspace of the repository it
+//! came from (meters.rs). The one sandbox that reads the store directly,
+//! a nightly backup, reports its clone, which is g1t's cost and never a
+//! workspace's (backups.rs). The limits here go by the path asked for, so
+//! a free workspace's requests to a working copy (`pulls/<pull id>`) are
+//! counted for it but never slowed down.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
