@@ -128,6 +128,11 @@ default. Search narrows the list by name.
 The **Tags** tab lists tags newest first, up to 100, each with its commit
 and a ZIP of its files.
 
+**Compare**, `g1t.sh/<workspace>/<repo>/compare/<base>...<head>`, shows
+what one branch has that another does not: its commits, then every change.
+Pick the two branches at the top; **Open a pull request** starts one from
+the compared branch.
+
 On **Files**, each file and folder shows the commit that last changed it and
 when, from up to 300 commits of the branch's history; one changed before
 that shows none. The branch menu at the top switches branch and keeps the

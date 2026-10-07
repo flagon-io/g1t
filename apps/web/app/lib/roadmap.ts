@@ -81,15 +81,6 @@ export const ROADMAP: RoadmapItem[] = [
 
   // --- Code ---------------------------------------------------------------
   {
-    key: "compare",
-    title: "Compare",
-    section: "Code",
-    summary: "Any two branches, tags or commits, side by side.",
-    why: "See exactly what changed between two points, with the sessions and pull requests that changed it.",
-    plans: ["Diff any two refs", "The pull requests and agent sessions between them", "Open a pull request from the comparison"],
-    today: { label: "Commits", path: "commits" },
-  },
-  {
     key: "docs",
     title: "Docs",
     section: "Code",

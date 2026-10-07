@@ -39,6 +39,7 @@ export const SECTIONS: Section[] = [
       { label: "Commits", path: "commits", also: ["commit"] },
       { label: "Branches", path: "branches" },
       { label: "Tags", path: "tags" },
+      { label: "Compare", path: "compare" },
       ...soon("Code"),
     ],
   },

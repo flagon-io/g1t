@@ -818,7 +818,7 @@ function RepoMenu({
           than one view shows them as tabs across its top. */}
       <Rule />
       <div className="space-y-px">
-        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
+        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
         <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
@@ -1211,6 +1211,7 @@ const SECTIONS: Record<string, string> = {
   repositories: "Repositories",
   branches: "Branches",
   tags: "Tags",
+  compare: "Compare",
   dependencies: "Dependencies",
   code: "Files",
   secrets: "Secrets and variables",
