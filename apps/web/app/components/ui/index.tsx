@@ -348,13 +348,19 @@ export function Avatar({
 export function CopyLine({
   text,
   prompt,
+  disabled,
 }: {
   text: string;
   prompt?: boolean;
+  /** Shown, so it is clear what will be there, but not yet usable: dimmed, with no copy. */
+  disabled?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="group flex items-center gap-3 rounded-lg border border-line bg-surface py-2 pr-2 pl-3.5 font-mono text-[0.8125rem]">
+    <div
+      aria-disabled={disabled || undefined}
+      className={`group flex items-center gap-3 rounded-lg border border-line bg-surface py-2 pr-2 pl-3.5 font-mono text-[0.8125rem] ${disabled ? "cursor-not-allowed text-faint select-none" : ""}`}
+    >
       {/* Wraps rather than hides: a command or an address is no use half seen. */}
       <code className="min-w-0 grow whitespace-pre-wrap [overflow-wrap:anywhere]">
         {prompt && <span className="mr-2 text-faint select-none">$</span>}
@@ -373,7 +379,8 @@ export function CopyLine({
       <button
         type="button"
         aria-label="Copy"
-        className="shrink-0 rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+        disabled={disabled}
+        className="shrink-0 rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-faint"
         onClick={() => {
           void navigator.clipboard.writeText(text);
           setCopied(true);

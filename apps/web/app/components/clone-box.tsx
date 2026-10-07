@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 
-import { cloneUrl, useAddresses } from "../lib/addresses";
+import { cloneUrl, sshUrl, useAddresses } from "../lib/addresses";
 import { AgentSetup } from "./agent-setup";
 import { CopyLine } from "./ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -26,9 +26,14 @@ export function CloneBox({ path }: { path: string }) {
         </p>
       </TabsContent>
       <TabsContent value="ssh">
-        <p className="rounded-lg border border-dashed border-line p-3 text-xs text-muted">
-          Git over SSH is waiting on inbound TCP on Cloudflare, which g1t has applied for. Use HTTPS for now: it
-          clones, fetches and pushes the same. Keys you add under Settings → SSH keys will work as soon as SSH is on.
+        <CopyLine text={sshUrl(addresses, path)} disabled />
+        <p className="mt-2 text-xs text-muted">
+          Not on yet: git over SSH is waiting on inbound TCP on Cloudflare, which g1t has applied for. Use HTTPS for
+          now; it clones, fetches and pushes the same. Keys you add under{" "}
+          <Link to="/settings/keys" className="text-fg underline underline-offset-4">
+            SSH keys
+          </Link>{" "}
+          will work as soon as SSH is on.
         </p>
       </TabsContent>
       <TabsContent value="agent">

@@ -54,6 +54,11 @@ export function useAddresses(): Addresses {
   return addressesFrom(useRouteLoaderData("root"));
 }
 
+/** The SSH clone address of a repository (`git@host:owner/name.git`), from its `owner/name`. */
+export function sshUrl(addresses: Pick<Addresses, "site">, path: string): string {
+  return `git@${new URL(addresses.site).hostname}:${path.replace(/^\/+/, "")}.git`;
+}
+
 /** The HTTPS clone address of a repository, from its `owner/name`. */
 export function cloneUrl(addresses: Pick<Addresses, "site">, path: string): string {
   return `${addresses.site}/${path.replace(/^\/+/, "")}.git`;
