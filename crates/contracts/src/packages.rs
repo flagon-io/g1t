@@ -1,7 +1,7 @@
 //! The packages service: the registries a workspace publishes to and
 //! installs from, beside its code (docs/PACKAGES.md). Container images
 //! first, spoken over the OCI Distribution protocol on `g1t.sh/v2/`; npm,
-//! Composer, Cargo and Go after.
+//! Composer, Cargo, Go, Maven, NuGet and RubyGems after.
 //!
 //! The site reaches it over `POST /rpc/<method>` with the arguments below;
 //! the registries' own protocols are any other request. Mirrors
@@ -27,15 +27,21 @@ pub enum Ecosystem {
     Composer,
     Cargo,
     Go,
+    Maven,
+    Nuget,
+    Rubygems,
 }
 
 impl Ecosystem {
-    pub const ALL: [Ecosystem; 5] = [
+    pub const ALL: [Ecosystem; 8] = [
         Ecosystem::Container,
         Ecosystem::Npm,
         Ecosystem::Composer,
         Ecosystem::Cargo,
         Ecosystem::Go,
+        Ecosystem::Maven,
+        Ecosystem::Nuget,
+        Ecosystem::Rubygems,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -45,6 +51,9 @@ impl Ecosystem {
             Ecosystem::Composer => "composer",
             Ecosystem::Cargo => "cargo",
             Ecosystem::Go => "go",
+            Ecosystem::Maven => "maven",
+            Ecosystem::Nuget => "nuget",
+            Ecosystem::Rubygems => "rubygems",
         }
     }
 

@@ -13,7 +13,7 @@ import type { Result } from "./result";
  */
 
 /** Which registry a package is in. */
-export const ECOSYSTEMS = ["container", "npm", "composer", "cargo", "go"] as const;
+export const ECOSYSTEMS = ["container", "npm", "composer", "cargo", "go", "maven", "nuget", "rubygems"] as const;
 export type Ecosystem = (typeof ECOSYSTEMS)[number];
 
 export type PackageVisibility = "public" | "private";

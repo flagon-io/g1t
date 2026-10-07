@@ -72,7 +72,8 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
   const { detail, username } = loaderData;
   const { package: pkg, versions, tags, permissions } = detail;
   const outcome = actionData as Outcome | undefined;
-  const latest = tags.find((tag) => tag.tag === "latest")?.tag ?? tags[0]?.tag ?? null;
+  // Maven names a version to fetch; the others install their newest without one.
+  const latest = tags.find((tag) => tag.tag === "latest")?.tag ?? tags[0]?.tag ?? (pkg.ecosystem === "maven" ? pkg.latest : null);
   const commands = installCommands(pkg, latest, username);
   // npm and Composer versions are numbers; images are digests and tags.
   const npm = pkg.ecosystem !== "container";
@@ -130,7 +131,7 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
             with <code className="font-mono">packages:read</code>.
           </p>
         )}
-        {commands.registry && pkg.visibility === "private" && pkg.ecosystem !== "cargo" && (
+        {pkg.visibility === "private" && commands.login.includes("YOUR_TOKEN") && (
           <p className="text-xs text-faint">
             Put an{" "}
             <Link to="/settings/tokens" className="text-muted hover:text-fg">

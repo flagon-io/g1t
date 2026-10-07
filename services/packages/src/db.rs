@@ -240,6 +240,34 @@ impl UploadRow {
     }
 }
 
+/// One file of a version, as it is kept.
+#[derive(Clone, Debug, Deserialize)]
+pub struct FileRow {
+    pub name: String,
+    pub digest: String,
+    pub size: u64,
+    pub media_type: Option<String>,
+}
+
+/// A file's other checksums, in hex, beside its SHA-256 digest.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct Checksums {
+    pub md5: String,
+    pub sha1: String,
+    pub sha512: String,
+}
+
+impl Checksums {
+    pub fn of(bytes: &[u8]) -> Checksums {
+        use sha1::Digest as _;
+        Checksums {
+            md5: format!("{:x}", md5::compute(bytes)),
+            sha1: hex::encode(sha1::Sha1::digest(bytes)),
+            sha512: hex::encode(sha2::Sha512::digest(bytes)),
+        }
+    }
+}
+
 /// One file of a version, as it is recorded.
 pub struct NewFile {
     pub name: String,
@@ -1045,10 +1073,130 @@ impl Db {
         .results()
     }
 
+    /// A version by its version string, made from `version` when there is
+    /// none, and whether it was made now. Files are added one at a time
+    /// with `put_file` (Maven uploads each in a request of its own).
+    pub async fn version_or_new(&self, version: &NewVersion, now_ms: u64) -> Result<(VersionRow, bool)> {
+        self.prepare(
+            "INSERT OR IGNORE INTO versions (id, package_id, version, digest, size, metadata, subject, published_by, published_at)
+             VALUES (?, ?, ?, ?, 0, ?, NULL, ?, ?)",
+            &[
+                text(&version.id),
+                text(&version.package_id),
+                text(&version.version),
+                text(&version.digest),
+                text(&version.metadata),
+                opt(version.published_by.as_deref()),
+                text(&rfc3339(now_ms)),
+            ],
+        )?
+        .run()
+        .await?;
+        let row = self
+            .version_named(&version.package_id, &version.version)
+            .await?
+            .ok_or_else(|| worker::Error::RustError("the version was not recorded".into()))?;
+        let made = row.id == version.id;
+        Ok((row, made))
+    }
+
+    /// Adds a file to a version, or replaces the one of its name, and
+    /// works out the version's size again.
+    pub async fn put_file(&self, package_id: &str, version_id: &str, file: &NewFile, now_ms: u64) -> Result<()> {
+        let now = rfc3339(now_ms);
+        self.db
+            .batch(vec![
+                self.prepare(
+                    "INSERT INTO version_files (version_id, name, digest, size, media_type) VALUES (?, ?, ?, ?, ?)
+                     ON CONFLICT (version_id, name) DO UPDATE SET digest = excluded.digest, size = excluded.size, media_type = excluded.media_type",
+                    &[text(version_id), text(&file.name), text(&file.digest), num(file.size), opt(file.media_type.as_deref())],
+                )?,
+                self.prepare(
+                    "UPDATE versions SET size = (SELECT COALESCE(SUM(size), 0) FROM version_files WHERE version_id = ?) WHERE id = ?",
+                    &[text(version_id), text(version_id)],
+                )?,
+                self.prepare("UPDATE packages SET updated_at = ? WHERE id = ?", &[text(&now), text(package_id)])?,
+            ])
+            .await?;
+        Ok(())
+    }
+
+    /// A version's files, by name.
+    pub async fn files(&self, version_id: &str) -> Result<Vec<FileRow>> {
+        self.prepare("SELECT name, digest, size, media_type FROM version_files WHERE version_id = ? ORDER BY name", &[text(version_id)])?
+            .all()
+            .await?
+            .results()
+    }
+
+    pub async fn file(&self, version_id: &str, name: &str) -> Result<Option<FileRow>> {
+        self.prepare(
+            "SELECT name, digest, size, media_type FROM version_files WHERE version_id = ? AND name = ?",
+            &[text(version_id), text(name)],
+        )?
+        .first(None)
+        .await
+    }
+
+    /// Changes what a version is named by and keeps about itself.
+    pub async fn set_version(&self, version_id: &str, digest: &str, metadata: &str) -> Result<()> {
+        self.prepare("UPDATE versions SET digest = ?, metadata = ? WHERE id = ?", &[text(digest), text(metadata), text(version_id)])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_checksums(&self, digest: &Digest, sums: &Checksums) -> Result<()> {
+        self.prepare(
+            "INSERT OR IGNORE INTO checksums (digest, md5, sha1, sha512) VALUES (?, ?, ?, ?)",
+            &[text(digest.as_str()), text(&sums.md5), text(&sums.sha1), text(&sums.sha512)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    pub async fn checksums(&self, digest: &Digest) -> Result<Option<Checksums>> {
+        self.prepare("SELECT md5, sha1, sha512 FROM checksums WHERE digest = ?", &[text(digest.as_str())])?
+            .first(None)
+            .await
+    }
+
+    /// Every version of a workspace's packages of an ecosystem, oldest
+    /// first: what an index of the whole registry is made from.
+    pub async fn ecosystem_versions(&self, workspace: &str, ecosystem: &str, limit: u32) -> Result<Vec<VersionRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {} FROM versions v JOIN packages p ON p.id = v.package_id
+                 WHERE p.workspace = ? AND p.ecosystem = ? AND p.workspace_deleted_at IS NULL
+                 ORDER BY v.published_at, v.id LIMIT {limit}",
+                VERSION_COLUMNS.split(", ").map(|c| format!("v.{c}")).collect::<Vec<_>>().join(", ")
+            ),
+            &[text(workspace), text(ecosystem)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
+    /// A workspace's packages of an ecosystem, by name.
+    pub async fn packages_of(&self, workspace: &str, ecosystem: &str, limit: u32) -> Result<Vec<PackageRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = ? AND workspace_deleted_at IS NULL ORDER BY name LIMIT {limit}"
+            ),
+            &[text(workspace), text(ecosystem)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
     pub async fn forget_blob(&self, digest: &str) -> Result<()> {
         let d = [text(digest)];
         self.db
             .batch(vec![
+                self.prepare("DELETE FROM checksums WHERE digest = ?", &d)?,
                 self.prepare("DELETE FROM package_blobs WHERE digest = ?", &d)?,
                 self.prepare("DELETE FROM workspace_blobs WHERE digest = ?", &d)?,
                 self.prepare("DELETE FROM blobs WHERE digest = ?", &d)?,

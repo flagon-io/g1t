@@ -8,6 +8,7 @@
 //! `BlobStore` port (store/), metadata in D1 (db.rs).
 
 mod access;
+mod archive;
 mod cargo;
 mod cargo_http;
 mod composer;
@@ -16,15 +17,23 @@ mod db;
 mod digest;
 mod limits;
 mod manifest;
+mod maven;
+mod maven_http;
 mod names;
 mod npm;
 mod npm_http;
+mod nuget;
+mod nuget_http;
 mod oci;
 mod quota;
 mod range;
+mod rubygems;
+mod rubygems_http;
 mod store;
 mod token;
 mod upload;
+mod xml;
+mod yaml;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -350,6 +359,9 @@ impl Packages {
                 "npm" => format!("{}/-/npm/@{}/{}", self.host, p.workspace, p.name),
                 "composer" => format!("{}/-/composer/{}/{}", self.host, p.workspace, p.name),
                 "cargo" => format!("{}/-/cargo/{}/{}", self.host, p.workspace, p.name),
+                "maven" => format!("{}/-/maven/{}/{}", self.host, p.workspace, p.name),
+                "nuget" => format!("{}/-/nuget/{}/{}", self.host, p.workspace, p.name),
+                "rubygems" => format!("{}/-/rubygems/{}/{}", self.host, p.workspace, p.name),
                 _ => format!("{}/{}/{}", self.host, p.workspace, p.name),
             },
             visibility: Visibility::parse(&p.visibility),
@@ -409,6 +421,13 @@ impl Packages {
             return Ok(not_found());
         }
         let tags = self.db.tags(&row.package.id).await?;
+        // A yanked or unlisted version reads as deprecated: still there
+        // for lockfiles that name it, no longer picked for new ones.
+        let withdrawn = match row.package.ecosystem.as_str() {
+            "nuget" => "Unlisted: still restored by projects that name it, no longer shown in search.",
+            "rubygems" => "Yanked: Bundler no longer picks this version for new lockfiles.",
+            _ => "Yanked: Cargo no longer picks this version for new lockfiles.",
+        };
         let versions = self
             .db
             .versions(&row.package.id, VERSIONS_SHOWN)
@@ -432,10 +451,8 @@ impl Packages {
                     subject: version.subject,
                     published_by: version.published_by,
                     published_at: version.published_at,
-                    // A yanked crate version reads as deprecated: still
-                    // there for lockfiles, no longer picked for new ones.
                     deprecated: if version.yanked != 0 {
-                        Some("Yanked: Cargo no longer picks this version for new lockfiles.".to_owned())
+                        Some(withdrawn.to_owned())
                     } else {
                         version.deprecated
                     },
@@ -680,6 +697,15 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         }
         if request.path().starts_with("/-/cargo/") {
             return packages.cargo(request, &ctx).await;
+        }
+        if request.path().starts_with("/-/maven/") {
+            return packages.maven(request, &ctx).await;
+        }
+        if request.path().starts_with("/-/nuget/") {
+            return packages.nuget(request, &ctx).await;
+        }
+        if request.path().starts_with("/-/rubygems/") {
+            return packages.rubygems(request, &ctx).await;
         }
         return packages.registry(request, &ctx).await;
     };

@@ -5,9 +5,10 @@ description: Publish and install packages beside your code, with the same people
 
 A workspace can publish packages to g1t and install them from it, beside
 the code they are built from: container images, npm packages, Rust
-crates, Composer packages and Go modules. Each registry speaks its
-tool's own protocol, so `docker`, `npm`, `cargo`, `composer` and `go`
-work with nothing but a login and an address. Composer packages and Go modules are
+crates, Maven artifacts, NuGet packages, Ruby gems, Composer packages and
+Go modules. Each registry speaks its tool's own protocol, so `docker`,
+`npm`, `cargo`, `mvn` and Gradle, `dotnet`, `gem` and Bundler, `composer`
+and `go` work with nothing but a login and an address. Composer packages and Go modules are
 read from the workspace's repositories: there is nothing to upload.
 
 | Registry | Address | Guide |
@@ -15,6 +16,9 @@ read from the workspace's repositories: there is nothing to upload.
 | Container images | `g1t.sh/<workspace>/<name>` | [Container images](/guides/containers/) |
 | npm | `https://g1t.sh/-/npm/`, for the scope `@<workspace>` | [npm](/guides/npm/) |
 | Cargo | `sparse+https://g1t.sh/-/cargo/<workspace>/index/`, a registry per workspace | [Cargo](/guides/cargo/) |
+| Maven | `https://g1t.sh/-/maven/<workspace>/`, a repository per workspace, for Maven and Gradle | [Maven](/guides/maven/) |
+| NuGet | `https://g1t.sh/-/nuget/<workspace>/v3/index.json`, a feed per workspace | [NuGet](/guides/nuget/) |
+| RubyGems | `https://g1t.sh/-/rubygems/<workspace>/`, a registry per workspace, for `gem push` and Bundler | [RubyGems](/guides/rubygems/) |
 | Composer | `https://g1t.sh/-/composer/<workspace>/`, from the workspace's repositories | [Composer](/guides/composer/) |
 | Go | `g1t.sh/<workspace>/<repo>`, straight from git | [Go modules](/guides/go/) |
 
@@ -34,7 +38,9 @@ A package is linked to a repository, or belongs to its workspace.
   an npm package whose `package.json` `repository` is a g1t.sh repository
   of the workspace, or which is named like one (`@acme/web`), and of a
   crate whose `Cargo.toml` `repository` is one, or which is named like
-  one. It then has the repository's visibility and [roles](/guides/access-and-roles/):
+  one. Maven artifacts (by artifactId, or the POM's `<scm><url>`), NuGet
+  packages (by `RepositoryUrl`, or their id) and gems (by
+  `source_code_uri`, or their name) are linked the same way. It then has the repository's visibility and [roles](/guides/access-and-roles/):
 
   | | Needs |
   | --- | --- |
@@ -94,8 +100,9 @@ storage past those amounts is charged instead. See
 ## Events and the audit log
 
 Publishing a version, deleting a version and deleting a package are
-[audit log](/guides/audit-log/) entries (so are deprecating an npm version
-and yanking or unyanking a crate version), and the events
+[audit log](/guides/audit-log/) entries (so are deprecating an npm version,
+yanking or unyanking a crate version, unlisting or listing a NuGet version
+and yanking a gem version), and the events
 `package.published`, `package.version_deleted`, `package.deleted` and
 `package.visibility_changed`, which [webhooks](/guides/webhooks/) can be
 sent: a linked package's go to its repository's webhooks and its

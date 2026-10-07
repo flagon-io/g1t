@@ -1,4 +1,4 @@
-import { Container, Layers, Package } from "lucide-react";
+import { Boxes, Container, Feather, Gem, Layers, Package } from "lucide-react";
 
 import type { Ecosystem } from "@g1t/contracts";
 
@@ -11,6 +11,9 @@ const TINT: Record<Ecosystem, string> = {
   composer: "#c08a5b",
   go: "#00add8",
   cargo: "#dea584",
+  maven: "#e8762b",
+  nuget: "#3d8fd6",
+  rubygems: "#e9573f",
 };
 
 /** A small tile marking which registry a package is in. */
@@ -26,6 +29,9 @@ export function PackageIcon({ ecosystem, size = 28, className }: { ecosystem: Ec
       {ecosystem === "container" && <Container size={glyph} />}
       {ecosystem === "composer" && <Layers size={glyph} />}
       {ecosystem === "cargo" && <Package size={glyph} />}
+      {ecosystem === "maven" && <Feather size={glyph} />}
+      {ecosystem === "nuget" && <Boxes size={glyph} />}
+      {ecosystem === "rubygems" && <Gem size={glyph} />}
       {ecosystem === "npm" && <span style={{ fontSize: glyph }}>n</span>}
       {ecosystem === "go" && <span style={{ fontSize: Math.round(size * 0.38) }}>GO</span>}
     </span>
