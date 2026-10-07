@@ -42,9 +42,10 @@ Cargo asks for the token and hands it to the provider. A token with full
 access works; one with scopes needs `packages:read` to add private crates
 and `packages:write` to publish and yank them.
 
-The token can also come from the environment, as
-`CARGO_REGISTRIES_ACME_TOKEN` for a registry named `acme`, which is how
-[workflows](#in-workflows) give it.
+The token can also come from the environment instead of `cargo login`,
+as `CARGO_REGISTRIES_ACME_TOKEN` for a registry named `acme` (the name in
+capitals, with `-` written `_`). The `cargo:token` provider reads it from
+there, which is how [workflows](#in-workflows) give it.
 
 ## Publish
 
@@ -149,7 +150,9 @@ A private crate you cannot see looks exactly like one that does not exist.
 ## In workflows
 
 A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-add and publish the workspace's crates. Give it to Cargo for the registry:
+add and publish the workspace's crates. A workflow runs no `cargo login`:
+give Cargo the registry, its credential provider and the token in the
+environment, each named for the registry:
 
 ```yaml
 jobs:
@@ -165,9 +168,16 @@ jobs:
       - run: cargo publish --registry acme
 ```
 
-`CARGO_REGISTRIES_ACME_INDEX` and `CARGO_REGISTRIES_ACME_CREDENTIAL_PROVIDER`
-are needed only when the project has no `.cargo/config.toml` naming the
-registry.
+| Variable | Is | Needed |
+| --- | --- | --- |
+| `CARGO_REGISTRIES_ACME_INDEX` | The registry's index, as `index` in `.cargo/config.toml`. | When no `.cargo/config.toml` names the registry. |
+| `CARGO_REGISTRIES_ACME_CREDENTIAL_PROVIDER` | `cargo:token`, as `credential-provider` in `.cargo/config.toml`. | When no `.cargo/config.toml` names the provider. Without one, Cargo refuses a registry with private crates, even with the token in the environment. |
+| `CARGO_REGISTRIES_ACME_TOKEN` | The token, for `cargo:token` to hand to the registry. | Always: `cargo publish` sends it, and Cargo sends it to read a registry with private crates. |
+
+With the project's `.cargo/config.toml` from [above](#set-up-cargoconfigtoml)
+checked in, `CARGO_REGISTRIES_ACME_TOKEN` is all a workflow sets. The same
+variables let `cargo build` and `cargo test` download the workspace's
+private crates.
 
 ## Size
 
@@ -181,8 +191,8 @@ A `.crate` file is stored once, by its content.
 
 | Error | Means |
 | --- | --- |
-| `401` | No token, or a wrong or expired one. Run `cargo login --registry acme` with a g1t access token. |
-| `authenticated registries require a credential-provider to be configured` | The workspace has private crates, and Cargo has no provider for its token. Add `credential-provider = "cargo:token"` to the registry in `.cargo/config.toml`. |
+| `401` | No token, or a wrong or expired one. Run `cargo login --registry acme` with a g1t access token, or set `CARGO_REGISTRIES_ACME_TOKEN`. |
+| `authenticated registries require a credential-provider to be configured` | The workspace has private crates, and Cargo has no provider for its token. Add `credential-provider = "cargo:token"` to the registry in `.cargo/config.toml`, or set `CARGO_REGISTRIES_ACME_CREDENTIAL_PROVIDER=cargo:token`. |
 | `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The message says which. |
 | `404` | No such crate or version, or a private one you cannot see. |
 | `400` | The publish was refused: a name that is not valid or is taken, a version already published, or metadata Cargo did not send in full. The message says which. |
