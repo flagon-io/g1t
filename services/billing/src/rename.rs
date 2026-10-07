@@ -79,6 +79,33 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM trial_grants WHERE workspace = ?2",
     "UPDATE OR IGNORE storage_days SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM storage_days WHERE workspace = ?2",
+    "UPDATE OR IGNORE package_storage_days SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM package_storage_days WHERE workspace = ?2",
+    // Month-end snapshots, by day: the current slug's stays if it has one.
+    "UPDATE OR IGNORE pending_days SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM pending_days WHERE workspace = ?2",
+    // Model tokens, by day, person, session and model: the counts add.
+    "INSERT INTO token_usage (day, workspace, person, session, model, tier, input, output, cache_read, cache_write, requests)
+     SELECT day, ?1, person, session, model, tier, input, output, cache_read, cache_write, requests FROM token_usage WHERE workspace = ?2
+     ON CONFLICT (day, workspace, person, session, model) DO UPDATE SET
+       input = token_usage.input + excluded.input,
+       output = token_usage.output + excluded.output,
+       cache_read = token_usage.cache_read + excluded.cache_read,
+       cache_write = token_usage.cache_write + excluded.cache_write,
+       requests = token_usage.requests + excluded.requests",
+    "DELETE FROM token_usage WHERE workspace = ?2",
+    // Price notices sent, one per version: told once is told.
+    "UPDATE OR IGNORE price_notices SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM price_notices WHERE workspace = ?2",
+    "UPDATE OR IGNORE closed_workspaces SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM closed_workspaces WHERE workspace = ?2",
+    // The margin figures and counts are redone each day from the ledger and
+    // the meters; moved so the days between keep adding up.
+    "UPDATE OR IGNORE workspace_costs SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM workspace_costs WHERE workspace = ?2",
+    "UPDATE OR IGNORE own_counts SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM own_counts WHERE workspace = ?2",
+    "UPDATE margin_alerts SET subject = ?1 WHERE kind = 'workspace' AND subject = ?2",
     // Holds, spikes, requests and the plan's payments: many per workspace.
     "UPDATE reservations SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE reservations SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
@@ -147,6 +174,8 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE OR IGNORE billing_accounts SET id = ?3, name = CASE WHEN name = ?2 THEN ?1 ELSE name END WHERE id = ?4",
     "DELETE FROM billing_accounts WHERE id = ?4",
     "UPDATE admin_actions SET account = ?3 WHERE account = ?4",
+    "UPDATE OR IGNORE budget_alerts SET account = ?3 WHERE account = ?4",
+    "DELETE FROM budget_alerts WHERE account = ?4",
     "UPDATE account_members SET account_id = ?3 WHERE account_id = ?4",
     "UPDATE enterprise_invoices SET account_id = ?3 WHERE account_id = ?4",
 ];
@@ -278,6 +307,8 @@ mod tests {
             "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
             "allowance_use", "trial_grants", "storage_days",
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
+            "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
+            "workspace_costs", "own_counts",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

@@ -180,6 +180,16 @@ mod tests {
     }
 
     #[test]
+    fn a_rename_moves_every_table_a_reset_wipes() {
+        let moved = crate::rename::STATEMENTS.join("\n");
+        // Lines follow their invoice, which carries the workspace.
+        for sql in STATEMENTS.iter().filter(|sql| !sql.contains("workspace_invoice_lines")) {
+            let table = sql.split_whitespace().nth(2).unwrap();
+            assert!(moved.contains(&format!(" {table} ")), "{table} is wiped on a reset but not moved on a rename");
+        }
+    }
+
+    #[test]
     fn statements_name_at_most_the_workspace_and_its_account() {
         assert!(STATEMENTS.iter().all(|sql| crate::rename::parameters(sql) <= 2));
         assert_eq!(crate::rename::parameters(STATEMENTS.last().unwrap()), 2);
