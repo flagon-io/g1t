@@ -6,12 +6,13 @@ const SMALL = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 
 /**
  * Dollars, to the cent; amounts under a dollar keep up to four places, so
- * a run that cost a fraction of a cent does not read as nothing.
+ * a run that cost a fraction of a cent does not read as nothing. With
+ * `cents`, always to the cent: for statements, where figures sit in columns.
  */
-export function usd(micros: number | null | undefined, { signed = false }: { signed?: boolean } = {}): string {
+export function usd(micros: number | null | undefined, { signed = false, cents = false }: { signed?: boolean; cents?: boolean } = {}): string {
   if (micros == null) return "—";
   const dollars = micros / MICROS_PER_DOLLAR;
-  const text = (Math.abs(dollars) < 1 ? SMALL : WHOLE).format(Math.abs(dollars));
+  const text = (Math.abs(dollars) < 1 && !cents ? SMALL : WHOLE).format(Math.abs(dollars));
   if (dollars < 0) return `−${text}`;
   return signed && dollars > 0 ? `+${text}` : text;
 }

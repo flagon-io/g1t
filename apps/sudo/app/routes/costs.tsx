@@ -665,7 +665,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
       title: "Usage sold",
       note:
         included > 0
-          ? `What workspaces paid for usage (${usd(o.usageMicros)}) and their plan's included usage (${usd(included)}), against what it cost`
+          ? `What workspaces paid for usage (${usd(o.usageMicros, { cents: true })}) and their plan's included usage (${usd(included, { cents: true })}), against what it cost`
           : "What workspaces paid for usage, against what that usage cost",
       in: usageIn,
       cost: usageCost,
@@ -676,7 +676,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
       title: "Running g1t",
       note:
         included > 0
-          ? `Plans (${usd(o.plansMicros)}) less the included usage they paid for, against Workers, D1, KV, Queues and the rest`
+          ? `Plans (${usd(o.plansMicros, { cents: true })}) less the included usage they paid for, against Workers, D1, KV, Queues and the rest`
           : "Plans, against Workers, D1, KV, Queues and the rest of the platform",
       in: o.plansMicros - included,
       cost: running,
@@ -696,7 +696,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
       : []),
     {
       title: "Given away",
-      note: givenParts.length > 0 ? givenParts.map(([why, micros]) => `${why} ${usd(micros)}`).join(" · ") : "Nothing this range",
+      note: givenParts.length > 0 ? givenParts.map(([why, micros]) => `${why} ${usd(micros, { cents: true })}`).join(" · ") : "Nothing this range",
       in: null,
       cost: given,
       result: null,
@@ -710,18 +710,18 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <Stat
           label="Margin on usage sold"
           value={percentLabel(usagePercent)}
-          hint={`${usd(usageIn)} paid for usage that cost ${usd(usageCost)}`}
+          hint={`${usd(usageIn, { cents: true })} paid for usage that cost ${usd(usageCost, { cents: true })}`}
           tone={marginTone(usagePercent, floor)}
         />
         <Stat
           label="Given away on purpose"
-          value={usd(given)}
-          hint={givenParts.length > 0 ? givenParts.map(([why, micros]) => `${usd(micros)} ${why}`).join(", ") : "Nothing given this range"}
+          value={usd(given, { cents: true })}
+          hint={givenParts.length > 0 ? givenParts.map(([why, micros]) => `${usd(micros, { cents: true })} ${why}`).join(", ") : "Nothing given this range"}
         />
         <Stat
           label="Who g1t paid"
-          value={usd(o.costMicros)}
-          hint={`Cloudflare ${usd(o.cloudflareCostMicros ?? o.costMicros - (o.modelsCostMicros ?? 0))}, model providers ${usd(o.modelsCostMicros ?? 0)}`}
+          value={usd(o.costMicros, { cents: true })}
+          hint={`Cloudflare ${usd(o.cloudflareCostMicros ?? o.costMicros - (o.modelsCostMicros ?? 0), { cents: true })}, model providers ${usd(o.modelsCostMicros ?? 0, { cents: true })}`}
         />
         <Stat
           label="Proposals waiting"
@@ -749,10 +749,10 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
                   <span className="text-fg">{row.title}</span>
                   <span className="block text-xs text-faint">{row.note}</span>
                 </td>
-                <td className="tabular px-4 py-2.5 text-right">{row.in == null ? <span className="text-faint">—</span> : usd(row.in)}</td>
-                <td className="tabular px-4 py-2.5 text-right">{usd(row.cost)}</td>
+                <td className="tabular px-4 py-2.5 text-right">{row.in == null ? <span className="text-faint">—</span> : usd(row.in, { cents: true })}</td>
+                <td className="tabular px-4 py-2.5 text-right">{usd(row.cost, { cents: true })}</td>
                 <td className={`tabular px-4 py-2.5 text-right sm:pr-5 ${resultClass(row.tone)}`}>
-                  {row.result == null ? "a budget" : usd(row.result, { signed: true })}
+                  {row.result == null ? "a budget" : usd(row.result, { signed: true, cents: true })}
                 </td>
               </tr>
             ))}
@@ -760,12 +760,12 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
               <td className="px-4 py-2.5 sm:px-5">
                 <span className="font-medium text-fg">All in</span>
                 <span className="block text-xs text-faint">
-                  {given > 0 ? `${usd(given)} of the cost was given away on purpose; without it, ${usd(net + given, { signed: true })}` : "Everything above"}
+                  {given > 0 ? `${usd(given, { cents: true })} of the cost was given away on purpose; without it, ${usd(net + given, { signed: true, cents: true })}` : "Everything above"}
                 </span>
               </td>
-              <td className="tabular px-4 py-2.5 text-right font-medium">{usd(moneyIn)}</td>
-              <td className="tabular px-4 py-2.5 text-right font-medium">{usd(spent)}</td>
-              <td className="tabular px-4 py-2.5 text-right font-medium text-fg sm:pr-5">{usd(net, { signed: true })}</td>
+              <td className="tabular px-4 py-2.5 text-right font-medium">{usd(moneyIn, { cents: true })}</td>
+              <td className="tabular px-4 py-2.5 text-right font-medium">{usd(spent, { cents: true })}</td>
+              <td className="tabular px-4 py-2.5 text-right font-medium text-fg sm:pr-5">{usd(net, { signed: true, cents: true })}</td>
             </tr>
           </tbody>
         </table>
