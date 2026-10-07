@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use g1t_contracts::access::Capability;
 use g1t_contracts::events::IssueEvent;
-use g1t_contracts::repos::{GetByIdArgs, Repo, RepoPath};
+use g1t_contracts::repos::{PathByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
@@ -620,26 +620,23 @@ impl Work {
                 continue;
             }
             *left -= 1;
-            // Whoever queued it could see the repository then; where it is
-            // now is asked as them.
-            let repo: Outcome<Repo> = g1t_kit::call(
-                &self.repos,
-                "get_by_id",
-                &GetByIdArgs {
-                    id: row.repo_id.clone(),
-                    viewer: Some(actor.clone()),
-                },
-            )
-            .await?;
-            if let Outcome::Ok(repo) = repo {
-                ready.push(ReadyIssue {
-                    repo: RepoPath {
-                        namespace: repo.namespace,
-                        name: repo.name,
-                    },
-                    number: row.number,
-                    actor,
-                });
+            // Where the repository is now. Who may run agents there is the
+            // runner's question when it starts the issue, asked as whoever
+            // queued it; this only needs the address.
+            let path: Option<RepoPath> =
+                g1t_kit::call(&self.repos, "path_by_id", &PathByIdArgs { id: row.repo_id.clone() }).await?;
+            match path {
+                Some(repo) => ready.push(ReadyIssue { repo, number: row.number, actor }),
+                None => {
+                    // Taken but not handed over: put it back, so it is not
+                    // lost with nothing said.
+                    worker::console_error!("ready_issues: no path for {}; issue #{} stays queued", row.repo_id, row.number);
+                    self.db
+                        .prepare("UPDATE issues SET queued_by = ? WHERE repo_id = ? AND number = ?")
+                        .bind(&[row.queued_by.as_str().into(), row.repo_id.as_str().into(), row.number.into()])?
+                        .run()
+                        .await?;
+                }
             }
         }
         Ok(ready)

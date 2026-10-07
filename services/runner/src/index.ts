@@ -1896,9 +1896,12 @@ export default class RunnerService
       if (started.ok) continue;
       // Waiting for a slot: `run` put it back in the queue itself.
       if (isWaiting(started.error.message)) continue;
-      // The workspace's plan refused it: said on the issue, once, rather
-      // than tried again every few minutes.
-      if (started.error.code === "payment_required") {
+      const where = `${issue.repo.namespace}/${issue.repo.name}#${issue.number}`;
+      console.error(`startReady: ${where} not started (${started.error.code}): ${started.error.message}`);
+      // Refused for good (the plan, or who queued it may not run agents
+      // here): said on the issue, once, rather than tried again every few
+      // minutes with nothing to show for it.
+      if (started.error.code === "payment_required" || started.error.code === "forbidden") {
         await agentsClient(this.env.WORK)
           .agentComment(issue.repo, issue.number, `I could not start on this: ${started.error.message}`)
           .catch(() => false);
