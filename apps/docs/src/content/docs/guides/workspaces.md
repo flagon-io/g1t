@@ -272,27 +272,32 @@ workspace's members, deployments or settings. Its members also see a
 **Usage** card there with this month's spend.
 
 The sidebar is one list, in groups: **Mission control**, the workspace's
-**Overview** and **Explore**; its projects; what it builds and runs with
-across them (**Agent fleet**, **Context**, **Memory**, **Security**,
-**Guardrails**, [**Secrets and variables**](/guides/secrets-and-variables/),
-[**Integrations**](/guides/integrations/) and
-[**Webhooks**](/guides/webhooks/)); then **Usage**, what g1t's runs have
-cost (see [usage and billing](/guides/usage-and-billing/)), **Support** and
+**Overview** and **Explore**; its projects; the places work happens across
+them (**Agent fleet**, **Context**, **Memory**, **Security** and
+[**Packages**](/guides/packages/)); then who belongs (**Members**, and
+**Teams** soon), **Usage**, what g1t's runs have cost (see
+[usage and billing](/guides/usage-and-billing/)), **Support** and
 **Settings**. An item with an arrow opens a list of its own in the sidebar:
-**Settings** slides over to the workspace's settings, and the row at the
-top, **‹ Settings**, slides back:
+**Settings** slides over to how the workspace is set up and connected, and
+the row at the top, **‹ Settings**, slides back:
 
 | Settings | Who | |
 | --- | --- | --- |
 | **General** | Owners | The icon, the display name, a one-line description and the address (the slug). |
-| **Members** | Members | Who belongs, and their roles. Owners add and remove people, set the [base permission](/guides/access-and-roles/#the-base-permission), and see the **Outside collaborators** tab. |
 | **Repositories** | Members | The workspace's repositories. Owners also see **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. |
 | **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
+| **Guardrails** | Members | What agents may do and spend across the workspace. Owners change them. |
+| [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. |
+| **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
+| [**Integrations**](/guides/integrations/) | Members | Model providers and connected services. Owners connect and remove them. |
+| [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. |
 | **Billing and plans** | Members | [The g1t plan](/guides/usage-and-billing/#the-g1t-plan), [limits](/guides/usage-and-billing/#limits) and the statement. Owners start the plan, check a card, prepay and set limits. |
 | **Audit log** | Members | [Every action agents, people and tokens took](/guides/audit-log/). |
 
-Integrations, secrets and variables, webhooks and guardrails are in the
-main list. Members see each; owners change them.
+**Members** is in the main list, for every member to see; owners add and
+remove people there, set the
+[base permission](/guides/access-and-roles/#the-base-permission), and see
+the **Outside collaborators** tab.
 
 Opening a [project](/guides/projects/) slides the sidebar over to the
 project's own list, with **‹ All projects** at the top to go back. Its

@@ -16300,7 +16300,7 @@
           "Runners"
         ],
         "summary": "List self-hosted runners",
-        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its members; a repository's need the Admin role on it.\n\nA repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds.",
+        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its owners; a repository's need the Admin role on it.\n\nA repository's list holds its own runners (`repo` set) and the workspace's that its runner group lets it use. A runner is `offline` when it has not polled for 90 seconds.",
         "x-operation": "list_runners",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runners",
@@ -16948,7 +16948,7 @@
           "Runners"
         ],
         "summary": "List self-hosted runners for a workspace",
-        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its members; a repository's need the Admin role on it.",
+        "description": "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its owners; a repository's need the Admin role on it.",
         "x-operation": "list_runners",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runners",
@@ -17546,7 +17546,7 @@
           "Runners"
         ],
         "summary": "List runner groups",
-        "description": "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Members only.",
+        "description": "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Owners only.",
         "x-operation": "list_runner_groups",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runner_groups",

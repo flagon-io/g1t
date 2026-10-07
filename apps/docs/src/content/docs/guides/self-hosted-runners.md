@@ -18,7 +18,7 @@ on it, register it once, and it picks up jobs that ask for it with
 
 | Where | Page | Who manages it |
 | --- | --- | --- |
-| A workspace | **Settings → Runners**, `g1t.sh/<workspace>/-/runners` | Owners. Members can see the list. |
+| A workspace | **Settings → Runners**, `g1t.sh/<workspace>/-/runners` | Owners only. |
 | A project | **Settings → Runners**, `g1t.sh/<workspace>/<project>/settings/runners` | People with the Admin [role](/guides/access-and-roles/) on its repository |
 
 A workspace's runners serve the repositories their [group](#groups) allows.

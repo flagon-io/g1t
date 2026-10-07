@@ -914,10 +914,10 @@ impl Op {
             Op::SetActionsVariable => "Add or change a variable's row, as for secrets.",
             Op::DeleteActionsVariable => "Remove a variable: one row by `id`, or every row of the key.",
             Op::ListRunners => {
-                "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its members; a repository's need the Admin role on it."
+                "A workspace's self-hosted runners, or a repository's: its own and the workspace's that its runner group lets it use. Each has its `labels` (always `self-hosted`, its OS and its architecture), `status` (`online`, `busy` or `offline`), the `work` it is doing, its `version` and when it was last seen. A workspace's are seen by its owners; a repository's need the Admin role on it."
             }
             Op::ListRunnerGroups => {
-                "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Members only."
+                "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Owners only."
             }
             Op::GetRunnerSettings => {
                 "Where a workspace's (or a repository's) g1t agent work runs, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends agent runs, checks, reviews and the merge queue to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`)."

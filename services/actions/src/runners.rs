@@ -227,7 +227,11 @@ impl Actions {
                 let role = actor.workspaces.iter().find(|m| m.slug.eq_ignore_ascii_case(&slug)).map(|m| m.role);
                 match role {
                     None => Ok(fail(FailureCode::NotFound, "There is no such workspace, or you are not a member of it.")),
-                    Some(Role::Member) if manage => Ok(fail(FailureCode::Forbidden, format!("Only owners of {slug} can change its self-hosted runners."))),
+                    // A workspace's machines and their tokens are its owners' alone, to see as well as change.
+                    Some(Role::Member) => Ok(fail(
+                        FailureCode::Forbidden,
+                        format!("Only owners of {slug} can {} its self-hosted runners.", if manage { "change" } else { "see" }),
+                    )),
                     Some(_) => Ok(Outcome::Ok(Place { workspace: slug, repo: None })),
                 }
             }
