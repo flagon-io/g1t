@@ -77,6 +77,7 @@ import { hubContext } from "./hub";
 import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor } from "./bump";
+import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
@@ -180,6 +181,12 @@ export interface RunnerEnv {
    * either way.
    */
   ABUSE_WATCH?: string;
+  /**
+   * Nightly backups (backup.ts): how many queued backups one sweep starts
+   * (`0`: none, backups off here), and how many may run at once.
+   */
+  BACKUPS_PER_SWEEP?: string;
+  BACKUPS_RUNNING?: string;
 }
 
 /**
@@ -226,7 +233,12 @@ type Run =
    * its branch. The security service opens the pull request when it hears
    * the push, so a failure has no one to tell.
    */
-  | { kind: "bump"; repo: RepoPath; branch: string };
+  | { kind: "bump"; repo: RepoPath; branch: string }
+  /**
+   * A repository's nightly backup: a bundle cut and sent to the repos
+   * service. g1t's own work, never charged to the workspace.
+   */
+  | { kind: "backup"; jobId: string; token: string };
 /**
  * Whose sandbox time it is, reported when the sandbox stops, and the
  * machine it ran on when it was not the standard one.
@@ -284,6 +296,9 @@ function computeKindOf(kind: Run["kind"]): ComputeKind | null {
       return "workflow";
     case "deploy":
       return "deploy";
+    // Not metered: a backup is g1t's own cost.
+    case "backup":
+      return null;
     default:
       return "agent";
   }
@@ -449,9 +464,11 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       if (build) delete harness.GUARDRAILS;
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
       await this.start({ envVars: { ...vars, ...harness, ...watch }, enableInternet: !restricted });
-      if (guard) {
-        await this.ctx.storage.put("timeCap", guard.minutes);
-        await this.schedule(guard.minutes * 60 + ALARM_GRACE_SECONDS, "timeUp");
+      // A backup has no guardrails, but still a time cap.
+      const cap = guard?.minutes ?? (run.kind === "backup" ? BACKUP_MINUTES : null);
+      if (cap) {
+        await this.ctx.storage.put("timeCap", cap);
+        await this.schedule(cap * 60 + ALARM_GRACE_SECONDS, "timeUp");
       }
     } catch (error) {
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage, this.env.INTEGRATIONS);
@@ -677,6 +694,14 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     }
     // Nothing was pushed, so no pull request opens; why is in its log.
     if (run.kind === "bump") return;
+    if (run.kind === "backup") {
+      // Refused harmlessly if the sandbox reported before it stopped; the
+      // job is otherwise tried again later tonight.
+      await reposClient(this.env.REPOS)
+        .failBackup(run.jobId, run.token, why ?? `The sandbox exited with ${exitCode}.`)
+        .catch((error: unknown) => console.log("backup failure not reported", run.jobId, String(error)));
+      return;
+    }
     if (run.kind === "deploy") {
       // Refused harmlessly if the build reported its end before it stopped.
       await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
@@ -1880,6 +1905,34 @@ export default class RunnerService
     await this.drainWaits();
     await this.advanceAll();
     await this.startReady();
+    await this.startBackups().catch((error: unknown) => console.log("backups not started", String(error)));
+  }
+
+  /**
+   * Starts a few of the nightly backups the repos service queued, each in
+   * a sandbox of its own that holds only its job's token: the sandbox asks
+   * for a read-only git credential itself, when it is ready to clone. No
+   * plan is asked and nothing is metered: backups are g1t's own work.
+   */
+  private async startBackups(): Promise<void> {
+    const pace = backupPace(this.env.BACKUPS_PER_SWEEP, this.env.BACKUPS_RUNNING);
+    if (pace.perSweep === 0) return;
+    const repos = reposClient(this.env.REPOS);
+    for (const claim of await repos.claimBackups(pace.perSweep, pace.running)) {
+      try {
+        const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(backupSandboxName(claim)));
+        await sandbox.run({
+          kind: "backup",
+          jobId: claim.jobId,
+          token: claim.token,
+          // For `abuse.flagged`: whose repository it was.
+          owner: { workspace: claim.path.namespace, repo: `${claim.path.namespace}/${claim.path.name}` },
+          envVars: backupEnv(claim, "https://api.g1t.sh"),
+        });
+      } catch (error) {
+        await repos.failBackup(claim.jobId, claim.token, `The sandbox could not start: ${String(error)}`).catch(() => null);
+      }
+    }
   }
 
   /**

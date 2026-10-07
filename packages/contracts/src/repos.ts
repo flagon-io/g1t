@@ -277,7 +277,31 @@ export interface ReposApi {
    * branch with the point where it left the default branch.
    */
   compare(repoId: string, viewer: Viewer, base?: string | null, head?: string | null): Promise<Result<Comparison>>;
+
+  /**
+   * Services only, for the runner's sweep: up to `limit` queued nightly
+   * backups, each now running with a token of its own, so long as no more
+   * than `maxRunning` are then running. Empty when backups are off.
+   */
+  claimBackups(limit: number, maxRunning: number): Promise<BackupClaim[]>;
+
+  /**
+   * Services only: a backup's sandbox stopped before it reported, so the
+   * job is tried again later. Refused harmlessly once it has reported.
+   */
+  failBackup(jobId: string, token: string, error: string): Promise<Result<boolean>>;
 }
+
+/**
+ * A nightly backup to start (`g1t_contracts::backups`): the sandbox is
+ * given the job's id and token, and nothing else.
+ */
+export type BackupClaim = {
+  jobId: string;
+  token: string;
+  repoId: string;
+  path: RepoPath;
+};
 
 /** Lines `start` to `end` (inclusive, from 1) last changed by `commit`. */
 export type BlameRange = { start: number; end: number; commit: string };
