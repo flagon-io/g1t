@@ -60,10 +60,12 @@ import {
   type PipelineStage,
   PIPELINE,
   TIME,
+  actorIds,
   ageBuckets,
   eventItem,
   firstPassRate,
   groupActivity,
+  nameActor,
   passRate,
   pipelineStage,
   queuedNumbers,
@@ -87,7 +89,7 @@ import {
 } from "../../lib/project-kind";
 import { AboutEditor, KindMenu, LinkList } from "../../components/project-about";
 import { DocsHead, ElsewhereHead, type ExternalDeployment, OtherHead, WhereItRuns } from "../../components/project-head";
-import { actions, agents, deployments, events as eventLog, packages, projects, repos, work } from "../../lib/services.server";
+import { actions, agents, deployments, events as eventLog, identity, packages, projects, repos, work } from "../../lib/services.server";
 import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
@@ -323,9 +325,13 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
 
   // --- Activity and health -------------------------------------------------------
   const eventList: G1tEvent[] = recent ?? [];
-  const items = eventList
+  const logged = eventList
     .map((event) => eventItem(event, path))
     .filter((item): item is ActivityItem => item != null);
+  // The log names people by account id: their usernames, in one lookup.
+  const ids = actorIds(logged.map((item) => item.actor));
+  const names = ids.length > 0 ? await soft(identity.usernames(ids)) : {};
+  const items = logged.map((item) => ({ ...item, actor: nameActor(item.actor, names) }));
   const checkEvents = eventList.flatMap((event) =>
     event.type === "checks.completed" ? [{ repo: "", number: event.data.number, at: Date.parse(event.time), passed: event.data.status === "passed" }] : [],
   );
