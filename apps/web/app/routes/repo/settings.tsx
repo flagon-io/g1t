@@ -1,15 +1,13 @@
-import { Box, Code2, GitBranch, Rocket } from "lucide-react";
+import { Box, Code2, GitBranch, Link2, Rocket } from "lucide-react";
 import { useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { DeploysSetting } from "@g1t/contracts";
-
 import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
+import { KindFields, LinkFields } from "../../components/project-about";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
-import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
-import { DEPLOYS_CHOICES } from "../../lib/project-kind";
+import { KIND_CHOICE_SETS, type KindChoice, choiceOf, linksFromForm, neverDeploys } from "../../lib/project-kind";
 import { deployments, identity, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
@@ -43,21 +41,29 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
+  const choice = form.get("choice") as KindChoice | null;
+  const set = choice && choice in KIND_CHOICE_SETS ? KIND_CHOICE_SETS[choice] : null;
   const saved = await projects.update(user, params.owner, params.repo, {
     name: String(form.get("name") ?? ""),
     // Blank, or the reset, and it follows the repository's description again.
     description: form.get("inherit") === "description" ? null : String(form.get("description") ?? ""),
     rootDir: String(form.get("rootDir") ?? ""),
-    deploys: (form.get("deploys") as DeploysSetting | null) ?? undefined,
+    ...(set ?? {}),
+    // Production's address is asked for beside Deployed elsewhere, and kept otherwise.
+    ...(form.has("productionUrl") ? { productionUrl: String(form.get("productionUrl")) } : {}),
+    homepage: String(form.get("homepage") ?? ""),
+    docsUrl: String(form.get("docsUrl") ?? ""),
+    links: linksFromForm(form),
   });
   return saved.ok ? { saved: true as const } : { error: saved.error.message };
 }
 
 export default function ProjectSettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const { project, deploymentsOn, mine, creator } = loaderData;
-  const [deploys, setDeploys] = useState<DeploysSetting>(project.deploys);
-  // Not deploying while Deployments are on is refused: they are turned off first.
-  const blocked = deploys === "no" && project.deploys !== "no" && deploymentsOn === true;
+  const [choice, setChoice] = useState<KindChoice | null>(choiceOf(project.setting));
+  // Something that never deploys, while Deployments are on, is refused: they are turned off first.
+  const stops = choice === "library" || choice === "tool" || choice === "other";
+  const blocked = stops && !neverDeploys(project) && deploymentsOn === true;
   const base = `/${params.owner}/${params.repo}`;
   const source = project.source.kind === "hosted" ? project.source : null;
   return (
@@ -140,49 +146,39 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           </Field>
         </section>
 
-        <section className="space-y-4" id="deploys">
+        <section className="scroll-mt-20 space-y-4" id="kind">
+          {/* Old links to #deploys land here too. */}
+          <span id="deploys" />
           <h2 className="flex items-center gap-2 text-sm font-medium">
             <Rocket size={15} className="text-accent" />
-            Deployments for this project
+            What it is
           </h2>
-          <RadioGroup
-            name="deploys"
-            value={deploys}
-            onValueChange={(value) => setDeploys(value as DeploysSetting)}
-            aria-label="Deployments for this project"
-            className="gap-3"
-          >
-            {DEPLOYS_CHOICES.map((choice) => (
-              <RadioOption
-                key={choice.value}
-                value={choice.value}
-                label={choice.label}
-                description={
-                  choice.value === "auto" ? (
-                    <>
-                      {project.detected.kind === "library" ? "Detected: a library, so it doesn't deploy." : "Detected: an app, so it deploys."}{" "}
-                      {project.detected.reason.detail}
-                    </>
-                  ) : (
-                    choice.hint
-                  )
-                }
-              />
-            ))}
-          </RadioGroup>
+          <p className="max-w-2xl text-xs text-muted">
+            Its overview follows: production for what is deployed, packages and releases for a library or a tool, and
+            the steps that apply to it. Only an app or site deployed on g1t is asked to turn on Deployments.
+          </p>
+          <KindFields project={project} choice={choice} onChoice={setChoice} />
           {blocked && (
             <p className="rounded-lg border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-sm text-fg-soft">
               Deployments are on for {project.name}. Turn them off in{" "}
               <Link to={`${base}/settings/deployments`} className="text-fg underline underline-offset-4">
                 Deployments settings
               </Link>{" "}
-              first, then choose Doesn't deploy here.
+              first, then choose this here.
             </p>
           )}
-          <p className="text-xs text-faint">
-            A project that doesn't deploy shows its packages and releases on its overview instead of production. Its
-            Deployments page stays in the sidebar.
+        </section>
+
+        <section className="scroll-mt-20 space-y-4" id="links">
+          <h2 className="flex items-center gap-2 text-sm font-medium">
+            <Link2 size={15} className="text-accent" />
+            Links
+          </h2>
+          <p className="max-w-2xl text-xs text-muted">
+            Shown on its overview, its card, and its workspace's Projects. Each is an http or https address;
+            https:// is added when you leave it out.
           </p>
+          <LinkFields links={project.links} />
         </section>
 
         <div className="flex items-center gap-3">

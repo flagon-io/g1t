@@ -63,6 +63,15 @@
       ]
     },
     {
+      "name": "Projects",
+      "description": "A project is what a workspace builds and runs, from a repository or a root directory in one. Each says what it is, where it runs and where to find it: its homepage, docs and other links.",
+      "x-tools": [
+        "list_projects",
+        "get_project",
+        "update_project"
+      ]
+    },
+    {
       "name": "Workspaces",
       "description": "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
       "x-tools": [
@@ -7275,6 +7284,583 @@
         },
         "x-example-params": {
           "id": "rin_01kp3e9f0g1h2j3k4m5n6p7q8r"
+        }
+      }
+    },
+    "/workspaces/{workspace}/projects": {
+      "get": {
+        "operationId": "list_projects",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List a workspace's projects",
+        "description": "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when g1t deploys it, `elsewhere` when it is deployed by other means, at `production_url`), and its `links`.\n\nBy name. Projects whose repository you cannot see are left out; without a token you see public ones only. `kind` is what the project is, from `setting` where a person set it and from detection otherwise (`detected`, shown beside it); `kind_reason` says why. `runs` is null for what is not deployed. `homepage_inherited` is true while the homepage is its repository's website. `pushed_at` is null until its repository is pushed to. See [Projects](/guides/projects/).",
+        "x-operation": "list_projects",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_projects",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                    "workspace": "flagon-io",
+                    "slug": "g1t",
+                    "name": "g1t",
+                    "description": "Git hosting where people and agents work together.",
+                    "description_inherited": true,
+                    "url": "https://g1t.sh/flagon-io/g1t",
+                    "repository": "flagon-io/g1t",
+                    "root_dir": "",
+                    "default_branch": "main",
+                    "private": false,
+                    "archived": false,
+                    "primary": true,
+                    "kind": "app",
+                    "kind_reason": {
+                      "by": "set",
+                      "detail": "Set to an app that runs elsewhere."
+                    },
+                    "runs": "elsewhere",
+                    "production_url": "https://g1t.sh",
+                    "setting": {
+                      "kind": "app",
+                      "runs": "elsewhere"
+                    },
+                    "detected": {
+                      "kind": "app",
+                      "reason": {
+                        "by": "files",
+                        "detail": "wrangler.jsonc at its root makes it an app."
+                      }
+                    },
+                    "ecosystem": null,
+                    "links": {
+                      "homepage": "https://g1t.sh",
+                      "homepage_inherited": true,
+                      "docs": "https://docs.g1t.sh",
+                      "custom": [
+                        {
+                          "label": "Status",
+                          "url": "https://status.g1t.sh"
+                        }
+                      ]
+                    },
+                    "created_at": "2026-09-01T10:00:00.000Z",
+                    "updated_at": "2026-10-07T11:20:00.000Z",
+                    "pushed_at": "2026-10-07T10:00:00.000Z"
+                  },
+                  {
+                    "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+                    "workspace": "flagon-io",
+                    "slug": "hello",
+                    "name": "hello",
+                    "description": "Greets people from the command line.",
+                    "description_inherited": false,
+                    "url": "https://g1t.sh/flagon-io/hello",
+                    "repository": "flagon-io/hello",
+                    "root_dir": "",
+                    "default_branch": "main",
+                    "private": false,
+                    "archived": false,
+                    "primary": true,
+                    "kind": "library",
+                    "kind_reason": {
+                      "by": "files",
+                      "detail": "composer.json says it is a library."
+                    },
+                    "runs": null,
+                    "production_url": null,
+                    "setting": {
+                      "kind": null,
+                      "runs": null
+                    },
+                    "detected": {
+                      "kind": "library",
+                      "reason": {
+                        "by": "files",
+                        "detail": "composer.json says it is a library."
+                      }
+                    },
+                    "ecosystem": "composer",
+                    "links": {
+                      "homepage": null,
+                      "homepage_inherited": false,
+                      "docs": null,
+                      "custom": []
+                    },
+                    "created_at": "2026-09-12T14:30:00.000Z",
+                    "updated_at": "2026-10-01T09:12:00.000Z",
+                    "pushed_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/projects/{project}": {
+      "get": {
+        "operationId": "get_project",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Get a project",
+        "description": "A project: what it is (`kind`, and `kind_reason` saying why), where it runs (`runs` and `production_url`), what you set and what detection decides (`setting` and `detected`), its repository and `root_dir`, and its homepage, docs and other `links`. A private repository's project is found only by those who can see the repository.\n\n`404` for a project that does not exist or whose repository you cannot see. `setting` holds what a person set, each part null while it is left to detection. `ecosystem` is where a library's files say it is published (`composer`, `npm`, `cargo`, `go` or `python`), or null. See [What a project is](/guides/projects/#what-a-project-is).",
+        "x-operation": "get_project",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "get_project",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, as in g1t.sh/{workspace}/{project}."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                  "workspace": "flagon-io",
+                  "slug": "g1t",
+                  "name": "g1t",
+                  "description": "Git hosting where people and agents work together.",
+                  "description_inherited": true,
+                  "url": "https://g1t.sh/flagon-io/g1t",
+                  "repository": "flagon-io/g1t",
+                  "root_dir": "",
+                  "default_branch": "main",
+                  "private": false,
+                  "archived": false,
+                  "primary": true,
+                  "kind": "app",
+                  "kind_reason": {
+                    "by": "set",
+                    "detail": "Set to an app that runs elsewhere."
+                  },
+                  "runs": "elsewhere",
+                  "production_url": "https://g1t.sh",
+                  "setting": {
+                    "kind": "app",
+                    "runs": "elsewhere"
+                  },
+                  "detected": {
+                    "kind": "app",
+                    "reason": {
+                      "by": "files",
+                      "detail": "wrangler.jsonc at its root makes it an app."
+                    }
+                  },
+                  "ecosystem": null,
+                  "links": {
+                    "homepage": "https://g1t.sh",
+                    "homepage_inherited": true,
+                    "docs": "https://docs.g1t.sh",
+                    "custom": [
+                      {
+                        "label": "Status",
+                        "url": "https://status.g1t.sh"
+                      }
+                    ]
+                  },
+                  "created_at": "2026-09-01T10:00:00.000Z",
+                  "updated_at": "2026-10-07T11:20:00.000Z",
+                  "pushed_at": "2026-10-07T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "g1t"
+        }
+      },
+      "patch": {
+        "operationId": "update_project",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Update a project",
+        "description": "Change a project: its name, description, root directory, what it is, where it runs and its links. Only what you give changes. kind auto and runs auto leave each to detection. Setting runs makes it an app unless it is docs; making it a library, tool or other while Deployments are on is refused, so turn Deployments off first. Give description or homepage as null or \"\" to follow the repository's again, and production_url or docs_url as null or \"\" to clear it. links replaces its other links: at most 10, each a label of up to 40 characters and an http or https address (https:// is added when you leave the scheme out). Needs the Maintain role or higher on its repository.\n\nOnly the fields given change. `kind` and `runs` take `auto` to go back to detection. Setting `runs` makes the project an app unless it is docs. Making it a `library`, `tool` or `other` while [Deployments](/guides/deployments/) are on is refused with `409 conflict`: turn them off first. `description` and `homepage` given as null or `\"\"` follow the repository's again; `production_url` and `docs_url` given as null or `\"\"` are cleared. `links` replaces the project's other links: at most 10, each with a `label` of up to 40 characters and an http or https `url` (`https://` is added when you leave the scheme out); anything else is refused with `422 invalid`. Needs the Maintain role or higher on the project's repository. Recorded in the [audit log](/guides/audit-log/). See [Settings](/guides/projects/#settings).",
+        "x-operation": "update_project",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "update_project",
+        "x-scope": "repo:write",
+        "security": [
+          {
+            "token": [
+              "repo:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, as in g1t.sh/{workspace}/{project}."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+                  "workspace": "flagon-io",
+                  "slug": "g1t",
+                  "name": "g1t",
+                  "description": "Git hosting where people and agents work together.",
+                  "description_inherited": true,
+                  "url": "https://g1t.sh/flagon-io/g1t",
+                  "repository": "flagon-io/g1t",
+                  "root_dir": "",
+                  "default_branch": "main",
+                  "private": false,
+                  "archived": false,
+                  "primary": true,
+                  "kind": "app",
+                  "kind_reason": {
+                    "by": "set",
+                    "detail": "Set to an app that runs elsewhere."
+                  },
+                  "runs": "elsewhere",
+                  "production_url": "https://g1t.sh",
+                  "setting": {
+                    "kind": "app",
+                    "runs": "elsewhere"
+                  },
+                  "detected": {
+                    "kind": "app",
+                    "reason": {
+                      "by": "files",
+                      "detail": "wrangler.jsonc at its root makes it an app."
+                    }
+                  },
+                  "ecosystem": null,
+                  "links": {
+                    "homepage": "https://g1t.sh",
+                    "homepage_inherited": true,
+                    "docs": "https://docs.g1t.sh",
+                    "custom": [
+                      {
+                        "label": "Status",
+                        "url": "https://status.g1t.sh"
+                      }
+                    ]
+                  },
+                  "created_at": "2026-09-01T10:00:00.000Z",
+                  "updated_at": "2026-10-07T11:20:00.000Z",
+                  "pushed_at": "2026-10-07T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Its name."
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Its own description. null or \"\" follows its repository's again."
+                  },
+                  "root_dir": {
+                    "type": "string",
+                    "description": "Where in the repository it lives, such as apps/web; \"\" for the whole repository."
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "app",
+                      "library",
+                      "tool",
+                      "docs",
+                      "other"
+                    ],
+                    "description": "What it is. auto leaves it to detection. A library, tool or other runs nowhere."
+                  },
+                  "runs": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "g1t",
+                      "elsewhere"
+                    ],
+                    "description": "Where it runs: g1t when g1t deploys it, elsewhere when it is deployed by other means. auto leaves it to Deployments."
+                  },
+                  "production_url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Production's address when it runs elsewhere. null or \"\" clears it."
+                  },
+                  "homepage": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Its homepage. null or \"\" follows its repository's website again."
+                  },
+                  "docs_url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Where its documentation is read. null or \"\" clears it."
+                  },
+                  "links": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "An http or https address; https:// is added when you leave the scheme out."
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "url"
+                      ]
+                    },
+                    "description": "Its other links, replacing the ones it has. [] removes them all."
+                  }
+                }
+              },
+              "example": {
+                "kind": "app",
+                "runs": "elsewhere",
+                "production_url": "https://g1t.sh",
+                "docs_url": "https://docs.g1t.sh",
+                "links": [
+                  {
+                    "label": "Status",
+                    "url": "https://status.g1t.sh"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "g1t"
         }
       }
     },

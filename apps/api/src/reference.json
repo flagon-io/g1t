@@ -6317,6 +6317,227 @@
     ],
     "notes": "Name every pinned project once; anything else is refused with `422 invalid`."
   },
+  "list_projects": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+        "workspace": "flagon-io",
+        "slug": "g1t",
+        "name": "g1t",
+        "description": "Git hosting where people and agents work together.",
+        "description_inherited": true,
+        "url": "https://g1t.sh/flagon-io/g1t",
+        "repository": "flagon-io/g1t",
+        "root_dir": "",
+        "default_branch": "main",
+        "private": false,
+        "archived": false,
+        "primary": true,
+        "kind": "app",
+        "kind_reason": {
+          "by": "set",
+          "detail": "Set to an app that runs elsewhere."
+        },
+        "runs": "elsewhere",
+        "production_url": "https://g1t.sh",
+        "setting": {
+          "kind": "app",
+          "runs": "elsewhere"
+        },
+        "detected": {
+          "kind": "app",
+          "reason": {
+            "by": "files",
+            "detail": "wrangler.jsonc at its root makes it an app."
+          }
+        },
+        "ecosystem": null,
+        "links": {
+          "homepage": "https://g1t.sh",
+          "homepage_inherited": true,
+          "docs": "https://docs.g1t.sh",
+          "custom": [
+            {
+              "label": "Status",
+              "url": "https://status.g1t.sh"
+            }
+          ]
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "updated_at": "2026-10-07T11:20:00.000Z",
+        "pushed_at": "2026-10-07T10:00:00.000Z"
+      },
+      {
+        "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+        "workspace": "flagon-io",
+        "slug": "hello",
+        "name": "hello",
+        "description": "Greets people from the command line.",
+        "description_inherited": false,
+        "url": "https://g1t.sh/flagon-io/hello",
+        "repository": "flagon-io/hello",
+        "root_dir": "",
+        "default_branch": "main",
+        "private": false,
+        "archived": false,
+        "primary": true,
+        "kind": "library",
+        "kind_reason": {
+          "by": "files",
+          "detail": "composer.json says it is a library."
+        },
+        "runs": null,
+        "production_url": null,
+        "setting": {
+          "kind": null,
+          "runs": null
+        },
+        "detected": {
+          "kind": "library",
+          "reason": {
+            "by": "files",
+            "detail": "composer.json says it is a library."
+          }
+        },
+        "ecosystem": "composer",
+        "links": {
+          "homepage": null,
+          "homepage_inherited": false,
+          "docs": null,
+          "custom": []
+        },
+        "created_at": "2026-09-12T14:30:00.000Z",
+        "updated_at": "2026-10-01T09:12:00.000Z",
+        "pushed_at": null
+      }
+    ],
+    "notes": "By name. Projects whose repository you cannot see are left out; without a token you see public ones only. `kind` is what the project is, from `setting` where a person set it and from detection otherwise (`detected`, shown beside it); `kind_reason` says why. `runs` is null for what is not deployed. `homepage_inherited` is true while the homepage is its repository's website. `pushed_at` is null until its repository is pushed to. See [Projects](/guides/projects/)."
+  },
+  "get_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": {
+      "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+      "workspace": "flagon-io",
+      "slug": "g1t",
+      "name": "g1t",
+      "description": "Git hosting where people and agents work together.",
+      "description_inherited": true,
+      "url": "https://g1t.sh/flagon-io/g1t",
+      "repository": "flagon-io/g1t",
+      "root_dir": "",
+      "default_branch": "main",
+      "private": false,
+      "archived": false,
+      "primary": true,
+      "kind": "app",
+      "kind_reason": {
+        "by": "set",
+        "detail": "Set to an app that runs elsewhere."
+      },
+      "runs": "elsewhere",
+      "production_url": "https://g1t.sh",
+      "setting": {
+        "kind": "app",
+        "runs": "elsewhere"
+      },
+      "detected": {
+        "kind": "app",
+        "reason": {
+          "by": "files",
+          "detail": "wrangler.jsonc at its root makes it an app."
+        }
+      },
+      "ecosystem": null,
+      "links": {
+        "homepage": "https://g1t.sh",
+        "homepage_inherited": true,
+        "docs": "https://docs.g1t.sh",
+        "custom": [
+          {
+            "label": "Status",
+            "url": "https://status.g1t.sh"
+          }
+        ]
+      },
+      "created_at": "2026-09-01T10:00:00.000Z",
+      "updated_at": "2026-10-07T11:20:00.000Z",
+      "pushed_at": "2026-10-07T10:00:00.000Z"
+    },
+    "notes": "`404` for a project that does not exist or whose repository you cannot see. `setting` holds what a person set, each part null while it is left to detection. `ecosystem` is where a library's files say it is published (`composer`, `npm`, `cargo`, `go` or `python`), or null. See [What a project is](/guides/projects/#what-a-project-is)."
+  },
+  "update_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "request": {
+      "kind": "app",
+      "runs": "elsewhere",
+      "production_url": "https://g1t.sh",
+      "docs_url": "https://docs.g1t.sh",
+      "links": [
+        {
+          "label": "Status",
+          "url": "https://status.g1t.sh"
+        }
+      ]
+    },
+    "response": {
+      "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+      "workspace": "flagon-io",
+      "slug": "g1t",
+      "name": "g1t",
+      "description": "Git hosting where people and agents work together.",
+      "description_inherited": true,
+      "url": "https://g1t.sh/flagon-io/g1t",
+      "repository": "flagon-io/g1t",
+      "root_dir": "",
+      "default_branch": "main",
+      "private": false,
+      "archived": false,
+      "primary": true,
+      "kind": "app",
+      "kind_reason": {
+        "by": "set",
+        "detail": "Set to an app that runs elsewhere."
+      },
+      "runs": "elsewhere",
+      "production_url": "https://g1t.sh",
+      "setting": {
+        "kind": "app",
+        "runs": "elsewhere"
+      },
+      "detected": {
+        "kind": "app",
+        "reason": {
+          "by": "files",
+          "detail": "wrangler.jsonc at its root makes it an app."
+        }
+      },
+      "ecosystem": null,
+      "links": {
+        "homepage": "https://g1t.sh",
+        "homepage_inherited": true,
+        "docs": "https://docs.g1t.sh",
+        "custom": [
+          {
+            "label": "Status",
+            "url": "https://status.g1t.sh"
+          }
+        ]
+      },
+      "created_at": "2026-09-01T10:00:00.000Z",
+      "updated_at": "2026-10-07T11:20:00.000Z",
+      "pushed_at": "2026-10-07T10:00:00.000Z"
+    },
+    "notes": "Only the fields given change. `kind` and `runs` take `auto` to go back to detection. Setting `runs` makes the project an app unless it is docs. Making it a `library`, `tool` or `other` while [Deployments](/guides/deployments/) are on is refused with `409 conflict`: turn them off first. `description` and `homepage` given as null or `\"\"` follow the repository's again; `production_url` and `docs_url` given as null or `\"\"` are cleared. `links` replaces the project's other links: at most 10, each with a `label` of up to 40 characters and an http or https `url` (`https://` is added when you leave the scheme out); anything else is refused with `422 invalid`. Needs the Maintain role or higher on the project's repository. Recorded in the [audit log](/guides/audit-log/). See [Settings](/guides/projects/#settings)."
+  },
   "list_secret_scanning_alerts": {
     "params": {
       "owner": "flagon-io",

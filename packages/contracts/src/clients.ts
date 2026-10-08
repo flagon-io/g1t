@@ -756,5 +756,6 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     unpin: (actor, workspace, slug) => call("unpin", { actor, workspace, slug }),
     reorderPins: (actor, workspace, slugs) => call("reorder_pins", { actor, workspace, slugs }),
     visited: (actor, projectId) => call("visited", { actor, projectId }),
+    publicLinks: (repos) => call("public_links", { repos }),
   };
 }

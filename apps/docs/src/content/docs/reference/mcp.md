@@ -533,9 +533,11 @@ for people: an agent's or a workspace's token cannot make them.
 ## `workspace`
 
 Workspaces own repositories: create, update or delete one, invite members,
-connect [integrations](/guides/integrations/) and model providers, and keep
-your own [pinned projects](/guides/workspaces/#pinned-and-recent-projects)
-at the top of its sidebar. See [workspaces](/guides/workspaces/).
+connect [integrations](/guides/integrations/) and model providers, read and
+change its [projects](/guides/projects/) (what each is, where it runs, its
+links), and keep your own
+[pinned projects](/guides/workspaces/#pinned-and-recent-projects) at the top
+of its sidebar. See [workspaces](/guides/workspaces/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -552,6 +554,9 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 | [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`get_model_routes`](/reference/api/integrations/get-model-routes/) | Which provider and model each kind of work goes to. Members only. | `workspace` | `workspace:read` |
 | [`set_model_routes`](/reference/api/integrations/set-model-routes/) | Replace them: each route has `task`, `connection_id` (null for g1t's models) and `model` (on g1t's models: `small`, `large`, `frontier`, or null for Auto). Owners only. | `workspace`, `routes` | `workspace:admin` |
+| [`list_projects`](/reference/api/projects/list-projects/) | Its projects you can see, by name: each with its `kind` and `kind_reason`, where it `runs` and its `production_url`, its repository and `root_dir`, and its `links`. | `workspace` | `repo:read` |
+| [`get_project`](/reference/api/projects/get-project/) | One project, with what a person set (`setting`) and what detection decides (`detected`). | `workspace`, `project` | `repo:read` |
+| [`update_project`](/reference/api/projects/update-project/) | Change its `name`, `description`, `root_dir`, `kind`, `runs`, `production_url`, `homepage`, `docs_url` or `links`; only what you give changes. `auto` leaves `kind` or `runs` to detection, null clears a link or goes back to the repository's, and `links` replaces its other links (at most 10). Maintain role or higher. | `workspace`, `project` | `repo:write` |
 | [`list_pinned_projects`](/reference/api/pinned-projects/list-pinned-projects/) | Your pinned projects in it, in your order, each with its `position`. Your own: a personal token or an OAuth sign-in. | `workspace` | `account:read` |
 | [`pin_project`](/reference/api/pinned-projects/pin-project/) | Pin a project you can see, at `position` (0 first) or at the end; at most 8 a workspace. Returns your pins. | `workspace`, `project` | `account:write` |
 | [`unpin_project`](/reference/api/pinned-projects/unpin-project/) | Unpin it. Returns your pins. | `workspace`, `project` | `account:write` |

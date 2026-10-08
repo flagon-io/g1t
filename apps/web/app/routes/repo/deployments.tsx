@@ -11,6 +11,7 @@ import { page } from "../../lib/meta";
 import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
+import { neverDeploys } from "../../lib/project-kind";
 import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireRepo } from "../../lib/access.server";
@@ -35,7 +36,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     projects.get(params.owner, params.repo, viewer).catch(() => null),
   ]);
   // Set not to deploy, in General settings: turning them on waits for that to change.
-  const notDeploying = project?.ok ? project.value.deploys === "no" : false;
+  const notDeploying = project?.ok ? neverDeploys(project.value) : false;
   // Deployments come with the g1t plan. Someone outside the workspace does
   // not see its plans; the page works without, and the deployments service
   // refuses a deploy the plan does not cover.
@@ -124,9 +125,9 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
           </p>
           {loaderData.notDeploying ? (
             <p className="mt-4 max-w-2xl text-sm text-muted">
-              This project is set as one that doesn't deploy, a library or a tool. To deploy it, choose Deploys or Detect
-              automatically in{" "}
-              <Link to={`/${params.owner}/${params.repo}/settings#deploys`} className="text-fg underline underline-offset-4">
+              This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose
+              App or site, deployed on g1t, in{" "}
+              <Link to={`/${params.owner}/${params.repo}/settings#kind`} className="text-fg underline underline-offset-4">
                 its settings
               </Link>{" "}
               first.

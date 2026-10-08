@@ -248,6 +248,9 @@ export const OPERATION_SCOPES = [
   ["buy_ai_credit", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
+  // Projects follow their repositories.
+  ["list_projects", "repo:read"],
+  ["get_project", "repo:read"],
   ["search", "repo:read"],
   ["list_events", "repo:read"],
   ["list_labels", "repo:read"],
@@ -267,6 +270,7 @@ export const OPERATION_SCOPES = [
   ["get_codeowners_errors", "repo:read"],
   ["create_repo", "repo:write"],
   ["update_repo", "repo:write"],
+  ["update_project", "repo:write"],
   ["update_repo_settings", "repo:write"],
   ["list_repo_rulesets", "repo:read"],
   ["get_repo_ruleset", "repo:read"],
