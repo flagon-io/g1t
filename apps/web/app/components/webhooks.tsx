@@ -26,6 +26,10 @@ const GROUPS: { title: string; events: string[] }[] = [
     events: ["pull.opened", "pull.ready", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed"],
   },
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
+  {
+    title: "Deployments",
+    events: ["deployment.created", "deployment_status.created", "deployment.succeeded", "deployment.failed"],
+  },
   { title: "Agents", events: ["session.appended", "agent.asked"] },
   { title: "Access", events: ["repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
   {

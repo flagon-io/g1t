@@ -315,6 +315,19 @@ export function reposClient(service: ServiceBinding): ReposApi {
     branches: (path, viewer) => call("branches", { path, viewer }),
     lastCommits: (path, viewer, ref, treePath) => call("last_commits", { path, viewer, ref, treePath }),
     tags: (path, viewer) => call("tags", { path, viewer }),
+    about: (path, viewer) => call("about", { path, viewer }),
+    languages: (path, viewer) => call("languages", { path, viewer }),
+    contributors: (path, viewer) => call("contributors", { path, viewer }),
+    license: (path, viewer) => call("license", { path, viewer }),
+    stars: (path, viewer) => call("stars", { path, viewer }),
+    star: (actor, path, starred) => call("star", { path, actor, starred }),
+    stargazers: (path, viewer, page) => call("stargazers", { path, viewer, page: page ?? null }),
+    starred: (username, viewer) => call("starred", { username, viewer }),
+    releases: (path, viewer) => call("releases", { path, viewer }),
+    release: (path, viewer, which) => call("release", { path, viewer, id: which.id ?? null, tag: which.tag ?? null, latest: which.latest ?? false }),
+    createRelease: (actor, path, release) => call("create_release", { path, actor, ...release }),
+    updateRelease: (actor, path, id, change) => call("update_release", { path, actor, id, ...change }),
+    deleteRelease: (actor, path, id) => call("delete_release", { path, actor, id }),
     listFiles: (repoId, ref, limit) => call("list_files", { repoId, ref, skipDirs: [], limit }),
     rawBlobs: (repoId, hashes, maxBytes) => call("raw_blobs", { repoId, hashes, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
@@ -702,6 +715,11 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
       call("add_domain", { actor, project, hostname, twin: !!options.twin }),
     removeDomain: (actor, project, id) => call("remove_domain", { actor, project, id }),
     refreshDomain: (actor, project, id) => call("refresh_domain", { actor, project, id }),
+    repoDeployments: (repo, viewer, filter = {}) => call("list_deployments", { repo, viewer, ...filter }),
+    repoDeployment: (repo, id, viewer) => call("get_deployment", { repo, id, viewer }),
+    environments: (repo, viewer) => call("list_environments", { repo, viewer }),
+    createDeployment: (actor, repo, input) => call("create_deployment", { repo, actor, ...input }),
+    createDeploymentStatus: (actor, repo, id, input) => call("create_deployment_status", { repo, actor, id, ...input }),
   };
 }
 
@@ -757,5 +775,6 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     unpin: (actor, workspace, slug) => call("unpin", { actor, workspace, slug }),
     reorderPins: (actor, workspace, slugs) => call("reorder_pins", { actor, workspace, slugs }),
     visited: (actor, projectId) => call("visited", { actor, projectId }),
+    publicLinks: (repos) => call("public_links", { repos }),
   };
 }

@@ -74,6 +74,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Projects', slug: 'guides/projects' },
 						{ label: 'Deployments', slug: 'guides/deployments' },
+						{ label: 'Deployments API', slug: 'guides/deployments-api' },
 						{ label: 'Packages', slug: 'guides/packages' },
 						{ label: 'Container images', slug: 'guides/containers' },
 						{ label: 'npm', slug: 'guides/npm' },
@@ -144,6 +145,7 @@ export default defineConfig({
 						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
 						{ label: 'Teams', slug: 'guides/teams' },
 						{ label: 'Managing a repository', slug: 'guides/managing-repositories' },
+						{ label: 'Releases', slug: 'guides/releases' },
 						{ label: 'Transferring a repository', slug: 'guides/transferring-repositories' },
 						{ label: 'Audit log', slug: 'guides/audit-log' },
 						{ label: 'Usage and billing', slug: 'guides/usage-and-billing' },

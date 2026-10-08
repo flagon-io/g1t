@@ -347,7 +347,8 @@ The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with 
 - **Find a project** matches every word you type in a project's name, its
   address or its description. Press <kbd>/</kbd> anywhere on the page to
   start typing.
-- **Filters**: public or private; apps or libraries; the language its
+- **Filters**: public or private; [what it is](/guides/projects/#what-a-project-is)
+  (apps, libraries, and tools, docs or other when the workspace has any); the language its
   manifests say it is written in; only projects with
   [Deployments](/guides/deployments/) on; and archived projects, which are
   left out unless you ask for them. Each choice shows how many projects it

@@ -1364,6 +1364,8 @@ export type OverallMargin = {
   /** Credits from g1t spent on usage, by kind: given, never money in. Refunds come off money in instead. */
   givenCreditPromotionalMicros?: number;
   givenCreditGoodwillMicros?: number;
+  /** What testing resets wiped that g1t paid for: the usage still happened, so its cost is given, never a leak. */
+  givenResetMicros?: number;
   /** Credits over the range: given (every kind), spent on usage, and refunds' money given back. */
   creditsGivenMicros?: number;
   creditsUsedMicros?: number;

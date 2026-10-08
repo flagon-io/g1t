@@ -212,6 +212,8 @@ export interface InboxApi {
   /** `null` goes back to the default, participating. */
   watch(username: string, repoId: string, repo: string, level: WatchLevel | null, events?: WatchEvent[]): Promise<Watching>;
   watched(username: string): Promise<Watching[]>;
+  /** How many watch a repository: all of it, or some of it (custom). */
+  watchers(repoId: string): Promise<number>;
   settings(username: string): Promise<InboxSettings>;
   updateSettings(username: string, changes: Partial<InboxSettings>): Promise<InboxSettings>;
 }
@@ -238,6 +240,7 @@ export function inboxClient(events: ServiceBinding): InboxApi {
     watching: (username, repoId) => call("inbox_watching", { username, repoId }),
     watch: (username, repoId, repo, level, events = []) => call("inbox_watch", { username, repoId, repo, level, events }),
     watched: (username) => call("inbox_watched", { username }),
+    watchers: (repoId) => call("inbox_watchers", { repoId }),
     settings: (username) => call("inbox_settings", { username }),
     updateSettings: (username, changes) => call("inbox_update_settings", { username, ...changes }),
   };

@@ -28,15 +28,18 @@ providers, use the [AI Gateway](/guides/ai-gateway/). Each provider's
 
 On g1t's models you do not have to pick a model. **Auto**, the default,
 sends each job to the least costly model that can do it, from three tiers:
-**fast** (Claude Haiku 4.5 today), **standard** (Claude Sonnet 5.5) and
+**fast** (Claude Haiku 5.5 today), **standard** (Claude Sonnet 5.5) and
 **most capable** (Claude Opus 5.5). It decides by the kind of job, the
 size of the change it reads, the issue's labels, whether the last attempt
 at the same work failed, and what has worked in the repository before:
 
-- Catching up, answering a question and reviewing a small change that
-  touches no sensitive path start on the fast model.
-- Making and revising changes, planning, and most reviews start on the
-  standard model.
+- Catching up, answering a question, planning, and reviewing a small
+  change that touches no sensitive path start on the fast model.
+- Making and revising changes, and most reviews, start on the standard
+  model.
+- Planning runs at high effort (the model thinks longer before it
+  answers), answering at medium and catching up at low, on models that
+  take an effort level.
 - A review of a very large change, work on an issue labelled
   `architecture`, and work that failed twice in a row go to the most
   capable model. One failure moves the next attempt up one tier.
@@ -45,7 +48,7 @@ at the same work failed, and what has worked in the repository before:
   keeps failing, up.
 
 Every run says which model it used and why, in one line on its run and in
-its pull request's session, such as *Used a fast model (Claude Haiku 4.5):
+its pull request's session, such as *Used a fast model (Claude Haiku 5.5):
 small change, 3 files and 80 lines.* The full rules are in
 [which model runs](/guides/working-with-g1t/#which-model-runs).
 

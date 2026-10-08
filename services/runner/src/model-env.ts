@@ -43,6 +43,14 @@ export type ModelRoute = {
   price?: TokenPrice;
 };
 
+/**
+ * How hard the model thinks before it answers, on models that take it
+ * (Claude Haiku 5.5 and later): more effort, more thinking tokens.
+ */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
+
 /** How a job's rule decides: a tier, or `change` to size the change it reads. */
 export type TaskRule = Tier | "change";
 
@@ -64,6 +72,12 @@ export type AgentRouting = {
   tiers: Record<Tier, ModelRoute>;
   /** The tier each kind of job starts from, or `change` to size it. */
   tasks: Record<JobKind, TaskRule>;
+  /**
+   * The effort each kind of job runs at, whatever tier it lands on; left
+   * out, the harness's own default. Only on g1t's tiers: a route that
+   * names its own model is sent as it is.
+   */
+  effort: Partial<Record<JobKind, Effort>>;
   /** The largest change `change` sends to the small tier. */
   smallChange: { files: number; lines: number };
   /** A change larger than this (either) is reviewed on the frontier tier. */
@@ -127,15 +141,16 @@ export type Routed = {
 /** The routing g1t ships with, for whatever the configuration leaves out. */
 export const DEFAULT_ROUTING: AgentRouting = {
   tiers: {
+    // Prompts up to 100,000 tokens; past that, five times as much.
     small: {
-      modelName: "Claude Haiku 4.5",
-      model: "claude-haiku-4-5-20251001",
-      price: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+      modelName: "Claude Haiku 5.5",
+      model: "claude-haiku-5-5",
+      price: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
     },
     large: {
       modelName: "Claude Sonnet 5.5",
       model: "claude-sonnet-5-5",
-      price: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+      price: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
     },
     frontier: {
       modelName: "Claude Opus 5.5",
@@ -143,7 +158,10 @@ export const DEFAULT_ROUTING: AgentRouting = {
       price: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
     },
   },
-  tasks: { implement: "large", revise: "large", answer: "small", review: "change", update: "small", plan: "large" },
+  // Plans start on the fast model thinking hard, and go up a tier when
+  // one fails or leaves low confidence, as any work does.
+  tasks: { implement: "large", revise: "large", answer: "small", review: "change", update: "small", plan: "small" },
+  effort: { plan: "high", answer: "medium", update: "low" },
   smallChange: { files: 10, lines: 200 },
   largeChange: { files: 60, lines: 3000 },
   largeLabels: ["security"],
@@ -174,6 +192,10 @@ export function parseRouting(json: string | undefined): AgentRouting {
   for (const [kind, rule] of Object.entries(given.tasks ?? {})) {
     if (kind in tasks && (isTier(rule) || rule === "change")) tasks[kind as JobKind] = rule;
   }
+  const effort = { ...DEFAULT_ROUTING.effort };
+  for (const [kind, level] of Object.entries(given.effort ?? {})) {
+    if (kind in tasks && EFFORTS.includes(level as Effort)) effort[kind as JobKind] = level as Effort;
+  }
   const tiers = { ...DEFAULT_ROUTING.tiers };
   for (const tier of TIERS) {
     const route = given.tiers?.[tier];
@@ -188,6 +210,7 @@ export function parseRouting(json: string | undefined): AgentRouting {
   return {
     tiers,
     tasks,
+    effort,
     smallChange: { ...DEFAULT_ROUTING.smallChange, ...given.smallChange },
     largeChange: { ...DEFAULT_ROUTING.largeChange, ...given.largeChange },
     largeLabels: labels(given.largeLabels, DEFAULT_ROUTING.largeLabels),

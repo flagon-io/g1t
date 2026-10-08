@@ -1463,8 +1463,11 @@ export default class RunnerService
           ...(named ? { ANTHROPIC_SMALL_FAST_MODEL: named, ANTHROPIC_DEFAULT_HAIKU_MODEL: named } : {}),
         }
       : modelEnv(this.env, routing, task, tier, direct ? { ...tags, session: direct } : tags);
+    // How hard it thinks, by the kind of work, on g1t's tiers.
+    const effort = named ? undefined : routing.effort[kind];
+    if (effort) vars.CLAUDE_CODE_EFFORT_LEVEL = effort;
     // Why this model: shown on the run and at the top of its session.
-    vars.AGENT_MODEL_REASON = reason;
+    vars.AGENT_MODEL_REASON = effort ? `${reason.replace(/\.$/, "")}, at ${effort} effort.` : reason;
     if (ticket.value) {
       // How the sandbox says what the run cost. Kept from the agent.
       vars.BILLING_RUN = ticket.value.runId;

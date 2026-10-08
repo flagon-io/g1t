@@ -7,6 +7,8 @@
 use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
+use crate::about::AboutOp;
+use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -44,6 +46,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         "Pinned projects",
         "The projects you keep at the top of a workspace's sidebar, in your order, up to eight a workspace. Your own: personal tokens and sessions only.",
         &[Op::ListPinnedProjects, Op::PinProject, Op::UnpinProject, Op::ReorderPinnedProjects],
+    ),
+    (
+        "Projects",
+        "A project is what a workspace builds and runs, from a repository or a root directory in one. Each says what it is, where it runs and where to find it: its homepage, docs and other links.",
+        &[Op::ListProjects, Op::GetProject, Op::UpdateProject],
     ),
     (
         "Workspaces",
@@ -99,6 +106,35 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ListCheckNames,
             Op::GetCodeownersErrors,
             Op::ListEvents,
+        ],
+    ),
+    (
+        "Repository insights",
+        "What a repository's default branch says about it, read in the background and kept by commit: the languages it is written in, who made it, and its license.",
+        &[Op::About(AboutOp::GetLanguages), Op::About(AboutOp::ListContributors), Op::About(AboutOp::GetLicense)],
+    ),
+    (
+        "Stars",
+        "Starring a repository, to keep it and to say you like it: who starred one, and what you starred.",
+        &[
+            Op::About(AboutOp::ListStargazers),
+            Op::About(AboutOp::ListStarred),
+            Op::About(AboutOp::CheckStarred),
+            Op::About(AboutOp::Star),
+            Op::About(AboutOp::Unstar),
+        ],
+    ),
+    (
+        "Releases",
+        "A release is a tag published with a title and notes. The latest is the newest published one that is neither a draft nor a prerelease.",
+        &[
+            Op::About(AboutOp::ListReleases),
+            Op::About(AboutOp::CreateRelease),
+            Op::About(AboutOp::GetLatestRelease),
+            Op::About(AboutOp::GetReleaseByTag),
+            Op::About(AboutOp::GetRelease),
+            Op::About(AboutOp::UpdateRelease),
+            Op::About(AboutOp::DeleteRelease),
         ],
     ),
     (
@@ -311,6 +347,19 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::CancelWorkflowRun,
             Op::RerunWorkflowRun,
             Op::UpdateWorkflow,
+        ],
+    ),
+    (
+        "Deployments",
+        "A repository's deployments wherever they run: reported from any CI with these routes, made by g1t Actions jobs with an `environment:`, or built on g1t.page. Each has statuses, shows on its commit as the check `deploy / <environment>`, and belongs to an environment.",
+        &[
+            Op::Deployments(DeploymentsOp::ListDeployments),
+            Op::Deployments(DeploymentsOp::CreateDeployment),
+            Op::Deployments(DeploymentsOp::GetDeployment),
+            Op::Deployments(DeploymentsOp::ListDeploymentStatuses),
+            Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
+            Op::Deployments(DeploymentsOp::ListEnvironments),
+            Op::Deployments(DeploymentsOp::GetEnvironment),
         ],
     ),
     (
@@ -540,6 +589,9 @@ fn title(op: Op) -> &'static str {
         Op::PinProject => "Pin a project",
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",
+        Op::ListProjects => "List a workspace's projects",
+        Op::GetProject => "Get a project",
+        Op::UpdateProject => "Update a project",
         Op::ListTeams => "List teams",
         Op::GetTeam => "Get a team",
         Op::CreateTeam => "Create a team",
@@ -559,6 +611,8 @@ fn title(op: Op) -> &'static str {
         Op::GetCodeownersErrors => "List CODEOWNERS errors",
         Op::Security(op) => op.title(),
         Op::Rules(op) => op.title(),
+        Op::About(op) => op.title(),
+        Op::Deployments(op) => op.title(),
     }
 }
 

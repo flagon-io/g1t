@@ -35,7 +35,7 @@ your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects
 
 | Page | Address | |
 | --- | --- | --- |
-| **Overview** | `g1t.sh/<workspace>/<project>` | Production with a screenshot, or for a library its packages; the steps left to get to production or to a first release; what is in progress, active branches, live previews, recent builds, and the source. See [the overview](#the-overview). |
+| **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; the steps that apply to it; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
 | **Issues**, **Pull requests**, **Merge queue**, **Plan** | `…/issues` and so on | As they always were. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
@@ -53,20 +53,40 @@ else sees what the project shares publicly.
 
 | Part | What it shows |
 | --- | --- |
-| **Production** | For an app: a screenshot of the live site, which opens it; its address, the commit it runs and when it went up; **Visit** and **Redeploy**. See [the production screenshot](/guides/deployments/#the-production-screenshot). |
-| **Packages** | For a [library or a tool](#apps-and-libraries), in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
-| **Get to production**, or **Ship a release** for a library | The checklists below, until every step is done or you dismiss it. |
+| **What it is** | A badge, such as **App, deployed elsewhere** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click. |
+| **Production** | For an app [deployed on g1t](/guides/deployments/): a screenshot of the live site, which opens it; its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
+| **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
+| **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
+| **Get to production**, **Ship a release** or **Get started** | The [checklist](#the-checklist) for what the project is, until every step is done or you dismiss it. |
 | **Right now** | Agents at work, and open pull requests moving from working to landed. |
 | **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
 | **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
-| **Recent changes**, **Activity**, **Previews** | What landed, everything that happened, and the previews that are up. |
+| **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, everything that happened, and the previews that are up. |
+| **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
 | **Health**, **Dependencies**, **Clone** | How often checks pass, recent builds and open issues by age; what it uses and what uses it; the clone address. |
+
+### The checklist
+
+People with a role on its repository see a card that counts what the
+project has done, such as **3/5**. Its steps follow
+[what the project is](#what-a-project-is): only an app deployed on g1t is
+asked to deploy, add a domain or open a preview. Each step is worked out
+from the project itself, and each links to where you do it. The card goes
+away when every step is done. To hide it sooner, choose **×** on it. That
+hides it for this project in this browser only.
+
+| What it is | Card | Steps |
+| --- | --- | --- |
+| App or site, deployed on g1t | **Get to production** | [Below](#get-to-production). |
+| Library, tool | **Ship a release** | [Below](#ship-a-release). |
+| App, deployed elsewhere | **Get started** | Push code; add production's address; add checks on pull requests; repository instructions; a first issue for g1t. |
+| App nobody has placed yet | **Get started** | Push code; say where it runs; add checks on pull requests; repository instructions; a first issue for g1t. |
+| Documentation | **Get started** | Push code; add where its docs are read (a docs or homepage address); repository instructions; a first issue for g1t. |
+| Something else | **Get started** | Push code; add its links; repository instructions; a first issue for g1t. |
 
 ### Get to production
 
-People with a role on its repository see a card that counts what the project has done towards
-production, such as **3/6**. Each step is worked out from the project
-itself, and each links to where you do it:
+For an app or site deployed on g1t:
 
 | Step | Done when | Links to |
 | --- | --- | --- |
@@ -77,13 +97,10 @@ itself, and each links to where you do it:
 | Set up repository instructions | `AGENTS.md` or `CLAUDE.md` is at the root of the default branch. | The instructions on the **Agents** page. See [repository instructions](/guides/working-with-g1t/#repository-instructions). |
 | Assign a first issue to g1t | g1t has had a run, a pull request or an issue here. | A new issue. |
 
-The card goes away when every step is done. To hide it sooner, choose
-**×** on it. That hides it for this project in this browser only.
-
 ### Ship a release
 
-A [library or a tool](#apps-and-libraries) does not deploy, so its card
-counts the steps to a first release instead:
+A library or a tool does not deploy, so its card counts the steps to a
+first release instead:
 
 | Step | Done when | Links to |
 | --- | --- | --- |
@@ -93,49 +110,71 @@ counts the steps to a first release instead:
 | Set up repository instructions | As above. | The **Agents** page. |
 | Assign a first issue to g1t | As above. | A new issue. |
 
-## Apps and libraries
+## What a project is
 
-Every project is either an **app**, which deploys, or a **library or a
-tool**, which is published and installed. An app's overview shows
-production and the steps to get there; a library's shows its packages
-and the steps to a first release, and never offers to turn on
-deployments. Its **Deployments** page stays in the sidebar either way.
+A project is one of these, and its overview follows:
 
-g1t works it out for itself, in this order:
+| What it is | Its overview shows |
+| --- | --- |
+| **App or site, deployed on g1t** | Production on g1t.page, with previews and domains, and **Get to production**. |
+| **App or site, deployed elsewhere** | Production at the address you give, deployed by your own pipeline, with **Visit**. It is never asked to turn on Deployments; Deployment settings stay one link away. |
+| **Library or package** | The packages its repository publishes and how to install them, and **Ship a release**. |
+| **Tool or CLI** | The same as a library: its packages and releases. |
+| **Documentation** | Where its docs are read. Docs can be published on g1t.page too, by turning on Deployments. |
+| **Something else** | Its homepage and links. |
 
-1. If [Deployments](/guides/deployments/) are on for the project, it is an app.
+Its **Deployments** page stays in the sidebar whatever it is.
+
+### How g1t works it out
+
+Until you say, g1t works it out for itself, in this order:
+
+1. If [Deployments](/guides/deployments/) are on for the project, it is
+   an app deployed on g1t.
 2. If its repository publishes a package other than a container image,
    such as a [Composer](/guides/composer/) or [npm](/guides/npm/)
    package, it is a library.
 3. If the files at the root of its default branch (or of its root
-   directory) say it is a library, it is one:
+   directory) say what it is, it is that:
 
-   | File | A library when |
+   | File | Says |
    | --- | --- |
-   | `composer.json` | Its `type` is anything but `project`, such as `library`; or it has no `type`, has `autoload`, and has no `public/index.php`. |
-   | `Cargo.toml` | It builds a library (`[lib]` or `src/lib.rs`) and no binary (`[[bin]]` or `src/main.rs`). |
-   | `go.mod` | No `.go` file at the root is `package main`. |
-   | `pyproject.toml` | It has a build backend and depends on no app framework, such as Django, Flask or FastAPI. |
-   | `package.json` | It has `main`, `exports`, `module`, `files` or `bin`, no `start` or `dev` script, and no app framework such as Next.js, Astro, Nuxt, Remix or SvelteKit. |
+   | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | An app. |
+   | `mkdocs.yml`, `book.toml`, `docusaurus.config.js` (or `.ts`, `.mjs`) or `antora.yml` | Documentation. |
+   | `composer.json` | A library when its `type` is anything but `project`, such as `library`; or it has no `type`, has `autoload`, and has no `public/index.php`. |
+   | `Cargo.toml` | A library when it builds a library (`[lib]` or `src/lib.rs`) and no binary (`[[bin]]` or `src/main.rs`). |
+   | `go.mod` | A library when no `.go` file at the root is `package main`. |
+   | `pyproject.toml` | A library when it has a build backend and depends on no app framework, such as Django, Flask or FastAPI. |
+   | `package.json` | A tool when it has `bin` and nothing to import (no `main`, `module` or `exports`); a library when it has `main`, `exports`, `module`, `files` or `bin`; either way only with no `start` or `dev` script and no app framework such as Next.js, Astro, Nuxt, Remix or SvelteKit. |
 
    The language's own manifest is read before `package.json`, which many
-   projects carry only for tooling. A Workers config (`wrangler.jsonc`,
-   `wrangler.json` or `wrangler.toml`) or an `index.html` at the root
-   makes it an app.
+   projects carry only for tooling. An `index.html` at the root makes it
+   an app.
 4. Anything else is an app.
 
 The files are read again on every push to the default branch.
 
-To decide for yourself, open **Settings**, then **General**, and under
-**Deployments for this project** choose:
+An app found this way runs on g1t only while Deployments are on. Until
+you say where it runs, its overview asks, in place of production:
+**Deploy on g1t**, **It's deployed elsewhere** (with production's
+address), or **It isn't deployed** (a library, a tool, documentation or
+something else).
 
-- **Detect automatically**: the rules above. It shows what was detected
-  and why.
-- **Deploys**: an app, whatever its files say.
-- **Doesn't deploy**: a library or a tool. Its overview offers no
-  deploying. If Deployments are on for it, turn them off first under
-  **Settings**, then **Deployments**; g1t does not turn them off for you.
-  While it is set this way, Deployments cannot be turned on.
+### Choosing it yourself
+
+From the overview, open the badge beside its name, such as **App**, and
+choose one. Or open **Settings**, then **General**, and under **What it
+is** choose **Detect automatically**, which shows what was detected and
+why, or one of the kinds above. **App or site, deployed elsewhere** asks
+for production's address.
+
+Choosing a library, a tool or something else while Deployments are on is
+refused: turn them off first under **Settings**, then **Deployments**;
+g1t does not turn them off for you. While it is set that way, Deployments
+cannot be turned on. Turning Deployments on for an app deployed elsewhere
+makes it an app deployed on g1t.
+
+Changing what it is needs the role that changes the project's settings.
 
 ### Active branches
 
@@ -152,13 +191,32 @@ the default branch further back than that shows no counts. Ten branches
 are read, those with open pull requests first; a project with more says
 how many it has.
 
+## Links
+
+A project has a **homepage**, a **docs** address, and up to 10 other
+links, each a label and an address, such as a status page or its listing
+in a registry. They show in its overview's About and beside what it is,
+on its card on its workspace's page, in its workspace's Projects, and on
+Explore for a public project.
+
+To set them, open **Settings**, then **General**, and fill in **Links**;
+or choose the pencil on the overview's **About**. Each is an http or
+https address; `https://` is added when you leave it out. A label left
+empty is the address's host name. Removing every row of other links
+clears them.
+
+A repository's own project shows the repository's website as its
+homepage until you give the project one of its own. For an app deployed
+on g1t, its g1t.page address still shows as production; set the homepage
+to production's own domain if you have one.
+
 ## Settings
 
 A project's **Settings** has a tab for each part:
 
 | Tab | What it holds |
 | --- | --- |
-| **General** | The project's name and description, its source, its **root directory**, and whether it deploys (see [apps and libraries](#apps-and-libraries)). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
+| **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), and its [links](#links). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
 | **Dependencies** | The projects this one uses, and the ones that use it. See [Dependencies](#dependencies). |
@@ -259,3 +317,21 @@ What g1t does with them:
 Projects keep their repository's routes: `/repos/{workspace}/{project}/…`
 reaches the project's repository, and its secrets and variables are the
 project's. See the [API reference](/reference/api/).
+
+What a project is, where it runs and its links have routes of their own,
+and actions on the [MCP](/reference/mcp/) `workspace` tool:
+
+| Route | MCP action | |
+| --- | --- | --- |
+| `GET /workspaces/{workspace}/projects` | `list_projects` | The workspace's projects you can see. |
+| `GET /workspaces/{workspace}/projects/{project}` | `get_project` | One project, with `kind`, `runs`, `production_url`, `setting`, `detected` and `links`. |
+| `PATCH /workspaces/{workspace}/projects/{project}` | `update_project` | Changes `kind`, `runs`, `production_url`, `homepage`, `docs_url`, `links`, or its name, description or root directory. Needs `repo:write`. |
+
+To say an app is deployed by your own pipeline, with its docs:
+
+```sh
+curl -X PATCH https://api.g1t.sh/workspaces/acme/projects/web \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"runs": "elsewhere", "production_url": "https://acme.dev", "docs_url": "https://docs.acme.dev"}'
+```

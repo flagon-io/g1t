@@ -4,14 +4,17 @@ import { Await, Form, Link } from "react-router";
 
 import type { Blame, BlobView as Blob, Branch, Commit, LastCommits, TreeView as Tree } from "@g1t/contracts";
 
+import type { DeploymentEnvironments } from "@g1t/contracts";
+
 import { BlameView } from "./blame-view";
+import { DeploymentsPanel } from "./deployments-panel";
 import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
 import { useAddresses } from "../lib/addresses";
 import { CloneBox } from "./clone-box";
+import { type AboutData, RepoAboutPanel } from "./repo-about";
 import { Markdown } from "./markdown";
-import { Topics } from "./topics";
 import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -280,11 +283,23 @@ export function TreeView({
   tree,
   branches = null,
   lastCommits = null,
+  about = null,
+  canPush = false,
+  homepage = null,
+  deployments = null,
 }: {
   tree: Tree;
   branches?: Branch[] | null;
   /** Each entry's last commit, streamed in after the list. */
   lastCommits?: Promise<LastCommits | null> | null;
+  /** The About beside the files, at the root: streamed in after them. */
+  about?: AboutData | null;
+  /** Whether the viewer may push, for the About's "Create a new release". */
+  canPush?: boolean;
+  /** The project's homepage; the repository's website when null. */
+  homepage?: string | null;
+  /** The repository's environments, for the About's Deployments section. */
+  deployments?: DeploymentEnvironments | null;
 }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -354,44 +369,15 @@ export function TreeView({
       </div>
 
       {!path && (
-        <aside>
-          <h2 className="text-base font-semibold">About</h2>
-          <p className="mt-2.5 text-sm text-fg-soft">{repo.description ?? "No description."}</p>
-          <Topics topics={repo.topics} className="mt-3" />
-          <ul className="mt-4 space-y-2.5 text-sm text-muted">
-            {readme && (
-              <li>
-                <a href="#readme" className="inline-flex items-center gap-2 hover:text-fg">
-                  <BookOpen size={15} className="text-faint" />
-                  Readme
-                </a>
-              </li>
-            )}
-            <li>
-              <Link to={`${base}/commits`} className="inline-flex items-center gap-2 hover:text-fg">
-                <History size={15} className="text-faint" />
-                Commits
-              </Link>
-            </li>
-            {branches && (
-              <li>
-                <Link to={`${base}/branches`} className="inline-flex items-center gap-2 hover:text-fg">
-                  <GitBranch size={15} className="text-faint" />
-                  {branches.length} {branches.length === 1 ? "branch" : "branches"}
-                </Link>
-              </li>
-            )}
-            <li>
-              <Link to={`${base}/tags`} className="inline-flex items-center gap-2 hover:text-fg">
-                <TagIcon size={15} className="text-faint" />
-                Tags
-              </Link>
-            </li>
-          </ul>
-          <p className="mt-4 text-xs text-faint">
-            Created <TimeAgo at={repo.createdAt} />
-          </p>
-        </aside>
+        <RepoAboutPanel
+          repo={repo}
+          gitRef={ref}
+          readme={Boolean(readme)}
+          data={about ?? { about: null, watchers: null, packages: null }}
+          canPush={canPush}
+          homepage={homepage}
+          deployments={<DeploymentsPanel base={base} summary={deployments} className="border-t border-line pt-4" />}
+        />
       )}
     </div>
   );

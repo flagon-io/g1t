@@ -1045,6 +1045,8 @@ impl Actions {
                 format!("The self-hosted runner {} took the job {}.", runner.name, job.name),
             )])
             .await;
+            // A job that deploys: its run's deployment is under way.
+            self.job_started(&job.id).await?;
             let image = self.job_image(&job).await?;
             return Ok(Some(Assignment {
                 kind: "workflow".into(),

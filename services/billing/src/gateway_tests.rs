@@ -187,7 +187,7 @@ fn the_migrations_price_every_model_they_offer() {
     for model in ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"] {
         assert!(first.contains(&format!("('{model}', ")), "{model}");
     }
-    let second = include_str!("../migrations/0046_gateway_formats.sql");
+    let second = include_str!("../migrations/0047_gateway_formats.sql");
     // Sonnet 5.5's cache reads are $0.10, 0.05 times input; 0045 had $0.20.
     assert!(second.contains("SET cache_read_micros = 100000, updated_at = '2026-10-07T00:00:00Z' WHERE model = 'claude-sonnet-5-5'"));
     // Hour-long cache writes at twice input.

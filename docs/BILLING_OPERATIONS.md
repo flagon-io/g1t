@@ -135,16 +135,21 @@ For each day and bucket:
     paid for, when it is spent (`given_credit_promotional_micros`,
     `given_credit_goodwill_micros`, migration 0038). That usage's charge is
     taken out of cash, so it is never money in. A refund is not here: see
-    [Credits from g1t](#credits-from-g1t).
+    [Credits from g1t](#credits-from-g1t);
+  - **testing resets**: what a workspace's usage cost g1t before staff
+    reset its billing (`reset_costs`, `given_reset_micros`, migration
+    0046). The model calls and Cloudflare usage still happened, so the
+    reconciliation reads the kept rows back as that workspace's usage on
+    their days: valued as before, no cash, all of it given. See
+    [Resetting a test workspace](#resetting-a-test-workspace).
 
   Otherwise a workspace's day is split by those shares of its value at
   price, and the same shares of each of its buckets' cost are given, its
   part of running g1t included. The Team plan's included usage is sold:
   the plan's price paid for it. Stored on `margin_days` (`given_micros`
   and `given_<why>_micros`, `given_discount_micros` from migration 0036)
-  and `workspace_costs` (`given_micros`). Sudo's Bill & pricing page lists
-  comped, free use, trial and pool by name; the discount part is in the
-  total until the page names it (`givenDiscountMicros`).
+  and `workspace_costs` (`given_micros`). Sudo's Costs & margin page lists
+  each why by name, testing resets included (`givenResetMicros`).
 - **Month-end meters**: a day's figure is that day's `pending_days`
   snapshot less the day before's, within a month. Their month-end ledger
   entries are left out, so nothing is counted twice.
@@ -185,7 +190,7 @@ remainder).
 | --- | --- | --- |
 | Count | g1t's count and Cloudflare's differ by more than the mapping's `drift_percent` (10%) | Find out what Cloudflare counts: compare its events with `own_counts` `artifacts_*` and `cost_operations`. If it counts more (binding reads, `ls-refs`), either change repos' `operation_mapping` so customers are charged for what Cloudflare counts, or leave it and let the per-unit cost rise (below). |
 | Cost | Cloudflare charged more than `drift_percent` away from the price book's cost of the same usage, with at least `min_daily_cost` | A price is stale: check the proposals. |
-| Cost, on `models` | What AI Gateway priced g1t's own provider traffic at over the 7 days, against the ledger's model cost for the same days (billed to g1t: comped, free and trial use included, a workspace's own provider not), more than the `ai_gateway_requests` mapping's `drift_percent` (10%) apart, with at least `min_daily_cost`. A ledger with none of the gateway's cost is drift too, and so is a gateway that priced nothing against a ledger with at least `min_daily_cost` of model cost (no percentage): that is not agreement, it is a token that cannot see AI Gateway, or calls that went around it | The gateway higher: model calls g1t paid for and charged no one: runs not settled yet (they catch up within the hour), runs with no session, a run started without a billing ticket, or something else on g1t's gateway. The ledger higher: runs that reached a provider without the gateway. The detail adds why the gateway's own figure may be off: prompt-cache read and write tokens (the gateway prices them at its rates for cache tokens, which can lag the provider's; check against the provider's invoice), requests Cloudflare billed itself (unified billing: on Cloudflare's bill, not a provider's), and models with no price. Days are UTC by when a request ran (gateway) and when a charge was entered (ledger), so a run across midnight shifts a little between days; the 7-day sum absorbs it. |
+| Cost, on `models` | What AI Gateway priced g1t's own provider traffic at over the 7 days, against the ledger's model cost for the same days (billed to g1t: comped, free and trial use included, a workspace's own provider not) plus the model cost testing resets kept for those days (`reset_costs`), more than the `ai_gateway_requests` mapping's `drift_percent` (10%) apart, with at least `min_daily_cost`. A ledger with none of the gateway's cost is drift too, and so is a gateway that priced nothing against a ledger with at least `min_daily_cost` of model cost (no percentage): that is not agreement, it is a token that cannot see AI Gateway, or calls that went around it | The gateway higher: model calls g1t paid for and charged no one: runs not settled yet (they catch up within the hour), runs with no session, a run started without a billing ticket, or something else on g1t's gateway. The ledger higher: runs that reached a provider without the gateway. The detail adds why the gateway's own figure may be off: prompt-cache read and write tokens (the gateway prices them at its rates for cache tokens, which can lag the provider's; check against the provider's invoice), requests Cloudflare billed itself (unified billing: on Cloudflare's bill, not a provider's), and models with no price. A testing reset in the window is named in the detail: one that kept its cost says how much of the ledger's side it is; one from before resets kept their cost (the audit log has it, `reset_costs` does not) says the gateway's figure includes usage the ledger no longer has, so that part is not a leak, and the day it leaves the 7 days; while such a reset is in the window the `models` leak is not raised. Days are UTC by when a request ran (gateway) and when a charge was entered (ledger), so a run across midnight shifts a little between days; the 7-day sum absorbs it. |
 | Unpriced | Over the 7 days, a model in AI Gateway's analytics with tokens and $0 cost, or runs settled with `runs.gateway_note` (the gateway could not price all of a run) | The gateway has no price for a model g1t runs: add it in the gateway (custom cost) or route away from it. Until then those runs are charged no less than the sandbox reported (Claude Code's own price table), never $0 silently. |
 | Leak | Cost of at least `min_daily_cost` and nothing charged for it (never for `platform`), or a meter in `unmapped` | Map the meter (below), or decide it is overhead (`platform`). |
 
@@ -283,7 +288,7 @@ Workers AI's embeddings for g1t's own search, which are on Cloudflare's bill
 | Agent run straight to the gateway (no `MODELS_URL`) | g1t | `runs` row; session `rs_…` in `cf-aig-metadata` (`services/runner` `gatewaySession`) | As above | Yes |
 | Agent run with no gateway (`AI_GATEWAY_ID` empty, self-hosting) | g1t's key | `runs` row, no session | The sandbox's figure | No: nothing to settle against |
 | Agent run on a workspace's own provider | The workspace | `runs` row, `billed_to = 'workspace'`, session `ms_…` (the proxy counts its tokens by it) | No model cost (none to g1t); the agent rate on `agent_tokens_own`, line `<run>/agent-own` | No; never on g1t's gateway. Closed by the cron's `settle_own_runs`, which charges tokens counted late |
-| AI Gateway request on g1t's key | The workspace, from included usage and AI credit (`gateway_admit` refuses at $0, over the limit, or with no plan) | No run; `gateway_requests` row; session `gw_<token>_<YYYYMMDDHH>` in `cf-aig-metadata` (`task: gateway`) | Per request: its tokens at `gateway_models` (the table, migrations 0045 and 0046: list price per million by kind, five-minute and one-hour cache writes apart, and for a model priced by prompt length such as Claude Haiku 5.5 a `threshold` above which the whole request is at the `over_` prices) plus the `gateway_models` meter's markup (0 in beta); a `usage` line with task `gateway`, reference the request id, quantity 1 | No, not yet: the session tag is there for it. **Cost** drift on `models` compares the gateway's total with these lines too. Requests billed other than by tokens (fast mode, `inference_geo`, fallbacks, server tools, containers) are refused by the proxy |
+| AI Gateway request on g1t's key | The workspace, from included usage and AI credit (`gateway_admit` refuses at $0, over the limit, or with no plan) | No run; `gateway_requests` row; session `gw_<token>_<YYYYMMDDHH>` in `cf-aig-metadata` (`task: gateway`) | Per request: its tokens at `gateway_models` (the table, migrations 0045 and 0047: list price per million by kind, five-minute and one-hour cache writes apart, and for a model priced by prompt length such as Claude Haiku 5.5 a `threshold` above which the whole request is at the `over_` prices) plus the `gateway_models` meter's markup (0 in beta); a `usage` line with task `gateway`, reference the request id, quantity 1 | No, not yet: the session tag is there for it. **Cost** drift on `models` compares the gateway's total with these lines too. Requests billed other than by tokens (fast mode, `inference_geo`, fallbacks, server tools, containers) are refused by the proxy |
 | AI Gateway request on a workspace's own provider (any model connection whose `gateway_models` takes the model) | The workspace's provider | `gateway_requests` row, `own_key = 1`, `provider` and `connection` | None | No; never on g1t's gateway |
 | A sandbox that died before reporting | g1t | as its route | Charged from the gateway when settled | Yes |
 | Embeddings (indexing) | g1t | none (Workers AI) | Month-end `context` meter | No: Cloudflare's bill, `embeddings` bucket |
@@ -302,7 +307,7 @@ requests are the exception: they are charged from `gateway_models` (one
 row per model offered), which has to follow the provider's price list by
 hand until they are settled like runs. It is not part of the price book's
 `price_versions`: a price change is a migration that updates the row and
-its `updated_at` (as 0046 did for Sonnet 5.5's cache reads), and the
+its `updated_at` (as 0047 did for Sonnet 5.5's cache reads), and the
 `gateway_models` meter's markup is the only price-book number on it. Open
 models need `WORKERS_AI_TOKEN` (a Cloudflare API token with Workers AI on
 g1t's account) on the model proxy; without it, and without
@@ -619,7 +624,9 @@ Migration `0036_model_costs_in_full.sql` adds `ledger.discount_micros`,
 `ai_gateway_requests` → `models` mapping. Migration
 `0038_staff_credits.sql` adds `credit_grants`, `ledger.credit_kind` and
 `margin_days.given_credit_{promotional,goodwill}_micros`, and backfills
-earlier credits (see [Credits from g1t](#credits-from-g1t)).
+earlier credits (see [Credits from g1t](#credits-from-g1t)). Migration
+`0046_reset_costs.sql` adds `reset_costs` and `margin_days.given_reset_micros`
+(see [Resetting a test workspace](#resetting-a-test-workspace)).
 
 ## Spend caps
 
@@ -703,9 +710,33 @@ holds, card checks, alerts sent, price notices, month-end snapshots and
 closes, storage meters, token usage, spikes, sales records and
 notes, `workspace_costs`, its workspace margin alert and its own billing
 account. It keeps `own_counts` (what Cloudflare's bill is compared with)
-and the audit log, which records the reset with the note and the number of
-rows. The workspace, its members and its repositories are identity's and
-repos' and stay.
+and the audit log, which records the reset with the note, the number of
+rows and what g1t had paid for. The workspace, its members and its
+repositories are identity's and repos' and stay.
+
+**What g1t paid for is kept.** The wiped usage still happened: AI Gateway
+still prices its model calls and Cloudflare still bills its sandboxes. So,
+in the same batch as the deletes, the reset writes `reset_costs`: a row per
+day and bucket the workspace had cost on (the ledger's cost, month-end
+meters' cost, and the value the reconciliation gave it), plus one row for
+the reset itself (bucket `''`, nothing in it) so every reset is on record.
+`reset_at` is the same instant as the reset's `admin_actions` entry. The
+costs run reads the rows back as the workspace's usage on their days, all
+of it given away as **testing resets**: `models` drift compares AI
+Gateway with the ledger's model cost plus what resets kept, the statement
+lists it under **Given away**, and the workspace stays in **Who g1t paid**
+with its cost given. The rows are never wiped by a later reset, and a
+rename moves them. Re-running the analysis reads the same rows and gives
+the same answer.
+
+Resets before migration 0046 kept nothing; their wiped rows are gone and
+nothing is made up for them. The costs run finds them in the audit log
+(`admin_actions`, action `reset`) with no `reset_costs` at the same
+instant, and the `models` drift detail says AI Gateway's figure includes
+usage wiped by a testing reset of that workspace on that day, rather than
+calling it a leak. syntaqx was reset on 2026-10-07 after about $8.60 of
+model usage from 2026-10-02 to 2026-10-07; that usage is in the 7-day
+window until the run of 2026-10-13 and leaves it on 2026-10-14.
 
 Billing refuses it while `STRIPE_SECRET_KEY` is a live key, for comped
 workspaces, and for a workspace an enterprise pays for. It then runs the

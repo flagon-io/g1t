@@ -5,11 +5,13 @@
 //! `g1t_contracts::repos` for the methods and their arguments. Any other
 //! request is treated as git's smart HTTP protocol.
 
+mod about;
 mod backups;
 mod blame;
 mod catch_up;
 mod coalesce;
 mod commit_file;
+mod contributors;
 mod diff;
 mod fallback;
 mod forks;
@@ -17,7 +19,9 @@ mod git_http;
 mod git_ops;
 mod import;
 mod land;
+mod languages;
 mod last_commits;
+mod license;
 mod lifecycle;
 mod listing;
 mod meters;
@@ -37,6 +41,7 @@ mod secret_scan;
 mod shards;
 mod shared;
 mod signatures;
+mod stats;
 mod store;
 mod transfer;
 
@@ -2272,6 +2277,37 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "branches" => reply(&repos.branches(args(body)?).await?),
         "last_commits" => reply(&repos.last_commits(args(body)?).await?),
         "tags" => reply(&repos.tags(args(body)?).await?),
+        // The About: what the Files page shows beside the files (about.rs).
+        // What is kept behind the head is worked out again after the answer.
+        "about" => {
+            let (answer, refresh) = repos.about(args(body)?).await?;
+            about::refresh_later(&env, &ctx, refresh);
+            reply(&answer)
+        }
+        "languages" => {
+            let (answer, refresh) = repos.languages(args(body)?).await?;
+            about::refresh_later(&env, &ctx, refresh);
+            reply(&answer)
+        }
+        "contributors" => {
+            let (answer, refresh) = repos.contributors(args(body)?).await?;
+            about::refresh_later(&env, &ctx, refresh);
+            reply(&answer)
+        }
+        "license" => {
+            let (answer, refresh) = repos.license(args(body)?).await?;
+            about::refresh_later(&env, &ctx, refresh);
+            reply(&answer)
+        }
+        "stars" => reply(&repos.stars(args(body)?).await?),
+        "star" => reply(&repos.star(args(body)?).await?),
+        "stargazers" => reply(&repos.stargazers(args(body)?).await?),
+        "starred" => reply(&repos.starred(args(body)?).await?),
+        "releases" => reply(&repos.releases(args(body)?).await?),
+        "release" => reply(&repos.release(args(body)?).await?),
+        "create_release" => reply(&repos.create_release(args(body)?).await?),
+        "update_release" => reply(&repos.update_release(args(body)?).await?),
+        "delete_release" => reply(&repos.delete_release(args(body)?).await?),
         "head" => reply(&repos.head(args(body)?).await?),
         "behind" => reply(&repos.behind(args(body)?).await?),
         "divergence" => reply(&repos.divergence(args(body)?).await?),

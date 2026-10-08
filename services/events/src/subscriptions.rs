@@ -153,6 +153,20 @@ fn events_of(text: Option<&str>) -> Vec<String> {
     text.and_then(|text| serde_json::from_str::<Vec<String>>(text).ok()).unwrap_or_default()
 }
 
+/// How many watch a repository: all of it, or some of it.
+pub async fn watchers_count(db: &D1Database, a: WatchersArgs) -> Result<u64> {
+    #[derive(Deserialize)]
+    struct Row {
+        count: f64,
+    }
+    Ok(db
+        .prepare("SELECT COUNT(*) AS count FROM inbox_watching WHERE repo_id = ? AND level IN ('all', 'custom')")
+        .bind(&[a.repo_id.into()])?
+        .first::<Row>(None)
+        .await?
+        .map_or(0, |row| row.count as u64))
+}
+
 /// Everyone who watches a repository other than the default way.
 pub async fn watchers(db: &D1Database, repo_id: &str) -> Result<Vec<Watcher>> {
     Ok(db

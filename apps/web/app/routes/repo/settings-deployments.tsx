@@ -7,6 +7,7 @@ import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { SwitchCard } from "../../components/ui/switch";
+import { neverDeploys } from "../../lib/project-kind";
 import { deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
@@ -24,7 +25,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     projects.get(params.owner, params.repo, viewer).catch(() => null),
   ]);
   // Set not to deploy in General settings: turning them on is refused until that changes.
-  const notDeploying = project?.ok ? project.value.deploys === "no" : false;
+  const notDeploying = project?.ok ? neverDeploys(project.value) : false;
   return { settings: unwrap(settings), notDeploying };
 }
 
@@ -118,9 +119,9 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
           </p>
           {notDeploying ? (
             <p className="mt-4 text-sm text-muted">
-              This project is set as one that doesn't deploy, a library or a tool. To deploy it, choose Deploys or Detect
-              automatically under{" "}
-              <Link to={`${base}/settings#deploys`} className="text-fg underline underline-offset-4">
+              This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose
+              App or site, deployed on g1t, under{" "}
+              <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
                 General
               </Link>{" "}
               first.

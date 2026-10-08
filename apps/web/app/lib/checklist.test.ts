@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   type ChecklistFacts,
   agentWasAssigned,
+  checklistPlan,
   dismiss,
   dismissKey,
   hasInstructions,
@@ -11,6 +12,7 @@ import {
   productionChecklist,
   progress,
   releaseChecklist,
+  startChecklist,
 } from "./checklist.ts";
 
 const fresh: ChecklistFacts = {
@@ -119,4 +121,54 @@ test("a library's checklist ships a release instead of deploying", () => {
   assert.ok(items.every((item) => !/deploy|production|domain|preview/i.test(item.title)));
   // An unknown workflow list counts as not done.
   assert.equal(releaseChecklist({ ...facts, hasWorkflow: null }).find((item) => item.key === "checks")?.done, false);
+});
+
+const start = {
+  base: "/flagon-io/g1t",
+  hasCode: true,
+  instructions: true,
+  agentAssigned: false,
+  hasWorkflow: true,
+  productionUrl: null,
+  hasLinks: false,
+  hasDocsLink: false,
+};
+
+test("only what g1t deploys gets production's steps", () => {
+  assert.deepEqual(checklistPlan({ kind: "app", runs: "g1t" }), { plan: "production", title: "Get to production" });
+  assert.deepEqual(checklistPlan({ kind: "docs", runs: "g1t" }).plan, "production");
+  assert.deepEqual(checklistPlan({ kind: "app", runs: "elsewhere" }), { plan: "elsewhere", title: "Get started" });
+  assert.equal(checklistPlan({ kind: "app", runs: null }).plan, "unknown");
+  assert.deepEqual(checklistPlan({ kind: "tool", runs: null }), { plan: "release", title: "Ship a release" });
+  assert.equal(checklistPlan({ kind: "library", runs: null }).plan, "release");
+  assert.equal(checklistPlan({ kind: "docs", runs: "elsewhere" }).plan, "docs");
+  assert.equal(checklistPlan({ kind: "other", runs: null }).plan, "other");
+});
+
+test("an app deployed elsewhere is never asked to deploy on g1t", () => {
+  const items = startChecklist("elsewhere", start);
+  assert.deepEqual(
+    items.map((item) => item.key),
+    ["code", "production", "checks", "instructions", "agent"],
+  );
+  assert.ok(items.every((item) => !/deploy to|turn on|domain|preview/i.test(`${item.title} ${item.detail}`)));
+  assert.equal(items.find((item) => item.key === "production")?.done, false);
+  assert.equal(startChecklist("elsewhere", { ...start, productionUrl: "https://g1t.sh" }).find((item) => item.key === "production")?.done, true);
+  // Every step can be done.
+  const all = startChecklist("elsewhere", { ...start, productionUrl: "https://g1t.sh", agentAssigned: true });
+  assert.equal(progress(all).complete, true);
+});
+
+test("an app nobody has placed asks where it runs; docs and other ask for links", () => {
+  assert.deepEqual(
+    startChecklist("unknown", start).map((item) => item.key),
+    ["code", "where", "checks", "instructions", "agent"],
+  );
+  assert.equal(startChecklist("unknown", start).find((item) => item.key === "where")?.to, "/flagon-io/g1t/settings#kind");
+  const docs = startChecklist("docs", { ...start, hasDocsLink: true });
+  assert.deepEqual(docs.map((item) => item.key), ["code", "links", "instructions", "agent"]);
+  assert.equal(docs.find((item) => item.key === "links")?.done, true);
+  const other = startChecklist("other", start);
+  assert.equal(other.find((item) => item.key === "links")?.done, false);
+  assert.equal(startChecklist("other", { ...start, hasLinks: true, agentAssigned: true }).every((item) => item.done), true);
 });

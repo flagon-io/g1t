@@ -95,7 +95,8 @@ pub struct UsernameArgs {
 
 /// `usernames`: the names behind account and workspace ids, as events and
 /// other records store them. Returns a map from id to name; ids it does
-/// not know are left out.
+/// not know are left out. Also `accounts`: the accounts behind user ids,
+/// each with its username and avatar (`HashMap<String, accounts::EmailOwner>`).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UsernamesArgs {
     pub ids: Vec<String>,

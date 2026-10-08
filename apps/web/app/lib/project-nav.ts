@@ -41,6 +41,7 @@ export const SECTIONS: Section[] = [
       { label: "Commits", path: "commits", also: ["commit"] },
       { label: "Branches", path: "branches" },
       { label: "Tags", path: "tags" },
+      { label: "Releases", path: "releases" },
       { label: "Compare", path: "compare" },
       ...soon("Code"),
     ],
@@ -81,7 +82,15 @@ export const SECTIONS: Section[] = [
       ...soon("Security"),
     ],
   },
-  { key: "Insights", tabs: soon("Insights") },
+  {
+    key: "Insights",
+    tabs: [
+      { label: "Contributors", path: "contributors" },
+      { label: "Activity", path: "activity" },
+      { label: "Stargazers", path: "stargazers" },
+      ...soon("Insights"),
+    ],
+  },
 ];
 
 /** Pull requests and the merge queue share a page's tabs too. */

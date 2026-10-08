@@ -4,16 +4,19 @@
 //! operations (see [`operations::Op`]), which call the services that own
 //! the data. This Worker holds none.
 
+mod about;
 mod addresses;
 mod alerts;
 mod audit;
 mod billing;
 mod blobs;
+mod deployments;
 mod mcp;
 mod notifications;
 mod oauth;
 mod openapi;
 mod pins;
+mod projects;
 mod operations;
 mod renamed;
 #[cfg(test)]
