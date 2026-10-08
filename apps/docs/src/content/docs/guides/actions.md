@@ -40,7 +40,7 @@ gives their values out, so they cannot be copied across.
 | Composite actions | The same. |
 | Reusable workflows in the repository (`jobs.<id>.uses: ./.g1t/workflows/build.yml`) | The same: `with:` inputs, `on.workflow_call` outputs, and nesting up to four deep. `./.github/workflows/…` finds the workflow under `.g1t/` after the move. Their jobs read the repository's secrets and variables. |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
-| `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
+| `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run, and [masked](#masking-secrets) values stay hidden. |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
@@ -621,10 +621,135 @@ without touching its file.
 
 A run's page shows its jobs, each job's steps, and their logs as they are
 written. Groups fold, errors and warnings are marked, and secrets are
-replaced with `***`. **Cancel**, **Re-run all jobs** and **Re-run failed
-jobs** do what they say.
+replaced with `***`.
 
 The start of each job's log lists what its [token](#the-jobs-token) may do.
+
+### Job summaries
+
+Markdown a step appends to the file in `$GITHUB_STEP_SUMMARY` shows at
+the top of the run's page, a card per job, in the order its steps wrote
+it:
+
+```yaml
+- name: Report the tests
+  if: always()
+  run: |
+    echo "### Test results" >> "$GITHUB_STEP_SUMMARY"
+    echo "| Suite | Passed | Failed |" >> "$GITHUB_STEP_SUMMARY"
+    echo "| --- | ---: | ---: |" >> "$GITHUB_STEP_SUMMARY"
+    echo "| unit | 41 | 0 |" >> "$GITHUB_STEP_SUMMARY"
+```
+
+| What | How it works |
+| --- | --- |
+| Formatting | GitHub-flavoured Markdown: tables, task lists, alerts such as `> [!WARNING]`, code blocks, and the HTML GitHub allows. Scripts, styles and event handlers are removed. |
+| Secrets | Masked like the log, before the summary leaves the runner. |
+| Size | Up to 1 MiB a step. A larger summary is refused with an error in the step's log, as on GitHub. |
+| Steps | Up to 20 steps of a job keep a summary; later ones are dropped. |
+| Actions | A JavaScript action's `core.summary` writes to the same file, so it works unchanged. |
+
+Summaries belong to their attempt: an earlier attempt keeps its own.
+
+### Re-running
+
+When a run has finished, someone with the Write role can run it again:
+
+| Button | Runs again |
+| --- | --- |
+| **Re-run all jobs** | Every job. |
+| **Re-run failed jobs** | Jobs that did not succeed (failed, cancelled or skipped), and every job that needs one of them. |
+| The re-run button beside a job's name | That job, and every job that needs it. A job of a matrix runs again with the rest of its matrix; a job of a reusable workflow runs again with the job that calls it. |
+
+Jobs that are not run again keep how they ended, and their outputs reach
+the jobs that need them.
+
+Each re-run is a new **attempt**. The run keeps its number, `github.run_attempt`
+goes up by one, and the attempt before is kept as it ended: its jobs,
+their steps, logs and summaries. Pick one from **Attempt #** at the top of
+the page to read it. Its jobs have ids of their own, so a link to an
+earlier attempt's job keeps showing that job's log.
+
+#### Debug logging
+
+Each re-run asks whether to **Enable debug logging**. The new attempt's
+jobs then run with:
+
+| Set | Effect |
+| --- | --- |
+| `RUNNER_DEBUG=1`, and `runner.debug` is `1` | Actions that check it, such as the toolkit's `core.isDebug()`, log more. |
+| `ACTIONS_STEP_DEBUG=true` | `::debug::` lines are shown in the log. |
+| `ACTIONS_RUNNER_DEBUG=true` | Set for actions that read it. |
+
+With debug logging, each step's log also says how its `if:` read:
+`Evaluating condition for step`, the expression, and the result. Setting a
+secret or variable named `ACTIONS_STEP_DEBUG` to `true` shows `::debug::`
+lines on every run instead. The attempt picker marks attempts that ran
+with debug logging.
+
+### Cancelling
+
+**Cancel run** cancels jobs that have not started at once. A job that is
+running is stopped the way GitHub stops one:
+
+1. The step it is on gets `SIGINT`, then `SIGTERM` 7.5 seconds later, and
+   is killed 2.5 seconds after that. Signals reach the processes the step
+   started too; in a [job container](#job-containers) they reach only the
+   `docker exec` that runs the step. The step ends **cancelled**.
+2. Its remaining steps run only if they ask to: `if: always()` or
+   `if: cancelled()`. Steps without an `if:`, or with `success()` or
+   `failure()`, are skipped.
+3. Post steps (an action's `post`, saving the cache) run, as their
+   `post-if` is `always()` unless the action says otherwise.
+4. The job ends **cancelled**, whatever those steps came to.
+
+While that happens the run says **Cancelling**. A job still going 5
+minutes after it was cancelled is stopped outright. **Force cancel**
+(shown while a run is cancelling) stops every job at once, without
+waiting for its cleanup steps.
+
+A step learns of a cancellation within about 10 seconds, even when it
+prints nothing. A job on a [self-hosted runner](/guides/self-hosted-runners/)
+is stopped the same way.
+
+### Searching and downloading logs
+
+The **Search logs** box above a job's steps shows only the lines that hold
+what you type, in any case, with each match marked and every step that has
+one opened. Lines inside folded groups are searched too.
+
+| Download | Where |
+| --- | --- |
+| One job's whole log, as text | The download button beside the job's name. |
+| Every job's log of an attempt, as a zip | **Download logs** at the top of the run. The zip holds `1_<job>.txt` with each job's whole log, and a `<job>/` folder with `<step>_<step name>.txt` for each step. |
+
+A zip holds up to 24 MiB of logs; jobs past that are listed with a note
+to download them on their own. Each job keeps up to 4 MB of log.
+
+### Status badges
+
+A badge shows how a workflow's latest finished run went: **passing**,
+**failing**, **cancelled**, or **no status** before it has finished one.
+
+1. Open the repository's **Actions** page and pick the workflow.
+2. Click **Create status badge**.
+3. Choose a branch and an event, if you want them, and copy the Markdown.
+
+```markdown
+[![CI](https://g1t.sh/acme/web/actions/workflows/ci.yml/badge.svg)](https://g1t.sh/acme/web/actions?workflow=ci.yml)
+```
+
+The address is `https://g1t.sh/{workspace}/{repo}/actions/workflows/{file}/badge.svg`,
+where `{file}` is the workflow's file name in `.g1t/workflows/`. It takes:
+
+| Parameter | Shows |
+| --- | --- |
+| `branch` | Runs on that branch. Without it, the default branch's runs, or any branch's when the default branch has none. |
+| `event` | Runs started by that event, such as `push` or `pull_request`. |
+
+A public repository's badge loads for anyone and is cached for a minute.
+A private repository's loads only for someone who can see the repository,
+so it does not show in a README read anywhere else.
 
 ### Masking secrets
 
@@ -1000,10 +1125,12 @@ usually work once they point at `https://api.g1t.sh`.
 | `list` | `GET /repos/{owner}/{repo}/actions/workflows` |
 | `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha` |
 | `get_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
-| `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=` |
+| `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=`, or `?format=text` for the whole log as plain text |
+| `get_run` with `attempt` | `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}` |
+| No tool: a download | `GET /repos/{owner}/{repo}/actions/runs/{id}/logs`, or `…/attempts/{attempt}/logs`: every job's log as a zip |
 | `dispatch` | `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` with `ref` and `inputs` |
-| `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel` |
-| `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs` |
+| `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel`; `…/force-cancel`, or `force`, to stop running jobs without their cleanup steps |
+| `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs`; one job and those that need it with `POST /repos/{owner}/{repo}/actions/jobs/{job}/rerun`. Each takes `enable_debug_logging` (or `debug`) |
 | `update` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
 | `approve_run` | `POST /repos/{owner}/{repo}/actions/runs/{id}/approve` |
 | `pending_deployments` | `GET /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` |
