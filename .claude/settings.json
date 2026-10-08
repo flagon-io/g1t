@@ -9,7 +9,9 @@
       "Bash(npm run deploy:*)",
       "Bash(bash */ship-deployments.sh)",
       "Bash(CLOUDFLARE_API_TOKEN= npx wrangler:*)",
-      "Bash(npx wrangler:*)"
+      "Bash(npx wrangler:*)",
+      "Bash(node *guardrails-status.mjs)",
+      "Bash(node *delete-reviewer-ws.mjs)"
     ]
   }
 }
