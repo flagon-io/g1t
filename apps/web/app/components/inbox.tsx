@@ -373,7 +373,7 @@ export function AgentButton() {
           </button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Agent is coming later</TooltipContent>
+      <TooltipContent>Agent is coming soon</TooltipContent>
     </Tooltip>
   );
 }

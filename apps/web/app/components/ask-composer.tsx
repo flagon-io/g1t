@@ -16,10 +16,10 @@ export function AskComposer({ children }: { children?: ReactNode }) {
         <p className="flex items-center gap-2 px-4 pt-3 text-sm font-medium text-fg">
           <Sparkles size={14} className="text-accent" aria-hidden="true" />
           Agent
-          <span className="rounded-full border border-line px-1.5 text-[0.6875rem] font-normal text-muted">Coming later</span>
+          <span className="rounded-full border border-line px-1.5 text-[0.6875rem] font-normal text-muted">Coming soon</span>
         </p>
         <label htmlFor="ask-g1t" className="sr-only">
-          Ask the agent (coming later)
+          Ask the agent (coming soon)
         </label>
         <textarea
           id="ask-g1t"
@@ -61,14 +61,14 @@ function Soon({ label, icon, children }: { label: string; icon?: boolean; childr
           <button
             type="button"
             disabled
-            aria-label={`${label} (coming later)`}
+            aria-label={`${label} (coming soon)`}
             className={`pointer-events-none inline-flex h-8 items-center gap-1.5 rounded-md border border-line text-sm text-muted ${icon ? "w-8 justify-center" : "px-2.5"}`}
           >
             {children}
           </button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Agent is coming later</TooltipContent>
+      <TooltipContent>Agent is coming soon</TooltipContent>
     </Tooltip>
   );
 }
