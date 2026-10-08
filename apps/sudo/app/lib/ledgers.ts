@@ -110,6 +110,9 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   // From identity: deleted workspaces staff restored or purged.
   workspace_restored: "Workspace restored",
   workspace_purged: "Workspace purged",
+  // From identity: workspace aliases staff set or removed.
+  alias_added: "Alias added",
+  alias_removed: "Alias removed",
   // From the status page (apps/status), merged in by the Audit log page.
   incident_declared: "Incident declared",
   incident_detected: "Incident detected",

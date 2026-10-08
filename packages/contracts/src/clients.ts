@@ -272,6 +272,9 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
     deletedWorkspaces: () => call("admin_deleted_workspaces", {}),
     restoreWorkspace: (workspaceId, staff) => call("admin_restore_workspace", { workspaceId, staff }),
     purgeWorkspace: (workspaceId, staff, confirm) => call("admin_purge_workspace", { workspaceId, staff, confirm }),
+    aliases: () => call("admin_aliases", {}),
+    setAlias: (alias, workspace, note, staff) => call("admin_set_alias", { alias, workspace, note, staff }),
+    removeAlias: (alias, reason, staff) => call("admin_remove_alias", { alias, reason, staff }),
   };
 }
 
