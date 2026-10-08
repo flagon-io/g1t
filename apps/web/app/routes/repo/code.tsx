@@ -5,6 +5,7 @@ import { commitChecksFor } from "../../lib/commit-checks.server";
 import { aboutFor } from "../../lib/about.server";
 import { environmentsFor } from "../../lib/deployments.server";
 import { lastCommitsFor } from "../../lib/last-commits.server";
+import { showOneCommit } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { projectHomepage } from "../../lib/about";
@@ -26,7 +27,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   ]);
   // Each entry's last commit walks history: streamed in after the list.
   const lastCommits = lastCommitsFor(path, viewer, null, "");
-  const value = unwrap(tree);
+  const found = unwrap(tree);
+  // The latest commit's author, as their account where there is one.
+  const value = { ...found, head: await showOneCommit(found.head) };
   // The About beside the files, streamed in after them.
   const about = value.head ? aboutFor(path, viewer, value.repo.id) : null;
   // The latest commit's checks: streamed in beside it.

@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { G1tEvent } from "@g1t/contracts";
 
-import { activityLine, alignWeeks, contributorHref, count, languageBar, licenseLabel, peak } from "./about.ts";
+import { activityLine, alignWeeks, count, languageBar, licenseLabel, peak } from "./about.ts";
 
 test("a license is named by its SPDX id, or not at all", () => {
   assert.equal(licenseLabel({ spdxId: "MIT", name: "MIT License", path: "LICENSE" }), "MIT license");
@@ -30,13 +30,6 @@ test("small languages are gathered as Other", () => {
   assert.equal(bar[2].percent, 0.5);
   assert.deepEqual(languageBar([rust, { ...nix, percent: 0 }]), [rust], "nothing to show for nothing");
   assert.deepEqual(languageBar([]), []);
-});
-
-test("only accounts lead to a profile", () => {
-  const base = { name: "ada", commits: 1, firstAt: "", lastAt: "", weeks: [] };
-  assert.equal(contributorHref({ ...base, kind: "user", username: "ada" }), "/u/ada");
-  assert.equal(contributorHref({ ...base, kind: "author" }), null);
-  assert.equal(contributorHref({ ...base, kind: "g1t" }), null);
 });
 
 test("weeks line up with the repository's", () => {

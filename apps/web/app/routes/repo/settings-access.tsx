@@ -35,6 +35,7 @@ import { page } from "../../lib/meta";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { UserCard } from "../../components/user-card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Access · ${params.owner}/${params.repo} · g1t` });
@@ -362,9 +363,11 @@ function PersonRow({
       <Avatar name={person.username} image={person.avatar} size={32} />
       <div className="min-w-0 grow basis-40">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Link to={`/u/${person.username}`} className="font-mono text-sm hover:text-accent">
-            {person.username}
-          </Link>
+          <UserCard username={person.username}>
+            <Link to={`/u/${person.username}`} className="font-mono text-sm hover:text-accent">
+              {person.username}
+            </Link>
+          </UserCard>
           {person.name && <span className="truncate text-sm text-muted">{person.name}</span>}
           {person.source === "owner" && <Badge tone="accent">Owner</Badge>}
           {outside && <Badge tone="info">Outside collaborator</Badge>}

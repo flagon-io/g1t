@@ -4,10 +4,12 @@
  * it with its checks, and its preview. The overview shows the newest few;
  * the Branches page shows them all.
  */
-import type { Branch, BranchDrifts, Pull, RepoPath, Viewer } from "@g1t/contracts";
+import type { Branch, BranchDrifts, Commit, Pull, RepoPath, Viewer } from "@g1t/contracts";
 
 import type { ActiveBranch } from "../components/branches";
 import { activeBranches, branchesToRead, summary } from "./branches";
+import { addressesToMatch, showCommit } from "./commit-people";
+import { emailOwners } from "./commit-people.server";
 import { repos } from "./services.server";
 
 type Preview = { branch?: string | null; number?: number | null; url: string };
@@ -37,5 +39,9 @@ export async function readBranches(
         .then((found) => (found.ok ? found.value : null))
         .catch(() => null)
     : null;
-  return { main: input.defaultBranch, total, shown: activeBranches(reading, measured, input), head: summary(measured?.base) };
+  // Every head commit's people, in one identity call.
+  const heads = [measured?.base, ...(measured?.branches ?? []).map((one) => one.commit)].filter((commit): commit is Commit => commit != null);
+  const owners = await emailOwners(addressesToMatch(heads));
+  const people = (commit: Commit) => showCommit(commit, owners);
+  return { main: input.defaultBranch, total, shown: activeBranches(reading, measured, input, people), head: summary(measured?.base, people) };
 }

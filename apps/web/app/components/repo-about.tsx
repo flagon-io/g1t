@@ -26,7 +26,10 @@ import { Await, Link } from "react-router";
 
 import type { PackageSummary, Repo, RepoAbout } from "@g1t/contracts";
 
-import { compact, contributorHref, count, languageBar, licenseLabel } from "../lib/about";
+import { compact, count, languageBar, licenseLabel } from "../lib/about";
+import { contributorPerson, profileHref, shownName } from "../lib/commit-people";
+import { CommitAvatar } from "./commit-person";
+import { UserCard } from "./user-card";
 import { PackageIcon as EcosystemIcon } from "./package-icon";
 import { Topics } from "./topics";
 import { Avatar, Pill, TimeAgo } from "./ui";
@@ -221,22 +224,33 @@ function Contributors({ base, about }: { base: string; about: RepoAbout }) {
         <>
           <ul className="flex flex-wrap gap-1.5">
             {shown.map((contributor) => {
-              const href = contributorHref(contributor);
-              const label = `${contributor.name} · ${count(contributor.commits, "commit")}`;
-              const face = <Avatar name={contributor.name} image={contributor.avatar} size={30} system={contributor.kind === "g1t"} />;
+              // The same person, avatar, link and card as on their commits.
+              const person = contributorPerson(contributor);
+              const href = profileHref(person);
+              const label = `${shownName(person)} · ${count(contributor.commits, "commit")}`;
+              const face = <Avatar name={shownName(person)} image={person.avatar} size={30} />;
               return (
-                <li key={`${contributor.kind}:${contributor.name}`}>
-                  <Hint label={label}>
-                    {href ? (
-                      <Link to={href} aria-label={label} className="block rounded-full">
-                        {face}
-                      </Link>
-                    ) : (
-                      <span aria-label={label} className="block rounded-full">
-                        {face}
+                <li key={`${contributor.kind}:${contributor.username ?? contributor.name}`}>
+                  {person.kind === "user" || person.kind === "g1t" ? (
+                    <UserCard username={person.username}>
+                      {href ? (
+                        <Link to={href} aria-label={label} className="block rounded-full">
+                          {face}
+                        </Link>
+                      ) : (
+                        <span tabIndex={0} aria-label={label} className="block rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                          {face}
+                        </span>
+                      )}
+                    </UserCard>
+                  ) : (
+                    // Nobody on g1t: no card, only the name on their commits.
+                    <Hint label={label}>
+                      <span tabIndex={0} aria-label={label} className="block rounded-full">
+                        <CommitAvatar person={person} size={30} />
                       </span>
-                    )}
-                  </Hint>
+                    </Hint>
+                  )}
                 </li>
               );
             })}

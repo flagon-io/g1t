@@ -11,6 +11,11 @@ use g1t_contracts::accounts::EmailOwner;
 /// The address g1t's own commits carry.
 pub const G1T_EMAIL: &str = "g1t@users.noreply.g1t.sh";
 
+/// The addresses g1t's agents and merge queue committed as before they
+/// committed as g1t (2026-10-06): history keeps them, and they are g1t's.
+/// The site matches the same set (apps/web/app/lib/commit-people.ts).
+pub const LEGACY_G1T_EMAILS: [&str; 3] = ["agent@g1t.sh", "queue@g1t.sh", "mergecheck@g1t.sh"];
+
 /// One commit's author, as history gives it.
 #[derive(Clone, Debug)]
 pub struct Authored {
@@ -22,7 +27,8 @@ pub struct Authored {
 
 /// Whether a commit's author is g1t itself.
 pub fn is_g1t(author: &Authored) -> bool {
-    author.email.eq_ignore_ascii_case(G1T_EMAIL)
+    let email = author.email.trim();
+    email.eq_ignore_ascii_case(G1T_EMAIL) || LEGACY_G1T_EMAILS.iter().any(|legacy| email.eq_ignore_ascii_case(legacy))
 }
 
 #[derive(Default)]
@@ -148,6 +154,22 @@ mod tests {
         let named: Vec<(&str, u32)> = weeks.iter().map(|week| (week.week.as_str(), week.commits)).collect();
         assert_eq!(named, vec![("2026-09-14", 2), ("2026-09-21", 0), ("2026-09-28", 2), ("2026-10-05", 2)]);
         assert_eq!(contributors[1].weeks.len(), 2);
+    }
+
+    #[test]
+    fn g1t_older_addresses_are_g1t() {
+        let commits = vec![
+            authored("g1t agent", "agent@g1t.sh", "2026-10-01T10:00:00Z"),
+            authored("g1t merge queue", "Queue@g1t.sh", "2026-10-02T10:00:00Z"),
+            authored("g1t", G1T_EMAIL, "2026-10-07T10:00:00Z"),
+            authored("Not g1t", "someone@g1t.sh", "2026-10-07T10:00:00Z"),
+        ];
+        let (contributors, total, _) = tally(&commits, &HashMap::new());
+        assert_eq!(total, 2);
+        assert_eq!(contributors[0].kind, ContributorKind::G1t);
+        assert_eq!(contributors[0].name, "g1t");
+        assert_eq!(contributors[0].commits, 3);
+        assert_eq!(contributors[1].kind, ContributorKind::Author, "only g1t's own addresses");
     }
 
     #[test]

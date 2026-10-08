@@ -46,6 +46,9 @@ export default [
   route("settings/menu.json", "routes/settings-menu-json.ts"),
   // People, apart from workspaces: `u` is a reserved name.
   route("u/:username", "routes/user.tsx"),
+  // The card that opens over a person's name or avatar (lib/hovercard.ts).
+  // `-` is no workspace's name, so nothing else is ever found here.
+  route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/search.tsx"),

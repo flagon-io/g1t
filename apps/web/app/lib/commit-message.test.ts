@@ -20,6 +20,11 @@ test("a message that is only trailers has no body", () => {
   assert.deepEqual(parsed.trailers, [{ key: "G1t-Pull", value: "syntaqx/hello#72" }]);
 });
 
+test("a trailer shows its name, never an address", () => {
+  const parsed = parseCommitMessage("Fix it\n\nSigned-off-by: Ada <ada@private.example>\nReviewed-by: <sam@x.io>");
+  assert.deepEqual(parsed.trailers, [{ key: "Signed-off-by", value: "Ada" }]);
+});
+
 test("prose that happens to contain a colon stays prose", () => {
   const parsed = parseCommitMessage("Fix it\n\nNote: this also renames a function.\nAnd tidies the tests.");
   assert.equal(parsed.body, "Note: this also renames a function.\nAnd tidies the tests.");

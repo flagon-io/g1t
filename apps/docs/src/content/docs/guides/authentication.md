@@ -386,7 +386,8 @@ address. Commits that g1t made for you before noreply addresses existed
 (`<username>@users.g1t.sh`) count as yours too. An unconfirmed address
 never attributes a commit, so nobody can claim your commits by adding your
 address. Commits whose address matches no account show the name in the
-commit.
+commit. See [Commits and your account](/guides/workspaces/#commits-and-your-account)
+for setting your noreply address in git.
 
 ### Email addresses through the API
 

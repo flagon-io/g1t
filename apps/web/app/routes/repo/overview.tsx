@@ -101,6 +101,8 @@ import { environmentUrl, productionEnvironment } from "../../lib/deployments";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { readBranches } from "../../lib/branches.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
+import { showCommits } from "../../lib/commit-people.server";
+import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { CommitChecksBadge } from "../../components/commit-checks";
 
 const MAX_LANDED = 6;
@@ -209,7 +211,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     listP,
     openP,
     soft(work.listPulls(path, viewer, "closed")),
-    soft(repos.log(path, viewer, null, COMMITS_SHOWN)),
+    // With their people, in one identity call.
+    soft(repos.log(path, viewer, null, COMMITS_SHOWN).then(async (found) => (found.ok ? { ok: true as const, value: await showCommits(found.value) } : found))),
     soft(countsFor(context, params)),
     soft(projects.dependencies(params.owner, params.repo, viewer)),
     soft(agents.listRuns(viewer, { repo: path, limit: 60 })),
@@ -435,7 +438,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     builds: builds.slice(0, 30),
     live: ok(list)?.live ?? [],
     commit: ok(log)?.[0] ?? null,
-    commits: (ok(log) ?? []).map((one) => ({ hash: one.hash, message: one.message.split("\n")[0] ?? "", author: one.author.name, at: one.authoredAt })),
+    commits: (ok(log) ?? []).map((one) => ({ hash: one.hash, message: one.message.split("\n")[0] ?? "", author: one.author, coAuthors: one.coAuthors, at: one.authoredAt })),
     release: latestTag(ok(tagList) ?? []),
     checklistTitle: plan.title,
     // Production as reported from outside g1t, for an app deployed elsewhere.
@@ -1007,7 +1010,10 @@ function Overview({
         {commit && (
           <p className="truncate border-t border-line px-5 py-2.5 text-xs text-muted sm:px-6">
             <GitCommitHorizontal size={12} className="mr-1.5 inline text-faint" />
-            {commit.message.split("\n")[0]} <span className="text-faint">· {commit.author.name}</span>
+            {commit.message.split("\n")[0]}{" "}
+            <span className="text-faint">
+              · <CommitNames commit={commit} className="hover:text-fg" />
+            </span>
           </p>
         )}
       </section>
@@ -1206,12 +1212,14 @@ function Overview({
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
                 {loaderData.commits.map((one) => (
                   <li key={one.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    <Avatar name={one.author} size={18} />
+                    <CommitAvatars commit={one} size={18} max={2} />
                     <span className="min-w-0 grow">
                       <Link to={`${base}/commit/${one.hash}`} className="block truncate hover:text-accent">
                         {one.message}
                       </Link>
-                      <span className="text-xs text-muted">{one.author}</span>
+                      <span className="text-xs text-muted">
+                        <CommitNames commit={one} className="hover:text-fg" />
+                      </span>
                     </span>
                     <Link to={`${base}/commit/${one.hash}`} className="hidden shrink-0 font-mono text-xs text-faint hover:text-fg sm:block">
                       {one.hash.slice(0, 7)}

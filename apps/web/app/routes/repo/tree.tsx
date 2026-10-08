@@ -6,6 +6,7 @@ import { commitChecksFor } from "../../lib/commit-checks.server";
 import { aboutFor } from "../../lib/about.server";
 import { environmentsFor } from "../../lib/deployments.server";
 import { lastCommitsFor } from "../../lib/last-commits.server";
+import { showOneCommit } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { projectHomepage } from "../../lib/about";
@@ -30,7 +31,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   // Each entry's last commit walks history: streamed in after the list.
   const lastCommits = lastCommitsFor(path, viewer, params.ref, params["*"] ?? "");
-  const value = unwrap(tree);
+  const found = unwrap(tree);
+  // The latest commit's author, as their account where there is one.
+  const value = { ...found, head: await showOneCommit(found.head) };
   // The About beside the files, streamed in after them.
   const about = value.head && !value.path ? aboutFor(path, viewer, value.repo.id) : null;
   // The latest commit's checks: streamed in beside it.

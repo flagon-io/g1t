@@ -474,7 +474,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             {issue.assignees.map((name) => (
               <li key={name} className="flex items-center gap-2 px-1">
                 <Avatar name={name} size={20} />
-                <span className="grow truncate font-mono text-xs">{name}</span>
+                <span className="grow truncate font-mono text-xs">
+                  <PersonLink name={name} className="hover:underline" />
+                </span>
               </li>
             ))}
             {open && issue.queued && !assigned && (

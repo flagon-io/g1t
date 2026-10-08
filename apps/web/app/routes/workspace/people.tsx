@@ -50,6 +50,7 @@ import {
   roleIn,
   unwrap,
 } from "../../lib/session.server";
+import { UserCard } from "../../components/user-card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `People · ${params.owner} · g1t` });
@@ -318,9 +319,11 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
           <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
             <Avatar name={member.username} image={member.avatar} size={28} />
             <div className="min-w-0 grow truncate">
-              <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
-                {member.username}
-              </Link>
+              <UserCard username={member.username}>
+                <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
+                  {member.username}
+                </Link>
+              </UserCard>
               {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
               {(teams[member.username] ?? []).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -584,9 +587,11 @@ function OutsideCollaborators({
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <Avatar name={person.username} image={person.avatar} size={28} />
                 <div className="min-w-0 grow basis-32">
-                  <Link to={`/u/${person.username}`} className="font-mono text-sm hover:text-accent">
-                    {person.username}
-                  </Link>
+                  <UserCard username={person.username}>
+                    <Link to={`/u/${person.username}`} className="font-mono text-sm hover:text-accent">
+                      {person.username}
+                    </Link>
+                  </UserCard>
                   {person.name && <span className="ml-2 text-sm text-muted">{person.name}</span>}
                 </div>
                 {!free && (

@@ -47,7 +47,8 @@ test("each branch gets its measured commit and drift, newest first, by head hash
   assert.deepEqual(shown.map((b) => b.name), ["idea", "fix", "old"]);
   assert.deepEqual(shown[1], {
     name: "fix",
-    commit: { hash: "f2", message: "f2", author: "Ada", at: "2026-10-07T00:00:00Z" },
+    // No accounts given: the name on the commit, and never its address.
+    commit: { hash: "f2", message: "f2", author: { kind: "author", name: "Ada", username: null, avatar: null }, coAuthors: [], at: "2026-10-07T00:00:00Z" },
     drift: { ahead: 2, behind: 1 },
     pull: { number: 7, title: "Fix it", checkStatus: "passed", draft: false },
     preview: "https://fix.g1t.page",

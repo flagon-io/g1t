@@ -10,6 +10,7 @@ import type { Release, RepoPath } from "@g1t/contracts";
 
 import { Markdown } from "./markdown";
 import { Pill, TimeAgo } from "./ui";
+import { UserCard } from "./user-card";
 
 export function encodeTag(tag: string): string {
   return tag.split("/").map(encodeURIComponent).join("/");
@@ -52,9 +53,11 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
           </div>
           {release.author && (
             <p className="mt-1 text-xs text-faint">
-              <Link to={`/u/${release.author}`} className="font-medium text-muted hover:text-accent">
-                {release.author}
-              </Link>{" "}
+              <UserCard username={release.author}>
+                <Link to={`/u/${release.author}`} className="font-medium text-muted hover:text-accent">
+                  {release.author}
+                </Link>
+              </UserCard>{" "}
               {release.draft ? "drafted this" : "released this"} <TimeAgo at={when} />
             </p>
           )}

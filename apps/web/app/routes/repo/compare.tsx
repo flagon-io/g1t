@@ -5,9 +5,11 @@ import type { Comparison } from "@g1t/contracts";
 
 import type { Route } from "./+types/compare";
 import { DiffView } from "../../components/diff-view";
-import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { CommitAvatars, CommitNames } from "../../components/commit-person";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { page } from "../../lib/meta";
+import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -51,10 +53,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // What head has that base does not: its history down to the first commit base also has.
   const onBase = new Set(baseLog.ok ? baseLog.value.map((commit) => commit.hash) : []);
   const shared = headLog.value.findIndex((commit) => onBase.has(commit.hash));
-  const commits = (shared === -1 ? headLog.value : headLog.value.slice(0, shared)).map((commit) => ({
+  // With their people, in one identity call.
+  const commits = (await showCommits(shared === -1 ? headLog.value : headLog.value.slice(0, shared))).map((commit) => ({
     hash: commit.hash,
     message: commit.message.split("\n")[0] ?? "",
-    author: commit.author.name,
+    author: commit.author,
+    coAuthors: commit.coAuthors,
     at: commit.authoredAt,
   }));
   // The changes from where the two last agreed, as a pull request would
@@ -133,13 +137,15 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
               {commits.map((commit) => (
                 <li key={commit.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                   <GitCommitHorizontal size={15} className="shrink-0 text-faint" />
-                  <Avatar name={commit.author} size={16} />
+                  <CommitAvatars commit={commit} size={16} max={2} />
                   <Hint label={commit.message}>
                     <Link to={`${repoBase}/commit/${commit.hash}`} className="min-w-0 grow truncate hover:text-accent">
                       {commit.message}
                     </Link>
                   </Hint>
-                  <span className="hidden shrink-0 text-xs text-muted sm:inline">{commit.author}</span>
+                  <span className="hidden shrink-0 text-xs text-muted sm:inline">
+                    <CommitNames commit={commit} className="hover:text-fg" />
+                  </span>
                   <Link to={`${repoBase}/commit/${commit.hash}`} className="shrink-0 font-mono text-xs text-faint hover:text-fg">
                     {commit.hash.slice(0, 7)}
                   </Link>

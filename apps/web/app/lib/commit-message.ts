@@ -8,7 +8,7 @@ export type CommitMessage = {
   body: string;
   /** The names in `Co-Authored-By` trailers, without their addresses. */
   coAuthors: string[];
-  /** Every other trailer, as written. */
+  /** Every other trailer, as written but for any email address in it. */
   trailers: { key: string; value: string }[];
 };
 
@@ -28,7 +28,11 @@ export function parseCommitMessage(message: string): CommitMessage {
     for (const line of last) {
       const [, key, value] = TRAILER.exec(line.trim())!;
       if (key.toLowerCase() === "co-authored-by") coAuthors.push(value.replace(/\s*<[^>]*>\s*$/, "").trim());
-      else trailers.push({ key, value });
+      else {
+        // `Signed-off-by: Ada <ada@example.com>` shows Ada: g1t never shows an address.
+        const shown = value.replace(/\s*<[^<>]*@[^<>]*>/g, "").trim();
+        if (shown) trailers.push({ key, value: shown });
+      }
     }
   }
   return { subject, body: prose.join("\n").trim(), coAuthors, trailers };

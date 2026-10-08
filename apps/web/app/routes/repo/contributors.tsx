@@ -1,12 +1,13 @@
-import { Link } from "react-router";
 
 import type { Contributor, WeekCommits } from "@g1t/contracts";
 
 import type { Route } from "./+types/contributors";
-import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
+import { CommitAvatar, CommitName } from "../../components/commit-person";
+import { EmptyState, TimeAgo } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { requireRepo } from "../../lib/access.server";
-import { alignWeeks, contributorHref, count, peak } from "../../lib/about";
+import { alignWeeks, count, peak } from "../../lib/about";
+import { contributorPerson } from "../../lib/commit-people";
 import { page } from "../../lib/meta";
 import { repos } from "../../lib/services.server";
 import { unwrap } from "../../lib/session.server";
@@ -48,22 +49,15 @@ function WeekBars({ weeks, values, height, label, scale }: { weeks: WeekCommits[
 }
 
 function Person({ contributor, rank, weeks, scale }: { contributor: Contributor; rank: number; weeks: WeekCommits[]; scale: number }) {
-  const href = contributorHref(contributor);
-  const name = href ? (
-    <Link to={href} className="font-medium hover:text-accent">
-      {contributor.name}
-    </Link>
-  ) : (
-    <span className="font-medium">{contributor.name}</span>
-  );
+  // The same person, avatar, link and card as on their commits.
+  const person = contributorPerson(contributor);
   return (
     <li className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-center gap-3">
-        <Avatar name={contributor.name} image={contributor.avatar} size={36} system={contributor.kind === "g1t"} />
+        <CommitAvatar person={person} size={36} />
         <div className="min-w-0 grow">
           <p className="flex items-center gap-2 truncate text-sm">
-            {name}
-            {contributor.kind === "g1t" && <span className="text-xs text-faint">agent</span>}
+            <CommitName person={person} className="font-medium" />
           </p>
           <p className="text-xs text-muted">
             {count(contributor.commits, "commit")} · last <TimeAgo at={contributor.lastAt} />
