@@ -292,7 +292,7 @@ mod tests {
     fn restricted_paths_extensions_sizes_and_lengths() {
         let paths = Rule::FilePathRestriction(FilePathRule { restricted_file_paths: vec![".g1t/workflows/**".into(), "CODEOWNERS".into()] });
         let change = commit("a", "x", &["src/a.rs", ".g1t/workflows/ci.yml", "docs/CODEOWNERS"]);
-        assert_eq!(problems(&paths, &[change.clone()], true).len(), 2);
+        assert_eq!(problems(&paths, std::slice::from_ref(&change), true).len(), 2);
         let extensions = Rule::FileExtensionRestriction(FileExtensionRule { restricted_file_extensions: vec!["exe".into(), ".ZIP".into()] });
         let binaries = commit("b", "x", &["tool.exe", "a.zip", "README", ".env"]);
         assert_eq!(problems(&extensions, &[binaries], true).len(), 2);
@@ -303,7 +303,7 @@ mod tests {
         let long = commit("d", "x", &[&"a/".repeat(200)]);
         assert_eq!(problems(&Rule::MaxFilePathLength(MaxFilePathLengthRule { max_file_path_length: 255 }), &[long], true).len(), 1);
         let many = commit("e", "x", &["1", "2", "3"]);
-        assert_eq!(problems(&Rule::MaxFilesChanged(MaxFilesChangedRule { max_files: 2 }), &[many.clone()], true).len(), 1);
+        assert_eq!(problems(&Rule::MaxFilesChanged(MaxFilesChangedRule { max_files: 2 }), std::slice::from_ref(&many), true).len(), 1);
         assert!(problems(&Rule::MaxFilesChanged(MaxFilesChangedRule { max_files: 3 }), &[many], true).is_empty());
     }
 

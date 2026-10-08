@@ -474,6 +474,13 @@ pub struct Pull {
     /// g1t is not seeing through.
     #[serde(default)]
     pub confidence: Option<Confidence>,
+    /// Who last moved its head (a user id), and when, RFC 3339: for rules
+    /// about the most recent push. Absent until a push after rulesets
+    /// arrived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_pushed_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_pushed_at: Option<String>,
 }
 
 /// How sure g1t is that an agent's change is right. Low is below medium,
@@ -864,6 +871,10 @@ pub struct PullDetail {
     /// stands on the head commit. Empty when none are required.
     #[serde(default, alias = "requiredChecks")]
     pub required_checks: Vec<RequiredCheck>,
+    /// The rules of the branch it merges into that it does not meet yet,
+    /// for whoever is looking. Absent while it is not open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rules: Option<crate::rules::MergeRules>,
     /// Who owns the files it changes, from the CODEOWNERS file of the
     /// branch it merges into, and whose approval is still needed. Absent
     /// when that branch has no CODEOWNERS file.
@@ -1375,27 +1386,6 @@ pub struct RepoSettings {
     pub updated_at: Option<String>,
 }
 
-impl RepoSettings {
-    /// What holds for a pull request into `base`. The settings are the
-    /// default branch's protection: a pull request into another branch
-    /// needs no required checks or approvals, need not be up to date, and
-    /// never goes through the merge queue, which lands on the default
-    /// branch only. How g1t's agents review, revise and merge holds for
-    /// every branch.
-    pub fn for_base(&self, base: &str, default_branch: &str) -> RepoSettings {
-        if base == default_branch {
-            return self.clone();
-        }
-        RepoSettings {
-            required_checks: Vec::new(),
-            require_up_to_date: false,
-            required_approvals: 0,
-            merge_queue: false,
-            ..self.clone()
-        }
-    }
-}
-
 impl Default for RepoSettings {
     fn default() -> Self {
         RepoSettings {
@@ -1762,6 +1752,10 @@ pub struct PullActionArgs {
     /// where the repository lets members bypass them.
     #[serde(default)]
     pub ignore_checks: bool,
+    /// For `merge_pull`: merge although rules are not met, where a ruleset
+    /// lists the actor as one who may bypass it. Recorded as a bypass.
+    #[serde(default)]
+    pub bypass_rules: bool,
 }
 
 /// Where a plan stands.
@@ -2535,24 +2529,6 @@ mod required_tests {
         assert_eq!(check.description.as_deref(), Some("CI / push failure"));
         let queue = [status("CI / merge_group", "success")];
         assert_eq!(required_checks(&required, &queue)[0].state, RequiredState::Success);
-    }
-
-    #[test]
-    fn only_the_default_branch_is_protected() {
-        let settings = RepoSettings {
-            required_checks: vec!["CI".into()],
-            require_up_to_date: true,
-            required_approvals: 2,
-            merge_queue: true,
-            auto_merge: true,
-            ..RepoSettings::default()
-        };
-        let main = settings.for_base("main", "main");
-        assert_eq!((main.required_checks.len(), main.required_approvals, main.merge_queue), (1, 2, true));
-        let release = settings.for_base("release/1.x", "main");
-        assert!(release.required_checks.is_empty() && !release.require_up_to_date && !release.merge_queue);
-        assert_eq!(release.required_approvals, 0);
-        assert!(release.auto_merge, "how g1t's agents merge holds for every branch");
     }
 
     #[test]

@@ -1193,6 +1193,7 @@ dependencies = [
  "futures-util",
  "g1t-contracts",
  "g1t-kit",
+ "g1t-rules",
  "getrandom 0.2.17",
  "hex",
  "serde",

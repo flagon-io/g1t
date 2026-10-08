@@ -237,6 +237,7 @@ impl Security {
                 summary: String::new(),
                 keep_issue_open: false,
                 ignore_checks: false,
+                bypass_rules: false,
             },
         )
         .await?;

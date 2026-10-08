@@ -1049,6 +1049,7 @@ impl Security {
                         summary: String::new(),
                         keep_issue_open: false,
                         ignore_checks: false,
+                        bypass_rules: false,
                     },
                 )
                 .await?;
@@ -1388,7 +1389,7 @@ impl Security {
                     let merged: Outcome<Pull> = g1t_kit::call(
                         &self.work,
                         "merge_pull",
-                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_issue_open: false, ignore_checks: false },
+                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_issue_open: false, ignore_checks: false, bypass_rules: false },
                     )
                     .await?;
                     match merged {

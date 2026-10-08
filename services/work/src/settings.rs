@@ -1,7 +1,10 @@
-//! A repository's settings for how its pull requests are handled, and the
-//! rule about approvals that merging enforces.
-
-use std::collections::HashMap;
+//! A repository's settings for how g1t's agents handle its pull requests,
+//! and the branch protection settings that are now its "Default branch
+//! protection" ruleset (rulesets.rs).
+//!
+//! What a merge needs is decided by the rules of the branch it merges into
+//! (`Work::merge_gate`); `approvals_gap` asks them for what people must
+//! still do, as g1t sees it when it merges by itself.
 
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
@@ -11,7 +14,6 @@ use serde::Deserialize;
 use worker::Result;
 
 use crate::Work;
-use crate::reviews::AGENT_ID;
 
 const MAX_REQUIRED_APPROVALS: u32 = 6;
 const MAX_REVISIONS: u32 = 5;
@@ -61,52 +63,10 @@ impl From<SettingsRow> for RepoSettings {
     }
 }
 
-/// What is missing before a pull request has the approvals its repository
-/// asks for, or `None` if nothing is. `verdicts` is each reviewer's id and
-/// their most recent verdict; its owner's own (whoever asked g1t for it,
-/// or its author: Pull::owner) does not count.
-pub(crate) fn approvals_missing(
-    settings: &RepoSettings,
-    owner_id: &str,
-    verdicts: &[(String, Verdict)],
-) -> Option<String> {
-    if settings.required_approvals == 0 {
-        return None;
-    }
-    let others = || {
-        verdicts
-            .iter()
-            .filter(|(reviewer, _)| reviewer != owner_id)
-    };
-    if others().any(|(_, verdict)| *verdict == Verdict::RequestChanges) {
-        return Some("A reviewer has asked for changes.".to_owned());
-    }
-    let approvals = others()
-        .filter(|(reviewer, _)| settings.count_agent_approvals || reviewer != AGENT_ID)
-        .count() as u32;
-    if approvals >= settings.required_approvals {
-        return None;
-    }
-    let needed = settings.required_approvals;
-    let from = if settings.count_agent_approvals {
-        ""
-    } else {
-        " from people"
-    };
-    Some(format!(
-        "This repository requires {needed} approving {}{from} before a pull request merges; this one has {approvals}.",
-        if needed == 1 { "review" } else { "reviews" },
-    ))
-}
-
-#[derive(Deserialize)]
-struct VerdictRow {
-    author_id: String,
-    verdict: Verdict,
-}
-
 impl Work {
-    /// The settings of a repository, by its id. Defaults if none were set.
+    /// A repository's stored settings, by its id: how g1t's agents handle
+    /// its pull requests. Defaults if none were set. Branch protection is
+    /// its rules': see `settings_on`.
     pub(crate) async fn settings(&self, repo_id: &str) -> Result<RepoSettings> {
         if let Some(found) = self.prefetched_repo(repo_id) {
             let row = found.first::<SettingsRow>(crate::prefetch::Slot::Settings)?;
@@ -132,71 +92,20 @@ impl Work {
         })
     }
 
-    /// The settings that hold for a pull request: its repository's, which
-    /// protect the default branch, or for one into another branch, those
-    /// without the protection (`RepoSettings::for_base`). A pull request's
-    /// base is stored as none for the default branch.
-    pub(crate) async fn settings_for(&self, pull: &Pull) -> Result<RepoSettings> {
-        let settings = self.settings(&pull.repo_id).await?;
-        Ok(match pull.base.as_deref().filter(|base| !base.is_empty()) {
-            None => settings,
-            Some(base) => settings.for_base(base, ""),
-        })
-    }
-
-    /// What is missing before a pull request has the approvals its
-    /// repository asks for, or `None` if nothing is: the number of
-    /// approvals, then its code owners' (codeowners.rs).
-    pub(crate) async fn approvals_gap(
-        &self,
-        settings: &RepoSettings,
-        pull: &Pull,
-    ) -> Result<Option<String>> {
-        if let Some(missing) = self.count_gap(settings, pull).await? {
-            return Ok(Some(missing));
-        }
-        self.code_owners_gap(settings, pull).await
-    }
-
-    async fn count_gap(
-        &self,
-        settings: &RepoSettings,
-        pull: &Pull,
-    ) -> Result<Option<String>> {
-        if settings.required_approvals == 0 {
-            return Ok(None);
-        }
-        let rows = match self.prefetched_pull(&pull.id) {
-            Some(found) => found.rows::<VerdictRow>(crate::prefetch::Slot::Verdicts)?,
-            None => self
-                .db
-                .prepare(
-                    "SELECT author_id, verdict FROM comments
-                     WHERE repo_id = ? AND number = ? AND verdict IS NOT NULL ORDER BY id",
-                )
-                .bind(&[pull.repo_id.as_str().into(), pull.number.into()])?
-                .all()
-                .await?
-                .results::<VerdictRow>()?,
-        };
-        // Each reviewer's latest verdict is the one that stands.
-        let mut latest: HashMap<String, Verdict> = HashMap::new();
-        for row in rows {
-            latest.insert(row.author_id, row.verdict);
-        }
-        let verdicts: Vec<(String, Verdict)> = latest.into_iter().collect();
-        Ok(approvals_missing(settings, &pull.owner().id, &verdicts))
-    }
-
+    /// The default branch's settings: the stored ones, with branch
+    /// protection as its rules stack.
     pub(crate) async fn get_settings(&self, a: ViewArgs) -> Result<Outcome<RepoSettings>> {
-        // Read beside the access check (prefetch.rs), kept only if it passes.
-        let read = |repo_id: String| async move { self.timing.db(2, self.settings(&repo_id)).await };
-        Ok(match self.repo_then(&a.repo, &a.viewer, read).await? {
-            Outcome::Ok((_, settings)) => Outcome::Ok(settings),
-            Outcome::Fail(failure) => Outcome::Fail(failure),
-        })
+        let repo = match self.repo(&a.repo, &a.viewer).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        Ok(Outcome::Ok(self.timing.db(3, self.default_branch_settings(&repo)).await?))
     }
 
+    /// Replaces a repository's settings: how g1t's agents work, kept here,
+    /// and the branch protection ones, written to its "Default branch
+    /// protection" ruleset (made when it has none and they protect
+    /// anything). Rules that only rulesets have stay as they are.
     pub(crate) async fn update_settings(
         &self,
         a: UpdateSettingsArgs,
@@ -216,14 +125,22 @@ impl Work {
         {
             return Ok(Outcome::Fail(failure));
         }
+        let before = self.default_branch_settings(&repo).await?;
         let settings = RepoSettings {
             required_approvals: a.settings.required_approvals.min(MAX_REQUIRED_APPROVALS),
             max_revisions: a.settings.max_revisions.min(MAX_REVISIONS),
             required_checks: tidy_required(&a.settings.required_checks),
-            updated_by: Some(a.actor.username),
+            updated_by: Some(a.actor.username.clone()),
             updated_at: Some(rfc3339(now_ms())),
             ..a.settings
         };
+        // Branch protection changes need the role that changes it.
+        if protection_changed(&before, &settings)
+            && let Outcome::Fail(failure) =
+                crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::ManageProtection)
+        {
+            return Ok(Outcome::Fail(failure));
+        }
         self.db
             .prepare(
                 "INSERT INTO repo_settings
@@ -269,83 +186,43 @@ impl Work {
             settings.updated_at.as_deref().unwrap_or_default(),
         )
         .await?;
-        Ok(Outcome::Ok(settings))
+        if protection_changed(&before, &settings) {
+            self.write_branch_protection(&repo, &settings, &a.actor).await?;
+        }
+        Ok(Outcome::Ok(self.default_branch_settings(&repo).await?))
     }
+}
+
+/// Whether the branch protection part of the settings differs.
+fn protection_changed(before: &RepoSettings, after: &RepoSettings) -> bool {
+    let names = |settings: &RepoSettings| -> Vec<String> {
+        let mut names: Vec<String> = settings.required_checks.iter().map(|name| name.to_lowercase()).collect();
+        names.sort();
+        names
+    };
+    names(before) != names(after)
+        || before.require_up_to_date != after.require_up_to_date
+        || before.required_approvals != after.required_approvals
+        || before.count_agent_approvals != after.count_agent_approvals
+        || before.allow_ignoring_checks != after.allow_ignoring_checks
+        || before.merge_queue != after.merge_queue
+        || before.require_code_owner_review != after.require_code_owner_review
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn verdicts(list: &[(&str, Verdict)]) -> Vec<(String, Verdict)> {
-        list.iter()
-            .map(|(reviewer, verdict)| ((*reviewer).to_owned(), *verdict))
-            .collect()
-    }
-
-    fn requiring(approvals: u32) -> RepoSettings {
-        RepoSettings {
-            required_approvals: approvals,
-            ..RepoSettings::default()
-        }
-    }
-
     #[test]
-    fn nothing_is_required_by_default() {
-        assert_eq!(
-            approvals_missing(&RepoSettings::default(), "usr_a", &[]),
-            None
-        );
-    }
-
-    #[test]
-    fn approvals_are_counted_per_reviewer_and_not_from_the_author() {
-        let one = requiring(1);
-        assert!(approvals_missing(&one, "usr_a", &[]).is_some());
-        let own = verdicts(&[("usr_a", Verdict::Approve)]);
-        assert!(approvals_missing(&one, "usr_a", &own).is_some());
-        let other = verdicts(&[("usr_b", Verdict::Approve)]);
-        assert_eq!(approvals_missing(&one, "usr_a", &other), None);
-        assert!(approvals_missing(&requiring(2), "usr_a", &other).is_some());
-    }
-
-    #[test]
-    fn a_request_for_changes_blocks_whatever_else_was_approved() {
-        let mixed = verdicts(&[
-            ("usr_b", Verdict::Approve),
-            ("usr_c", Verdict::RequestChanges),
-        ]);
-        assert_eq!(
-            approvals_missing(&requiring(1), "usr_a", &mixed).as_deref(),
-            Some("A reviewer has asked for changes.")
-        );
-    }
-
-    #[test]
-    fn an_agents_approval_counts_only_where_the_repository_lets_it() {
-        let agent = verdicts(&[(AGENT_ID, Verdict::Approve)]);
-        assert_eq!(approvals_missing(&requiring(1), "usr_a", &agent), None);
-        let people_only = RepoSettings {
-            count_agent_approvals: false,
-            ..requiring(1)
-        };
-        assert!(approvals_missing(&people_only, "usr_a", &agent).is_some());
-    }
-
-    #[test]
-    fn whoever_asked_g1t_cannot_approve_its_change_for_them() {
-        use crate::rows::stored::{ASKER, G1T, pull};
-        let made = pull(G1T, Some(ASKER));
-        let owner = &made.owner().id;
-        // Their own approval is no approval, as an author's was not.
-        let theirs = verdicts(&[(ASKER.0, Verdict::Approve)]);
-        assert!(approvals_missing(&requiring(1), owner, &theirs).is_some());
-        // Nor does their asking for changes block it: it is theirs.
-        let changes = verdicts(&[(ASKER.0, Verdict::RequestChanges), ("usr_b", Verdict::Approve)]);
-        assert_eq!(approvals_missing(&requiring(1), owner, &changes), None);
-        // g1t's agent reviewing the change g1t made counts where the
-        // repository lets an agent's approval count, as it did.
-        let agent = verdicts(&[(AGENT_ID, Verdict::Approve)]);
-        assert_eq!(approvals_missing(&requiring(1), owner, &agent), None);
+    fn only_protection_changes_count_as_protection_changes() {
+        let before = RepoSettings::default();
+        let agents = RepoSettings { auto_merge: true, agent_review: false, max_revisions: 4, ..RepoSettings::default() };
+        assert!(!protection_changed(&before, &agents));
+        let checks = RepoSettings { required_checks: vec!["CI".into()], ..RepoSettings::default() };
+        assert!(protection_changed(&before, &checks));
+        let same = RepoSettings { required_checks: vec!["ci".into()], ..RepoSettings::default() };
+        assert!(!protection_changed(&checks, &same), "names compare without case");
+        let approvals = RepoSettings { required_approvals: 1, ..RepoSettings::default() };
+        assert!(protection_changed(&before, &approvals));
     }
 }

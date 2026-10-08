@@ -176,13 +176,13 @@ mod tests {
     #[test]
     fn a_protected_branch_takes_changes_only_through_pull_requests() {
         let protect = ruleset("main", &["~DEFAULT_BRANCH"], vec![all(Rule::PullRequest(PullRequestRule::default()))]);
-        let judged = judge(&[protect.clone()], "main", Who::Person, &update("refs/heads/main"));
+        let judged = judge(std::slice::from_ref(&protect), "main", Who::Person, &update("refs/heads/main"));
         assert!(refused(&judged));
         assert_eq!(blocking(&judged)[0].message, "Changes to main must be made through a pull request.");
         assert_eq!(blocking(&judged)[0].rule, "pull_request");
         // Creating it, as the first push to an empty repository does, is allowed.
         let created = RefChange { old: None, ..update("refs/heads/main") };
-        assert!(!refused(&judge(&[protect.clone()], "main", Who::Person, &created)));
+        assert!(!refused(&judge(std::slice::from_ref(&protect), "main", Who::Person, &created)));
         // Another branch is not covered.
         assert!(judge(&[protect], "main", Who::Person, &update("refs/heads/feature")).is_empty());
     }
@@ -195,11 +195,11 @@ mod tests {
             vec![all(Rule::Creation(NoParameters {})), all(Rule::Deletion(NoParameters {})), all(Rule::NonFastForward(NoParameters {}))],
         );
         let created = RefChange { old: None, ..update("refs/heads/release/2") };
-        assert_eq!(blocking(&judge(&[guard.clone()], "main", Who::Person, &created))[0].rule, "creation");
+        assert_eq!(blocking(&judge(std::slice::from_ref(&guard), "main", Who::Person, &created))[0].rule, "creation");
         let deleted = RefChange { new: None, ..update("refs/heads/release/2") };
-        assert_eq!(blocking(&judge(&[guard.clone()], "main", Who::Person, &deleted))[0].rule, "deletion");
+        assert_eq!(blocking(&judge(std::slice::from_ref(&guard), "main", Who::Person, &deleted))[0].rule, "deletion");
         let forced = RefChange { fast_forward: Some(false), ..update("refs/heads/release/2") };
-        let judged = judge(&[guard.clone()], "main", Who::Person, &forced);
+        let judged = judge(std::slice::from_ref(&guard), "main", Who::Person, &forced);
         assert_eq!(blocking(&judged)[0].message, "Force pushes to release/2 are blocked: the push would rewrite its history.");
         assert!(!refused(&judge(&[guard], "main", Who::Person, &update("refs/heads/release/2"))));
     }
@@ -236,8 +236,8 @@ mod tests {
         let workflows = ruleset("w", &["~ALL"], vec![agents_only]);
         let mut change = update("refs/heads/feature");
         change.commits = vec![crate::content::tests_support::commit("c1", "x", &[".g1t/workflows/deploy.yml"])];
-        assert!(refused(&judge(&[workflows.clone()], "main", Who::Agent, &change)));
-        assert!(refused(&judge(&[workflows.clone()], "main", Who::G1t, &change)));
+        assert!(refused(&judge(std::slice::from_ref(&workflows), "main", Who::Agent, &change)));
+        assert!(refused(&judge(std::slice::from_ref(&workflows), "main", Who::G1t, &change)));
         assert!(!refused(&judge(&[workflows], "main", Who::Person, &change)));
     }
 
@@ -255,11 +255,11 @@ mod tests {
         );
         let bad = RefChange { old: None, ..update("refs/heads/stuff") };
         assert_eq!(
-            blocking(&judge(&[branches.clone()], "main", Who::Person, &bad))[0].message,
+            blocking(&judge(std::slice::from_ref(&branches), "main", Who::Person, &bad))[0].message,
             "The branch name stuff does not match /^(main|(feature|fix)/.+)$/."
         );
         let good = RefChange { old: None, ..update("refs/heads/feature/rules") };
-        assert!(!refused(&judge(&[branches.clone()], "main", Who::Person, &good)));
+        assert!(!refused(&judge(std::slice::from_ref(&branches), "main", Who::Person, &good)));
         // Pushing to an existing branch is not naming it.
         assert!(!refused(&judge(&[branches], "main", Who::Person, &update("refs/heads/stuff"))));
         let tags = ruleset(
@@ -279,11 +279,11 @@ mod tests {
     #[test]
     fn content_rules_need_the_change_read_whole() {
         let signed = ruleset("s", &["~ALL"], vec![all(Rule::RequiredSignatures(NoParameters {}))]);
-        assert!(needs_content(&[signed.clone()], Who::Person));
-        assert!(needs_signatures(&[signed.clone()]));
+        assert!(needs_content(std::slice::from_ref(&signed), Who::Person));
+        assert!(needs_signatures(std::slice::from_ref(&signed)));
         let unread = RefChange { complete: false, ..update("refs/heads/feature") };
         assert_eq!(
-            blocking(&judge(&[signed.clone()], "main", Who::Person, &unread))[0].message,
+            blocking(&judge(std::slice::from_ref(&signed), "main", Who::Person, &unread))[0].message,
             "The change is too large for g1t to check against this rule."
         );
         let mut bypassed = signed;

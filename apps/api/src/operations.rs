@@ -3064,6 +3064,7 @@ impl Op {
             summary: text(input, "summary"),
             keep_issue_open: input["keep_issue_open"].as_bool() == Some(true),
             ignore_checks: input["ignore_checks"].as_bool() == Some(true),
+            bypass_rules: input["bypass_rules"].as_bool() == Some(true),
         };
         let Services {
             identity,

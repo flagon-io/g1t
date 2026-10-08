@@ -380,6 +380,7 @@ pub struct RequiredCheck {
 /// head before it merges.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct StatusChecksRule {
     pub checks: Vec<RequiredCheck>,
     /// The pull request must contain the branch's latest commits, so that
@@ -393,16 +394,6 @@ pub struct StatusChecksRule {
     pub allow_bypass_on_merge: bool,
 }
 
-impl Default for StatusChecksRule {
-    fn default() -> Self {
-        StatusChecksRule {
-            checks: Vec::new(),
-            strict: false,
-            paths: Vec::new(),
-            allow_bypass_on_merge: false,
-        }
-    }
-}
 
 /// `merge_queue`: merging joins the queue, which tests each pull request
 /// together with those ahead of it. The queue lands on the default branch.
@@ -952,6 +943,9 @@ pub struct SaveRulesetArgs {
     #[serde(default)]
     pub id: Option<String>,
     pub ruleset: RulesetSpec,
+    /// Set by the API, which records the change in the audit log itself.
+    #[serde(default)]
+    pub from_api: bool,
 }
 
 /// `delete_ruleset`. Returns `Outcome<bool>`.
@@ -961,6 +955,8 @@ pub struct DeleteRulesetArgs {
     #[serde(flatten)]
     pub owner: Owner,
     pub id: String,
+    #[serde(default)]
+    pub from_api: bool,
 }
 
 /// `effective_rules`: every rule that holds for a branch (or a tag, with
@@ -1205,9 +1201,27 @@ pub struct Applicable {
 /// `Outcome<RefRules>`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RefRulesArgs {
-    pub repo_id: String,
+    /// The repository, as the repos service read it.
+    pub repo: crate::repos::Repo,
     pub actor: Option<User>,
     pub refs: Vec<String>,
+}
+
+/// What a pull request's merge box shows of the rules for the branch it
+/// merges into, for whoever is looking.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MergeRules {
+    /// Rules not met, which refuse the merge.
+    pub unmet: Vec<Violation>,
+    /// Rules not met that the viewer may bypass, by asking to as they
+    /// merge (`bypass_rules`).
+    pub bypassable: Vec<Violation>,
+    /// Rules of rulesets in `evaluate` that would refuse it.
+    pub evaluate: Vec<Violation>,
+    /// The rulesets that hold for the branch.
+    pub rulesets: Vec<RulesetSummary>,
+    /// Whether merging joins the merge queue.
+    pub merge_queue: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
