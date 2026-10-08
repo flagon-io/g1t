@@ -285,8 +285,10 @@ base's folder changes on `main`), and opens a pull request with
 (`runs-on: [self-hosted, docker]`): g1t's own machines have Docker now,
 but the base's build downloads from Docker's apt repository over HTTPS,
 which does not trust a guarded job's egress certificate, so it stays on an
-open network. Until a runner is registered, its runs wait for one; run
-`build-base` by hand instead.
+open network. Its job is skipped until the repository variable
+`RUNNER_BASE_SELF_HOSTED` is `true` (set it once a runner is registered;
+without one, runs waited in the queue for a day and a half and then
+failed); until then run `build-base` by hand.
 
 **Sandboxes start from the image.** Cloudflare pulls an image to a
 machine the first time a sandbox lands there, and keeps it. A smaller base
