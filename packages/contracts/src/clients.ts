@@ -761,11 +761,15 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
   return {
     workflows: (repo, viewer) => call("workflows", { repo, viewer }),
     runs: (repo, viewer, filter = {}) => call("runs", { repo, viewer, ...filter }),
-    run: (repo, viewer, id) => call("run", { repo, viewer, id }),
+    run: (repo, viewer, id, attempt) => call("run", { repo, viewer, id, attempt: attempt ?? null }),
     logs: (repo, viewer, job, after = 0) => call("logs", { repo, viewer, job, after }),
+    summaries: (repo, viewer, id, attempt) => call("summaries", { repo, viewer, id, attempt: attempt ?? null }),
+    jobLogText: (repo, viewer, job) => call("job_log_text", { repo, viewer, job }),
+    runLogs: (repo, viewer, id, attempt) => call("run_logs", { repo, viewer, id, attempt: attempt ?? null }),
     dispatch: (actor, repo, workflow, ref, inputs) => call("dispatch", { actor, repo, workflow, ref, inputs }),
-    cancel: (actor, repo, id) => call("cancel", { actor, repo, id }),
-    rerun: (actor, repo, id, failedOnly = false) => call("rerun", { actor, repo, id, failed_only: failedOnly }),
+    cancel: (actor, repo, id, force = false) => call("cancel", { actor, repo, id, force }),
+    rerun: (actor, repo, id, failedOnly = false, options = {}) =>
+      call("rerun", { actor, repo, id, failed_only: failedOnly, job: options.job ?? null, debug: options.debug ?? false }),
     setWorkflowEnabled: (actor, repo, workflow, enabled) =>
       call("set_workflow_enabled", { actor, repo, workflow, enabled }),
     settings: (actor, owner, kind) => call("settings", { actor, ...owner, kind }),

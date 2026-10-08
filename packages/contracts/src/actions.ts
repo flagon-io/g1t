@@ -103,6 +103,34 @@ export type Job = {
   selfHosted?: boolean;
   /** The self-hosted runner that took it, by name. */
   runner?: string | null;
+  /** Cancelled, and running its `if: always()` and `cancelled()` steps and post steps before it ends. */
+  cancelling?: boolean;
+};
+
+/** One attempt of a run: the first, or a re-run. */
+export type RunAttempt = {
+  attempt: number;
+  status: RunStatus;
+  conclusion: Conclusion | null;
+  /** Who started it: whoever caused the run, then whoever re-ran it. */
+  actor: string | null;
+  /** It ran with debug logging. */
+  debug: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+/** What a job's steps wrote to `$GITHUB_STEP_SUMMARY`, in Markdown, masked. */
+export type JobSummary = { jobId: string; name: string; steps: { step: number; markdown: string }[] };
+
+/** A job's whole log, to download. `omitted`: left out of a run's logs that grew too large. */
+export type JobLogText = {
+  jobId: string;
+  name: string;
+  steps: StepState[];
+  chunks: LogChunk[];
+  done: boolean;
+  omitted?: boolean;
 };
 
 export type RunDetail = {
@@ -113,6 +141,8 @@ export type RunDetail = {
   approval?: RunApproval | null;
   /** The environments whose protection rules hold its jobs, this attempt. */
   pendingDeployments?: PendingDeployment[];
+  /** Every attempt, oldest first, the one shown (`run.attempt`) included. */
+  attempts?: RunAttempt[];
 };
 
 export type RunApproval = {
@@ -279,8 +309,15 @@ export type RunsFilter = {
 export interface ActionsApi {
   workflows(repo: RepoPath, viewer: Viewer): Promise<Result<Workflow[]>>;
   runs(repo: RepoPath, viewer: Viewer, filter?: RunsFilter): Promise<Result<WorkflowRun[]>>;
-  run(repo: RepoPath, viewer: Viewer, id: string): Promise<Result<RunDetail>>;
+  /** The latest attempt, or an earlier one. */
+  run(repo: RepoPath, viewer: Viewer, id: string, attempt?: number): Promise<Result<RunDetail>>;
   logs(repo: RepoPath, viewer: Viewer, job: string, after?: number): Promise<Result<JobLog>>;
+  /** The job summaries of an attempt (the latest by default), jobs without one left out. */
+  summaries(repo: RepoPath, viewer: Viewer, id: string, attempt?: number): Promise<Result<JobSummary[]>>;
+  /** A job's whole log, any attempt's, by the id the run gave the job. */
+  jobLogText(repo: RepoPath, viewer: Viewer, job: string): Promise<Result<JobLogText>>;
+  /** Every job's whole log for an attempt, to download as one archive. */
+  runLogs(repo: RepoPath, viewer: Viewer, id: string, attempt?: number): Promise<Result<JobLogText[]>>;
   dispatch(
     actor: User,
     repo: RepoPath,
@@ -288,8 +325,16 @@ export interface ActionsApi {
     ref: string | undefined,
     inputs: Record<string, unknown>,
   ): Promise<Result<WorkflowRun>>;
-  cancel(actor: User, repo: RepoPath, id: string): Promise<Result<WorkflowRun>>;
-  rerun(actor: User, repo: RepoPath, id: string, failedOnly?: boolean): Promise<Result<WorkflowRun>>;
+  /** Running jobs clean up first; `force` (or cancelling a run that is cancelling) stops them outright. */
+  cancel(actor: User, repo: RepoPath, id: string, force?: boolean): Promise<Result<WorkflowRun>>;
+  /** A new attempt: every job, the failed ones, or `job` and what needs it; `debug` for debug logging. */
+  rerun(
+    actor: User,
+    repo: RepoPath,
+    id: string,
+    failedOnly?: boolean,
+    options?: { job?: string; debug?: boolean },
+  ): Promise<Result<WorkflowRun>>;
   setWorkflowEnabled(actor: User, repo: RepoPath, workflow: string, enabled: boolean): Promise<Result<Workflow>>;
   settings(actor: User, owner: SettingsOwner, kind: SettingKindFilter): Promise<Result<Setting[]>>;
   /** `value` null keeps an existing entry's default value. */
