@@ -37,6 +37,7 @@ import {
   stuckMinutes,
   waitedFor,
 } from "../lib/mission";
+import { G1T_COMMIT_EMAILS, normalizeEmail } from "../lib/commit-people";
 import {
   type Fact,
   type Merged,
@@ -187,7 +188,8 @@ async function directCommits(repo: Repo, viewer: Viewer): Promise<{ hash: string
   const path = { namespace: repo.namespace, name: repo.name };
   const history = await reposApi.log(path, viewer, pushes[0].data.after, HISTORY_READ).catch(() => null);
   if (!history?.ok) return [];
-  return placePushes(history.value, pushes);
+  // g1t's own commits are told by their author address, never by name.
+  return placePushes(history.value, pushes, (commit) => G1T_COMMIT_EMAILS.has(normalizeEmail(commit.author.email)));
 }
 
 

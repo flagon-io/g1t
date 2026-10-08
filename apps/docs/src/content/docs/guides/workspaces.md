@@ -566,7 +566,10 @@ of their 39 changes this week without you, and people landed 8 changes of
 their own*. An agent's change landed without you when g1t merged it, by
 auto-merge or from the [merge queue](/guides/merge-queue/), with no person
 pressing merge. People's changes are their merged pull requests and the
-commits they pushed straight to the default branch. **Review N that need you** jumps to the
+commits they pushed straight to the default branch. A push is a person's
+by the account that signed in to make it, not by the name on its commits:
+pushes by g1t or a workflow job's token, and commits g1t wrote, are not
+counted as people's. **Review N that need you** jumps to the
 list, and **New issue** opens a new issue in the project you pick.
 
 | Across the top | What it counts |
