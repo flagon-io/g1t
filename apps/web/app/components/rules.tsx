@@ -440,6 +440,7 @@ function Parameters({
                       { value: "deployments", label: "Deployments" },
                       { value: "security", label: "Security" },
                       { value: "g1t", label: "g1t" },
+                      { value: "api", label: "The API" },
                     ]}
                     onChange={(value) =>
                       set({

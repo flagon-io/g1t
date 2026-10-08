@@ -8,6 +8,7 @@ mod authored;
 mod capture;
 mod checks;
 mod codeowners;
+mod commit_checks;
 mod compute;
 mod confidence;
 mod guardrails;
@@ -2435,6 +2436,20 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
         "set_commit_status" => reply(&work.set_commit_status(args(body)?).await?),
+        "create_commit_status" => reply(&work.create_commit_status(args(body)?).await?),
+        "commit_statuses" => reply(&work.commit_statuses(args(body)?).await?),
+        "combined_status" => reply(&work.combined_status(args(body)?).await?),
+        "create_check_run" => reply(&work.create_check_run(args(body)?).await?),
+        "update_check_run" => reply(&work.update_check_run(args(body)?).await?),
+        "get_check_run" => reply(&work.get_check_run(args(body)?).await?),
+        "check_run_annotations" => reply(&work.check_run_annotations(args(body)?).await?),
+        "ref_check_runs" => reply(&work.ref_check_runs(args(body)?).await?),
+        "ref_check_suites" => reply(&work.ref_check_suites(args(body)?).await?),
+        "get_check_suite" => reply(&work.get_check_suite(args(body)?).await?),
+        "rerequest_check_run" => reply(&work.rerequest_check_run(args(body)?).await?),
+        "rerequest_check_suite" => reply(&work.rerequest_check_suite(args(body)?).await?),
+        "request_check_action" => reply(&work.request_check_action(args(body)?).await?),
+        "commit_checks" => reply(&work.commit_checks(args(body)?).await?),
         "start_review" => reply(&work.start_review(args(body)?).await?),
         "advance" => reply(&work.advance(args(body)?).await?),
         "stall" => reply(&work.stall(args(body)?).await?),

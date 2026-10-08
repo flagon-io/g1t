@@ -1134,7 +1134,7 @@ pub struct ReportMergecheckArgs {
 }
 
 /// What a workflow run (or another tool) says about a commit.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitStatus {
     /// What reported it, such as `CI / push`.
@@ -1150,6 +1150,10 @@ pub struct CommitStatus {
     /// one (`rules::RequiredCheck::integration`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Set on the status a check run stands as (see `checks`): the check
+    /// run's id. Such a status is listed as its check run, not again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_run_id: Option<String>,
 }
 
 /// `set_commit_status`: for services only. Returns `Outcome<bool>`.
@@ -2493,6 +2497,7 @@ mod required_tests {
             target_url: None,
             updated_at: String::new(),
             source: None,
+            check_run_id: None,
         }
     }
 

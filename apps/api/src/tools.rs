@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
+use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 
@@ -199,7 +200,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -210,6 +211,18 @@ pub const TOOLS: &[Tool] = &[
             a("cancel", Op::CancelWorkflowRun, "Cancel a run"),
             a("rerun", Op::RerunWorkflowRun, "Run a finished run again"),
             a("update", Op::UpdateWorkflow, "Turn a workflow on or off"),
+            a("combined_status", Op::Checks(ChecksOp::GetCombinedStatus), "A commit's statuses and the state they add up to"),
+            a("list_statuses", Op::Checks(ChecksOp::ListCommitStatuses), "A commit's statuses, newest first"),
+            a("set_status", Op::Checks(ChecksOp::CreateCommitStatus), "Set a status on a commit"),
+            a("list_check_runs", Op::Checks(ChecksOp::ListCheckRunsForRef), "A commit's check runs, g1t Actions jobs included"),
+            a("get_check_run", Op::Checks(ChecksOp::GetCheckRun), "One check run with its report"),
+            a("check_run_annotations", Op::Checks(ChecksOp::ListCheckRunAnnotations), "What a check run says about lines of files"),
+            a("create_check_run", Op::Checks(ChecksOp::CreateCheckRun), "Report a check run on a commit"),
+            a("update_check_run", Op::Checks(ChecksOp::UpdateCheckRun), "Move a check run on, complete it, add annotations"),
+            a("rerequest_check_run", Op::Checks(ChecksOp::RerequestCheckRun), "Ask for a check run to run again"),
+            a("list_check_suites", Op::Checks(ChecksOp::ListCheckSuitesForRef), "A commit's check suites, one per reporter or workflow run"),
+            a("get_check_suite", Op::Checks(ChecksOp::GetCheckSuite), "One check suite"),
+            a("rerequest_check_suite", Op::Checks(ChecksOp::RerequestCheckSuite), "Ask for a check suite to run again"),
             a("list_deployments", Op::Deployments(DeploymentsOp::ListDeployments), "Deployments wherever they run, newest first, filtered"),
             a("get_deployment", Op::Deployments(DeploymentsOp::GetDeployment), "One deployment with every status it has had"),
             a("create_deployment", Op::Deployments(DeploymentsOp::CreateDeployment), "Report a deployment of a ref to an environment"),

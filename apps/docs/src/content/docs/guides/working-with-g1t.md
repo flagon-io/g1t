@@ -181,8 +181,10 @@ get the pull request back ready to merge:
 
 1. **Checks.** Every push the agent makes runs the repository's
    [workflows](/guides/actions/) on the pull request, as for anyone's pull
-   request. g1t waits for them to finish. Only the workflow runs report, so
-   the agent has no say in the result.
+   request. g1t waits for them to finish. Only the workflow runs and your
+   integrations report [checks](/guides/checks/), so the agent has no say
+   in the result: it reads them, with each failing check run's annotations,
+   and never reports one.
 2. **Review.** A different agent reads the change and posts comments on
    lines, a summary and a verdict.
 3. **Revision.** If a check fails or the review asks for changes, the

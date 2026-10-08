@@ -86,6 +86,8 @@ import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
 import { computeNoteFor } from "../../lib/compute.server";
 import { actions, agents, deployments, identity, inbox, projects, repos, work } from "../../lib/services.server";
+import { commitChecksFor } from "../../lib/commit-checks.server";
+import { CommitChecksBadge } from "../../components/commit-checks";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
@@ -213,6 +215,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const protectedBase = (pull.base ?? repoDefault) === repoDefault;
   return {
     ...found.value,
+    // Every check on its head, as the commit's own list shows them: streamed.
+    headChecks: commitChecksFor(path, viewer, [pull.headCommit]),
     labels: labels.ok ? labels.value : [],
     milestones: milestones.ok ? milestones.value : [],
     // Labelling and milestones: Triage and up; its author, its labels.
@@ -1571,7 +1575,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             )}
             <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-faint">
               <GitCommitHorizontal size={13} />
-              {pull.headCommit?.slice(0, 12) ?? "no commits pushed yet"}
+              {pull.headCommit ? (
+                <Link to={`${base}/commit/${pull.headCommit}`} className="hover:text-fg">
+                  {pull.headCommit.slice(0, 12)}
+                </Link>
+              ) : (
+                "no commits pushed yet"
+              )}
+              {pull.headCommit && <CommitChecksBadge checks={loaderData.headChecks} sha={pull.headCommit} className="size-5" />}
             </p>
           </section>
           {loaderData.viewer && (

@@ -1521,6 +1521,7 @@ mod tests {
                 target_url: None,
                 updated_at: String::new(),
                 source: None,
+                check_run_id: None,
             })
             .collect();
         let required: Vec<String> = required.iter().map(|name| (*name).to_owned()).collect();

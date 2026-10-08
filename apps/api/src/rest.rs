@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use crate::about::AboutOp;
 use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
+use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 
@@ -261,6 +262,29 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("GET", "/repos/:owner/:name/check-names", Op::ListCheckNames, &[]),
+    // Checks: GitHub's addresses for statuses, check runs and check suites.
+    route("POST", "/repos/:owner/:name/statuses/:sha", Op::Checks(ChecksOp::CreateCommitStatus), &[]),
+    route("GET", "/repos/:owner/:name/commits/:ref/statuses", Op::Checks(ChecksOp::ListCommitStatuses), &[]),
+    route("GET", "/repos/:owner/:name/commits/:ref/status", Op::Checks(ChecksOp::GetCombinedStatus), &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/commits/:ref/check-runs",
+        Op::Checks(ChecksOp::ListCheckRunsForRef),
+        &[("check_name", "check_name"), ("status", "status"), ("app", "app"), ("filter", "filter")],
+    ),
+    route(
+        "GET",
+        "/repos/:owner/:name/commits/:ref/check-suites",
+        Op::Checks(ChecksOp::ListCheckSuitesForRef),
+        &[("app", "app"), ("check_name", "check_name")],
+    ),
+    route("POST", "/repos/:owner/:name/check-runs", Op::Checks(ChecksOp::CreateCheckRun), &[]),
+    route("GET", "/repos/:owner/:name/check-runs/:id", Op::Checks(ChecksOp::GetCheckRun), &[]),
+    route("PATCH", "/repos/:owner/:name/check-runs/:id", Op::Checks(ChecksOp::UpdateCheckRun), &[]),
+    route("GET", "/repos/:owner/:name/check-runs/:id/annotations", Op::Checks(ChecksOp::ListCheckRunAnnotations), &[]),
+    route("POST", "/repos/:owner/:name/check-runs/:id/rerequest", Op::Checks(ChecksOp::RerequestCheckRun), &[]),
+    route("GET", "/repos/:owner/:name/check-suites/:id", Op::Checks(ChecksOp::GetCheckSuite), &[]),
+    route("POST", "/repos/:owner/:name/check-suites/:id/rerequest", Op::Checks(ChecksOp::RerequestCheckSuite), &[]),
     // Rulesets: a repository's, a workspace's, the rules of one branch,
     // and how they judged pushes and merges.
     route("GET", "/repos/:owner/:name/rulesets", Op::Rules(RulesOp::ListRepoRulesets), &[("include_parents", "include_parents")]),
@@ -1154,6 +1178,30 @@ mod tests {
         assert_eq!(op("GET", "/workspaces/acme/invoices"), Op::ListInvoices);
         assert_eq!(op("GET", "/workspaces/acme/billing_details"), Op::GetBillingDetails);
         assert_eq!(op("GET", "/workspaces/acme/gateway/requests"), Op::ListGatewayRequests);
+    }
+
+    #[test]
+    fn checks_are_at_githubs_addresses() {
+        let sha = "a".repeat(40);
+        let body = json!({ "state": "success", "context": "ci/build" });
+        let (route, input) = resolve("POST", &format!("/repos/acme/web/statuses/{sha}"), &[], body).unwrap();
+        assert_eq!(route.op, Op::Checks(ChecksOp::CreateCommitStatus));
+        assert_eq!(input, json!({ "state": "success", "context": "ci/build", "sha": sha, "repo": "acme/web" }));
+        let (route, input) = resolve("GET", "/repos/acme/web/commits/release%2F1.x/status", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::Checks(ChecksOp::GetCombinedStatus));
+        assert_eq!(input, json!({ "ref": "release/1.x", "repo": "acme/web" }));
+        let query = [("check_name".to_owned(), "lint".to_owned())];
+        let (route, input) = resolve("GET", "/repos/acme/web/commits/main/check-runs", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::Checks(ChecksOp::ListCheckRunsForRef));
+        assert_eq!(input, json!({ "check_name": "lint", "ref": "main", "repo": "acme/web" }));
+        let (route, input) = resolve("PATCH", "/repos/acme/web/check-runs/cr_1", &[], json!({ "conclusion": "success" })).unwrap();
+        assert_eq!(route.op, Op::Checks(ChecksOp::UpdateCheckRun));
+        assert_eq!(input, json!({ "conclusion": "success", "id": "cr_1", "repo": "acme/web" }));
+        let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
+        assert_eq!(op("POST", "/repos/acme/web/check-runs"), Op::Checks(ChecksOp::CreateCheckRun));
+        assert_eq!(op("GET", "/repos/acme/web/check-runs/cr_1/annotations"), Op::Checks(ChecksOp::ListCheckRunAnnotations));
+        assert_eq!(op("POST", "/repos/acme/web/check-suites/cs_1/rerequest"), Op::Checks(ChecksOp::RerequestCheckSuite));
+        assert_eq!(op("GET", "/repos/acme/web/commits/main/check-suites"), Op::Checks(ChecksOp::ListCheckSuitesForRef));
     }
 
     #[test]

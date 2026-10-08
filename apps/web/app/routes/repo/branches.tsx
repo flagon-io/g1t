@@ -6,6 +6,8 @@ import { ActiveBranches } from "../../components/branches";
 import { Avatar, EmptyState, TimeAgo, notACredential } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { readBranches } from "../../lib/branches.server";
+import { commitChecksFor } from "../../lib/commit-checks.server";
+import { CommitChecksBadge } from "../../components/commit-checks";
 import { page } from "../../lib/meta";
 import { deployments, repos, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -47,6 +49,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     },
     BRANCHES_READ,
   );
+  // Each branch head's checks, in one call, streamed in beside it.
+  const checks = commitChecksFor(path, viewer, [read.head?.hash, ...read.shown.map((branch) => branch.commit?.hash)]);
   const staleBefore = Date.now() - STALE_DAYS * 86_400_000;
   const isStale = (at: string | undefined) => at != null && Date.parse(at) < staleBefore;
   return {
@@ -59,11 +63,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     matched: read.total,
     unread: Math.max(0, read.total - read.shown.length),
     query,
+    checks,
   };
 }
 
 export default function Branches({ loaderData, params }: Route.ComponentProps) {
-  const { main, head, active, stale, total, matched, unread, query } = loaderData;
+  const { main, head, active, stale, total, matched, unread, query, checks } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="space-y-6">
@@ -102,6 +107,7 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
                   {head.message}
                 </Link>
               </Hint>
+              <CommitChecksBadge checks={checks} sha={head.hash} className="size-5" />
               <span className="shrink-0 text-faint">
                 · <TimeAgo at={head.at} />
               </span>
@@ -122,14 +128,14 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
       {active.length > 0 && (
         <section>
           <h3 className="mb-2 text-sm font-medium text-muted">Active</h3>
-          <ActiveBranches branches={active} base={base} main={main} />
+          <ActiveBranches branches={active} base={base} main={main} checks={checks} />
         </section>
       )}
       {stale.length > 0 && (
         <section>
           <h3 className="mb-2 text-sm font-medium text-muted">Stale</h3>
           <p className="-mt-1 mb-2 text-xs text-faint">No commits in the last 90 days.</p>
-          <ActiveBranches branches={stale} base={base} main={main} />
+          <ActiveBranches branches={stale} base={base} main={main} checks={checks} />
         </section>
       )}
       {active.length === 0 && stale.length === 0 && (

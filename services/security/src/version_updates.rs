@@ -1663,7 +1663,7 @@ mod tests {
     #[test]
     fn checks_decide_failure_and_success() {
         let check = |state| RequiredCheck { name: "CI".into(), state, description: None, target_url: None };
-        let status = |state: &str| CommitStatus { context: "CI / push".into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None };
+        let status = |state: &str| CommitStatus { context: "CI / push".into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None, check_run_id: None };
         let detail = |required: Vec<RequiredCheck>, statuses: Vec<CommitStatus>| {
             let mut detail: PullDetail = serde_json::from_value(json!({
                 "pull": {"id": "pul_1", "repoId": "rep_1", "number": 1, "issue": null, "title": "t", "body": null, "agent": "", "runtime": "external",

@@ -573,7 +573,7 @@ mod tests {
     }
 
     fn status(context: &str, state: &str) -> CommitStatus {
-        CommitStatus { context: context.into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None }
+        CommitStatus { context: context.into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None, check_run_id: None }
     }
 
     fn facts<'a>(reviews: &'a [Review], statuses: &'a [CommitStatus], files: &'a [String]) -> MergeFacts<'a> {

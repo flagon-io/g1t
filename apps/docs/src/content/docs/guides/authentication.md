@@ -321,6 +321,7 @@ On the form, scopes are a checklist grouped by area:
 | Issues & pull requests | `issues:read`, `issues:write`, `pull_requests:read`, `pull_requests:write` |
 | Agents | `agents:run` |
 | Workflows | `workflows:read`, `workflows:write` |
+| Checks | `checks:read`, `checks:write` |
 | Deployments | `deployments:read`, `deployments:write` |
 | Memory & search | `memory:read`, `memory:write` |
 | Account | `account:read`, `account:write` |
@@ -355,6 +356,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `agents:run` | Put g1t to work and message it, which uses the workspace's money |
 | `workflows:read` | Read workflows, runs and logs |
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
+| `checks:read` | Read commits' statuses, check runs, check suites and annotations |
+| `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
 | `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
 | `deployments:write` | Report deployments and their statuses, from any CI |
 | `memory:read` | Recall memory and search the workspace's context |
@@ -414,7 +417,7 @@ any box.
 | --- | --- |
 | Read only | Every `read` scope. Changes nothing. |
 | Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and `notifications:write`. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin scope. |
-| CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read`, `workflows:write`, `deployments:read` and `deployments:write`. Clones and pushes code, pushes and pulls packages, runs workflows and reports deployments. |
+| CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read`, `workflows:write`, `checks:read`, `checks:write`, `deployments:read` and `deployments:write`. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 | Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
 
 Admin scopes change things that are hard to undo, or decide who can reach

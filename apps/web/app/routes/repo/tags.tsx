@@ -2,9 +2,11 @@ import { FileArchive, Tag as TagIcon } from "lucide-react";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/tags";
+import { CommitChecksBadge } from "../../components/commit-checks";
 import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { page } from "../../lib/meta";
+import { commitChecksFor } from "../../lib/commit-checks.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -14,11 +16,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
-  return { tags: unwrap(await repos.tags(path, getViewer(context))) };
+  const viewer = getViewer(context);
+  const tags = unwrap(await repos.tags(path, viewer));
+  // Each tagged commit's checks, in one call, streamed in beside it.
+  return { tags, checks: commitChecksFor(path, viewer, tags.map((tag) => tag.commit?.hash)) };
 }
 
 export default function Tags({ loaderData, params }: Route.ComponentProps) {
-  const { tags } = loaderData;
+  const { tags, checks } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const path = (name: string) => name.split("/").map(encodeURIComponent).join("/");
   return (
@@ -50,6 +55,7 @@ export default function Tags({ loaderData, params }: Route.ComponentProps) {
                         {tag.commit.message.split("\n")[0]}
                       </Link>
                     </Hint>
+                    <CommitChecksBadge checks={checks} sha={tag.commit.hash} className="size-5" />
                     <span className="shrink-0 text-faint">
                       · <TimeAgo at={tag.commit.authoredAt} />
                     </span>

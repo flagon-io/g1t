@@ -26,6 +26,7 @@ use g1t_contracts::security::{
 };
 
 use crate::alerts::{AlertKind, SecurityAlert};
+use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::deployments::DeploymentsOp;
 use crate::rules::RulesOp;
@@ -276,6 +277,8 @@ pub enum Op {
     Security(SecurityOp),
     /// Rulesets: rules.rs.
     Rules(RulesOp),
+    /// Statuses, check runs and check suites on commits: checks.rs.
+    Checks(ChecksOp),
     /// A repository's languages, contributors, license, stars and releases: about.rs.
     About(AboutOp),
     /// Deployments wherever they run, and environments: deployments.rs.
@@ -642,7 +645,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 245] = [
+    pub const ALL: [Op; 257] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -866,6 +869,18 @@ impl Op {
         Op::Rules(RulesOp::UpdateWorkspaceRuleset),
         Op::Rules(RulesOp::DeleteWorkspaceRuleset),
         Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
+        Op::Checks(ChecksOp::CreateCommitStatus),
+        Op::Checks(ChecksOp::ListCommitStatuses),
+        Op::Checks(ChecksOp::GetCombinedStatus),
+        Op::Checks(ChecksOp::CreateCheckRun),
+        Op::Checks(ChecksOp::UpdateCheckRun),
+        Op::Checks(ChecksOp::GetCheckRun),
+        Op::Checks(ChecksOp::ListCheckRunAnnotations),
+        Op::Checks(ChecksOp::RerequestCheckRun),
+        Op::Checks(ChecksOp::ListCheckRunsForRef),
+        Op::Checks(ChecksOp::ListCheckSuitesForRef),
+        Op::Checks(ChecksOp::GetCheckSuite),
+        Op::Checks(ChecksOp::RerequestCheckSuite),
         Op::About(AboutOp::GetLanguages),
         Op::About(AboutOp::ListContributors),
         Op::About(AboutOp::GetLicense),
@@ -1078,6 +1093,7 @@ impl Op {
             Op::GetCodeownersErrors => "get_codeowners_errors",
             Op::Security(op) => op.name(),
             Op::Rules(op) => op.name(),
+            Op::Checks(op) => op.name(),
             Op::About(op) => op.name(),
             Op::Deployments(op) => op.name(),
         }
@@ -1590,6 +1606,7 @@ impl Op {
             }
             Op::Security(op) => op.description(),
             Op::Rules(op) => op.description(),
+            Op::Checks(op) => op.description(),
             Op::About(op) => op.description(),
             Op::Deployments(op) => op.description(),
         }
@@ -2960,6 +2977,7 @@ impl Op {
             ),
             Op::Security(op) => op.input(),
             Op::Rules(op) => op.input(),
+            Op::Checks(op) => op.input(),
             Op::About(op) => op.input(),
             Op::Deployments(op) => op.input(),
         }
@@ -2967,6 +2985,10 @@ impl Op {
 
     /// Whether the operation refuses an anonymous caller outright.
     pub(crate) fn needs_user(self) -> bool {
+        // A public repository's checks are anyone's to read.
+        if let Op::Checks(op) = self {
+            return !op.reads();
+        }
         if let Op::About(op) = self {
             return !op.anonymous();
         }
@@ -5014,6 +5036,7 @@ impl Op {
             // each answer its public shape.
             Op::Security(op) => crate::security::run(op, services, viewer, input).await,
             Op::Rules(op) => crate::rules::run(op, services, viewer, input).await,
+            Op::Checks(op) => crate::checks::run(op, services, viewer, input).await,
             Op::About(op) => crate::about::run(op, services, viewer, input).await,
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {

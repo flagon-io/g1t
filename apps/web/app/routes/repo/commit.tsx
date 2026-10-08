@@ -7,10 +7,12 @@ import type { Comparison, Pull } from "@g1t/contracts";
 import { parseCommitMessage } from "../../lib/commit-message";
 import type { Route } from "./+types/commit";
 import { page } from "../../lib/meta";
+import { CommitChecksBadge } from "../../components/commit-checks";
 import { DiffView } from "../../components/diff-view";
 import { Avatar, TimeAgo } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { Skeleton } from "../../components/ui/skeleton";
+import { commitChecksFor } from "../../lib/commit-checks.server";
 import { immutable } from "../../lib/immutable.server";
 import { pullForCommit } from "../../lib/provenance.server";
 import { accounts, repos } from "../../lib/services.server";
@@ -74,6 +76,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       owner,
       // Streamed: the page shows the commit while this is worked out.
       pull: pullForCommit(path, viewer, loaded.commit.hash),
+      // Never cached: checks report on a commit long after it was made.
+      checks: commitChecksFor(path, viewer, [loaded.commit.hash]),
     },
     { headers: { "Server-Timing": `load;dur=${Date.now() - started};desc="${cached ? "cached" : "read"}"` } },
   );
@@ -129,7 +133,7 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
 }
 
 export default function CommitPage({ loaderData, params }: Route.ComponentProps) {
-  const { commit, pull, comparison, owner } = loaderData;
+  const { commit, pull, comparison, owner, checks } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const { subject, body, coAuthors, trailers } = parseCommitMessage(commit.message);
   return (
@@ -195,6 +199,7 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
             )}
           </span>
           <span className="ml-auto flex items-center gap-2">
+            <CommitChecksBadge checks={checks} sha={commit.hash} />
             <Link
               to={`${base}/tree/${commit.hash}/`}
               className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"

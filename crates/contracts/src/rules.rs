@@ -344,6 +344,9 @@ pub enum Integration {
     Security,
     /// g1t itself, such as code owners.
     G1t,
+    /// Reported through the API, by a token or an integration: a status
+    /// or a check run.
+    Api,
 }
 
 impl Integration {
@@ -353,6 +356,7 @@ impl Integration {
             Integration::Deployments => "deployments",
             Integration::Security => "security",
             Integration::G1t => "g1t",
+            Integration::Api => "api",
         }
     }
 
@@ -362,6 +366,7 @@ impl Integration {
             "deployments" => Some(Integration::Deployments),
             "security" => Some(Integration::Security),
             "g1t" => Some(Integration::G1t),
+            "api" => Some(Integration::Api),
             _ => None,
         }
     }

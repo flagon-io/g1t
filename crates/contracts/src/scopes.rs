@@ -34,6 +34,7 @@ pub enum Resource {
     PullRequests,
     Agents,
     Workflows,
+    Checks,
     Deployments,
     Memory,
     Access,
@@ -44,7 +45,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 19] = [
+    pub const ALL: [Resource; 20] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -53,6 +54,7 @@ impl Resource {
         Resource::PullRequests,
         Resource::Agents,
         Resource::Workflows,
+        Resource::Checks,
         Resource::Deployments,
         Resource::Memory,
         Resource::Account,
@@ -80,6 +82,7 @@ impl Resource {
             Resource::PullRequests => "pull_requests",
             Resource::Agents => "agents",
             Resource::Workflows => "workflows",
+            Resource::Checks => "checks",
             Resource::Deployments => "deployments",
             Resource::Memory => "memory",
             Resource::Access => "access",
@@ -105,6 +108,7 @@ impl Resource {
             Resource::PullRequests => "Pull requests",
             Resource::Agents => "g1t agents",
             Resource::Workflows => "Workflows",
+            Resource::Checks => "Checks and statuses",
             Resource::Deployments => "Deployments",
             Resource::Memory => "Memory and context",
             Resource::Access => "Who has access",
@@ -161,6 +165,8 @@ pub enum Scope {
     AgentsRun,
     WorkflowsRead,
     WorkflowsWrite,
+    ChecksRead,
+    ChecksWrite,
     DeploymentsRead,
     DeploymentsWrite,
     MemoryRead,
@@ -187,7 +193,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 39] = [
+    pub const ALL: [Scope; 41] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -205,6 +211,8 @@ impl Scope {
         Scope::AgentsRun,
         Scope::WorkflowsRead,
         Scope::WorkflowsWrite,
+        Scope::ChecksRead,
+        Scope::ChecksWrite,
         Scope::DeploymentsRead,
         Scope::DeploymentsWrite,
         Scope::MemoryRead,
@@ -248,6 +256,8 @@ impl Scope {
             Scope::AgentsRun => "agents:run",
             Scope::WorkflowsRead => "workflows:read",
             Scope::WorkflowsWrite => "workflows:write",
+            Scope::ChecksRead => "checks:read",
+            Scope::ChecksWrite => "checks:write",
             Scope::DeploymentsRead => "deployments:read",
             Scope::DeploymentsWrite => "deployments:write",
             Scope::MemoryRead => "memory:read",
@@ -328,6 +338,8 @@ impl Scope {
             Scope::AgentsRun => "Put g1t agents to work and message them, which uses the workspace's money",
             Scope::WorkflowsRead => "Read workflows, runs and logs",
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
+            Scope::ChecksRead => "Read commits' statuses, check runs, check suites and annotations",
+            Scope::ChecksWrite => "Report statuses and check runs on commits, and ask for checks to run again",
             Scope::DeploymentsRead => "See deployments, their statuses and environments",
             Scope::DeploymentsWrite => "Report deployments and their statuses, from any CI",
             Scope::MemoryRead => "Recall memory and search the workspace's context",
@@ -454,6 +466,8 @@ impl Preset {
                 Scope::PackagesWrite,
                 Scope::WorkflowsRead,
                 Scope::WorkflowsWrite,
+                Scope::ChecksRead,
+                Scope::ChecksWrite,
                 Scope::DeploymentsRead,
                 Scope::DeploymentsWrite,
             ]),
@@ -737,6 +751,19 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("cancel_workflow_run", Scope::WorkflowsWrite),
     ("rerun_workflow_run", Scope::WorkflowsWrite),
     ("update_workflow", Scope::WorkflowsWrite),
+    // Checks: statuses, check runs and check suites on commits.
+    ("list_commit_statuses", Scope::ChecksRead),
+    ("get_combined_status", Scope::ChecksRead),
+    ("list_check_runs_for_ref", Scope::ChecksRead),
+    ("get_check_run", Scope::ChecksRead),
+    ("list_check_run_annotations", Scope::ChecksRead),
+    ("list_check_suites_for_ref", Scope::ChecksRead),
+    ("get_check_suite", Scope::ChecksRead),
+    ("create_commit_status", Scope::ChecksWrite),
+    ("create_check_run", Scope::ChecksWrite),
+    ("update_check_run", Scope::ChecksWrite),
+    ("rerequest_check_run", Scope::ChecksWrite),
+    ("rerequest_check_suite", Scope::ChecksWrite),
     // Deployments, wherever they run: reading them, and reporting them.
     ("list_deployments", Scope::DeploymentsRead),
     ("get_deployment", Scope::DeploymentsRead),
@@ -827,6 +854,12 @@ pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
     // A workspace's base permission is who has access.
     if operation == "update_workspace" && input.get("base_permission").is_some_and(|v| !v.is_null()) {
         extra.push(Scope::AccessAdmin);
+    }
+    // Asking a g1t Actions job or run to run again reruns its workflow.
+    if matches!(operation, "rerequest_check_run" | "rerequest_check_suite")
+        && input["id"].as_str().is_some_and(|id| id.starts_with("job_") || id.starts_with("run_"))
+    {
+        extra.push(Scope::WorkflowsWrite);
     }
     if operation == "update_repo" && (input.get("private").is_some_and(|v| !v.is_null()) || input.get("default_branch").is_some_and(|v| !v.is_null())) {
         extra.push(Scope::RepoAdmin);
@@ -990,6 +1023,22 @@ mod tests {
         assert!(token(&[Scope::ModelsWrite]).allows(Scope::ModelsWrite));
         assert!(!token(&[Scope::BillingWrite]).allows(Scope::ModelsWrite));
         assert!(TokenAccess::full().allows(Scope::ModelsWrite));
+    }
+
+    #[test]
+    fn checks_are_reported_with_checks_write_which_ci_gets() {
+        assert_eq!(scope_for("create_check_run"), Some(Scope::ChecksWrite));
+        assert_eq!(scope_for("create_commit_status"), Some(Scope::ChecksWrite));
+        assert_eq!(scope_for("list_check_runs_for_ref"), Some(Scope::ChecksRead));
+        let ci = Preset::Ci.scopes().unwrap();
+        assert!(ci.contains(&Scope::ChecksWrite));
+        assert!(!Preset::Agent.scopes().unwrap().contains(&Scope::ChecksWrite));
+        let reporter = token(&[Scope::ChecksWrite]);
+        assert!(decide(&reporter, "update_check_run", &json!({ "id": "cr_1" })).allowed);
+        assert!(decide(&reporter, "rerequest_check_run", &json!({ "id": "cr_1" })).allowed);
+        // A g1t Actions job runs again as its workflow does.
+        let refused = decide(&reporter, "rerequest_check_run", &json!({ "id": "job_1" }));
+        assert!(refused.reason.unwrap().contains("workflows:write"));
     }
 
     #[test]

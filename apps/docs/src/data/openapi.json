@@ -287,6 +287,24 @@
       ]
     },
     {
+      "name": "Checks",
+      "description": "What CI, integrations and g1t Actions say about a commit, in the shapes CI tools already send: statuses (a state per context) and check runs (a lifecycle, a conclusion, a Markdown report, annotations on lines and buttons), grouped per reporter into check suites. g1t Actions jobs are check runs too. Required checks are met by either.",
+      "x-tools": [
+        "create_commit_status",
+        "list_commit_statuses",
+        "get_combined_status",
+        "create_check_run",
+        "update_check_run",
+        "get_check_run",
+        "list_check_run_annotations",
+        "rerequest_check_run",
+        "list_check_runs_for_ref",
+        "list_check_suites_for_ref",
+        "get_check_suite",
+        "rerequest_check_suite"
+      ]
+    },
+    {
       "name": "Issues",
       "description": "What should change in a repository, with labels and comments. Issues and pull requests share one sequence of numbers.",
       "x-tools": [
@@ -21082,8 +21100,7 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "description": "The new name: lowercase letters, digits, dots, hyphens and underscores, at most 100 characters, not starting with a dot or ending in .git."
+              "type": "string"
             },
             "description": "The repository's name."
           }
@@ -21167,8 +21184,25 @@
           }
         },
         "requestBody": {
+          "required": true,
           "content": {
-            "application/json": null
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The new name: lowercase letters, digits, dots, hyphens and underscores, at most 100 characters, not starting with a dot or ending in .git."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "example": {
+                "name": "greeter"
+              }
+            }
           }
         }
       }
@@ -22123,6 +22157,2019 @@
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/statuses/{sha}": {
+      "post": {
+        "operationId": "create_commit_status",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Create a commit status",
+        "description": "Set a status on a commit: state (pending, success, failure or error), context (what reports it, such as ci/build; default by default), description (at most 140 characters) and target_url (where to see more). A context has one status per commit: setting it again replaces it. A status is a check: a required check or a ruleset's required status check of its context is met by it. Needs the Write role; publishes status.created.\n\nSetting a context again replaces its status on that commit. A status counts as a check: a required check named `ci/build`, in branch protection or a ruleset's `required_status_checks`, is met by it, and a ruleset check pinned to the `api` integration only by statuses and check runs reported through the API. See the [Checks guide](/guides/checks/).",
+        "x-operation": "create_commit_status",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_status",
+        "x-scope": "checks:write",
+        "security": [
+          {
+            "token": [
+              "checks:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "sha",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit's full SHA."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "context": "ci/build",
+                  "state": "success",
+                  "description": "Build #4821 passed",
+                  "target_url": "https://ci.example.com/builds/4821",
+                  "updated_at": "2026-10-07T14:03:02.118Z",
+                  "source": "api"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "success",
+                      "failure",
+                      "error"
+                    ],
+                    "description": "pending, success, failure or error."
+                  },
+                  "context": {
+                    "type": "string",
+                    "description": "What reports it, such as ci/build; default when left out."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "A short word on it, at most 140 characters."
+                  },
+                  "target_url": {
+                    "type": "string",
+                    "description": "Where to see more, http or https."
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "example": {
+                "state": "success",
+                "context": "ci/build",
+                "description": "Build #4821 passed",
+                "target_url": "https://ci.example.com/builds/4821"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/commits/{ref}/statuses": {
+      "get": {
+        "operationId": "list_commit_statuses",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "List a commit's statuses",
+        "description": "List the statuses on a commit, named by its SHA, a branch or a tag: one per context, newest first. Check runs are listed by list_check_runs_for_ref instead.",
+        "x-operation": "list_commit_statuses",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "list_statuses",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit: its SHA, a branch or a tag."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "context": "ci/build",
+                    "state": "success",
+                    "description": "Build #4821 passed",
+                    "target_url": "https://ci.example.com/builds/4821",
+                    "updated_at": "2026-10-07T14:03:02.118Z",
+                    "source": "api"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "ref": "main"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/commits/{ref}/status": {
+      "get": {
+        "operationId": "get_combined_status",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Get a commit's combined status",
+        "description": "A commit's statuses, one per context, and the state they add up to: failure if any failed or errored, pending if any is pending or there are none, success otherwise. Named by its SHA, a branch or a tag.",
+        "x-operation": "get_combined_status",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "combined_status",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit: its SHA, a branch or a tag."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "state": "success",
+                  "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                  "total_count": 1,
+                  "statuses": [
+                    {
+                      "context": "ci/build",
+                      "state": "success",
+                      "description": "Build #4821 passed",
+                      "target_url": "https://ci.example.com/builds/4821",
+                      "updated_at": "2026-10-07T14:03:02.118Z",
+                      "source": "api"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "ref": "main"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/commits/{ref}/check-runs": {
+      "get": {
+        "operationId": "list_check_runs_for_ref",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "List a commit's check runs",
+        "description": "List a commit's check runs, named by its SHA, a branch or a tag: those reported through the API and each job of its g1t Actions workflow runs. filter latest (the default) gives each name's latest run and each workflow's latest run per event; all gives every one. Narrow with check_name, status and app (a reporter's slug; actions for g1t Actions).",
+        "x-operation": "list_check_runs_for_ref",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "list_check_runs",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit: its SHA, a branch or a tag."
+          },
+          {
+            "name": "check_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only runs of this name."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "in_progress",
+                "completed"
+              ]
+            },
+            "description": "Only runs in this status."
+          },
+          {
+            "name": "app",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only this reporter's runs, by slug: actions for g1t Actions."
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "latest",
+                "all"
+              ]
+            },
+            "description": "latest (the default) or all."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 2,
+                  "check_runs": [
+                    {
+                      "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+                      "name": "lint",
+                      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                      "status": "completed",
+                      "conclusion": "failure",
+                      "started_at": "2026-10-07T14:02:11.000Z",
+                      "completed_at": "2026-10-07T14:02:36.000Z",
+                      "details_url": "https://ci.example.com/builds/4821",
+                      "external_id": "4821",
+                      "html_url": "https://g1t.sh/flagon-io/hello/checks/cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+                      "output": {
+                        "title": "2 problems",
+                        "summary": "**2** problems in 1 file.",
+                        "text": null,
+                        "annotations_count": 2
+                      },
+                      "actions": [
+                        {
+                          "label": "Fix this",
+                          "description": "Apply the suggested fixes",
+                          "identifier": "fix"
+                        }
+                      ],
+                      "check_suite": {
+                        "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+                      },
+                      "app": {
+                        "slug": "buildkite",
+                        "name": "Buildkite"
+                      },
+                      "created_at": "2026-10-07T14:02:11.318Z"
+                    },
+                    {
+                      "id": "job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+                      "name": "Test",
+                      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                      "status": "completed",
+                      "conclusion": "success",
+                      "started_at": "2026-10-07T14:01:02.000Z",
+                      "completed_at": "2026-10-07T14:01:27.000Z",
+                      "details_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+                      "external_id": null,
+                      "html_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+                      "output": {
+                        "title": null,
+                        "summary": null,
+                        "text": null,
+                        "annotations_count": 0
+                      },
+                      "actions": [],
+                      "check_suite": {
+                        "id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m"
+                      },
+                      "app": {
+                        "slug": "actions",
+                        "name": "g1t Actions"
+                      },
+                      "workflow": {
+                        "run_id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m",
+                        "name": "CI",
+                        "event": "push"
+                      },
+                      "created_at": "2026-10-07T14:01:00.512Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "ref": "main"
+        },
+        "x-example-query": {
+          "filter": "latest"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/commits/{ref}/check-suites": {
+      "get": {
+        "operationId": "list_check_suites_for_ref",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "List a commit's check suites",
+        "description": "List a commit's check suites, named by its SHA, a branch or a tag: one per reporter that reported check runs on it through the API, and one per g1t Actions workflow run, with its status and conclusion worked out from its latest check runs. Narrow with app and check_name.",
+        "x-operation": "list_check_suites_for_ref",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "list_check_suites",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit: its SHA, a branch or a tag."
+          },
+          {
+            "name": "app",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only this reporter's suites, by slug."
+          },
+          {
+            "name": "check_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only suites with a run of this name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 2,
+                  "check_suites": [
+                    {
+                      "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p",
+                      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                      "head_branch": "main",
+                      "status": "completed",
+                      "conclusion": "failure",
+                      "app": {
+                        "slug": "buildkite",
+                        "name": "Buildkite"
+                      },
+                      "latest_check_runs_count": 1,
+                      "created_at": "2026-10-07T14:02:11.318Z",
+                      "updated_at": "2026-10-07T14:02:36.502Z"
+                    },
+                    {
+                      "id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m",
+                      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                      "head_branch": "main",
+                      "status": "completed",
+                      "conclusion": "success",
+                      "app": {
+                        "slug": "actions",
+                        "name": "g1t Actions"
+                      },
+                      "name": "CI",
+                      "latest_check_runs_count": 1,
+                      "created_at": "2026-10-07T14:01:00.512Z",
+                      "updated_at": "2026-10-07T14:01:28.040Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "ref": "main"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/check-runs": {
+      "post": {
+        "operationId": "create_check_run",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Create a check run",
+        "description": "Report a check run on a commit: name and head_sha are required; status (queued, in_progress or completed; queued by default), conclusion (success, failure, neutral, cancelled, skipped, timed_out or action_required; it makes the run completed), started_at and completed_at (RFC 3339; filled in when left out), details_url (your page for it), external_id (your id for it), output (title, summary and text in Markdown, and up to 50 annotations: path, start_line, end_line, start_column, end_column, annotation_level notice, warning or failure, message, title, raw_details) and actions (up to 3 buttons: label, description, identifier). app names who reports it, by default your token's name. Runs are grouped per reporter and commit into a check suite. A check run is a check: a required check of its name is met by it, a cancelled one failing. Needs the Write role; publishes check_run.created, and check_run.completed when it is created completed.\n\nStart a run as `queued` or `in_progress` and complete it later with [`update_check_run`](/reference/api/checks/update-check-run/), or create it completed. `app` names who reports it; by default it is your token's name, and a g1t Actions job's `G1T_TOKEN` reports as g1t Actions. Each reporter's runs on a commit form one check suite. The run also stands as a status of its name, so a required check `lint` is met by it: `success`, `neutral` and `skipped` pass, any other conclusion fails. See the [Checks guide](/guides/checks/).",
+        "x-operation": "create_check_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "create_check_run",
+        "x-scope": "checks:write",
+        "security": [
+          {
+            "token": [
+              "checks:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+                  "name": "lint",
+                  "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                  "status": "completed",
+                  "conclusion": "failure",
+                  "started_at": "2026-10-07T14:02:11.000Z",
+                  "completed_at": "2026-10-07T14:02:36.000Z",
+                  "details_url": "https://ci.example.com/builds/4821",
+                  "external_id": "4821",
+                  "html_url": "https://g1t.sh/flagon-io/hello/checks/cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+                  "output": {
+                    "title": "2 problems",
+                    "summary": "**2** problems in 1 file.",
+                    "text": null,
+                    "annotations_count": 2
+                  },
+                  "actions": [
+                    {
+                      "label": "Fix this",
+                      "description": "Apply the suggested fixes",
+                      "identifier": "fix"
+                    }
+                  ],
+                  "check_suite": {
+                    "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+                  },
+                  "app": {
+                    "slug": "buildkite",
+                    "name": "Buildkite"
+                  },
+                  "created_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The check's name, at most 100 characters, such as lint or coverage."
+                  },
+                  "head_sha": {
+                    "type": "string",
+                    "description": "The commit's full SHA (or a branch or tag, read as the commit it points to now)."
+                  },
+                  "app": {
+                    "type": "string",
+                    "description": "Who reports it, shown with it and grouping its check suite: by default your token's name."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "in_progress",
+                      "completed"
+                    ],
+                    "description": "Where it is: queued, in_progress or completed."
+                  },
+                  "conclusion": {
+                    "type": "string",
+                    "enum": [
+                      "success",
+                      "failure",
+                      "neutral",
+                      "cancelled",
+                      "skipped",
+                      "timed_out",
+                      "action_required"
+                    ],
+                    "description": "How it came out; giving one completes it."
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "description": "When it started, RFC 3339."
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "description": "When it completed, RFC 3339."
+                  },
+                  "details_url": {
+                    "type": "string",
+                    "description": "Your page for it, http or https."
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "description": "Your id for it."
+                  },
+                  "output": {
+                    "type": "object",
+                    "description": "Its report: a title, a Markdown summary and text, and annotations on lines of files (at most 50 a request).",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "summary": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "annotations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "start_line": {
+                              "type": "integer"
+                            },
+                            "end_line": {
+                              "type": "integer"
+                            },
+                            "start_column": {
+                              "type": "integer"
+                            },
+                            "end_column": {
+                              "type": "integer"
+                            },
+                            "annotation_level": {
+                              "type": "string",
+                              "enum": [
+                                "notice",
+                                "warning",
+                                "failure"
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "raw_details": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "start_line",
+                            "end_line",
+                            "annotation_level",
+                            "message"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "actions": {
+                    "type": "array",
+                    "description": "Up to 3 buttons on its page. Pressing one sends you check_run.requested_action with its identifier.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "description": "At most 20 characters."
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "At most 40 characters."
+                        },
+                        "identifier": {
+                          "type": "string",
+                          "description": "At most 20 characters."
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "description",
+                        "identifier"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "head_sha"
+                ]
+              },
+              "example": {
+                "name": "lint",
+                "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                "status": "completed",
+                "conclusion": "failure",
+                "details_url": "https://ci.example.com/builds/4821",
+                "external_id": "4821",
+                "output": {
+                  "title": "2 problems",
+                  "summary": "**2** problems in 1 file.",
+                  "annotations": [
+                    {
+                      "path": "src/parse.rs",
+                      "start_line": 42,
+                      "end_line": 42,
+                      "annotation_level": "warning",
+                      "message": "unused variable: `depth`"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "label": "Fix this",
+                    "description": "Apply the suggested fixes",
+                    "identifier": "fix"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/check-runs/{id}": {
+      "get": {
+        "operationId": "get_check_run",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Get a check run",
+        "description": "Get a check run by id: cr_… for one reported through the API, or a g1t Actions job's id (job_…), whose workflow run is its suite and whose workflow says its name, run and event in workflow.",
+        "x-operation": "get_check_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_check_run",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The check run's id: cr_…, or a g1t Actions job's job_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+                  "name": "Test",
+                  "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "started_at": "2026-10-07T14:01:02.000Z",
+                  "completed_at": "2026-10-07T14:01:27.000Z",
+                  "details_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+                  "external_id": null,
+                  "html_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+                  "output": {
+                    "title": null,
+                    "summary": null,
+                    "text": null,
+                    "annotations_count": 0
+                  },
+                  "actions": [],
+                  "check_suite": {
+                    "id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m"
+                  },
+                  "app": {
+                    "slug": "actions",
+                    "name": "g1t Actions"
+                  },
+                  "workflow": {
+                    "run_id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m",
+                    "name": "CI",
+                    "event": "push"
+                  },
+                  "created_at": "2026-10-07T14:01:00.512Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "job_01kq4b6a7b8c9d0e1f2g3h4j5k"
+        }
+      },
+      "patch": {
+        "operationId": "update_check_run",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Update a check run",
+        "description": "Change a check run reported through the API, by id (cr_…). Fields left out stay as they are; output annotations are added to the ones it has (at most 1000 in all); actions, when given, replace its buttons. Giving a conclusion completes it. Publishes check_run.completed when it completes. A g1t Actions job's check run is its workflow's and cannot be changed.\n\nAnnotations given here are added to the ones the run has, at most 50 a request and 1000 in all.",
+        "x-operation": "update_check_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "update_check_run",
+        "x-scope": "checks:write",
+        "security": [
+          {
+            "token": [
+              "checks:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The check run's id: cr_…, or a g1t Actions job's job_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+                  "name": "lint",
+                  "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                  "status": "completed",
+                  "conclusion": "success",
+                  "started_at": "2026-10-07T14:02:11.000Z",
+                  "completed_at": "2026-10-07T14:02:36.000Z",
+                  "details_url": "https://ci.example.com/builds/4821",
+                  "external_id": "4821",
+                  "html_url": "https://g1t.sh/flagon-io/hello/checks/cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+                  "output": {
+                    "title": "No problems",
+                    "summary": "All clear.",
+                    "text": null,
+                    "annotations_count": 2
+                  },
+                  "actions": [
+                    {
+                      "label": "Fix this",
+                      "description": "Apply the suggested fixes",
+                      "identifier": "fix"
+                    }
+                  ],
+                  "check_suite": {
+                    "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+                  },
+                  "app": {
+                    "slug": "buildkite",
+                    "name": "Buildkite"
+                  },
+                  "created_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The check's name, at most 100 characters, such as lint or coverage."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "in_progress",
+                      "completed"
+                    ],
+                    "description": "Where it is: queued, in_progress or completed."
+                  },
+                  "conclusion": {
+                    "type": "string",
+                    "enum": [
+                      "success",
+                      "failure",
+                      "neutral",
+                      "cancelled",
+                      "skipped",
+                      "timed_out",
+                      "action_required"
+                    ],
+                    "description": "How it came out; giving one completes it."
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "description": "When it started, RFC 3339."
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "description": "When it completed, RFC 3339."
+                  },
+                  "details_url": {
+                    "type": "string",
+                    "description": "Your page for it, http or https."
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "description": "Your id for it."
+                  },
+                  "output": {
+                    "type": "object",
+                    "description": "Its report: a title, a Markdown summary and text, and annotations on lines of files (at most 50 a request).",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "summary": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "annotations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "start_line": {
+                              "type": "integer"
+                            },
+                            "end_line": {
+                              "type": "integer"
+                            },
+                            "start_column": {
+                              "type": "integer"
+                            },
+                            "end_column": {
+                              "type": "integer"
+                            },
+                            "annotation_level": {
+                              "type": "string",
+                              "enum": [
+                                "notice",
+                                "warning",
+                                "failure"
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "raw_details": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "start_line",
+                            "end_line",
+                            "annotation_level",
+                            "message"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "actions": {
+                    "type": "array",
+                    "description": "Up to 3 buttons on its page. Pressing one sends you check_run.requested_action with its identifier.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "description": "At most 20 characters."
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "At most 40 characters."
+                        },
+                        "identifier": {
+                          "type": "string",
+                          "description": "At most 20 characters."
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "description",
+                        "identifier"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "conclusion": "success",
+                "output": {
+                  "title": "No problems",
+                  "summary": "All clear."
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/check-runs/{id}/annotations": {
+      "get": {
+        "operationId": "list_check_run_annotations",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "List a check run's annotations",
+        "description": "List a check run's annotations in the order they were reported: path, start_line, end_line, start_column, end_column, annotation_level (notice, warning or failure), message, title and raw_details.",
+        "x-operation": "list_check_run_annotations",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "check_run_annotations",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The check run's id: cr_…, or a g1t Actions job's job_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "path": "src/parse.rs",
+                    "start_line": 42,
+                    "end_line": 42,
+                    "start_column": 9,
+                    "end_column": 14,
+                    "annotation_level": "warning",
+                    "message": "unused variable: `depth`",
+                    "title": "unused_variables",
+                    "raw_details": "#[warn(unused_variables)] on by default"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/check-runs/{id}/rerequest": {
+      "post": {
+        "operationId": "rerequest_check_run",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Rerequest a check run",
+        "description": "Ask for a check run to run again. For one reported through the API, its reporter is sent check_run.rerequested; for a g1t Actions job, its workflow run runs again (which also needs workflows:write). Needs the Write role.",
+        "x-operation": "rerequest_check_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "rerequest_check_run",
+        "x-scope": "checks:write",
+        "security": [
+          {
+            "token": [
+              "checks:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The check run's id: cr_…, or a g1t Actions job's job_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "rerequested": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/check-suites/{id}": {
+      "get": {
+        "operationId": "get_check_suite",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Get a check suite",
+        "description": "Get a check suite by id: cs_… for a reporter's, or a g1t Actions workflow run's id (run_…).",
+        "x-operation": "get_check_suite",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_check_suite",
+        "x-scope": "checks:read",
+        "security": [
+          {
+            "token": [
+              "checks:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The check suite's id: cs_…, or a g1t Actions run's run_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p",
+                  "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                  "head_branch": "main",
+                  "status": "completed",
+                  "conclusion": "failure",
+                  "app": {
+                    "slug": "buildkite",
+                    "name": "Buildkite"
+                  },
+                  "latest_check_runs_count": 1,
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_at": "2026-10-07T14:02:36.502Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/check-suites/{id}/rerequest": {
+      "post": {
+        "operationId": "rerequest_check_suite",
+        "tags": [
+          "Checks"
+        ],
+        "summary": "Rerequest a check suite",
+        "description": "Ask for a check suite to run again: its reporter is sent check_suite.rerequested, or a g1t Actions workflow run runs again (which also needs workflows:write). Needs the Write role.",
+        "x-operation": "rerequest_check_suite",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "rerequest_check_suite",
+        "x-scope": "checks:write",
+        "security": [
+          {
+            "token": [
+              "checks:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The check suite's id: cs_…, or a g1t Actions run's run_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "rerequested": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
         }
       }
     },
@@ -32214,6 +34261,13 @@
                         "pull.resumed",
                         "agent.asked",
                         "checks.completed",
+                        "status.created",
+                        "check_run.created",
+                        "check_run.completed",
+                        "check_run.rerequested",
+                        "check_run.requested_action",
+                        "check_suite.completed",
+                        "check_suite.rerequested",
                         "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
@@ -32466,6 +34520,13 @@
                         "pull.resumed",
                         "agent.asked",
                         "checks.completed",
+                        "status.created",
+                        "check_run.created",
+                        "check_run.completed",
+                        "check_run.rerequested",
+                        "check_run.requested_action",
+                        "check_suite.completed",
+                        "check_suite.rerequested",
                         "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
@@ -33364,6 +35425,13 @@
                         "pull.resumed",
                         "agent.asked",
                         "checks.completed",
+                        "status.created",
+                        "check_run.created",
+                        "check_run.completed",
+                        "check_run.rerequested",
+                        "check_run.requested_action",
+                        "check_suite.completed",
+                        "check_suite.rerequested",
                         "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
@@ -33602,6 +35670,13 @@
                         "pull.resumed",
                         "agent.asked",
                         "checks.completed",
+                        "status.created",
+                        "check_run.created",
+                        "check_run.completed",
+                        "check_run.rerequested",
+                        "check_run.requested_action",
+                        "check_suite.completed",
+                        "check_suite.rerequested",
                         "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",

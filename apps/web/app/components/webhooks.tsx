@@ -27,6 +27,18 @@ const GROUPS: { title: string; events: string[] }[] = [
   },
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
   {
+    title: "Statuses and check runs",
+    events: [
+      "status.created",
+      "check_run.created",
+      "check_run.completed",
+      "check_run.rerequested",
+      "check_run.requested_action",
+      "check_suite.completed",
+      "check_suite.rerequested",
+    ],
+  },
+  {
     title: "Deployments",
     events: ["deployment.created", "deployment_status.created", "deployment.succeeded", "deployment.failed"],
   },

@@ -174,7 +174,10 @@ for `/repos/{owner}/{name}`.
   requires, as `success`, `failure`, `pending` or `expected` (not reported
   yet). If one failed, read why with `GET {repo}/actions/runs/{id}` and
   `GET {repo}/actions/jobs/{job}/logs`, push a fix, and the workflows run
-  again. `GET {repo}/check-names` lists the check names seen in the last
+  again. `GET {repo}/commits/{ref}/check-runs` lists every check run on a
+  commit (each workflow job is one), and
+  `GET {repo}/check-runs/{id}/annotations` the lines a failing one points at.
+  `GET {repo}/check-names` lists the check names seen in the last
   30 days. `rules.unmet` lists every rule of that branch not met yet, with
   what to do; `GET {repo}/rules/branches/{branch}` lists every rule. Rules
   hold for agents exactly as for people: a push that breaks one is refused
@@ -289,7 +292,9 @@ The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
 `create` (with `issue`), push, `pull_request` `record_session` as you go,
 `pull_request` `ready` with `summary`; read `overlaps`, `behind`,
 `statuses` and `required_checks` on `pull_request` `get`, and
-`repository` `check_names` for the names a branch can require. `agent` `delegate` and `agent` `assign` hand work
+`repository` `check_names` for the names a branch can require;
+`workflow` `list_check_runs` and `check_run_annotations` for what a
+commit's checks say. `agent` `delegate` and `agent` `assign` hand work
 to g1t's agent; `plan` `create`, `get` and `apply` plan an outcome;
 `memory` `remember` saves a fact. `notifications` reads and answers the
 inbox of the person a token acts for: `list` (unread threads, each with a
@@ -310,7 +315,7 @@ as `repo`, written `owner/name`.
 ## Scopes
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
-`repo`, `code`, `issues`, `pull_requests`, `workflows`, `deployments`, `memory`,
+`repo`, `code`, `issues`, `pull_requests`, `workflows`, `checks`, `deployments`, `memory`,
 `account`, `notifications`, `access`, `webhooks`, `secrets`, `runners`, `models` (read, write or admin
 as each has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
 level includes the lower. A token may expire. It reaches every workspace
@@ -474,6 +479,16 @@ GitHub Actions workflows run on g1t unchanged, from `.g1t/workflows/`
 Runs, jobs and logs are at GitHub's own routes under
 `{repo}/actions/...`. A run on a pull request's head is a check: pending
 holds the merge, failure refuses it and sends g1t back to fix it.
+Checks: CI and integrations report on commits with a token holding
+`checks:write` and the Write role: statuses
+(`POST {repo}/statuses/{sha}` with `state` pending/success/failure/error,
+`context`, `description`, `target_url`; `GET {repo}/commits/{ref}/status`
+combines them) and check runs (`POST {repo}/check-runs` with `name`,
+`head_sha`, `status`, `conclusion`, `output` {`title`, `summary`,
+`text`, `annotations`}, `actions`; `PATCH {repo}/check-runs/{id}` to
+complete one). A required check is met by a status or a check run of its
+name. g1t's agents read checks and never report them. Guide:
+https://docs.g1t.sh/guides/checks/
 Secrets and variables are one list per repository (site:
 `g1t.sh/<owner>/<repo>/settings/secrets`) and per workspace: each row is a
 key, Secret or Config, the environments it applies to (all, or e.g.

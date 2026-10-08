@@ -216,6 +216,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "resolve_settings" => reply(&service.resolve_settings(args(body)?).await?),
         "job_spec" => reply(&service.job_spec(args(body)?).await?),
         "job_auth" => reply(&service.job_auth(args(body)?).await?),
+        "check_runs" => reply(&service.check_runs(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),
         // actions/cache, through the API with the job's token.
         "cache_lookup" => reply(&service.cache_lookup(args(body)?).await?),

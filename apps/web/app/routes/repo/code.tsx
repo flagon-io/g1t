@@ -1,6 +1,7 @@
 import type { Route } from "./+types/code";
 import { TreeView } from "../../components/repo-view";
 import { page } from "../../lib/meta";
+import { commitChecksFor } from "../../lib/commit-checks.server";
 import { aboutFor } from "../../lib/about.server";
 import { environmentsFor } from "../../lib/deployments.server";
 import { lastCommitsFor } from "../../lib/last-commits.server";
@@ -28,7 +29,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const value = unwrap(tree);
   // The About beside the files, streamed in after them.
   const about = value.head ? aboutFor(path, viewer, value.repo.id) : null;
-  return { tree: value, branches: branches?.ok ? branches.value : null, lastCommits, about, deployments: environments };
+  // The latest commit's checks: streamed in beside it.
+  const checks = commitChecksFor(path, viewer, [value.head?.hash]);
+  return { tree: value, branches: branches?.ok ? branches.value : null, lastCommits, about, deployments: environments, checks };
 }
 
 export default function Code({ loaderData }: Route.ComponentProps) {
@@ -38,6 +41,7 @@ export default function Code({ loaderData }: Route.ComponentProps) {
       tree={loaderData.tree}
       branches={loaderData.branches}
       lastCommits={loaderData.lastCommits}
+      checks={loaderData.checks}
       about={loaderData.about}
       canPush={Boolean(project?.access.can.push)}
       homepage={projectHomepage(project?.project ?? null)}

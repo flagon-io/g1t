@@ -10,6 +10,7 @@ mod alerts;
 mod audit;
 mod billing;
 mod blobs;
+mod checks;
 mod deployments;
 mod mcp;
 mod notifications;
