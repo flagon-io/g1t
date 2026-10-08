@@ -287,8 +287,8 @@ on g1t's models and on your own model key alike:
 1. g1t's model proxy counts each answer's tokens as it passes: input,
    output, and prompt-cache reads and writes. The sandbox reports what its
    agent counted too, and the rate is charged on the more of the two.
-2. Each kind of token counts at its weight. Today every token counts
-   once: input ×1, output ×1, cache reads ×1, cache writes ×1. The weights
+2. Each kind of token counts at its weight: input ×1, output ×1, cache
+   writes ×1, and cache reads ×0.1, as model providers price them. The weights
    are on [g1t.sh/pricing](https://g1t.sh/pricing) under the rate, and a
    change to them is a dated price change like any other.
 3. The run is charged when it reports, and again for tokens counted after

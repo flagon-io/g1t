@@ -525,13 +525,15 @@ How much each kind of token counts toward the agent rate, on g1t's models
 and own keys alike, is four price-book meters (migration
 `0042_agent_rate_weights.sql`): `agent_token_weight_input`, `_output`,
 `_cache_read` and `_cache_write`, each a weight in millionths in
-`cost_micros` (1,000,000 counts a token once). All start at 1, which is what
-the rate always counted. A cached agent run reads most of its context from
+`cost_micros` (1,000,000 counts a token once). They started at 1, which is
+what the rate always counted; since 2026-10-08 cache reads count a tenth
+(100,000; migration `0044_cache_reads_count_a_tenth.sql`), as model providers
+price them. Input, output and cache writes count once. A cached agent run reads most of its context from
 cache (about 90% of its tokens on a typical Sonnet implement run), so the
 cache-read weight is the lever: at 1 the rate adds about 44% to such a run's
 model cost; at 0.1, far less.
 
-To count cache reads at a tenth:
+To change a weight (cache reads went to a tenth this way):
 
 1. Add the version, effective at once (a lower weight is a fall):
 
