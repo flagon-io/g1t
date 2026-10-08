@@ -12,7 +12,7 @@ export type TokenReport = {
   session: string;
   person: string | null;
   model: string;
-  tier: "small" | "large" | null;
+  tier: "small" | "large" | "frontier" | null;
   input: number;
   output: number;
   cacheRead: number;

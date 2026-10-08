@@ -130,6 +130,17 @@ fn requester(username: Option<&str>) -> Option<String> {
     (!name.is_empty() && name != g1t_contracts::identity::AGENT_NAME).then_some(name)
 }
 
+/// The tier a workspace chose on g1t's models for `task`: its own route's,
+/// else the `default` route's, when that route is to g1t's models and names
+/// one. `None` is Auto.
+fn hosted_choice(routes: &[RouteRow], task: &str) -> Option<String> {
+    let chosen = routes.iter().find(|route| route.task == task).or_else(|| routes.iter().find(|route| route.task == "default"))?;
+    if chosen.connection_id.is_some() {
+        return None;
+    }
+    chosen.model.as_deref().map(str::trim).filter(|model| MODEL_TIERS.contains(model)).map(str::to_owned)
+}
+
 /// A model session's public id: the start of its token's hash.
 fn session_id(token_hash: &str) -> String {
     format!("ms_{}", &token_hash[..token_hash.len().min(24)])
@@ -1159,6 +1170,13 @@ impl Integrations {
             }
             seen.push(route.task.clone());
             let model = route.model.as_deref().map(str::trim).filter(|model| !model.is_empty());
+            // On g1t's models a route names a tier, or nothing for Auto.
+            if route.connection_id.is_none()
+                && let Some(model) = model
+                && !MODEL_TIERS.contains(&model)
+            {
+                return Ok(fail(FailureCode::Invalid, "On g1t's models, choose Auto, fast, standard or most capable."));
+            }
             if let Some(id) = &route.connection_id {
                 let Some(row) = rows.iter().find(|row| &row.id == id && row.provider().kind() == ProviderKind::Models) else {
                     return Ok(fail(FailureCode::NotFound, "A route names a model provider this workspace does not have."));
@@ -1233,6 +1251,10 @@ impl Integrations {
             Some((row, model)) => (Some(row), model.clone()),
             None => (None, None),
         };
+        // On g1t's models, a tier the workspace chose for this work replaces
+        // the runner's (Auto's).
+        let choice = if connection.is_none() { hosted_choice(&self.route_rows(&workspace).await?, &a.task) } else { None };
+        let tier = choice.clone().or_else(|| a.tier.clone());
         self.db
             .batch(vec![
                 self.db
@@ -1253,11 +1275,7 @@ impl Integrations {
                         rfc3339(now + MODEL_SESSION_SECONDS * 1000).into(),
                         optional(model.as_deref()),
                         // The tier is g1t's routing; it means nothing on the workspace's own provider.
-                        optional(
-                            a.tier
-                                .as_deref()
-                                .filter(|tier| connection.is_none() && matches!(*tier, "small" | "large")),
-                        ),
+                        optional(tier.as_deref().filter(|tier| connection.is_none() && MODEL_TIERS.contains(tier))),
                         optional(requester(a.requested_by.as_deref()).as_deref()),
                     ])?,
             ])
@@ -1269,6 +1287,7 @@ impl Integrations {
             provider_name: connection.map(|row| row.name.clone()),
             model,
             id,
+            tier_choice: choice,
         }))
     }
 
@@ -1521,5 +1540,34 @@ mod close_tests {
         assert_eq!(got, vec![hash]);
         let many: Vec<String> = (0..40).map(|i| format!("{i:064x}")).collect();
         assert_eq!(closable_hashes(&many).len(), 20);
+    }
+}
+
+#[cfg(test)]
+mod choice_tests {
+    use super::{RouteRow, hosted_choice};
+
+    fn route(task: &str, connection: Option<&str>, model: Option<&str>) -> RouteRow {
+        RouteRow { task: task.into(), connection_id: connection.map(Into::into), model: model.map(Into::into) }
+    }
+
+    #[test]
+    fn a_tier_chosen_on_g1ts_models_is_the_works_own_or_the_defaults() {
+        let routes = vec![route("default", None, Some("large")), route("review", None, Some("frontier")), route("plan", None, None)];
+        assert_eq!(hosted_choice(&routes, "review").as_deref(), Some("frontier"));
+        // No route of its own: the default's.
+        assert_eq!(hosted_choice(&routes, "implement").as_deref(), Some("large"));
+        // Its own route to g1t's models on Auto: Auto, not the default's.
+        assert_eq!(hosted_choice(&routes, "plan"), None);
+        // No routes at all: Auto.
+        assert_eq!(hosted_choice(&[], "implement"), None);
+    }
+
+    #[test]
+    fn a_route_to_the_workspaces_own_provider_chooses_no_tier() {
+        let routes = vec![route("default", Some("con_1"), Some("claude-sonnet-5-5")), route("update", None, Some("huge"))];
+        assert_eq!(hosted_choice(&routes, "implement"), None);
+        // Not a tier: Auto.
+        assert_eq!(hosted_choice(&routes, "update"), None);
     }
 }

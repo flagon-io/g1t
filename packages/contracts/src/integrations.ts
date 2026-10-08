@@ -117,13 +117,30 @@ export type Link = {
   lastSeen: string;
 };
 
+/**
+ * How capable, and how costly, a model g1t routes to is: `small` (fast),
+ * `large` (standard) or `frontier` (most capable).
+ */
+export type ModelTier = "small" | "large" | "frontier";
+
+/** The tiers, cheapest first. */
+export const MODEL_TIERS: ModelTier[] = ["small", "large", "frontier"];
+
 export type ModelSession = {
   token: string;
   billedTo: "g1t" | "workspace";
   providerName: string | null;
   model: string | null;
-  /** Names the run in AI Gateway's logs (`metadata.session`), for billing. */
+  /**
+   * Names the run in AI Gateway's logs (`metadata.session`) and its tokens
+   * in billing's count, on g1t's models and the workspace's own alike.
+   */
   id: string;
+  /**
+   * The tier the workspace chose for this work on g1t's models, instead of
+   * Auto; the run goes there. Null for Auto, and on its own providers.
+   */
+  tierChoice?: ModelTier | null;
 };
 
 export type ModelUpstream = {
@@ -143,7 +160,7 @@ export type ModelUpstream = {
   /** The session's id; see `ModelSession.id`. */
   session: string;
   /** For `g1t`: the tier the run was routed to. */
-  tier?: "small" | "large" | null;
+  tier?: ModelTier | null;
   /** The person the run is for, by username. Null when nobody asked; never `g1t`. */
   requestedBy: string | null;
   baseUrl: string | null;
@@ -188,7 +205,7 @@ export interface IntegrationsApi {
     task: string;
     hostedOpen: boolean;
     /** The tier the run is routed to on g1t's hosted models, for the gateway's logs. */
-    tier?: "small" | "large" | null;
+    tier?: ModelTier | null;
     /** The person the run is for, by username, so its tokens show under them. */
     requestedBy?: string | null;
   }): Promise<Result<ModelSession>>;

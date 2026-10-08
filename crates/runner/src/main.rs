@@ -107,7 +107,11 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
     let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
     let workdir = Path::new(WORKDIR);
 
-    if let Ok(model) = std::env::var("AGENT_MODEL_NAME") {
+    // Which model, and why: the router's one line names both.
+    let reason = std::env::var("AGENT_MODEL_REASON").unwrap_or_default();
+    if !reason.trim().is_empty() {
+        reporter.record(Entry::new("note", reason.trim()));
+    } else if let Ok(model) = std::env::var("AGENT_MODEL_NAME") {
         reporter.record(Entry::new("note", &format!("Running on {model}.")));
     }
     reporter.record(Entry::new("prompt", &prompt));
