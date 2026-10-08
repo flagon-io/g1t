@@ -29,3 +29,27 @@ export function servicePath(pathname: string): ServicePath {
   if (GIT_PATH.test(pathname)) return "git";
   return null;
 }
+
+/**
+ * The workspace a registry request names, and `under`, the same path under
+ * another workspace: `/-/cargo/<workspace>/…` and the other per-workspace
+ * registries, npm's `@<workspace>` scope, and a container image's first
+ * segment. Null for a path that names none, such as `/v2/token`.
+ */
+export type RegistryWorkspace = { slug: string; under: (slug: string) => string };
+
+const WORKSPACE_IN_PATH = [
+  /^(\/-\/(?:composer|cargo|maven|nuget|rubygems)\/)([^/]+)(\/.*)?$/,
+  /^(\/-\/npm\/(?:-\/package\/)?@)([^/%]+)((?:\/|%2[fF]).*)$/,
+  /^(\/v2\/)([^/]+)(\/.+)$/,
+];
+
+export function registryWorkspace(pathname: string): RegistryWorkspace | null {
+  for (const pattern of WORKSPACE_IN_PATH) {
+    const match = pattern.exec(pathname);
+    if (!match) continue;
+    const [, before, slug, after = ""] = match;
+    return { slug: slug!.toLowerCase(), under: (to) => `${before}${to}${after}` };
+  }
+  return null;
+}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { rehypeReferences } from "./markdown-plugins.ts";
+import { G1T_MENTION_HREF, rehypeReferences } from "./markdown-plugins.ts";
 
 type Node = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: Node[] };
 
@@ -17,6 +17,16 @@ function links(text: string): [string, string][] {
 test("@name links to the person or workspace", () => {
   assert.deepEqual(links("thanks @Ana."), [["/ana", "@Ana"]]);
   assert.deepEqual(links("me@example.com"), []);
+});
+
+test("@g1t is g1t's agent, never the workspace alias at /g1t", () => {
+  assert.deepEqual(links("@g1t fix this, then ask @G1T again"), [
+    [G1T_MENTION_HREF, "@g1t"],
+    [G1T_MENTION_HREF, "@G1T"],
+  ]);
+  assert.ok(!G1T_MENTION_HREF.startsWith("/"));
+  // Names that only start with g1t are anyone's.
+  assert.deepEqual(links("@g1t-fans"), [["/g1t-fans", "@g1t-fans"]]);
 });
 
 test("@workspace/team links to the team", () => {

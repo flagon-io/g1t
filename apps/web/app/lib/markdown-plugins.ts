@@ -60,6 +60,13 @@ export function rehypeAlerts() {
   };
 }
 
+/**
+ * Where `@g1t` leads: g1t's own agent, which has no profile. Never `/g1t`,
+ * which staff made an alias of Flagon, Inc.'s workspace: mentioning g1t
+ * always means the agent.
+ */
+export const G1T_MENTION_HREF = "https://docs.g1t.sh/guides/working-with-g1t/";
+
 /** `owner/repo#12`, `#12`, `@workspace/team`, `@name` and commit hashes, in one pass. */
 const REFERENCE =
   /(?<![\w/@#])(?:([a-z0-9][a-z0-9-]*\/[a-z0-9._-]+)#(\d+)|#(\d+)|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})\/([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,59})|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})|([0-9a-f]{7,40}))(?![\w-])/gi;
@@ -76,8 +83,9 @@ function link(href: string, text: string, kind: string): Element {
 /**
  * Links what a forge's text refers to: `#12` to an issue or pull request
  * in this repository (the issue page sends a pull request's number on to
- * it), `owner/repo#12` to one elsewhere, `@name` to a person or workspace,
- * and a commit hash to its commit. Nothing inside code or a link changes.
+ * it), `owner/repo#12` to one elsewhere, `@name` to a person or workspace
+ * (`@g1t` to how g1t's agent works), and a commit hash to its commit.
+ * Nothing inside code or a link changes.
  */
 export function rehypeReferences(options: { repo?: MarkdownRepo }) {
   const { repo } = options;
@@ -106,7 +114,8 @@ export function rehypeReferences(options: { repo?: MarkdownRepo }) {
           } else if (workspace && team) {
             replacement = link(`/${workspace.toLowerCase()}/-/teams/${team.toLowerCase()}`, whole, "team");
           } else if (name) {
-            replacement = link(`/${name.toLowerCase()}`, whole, "mention");
+            const href = name.toLowerCase() === "g1t" ? G1T_MENTION_HREF : `/${name.toLowerCase()}`;
+            replacement = link(href, whole, "mention");
           } else if (hash && repo && /\d/.test(hash) && /[a-f]/i.test(hash)) {
             replacement = link(`/${repo.namespace}/${repo.name}/commit/${hash}`, hash.slice(0, 7), "commit");
           }

@@ -26,7 +26,15 @@ export function isReservedName(value: string): boolean {
 }
 
 export function isValidNamespace(value: string): boolean {
-  return NAMESPACE.test(value) && !isReservedName(value);
+  return isNamespaceShaped(value) && !isReservedName(value);
+}
+
+/**
+ * Whether `value` has a namespace's shape, reserved or not: what a
+ * workspace's old name or an alias staff set (such as `g1t`) can be.
+ */
+export function isNamespaceShaped(value: string): boolean {
+  return NAMESPACE.test(value);
 }
 
 export function isValidRepoName(value: string): boolean {
