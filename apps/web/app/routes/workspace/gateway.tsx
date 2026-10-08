@@ -8,7 +8,7 @@ import { ButtonLink, CopyLine, EmptyState } from "../../components/ui";
 import { GATEWAY_BASE_URL, GATEWAY_DOCS, GATEWAY_OPENAI_BASE_URL } from "../../lib/gateway";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
-import { getViewer, roleIn } from "../../lib/session.server";
+import { getViewer, managesBilling, roleIn } from "../../lib/session.server";
 
 const PAGE_SIZE = 50;
 
@@ -27,7 +27,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const log = billing
     .gatewayRequests(slug, viewer, { limit: PAGE_SIZE, before })
     .then((result) => (result.ok ? { page: result.value, error: null } : { page: null, error: result.error.message }));
-  return { slug, owner: role === "owner", before, log };
+  return { slug, owner: managesBilling(getViewer(context), slug), before, log };
 }
 
 export default function WorkspaceGateway({ loaderData }: Route.ComponentProps) {

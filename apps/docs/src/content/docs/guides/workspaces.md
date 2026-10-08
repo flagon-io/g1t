@@ -1,6 +1,6 @@
 ---
 title: Workspaces
-description: Workspaces, their names and icons, renaming and deleting one, members and roles, and access tokens that belong to a workspace.
+description: Workspaces, their names and icons, renaming and deleting one, members, owners and the roles that add to a member, member privileges, requiring two-factor authentication, and access tokens that belong to a workspace.
 ---
 
 A workspace owns repositories and is the first part of their address:
@@ -272,10 +272,53 @@ and a repository made in it at an old address ends that address's redirect.
 
 ## Members and roles
 
+<a id="members-and-owners"></a>
+
 | Role | Can |
 | --- | --- |
-| Member | Create repositories, see the workspace's usage and billing, and get the workspace's [base permission](/guides/access-and-roles/#the-base-permission) on every repository in it: Write unless an owner changes it, which is enough to push, manage issues, merge pull requests, plan work and put g1t to work. |
-| Owner | Everything a member can, and manage members, the base permission, the workspace's access tokens, its details, and billing: the plan, card checks, prepayment and limits. Admin on every repository, and the only ones who can transfer and delete them; see [access and roles](/guides/access-and-roles/). |
+| Member | Create repositories (as the [member privileges](#member-privileges) allow), see the workspace's usage and billing, and get the workspace's [base permission](/guides/access-and-roles/#the-base-permission) on every repository in it: Read for a new workspace, which an owner can raise to Write to let members push, merge pull requests, plan work and put g1t to work. Admin on the repositories they create. |
+| Owner | Everything a member can, and manage members and owners, the base permission, the member privileges, two-factor requirement, the workspace's access tokens, its details, and billing: the plan, card checks, prepayment and limits. Admin on every repository, and the only ones who can transfer and delete them unless the member privileges allow admins; see [access and roles](/guides/access-and-roles/). |
+
+A workspace can have any number of owners, and always has at least one.
+
+### Roles that add to a member
+
+An owner can give a member one or both of these roles. Each adds to what
+the member already has; an owner has both already.
+
+| Role | Adds |
+| --- | --- |
+| **Billing manager** | Manages the workspace's billing as an owner does: the plan, budget and spend limit, AI credit and auto-reload, the card, billing details and invoices. Gives nothing on repositories. |
+| **Security manager** | Read on every repository, and seeing and managing every security alert and security setting on them: dismissing and reopening alerts, custom patterns, reviewing push protection bypass requests, and the workspace's security settings. |
+
+Neither passes to an agent working for the person.
+
+### Change someone's role
+
+On **People**, an owner opens the **⋯** menu beside a member:
+
+1. **Make owner** or **Make member** changes their role.
+2. **Billing manager** and **Security manager** turn each role on or off.
+3. **Transfer ownership…** hands the workspace to that member: they become
+   an owner and you a member, in one step. To add an owner without stepping
+   down, choose **Make owner** instead.
+4. **Remove from {workspace}…** takes them out. Their roles on its
+   repositories and their place in its teams go too.
+
+Owners see a shield beside each member: green when two-factor
+authentication is on, amber when it is off.
+
+The last owner cannot be made a member, removed, or leave: make someone
+else an owner first, or [delete the workspace](#delete-a-workspace).
+
+### Leave a workspace
+
+Anyone can leave a workspace they belong to: at the bottom of **People**,
+choose **Leave {workspace}** and confirm. Your roles on its repositories
+and your place in its teams go with you at once. The only owner cannot
+leave.
+
+### Add people
 
 Whoever creates a workspace is its owner. An owner adds people on the
 workspace's **People**, `g1t.sh/<workspace>/-/people` (in the sidebar):
@@ -295,7 +338,7 @@ in the workspace as a member, with a one-time welcome. See
 [using an invite](/guides/authentication/#using-an-invite).
 
 Pending invites are listed under the members, with a link to copy and
-**Revoke**. An owner can also remove a member there. Through the API, use
+**Revoke**. Through the API, use
 [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/)
 (the `workspace` tool's `invite_member` action over MCP).
 
@@ -308,6 +351,73 @@ invite sent before waits until the plan is on. Its members stay. People
 shows **Start the plan to invite people** with the button in place of the
 form, and the API and MCP answer `402` (`payment_required`). See
 [who a free workspace can add](/guides/usage-and-billing/#who-a-free-workspace-can-add).
+
+### Members through the API
+
+| Route | MCP tool and action | What it does | Who |
+| --- | --- | --- | --- |
+| `GET /workspaces/{workspace}/members` | `workspace` `list_members` | Its members, owners first: `role` (`owner` or `member`), `org_roles` (`billing_manager`, `security_manager`) and, for owners, `two_factor`. | Members |
+| `PATCH /workspaces/{workspace}/members/{username}` | `workspace` `update_member` | Change `role` and `org_roles` (a list that replaces theirs). | Owners |
+| `DELETE /workspaces/{workspace}/members/{username}` | `workspace` `remove_member` | Remove someone. Your own username is leaving. | Owners |
+| `POST /workspaces/{workspace}/transfer_ownership` | `workspace` `transfer_ownership` | Hand it to `username`: they become an owner, you a member. | Owners |
+| `DELETE /user/memberships/{workspace}` | `workspace` `leave` | Leave it. | You |
+
+Each is for people, signed in or with a personal access token; never an
+agent. A change that would leave no owner answers `409`.
+
+```sh
+curl -X PATCH https://api.g1t.sh/workspaces/acme/members/grace \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -d '{"org_roles": ["security_manager"]}'
+```
+
+## Member privileges
+
+What members can do beyond their role on each repository. Owners set them
+in the workspace's **Settings → Member privileges**,
+`g1t.sh/<workspace>/-/settings#member-privileges`, and can always do all of
+it themselves.
+
+| Setting | Default | When on |
+| --- | --- | --- |
+| **Members can create public repositories** (`members_can_create_public_repositories`) | On | Any member can create a public repository. |
+| **Members can create private repositories** (`members_can_create_private_repositories`) | On | Any member can create a private repository. |
+| **Repository admins can change visibility** (`members_can_change_repo_visibility`) | On | A member with Admin on a repository can make it public or private, if they could create one of that kind. |
+| **Repository admins can delete and transfer repositories** (`members_can_delete_repositories`) | Off | A member with Admin on a repository can delete it, or transfer it to a workspace where they can create one. |
+| **Repository admins can add outside collaborators** (`members_can_invite_outside_collaborators`) | On | A member with Admin on a repository can give a role on it to someone outside the workspace. |
+
+When one is off, only owners can do it; the refusal says so. Someone who is
+not a member, an outside collaborator with Admin, never gets these.
+Forking private repositories is not a setting: g1t has no personal forks
+to allow or refuse.
+
+Through the API, `GET /workspaces/{workspace}` returns each by its name,
+and [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/)
+sets any of them (`workspace` `update` over MCP). Each change is in the
+[audit log](/guides/audit-log/) as `workspace.member_privileges_changed`.
+
+## Require two-factor authentication
+
+An owner can require everyone with access to the workspace, its members
+and its outside collaborators, to have
+[two-factor authentication](/guides/authentication/#two-factor-authentication)
+on.
+
+1. Turn it on for your own account first.
+2. Open **Settings**, `g1t.sh/<workspace>/-/settings#two-factor`. Under
+   **Authentication security**, it says how many members do not have it on,
+   and who.
+3. Turn on **Require two-factor authentication** and choose **Save**.
+
+From then on, someone without it keeps their place but cannot use the
+workspace: its private repositories, pages and API answer as if they were
+not a member, and every page shows them a notice with a link to turn it
+on. Turning it on gives everything back at once. Nobody can join or accept
+an invitation to the workspace without it.
+
+Through the API, `two_factor_requirement_enabled` on
+`PATCH /workspaces/{workspace}`. Recorded as `workspace.two_factor_required`
+and `workspace.two_factor_not_required`.
 
 ## The workspace's page
 

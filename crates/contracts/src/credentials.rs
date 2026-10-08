@@ -323,6 +323,12 @@ pub const NEVER: &[&str] = &[
     "create_workspace",
     "delete_workspace",
     "update_workspace",
+    // So is who belongs to a workspace and who owns it.
+    "list_members",
+    "update_member",
+    "remove_member",
+    "transfer_ownership",
+    "leave_workspace",
     "transfer_repo",
     "create_repo",
     "update_repo",
@@ -764,6 +770,9 @@ pub fn intersect(person: &[Membership], namespace: &str) -> Vec<Membership> {
                     BasePermission::Admin => BasePermission::Write,
                     base => base,
                 }),
+                // Billing and security manager are the person's, never
+                // their agent's.
+                org_roles: Vec::new(),
                 ..membership.clone()
             }
         })
@@ -805,6 +814,7 @@ pub fn as_person(user: &User) -> Option<User> {
         acting: None,
         grants: user.grants.clone(),
         token: None,
+        held: Vec::new(),
     })
 }
 
@@ -922,6 +932,7 @@ mod tests {
             avatar: None,
             grants: Vec::new(),
             token: None,
+            held: Vec::new(),
             acting: Some(Box::new(Acting {
                 credential_id: "tok_1".to_owned(),
                 agent: "g1t".to_owned(),
@@ -1091,6 +1102,8 @@ mod tests {
                 avatar: None,
                 base_permission: Some(BasePermission::None),
                 team_creation: None,
+                org_roles: vec![crate::OrgRole::SecurityManager],
+                privileges: None,
             },
             Membership::member("elsewhere"),
         ];
@@ -1098,6 +1111,7 @@ mod tests {
         assert_eq!(memberships.len(), 1);
         assert_eq!(memberships[0].slug, "acme");
         assert_eq!(memberships[0].role, Role::Member);
+        assert!(memberships[0].org_roles.is_empty());
         assert!(intersect(&owner, "nowhere").is_empty());
     }
 

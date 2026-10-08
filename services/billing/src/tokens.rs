@@ -10,7 +10,7 @@ use futures_util::future::try_join;
 use g1t_contracts::billing::{DayTokens, RecordTokensArgs, TokenUsage, TokenUsageArgs};
 use g1t_contracts::identity::AGENT_NAME;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
@@ -137,11 +137,11 @@ impl Billing {
         let person = a.person.as_deref().map(|name| person_of(Some(name))).filter(|name| !name.is_empty());
         if let Some(person) = &person
             && *person != viewer.username.to_lowercase()
-            && viewer.role_in(&workspace) != Some(Role::Owner)
+            && !viewer.manages_billing(&workspace)
         {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only owners can see another person's usage.",
+                "Only owners and billing managers can see another person's usage.",
             ));
         }
         let days = window(now_ms(), a.days);

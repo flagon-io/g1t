@@ -58,7 +58,14 @@ pub struct SignInArgs {
 #[serde(rename_all = "camelCase")]
 pub struct SignedIn {
     pub user: User,
+    /// Empty while `two_factor_challenge` is set: no session is made until
+    /// the code is given.
     pub session_token: String,
+    /// Set when the account has two-factor authentication on: the token to
+    /// pass to `two_factor_sign_in` with a code. Valid for
+    /// `accounts::TWO_FACTOR_CHALLENGE_SECONDS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub two_factor_challenge: Option<String>,
 }
 
 /// `sign_out` and `user_for_session`.
@@ -315,12 +322,28 @@ pub struct Workspace {
     /// Who may create its teams. See [`crate::teams::TeamCreation`].
     #[serde(default)]
     pub team_creation: crate::teams::TeamCreation,
+    /// What members may do, by GitHub's names for each
+    /// (`members_can_create_public_repositories`...), at the top level as
+    /// GitHub's organization has them. See [`crate::MemberPrivileges`].
+    #[serde(flatten)]
+    pub privileges: crate::MemberPrivileges,
+    /// Whether members and outside collaborators need two-factor
+    /// authentication to use it.
+    #[serde(default)]
+    pub two_factor_requirement_enabled: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Member {
     pub username: String,
     pub role: crate::Role,
+    /// The roles they hold besides `role`.
+    #[serde(default)]
+    pub org_roles: Vec<crate::OrgRole>,
+    /// Whether they have two-factor authentication on. Shown to owners
+    /// only; null for anyone else.
+    #[serde(default)]
+    pub two_factor: Option<bool>,
     /// Their display name, when they set one.
     #[serde(default)]
     pub name: Option<String>,
@@ -384,20 +407,24 @@ pub struct SlugArgs {
     pub slug: String,
 }
 
-/// `list_members`: members only. Returns `Outcome<Vec<Member>>`.
+/// `list_members`: members only. Owners also see each member's
+/// `two_factor`. Returns `Outcome<Vec<Member>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListMembersArgs {
     pub slug: String,
     pub viewer: crate::Viewer,
 }
 
-/// `add_member` and `remove_member`: owners only.
-/// Each returns `Outcome<bool>`.
+/// `add_member` and `remove_member`: owners only. Removing yourself is
+/// leaving (`members::LeaveWorkspaceArgs`); removing an owner is refused
+/// when they are the last. Each returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemberArgs {
     pub actor: User,
     pub slug: String,
     pub username: String,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
 }
 
 /// `update_workspace`: owners only. An empty name falls back to the slug;

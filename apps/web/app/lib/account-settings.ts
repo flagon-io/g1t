@@ -12,6 +12,7 @@ export type AccountSettingsPage =
   | "tokens"
   | "github"
   | "applications"
+  | "two-factor"
   | "security-log";
 
 /** Each page's name and what it is for, in the sidebar's order. */
@@ -42,10 +43,15 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
     about:
       "Applications you signed in to through your browser, such as an agent connected to the g1t MCP server. Signing one out ends its access at once.",
   },
+  "two-factor": {
+    title: "Two-factor authentication",
+    about:
+      "A code from an app on your phone as well as your password when you sign in. Workspaces can require it of their members.",
+  },
   "security-log": {
     title: "Security log",
     about:
-      "Changes to your addresses and password, by you or by g1t staff. If you do not recognise one, reset your password.",
+      "Changes to your addresses, password, two-factor authentication, keys, tokens and applications, by you or by g1t staff. If you do not recognise one, reset your password.",
   },
 };
 

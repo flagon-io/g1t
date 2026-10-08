@@ -11,6 +11,12 @@ amounts. Each is charged at what it costs g1t plus 20%, to the workspace
 that owns the repository. There is no seat price, and on the plan there
 are no quotas: only your spend limit stops anything.
 
+Wherever this page says an owner can do something to a workspace's
+billing, so can its [billing managers](/guides/workspaces/#roles-that-add-to-a-member):
+starting or ending the plan, the spend limit and budget alerts, caps,
+prepaying and AI credit, the card and billing details. Deleting the
+workspace stays with owners.
+
 ## What is free
 
 Every workspace, with or without the plan, has the whole forge:

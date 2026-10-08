@@ -3,6 +3,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/home.tsx"),
   route("login", "routes/login.tsx"),
+  // The second step of signing in, for an account with two-factor authentication.
+  route("login/two-factor", "routes/login-two-factor.tsx"),
   route("register", "routes/register.tsx"),
   // An invite link: who sent it, then sign-up or joining. `invite` is reserved.
   route("invite/:code", "routes/invite.tsx"),
@@ -33,6 +35,7 @@ export default [
     route("tokens", "routes/settings/tokens.tsx"),
     route("github", "routes/settings/github.tsx"),
     route("applications", "routes/settings/applications.tsx"),
+    route("two-factor", "routes/settings/two-factor.tsx"),
     route("security-log", "routes/settings/security-log.tsx"),
   ]),
   // The account menu's header: name, primary email and invites left.

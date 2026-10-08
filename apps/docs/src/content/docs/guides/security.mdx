@@ -38,11 +38,15 @@ is public or private:
 | | Needs |
 | --- | --- |
 | See alerts, **Re-scan now** | Write |
-| **Dismiss** or **Reopen** a dependency or code scanning alert | Write |
+| **Dismiss** or **Reopen** an alert: a secret, a dependency or code scanning | Write |
 | **Bypass** push protection for a blocked secret | Write (or a request, with [delegated bypass](/guides/security/secret-protection/#delegated-bypass)) |
 | **Fix with g1t** | Write, and agents allowed to run |
-| **Security updates** on or off, **Security settings**, **Set up code scanning** | Maintain |
-| **Dismiss** or **Reopen** a secret alert, **Custom patterns** | Admin |
+| **Security updates** on or off, **Set up code scanning** | Maintain |
+| **Security settings**, **Custom patterns**, reviewing bypass requests | Admin |
+
+A workspace's [security managers](/guides/workspaces/#roles-that-add-to-a-member)
+can do all of this on every repository in it, and change the workspace's
+security settings, whatever their role; owners can too.
 
 Someone with Read or Triage is told the page needs Write. The workspace's
 own page, `g1t.sh/<owner>/-/security`, lists the open alerts of every

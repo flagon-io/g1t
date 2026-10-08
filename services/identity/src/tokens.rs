@@ -296,7 +296,30 @@ impl Identity {
         } else {
             Owner::User(&a.user.id)
         };
-        self.mint(owner, &a.name, a.ttl_seconds, &Grant::asked(&a.scopes), a.listed).await
+        let created = self.mint(owner, &a.name, a.ttl_seconds, &Grant::asked(&a.scopes), a.listed).await?;
+        // A person's lasting token: in their security log and their
+        // workspaces' audit logs. Short-lived ones (agents' runs, OAuth
+        // access tokens) are recorded where they are made.
+        if a.ttl_seconds.is_none() && !a.user.id.starts_with(WORKSPACE_ID_PREFIX) && !a.user.username.is_empty() {
+            self.log_security(&a.user.id, "token_created", Some(&created.info.name), None).await;
+            self.audit_account(&a.user, "token.created", &format!("Created access token {}", created.info.name)).await;
+        }
+        Ok(created)
+    }
+
+    /// `remove_access_token`: deletes one of a person's own tokens.
+    pub async fn remove_access_token(&self, a: RemoveArgs) -> Result<()> {
+        let name: Option<String> = self
+            .db
+            .prepare("DELETE FROM access_tokens WHERE id = ? AND user_id = ? RETURNING name")
+            .bind(&[a.id.as_str().into(), a.user.id.as_str().into()])?
+            .first(Some("name"))
+            .await?;
+        if let Some(name) = name {
+            self.log_security(&a.user.id, "token_deleted", Some(&name), None).await;
+            self.audit_account(&a.user, "token.deleted", &format!("Deleted access token {name}")).await;
+        }
+        Ok(())
     }
 
     /// Changes what one of a person's own tokens may do.
@@ -330,7 +353,12 @@ impl Identity {
             .first::<TokenRow>(None)
             .await?;
         match row {
-            Some(row) => Ok(Outcome::Ok(Self::info(row))),
+            Some(row) => {
+                let info = Self::info(row);
+                self.log_security(&a.user.id, "token_rescoped", Some(&info.name), None).await;
+                self.audit_account(&a.user, "token.rescoped", &format!("Changed the scopes of access token {}", info.name)).await;
+                Ok(Outcome::Ok(info))
+            }
             None => Ok(Outcome::fail(FailureCode::NotFound, "No such token.")),
         }
     }
@@ -473,7 +501,15 @@ impl Identity {
                 true,
             )
             .await?;
-        created.info.created_by = Some(a.actor.username);
+        created.info.created_by = Some(a.actor.username.clone());
+        self.audit_workspace(
+            &a.actor,
+            "workspace_token.created",
+            &a.slug.to_lowercase(),
+            g1t_contracts::audit::Surface::Web,
+            format!("Created workspace access token {}", created.info.name),
+        )
+        .await;
         Ok(Outcome::Ok(created))
     }
 
@@ -485,11 +521,22 @@ impl Identity {
             Outcome::Ok(id) => id,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        self.db
-            .prepare("DELETE FROM access_tokens WHERE id = ? AND workspace_id = ?")
+        let name: Option<String> = self
+            .db
+            .prepare("DELETE FROM access_tokens WHERE id = ? AND workspace_id = ? RETURNING name")
             .bind(&[a.id.into(), workspace_id.into()])?
-            .run()
+            .first(Some("name"))
             .await?;
+        if let Some(name) = name {
+            self.audit_workspace(
+                &a.actor,
+                "workspace_token.deleted",
+                &a.slug.to_lowercase(),
+                g1t_contracts::audit::Surface::Web,
+                format!("Deleted workspace access token {name}"),
+            )
+            .await;
+        }
         Ok(Outcome::Ok(true))
     }
 }

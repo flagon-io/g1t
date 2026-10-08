@@ -82,6 +82,17 @@
       ]
     },
     {
+      "name": "Members",
+      "description": "A workspace's members and owners: who belongs to it, their roles (owner or member, with billing manager and security manager on top), handing it to another member, and leaving it.",
+      "x-tools": [
+        "list_members",
+        "update_member",
+        "remove_member",
+        "transfer_ownership",
+        "leave_workspace"
+      ]
+    },
+    {
       "name": "Invites",
       "description": "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
       "x-tools": [
@@ -725,7 +736,7 @@
           "Workspaces"
         ],
         "summary": "Create a workspace",
-        "description": "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to. A new workspace is free, and each person can own one free workspace: if you already own one (or several, from before), this is refused with `payment_required` (402) until each workspace you own is on the g1t plan or deleted. Workspaces with the plan, an enterprise's terms or a full discount do not count.\n\n`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). `team_creation` is who may create its teams: `members` (any member) until an owner sets `owners` with `PATCH /workspaces/{workspace}`. A new workspace is free, and each person owns at most one free workspace: while you own one, this answers `402` with `payment_required` and says which, until it is on the plan or deleted. See [One free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person).",
+        "description": "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to. A new workspace is free, and each person can own one free workspace: if you already own one (or several, from before), this is refused with `payment_required` (402) until each workspace you own is on the g1t plan or deleted. Workspaces with the plan, an enterprise's terms or a full discount do not count.\n\n`base_permission` is what every member gets on each of its repositories: `read` for a new workspace until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). `team_creation` is who may create its teams: `members` (any member) until an owner sets `owners` with `PATCH /workspaces/{workspace}`. A new workspace is free, and each person owns at most one free workspace: while you own one, this answers `402` with `payment_required` and says which, until it is on the plan or deleted. See [One free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person).",
         "x-operation": "create_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "create",
@@ -751,8 +762,14 @@
                   "description": null,
                   "created_at": "2026-10-04T16:02:51.337Z",
                   "member_count": 1,
-                  "base_permission": "write",
-                  "team_creation": "members"
+                  "base_permission": "read",
+                  "team_creation": "members",
+                  "members_can_create_public_repositories": true,
+                  "members_can_create_private_repositories": true,
+                  "members_can_change_repo_visibility": true,
+                  "members_can_delete_repositories": false,
+                  "members_can_invite_outside_collaborators": true,
+                  "two_factor_requirement_enabled": false
                 }
               }
             }
@@ -844,7 +861,7 @@
           "Workspaces"
         ],
         "summary": "Get a workspace",
-        "description": "One workspace you belong to: its name, description and member count, what every member gets on each of its repositories (base_permission), and who may create its teams (team_creation: members or owners). Members only.\n\n`team_creation` is who may create its teams: `members` (any member, the default) or `owners`. Change it, and the rest, with [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/). `404` for anyone who is not a member. See [Workspaces](/guides/workspaces/).",
+        "description": "One workspace you belong to: its name, description and member count, what every member gets on each of its repositories (base_permission), who may create its teams (team_creation: members or owners), its member privileges (members_can_create_public_repositories, members_can_create_private_repositories, members_can_change_repo_visibility, members_can_delete_repositories, members_can_invite_outside_collaborators), and whether it requires two-factor authentication (two_factor_requirement_enabled). Members only.\n\n`team_creation` is who may create its teams: `members` (any member, the default) or `owners`. The `members_can_…` fields are its [member privileges](/guides/workspaces/#member-privileges), and `two_factor_requirement_enabled` whether it [requires two-factor authentication](/guides/authentication/#require-two-factor-authentication). Change it, and the rest, with [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/). `404` for anyone who is not a member. See [Workspaces](/guides/workspaces/).",
         "x-operation": "get_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "get",
@@ -881,7 +898,13 @@
                   "created_at": "2026-10-04T16:02:51.337Z",
                   "member_count": 3,
                   "base_permission": "write",
-                  "team_creation": "members"
+                  "team_creation": "members",
+                  "members_can_create_public_repositories": true,
+                  "members_can_create_private_repositories": true,
+                  "members_can_change_repo_visibility": true,
+                  "members_can_delete_repositories": false,
+                  "members_can_invite_outside_collaborators": true,
+                  "two_factor_requirement_enabled": false
                 }
               }
             }
@@ -1050,7 +1073,7 @@
           "Workspaces"
         ],
         "summary": "Update a workspace",
-        "description": "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), and who may create its teams (team_creation: members or owners). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now.\n\nOnly the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. `team_creation` is `members` (any member may create a team, the default) or `owners`; teams already made stay. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/).",
+        "description": "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), who may create its teams (team_creation: members or owners), its member privileges, and whether it requires two-factor authentication. The member privileges are: members_can_create_public_repositories and members_can_create_private_repositories (who may create each kind; owners always can), members_can_change_repo_visibility (members with the Admin role on a repository may make it public or private), members_can_delete_repositories (they may delete or transfer it) and members_can_invite_outside_collaborators (they may give a role to someone outside the workspace). two_factor_requirement_enabled true holds every member and outside collaborator without two-factor authentication out of the workspace until they turn it on; you need it on yourself first. Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now.\n\nOnly the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. `team_creation` is `members` (any member may create a team, the default) or `owners`; teams already made stay. The `members_can_…` fields are the workspace's member privileges: who may create public and private repositories, and whether members with the Admin role on a repository may change its visibility, delete or transfer it, and invite outside collaborators. `two_factor_requirement_enabled` holds everyone without two-factor authentication out of the workspace until they turn it on, and needs it on your own account first. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/).",
         "x-operation": "update_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "update",
@@ -1087,7 +1110,13 @@
                   "created_at": "2026-10-04T16:02:51.337Z",
                   "member_count": 3,
                   "base_permission": "write",
-                  "team_creation": "owners"
+                  "team_creation": "owners",
+                  "members_can_create_public_repositories": true,
+                  "members_can_create_private_repositories": true,
+                  "members_can_change_repo_visibility": true,
+                  "members_can_delete_repositories": true,
+                  "members_can_invite_outside_collaborators": true,
+                  "two_factor_requirement_enabled": false
                 }
               }
             }
@@ -1175,13 +1204,38 @@
                       "owners"
                     ],
                     "description": "Who may create the workspace's teams: members (any member, the default) or owners (owners only)."
+                  },
+                  "members_can_create_public_repositories": {
+                    "type": "boolean",
+                    "description": "Members may create public repositories. Owners always can. On by default."
+                  },
+                  "members_can_create_private_repositories": {
+                    "type": "boolean",
+                    "description": "Members may create private repositories. Owners always can. On by default."
+                  },
+                  "members_can_change_repo_visibility": {
+                    "type": "boolean",
+                    "description": "Members with the Admin role on a repository may make it public or private. On by default; off, only owners can."
+                  },
+                  "members_can_delete_repositories": {
+                    "type": "boolean",
+                    "description": "Members with the Admin role on a repository may delete or transfer it. Off by default: only owners can."
+                  },
+                  "members_can_invite_outside_collaborators": {
+                    "type": "boolean",
+                    "description": "Members with the Admin role on a repository may give a role on it to someone outside the workspace. On by default; off, only owners can."
+                  },
+                  "two_factor_requirement_enabled": {
+                    "type": "boolean",
+                    "description": "Require two-factor authentication of every member and outside collaborator. Those without it keep their place but cannot use the workspace until they turn it on. You need it on yourself first."
                   }
                 }
               },
               "example": {
                 "name": "Acme Labs",
                 "description": "Rockets, and the software that flies them.",
-                "team_creation": "owners"
+                "team_creation": "owners",
+                "members_can_delete_repositories": true
               }
             }
           }
@@ -9140,6 +9194,581 @@
         }
       }
     },
+    "/workspaces/{workspace}/members": {
+      "get": {
+        "operationId": "list_members",
+        "tags": [
+          "Members"
+        ],
+        "summary": "List a workspace's members",
+        "description": "A workspace's members, owners first, then by username. Each has their `username`, `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only.\n\nOwners first, then by username. `two_factor` is shown to owners only, and is `null` for anyone else. `403` for anyone who is not a member. See [Workspaces](/guides/workspaces/#members-and-owners).",
+        "x-operation": "list_members",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_members",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "username": "ada",
+                    "role": "owner",
+                    "org_roles": [],
+                    "two_factor": true,
+                    "name": "Ada Lovelace",
+                    "avatar": null
+                  },
+                  {
+                    "username": "grace",
+                    "role": "member",
+                    "org_roles": [
+                      "security_manager"
+                    ],
+                    "two_factor": false,
+                    "name": "Grace Hopper",
+                    "avatar": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme-labs"
+        }
+      }
+    },
+    "/workspaces/{workspace}/members/{username}": {
+      "patch": {
+        "operationId": "update_member",
+        "tags": [
+          "Members"
+        ],
+        "summary": "Change a member's role",
+        "description": "Change a member's role in a workspace: `role` (`owner` or `member`) and the roles they hold besides it (`org_roles`, a list of `billing_manager` and `security_manager`, which replaces the one they have). Only the fields given are changed. A billing manager manages the workspace's billing as an owner does, and gets nothing on repositories from it; a security manager reads every repository and sees and manages its security alerts and security settings. Refused with `409` when it would leave the workspace without an owner. Owners only, signed in as a person. Returns the member.\n\nOnly the fields given change; `org_roles` replaces the list. `409` when it would leave the workspace without an owner. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/) as `member.role_changed`, `member.org_role_added` or `member.org_role_removed`. See [Workspaces](/guides/workspaces/#members-and-owners).",
+        "x-operation": "update_member",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "update_member",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The member's username."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "username": "grace",
+                  "role": "member",
+                  "org_roles": [
+                    "security_manager"
+                  ],
+                  "two_factor": null,
+                  "name": "Grace Hopper",
+                  "avatar": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "owner",
+                      "member"
+                    ],
+                    "description": "owner or member."
+                  },
+                  "org_roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "billing_manager",
+                        "security_manager"
+                      ]
+                    },
+                    "description": "The roles they hold besides owner or member: billing_manager, security_manager. Replaces the list; [] takes them all away."
+                  }
+                }
+              },
+              "example": {
+                "role": "member",
+                "org_roles": [
+                  "security_manager"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme-labs",
+          "username": "grace"
+        }
+      },
+      "delete": {
+        "operationId": "remove_member",
+        "tags": [
+          "Members"
+        ],
+        "summary": "Remove a member",
+        "description": "Remove someone from a workspace. Their roles on its repositories and their place in its teams go too; to keep them on a repository, add them back to it as an outside collaborator. Removing yourself is leaving (leave_workspace). Refused with `409` for the last owner. Owners only, signed in as a person.\n\nTheir roles on the workspace's repositories and their place in its teams go with them. Your own username is leaving, as [`leave_workspace`](/reference/api/members/leave-workspace/). `409` for the last owner. Recorded as `member.removed`.",
+        "x-operation": "remove_member",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "remove_member",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The member's username."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme-labs",
+          "username": "grace"
+        }
+      }
+    },
+    "/workspaces/{workspace}/transfer_ownership": {
+      "post": {
+        "operationId": "transfer_ownership",
+        "tags": [
+          "Members"
+        ],
+        "summary": "Transfer a workspace's ownership",
+        "description": "Hand a workspace to another of its members: they become an owner and you a member, in one step. A workspace can have several owners; to add one without stepping down, use update_member with role owner. Owners only, signed in as a person.\n\n`username` becomes an owner and you a member, in one step. Recorded as `workspace.ownership_transferred`.",
+        "x-operation": "transfer_ownership",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "transfer_ownership",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "The member's username."
+                  }
+                },
+                "required": [
+                  "username"
+                ]
+              },
+              "example": {
+                "username": "grace"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme-labs"
+        }
+      }
+    },
+    "/user/memberships/{workspace}": {
+      "delete": {
+        "operationId": "leave_workspace",
+        "tags": [
+          "Members"
+        ],
+        "summary": "Leave a workspace",
+        "description": "Leave a workspace you belong to. Your roles on its repositories and your place in its teams go too. The last owner cannot leave (`409`): make another member an owner first, or delete the workspace. People only.\n\n`409` for the last owner: make another member an owner first, or delete the workspace. Recorded as `member.left`.",
+        "x-operation": "leave_workspace",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "leave",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme-labs"
+        }
+      }
+    },
     "/workspaces/{workspace}/projects": {
       "get": {
         "operationId": "list_projects",
@@ -9724,7 +10353,7 @@
           "Access"
         ],
         "summary": "Set the base permission",
-        "description": "Set what every member of a workspace gets on each of its repositories: none, read, write (the default) or admin. Owners always have Admin, and a role given on a repository directly still counts where it is higher. With none, members see only the private repositories they are given a role on. Owners only, signed in as a person.\n\n`base_permission` is `none`, `read`, `write` (the default) or `admin`. Owners keep Admin, and a role given on a repository directly still counts where it is higher. Refused with `403` for anyone but an owner signed in as a person. See [Access and roles](/guides/access-and-roles/).",
+        "description": "Set what every member of a workspace gets on each of its repositories: none, read (what a new workspace starts with), write or admin. Owners always have Admin, and a role given on a repository directly still counts where it is higher. With none, members see only the private repositories they are given a role on. Owners only, signed in as a person.\n\n`base_permission` is `none`, `read`, `write` (the default) or `admin`. Owners keep Admin, and a role given on a repository directly still counts where it is higher. Refused with `403` for anyone but an owner signed in as a person. See [Access and roles](/guides/access-and-roles/).",
         "x-operation": "set_base_permission",
         "x-mcp-tool": "access",
         "x-mcp-action": "set_base_permission",
@@ -13533,7 +14162,7 @@
           "Security"
         ],
         "summary": "Dismiss a security alert",
-        "description": "Dismiss an alert with a reason and an optional comment. A secret takes false_positive, used_in_tests, revoked or wont_fix; a dependency takes fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used. A dismissed secret is let through push protection from then on, unless the reason is `revoked`, which marks it fixed, so dismissing a secret needs the Admin role on the repository; a dependency needs Write. Returns the alert as it is now. Reopen it with reopen_security_alert.\n\n| Kind | Reasons |\n| --- | --- |\n| `secret` | `false_positive`, `used_in_tests`, `revoked`, `wont_fix` |\n| `dependency` | `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate`, `not_used` |\n\nA reason for the other kind of alert, or one not in the table, is refused with `422`. A secret dismissed as `revoked` becomes `fixed`; with any other reason it becomes `dismissed` and pushes that carry it go through. Dismissing a secret needs the Admin role on the repository; a dependency needs the Write role. A token needs `repo:admin` for either, and a g1t agent’s token never dismisses alerts.",
+        "description": "Dismiss an alert with a reason and an optional comment. A secret takes false_positive, used_in_tests, revoked or wont_fix; a dependency takes fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used. A dismissed secret is let through push protection from then on, unless the reason is `revoked`, which marks it fixed. Dismissing either needs the Write role on the repository, or a security manager of its workspace. Returns the alert as it is now. Reopen it with reopen_security_alert.\n\n| Kind | Reasons |\n| --- | --- |\n| `secret` | `false_positive`, `used_in_tests`, `revoked`, `wont_fix` |\n| `dependency` | `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate`, `not_used` |\n\nA reason for the other kind of alert, or one not in the table, is refused with `422`. A secret dismissed as `revoked` becomes `fixed`; with any other reason it becomes `dismissed` and pushes that carry it go through. Dismissing a secret needs the Admin role on the repository; a dependency needs the Write role. A token needs `repo:admin` for either, and a g1t agent’s token never dismisses alerts.",
         "x-operation": "dismiss_security_alert",
         "x-mcp-tool": "repository",
         "x-mcp-action": "dismiss_alert",
@@ -14346,7 +14975,7 @@
           "Secret scanning"
         ],
         "summary": "Dismiss or reopen a secret scanning alert",
-        "description": "Dismiss a secret scanning alert (state dismissed, with a reason: false_positive, used_in_tests, revoked or wont_fix, and an optional comment) or reopen it (state open). Revoked marks it fixed; the others let pushes carrying it through. Takes the Admin role.\n\nTakes the Admin role: a dismissed secret is let through push protection, unless it was `revoked`, which marks it fixed. `state` `open` reopens it.",
+        "description": "Dismiss a secret scanning alert (state dismissed, with a reason: false_positive, used_in_tests, revoked or wont_fix, and an optional comment) or reopen it (state open). Revoked marks it fixed; the others let pushes carrying it through. Takes the Write role, or a security manager of the workspace.\n\nTakes the Admin role: a dismissed secret is let through push protection, unless it was `revoked`, which marks it fixed. `state` `open` reopens it.",
         "x-operation": "update_secret_scanning_alert",
         "x-mcp-tool": "security",
         "x-mcp-action": "update_secret_alert",
@@ -15110,7 +15739,7 @@
           "Secret scanning"
         ],
         "summary": "Review a bypass request",
-        "description": "Approve or deny a bypass request (owners and the repository's admins, never your own), or cancel your own. An approved request bypasses push protection for that secret, as its requester asked.",
+        "description": "Approve or deny a bypass request (owners, security managers and the repository's admins, never your own), or cancel your own. An approved request bypasses push protection for that secret, as its requester asked.",
         "x-operation": "review_bypass_request",
         "x-mcp-tool": "security",
         "x-mcp-action": "review_bypass",
@@ -19194,7 +19823,7 @@
           "Security settings"
         ],
         "summary": "Update a repository's security settings",
-        "description": "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids) and review_comment. Takes the Maintain role. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.\n\nOnly what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection.",
+        "description": "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids) and review_comment. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.\n\nOnly what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection.",
         "x-operation": "update_security_settings",
         "x-mcp-tool": "security",
         "x-mcp-action": "update_settings",
@@ -20289,7 +20918,7 @@
           "Repositories"
         ],
         "summary": "Update a repository",
-        "description": "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics, and protecting its default branch, need the Maintain role or higher; making it public or private and changing its default branch need the Admin role, and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it.\n\nOnly the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/).",
+        "description": "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it.\n\nOnly the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/).",
         "x-operation": "update_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update",
@@ -21459,7 +22088,7 @@
           "Repositories"
         ],
         "summary": "Change a repository's visibility",
-        "description": "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Making it public shows it, its code, issues and pull requests to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes.\n\nNeeds the Admin role (`403` otherwise). Refused with `422` when `confirm` is not the repository's full name, and with `402` when a free workspace's private storage has no room for it. See [Change who can see a repository](/guides/managing-repositories/#change-who-can-see-a-repository).",
+        "description": "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Unless you are an owner of its workspace, the workspace's member privileges must let repository admins change visibility (members_can_change_repo_visibility) and let members create a repository of that kind. Making it public shows it, its code, issues and pull requests to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes.\n\nNeeds the Admin role (`403` otherwise). Refused with `422` when `confirm` is not the repository's full name, and with `402` when a free workspace's private storage has no room for it. See [Change who can see a repository](/guides/managing-repositories/#change-who-can-see-a-repository).",
         "x-operation": "set_repo_visibility",
         "x-mcp-tool": "repository",
         "x-mcp-action": "set_visibility",
@@ -21878,7 +22507,7 @@
           "Repositories"
         ],
         "summary": "Update repository settings",
-        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
+        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
         "x-operation": "update_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_settings",
@@ -24459,7 +25088,7 @@
           "Rules"
         ],
         "summary": "Create a repository ruleset",
-        "description": "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, confidence_threshold, cost_cap, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Maintain role. Returns the ruleset as saved, tidied.\n\nParameters left out take their defaults, and the ruleset comes back as saved: patterns trimmed, roles and teams lowercased. A pattern that does not compile, or a rule the target cannot hold (a pull request rule on tags), is refused with `invalid` and says why.",
+        "description": "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, confidence_threshold, cost_cap, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Admin role. Returns the ruleset as saved, tidied.\n\nParameters left out take their defaults, and the ruleset comes back as saved: patterns trimmed, roles and teams lowercased. A pattern that does not compile, or a rule the target cannot hold (a pull request rule on tags), is refused with `invalid` and says why.",
         "x-operation": "create_repo_ruleset",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create_ruleset",
@@ -25043,7 +25672,7 @@
           "Rules"
         ],
         "summary": "Update a repository ruleset",
-        "description": "Change a repository ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Takes the Maintain role.\n\nFields left out stay as they are. `rules` and `bypass_actors`, when given, replace the whole list.",
+        "description": "Change a repository ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Takes the Admin role.\n\nFields left out stay as they are. `rules` and `bypass_actors`, when given, replace the whole list.",
         "x-operation": "update_repo_ruleset",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_ruleset",
@@ -25363,7 +25992,7 @@
           "Rules"
         ],
         "summary": "Delete a repository ruleset",
-        "description": "Delete a repository ruleset. Its evaluations stay in the log. Takes the Maintain role.",
+        "description": "Delete a repository ruleset. Its evaluations stay in the log. Takes the Admin role.",
         "x-operation": "delete_repo_ruleset",
         "x-mcp-tool": "repository",
         "x-mcp-action": "delete_ruleset",
@@ -29624,7 +30253,7 @@
           "Labels and milestones"
         ],
         "summary": "Create a label",
-        "description": "Create a label, named by label. Names are lowercase and unique in a repository, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Triage role or higher.",
+        "description": "Create a label, named by label. Names are lowercase and unique in a repository, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Write role or higher; applying labels and milestones needs Triage.",
         "x-operation": "create_label",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create_label",
@@ -29764,7 +30393,7 @@
           "Labels and milestones"
         ],
         "summary": "Add the default labels",
-        "description": "Add the default labels a repository does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Triage role or higher.\n\nEvery label the repository has afterwards, shortened here. Labels it already had are left as they were.",
+        "description": "Add the default labels a repository does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Write role or higher; applying labels and milestones needs Triage.\n\nEvery label the repository has afterwards, shortened here. Labels it already had are left as they were.",
         "x-operation": "add_default_labels",
         "x-mcp-tool": "repository",
         "x-mcp-action": "add_default_labels",
@@ -29881,7 +30510,7 @@
           "Labels and milestones"
         ],
         "summary": "Update a label",
-        "description": "Change a label's name, color or description; only the fields given change. Renaming it renames it on every issue and pull request that carries it. Needs the Triage role or higher.\n\nRenaming a label renames it on every issue and pull request that carries it.",
+        "description": "Change a label's name, color or description; only the fields given change. Renaming it renames it on every issue and pull request that carries it. Needs the Write role or higher; applying labels and milestones needs Triage.\n\nRenaming a label renames it on every issue and pull request that carries it.",
         "x-operation": "update_label",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_label",
@@ -30027,7 +30656,7 @@
           "Labels and milestones"
         ],
         "summary": "Delete a label",
-        "description": "Delete a label. It is taken off every issue and pull request that carries it, without events for each. Needs the Triage role or higher.",
+        "description": "Delete a label. It is taken off every issue and pull request that carries it, without events for each. Needs the Write role or higher; applying labels and milestones needs Triage.",
         "x-operation": "delete_label",
         "x-mcp-tool": "repository",
         "x-mcp-action": "delete_label",
@@ -30256,7 +30885,7 @@
           "Issues"
         ],
         "summary": "Add labels to an issue",
-        "description": "Add labels to an issue or a pull request, keeping the ones it has. A name the repository does not have yet is created when you have the Triage role or higher; without it, you may use the repository's labels on what you opened. Each label added is an issue.labeled or pull.labeled event. Returns its labels now, at most 20.\n\nReturns its labels now, by name.",
+        "description": "Add labels to an issue or a pull request, keeping the ones it has. A name the repository does not have yet is created when you have the Write role or higher; without it, you may use the repository's labels on what you opened. Each label added is an issue.labeled or pull.labeled event. Returns its labels now, at most 20.\n\nReturns its labels now, by name.",
         "x-operation": "add_issue_labels",
         "x-mcp-tool": "issue",
         "x-mcp-action": "add_labels",
@@ -30373,7 +31002,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Triage role."
+                    "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Write role."
                   }
                 },
                 "required": [
@@ -30511,7 +31140,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Triage role."
+                    "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Write role."
                   }
                 },
                 "required": [
@@ -30927,7 +31556,7 @@
           "Labels and milestones"
         ],
         "summary": "Create a milestone",
-        "description": "Create a milestone: a title, unique in the repository, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each repository, apart from issues. Needs the Triage role or higher.",
+        "description": "Create a milestone: a title, unique in the repository, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each repository, apart from issues. Needs the Write role or higher; applying labels and milestones needs Triage.",
         "x-operation": "create_milestone",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create_milestone",
@@ -31287,7 +31916,7 @@
           "Labels and milestones"
         ],
         "summary": "Update a milestone",
-        "description": "Change a milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Triage role or higher.",
+        "description": "Change a milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Write role or higher; applying labels and milestones needs Triage.",
         "x-operation": "update_milestone",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_milestone",
@@ -31444,7 +32073,7 @@
           "Labels and milestones"
         ],
         "summary": "Delete a milestone",
-        "description": "Delete a milestone. The issues and pull requests in it are in no milestone afterwards. Needs the Triage role or higher.",
+        "description": "Delete a milestone. The issues and pull requests in it are in no milestone afterwards. Needs the Write role or higher; applying labels and milestones needs Triage.",
         "x-operation": "delete_milestone",
         "x-mcp-tool": "repository",
         "x-mcp-action": "delete_milestone",
@@ -31858,7 +32487,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "What kind of issue this is, e.g. \"bug\" or \"enhancement\": the repository's labels, as list_labels gives them. A name it does not have yet is created for someone with the Triage role."
+                    "description": "What kind of issue this is, e.g. \"bug\" or \"enhancement\": the repository's labels, as list_labels gives them. A name it does not have yet is created for someone with the Write role."
                   },
                   "checks": {
                     "type": "array",
@@ -32290,7 +32919,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Replaces the whole set. Names the repository does not have yet are created for someone with the Triage role."
+                    "description": "Replaces the whole set. Names the repository does not have yet are created for someone with the Write role."
                   },
                   "milestone": {
                     "type": [

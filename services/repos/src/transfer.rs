@@ -38,6 +38,12 @@ pub struct Facts {
     pub verified: bool,
     pub role_in_source: Option<Role>,
     pub role_in_destination: Option<Role>,
+    /// A member (not an owner) of the source with the Admin role on the
+    /// repository, whose member privileges let admins delete and transfer.
+    pub admin_may_transfer: bool,
+    /// The destination's member privileges let its members create a
+    /// repository of this one's visibility.
+    pub may_create_in_destination: bool,
     pub source: String,
     pub destination: String,
     pub name: String,
@@ -64,10 +70,15 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
             "Only a person can transfer a repository. Sign in, or use a personal access token.".into(),
         );
     }
-    if facts.role_in_source != Some(Role::Owner) {
+    let source_ok = facts.role_in_source == Some(Role::Owner)
+        || (facts.role_in_source == Some(Role::Member) && facts.admin_may_transfer);
+    if !source_ok {
         return refuse(
             FailureCode::Forbidden,
-            format!("Only an owner of {} can transfer its repositories.", facts.source),
+            format!(
+                "Only an owner of {} can transfer its repositories, unless its member privileges let repository admins.",
+                facts.source
+            ),
         );
     }
     if !facts.verified {
@@ -82,11 +93,13 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
             format!("{}/{} is already in {}.", facts.source, facts.name, facts.destination),
         );
     }
-    if facts.role_in_destination != Some(Role::Owner) {
+    let destination_ok = facts.role_in_destination == Some(Role::Owner)
+        || (facts.role_in_destination == Some(Role::Member) && facts.may_create_in_destination);
+    if !destination_ok {
         return refuse(
             FailureCode::Forbidden,
             format!(
-                "You can transfer a repository only to a workspace you own, and you do not own {}.",
+                "You can transfer a repository only to a workspace where you can create one, and you cannot in {}.",
                 facts.destination
             ),
         );
@@ -253,11 +266,20 @@ impl<S: GitStore> Repos<S> {
         } else {
             (0, 0, false)
         };
+        let viewer = Some(a.actor.clone());
+        let admin_may_transfer = crate::registry::role(&repo, &viewer) == Some(g1t_contracts::access::RepoRole::Admin)
+            && a.actor.privileges_in(&source).members_can_delete_repositories;
+        let may_create_in_destination = a
+            .actor
+            .role_in(&destination)
+            .is_some_and(|role| a.actor.privileges_in(&destination).may_create(role, repo.is_private));
         let facts = Facts {
             person: a.actor.kind == PrincipalKind::User,
             verified: a.actor.verified,
             role_in_source: a.actor.role_in(&source),
             role_in_destination: a.actor.role_in(&destination),
+            admin_may_transfer,
+            may_create_in_destination,
             source: source.clone(),
             destination: destination.clone(),
             name: repo.name.clone(),
@@ -381,6 +403,18 @@ mod tests {
     #[test]
     fn an_owner_of_both_may_transfer() {
         assert!(check(&facts()).is_ok());
+    }
+
+    #[test]
+    fn member_privileges_let_an_admin_transfer_where_they_may_create() {
+        let member = Facts { role_in_source: Some(Role::Member), role_in_destination: Some(Role::Member), ..facts() };
+        assert_eq!(refused(&member), FailureCode::Forbidden);
+        let allowed = Facts { admin_may_transfer: true, may_create_in_destination: true, ..member };
+        assert!(check(&allowed).is_ok());
+        assert_eq!(
+            refused(&Facts { may_create_in_destination: false, admin_may_transfer: true, role_in_source: Some(Role::Member), role_in_destination: Some(Role::Member), ..facts() }),
+            FailureCode::Forbidden
+        );
     }
 
     #[test]

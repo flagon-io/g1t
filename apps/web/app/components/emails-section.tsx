@@ -36,7 +36,7 @@ function describe(intent: string): string {
 }
 
 /** Asks for the password before a sensitive change goes through. */
-function ConfirmItIsYou({ pending, hasPassword }: { pending: NonNullable<EmailActionData>["reauth"]; hasPassword: boolean }) {
+export function ConfirmItIsYou({ pending, hasPassword }: { pending: NonNullable<EmailActionData>["reauth"]; hasPassword: boolean }) {
   if (!pending) return null;
   return (
     <div role="alert" className="rounded-xl border border-accent/40 bg-surface p-4">

@@ -9,7 +9,7 @@ use g1t_contracts::billing::{
     AccountArgs, BillingDetails, Feature, PaymentMethod, PostalAddress, SetBillingDetailsArgs, StripeInvoice, UpcomingInvoice,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -306,8 +306,8 @@ impl Billing {
     /// `set_billing_details`: owners only, saved on the Stripe customer.
     pub(crate) async fn set_billing_details(&self, a: SetBillingDetailsArgs) -> Result<Outcome<BillingDetails>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change the workspace's billing details."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can change the workspace's billing details."));
         }
         let Some(stripe) = &self.stripe else {
             return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t."));

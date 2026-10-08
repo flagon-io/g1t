@@ -9,7 +9,7 @@ import { SecretsList, StateFilter } from "../../components/security";
 import { ActivationPrompt, CARD, FilterSelect, SectionHeader } from "../../components/security-suite";
 import { Badge } from "../../components/ui/badge";
 import { security, securitySuite } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { activationPrice } from "../../lib/security-suite.server";
 import { countStates, keepSecret, secretFilters, secretTypes } from "../../lib/security-suite";
@@ -32,7 +32,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     patterns: patterns.ok ? patterns.value : { patterns: [], entitled: false },
     price,
     can: access.can,
-    owner: roleIn(viewer, params.owner) === "owner",
+    owner: managesSecurity(viewer, params.owner),
   };
 }
 

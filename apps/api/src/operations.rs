@@ -100,6 +100,11 @@ pub enum Op {
     CreateWorkspace,
     DeleteWorkspace,
     UpdateWorkspace,
+    ListMembers,
+    UpdateMember,
+    RemoveMember,
+    TransferOwnership,
+    LeaveWorkspace,
     ListEmails,
     AddEmail,
     RemoveEmail,
@@ -648,12 +653,17 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 264] = [
+    pub const ALL: [Op; 269] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
         Op::UpdateWorkspace,
+        Op::ListMembers,
+        Op::UpdateMember,
+        Op::RemoveMember,
+        Op::TransferOwnership,
+        Op::LeaveWorkspace,
         Op::ListEmails,
         Op::AddEmail,
         Op::RemoveEmail,
@@ -927,6 +937,11 @@ impl Op {
             Op::CreateWorkspace => "create_workspace",
             Op::DeleteWorkspace => "delete_workspace",
             Op::UpdateWorkspace => "update_workspace",
+            Op::ListMembers => "list_members",
+            Op::UpdateMember => "update_member",
+            Op::RemoveMember => "remove_member",
+            Op::TransferOwnership => "transfer_ownership",
+            Op::LeaveWorkspace => "leave_workspace",
             Op::ListEmails => "list_emails",
             Op::AddEmail => "add_email",
             Op::RemoveEmail => "remove_email",
@@ -1150,15 +1165,30 @@ impl Op {
                 "Delete a workspace and everything in it. Owners only, signed in as a person, and confirm must be the workspace's slug. Billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once and its plan ends. Its repositories, projects and apps go with it at once, nobody can reach it, and its access tokens stop working. It is kept for 30 days, when g1t's support can restore it as it was; then it is purged, with its webhooks, integrations and workspace secrets. Its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again once it is purged. Some workspaces, such as Flagon's, can never be deleted."
             }
             Op::GetWorkspace => {
-                "One workspace you belong to: its name, description and member count, what every member gets on each of its repositories (base_permission), and who may create its teams (team_creation: members or owners). Members only."
+                "One workspace you belong to: its name, description and member count, what every member gets on each of its repositories (base_permission), who may create its teams (team_creation: members or owners), its member privileges (members_can_create_public_repositories, members_can_create_private_repositories, members_can_change_repo_visibility, members_can_delete_repositories, members_can_invite_outside_collaborators), and whether it requires two-factor authentication (two_factor_requirement_enabled). Members only."
             }
             Op::UpdateWorkspace => {
-                "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), and who may create its teams (team_creation: members or owners). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now."
+                "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), who may create its teams (team_creation: members or owners), its member privileges, and whether it requires two-factor authentication. The member privileges are: members_can_create_public_repositories and members_can_create_private_repositories (who may create each kind; owners always can), members_can_change_repo_visibility (members with the Admin role on a repository may make it public or private), members_can_delete_repositories (they may delete or transfer it) and members_can_invite_outside_collaborators (they may give a role to someone outside the workspace). two_factor_requirement_enabled true holds every member and outside collaborator without two-factor authentication out of the workspace until they turn it on; you need it on yourself first. Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now."
+            }
+            Op::ListMembers => {
+                "A workspace's members, owners first, then by username. Each has their `username`, `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only."
+            }
+            Op::UpdateMember => {
+                "Change a member's role in a workspace: `role` (`owner` or `member`) and the roles they hold besides it (`org_roles`, a list of `billing_manager` and `security_manager`, which replaces the one they have). Only the fields given are changed. A billing manager manages the workspace's billing as an owner does, and gets nothing on repositories from it; a security manager reads every repository and sees and manages its security alerts and security settings. Refused with `409` when it would leave the workspace without an owner. Owners only, signed in as a person. Returns the member."
+            }
+            Op::RemoveMember => {
+                "Remove someone from a workspace. Their roles on its repositories and their place in its teams go too; to keep them on a repository, add them back to it as an outside collaborator. Removing yourself is leaving (leave_workspace). Refused with `409` for the last owner. Owners only, signed in as a person."
+            }
+            Op::TransferOwnership => {
+                "Hand a workspace to another of its members: they become an owner and you a member, in one step. A workspace can have several owners; to add one without stepping down, use update_member with role owner. Owners only, signed in as a person."
+            }
+            Op::LeaveWorkspace => {
+                "Leave a workspace you belong to. Your roles on its repositories and your place in its teams go too. The last owner cannot leave (`409`): make another member an owner first, or delete the workspace. People only."
             }
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
             Op::UpdateRepo => {
-                "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics, and protecting its default branch, need the Maintain role or higher; making it public or private and changing its default branch need the Admin role, and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it."
+                "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it."
             }
             Op::RenameRepo => {
                 "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, issues, pull requests, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
@@ -1173,7 +1203,7 @@ impl Op {
                 "Unarchive a repository: make it writable again. Needs the Admin role. Pushes, merges, issues, pull requests, agents and workflows work again; nothing that was refused while it was archived runs by itself."
             }
             Op::SetRepoVisibility => {
-                "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Making it public shows it, its code, issues and pull requests to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes."
+                "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Unless you are an owner of its workspace, the workspace's member privileges must let repository admins change visibility (members_can_change_repo_visibility) and let members create a repository of that kind. Making it public shows it, its code, issues and pull requests to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes."
             }
             Op::DeleteRepo => {
                 "Delete a repository. Owners only, and confirm must be its full name, owner/name. It disappears at once: git refuses it, agents and workflows stop, its deployments are taken down, and search drops it. For 30 days an owner can restore it with restore_repo, as it was; then it is purged, its git data with it. Its name stays taken until it is purged. list_deleted_repos shows what can be restored."
@@ -1194,7 +1224,7 @@ impl Op {
                 "How a repository handles pull requests: how g1t's agents are reviewed, revised and merged, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for a person's pull request and an agent's. list_repo_rulesets and get_branch_rules show every rule."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher."
+                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field."
             }
             Op::ListCheckNames => {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
@@ -1264,22 +1294,22 @@ impl Op {
                 "A repository's labels, by name: each one's color (six hex digits), description, and how many issues and pull requests carry it. A new repository starts with bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security."
             }
             Op::CreateLabel => {
-                "Create a label, named by label. Names are lowercase and unique in a repository, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Triage role or higher."
+                "Create a label, named by label. Names are lowercase and unique in a repository, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::UpdateLabel => {
-                "Change a label's name, color or description; only the fields given change. Renaming it renames it on every issue and pull request that carries it. Needs the Triage role or higher."
+                "Change a label's name, color or description; only the fields given change. Renaming it renames it on every issue and pull request that carries it. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::DeleteLabel => {
-                "Delete a label. It is taken off every issue and pull request that carries it, without events for each. Needs the Triage role or higher."
+                "Delete a label. It is taken off every issue and pull request that carries it, without events for each. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::AddDefaultLabels => {
-                "Add the default labels a repository does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Triage role or higher."
+                "Add the default labels a repository does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::ListIssueLabels => {
                 "The labels an issue or a pull request carries, with their colors and descriptions. Issues and pull requests share numbers."
             }
             Op::AddIssueLabels => {
-                "Add labels to an issue or a pull request, keeping the ones it has. A name the repository does not have yet is created when you have the Triage role or higher; without it, you may use the repository's labels on what you opened. Each label added is an issue.labeled or pull.labeled event. Returns its labels now, at most 20."
+                "Add labels to an issue or a pull request, keeping the ones it has. A name the repository does not have yet is created when you have the Write role or higher; without it, you may use the repository's labels on what you opened. Each label added is an issue.labeled or pull.labeled event. Returns its labels now, at most 20."
             }
             Op::SetIssueLabels => {
                 "Replace the labels of an issue or a pull request with these; an empty list takes them all off. The same rules as add_issue_labels. Returns its labels now."
@@ -1292,13 +1322,13 @@ impl Op {
             }
             Op::GetMilestone => "A milestone, with every issue and pull request in it, newest first.",
             Op::CreateMilestone => {
-                "Create a milestone: a title, unique in the repository, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each repository, apart from issues. Needs the Triage role or higher."
+                "Create a milestone: a title, unique in the repository, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each repository, apart from issues. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::UpdateMilestone => {
-                "Change a milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Triage role or higher."
+                "Change a milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::DeleteMilestone => {
-                "Delete a milestone. The issues and pull requests in it are in no milestone afterwards. Needs the Triage role or higher."
+                "Delete a milestone. The issues and pull requests in it are in no milestone afterwards. Needs the Write role or higher; applying labels and milestones needs Triage."
             }
             Op::AddComment => {
                 "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
@@ -1463,7 +1493,7 @@ impl Op {
                 "Decline an invitation to a repository sent to you. Whoever sent it can invite you again. People only."
             }
             Op::SetBasePermission => {
-                "Set what every member of a workspace gets on each of its repositories: none, read, write (the default) or admin. Owners always have Admin, and a role given on a repository directly still counts where it is higher. With none, members see only the private repositories they are given a role on. Owners only, signed in as a person."
+                "Set what every member of a workspace gets on each of its repositories: none, read (what a new workspace starts with), write or admin. Owners always have Admin, and a role given on a repository directly still counts where it is higher. With none, members see only the private repositories they are given a role on. Owners only, signed in as a person."
             }
             Op::ListOutsideCollaborators => {
                 "The people with a role on some of a workspace's repositories who are not its members, each with the repositories they can reach and their role on each. Owners only."
@@ -1472,7 +1502,7 @@ impl Op {
                 "A repository's security alerts: secrets found in what was pushed or in its history (`kind` `secret`), and dependencies with a known vulnerability (`kind` `dependency`), secrets first. Each has a `state`: `open`, `dismissed` (someone said why it can stay) or `fixed` (a secret revoked, a dependency no longer vulnerable). Filter with `state` and `kind`; both are left out for all. A secret is never returned, only a `preview`. Needs the Write role on the repository; anyone else is told it does not exist, whether or not the repository is public."
             }
             Op::DismissSecurityAlert => {
-                "Dismiss an alert with a reason and an optional comment. A secret takes false_positive, used_in_tests, revoked or wont_fix; a dependency takes fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used. A dismissed secret is let through push protection from then on, unless the reason is `revoked`, which marks it fixed, so dismissing a secret needs the Admin role on the repository; a dependency needs Write. Returns the alert as it is now. Reopen it with reopen_security_alert."
+                "Dismiss an alert with a reason and an optional comment. A secret takes false_positive, used_in_tests, revoked or wont_fix; a dependency takes fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used. A dismissed secret is let through push protection from then on, unless the reason is `revoked`, which marks it fixed. Dismissing either needs the Write role on the repository, or a security manager of its workspace. Returns the alert as it is now. Reopen it with reopen_security_alert."
             }
             Op::ReopenSecurityAlert => {
                 "Open a dismissed alert again. A reopened secret stops pushes that carry it again. The same roles as dismissing: Admin for a secret, Write for a dependency. Returns the alert as it is now."
@@ -1746,8 +1776,57 @@ impl Op {
                         "enum": g1t_contracts::teams::TeamCreation::ALL.map(|setting| setting.as_str()),
                         "description": "Who may create the workspace's teams: members (any member, the default) or owners (owners only).",
                     },
+                    "members_can_create_public_repositories": {
+                        "type": "boolean",
+                        "description": "Members may create public repositories. Owners always can. On by default.",
+                    },
+                    "members_can_create_private_repositories": {
+                        "type": "boolean",
+                        "description": "Members may create private repositories. Owners always can. On by default.",
+                    },
+                    "members_can_change_repo_visibility": {
+                        "type": "boolean",
+                        "description": "Members with the Admin role on a repository may make it public or private. On by default; off, only owners can.",
+                    },
+                    "members_can_delete_repositories": {
+                        "type": "boolean",
+                        "description": "Members with the Admin role on a repository may delete or transfer it. Off by default: only owners can.",
+                    },
+                    "members_can_invite_outside_collaborators": {
+                        "type": "boolean",
+                        "description": "Members with the Admin role on a repository may give a role on it to someone outside the workspace. On by default; off, only owners can.",
+                    },
+                    "two_factor_requirement_enabled": {
+                        "type": "boolean",
+                        "description": "Require two-factor authentication of every member and outside collaborator. Those without it keep their place but cannot use the workspace until they turn it on. You need it on yourself first.",
+                    },
                 }),
                 &["workspace"],
+            ),
+            Op::ListMembers | Op::LeaveWorkspace => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::UpdateMember => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "username": { "type": "string", "description": "The member's username." },
+                    "role": {
+                        "type": "string",
+                        "enum": ["owner", "member"],
+                        "description": "owner or member.",
+                    },
+                    "org_roles": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": g1t_contracts::OrgRole::ALL.map(|role| role.as_str()) },
+                        "description": "The roles they hold besides owner or member: billing_manager, security_manager. Replaces the list; [] takes them all away.",
+                    },
+                }),
+                &["workspace", "username"],
+            ),
+            Op::RemoveMember | Op::TransferOwnership => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "username": { "type": "string", "description": "The member's username." },
+                }),
+                &["workspace", "username"],
             ),
             Op::TransferRepo => object(
                 json!({
@@ -1786,7 +1865,7 @@ impl Op {
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Triage role.",
+                        "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Write role.",
                     },
                 })),
                 &["repo", "number", "labels"],
@@ -2087,7 +2166,7 @@ impl Op {
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "What kind of issue this is, e.g. \"bug\" or \"enhancement\": the repository's labels, as list_labels gives them. A name it does not have yet is created for someone with the Triage role.",
+                        "description": "What kind of issue this is, e.g. \"bug\" or \"enhancement\": the repository's labels, as list_labels gives them. A name it does not have yet is created for someone with the Write role.",
                     },
                     "checks": {
                         "type": "array",
@@ -2106,7 +2185,7 @@ impl Op {
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Replaces the whole set. Names the repository does not have yet are created for someone with the Triage role.",
+                        "description": "Replaces the whole set. Names the repository does not have yet are created for someone with the Write role.",
                     },
                     "milestone": {
                         "type": ["integer", "null"],
@@ -3065,6 +3144,11 @@ impl Op {
                 | Op::CreateWorkspace
                 | Op::DeleteWorkspace
                 | Op::UpdateWorkspace
+                | Op::ListMembers
+                | Op::UpdateMember
+                | Op::RemoveMember
+                | Op::TransferOwnership
+                | Op::LeaveWorkspace
                 | Op::ListEmails
                 | Op::AddEmail
                 | Op::RemoveEmail
@@ -3443,9 +3527,27 @@ impl Op {
                         None => return failed(FailureCode::Invalid, "team_creation is members or owners."),
                     },
                 };
+                let privileges = match g1t_contracts::members::MemberPrivilegesPatch::from_json(input) {
+                    Ok(patch) => patch,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let two_factor = match input.get("two_factor_requirement_enabled").filter(|value| !value.is_null()) {
+                    None => None,
+                    Some(Value::Bool(required)) => Some(*required),
+                    Some(_) => return failed(FailureCode::Invalid, "two_factor_requirement_enabled is true or false."),
+                };
                 let (name, description) = (optional_text(input, "name"), optional_text(input, "description"));
-                if base.is_none() && creation.is_none() && name.is_none() && description.is_none() {
-                    return failed(FailureCode::Invalid, "Give name, description, base_permission or team_creation to change.");
+                if base.is_none()
+                    && creation.is_none()
+                    && name.is_none()
+                    && description.is_none()
+                    && privileges.is_empty()
+                    && two_factor.is_none()
+                {
+                    return failed(
+                        FailureCode::Invalid,
+                        "Give name, description, base_permission, team_creation, a member privilege or two_factor_requirement_enabled to change.",
+                    );
                 }
                 let found = || async {
                     g1t_kit::call::<_, Option<Workspace>>(identity, "get_workspace", &json!({ "slug": workspace() })).await
@@ -3502,10 +3604,118 @@ impl Op {
                         return Ok(Outcome::Fail(failure));
                     }
                 }
+                if !privileges.is_empty() {
+                    let set: Outcome<g1t_contracts::MemberPrivileges> = call(
+                        identity,
+                        "set_member_privileges",
+                        &g1t_contracts::members::SetMemberPrivilegesArgs {
+                            actor: actor(),
+                            slug: workspace(),
+                            privileges,
+                            surface: Some(services.audit.surface),
+                        },
+                    )
+                    .await?;
+                    if let Outcome::Fail(failure) = set {
+                        return Ok(Outcome::Fail(failure));
+                    }
+                }
+                if let Some(required) = two_factor {
+                    let set: Outcome<bool> = call(
+                        identity,
+                        "set_two_factor_requirement",
+                        &g1t_contracts::members::SetTwoFactorRequirementArgs {
+                            actor: actor(),
+                            slug: workspace(),
+                            required,
+                            surface: Some(services.audit.surface),
+                        },
+                    )
+                    .await?;
+                    if let Outcome::Fail(failure) = set {
+                        return Ok(Outcome::Fail(failure));
+                    }
+                }
                 match found().await? {
                     Some(workspace) => ok(&workspace),
                     None => failed(FailureCode::NotFound, "Workspace not found."),
                 }
+            }
+            Op::ListMembers => pass(identity, "list_members", &json!({ "slug": workspace(), "viewer": viewer })).await,
+            Op::UpdateMember => {
+                let role = match input.get("role").filter(|value| !value.is_null()) {
+                    None => None,
+                    Some(value) => match value.as_str().map(|text| text.trim().to_ascii_lowercase()).as_deref() {
+                        Some("owner") | Some("admin") => Some(g1t_contracts::Role::Owner),
+                        Some("member") => Some(g1t_contracts::Role::Member),
+                        _ => return failed(FailureCode::Invalid, "role is owner or member."),
+                    },
+                };
+                let org_roles = match input.get("org_roles").filter(|value| !value.is_null()) {
+                    None => None,
+                    Some(Value::Array(items)) => {
+                        let mut roles = Vec::new();
+                        for item in items {
+                            match item.as_str().and_then(g1t_contracts::OrgRole::parse) {
+                                Some(role) => roles.push(role),
+                                None => return failed(FailureCode::Invalid, "org_roles lists billing_manager and security_manager."),
+                            }
+                        }
+                        Some(roles)
+                    }
+                    Some(_) => return failed(FailureCode::Invalid, "org_roles is a list: billing_manager, security_manager."),
+                };
+                pass(
+                    identity,
+                    "update_member",
+                    &g1t_contracts::members::UpdateMemberArgs {
+                        actor: actor(),
+                        slug: workspace(),
+                        username: text(input, "username"),
+                        role,
+                        org_roles,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::RemoveMember => {
+                pass(
+                    identity,
+                    "remove_member",
+                    &json!({
+                        "actor": actor(),
+                        "slug": workspace(),
+                        "username": text(input, "username"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::TransferOwnership => {
+                pass(
+                    identity,
+                    "transfer_ownership",
+                    &g1t_contracts::members::TransferOwnershipArgs {
+                        actor: actor(),
+                        slug: workspace(),
+                        username: text(input, "username"),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::LeaveWorkspace => {
+                pass(
+                    identity,
+                    "leave_workspace",
+                    &g1t_contracts::members::LeaveWorkspaceArgs {
+                        user: actor(),
+                        slug: workspace(),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
             }
             Op::TransferRepo => {
                 pass(
@@ -5356,6 +5566,26 @@ mod tests {
         Op::SetBasePermission,
         Op::ListOutsideCollaborators,
     ];
+
+    const MEMBERS: [Op; 5] = [Op::ListMembers, Op::UpdateMember, Op::RemoveMember, Op::TransferOwnership, Op::LeaveWorkspace];
+
+    /// Who belongs to a workspace, and who owns it, is people's business:
+    /// no run lists these, and agents are refused them whatever a scope says.
+    #[test]
+    fn agents_never_manage_members() {
+        use g1t_contracts::credentials::{CredentialUse, NEVER, RunCredentialKind, operations_for};
+        for op in MEMBERS {
+            assert!(NEVER.contains(&op.name()), "{} is not in NEVER", op.name());
+            assert!(!op.needs_repo(), "{}", op.name());
+            assert!(op.needs_user(), "{}", op.name());
+            for kind in RunCredentialKind::ALL {
+                for usage in [CredentialUse::Runner, CredentialUse::Tools] {
+                    assert!(!operations_for(kind, usage).contains(&op.name()));
+                }
+            }
+        }
+        assert_eq!(Op::UpdateMember.input()["properties"]["org_roles"]["items"]["enum"], json!(["billing_manager", "security_manager"]));
+    }
 
     /// Who has access is for people: no run's scope lists these, and the
     /// ones that change or reveal access are refused whatever a scope says.

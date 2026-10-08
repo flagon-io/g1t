@@ -20,6 +20,7 @@ export * from "./inbox";
 export * from "./instances";
 export * from "./ids";
 export * from "./integrations";
+export * from "./members";
 export * from "./mentions";
 export * from "./names";
 export * from "./oauth";

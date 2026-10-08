@@ -769,7 +769,8 @@ impl Identity {
                 Some(inviter) => format!("Joined with an invite from {inviter}"),
                 None => "Joined with an invite from g1t".to_owned(),
             };
-            self.audit_invites(user, "invite.redeemed", vec![slug], Surface::Web, message).await;
+            self.audit_invites(user, "invite.redeemed", vec![slug.clone()], Surface::Web, message).await;
+            self.audit_invites(user, "member.added", vec![slug], Surface::Web, format!("{} joined as a member", user.username)).await;
         }
         Ok(())
     }

@@ -66,10 +66,16 @@
       "description": null,
       "created_at": "2026-10-04T16:02:51.337Z",
       "member_count": 1,
-      "base_permission": "write",
-      "team_creation": "members"
+      "base_permission": "read",
+      "team_creation": "members",
+      "members_can_create_public_repositories": true,
+      "members_can_create_private_repositories": true,
+      "members_can_change_repo_visibility": true,
+      "members_can_delete_repositories": false,
+      "members_can_invite_outside_collaborators": true,
+      "two_factor_requirement_enabled": false
     },
-    "notes": "`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). `team_creation` is who may create its teams: `members` (any member) until an owner sets `owners` with `PATCH /workspaces/{workspace}`. A new workspace is free, and each person owns at most one free workspace: while you own one, this answers `402` with `payment_required` and says which, until it is on the plan or deleted. See [One free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person)."
+    "notes": "`base_permission` is what every member gets on each of its repositories: `read` for a new workspace until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). `team_creation` is who may create its teams: `members` (any member) until an owner sets `owners` with `PATCH /workspaces/{workspace}`. A new workspace is free, and each person owns at most one free workspace: while you own one, this answers `402` with `payment_required` and says which, until it is on the plan or deleted. See [One free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person)."
   },
   "get_workspace": {
     "params": {
@@ -83,9 +89,15 @@
       "created_at": "2026-10-04T16:02:51.337Z",
       "member_count": 3,
       "base_permission": "write",
-      "team_creation": "members"
+      "team_creation": "members",
+      "members_can_create_public_repositories": true,
+      "members_can_create_private_repositories": true,
+      "members_can_change_repo_visibility": true,
+      "members_can_delete_repositories": false,
+      "members_can_invite_outside_collaborators": true,
+      "two_factor_requirement_enabled": false
     },
-    "notes": "`team_creation` is who may create its teams: `members` (any member, the default) or `owners`. Change it, and the rest, with [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/). `404` for anyone who is not a member. See [Workspaces](/guides/workspaces/)."
+    "notes": "`team_creation` is who may create its teams: `members` (any member, the default) or `owners`. The `members_can_…` fields are its [member privileges](/guides/workspaces/#member-privileges), and `two_factor_requirement_enabled` whether it [requires two-factor authentication](/guides/authentication/#require-two-factor-authentication). Change it, and the rest, with [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/). `404` for anyone who is not a member. See [Workspaces](/guides/workspaces/)."
   },
   "update_workspace": {
     "params": {
@@ -94,7 +106,8 @@
     "request": {
       "name": "Acme Labs",
       "description": "Rockets, and the software that flies them.",
-      "team_creation": "owners"
+      "team_creation": "owners",
+      "members_can_delete_repositories": true
     },
     "response": {
       "id": "wsp_01m43teqa9em6bje0bhvdj4jkb",
@@ -104,9 +117,89 @@
       "created_at": "2026-10-04T16:02:51.337Z",
       "member_count": 3,
       "base_permission": "write",
-      "team_creation": "owners"
+      "team_creation": "owners",
+      "members_can_create_public_repositories": true,
+      "members_can_create_private_repositories": true,
+      "members_can_change_repo_visibility": true,
+      "members_can_delete_repositories": true,
+      "members_can_invite_outside_collaborators": true,
+      "two_factor_requirement_enabled": false
     },
-    "notes": "Only the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. `team_creation` is `members` (any member may create a team, the default) or `owners`; teams already made stay. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/)."
+    "notes": "Only the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. `team_creation` is `members` (any member may create a team, the default) or `owners`; teams already made stay. The `members_can_…` fields are the workspace's member privileges: who may create public and private repositories, and whether members with the Admin role on a repository may change its visibility, delete or transfer it, and invite outside collaborators. `two_factor_requirement_enabled` holds everyone without two-factor authentication out of the workspace until they turn it on, and needs it on your own account first. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/)."
+  },
+  "list_members": {
+    "params": {
+      "workspace": "acme-labs"
+    },
+    "response": [
+      {
+        "username": "ada",
+        "role": "owner",
+        "org_roles": [],
+        "two_factor": true,
+        "name": "Ada Lovelace",
+        "avatar": null
+      },
+      {
+        "username": "grace",
+        "role": "member",
+        "org_roles": [
+          "security_manager"
+        ],
+        "two_factor": false,
+        "name": "Grace Hopper",
+        "avatar": null
+      }
+    ],
+    "notes": "Owners first, then by username. `two_factor` is shown to owners only, and is `null` for anyone else. `403` for anyone who is not a member. See [Workspaces](/guides/workspaces/#members-and-owners)."
+  },
+  "update_member": {
+    "params": {
+      "workspace": "acme-labs",
+      "username": "grace"
+    },
+    "request": {
+      "role": "member",
+      "org_roles": [
+        "security_manager"
+      ]
+    },
+    "response": {
+      "username": "grace",
+      "role": "member",
+      "org_roles": [
+        "security_manager"
+      ],
+      "two_factor": null,
+      "name": "Grace Hopper",
+      "avatar": null
+    },
+    "notes": "Only the fields given change; `org_roles` replaces the list. `409` when it would leave the workspace without an owner. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/) as `member.role_changed`, `member.org_role_added` or `member.org_role_removed`. See [Workspaces](/guides/workspaces/#members-and-owners)."
+  },
+  "remove_member": {
+    "params": {
+      "workspace": "acme-labs",
+      "username": "grace"
+    },
+    "response": true,
+    "notes": "Their roles on the workspace's repositories and their place in its teams go with them. Your own username is leaving, as [`leave_workspace`](/reference/api/members/leave-workspace/). `409` for the last owner. Recorded as `member.removed`."
+  },
+  "transfer_ownership": {
+    "params": {
+      "workspace": "acme-labs"
+    },
+    "request": {
+      "username": "grace"
+    },
+    "response": true,
+    "notes": "`username` becomes an owner and you a member, in one step. Recorded as `workspace.ownership_transferred`."
+  },
+  "leave_workspace": {
+    "params": {
+      "workspace": "acme-labs"
+    },
+    "response": true,
+    "notes": "`409` for the last owner: make another member an owner first, or delete the workspace. Recorded as `member.left`."
   },
   "delete_workspace": {
     "request": {
@@ -3721,7 +3814,9 @@
     "request": {
       "config": {
         "base_url": "https://gpu.flagon.dev/v1",
-        "gateway_models": ["ollama/*"]
+        "gateway_models": [
+          "ollama/*"
+        ]
       },
       "secret": "sk-office-gpu-key"
     },
@@ -3734,7 +3829,9 @@
       "config": {
         "write_back": true,
         "base_url": "https://gpu.flagon.dev/v1",
-        "gateway_models": ["ollama/*"]
+        "gateway_models": [
+          "ollama/*"
+        ]
       },
       "secret_hint": "…-key",
       "webhook_url": null,
@@ -3742,7 +3839,10 @@
       "created_at": "2026-10-07T12:10:44.512Z",
       "last_used_at": "2026-10-07T14:00:02.000Z",
       "last_error": null,
-      "models": ["llama3.3:70b", "qwen3-coder:30b"]
+      "models": [
+        "llama3.3:70b",
+        "qwen3-coder:30b"
+      ]
     },
     "notes": "The secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. With `gateway_models` set to `ollama/*`, an AI Gateway request for `ollama/qwen3-coder:30b` reaches this endpoint as `qwen3-coder:30b`, on the workspace's own account. See [the AI Gateway guide](/guides/ai-gateway/#your-own-providers)."
   },

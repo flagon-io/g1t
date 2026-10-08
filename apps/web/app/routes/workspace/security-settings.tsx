@@ -6,7 +6,7 @@ import { ActivationPrompt, CARD } from "../../components/security-suite";
 import { WorkspaceSecurityHeading, WorkspaceSecurityTabs } from "../../components/workspace-security-tabs";
 import { Switch } from "../../components/ui/switch";
 import { securitySuite } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesSecurity, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { activationPrice } from "../../lib/security-suite.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -18,7 +18,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
   const [view, price] = await Promise.all([securitySuite.workspaceSettings(params.owner, viewer), activationPrice(params.owner, viewer)]);
-  return { view: unwrap(view), price, owner: role === "owner" };
+  return { view: unwrap(view), price, owner: managesSecurity(viewer, params.owner) };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {

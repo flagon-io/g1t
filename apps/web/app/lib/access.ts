@@ -27,7 +27,7 @@ export const SETTINGS_CAPABILITY: Record<string, Capability> = {
   "": "manage_settings",
   repository: "manage_settings",
   agents: "manage_settings",
-  branches: "manage_protection",
+  branches: "manage_settings",
   rules: "manage_protection",
   guardrails: "manage_protection",
   webhooks: "manage_integrations",

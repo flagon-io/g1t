@@ -1,6 +1,6 @@
 ---
 title: Accounts and authentication
-description: Accounts, invites, email addresses, confirming them, personal access tokens and their scopes, OAuth, signing in from a tool, password reset and your security log.
+description: Accounts, invites, email addresses, confirming them, two-factor authentication and recovery codes, personal access tokens and their scopes, OAuth, signing in from a tool, password reset and your security log.
 ---
 
 ## Creating an account
@@ -30,6 +30,7 @@ under **Your settings**; the sidebar then lists every page.
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens). |
 | GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
 | Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
+| Two-factor authentication | [`/settings/two-factor`](https://g1t.sh/settings/two-factor) | [An authenticator app and recovery codes](#two-factor-authentication). |
 | Security log | [`/settings/security-log`](https://g1t.sh/settings/security-log) | [What happened to your account](#security-log). |
 
 `g1t.sh/settings` opens Profile.
@@ -43,6 +44,67 @@ unlink GitHub in [Settings → GitHub](https://g1t.sh/settings/github). See
 
 Making an account with GitHub needs an invite too: start from your invite
 link, or enter the code when g1t asks for it after GitHub.
+
+With [two-factor authentication](#two-factor-authentication) on, signing in
+with GitHub asks for a code from your app as well.
+
+## Two-factor authentication
+
+Two-factor authentication asks for a code from an authenticator app on
+your phone each time you sign in with your password or with GitHub, so a
+stolen password is not enough. Any app that reads a time-based one-time
+password (TOTP) QR code works, such as 1Password, Google Authenticator or
+Authy.
+
+### Turn it on
+
+1. Open [Settings → Two-factor authentication](https://g1t.sh/settings/two-factor)
+   and choose **Set up**. g1t asks for your password if you have not
+   signed in in the last 10 minutes.
+2. Scan the QR code with your app, or type the key shown under it.
+3. Enter the six-digit code the app shows, and choose **Turn on**.
+4. Save the ten recovery codes g1t shows. They are shown only then.
+
+### Signing in with it on
+
+After your password (or GitHub), g1t asks for the code from your app. A
+code works for 30 seconds, and the one before and after it are accepted
+too, for a phone clock a little off. Each code works once. After five wrong
+codes, or ten minutes, start the sign-in again.
+
+Lost your phone? Enter a recovery code instead of the app's code. Each
+works once, and your security log records its use.
+
+Git over HTTPS never takes your password while two-factor authentication
+is on: use a [personal access token](#access-tokens) as the password, or
+[SSH](/guides/git/). Access tokens, SSH keys and OAuth applications are
+not affected.
+
+### Recovery codes, and turning it off
+
+On the same page:
+
+- **Make new recovery codes** replaces all ten; the old ones stop working.
+- **Turn off** needs a code from your app or a recovery code, and your
+  password if you have not signed in in the last 10 minutes.
+
+You cannot turn it off while you own a workspace that
+[requires it](/guides/workspaces/#require-two-factor-authentication): stop
+requiring it there first, or hand the workspace to another owner. In a
+workspace that requires it, turning it off holds you out of that workspace
+until you turn it on again.
+
+Turning it on or off, and making new recovery codes, are emailed to your
+primary and backup addresses, written to your [security log](#security-log),
+and recorded in the [audit log](/guides/audit-log/) of each of your
+workspaces as `two_factor.enabled` and `two_factor.disabled`.
+
+### Require two-factor authentication
+
+An owner can require it of everyone with access to a workspace. See
+[Workspaces](/guides/workspaces/#require-two-factor-authentication).
+
+Passkeys are not supported yet; they are next.
 
 ## Invites
 
@@ -183,8 +245,9 @@ another one primary first) or your last confirmed address.
 
 ### Confirming it is you
 
-Adding or removing an address, and changing your primary or backup, need
-proof that it is you: a sign-in in the last 10 minutes, or your password,
+Adding or removing an address, changing your primary or backup, and
+turning two-factor authentication on or off, need proof that it is you: a
+sign-in in the last 10 minutes, or your password,
 which g1t asks for on the page. After you enter it, g1t does not ask again
 for 10 minutes. An account that signs in only with GitHub signs out and in
 with GitHub again, or sets a password with
@@ -596,11 +659,20 @@ GitHub sign-in are not affected.
 
 [Settings → Security log](https://g1t.sh/settings/security-log) lists what
 happened to your account: addresses added, confirmed, removed or made
-primary, your backup and privacy settings, password changes, and pauses
-after too many wrong passwords. Changes g1t staff made, such as removing an
-address someone else needed, say so and why.
+primary, your backup and privacy settings, password changes, pauses after
+too many wrong passwords, two-factor authentication turned on or off and
+recovery codes made or used, personal access tokens created, deleted or
+given new scopes, SSH keys added or removed, and applications authorized,
+changed or revoked. Changes g1t staff made, such as removing an address
+someone else needed, say so and why.
+
+Token, SSH key, application and two-factor changes are also recorded in the
+[audit log](/guides/audit-log/) of each workspace you belong to, where its
+owners see them.
 
 ## What g1t stores
 
 Passwords are stored as salted PBKDF2-SHA256 hashes. Sessions and tokens are
-stored as SHA-256 hashes. Neither can be read back.
+stored as SHA-256 hashes. Neither can be read back. A two-factor secret is
+encrypted (AES-256-GCM) and bound to your account, and recovery codes are
+kept as SHA-256 hashes.

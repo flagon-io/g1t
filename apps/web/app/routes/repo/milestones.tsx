@@ -28,7 +28,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const state = new URL(request.url).searchParams.get("state") === "closed" ? "closed" : "open";
   // Both, for the tabs' counts; the list shows one.
   const milestones = unwrap(await work.listMilestones({ namespace: params.owner, name: params.repo }, viewer));
-  return { milestones, state, canEdit: access.can.triage, today: new Date().toISOString() } as const;
+  return { milestones, state, canEdit: access.can.manage_labels, today: new Date().toISOString() } as const;
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {

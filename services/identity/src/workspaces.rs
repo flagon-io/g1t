@@ -5,11 +5,13 @@
 //! how many members they have. Nothing can be created outside one.
 
 use g1t_contracts::access::BasePermission;
+use g1t_contracts::audit::Surface;
 use g1t_contracts::identity::*;
+use g1t_contracts::members::{LeaveWorkspaceArgs, last_owner_refusal};
 use g1t_contracts::teams::TeamCreation;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{
-    FailureCode, Membership, Outcome, PrincipalKind, Role, User, claimable_namespace, new_id,
+    FailureCode, MemberPrivileges, Membership, OrgRole, Outcome, PrincipalKind, Role, User, claimable_namespace, new_id,
 };
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -26,6 +28,7 @@ const MAX_DESCRIPTION_LENGTH: usize = 160;
 
 const WORKSPACE_COLUMNS: &str = "workspaces.id, workspaces.slug, workspaces.name,
   workspaces.description, workspaces.avatar, workspaces.created_at, workspaces.base_permission, workspaces.team_creation,
+  workspaces.member_privileges, workspaces.require_two_factor,
   (SELECT count(*) FROM workspace_members
    WHERE workspace_members.workspace_id = workspaces.id) AS member_count";
 
@@ -42,6 +45,10 @@ struct WorkspaceRow {
     base_permission: Option<String>,
     #[serde(default)]
     team_creation: Option<String>,
+    #[serde(default)]
+    member_privileges: Option<String>,
+    #[serde(default)]
+    require_two_factor: Option<u8>,
 }
 
 impl From<WorkspaceRow> for Workspace {
@@ -64,29 +71,49 @@ impl From<WorkspaceRow> for Workspace {
                 .as_deref()
                 .and_then(TeamCreation::parse)
                 .unwrap_or_default(),
+            privileges: MemberPrivileges::from_stored(row.member_privileges.as_deref()),
+            two_factor_requirement_enabled: row.require_two_factor.unwrap_or(0) != 0,
         }
     }
 }
 
+/// One of a person's memberships, as stored.
 #[derive(Deserialize)]
-struct MemberRow {
-    username: String,
+struct MembershipRow {
+    slug: String,
     role: Role,
-    #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
     avatar: Option<String>,
+    base_permission: Option<String>,
+    team_creation: Option<String>,
+    member_privileges: Option<String>,
+    #[serde(default)]
+    billing_manager: u8,
+    #[serde(default)]
+    security_manager: u8,
+    #[serde(default)]
+    require_two_factor: u8,
 }
 
 impl Identity {
     /// The workspaces a user belongs to, attached to every user resolved
-    /// from credentials, with what the site needs to show each one and
-    /// what members get on its repositories (access.rs).
+    /// from credentials, with what the site needs to show each one, what
+    /// members get on its repositories (access.rs), the roles the person
+    /// holds besides member (members.rs), and its member privileges.
     pub async fn memberships(&self, user_id: &str) -> Result<Vec<Membership>> {
-        self.db
+        Ok(self.memberships_and_policies(user_id).await?.into_iter().map(|(membership, _)| membership).collect())
+    }
+
+    /// The same, each with whether its workspace requires two-factor
+    /// authentication (security.rs).
+    pub async fn memberships_and_policies(&self, user_id: &str) -> Result<Vec<(Membership, bool)>> {
+        let rows = self
+            .db
             .prepare(
                 "SELECT workspaces.slug, workspace_members.role, workspaces.name,
-                   workspaces.avatar, workspaces.base_permission, workspaces.team_creation
+                   workspaces.avatar, workspaces.base_permission, workspaces.team_creation,
+                   workspaces.member_privileges, workspaces.require_two_factor,
+                   workspace_members.billing_manager, workspace_members.security_manager
                  FROM workspace_members
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
                  WHERE workspace_members.user_id = ? AND workspaces.deleted_at IS NULL
@@ -95,7 +122,30 @@ impl Identity {
             .bind(&[user_id.into()])?
             .all()
             .await?
-            .results::<Membership>()
+            .results::<MembershipRow>()?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let mut org_roles = Vec::new();
+                if row.billing_manager != 0 {
+                    org_roles.push(OrgRole::BillingManager);
+                }
+                if row.security_manager != 0 {
+                    org_roles.push(OrgRole::SecurityManager);
+                }
+                let membership = Membership {
+                    slug: row.slug,
+                    role: row.role,
+                    name: row.name,
+                    avatar: row.avatar,
+                    base_permission: row.base_permission.as_deref().and_then(BasePermission::parse),
+                    team_creation: row.team_creation.as_deref().and_then(TeamCreation::parse),
+                    org_roles,
+                    privileges: Some(MemberPrivileges::from_stored(row.member_privileges.as_deref())),
+                };
+                (membership, row.require_two_factor != 0)
+            })
+            .collect())
     }
 
     pub async fn create_workspace(&self, a: CreateWorkspaceArgs) -> Result<Outcome<Workspace>> {
@@ -163,15 +213,18 @@ impl Identity {
             created_at: rfc3339(now),
             member_count: 1,
             avatar: None,
-            base_permission: BasePermission::default(),
+            // Read, as on GitHub: an owner widens it on People.
+            base_permission: BasePermission::FOR_NEW_WORKSPACES,
             team_creation: TeamCreation::default(),
+            privileges: MemberPrivileges::default(),
+            two_factor_requirement_enabled: false,
         };
         self.db
             .batch(vec![
                 self.db
                     .prepare(
-                        "INSERT INTO workspaces (id, slug, name, created_by, created_at)
-                         VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO workspaces (id, slug, name, created_by, created_at, base_permission)
+                         VALUES (?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         workspace.id.as_str().into(),
@@ -179,6 +232,7 @@ impl Identity {
                         workspace.name.as_str().into(),
                         a.user.id.as_str().into(),
                         workspace.created_at.as_str().into(),
+                        workspace.base_permission.as_str().into(),
                     ])?,
                 self.db
                     .prepare(
@@ -247,16 +301,29 @@ impl Identity {
 
     pub async fn list_members(&self, a: ListMembersArgs) -> Result<Outcome<Vec<Member>>> {
         let slug = a.slug.to_lowercase();
-        if !a.viewer.is_some_and(|viewer| viewer.is_member(&slug)) {
+        let Some(viewer) = a.viewer.filter(|viewer| viewer.is_member(&slug)) else {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Only members can see who is in a workspace.",
             ));
+        };
+        // Owners see who has two-factor authentication on, as they need to
+        // before requiring it.
+        let owner = viewer.role_in(&slug) == Some(Role::Owner);
+        #[derive(Deserialize)]
+        struct Row {
+            #[serde(flatten)]
+            member: crate::members::MemberRow,
+            #[serde(default)]
+            two_factor: u8,
         }
         let rows = self
             .db
             .prepare(
-                "SELECT users.username, workspace_members.role, users.display_name AS name, users.avatar FROM workspace_members
+                "SELECT workspace_members.user_id, users.username, workspace_members.role, users.display_name AS name, users.avatar,
+                   workspace_members.billing_manager, workspace_members.security_manager,
+                   EXISTS (SELECT 1 FROM two_factor WHERE two_factor.user_id = users.id AND two_factor.enabled_at IS NOT NULL) AS two_factor
+                 FROM workspace_members
                  JOIN users ON users.id = workspace_members.user_id
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
                  WHERE workspaces.slug = ? AND workspaces.deleted_at IS NULL
@@ -265,15 +332,10 @@ impl Identity {
             .bind(&[slug.into()])?
             .all()
             .await?
-            .results::<MemberRow>()?;
+            .results::<Row>()?;
         Ok(Outcome::Ok(
             rows.into_iter()
-                .map(|row| Member {
-                    username: row.username,
-                    role: row.role,
-                    name: row.name,
-                    avatar: row.avatar,
-                })
+                .map(|row| row.member.member(owner.then_some(row.two_factor != 0)))
                 .collect(),
         ))
     }
@@ -323,55 +385,62 @@ impl Identity {
         {
             return Ok(refused);
         }
-        self.db
+        let added = self
+            .db
             .prepare(
                 "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
-                 VALUES (?, ?, 'member', ?)",
+                 VALUES (?, ?, 'member', ?) RETURNING user_id",
             )
             .bind(&[
                 workspace_id.into(),
-                user.id.into(),
+                user.id.as_str().into(),
                 rfc3339(now_ms()).into(),
             ])?
-            .run()
-            .await?;
+            .first::<serde_json::Value>(None)
+            .await?
+            .is_some();
+        if added {
+            self.audit_workspace(
+                &a.actor,
+                "member.added",
+                &a.slug.to_lowercase(),
+                a.surface.unwrap_or(Surface::Web),
+                format!("Added {} as a member", user.username),
+            )
+            .await;
+        }
         Ok(Outcome::Ok(true))
     }
 
     pub async fn remove_member(&self, a: MemberArgs) -> Result<Outcome<bool>> {
+        // Removing yourself is leaving, which anyone may do.
+        if a.username.trim().trim_start_matches('@').eq_ignore_ascii_case(&a.actor.username) {
+            return self
+                .leave_workspace(LeaveWorkspaceArgs { user: a.actor, slug: a.slug, surface: a.surface })
+                .await;
+        }
         let (workspace_id, user) = match self.member_target(&a).await? {
             Outcome::Ok(target) => target,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if user.id == a.actor.id {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "An owner cannot remove themselves.",
-            ));
+        let slug = a.slug.to_lowercase();
+        let Some(row) = self.member_row(&workspace_id, &user.username).await? else {
+            return Ok(Outcome::Ok(true));
+        };
+        if row.role == Role::Owner
+            && let Some(why) = last_owner_refusal(self.owner_count(&workspace_id).await?, true)
+        {
+            return Ok(Outcome::fail(FailureCode::Conflict, why));
         }
-        // Leaving a workspace takes away every way into it: the person's
-        // roles on its repositories go too (access.rs), and their place in
-        // its teams (teams.rs). To keep someone on a repository, add them
-        // to it again as an outside collaborator.
-        self.db
-            .batch(vec![
-                self.db
-                    .prepare("DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?")
-                    .bind(&[workspace_id.as_str().into(), user.id.as_str().into()])?,
-                self.db
-                    .prepare(
-                        "DELETE FROM repo_grants
-                         WHERE workspace_id = ? AND principal_kind = 'user' AND principal_id = ?",
-                    )
-                    .bind(&[workspace_id.as_str().into(), user.id.as_str().into()])?,
-                self.db
-                    .prepare(
-                        "DELETE FROM team_members
-                         WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?) AND user_id = ?",
-                    )
-                    .bind(&[workspace_id.as_str().into(), user.id.as_str().into()])?,
-            ])
-            .await?;
+        self.drop_member(&workspace_id, &user.id).await?;
+        self.audit_workspace(
+            &a.actor,
+            "member.removed",
+            &slug,
+            a.surface.unwrap_or(Surface::Web),
+            format!("Removed {} from the workspace", user.username),
+        )
+        .await;
         Ok(Outcome::Ok(true))
     }
 }

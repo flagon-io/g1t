@@ -5,7 +5,7 @@ import { page } from "../lib/meta";
 import { useInviteOnly } from "../lib/registration";
 import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub, GithubMark, OrDivider } from "../components/github";
-import { PENDING_COOKIE, cookie, readCookie } from "../lib/github";
+import { PENDING_COOKIE, TWO_FACTOR_COOKIE, TWO_FACTOR_SECONDS, cookie, readCookie } from "../lib/github";
 import { githubSignIn, githubSignInEnabled } from "../lib/github.server";
 import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
@@ -43,6 +43,13 @@ export async function action({ request }: Route.ActionArgs) {
     clientOf(request),
   );
   if (!result.ok) return { error: result.error.message };
+  // Two-factor authentication on: no session yet, a code first.
+  if (result.value.twoFactorChallenge) {
+    const next = nextPath(request);
+    throw redirect(`/login/two-factor${next === "/" ? "" : `?next=${encodeURIComponent(next)}`}`, {
+      headers: { "set-cookie": cookie(TWO_FACTOR_COOKIE, result.value.twoFactorChallenge, TWO_FACTOR_SECONDS) },
+    });
+  }
   const headers = new Headers({ "set-cookie": startSession(result.value.sessionToken) });
   const pending = readCookie(request.headers.get("cookie"), PENDING_COOKIE);
   if (pending) {

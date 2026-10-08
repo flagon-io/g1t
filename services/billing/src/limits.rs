@@ -42,7 +42,7 @@ use g1t_contracts::billing::{
     BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetBudgetArgs, SetSpendLimitArgs, Trust,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
@@ -964,10 +964,10 @@ impl Billing {
     /// also raises g1t's ceiling to match.
     pub(crate) async fn set_spend_limit(&self, a: SetSpendLimitArgs) -> Result<Outcome<Limit>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
+        if !a.actor.manages_billing(&workspace) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only an owner can set the workspace's spend limit.",
+                "Only an owner or a billing manager can set the workspace's spend limit.",
             ));
         }
         let before = self.limit_of(&workspace).await?;
@@ -1027,8 +1027,8 @@ impl Billing {
     /// 100%, and a webhook told at each alert.
     pub(crate) async fn set_budget(&self, a: SetBudgetArgs) -> Result<Outcome<Limit>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can set the workspace's budget."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can set the workspace's budget."));
         }
         if a.alerts.iter().any(|level| !ALERT_LEVELS.contains(level)) {
             return Ok(Outcome::fail(FailureCode::Invalid, "Alerts are at 50, 75, 90 or 100% of the budget."));

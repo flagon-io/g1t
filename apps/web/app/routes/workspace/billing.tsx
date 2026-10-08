@@ -45,7 +45,7 @@ import {
 import { isStaff } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesBilling, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 /** The trial and pools as published, when the price book cannot be read. */
 const DEFAULT_TRIAL_MICROS = 5_000_000;
@@ -140,6 +140,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return {
     slug,
     role,
+    // Billing managers manage billing as owners do.
+    managesBilling: managesBilling(viewer, params.owner),
     staff: isStaff(viewer),
     account: unwrap(account),
     statement: unwrap(statement),
@@ -287,7 +289,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
   const { slug, role, staff, account, statement, group, plan, securityPlan, limit, invoices, entitlements, requests, credits, ai, report, details, trialMicros, notice, problem } =
     loaderData;
   const { status } = account;
-  const owner = role === "owner";
+  const owner = role === "owner" || loaderData.managesBilling;
   const error = actionData as SectionError;
   const err = (section: string) => (error && error.section === section ? error.error : undefined);
   const standing = planStatus(plan, entitlements);
