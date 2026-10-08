@@ -22,6 +22,10 @@
 		"AI_GATEWAY_ID": "g1t",
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58"
 	},
+	// Once a day, after billing's daily run: every provider's model list,
+	// recorded with billing's catalogue (src/discover.ts). sudo's "Check
+	// for new models" does the same through the `Discovery` entrypoint.
+	"triggers": { "crons": ["29 5 * * *"] },
 	// Secrets: AI_GATEWAY_TOKEN; ANTHROPIC_API_KEY only if the gateway does
 	// not hold g1t's key; WORKERS_AI_TOKEN, a Cloudflare API token with
 	// Workers AI Read on this account, for the AI Gateway's open models

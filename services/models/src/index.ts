@@ -20,8 +20,12 @@
  * at `/anthropic` in Anthropic's format or `/openai/v1` in OpenAI's, goes
  * to `serve.ts`, and is logged and charged to the workspace.
  */
+import { WorkerEntrypoint } from "cloudflare:workers";
+
 import {
+  type DiscoveryResult,
   type GatewayModel,
+  type ModelDiscoveryApi,
   type GatewayProvider,
   type ModelUpstream,
   type ServiceBinding,
@@ -32,6 +36,7 @@ import {
 } from "@g1t/contracts";
 
 import { openaiError } from "./chat";
+import { discover } from "./discover";
 import { type AnthropicRequest, StreamTranslator, errorFromChat, estimateTokens, fromChat, toChat } from "./openai";
 import { isAnswer, tokenReport } from "./report";
 import { type HostedRouting, presentedToken, upstreamRequest } from "./route";
@@ -180,7 +185,38 @@ function gatewayDeps(env: Env, ctx: ExecutionContext): GatewayDeps {
   };
 }
 
+// --- Discovery -----------------------------------------------------------------
+
+/** Lists every provider's models and records what changed with billing (discover.ts). */
+function checkModels(env: Env, by: string): Promise<DiscoveryResult[]> {
+  const billing = billingClient(env.BILLING);
+  return discover(env, (url, init) => fetch(url, init), (provider, models, who, error) => billing.recordDiscovery(provider, models, who, error), by);
+}
+
+/**
+ * "Check for new models" in sudo, which binds this entrypoint. Only a
+ * service binding reaches it: nothing at models.g1t.sh does.
+ */
+export class Discovery extends WorkerEntrypoint<Env> implements ModelDiscoveryApi {
+  async check(by: string): Promise<DiscoveryResult[]> {
+    return checkModels(this.env, typeof by === "string" ? by : "");
+  }
+}
+
 export default {
+  /** Once a day: the providers' model lists, against the catalogue. */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      checkModels(env, "schedule")
+        .then((results) => {
+          for (const result of results) {
+            console.log(`models: ${result.provider} listed ${result.listed}, new ${result.added.length}, gone ${result.deprecated.length}${result.error ? `, failed: ${result.error}` : ""}`);
+          }
+        })
+        .catch((error) => console.error("models: checking the providers' lists failed", error)),
+    );
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "") {

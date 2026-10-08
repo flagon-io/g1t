@@ -223,19 +223,7 @@ export const NAV: NavGroup[] = [
         label: "Agents & models",
         to: "/agents",
         icon: "agents",
-        about: "The models agents run on, what each costs, and how runs are going.",
-        soon: {
-          summary: [
-            "The models g1t's agents run on, and how they are doing: runs, failures, tokens and cost per model, and which workspaces bring their own provider. It is where staff decide which models to offer and see what a change in a provider's price means.",
-            "Hosted models are open to some workspaces and not others; that list belongs here, edited and recorded, not in configuration.",
-          ],
-          plans: [
-            "Runs, failures and cost per model, per day",
-            "Who may use g1t's hosted models, and the free allowance's pool",
-            "Workspaces on their own provider, and the sandbox time their runs use",
-            "Stuck or long-running agents, with a way to stop one",
-          ],
-        },
+        about: "Every model g1t can use, new ones to approve, and which model each tier and job uses by default.",
       },
       {
         label: "Abuse & fraud",

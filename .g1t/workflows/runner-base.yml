@@ -7,9 +7,11 @@
 # Weekly, for security updates and new stable toolchains; when the base's
 # folder changes on main (a change that forgot to rebuild it); and by hand.
 #
-# It needs Docker, which g1t's own sandboxes do not have, so it runs on a
-# self-hosted runner with the `docker` label. Until one is registered, run
-# the same thing by hand on a machine with Docker:
+# It runs on a self-hosted runner with the `docker` label. g1t's own
+# machines have Docker now, but this build's own downloads (Docker's apt
+# repository over HTTPS) do not yet trust a guarded job's egress
+# certificate, so it stays where the network is open. Until a runner is
+# registered, run the same thing by hand on a machine with Docker:
 #
 #   node scripts/deploy.mjs build-base
 #

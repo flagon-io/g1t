@@ -140,6 +140,9 @@ fn in_docker(config: &Config, folder: &Path, work: &Assignment, env: BTreeMap<St
     let mut command = Command::new("docker");
     command.args(["run", "--rm", "--name", &name, "--label", &format!("sh.g1t.runner={}", config.runner)]);
     command.args(["--pull", "missing", "--init"]);
+    // The job is in its `container:` image already: the harness inside
+    // does not start it again (actions/containers.rs).
+    command.args(["-e", "G1T_JOB_CONTAINER=1"]);
     for name in env.keys() {
         command.args(["-e", name]);
     }

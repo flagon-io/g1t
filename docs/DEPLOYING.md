@@ -198,7 +198,7 @@ parts:
 
 | Image | Built from | Holds | Rebuilt |
 | --- | --- | --- | --- |
-| **Base**, `g1t-runner:base-<date>-<inputs>` | `services/runner/base/Dockerfile` | Debian bookworm, Node 24, Python 3.11, Go (from go.dev), Rust stable for the `node` user with rustfmt, clippy and the `wasm32-unknown-unknown` target, build-essential, git, ripgrep, jq, zstd, sudo, and the pinned Claude Code CLI on top | When its folder changes, weekly, or by hand (`build-base`) |
+| **Base**, `g1t-runner:base-<date>-<inputs>` | `services/runner/base/Dockerfile` | Debian bookworm, Node 24, Python 3.11, Docker (Engine, Buildx, Compose, from Docker's apt repository), Go (from go.dev), Rust stable for the `node` user with rustfmt, clippy and the `wasm32-unknown-unknown` target, build-essential, musl-tools, git, ripgrep, jq, zstd, sudo, and the pinned Claude Code CLI on top | When its folder changes, weekly, or by hand (`build-base`) |
 | **Runner**, `g1t-runner:<content hash>` | `services/runner/Dockerfile`: `FROM` the base, plus one file | The g1t runner, a static binary | When the binary or the base changes |
 
 Both are pushed to one repository of Cloudflare's registry,
@@ -255,11 +255,15 @@ the same image, so:
 1. A deploy computes the tag and asks the registry whether it is there
    (a `HEAD` of its manifest, with credentials from Wrangler; no Docker).
 2. If it is, nothing is built: the deploy uses it.
-3. If not, and Docker is here, it builds the binary and the image (seconds
-   on a warm machine) and pushes it.
-4. If not, and Docker is not here (a g1t Actions sandbox), the unit fails
-   saying to run `node scripts/deploy.mjs image` on a machine with Docker;
-   then re-run the workflow.
+3. If not, it builds the binary and the image (seconds on a warm machine)
+   and pushes it. In `deploy.yml` that is the `runner-image` job, on
+   `g1t-4core`, with the job's own Docker Engine (see
+   [Docker in workflow jobs](#docker-in-workflow-jobs)): it adds the musl
+   target, builds the binary natively (the base has `musl-gcc`), pulls the
+   base from Cloudflare's registry, builds, and pushes one layer.
+4. If Docker does not answer (a machine without it, or jobs with Docker
+   turned off), the unit fails saying to run `node scripts/deploy.mjs
+   image` on a machine with Docker; then re-run the workflow.
 
 Then `wrangler deploy` is given the image by reference, from a generated
 config (`services/runner/wrangler.deploy.json`, deleted after, ignored by
@@ -277,9 +281,12 @@ node scripts/deploy.mjs image           # optional: push the runner's image now,
 
 `.g1t/workflows/runner-base.yml` does the same weekly (and when the
 base's folder changes on `main`), and opens a pull request with
-`base.json`. It needs Docker, so it runs on a self-hosted runner with the
-`docker` label (`runs-on: [self-hosted, docker]`). Until one is
-registered, its runs wait for one; run `build-base` by hand instead.
+`base.json`. It runs on a self-hosted runner with the `docker` label
+(`runs-on: [self-hosted, docker]`): g1t's own machines have Docker now,
+but the base's build downloads from Docker's apt repository over HTTPS,
+which does not trust a guarded job's egress certificate, so it stays on an
+open network. Until a runner is registered, its runs wait for one; run
+`build-base` by hand instead.
 
 **Sandboxes start from the image.** Cloudflare pulls an image to a
 machine the first time a sandbox lands there, and keeps it. A smaller base
@@ -297,6 +304,42 @@ service passes the label to the runner, which starts the job in that
 class. Billing prices the larger ones from their memory and disk, and
 their CPU (see the public billing guide). The account's Containers limits
 must allow `standard-4`; Wrangler refuses the deploy otherwise.
+
+#### Docker in workflow jobs
+
+Workflow jobs on g1t's machines have a Docker Engine of their own
+(`crates/runner/src/docker/`; the public guide is
+`apps/docs/src/content/docs/guides/actions.md`, "Docker"). What Cloudflare
+Containers allow decides how it runs (findings in `docs/PLAN.md`,
+"Docker in workflow jobs"):
+
+| Piece | What it does |
+| --- | --- |
+| `dockerd` | Started as root with `sudo`, only when the job first uses Docker or has `services:` or `container:`. Flags: `--iptables=false --ip6tables=false --ip-forward=false` (Containers allow neither), the containerd image store, Docker Hub through `mirror.gcr.io`. Its config, socket and log are in `/run/g1t-docker` (`dockerd.log` is the place to look); its data in `/var/lib/docker`, on overlays when the disk takes them, plain copies (`native`) when not. |
+| `/var/run/docker.sock` | The runner's API proxy (`docker/api.rs`), which starts the Engine on the first connection. Containers that ask for a bridge network get the job's own (`host`), the names they would have had resolve to 127.0.0.1, and ports published under another number are forwarded. |
+| `runc` | The Engine finds the runner binary first on its `PATH` as `runc` (`docker/oci.rs`): BuildKit's `RUN` steps join the job's network, and in a guarded job every container gets the egress certificate at `/dev/g1t-egress`. Then the real `/usr/bin/runc` runs. |
+| cgroups | Before the Engine starts, the sandbox's processes move to a cgroup of their own and every controller is handed down, as Docker's own Docker-in-Docker image does, so `--cpus` and `--memory` work. |
+
+- **Turning it off:** set the runner Worker's `DOCKER` var to `off`
+  (`services/runner/wrangler.jsonc`) and deploy the runner: new jobs get
+  no Engine (`G1T_DOCKER=off`), and jobs that need one fail saying Docker
+  does not answer. Anything else is on.
+- **Network:** containers share the job's network, so the guardrails, the
+  workflow-only domains and the egress Worker apply to them unchanged. The
+  public registries are in `BUILD_HOSTS` (`services/runner/src/egress.ts`).
+- **Isolation:** one Engine per job, inside the job's sandbox (its own
+  VM), gone with it. The job already had root through `sudo`; Docker adds
+  no reach beyond the sandbox, and no host socket is ever mounted into one.
+- **Checked locally** (2026-10-08, Docker Desktop, the base and runner
+  image built from this tree, a privileged container standing in for a
+  sandbox, a pretend API): services with health checks, `localhost` and
+  names, port forwarding, `docker build` with a networked `RUN`, Compose
+  with a healthy dependency, `docker://` steps, a Dockerfile action, a
+  `container:` job with a JavaScript action, an Alpine job container, the
+  egress certificate in `run`, `exec` and build steps and in no layer,
+  plain-copy storage, and the deploy's own build and push to a registry.
+  Not yet seen on Cloudflare itself: watch the first runs' logs for the
+  `Docker: started` line, and `dockerd.log` if it does not come.
 
 ## Build speed
 
@@ -366,14 +409,18 @@ not), `all` and `dry_run` (plan only).
 - **Build groups:** a stage's units are split so each job shares a build:
   Rust workers at most four to a job (each a 4-vCPU `g1t-4core` machine), the
   TypeScript Workers together, each site alone, and a unit whose image must
-  be rebuilt alone. `fail-fast: false`, so one failed job does not cut
+  be rebuilt alone (`image: true` in the matrix, also on `g1t-4core`, where
+  it builds and pushes the image with the job's own Docker Engine). `fail-fast: false`, so one failed job does not cut
   another off mid-upload; the next stage then does not start.
 - **Tests:** there is no CI workflow on g1t yet; `main` is kept passing by
   the merge queue's checks. `check` runs the deploy tool's own tests. When a
   CI workflow is added, make `plan` wait for it (`workflow_run`, or a job in
   this file).
-- **Machines:** Rust jobs run on `g1t-4core` (4 vCPUs, 12 GiB), the
-  others on the standard machine (`runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}`).
+- **Machines:** Rust jobs and the runner's image run on `g1t-4core` (4 vCPUs,
+  12 GiB, 20 GB), the others on the standard machine
+  (`runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}`).
+  The image job needs the room: the base it builds on is about 3.2 GB
+  unpacked.
 - **Caching** (`actions/cache`: up to 2 GB an entry, 10 GB a repository,
   kept until unused for 7 days): the worker-build binary, worker-build's
   downloaded tools, `~/.cargo/registry/cache`, and the Cargo target's
@@ -395,10 +442,12 @@ not), `all` and `dry_run` (plan only).
 ### What the sandbox has
 
 The base image (`services/runner/base/Dockerfile`) has Node 24, npm, git,
-Go, zstd, and Rust stable for the `node` user with rustfmt, clippy and the
-`wasm32-unknown-unknown` target, but not worker-build or Docker. The
-workflow's `rustup target add wasm32-unknown-unknown` is then a no-op, and
-worker-build is restored from the cache, installed on a miss. worker-build
+Go, zstd, Docker, musl-tools, and Rust stable for the `node` user with
+rustfmt, clippy and the `wasm32-unknown-unknown` target, but not
+worker-build. The workflow's `rustup target add wasm32-unknown-unknown` is
+then a no-op, and worker-build is restored from the cache, installed on a
+miss. The image job adds `x86_64-unknown-linux-musl` (about 30 MB from
+`static.rust-lang.org`) and keeps its Cargo target in the cache. worker-build
 fetches wasm-bindgen and wasm-opt from GitHub releases and esbuild from
 npm. All of those hosts are on the list every workflow job may reach.
 
@@ -418,8 +467,13 @@ registry.cloudflare.com | deploy.yml, runner-base.yml | production
 ```
 
 `api.cloudflare.com` is Wrangler's API; `registry.cloudflare.com` is where
-the deploy asks whether the runner's image is already built (and where
-`runner-base.yml` pushes). Only `deploy.yml`'s and `runner-base.yml`'s
+the deploy asks whether the runner's image is already built, and where the
+`runner-image` job pulls the base from and pushes the runner's image to
+(as `runner-base.yml` pushes the base). The job's Docker Engine shares the
+job's network, so these lines are what let it reach the registry. If a pull
+is refused with `g1t guardrails: <host> is not on this project's allowed
+domains`, the registry sent the layers from another host: add that host on
+the same line. Only `deploy.yml`'s and `runner-base.yml`'s
 jobs with `environment: production` reach them, which are also the only
 jobs that can read `CLOUDFLARE_API_TOKEN`. Each change to the list is in
 the workspace's audit log as `update_guardrails`.
@@ -436,7 +490,7 @@ Token → Custom token**, named `g1t deploys (CI)`:
 | Account | Queues: Edit | Attaching each unit's queue consumers on deploy |
 | Account | Workers R2 Storage: Read | Wrangler checks `og`'s bucket binding |
 | Account | Account Settings: Read | Wrangler reads the account |
-| Account | Containers: Edit | The runner's deploy updates its applications (the image reference, the three classes), and gets registry credentials to look for its image. `runner-base.yml` pushes images with it. |
+| Account | Containers: Edit | The runner's deploy updates its applications (the image reference, the three classes), and gets registry credentials (`wrangler containers registries credentials --push`, one hour) to look for, pull and push its image. `runner-base.yml` pushes images with it. |
 | Zone (`g1t.sh`, `g1t.page`) | Workers Routes: Edit | `pages`' zone routes, and custom domains |
 | Zone (`g1t.sh`, `g1t.page`) | DNS: Edit | Custom domains (`api`, `mcp`, `og`, `models`, `status`, `sudo`, `docs`, `g1t.sh`, `g1t.page`) keep their DNS records |
 | Zone (`g1t.sh`, `g1t.page`) | Zone: Read | Finding the zone a route names |
@@ -584,8 +638,8 @@ card says which commit runs.
   repository from the git remote on g1t.sh. A report that fails is one line
   in the log and never fails the deploy.
 
-When CI cannot finish a deploy, for example a runner image that must be
-built (hosted runners have no Docker), deploy from a machine with Docker.
+When CI cannot finish a deploy, for example a runner image that will not
+build there, deploy from a machine with Docker.
 The report records it, and production shows the commit that really runs.
 
 ## Rolling back

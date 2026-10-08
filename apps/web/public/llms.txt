@@ -237,10 +237,12 @@ free slot" and the work starts by itself when one finishes.
   failing holds it for a person. There is no model or
   agent count to choose: to put more agents to work, assign more issues.
   On g1t's hosted models, Auto routes each job to the cheapest of three
-  tiers that can do it, fast, standard and most capable: catching up,
-  answering and reviews of small changes that touch no sensitive path
-  start fast; making changes, revising, planning and other reviews start
-  standard; reviews of very large changes and issues labelled
+  tiers that can do it, fast, standard and most capable (the model behind
+  each is today's, and moves to newer models as g1t adopts them; a
+  retired model is never used): catching up, answering, planning and
+  reviews of small changes that touch no sensitive path start fast;
+  making changes, revising and other reviews start standard; reviews of
+  very large changes and issues labelled
   `architecture` start most capable. A failed attempt moves the next one
   up a tier (two in a row: most capable), and a repository's own recent
   runs move work down or up. Each run states its model and why in one

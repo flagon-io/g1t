@@ -77,7 +77,12 @@
 		"HOSTED_AGENT_WORKSPACES": "flagon-io",
 		// How g1t routes agent work: "Auto" (AgentRouting and route in
 		// src/model-env.ts). Nobody assigning an agent has to choose; a workspace
-		// can still choose a tier per kind of work under Integrations. "tiers": the
+		// can still choose a tier per kind of work under Integrations. Staff
+		// choose each tier's model, the background model and each job's tier and
+		// effort in sudo (Agents & models; billing's model_defaults), which the
+		// runner reads once a minute and puts on top of this. So "tiers", "tasks"
+		// and "effort" here apply only while billing cannot be read; the labels,
+		// change sizes, "frontierAfter" and "learning" always do. "tiers": the
 		// catalogue, the model behind small (fast), large (standard) and frontier
 		// (most capable); "modelName" is shown to people, "model" is sent to the
 		// provider, "price" (dollars per million tokens) is for estimates only.
@@ -103,6 +108,11 @@
 		// (crates/runner abuse.rs). "off" turns the CPU watch off; miners
 		// named in commands are refused either way.
 		"ABUSE_WATCH": "on",
+		// Each workflow job gets a Docker Engine of its own, inside its
+		// sandbox, started the first time a step uses Docker or the job has
+		// `services:` or `container:` (crates/runner docker/). "off" gives
+		// jobs none.
+		"DOCKER": "on",
 		// Nightly backups (src/backup.ts): each sweep starts this many of the
 		// backups the repos service queued, with at most BACKUPS_RUNNING at
 		// once. "0" starts none.

@@ -303,12 +303,14 @@ gateway has no price for) or more logs than are read (2,000). Such a run
 keeps `runs.gateway_note`, its correction says why, and it raises the
 **Unpriced** drift. For agent runs g1t keeps no token rates of its own:
 the first figure is Claude Code's, the final one the gateway's. AI Gateway
-requests are the exception: they are charged from `gateway_models` (one
-row per model offered), which has to follow the provider's price list by
+requests are the exception: they are charged from `gateway_models` (the
+model catalogue, below), which has to follow the provider's price list by
 hand until they are settled like runs. It is not part of the price book's
-`price_versions`: a price change is a migration that updates the row and
-its `updated_at` (as 0047 did for Sonnet 5.5's cache reads), and the
-`gateway_models` meter's markup is the only price-book number on it. Open
+`price_versions`: a new model's prices are confirmed when staff approve it
+in sudo, and a changed price on a model already offered is a migration that
+updates the row and its `updated_at` (as 0047 did for Sonnet 5.5's cache
+reads). The `gateway_models` meter's markup is the only price-book number
+on it. Open
 models need `WORKERS_AI_TOKEN` (a Cloudflare API token with Workers AI on
 g1t's account) on the model proxy; without it, and without
 `AI_GATEWAY_TOKEN` holding that permission, they are refused with `503`.
@@ -343,6 +345,151 @@ follows (`Terms::discounted`, `Billing::charged`):
 
 Every usage path goes through this: `finish_run`, settling, sandbox time,
 features and builds (`charge_feature`), and the month-end meters.
+
+## The model catalogue
+
+Every model g1t can use is one row of `gateway_models` (migrations 0045,
+0047 and `0048_model_catalogue.sql`; code in `catalogue.rs`): the agents'
+tiers, the AI Gateway's Claude and open models, and the embeddings model.
+Billing keeps it because billing owns prices: the gateway charges from the
+same row, so there is one price per model, not two that drift. Page: sudo
+**Agents & models** (`/agents`).
+
+| Column | What |
+| --- | --- |
+| `model`, `name`, `provider`, `kind` | The provider's id, the name people see, `anthropic` or `workers-ai`, `chat` or `embeddings` |
+| `aliases` | Other ids the provider lists it by, comma separated (a dated id such as `claude-haiku-4-5-20251001`) |
+| `family`, `tier_hint` | `haiku`, `sonnet`, `opus`, `fable` (or a Workers AI author); the agent tier it suits: `small`, `large`, `frontier` |
+| `context_window`, `max_output`, `capabilities`, `dimensions` | From the provider's list where it gives them: `effort`, `thinking`, `tools`, `vision`, `embeddings`; an embeddings model's vector length |
+| Prices | Per million tokens in millionths: input, output, cache read, five-minute and hour-long cache writes, and for a model priced by prompt length the `threshold` and `over_` prices |
+| `status` | `available` (routed to and offered), `new` (found, not approved), `deprecated` (the provider stopped listing it), `retired` (staff took it out) |
+| `priced` | 1 when its prices are known |
+| `source`, `first_seen_at`, `last_seen_at`, `missing_since`, `approved_by`, `approved_at`, `note` | Where it came from (`discovered` or `staff`) and its history |
+
+What each status allows:
+
+| Status | Default for a purpose | Offered on the AI Gateway | Charged |
+| --- | --- | --- | --- |
+| `available`, priced | Yes | Yes | Yes |
+| `new`, or unpriced | No | No: refused before it reaches a provider | No |
+| `deprecated` | No: a default that chose it falls back | Yes, to whoever names it | Yes |
+| `retired` | No: a default that chose it falls back | No | No |
+
+### Discovery
+
+The models service lists each provider once a day (`29 5 * * *`, after
+billing's daily run) and whenever staff press **Check for new models**
+(`services/models/src/discover.ts`, through its `Discovery` entrypoint,
+which only sudo binds). Listing models is free; nothing calls a model.
+
+| Provider | How it is listed | Credentials (on g1t-models) |
+| --- | --- | --- |
+| Anthropic | `GET /v1/models` through g1t's AI Gateway (`…/anthropic/v1/models`, tagged `task: discovery`), or straight to Anthropic with g1t's key when there is no gateway | `AI_GATEWAY_TOKEN` (the gateway holds Anthropic's key), or `ANTHROPIC_API_KEY` |
+| Workers AI | `GET /accounts/{account}/ai/models/search` | `WORKERS_AI_TOKEN` (Workers AI Read), else `AI_GATEWAY_TOKEN` |
+
+Each provider's list goes to billing's `record_discovery`, which compares
+it with the catalogue:
+
+- **An id it has never seen** is added as `new`. Chat and embeddings
+  models only. Anthropic models are priced from the price table in
+  `catalogue.rs` (`ANTHROPIC_PRICES`: Anthropic's list prices by model, a
+  dated id priced as its model) when it has them; Workers AI models from
+  the price their listing gives, with cached tokens at the input price.
+  Anything else is added unpriced. Its family and tier hint come from its
+  id (`claude-haiku-*` is fast, `claude-sonnet-*` standard,
+  `claude-opus-*` and `claude-fable-*` most capable).
+- **A dated id of a model it has** (`claude-sonnet-5-5-20261001`) is that
+  model: the id is added to its aliases.
+- **A model it has that is listed** gets `last_seen_at`, and its context
+  window, output limit and capabilities from the list.
+- **A model it has that is not listed** (available or new) becomes
+  `deprecated`, with `missing_since`. Listed again, it goes back to
+  `available` if it was ever approved, else to `new`.
+- **An empty list or a failed one** changes nothing: it is recorded as a
+  failed check with the provider's answer (never a key).
+
+Every check is kept 90 days in `model_checks` and shown on the page. When a
+check adds, deprecates or restores anything, it is in the audit log
+(`models_discovered`, as `schedule` or the staff member) and staff are
+emailed at `COSTS_ALERT_EMAIL` with a link to Agents & models.
+
+When Anthropic publishes a new model's price, add a row to
+`ANTHROPIC_PRICES`, so the next one of its kind arrives priced. Until then
+staff enter the prices when they approve it.
+
+### Approving, retiring and restoring
+
+On Agents & models, **New models** lists every `new` model with its prices
+filled in where they are known. To approve one:
+
+1. Check the name people see and the tier it suits.
+2. Check or enter its prices per million tokens against the provider's
+   price page: input, output, cache read, cache writes (five-minute and
+   hour-long; an hour-long price left empty is the five-minute one), and
+   under **Priced by prompt length** the threshold and the prices above it.
+3. Say why (for example where the prices came from), and **Approve**
+   (`admin_decide_model`, `approve`).
+
+It is `available` at once: the AI Gateway offers it within five minutes
+(the proxy keeps the catalogue that long) and it can be chosen as a
+default. **Retire** takes a model out of routing and the gateway; any
+default that chose it falls back to the next suitable model until staff
+choose another, and the audit line names those defaults. **Restore** puts
+a retired or deprecated model back: `available` if it was ever approved,
+else `new`. Each needs a reason and is in the audit log (`model_approved`,
+`model_retired`, `model_restored`).
+
+### Defaults
+
+`model_defaults` holds staff's choice per purpose, each with when, who and
+why (`admin_set_model_default`; the audit log, `model_default`, has the old
+value, the new one and why):
+
+| Purpose | What it chooses | Read by |
+| --- | --- | --- |
+| `tier_small`, `tier_large`, `tier_frontier` | The model behind Auto's fast, standard and most capable tiers | The runner |
+| `background` | The harness's own small tasks in every run on g1t's tiers (`ANTHROPIC_SMALL_FAST_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`) | The runner |
+| `gateway_first` | The Claude listed first by `GET /openai/v1/models` | Billing's `gateway_models` |
+| `job_implement`, `job_revise`, `job_answer`, `job_review`, `job_update`, `job_plan` | Each kind of job's starting tier (`small`, `large`, `frontier`; a review also `change`, sized by its change) and effort (`low` to `max`, or none for the harness's own) | The runner |
+
+A model purpose takes only an available, priced Claude chat model (the
+harness speaks Anthropic's API). The migration seeded each with what
+`AGENT_ROUTING` had.
+
+Before a default is saved, sudo shows it beside the current one with what
+a **typical run** would cost on each: 40 requests of 2,000 input, 1,500
+output, 45,000 cache-read and 4,000 cache-write tokens, each request priced
+on its own at the catalogue's prices (`catalogue::TYPICAL`; on 2026-10-08,
+$0.076 on Claude Haiku 5.5, $1.34 on Sonnet 5.5, $2.68 on Opus 5.5). It is
+an estimate for comparing models, never a charge.
+
+**How the runner reads them.** `model_defaults` (the RPC) returns each
+purpose's model as it applies now, with its prices and capabilities, and
+each job's tier and effort. The runner reads it at most once a minute per
+isolate and puts it over `AGENT_ROUTING` (`withDefaults` in
+`services/runner/src/model-env.ts`), so a change reaches runs within a
+minute. When billing cannot be read, the runner uses `AGENT_ROUTING` (and
+`DEFAULT_ROUTING` under it) alone and asks again ten seconds later. The
+labels, change sizes, `frontierAfter` and learning always come from
+`AGENT_ROUTING`. Effort is not sent on a model whose catalogue entry lacks
+`effort` (Claude Haiku 4.5).
+
+**Never a retired model.** A chosen model that is deprecated, retired or
+unpriced is not handed out: the purpose falls back to the first available,
+priced Claude with the same tier hint (any Claude for `gateway_first`), in
+the catalogue's order, with a sentence such as *Claude Haiku 5.5 is
+retired; using Claude Haiku 4.5 instead.* The runner adds that sentence to
+the run's reason line, and sudo shows it beside the default. With no model
+left for a purpose, the runner keeps `AGENT_ROUTING`'s.
+
+**Not a default:** the context hub's embeddings model
+(`@cf/baai/bge-base-en-v1.5`, in `services/context`). Its vectors are
+only comparable with others from the same model, so changing it means a
+new index, rebuilt; it is pinned in code, and listed in the catalogue with
+its price. No other g1t service calls a model.
+
+Customers never choose among these: they keep **Auto**, or pin a tier per
+kind of work, and nothing customer-facing names the catalogue.
 
 ## Discounts
 

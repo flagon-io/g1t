@@ -1,10 +1,10 @@
 {
-  "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261006-809f7651f6d9",
-  "digest": "sha256:17899aa70d29de209c1fc5bed77e6e090d338a1158b911ea8673ab3b811ef006",
+  "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261008-072528b93a0f",
+  "digest": "sha256:4353ff9d0c113297d487e807b7b4c5d87a475f222345fbf5eb097271553311f5",
   "pushed": true,
-  "inputs": "809f7651f6d994e790729cd365be7100eb00e50b637bef313bb04361ab39f394",
-  "built_at": "2026-10-06T08:22:38.137Z",
-  "size_bytes": 2683372502,
+  "inputs": "072528b93a0f6468ab876770e0f4a4a9b10969e6fc49b4cbe9264e1824244914",
+  "built_at": "2026-10-08T08:13:38.448Z",
+  "size_bytes": 3175486075,
   "versions": {
     "node": "v24.21.0",
     "npm": "11.19.0",
@@ -13,6 +13,7 @@
     "rust": "1.99.0",
     "git": "2.39.5",
     "claude_code": "2.1.291",
+    "docker": "29.8.2",
     "debian": "12.15"
   }
 }

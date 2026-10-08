@@ -917,14 +917,22 @@ fn escape(text: &str) -> String {
 
 /// Emails staff through Cloudflare Email Sending, the `EMAIL` binding.
 pub(crate) async fn email_staff(env: &Env, to: &str, subject: &str, lines: &[String]) -> Result<()> {
-    let link = "https://sudo.g1t.sh/costs";
-    let text = format!("{}\n\nCosts & margin: {link}\n\nSent by g1t-billing's margin guard (COSTS_ALERT_EMAIL).\n", lines.join("\n\n"));
+    email_staff_page(env, to, subject, lines, ("Costs & margin", "https://sudo.g1t.sh/costs"), "g1t-billing's margin guard").await
+}
+
+/// Emails staff, linking to a page of sudo (`page`: its name and address)
+/// and saying what sent it.
+pub(crate) async fn email_staff_page(env: &Env, to: &str, subject: &str, lines: &[String], page: (&str, &str), sender: &str) -> Result<()> {
+    let (name, link) = page;
+    let text = format!("{}\n\n{name}: {link}\n\nSent by {sender} (COSTS_ALERT_EMAIL).\n", lines.join("\n\n"));
     let mut html = String::from("<div style=\"font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px 16px;color:#16150f\">");
     for line in lines {
         html.push_str(&format!("<p style=\"font-size:15px;line-height:1.6\">{}</p>", escape(line)));
     }
     html.push_str(&format!(
-        "<p><a href=\"{link}\">Open Costs &amp; margin in sudo</a></p><p style=\"font-size:13px;color:#6e6a5e\">Sent by g1t-billing's margin guard (COSTS_ALERT_EMAIL).</p></div>"
+        "<p><a href=\"{link}\">Open {} in sudo</a></p><p style=\"font-size:13px;color:#6e6a5e\">Sent by {} (COSTS_ALERT_EMAIL).</p></div>",
+        escape(name),
+        escape(sender)
     ));
     let mail = Mail { to, from: "g1t <noreply@g1t.sh>", subject, text, html };
     let binding = g1t_kit::js::binding(env, "EMAIL")?;

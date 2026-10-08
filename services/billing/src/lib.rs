@@ -20,6 +20,7 @@
 mod accounts;
 mod ai;
 mod budget;
+mod catalogue;
 mod cards;
 mod closing;
 mod compute;
@@ -1256,6 +1257,10 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         if let Err(error) = billing.forget_gateway_requests().await {
             worker::console_error!("clearing old AI Gateway requests failed: {error}");
         }
+        // Checks of the providers' model lists keep 90 days (catalogue.rs).
+        if let Err(error) = billing.forget_model_checks().await {
+            worker::console_error!("clearing old model checks failed: {error}");
+        }
     }
 }
 
@@ -1307,6 +1312,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "record_tokens" => reply(&billing.record_tokens(args(body)?).await?),
         "token_usage" => reply(&billing.token_usage(args(body)?).await?),
         "gateway_models" => reply(&billing.gateway_models().await?),
+        "model_defaults" => reply(&billing.model_defaults().await?),
+        "record_discovery" => reply(&billing.record_discovery(args(body)?).await?),
+        "admin_models" => reply(&billing.admin_models().await?),
+        "admin_decide_model" => reply(&billing.admin_decide_model(args(body)?).await?),
+        "admin_set_model_default" => reply(&billing.admin_set_model_default(args(body)?).await?),
         "gateway_admit" => reply(&billing.gateway_admit(args(body)?).await?),
         "record_gateway" => reply(&billing.record_gateway(args(body)?).await?),
         "gateway_requests" => reply(&billing.gateway_requests(args(body)?).await?),
@@ -1500,6 +1510,7 @@ mod tests {
         include_str!("../migrations/0045_gateway.sql"),
         include_str!("../migrations/0046_reset_costs.sql"),
         include_str!("../migrations/0047_gateway_formats.sql"),
+        include_str!("../migrations/0048_model_catalogue.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

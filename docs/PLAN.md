@@ -479,6 +479,107 @@ issue and resolves it.
 commands declared in `.g1t/checks.yaml`, run in sandboxes on every pull request
 and on every combined state in the landing queue.
 
+### Docker in workflow jobs (built 2026-10-08)
+
+> **2026-10-08:** "Why didn't we give CI docker then? We need GitHub
+> Actions functionality maxxed baby but with all the good good security
+> etc." The trigger: `deploy.yml`'s runner-image job needs `docker build`
+> and `docker push`, and failed on hosted runners.
+
+**What Cloudflare Containers allow** (their FAQ, updated 2026-10-05, and
+the Docker-in-Docker guide and example it links):
+
+- Docker runs inside a container: `docker:dind`, with `dockerd` as
+  **root**. A rootless Engine does not start there.
+- **No iptables**: `--iptables=false --ip6tables=false`, or the Engine
+  fails setting up its rules. Containers with the `durable_object`
+  scheduling policy (ours: each sandbox is a Durable Object's) cannot turn
+  IP forwarding on either: `--ip-forward=false`, or the Engine exits.
+- So **a bridge network has no way out**: the guide's answer is
+  `--network=host` for `docker run` and `docker build`, which gives
+  containers the outer container's network.
+- Built images and containers are lost when the sandbox stops.
+
+**What was found by trying** (Docker Engine 29.8.2 in a privileged
+container standing in for a sandbox, with the same flags):
+
+- `--bridge=none` makes BuildKit's `RUN` steps fail outright ("network
+  bridge not found"); with the default bridge they run with no route out.
+  Containers default to the bridge too. The default bridge is created
+  fine without iptables, as the FAQ's own example relies on.
+- The overlay snapshotter does not work on an overlay root filesystem, and
+  the containerd image store does not fall back by itself: the Engine
+  starts, then every container fails to mount. Whether a sandbox's disk
+  takes overlays is not documented, so the runner tries a mount first and
+  uses `native` (plain copies) when it fails. `vfs` is not a name the
+  containerd store accepts.
+- `--cpus` and `--memory` need cgroup v2 controllers handed down from a
+  cgroup with no processes, which `docker:dind`'s entrypoint does and a
+  plain `dockerd` does not.
+- A `runc` earlier on the Engine's `PATH` is used both for containers (via
+  containerd's shim) and by BuildKit's executor, with the bundle's
+  `config.json` written before it runs. BuildKit's bridged steps carry
+  libnetwork's `libnetwork-setkey` prestart hook; `RUN --network=none`
+  does not.
+- Buildx skips `type=gha` caches when the job has no GitHub cache service,
+  and the build succeeds without one.
+- Registries' layer hosts: Docker Hub sends layers from
+  `production.cloudfront.docker.com` (and `production.cloudflare.docker.com`),
+  Quay from `cdn0N.quay.io`, Microsoft's from regional
+  `*.data.mcr.microsoft.com`, public ECR from a CloudFront host;
+  `mirror.gcr.io` serves its own.
+
+**What was built** (`crates/runner/src/docker`, `actions/containers.rs`):
+
+- **One Engine per job, started lazily.** The runner listens on
+  `/var/run/docker.sock` itself and starts `dockerd` (root, the flags
+  above, containerd image store, `mirror.gcr.io` first for Docker Hub) on
+  the first connection, or when the job has `services:` or `container:`.
+  A log line says it started and how long it took.
+- **Containers on the job's network.** The socket is an API proxy: a
+  container that asks for a bridge or user network gets `host`; its names
+  (container name, aliases, Compose service, links) resolve to 127.0.0.1
+  in later containers (`ExtraHosts`) and in the job's steps
+  (`/etc/hosts`); `-p 8080:80` is forwarded; `docker inspect` reports the
+  ports as published; `network connect` adds aliases. Sharing the job's
+  network is also what keeps the guardrails on every container: the
+  egress Worker sees their traffic as the job's.
+- **A `runc` shim.** The runner binary, as `runc`: BuildKit steps bound for
+  a bridge lose the network namespace and the libnetwork hook (so they use
+  the job's network); in a guarded job every container (run, exec, build
+  step) gets the egress certificate at `/dev/g1t-egress` and the
+  variables that point tools at it. `/dev` is the container's own tmpfs,
+  so none of it lands in a layer; checked by saving a built image.
+- **Job features:** `services:` (pull, credentials, health waits, logs at
+  the end, `job.services.*`), `container:` (steps and JavaScript actions
+  through `docker exec`, Node mounted from the runner, Alpine falls back to
+  running actions beside it), `docker://` steps and Dockerfile actions in
+  GitHub's `/github/*` layout, `docker/setup-buildx-action` answered
+  natively (the job's Engine is the builder), sign-in to g1t's registry
+  with the run's token.
+- **Kill switch:** the runner Worker's `DOCKER` var (`off`).
+
+**Rejected:** rootless Docker or BuildKit (does not start in Containers);
+Podman or buildah with `vfs` (no better networking, less compatible, slow);
+a standalone `buildkitd --oci-worker-net=host` as the default builder
+(images not in the Engine's store, so `FROM` a just-built image and
+`docker run` of a build fail without `--load` round trips); a `docker` CLI
+wrapper adding `--network=host` (misses Compose, SDKs and testcontainers,
+which speak the API).
+
+**Not yet:**
+
+- Seen on Cloudflare itself: whether a sandbox's disk takes overlays,
+  `--privileged`, and the first deploy's pull of the base from
+  `registry.cloudflare.com` (its layer host may need a workflow-only line).
+- `type=gha` build caches backed by g1t's Actions cache.
+- Multi-platform builds (QEMU's `binfmt_misc` in a sandbox).
+- Docker for agents and checks, not just workflow jobs.
+- `runner-base.yml` on g1t's machines: the base's apt step needs
+  `Acquire::https::CAInfo` pointed at the egress certificate first.
+- A deploy that appends the runner binary as a layer through the registry
+  API, with no Docker and no 3 GB pull.
+
 Agents can also reach integrations directly: an agent definition lists MCP
 servers (Sentry, Linear and so on) it may use while working.
 
@@ -1180,9 +1281,25 @@ fails and is retried on the same model costs more than one that finishes.
 - **Tiers and catalogue.** `small` (Claude Haiku 5.5 since 2026-10-08,
   $0.10/$0.50 per million input/output up to 100k-token prompts, five
   times that above; it was Haiku 4.5 at $1/$5), `large` (Claude Sonnet 5.5, $2/$10) and `frontier`
-  (Claude Opus 5.5, $4/$20). Models, names and list prices are
-  configuration (`AGENT_ROUTING`), never code; prices there are for
-  estimates only, runs are charged what AI Gateway priced them at.
+  (Claude Opus 5.5, $4/$20). Models, names and list prices are data,
+  never code: since 2026-10-08 billing's model catalogue
+  (`gateway_models`, one row per model g1t can use) and staff's defaults
+  in sudo, **Agents & models** (`model_defaults`: each tier's model, the
+  harness's background model, the AI Gateway's first Claude, each job's
+  starting tier and effort), read by the runner once a minute over
+  `AGENT_ROUTING`, which is only the fallback when billing cannot be read.
+  Catalogue prices are for estimates only; runs are charged what AI
+  Gateway priced them at.
+- **Keeping up with new models (built 2026-10-08).** The models service
+  lists Anthropic's models (through the AI Gateway) and Workers AI's daily
+  and on demand; a new id lands in the catalogue as `new`, priced from a
+  maintained table of Anthropic's list prices or Workers AI's listing, or
+  unpriced, and staff are emailed. Nothing routes to it, offers it or
+  charges for it until staff approve it with its prices. A model a provider
+  stops listing is `deprecated`; routing never sends work to a deprecated
+  or retired model, falling back to the next model of the tier and saying
+  so on the run. Customers keep Auto: the catalogue is staff's. See
+  [BILLING_OPERATIONS.md](BILLING_OPERATIONS.md#the-model-catalogue).
 - **Starting tier by job.** Catch-up, answering a question, and reviews of
   at most 10 files and 200 lines touching no sensitive path: small.
   Plans: small at high effort (Haiku 5.5 takes an effort level).
@@ -1201,7 +1318,8 @@ fails and is retried on the same model costs more than one that finishes.
   *Used a fast model (Claude Haiku 5.5): small change, 3 files and 80
   lines.* Effort per kind of job (`effort` in `AGENT_ROUTING`: plan high,
   answer medium, update low) is sent as `CLAUDE_CODE_EFFORT_LEVEL` on
-  g1t's tiers and named in that line.
+  g1t's tiers (never on a model the catalogue says takes none) and named
+  in that line, with the catalogue's name for the model.
 - **Chosen instead.** `model_routes` rows to g1t's models name `small`,
   `large` or `frontier`, or nothing for Auto (Integrations → Models).
   A workspace's own Anthropic key with no model named is routed by Auto
