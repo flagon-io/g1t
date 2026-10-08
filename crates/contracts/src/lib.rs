@@ -4,6 +4,7 @@
 //! arguments of each of its methods. Services and their callers depend on
 //! this crate, never on each other's code.
 
+pub mod about;
 pub mod access;
 pub mod accounts;
 pub mod actions;

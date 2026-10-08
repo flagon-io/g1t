@@ -236,6 +236,12 @@ pub fn deployment_context(environment: &str) -> String {
     }
 }
 
+/// The check a deployment reported to `environment` sets on its commit,
+/// through the API or by a g1t Actions job (services/deployments).
+pub fn reported_deployment_context(environment: &str) -> String {
+    format!("deploy / {}", environment.trim())
+}
+
 fn level_rank(level: ConfidenceLevel) -> u8 {
     match level {
         ConfidenceLevel::Low => 0,
@@ -262,8 +268,22 @@ fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
             .iter()
             .filter(|environment| !environment.trim().is_empty())
             .filter_map(|environment| {
-                let context = deployment_context(environment);
-                let state = facts.statuses.iter().find(|status| status.context == context).map(|status| status.state.as_str());
+                // A g1t.page build's check, or a deployment reported to the
+                // environment from anywhere (`deploy / <environment>`): one
+                // that succeeded meets the rule.
+                let contexts = [deployment_context(environment), reported_deployment_context(environment)];
+                let matching: Vec<&str> = facts
+                    .statuses
+                    .iter()
+                    .filter(|status| contexts.iter().any(|context| status.context.eq_ignore_ascii_case(context)))
+                    .map(|status| status.state.as_str())
+                    .collect();
+                let state = matching
+                    .iter()
+                    .find(|state| **state == "success")
+                    .or_else(|| matching.iter().find(|state| **state == "pending"))
+                    .or_else(|| matching.first())
+                    .copied();
                 (state != Some("success")).then(|| {
                     Problem::new(
                         format!(
@@ -706,6 +726,20 @@ mod tests {
                 "It has not deployed to docs successfully yet: the deployment is running."
             ]
         );
+    }
+
+    #[test]
+    fn a_deployment_reported_from_anywhere_meets_the_rule() {
+        let rules = [ruleset(vec![all(Rule::RequiredDeployments(DeploymentsRule { environments: vec!["staging".into()] }))])];
+        let reported = [status("deploy / staging", "success")];
+        assert!(messages(&judge(&rules, "main", &facts(&[], &reported, &[]))).is_empty());
+        let failed = [status("deploy / Staging", "failure")];
+        assert_eq!(
+            messages(&judge(&rules, "main", &facts(&[], &failed, &[]))),
+            vec!["It has not deployed to staging successfully: the deployment failed."]
+        );
+        let none: [g1t_contracts::work::CommitStatus; 0] = [];
+        assert_eq!(messages(&judge(&rules, "main", &facts(&[], &none, &[]))), vec!["It has not deployed to staging successfully."]);
     }
 
     #[test]

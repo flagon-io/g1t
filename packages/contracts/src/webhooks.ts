@@ -77,6 +77,8 @@ export const EVENT_TYPES = [
   "workflow.completed",
   "deployment.succeeded",
   "deployment.failed",
+  "deployment.created",
+  "deployment_status.created",
   "queue.changed",
   "session.appended",
   "package.published",

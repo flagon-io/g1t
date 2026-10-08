@@ -1006,9 +1006,13 @@ function RepoMenu({
             Security
           </SidebarLink>
         ) : null}
-        <SidebarSoonLink to={`${base}/soon/delivery`} also={soonPaths(base, "Insights")} icon={<BarChart3 size={15} />} about="Delivery metrics, costs and the work agents do.">
+        <SidebarLink
+          to={`${base}/contributors`}
+          also={[`${base}/activity`, `${base}/stargazers`, ...soonPaths(base, "Insights")]}
+          icon={<BarChart3 size={15} />}
+        >
           Insights
-        </SidebarSoonLink>
+        </SidebarLink>
       </div>
       {(repo.settings ?? shows.has("settings")) && (
         <>
@@ -1385,6 +1389,7 @@ const SECTIONS: Record<string, string> = {
   teams: "Teams",
   tokens: "Access tokens",
   usage: "Usage",
+  gateway: "AI Gateway",
   billing: "Billing and plans",
   integrations: "Integrations",
   webhooks: "Webhooks",

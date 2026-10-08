@@ -88,6 +88,9 @@ pub struct Actions {
     /// Billing: self-hosted runners' time, recorded at $0, and the
     /// cache's storage.
     billing: Fetcher,
+    /// Deployments: a job with an `environment:` deploys to it, and its
+    /// run's deployment is recorded there (plan.rs `report_deployment`).
+    deployments: Fetcher,
     /// Where the API keeps cache entries, for deleting evicted ones.
     cache: Option<worker::Bucket>,
     /// Seals secrets; absent until `ACTIONS_KEY` is set, when secrets
@@ -106,6 +109,7 @@ impl Actions {
             events: env.service("EVENTS")?,
             projects: env.service("PROJECTS")?,
             billing: env.service("BILLING")?,
+            deployments: env.service("DEPLOYMENTS")?,
             cache: env.bucket("ACTIONS_CACHE").ok(),
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
         })

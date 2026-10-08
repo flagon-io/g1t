@@ -38,6 +38,10 @@ const GROUPS: { title: string; events: string[] }[] = [
       "check_suite.rerequested",
     ],
   },
+  {
+    title: "Deployments",
+    events: ["deployment.created", "deployment_status.created", "deployment.succeeded", "deployment.failed"],
+  },
   { title: "Agents", events: ["session.appended", "agent.asked"] },
   { title: "Access", events: ["repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
   {

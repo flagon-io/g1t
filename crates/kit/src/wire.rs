@@ -22,7 +22,8 @@ use serde_json::{Map, Value};
 /// (`dispatch`), `env`, `secrets`, `variables` and `vars` by name, a job's
 /// `matrix`, `needs` and `outputs`, an action's `with`, guardrail `rules`
 /// and `minutes` by id and kind of run, HTTP `headers`, `metadata`,
-/// `labels` by name, and an `sbom`, which is a standard's own document.
+/// `labels` by name, an `sbom`, which is a standard's own document, and a
+/// deployment's `payload`, as its reporter gave it.
 pub const USER_KEYED: &[&str] = &[
     "inputs",
     "dispatch",
@@ -41,6 +42,8 @@ pub const USER_KEYED: &[&str] = &[
     "labels",
     // An SBOM, sent as SPDX spells it.
     "sbom",
+    // A deployment's payload, as its reporter gave it.
+    "payload",
 ];
 
 /// Whether a key is a `camelCase` identifier with something to convert.

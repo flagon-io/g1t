@@ -244,6 +244,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         }
         "inbox_watching" => reply(&subscriptions::watching(&events.db, args(body)?).await?),
         "inbox_watch" => reply(&subscriptions::watch(&events.db, args(body)?).await?),
+        "inbox_watchers" => reply(&subscriptions::watchers_count(&events.db, args(body)?).await?),
         "inbox_watched" => reply(&subscriptions::watched(&events.db, args(body)?).await?),
         "inbox_settings" => reply(&subscriptions::settings(&events.db, args(body)?).await?),
         "inbox_update_settings" => reply(&subscriptions::update_settings(&events.db, args(body)?).await?),

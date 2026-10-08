@@ -226,8 +226,10 @@ repositories, code on default branches, issues, pull requests and people.
 ## `repository`
 
 Repositories: find, read and create them, change their settings, manage
-their [labels](/guides/labels/) and [milestones](/guides/milestones/), and
-see and dismiss their [security alerts](/guides/security/). Deleting, purging
+their [labels](/guides/labels/) and [milestones](/guides/milestones/),
+see and dismiss their [security alerts](/guides/security/), read what their
+default branch says (languages, contributors, license), star them, and
+publish [releases](/guides/releases/). Deleting, purging
 and changing visibility need `confirm`, the repository's full name typed
 out.
 
@@ -259,6 +261,21 @@ out.
 | [`update_milestone`](/reference/api/labels-and-milestones/update-milestone/) | Change its `title`, `description`, `due_on` (`""` clears it) or `state` (`open` or `closed`). Triage role. | `repo`, `milestone` | `issues:write` |
 | [`delete_milestone`](/reference/api/labels-and-milestones/delete-milestone/) | Delete a milestone; what was in it is in none. Triage role. | `repo`, `milestone` | `issues:write` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
+| [`languages`](/reference/api/repository-insights/get-languages/) | Its [languages](/guides/managing-repositories/#languages) by bytes, each with `color` and `percent`, for the default branch's `commit`; `pending` while it is first read. | `repo` | `repo:read` |
+| [`contributors`](/reference/api/repository-insights/list-contributors/) | Its [contributors](/guides/managing-repositories/#contributors): `kind` (`user`, `g1t` or `author`), `commits` and `weeks`, and the repository's commits by week. | `repo` | `repo:read` |
+| [`license`](/reference/api/repository-insights/get-license/) | The license its `LICENSE` file holds: `spdx_id`, `name`, `path`. | `repo` | `repo:read` |
+| [`stargazers`](/reference/api/stars/list-stargazers/) | Who starred it, newest first, 100 a `page`. | `repo` | `repo:read` |
+| [`starred`](/reference/api/stars/check-starred/) | Whether you starred it, and how many have. | `repo` | `account:read` |
+| [`star`](/reference/api/stars/star-repo/) | Star it. People only. | `repo` | `account:write` |
+| [`unstar`](/reference/api/stars/unstar-repo/) | Take your star back. | `repo` | `account:write` |
+| [`list_starred`](/reference/api/stars/list-starred/) | Repositories you starred that you can still see. | None | `account:read` |
+| [`list_releases`](/reference/api/releases/list-releases/) | Its [releases](/guides/releases/), newest first; drafts only for the Write role. | `repo` | `repo:read` |
+| [`latest_release`](/reference/api/releases/get-latest-release/) | The newest published release that is neither a draft nor a prerelease. | `repo` | `repo:read` |
+| [`get_release`](/reference/api/releases/get-release/) | One release by `id`. | `repo`, `id` | `repo:read` |
+| [`get_release_by_tag`](/reference/api/releases/get-release-by-tag/) | The release of a `tag`. | `repo`, `tag` | `repo:read` |
+| [`create_release`](/reference/api/releases/create-release/) | Publish a release of `tag_name` with `release_name` and `body`; a new tag is made at `target`. `draft`, `prerelease`. Write role. | `repo`, `tag_name` | `repo:write` |
+| [`update_release`](/reference/api/releases/update-release/) | Change its `release_name`, `body`, `draft` or `prerelease`. Write role. | `repo`, `id` | `repo:write` |
+| [`delete_release`](/reference/api/releases/delete-release/) | Delete a release; its tag stays. Write role. | `repo`, `id` | `repo:write` |
 | [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
 | [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
 | [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. Owners of both workspaces only. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |
@@ -384,9 +401,10 @@ one short fact at a time, never a secret. See
 
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
 cancelling or rerunning them; checks on commits (statuses, check runs and
-check suites, a workflow job being a check run); and the self-hosted
-runners they run on. See [GitHub Actions](/guides/actions/),
-[Checks](/guides/checks/) and
+check suites, a workflow job being a check run); a repository's deployments
+and environments; and the self-hosted runners workflows run on. See
+[GitHub Actions](/guides/actions/), [Checks](/guides/checks/),
+[Deployments API](/guides/deployments-api/) and
 [self-hosted runners](/guides/self-hosted-runners/).
 
 | Action | What it does | Required | Scope |
@@ -411,6 +429,13 @@ runners they run on. See [GitHub Actions](/guides/actions/),
 | [`list_check_suites`](/reference/api/checks/list-check-suites-for-ref/) | A commit's check suites: one per reporter, and one per workflow run. | `repo`, `ref` | `checks:read` |
 | [`get_check_suite`](/reference/api/checks/get-check-suite/) | One check suite: `cs_…`, or a workflow run's `run_…`. | `repo`, `id` | `checks:read` |
 | [`rerequest_check_suite`](/reference/api/checks/rerequest-check-suite/) | Ask its reporter to run it again; a workflow run runs again (also `workflows:write`). Write role. | `repo`, `id` | `checks:write` |
+| [`list_deployments`](/reference/api/deployments/list-deployments/) | Deployments wherever they run, newest first; filter by `environment`, `ref`, `sha`, `task`, `state`, `source` (`api`, `actions` or `g1t_page`) or `creator`, and page with `page` and `per_page`. | `repo` | `deployments:read` |
+| [`get_deployment`](/reference/api/deployments/get-deployment/) | One deployment with every status it has had, oldest first. | `repo`, `id` | `deployments:read` |
+| [`create_deployment`](/reference/api/deployments/create-deployment/) | Report a deployment of `ref` to an `environment` (`production` unless you say), with optional `sha`, `task`, `description`, `payload`, `production_environment`, `transient_environment`, first `state`, `environment_url` and `log_url`. Write role. | `repo`, `ref` | `deployments:write` |
+| [`deployment_statuses`](/reference/api/deployments/list-deployment-statuses/) | A deployment's statuses, newest first. | `repo`, `id` | `deployments:read` |
+| [`create_deployment_status`](/reference/api/deployments/create-deployment-status/) | Report where a deployment is: `state` (`queued`, `in_progress`, `success`, `failure`, `error` or `inactive`), with optional `description`, `environment_url`, `log_url` and `auto_inactive`. Not for a g1t.page build. Write role. | `repo`, `id`, `state` | `deployments:write` |
+| [`list_environments`](/reference/api/deployments/list-environments/) | Environments with their address, current and latest deployments, production first. | `repo` | `deployments:read` |
+| [`get_environment`](/reference/api/deployments/get-environment/) | One environment by name. | `repo`, `environment` | `deployments:read` |
 | [`list_runners`](/reference/api/runners/list-runners-for-workspace/) | [Self-hosted runners](/guides/self-hosted-runners/): a workspace's (`workspace`), or a repository's own and the workspace's it may use (`repo`), with status, labels and what each is running. | `workspace` or `repo` | `runners:read` |
 | [`create_runner_token`](/reference/api/runners/create-runner-registration-token-for-workspace/) | A registration token for `g1t-runner register`, an hour long; `group` for a workspace's. Owners, or a repository's admins; not workspace tokens. | `workspace` or `repo` | `runners:admin` |
 | [`remove_runner`](/reference/api/runners/remove-runner-for-workspace/) | Remove a runner; a job it is running fails. | `workspace` or `repo`, `id` | `runners:admin` |
@@ -547,9 +572,11 @@ for people: an agent's or a workspace's token cannot make them.
 ## `workspace`
 
 Workspaces own repositories: create, update or delete one, invite members,
-connect [integrations](/guides/integrations/) and model providers, and keep
-your own [pinned projects](/guides/workspaces/#pinned-and-recent-projects)
-at the top of its sidebar. See [workspaces](/guides/workspaces/).
+connect [integrations](/guides/integrations/) and model providers, read and
+change its [projects](/guides/projects/) (what each is, where it runs, its
+links), and keep your own
+[pinned projects](/guides/workspaces/#pinned-and-recent-projects) at the top
+of its sidebar. See [workspaces](/guides/workspaces/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -566,6 +593,9 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 | [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`get_model_routes`](/reference/api/integrations/get-model-routes/) | Which provider and model each kind of work goes to. Members only. | `workspace` | `workspace:read` |
 | [`set_model_routes`](/reference/api/integrations/set-model-routes/) | Replace them: each route has `task`, `connection_id` (null for g1t's models) and `model` (on g1t's models: `small`, `large`, `frontier`, or null for Auto). Owners only. | `workspace`, `routes` | `workspace:admin` |
+| [`list_projects`](/reference/api/projects/list-projects/) | Its projects you can see, by name: each with its `kind` and `kind_reason`, where it `runs` and its `production_url`, its repository and `root_dir`, and its `links`. | `workspace` | `repo:read` |
+| [`get_project`](/reference/api/projects/get-project/) | One project, with what a person set (`setting`) and what detection decides (`detected`). | `workspace`, `project` | `repo:read` |
+| [`update_project`](/reference/api/projects/update-project/) | Change its `name`, `description`, `root_dir`, `kind`, `runs`, `production_url`, `homepage`, `docs_url` or `links`; only what you give changes. `auto` leaves `kind` or `runs` to detection, null clears a link or goes back to the repository's, and `links` replaces its other links (at most 10). Maintain role or higher. | `workspace`, `project` | `repo:write` |
 | [`list_pinned_projects`](/reference/api/pinned-projects/list-pinned-projects/) | Your pinned projects in it, in your order, each with its `position`. Your own: a personal token or an OAuth sign-in. | `workspace` | `account:read` |
 | [`pin_project`](/reference/api/pinned-projects/pin-project/) | Pin a project you can see, at `position` (0 first) or at the end; at most 8 a workspace. Returns your pins. | `workspace`, `project` | `account:write` |
 | [`unpin_project`](/reference/api/pinned-projects/unpin-project/) | Unpin it. Returns your pins. | `workspace`, `project` | `account:write` |

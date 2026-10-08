@@ -448,7 +448,7 @@ least costly model that can do it, from three tiers:
 
 | Tier | Model today | For |
 | --- | --- | --- |
-| Fast | Claude Haiku 4.5 | Small, well-bounded work |
+| Fast | Claude Haiku 5.5 | Small, well-bounded work, and plans |
 | Standard | Claude Sonnet 5.5 | Most changes and reviews |
 | Most capable | Claude Opus 5.5 | Hard work, and work that failed on the standard model |
 
@@ -462,7 +462,7 @@ The job starts on its tier:
 | Reviewing a pull request that changes more than 60 files or 3,000 lines | Most capable |
 | Reviewing any other pull request, or one whose changed files g1t does not know yet | Standard |
 | Catching up with the base branch and resolving conflicts | Fast |
-| Planning an outcome | Standard |
+| Planning an outcome | Fast, at high effort |
 
 Then, in this order:
 
@@ -488,9 +488,14 @@ and `.pem` files, and infrastructure such as Dockerfiles, Terraform and
 
 The agent's own small background steps run on the fast tier.
 
+Some work also has an effort level, how long the model thinks before it
+answers: planning runs at high effort, answering a question at medium and
+catching up at low, whichever tier the work lands on. Other work runs at
+the model's default. A workspace's own provider is sent no effort level.
+
 Every run says which model it used and why, in one line: as the first
 step on its run, and at the top of its pull request's session. For
-example, *Used a fast model (Claude Haiku 4.5): small change, 3 files and
+example, *Used a fast model (Claude Haiku 5.5): small change, 3 files and
 80 lines.* An agent's review also says which model wrote it. When a better
 model for a tier appears, g1t changes the route and nothing you have set
 up needs to change.

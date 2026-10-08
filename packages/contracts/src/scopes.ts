@@ -18,6 +18,7 @@ export type ScopeResource =
   | "agents"
   | "workflows"
   | "checks"
+  | "deployments"
   | "memory"
   | "account"
   | "notifications"
@@ -33,8 +34,8 @@ export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
 
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
-  { scope: "repo:read", description: "See repositories, their settings, labels, timelines and security alerts, and search" },
-  { scope: "repo:write", description: "Create repositories, rename branches and change how pull requests merge" },
+  { scope: "repo:read", description: "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search" },
+  { scope: "repo:write", description: "Create repositories, rename branches, change how pull requests merge and publish releases" },
   { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
   { scope: "code:write", description: "Push commits with git" },
@@ -52,10 +53,12 @@ export const SCOPES = [
   { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
   { scope: "checks:read", description: "Read commits' statuses, check runs, check suites and annotations" },
   { scope: "checks:write", description: "Report statuses and check runs on commits, and ask for checks to run again" },
+  { scope: "deployments:read", description: "See deployments, their statuses and environments" },
+  { scope: "deployments:write", description: "Report deployments and their statuses, from any CI" },
   { scope: "memory:read", description: "Recall memory and search the workspace's context" },
   { scope: "memory:write", description: "Save memory for the next agent" },
-  { scope: "account:read", description: "Read your email addresses, invites, invitations and pinned projects" },
-  { scope: "account:write", description: "Change your email addresses, make invites, answer invitations and pin projects" },
+  { scope: "account:read", description: "Read your email addresses, invites, invitations, pinned projects and stars" },
+  { scope: "account:write", description: "Change your email addresses, make invites, answer invitations, pin projects and star repositories" },
   { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
   { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
   { scope: "workspace:read", description: "Read workspace settings, invites, integrations, model routes, teams and rulesets" },
@@ -87,6 +90,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "agents", label: "g1t agents" },
   { resource: "workflows", label: "Workflows" },
   { resource: "checks", label: "Checks and statuses" },
+  { resource: "deployments", label: "Deployments" },
   { resource: "memory", label: "Memory and context" },
   { resource: "account", label: "Your account" },
   { resource: "notifications", label: "Notifications" },
@@ -150,13 +154,13 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "deployments:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read",
   ] as const,
   ci: [
-    "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write",
+    "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
   ] as const,
   full: [
     "*",
@@ -166,7 +170,7 @@ export const PRESET_SCOPES = {
 export const PRESETS: { id: PresetId; label: string; description: string }[] = [
   { id: "read_only", label: "Read only", description: "Read everything you can read; change nothing." },
   { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, push code and run g1t agents." },
-  { id: "ci", label: "CI", description: "Clone and push code, push and pull packages, run workflows, and report checks on commits." },
+  { id: "ci", label: "CI", description: "Clone and push code, push and pull packages, run workflows, and report checks and deployments." },
   { id: "full", label: "Full access", description: "Everything you can do, including deleting repositories and changing who has access." },
 ];
 
@@ -194,6 +198,11 @@ export const OPERATION_SCOPES = [
   // Your pinned projects: a preference of your account.
   ["list_pinned_projects", "account:read"],
   ["pin_project", "account:write"],
+  // Your stars: a preference of your account.
+  ["list_starred", "account:read"],
+  ["check_starred", "account:read"],
+  ["star_repo", "account:write"],
+  ["unstar_repo", "account:write"],
   ["unpin_project", "account:write"],
   ["reorder_pinned_projects", "account:write"],
   // Your inbox: notifications, subscriptions and watching.
@@ -252,8 +261,24 @@ export const OPERATION_SCOPES = [
   ["buy_ai_credit", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
+  // Projects follow their repositories.
+  ["list_projects", "repo:read"],
+  ["get_project", "repo:read"],
   ["search", "repo:read"],
   ["list_events", "repo:read"],
+  // What the default branch says about a repository, who starred it, and
+  // its releases.
+  ["get_languages", "repo:read"],
+  ["list_contributors", "repo:read"],
+  ["get_license", "repo:read"],
+  ["list_stargazers", "repo:read"],
+  ["list_releases", "repo:read"],
+  ["get_latest_release", "repo:read"],
+  ["get_release_by_tag", "repo:read"],
+  ["get_release", "repo:read"],
+  ["create_release", "repo:write"],
+  ["update_release", "repo:write"],
+  ["delete_release", "repo:write"],
   ["list_labels", "repo:read"],
   ["list_milestones", "repo:read"],
   ["get_milestone", "repo:read"],
@@ -271,6 +296,7 @@ export const OPERATION_SCOPES = [
   ["get_codeowners_errors", "repo:read"],
   ["create_repo", "repo:write"],
   ["update_repo", "repo:write"],
+  ["update_project", "repo:write"],
   ["update_repo_settings", "repo:write"],
   ["list_repo_rulesets", "repo:read"],
   ["get_repo_ruleset", "repo:read"],
@@ -376,6 +402,14 @@ export const OPERATION_SCOPES = [
   ["update_check_run", "checks:write"],
   ["rerequest_check_run", "checks:write"],
   ["rerequest_check_suite", "checks:write"],
+  // Deployments, wherever they run: reading them, and reporting them.
+  ["list_deployments", "deployments:read"],
+  ["get_deployment", "deployments:read"],
+  ["list_deployment_statuses", "deployments:read"],
+  ["list_environments", "deployments:read"],
+  ["get_environment", "deployments:read"],
+  ["create_deployment", "deployments:write"],
+  ["create_deployment_status", "deployments:write"],
   ["recall", "memory:read"],
   ["search_context", "memory:read"],
   ["get_entity", "memory:read"],
@@ -443,6 +477,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "agents", label: "Agents", scopes: ["agents:run"] },
   { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write"] },
   { id: "checks", label: "Checks", scopes: ["checks:read", "checks:write"] },
+  { id: "deployments", label: "Deployments", scopes: ["deployments:read", "deployments:write"] },
   { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },

@@ -35,6 +35,7 @@ pub enum Resource {
     Agents,
     Workflows,
     Checks,
+    Deployments,
     Memory,
     Access,
     Webhooks,
@@ -44,7 +45,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 19] = [
+    pub const ALL: [Resource; 20] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -54,6 +55,7 @@ impl Resource {
         Resource::Agents,
         Resource::Workflows,
         Resource::Checks,
+        Resource::Deployments,
         Resource::Memory,
         Resource::Account,
         Resource::Notifications,
@@ -81,6 +83,7 @@ impl Resource {
             Resource::Agents => "agents",
             Resource::Workflows => "workflows",
             Resource::Checks => "checks",
+            Resource::Deployments => "deployments",
             Resource::Memory => "memory",
             Resource::Access => "access",
             Resource::Webhooks => "webhooks",
@@ -106,6 +109,7 @@ impl Resource {
             Resource::Agents => "g1t agents",
             Resource::Workflows => "Workflows",
             Resource::Checks => "Checks and statuses",
+            Resource::Deployments => "Deployments",
             Resource::Memory => "Memory and context",
             Resource::Access => "Who has access",
             Resource::Webhooks => "Webhooks",
@@ -163,6 +167,8 @@ pub enum Scope {
     WorkflowsWrite,
     ChecksRead,
     ChecksWrite,
+    DeploymentsRead,
+    DeploymentsWrite,
     MemoryRead,
     MemoryWrite,
     AccountRead,
@@ -187,7 +193,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 39] = [
+    pub const ALL: [Scope; 41] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -207,6 +213,8 @@ impl Scope {
         Scope::WorkflowsWrite,
         Scope::ChecksRead,
         Scope::ChecksWrite,
+        Scope::DeploymentsRead,
+        Scope::DeploymentsWrite,
         Scope::MemoryRead,
         Scope::MemoryWrite,
         Scope::AccountRead,
@@ -250,6 +258,8 @@ impl Scope {
             Scope::WorkflowsWrite => "workflows:write",
             Scope::ChecksRead => "checks:read",
             Scope::ChecksWrite => "checks:write",
+            Scope::DeploymentsRead => "deployments:read",
+            Scope::DeploymentsWrite => "deployments:write",
             Scope::MemoryRead => "memory:read",
             Scope::MemoryWrite => "memory:write",
             Scope::AccountRead => "account:read",
@@ -311,8 +321,8 @@ impl Scope {
     /// What it lets a token do, in plain words.
     pub fn describe(self) -> &'static str {
         match self {
-            Scope::RepoRead => "See repositories, their settings, labels, timelines and security alerts, and search",
-            Scope::RepoWrite => "Create repositories, rename branches and change how pull requests merge",
+            Scope::RepoRead => "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search",
+            Scope::RepoWrite => "Create repositories, rename branches, change how pull requests merge and publish releases",
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
@@ -330,10 +340,12 @@ impl Scope {
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
             Scope::ChecksRead => "Read commits' statuses, check runs, check suites and annotations",
             Scope::ChecksWrite => "Report statuses and check runs on commits, and ask for checks to run again",
+            Scope::DeploymentsRead => "See deployments, their statuses and environments",
+            Scope::DeploymentsWrite => "Report deployments and their statuses, from any CI",
             Scope::MemoryRead => "Recall memory and search the workspace's context",
             Scope::MemoryWrite => "Save memory for the next agent",
-            Scope::AccountRead => "Read your email addresses, invites, invitations and pinned projects",
-            Scope::AccountWrite => "Change your email addresses, make invites, answer invitations and pin projects",
+            Scope::AccountRead => "Read your email addresses, invites, invitations, pinned projects and stars",
+            Scope::AccountWrite => "Change your email addresses, make invites, answer invitations, pin projects and star repositories",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::WorkspaceRead => "Read workspace settings, invites, integrations, model routes, teams and rulesets",
@@ -456,6 +468,8 @@ impl Preset {
                 Scope::WorkflowsWrite,
                 Scope::ChecksRead,
                 Scope::ChecksWrite,
+                Scope::DeploymentsRead,
+                Scope::DeploymentsWrite,
             ]),
             Preset::Full => None,
         }
@@ -532,6 +546,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Your pinned projects: a preference of your account.
     ("list_pinned_projects", Scope::AccountRead),
     ("pin_project", Scope::AccountWrite),
+    // Your stars: a preference of your account.
+    ("list_starred", Scope::AccountRead),
+    ("check_starred", Scope::AccountRead),
+    ("star_repo", Scope::AccountWrite),
+    ("unstar_repo", Scope::AccountWrite),
     ("unpin_project", Scope::AccountWrite),
     ("reorder_pinned_projects", Scope::AccountWrite),
     // Your inbox: notifications, subscriptions and watching.
@@ -594,8 +613,24 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
+    // Projects follow their repositories.
+    ("list_projects", Scope::RepoRead),
+    ("get_project", Scope::RepoRead),
     ("search", Scope::RepoRead),
     ("list_events", Scope::RepoRead),
+    // What the default branch says about a repository, who starred it, and
+    // its releases.
+    ("get_languages", Scope::RepoRead),
+    ("list_contributors", Scope::RepoRead),
+    ("get_license", Scope::RepoRead),
+    ("list_stargazers", Scope::RepoRead),
+    ("list_releases", Scope::RepoRead),
+    ("get_latest_release", Scope::RepoRead),
+    ("get_release_by_tag", Scope::RepoRead),
+    ("get_release", Scope::RepoRead),
+    ("create_release", Scope::RepoWrite),
+    ("update_release", Scope::RepoWrite),
+    ("delete_release", Scope::RepoWrite),
     ("list_labels", Scope::RepoRead),
     ("list_milestones", Scope::RepoRead),
     ("get_milestone", Scope::RepoRead),
@@ -613,6 +648,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_codeowners_errors", Scope::RepoRead),
     ("create_repo", Scope::RepoWrite),
     ("update_repo", Scope::RepoWrite),
+    ("update_project", Scope::RepoWrite),
     ("update_repo_settings", Scope::RepoWrite),
     // Rulesets: reading them is reading the repository; changing them
     // changes what everyone, agents included, may do, so it is admin.
@@ -727,6 +763,14 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_check_run", Scope::ChecksWrite),
     ("rerequest_check_run", Scope::ChecksWrite),
     ("rerequest_check_suite", Scope::ChecksWrite),
+    // Deployments, wherever they run: reading them, and reporting them.
+    ("list_deployments", Scope::DeploymentsRead),
+    ("get_deployment", Scope::DeploymentsRead),
+    ("list_deployment_statuses", Scope::DeploymentsRead),
+    ("list_environments", Scope::DeploymentsRead),
+    ("get_environment", Scope::DeploymentsRead),
+    ("create_deployment", Scope::DeploymentsWrite),
+    ("create_deployment_status", Scope::DeploymentsWrite),
     // Memory and the context hub.
     ("recall", Scope::MemoryRead),
     ("search_context", Scope::MemoryRead),

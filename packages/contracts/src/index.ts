@@ -1,3 +1,4 @@
+export * from "./about";
 export * from "./access";
 export * from "./accounts";
 export * from "./actions";

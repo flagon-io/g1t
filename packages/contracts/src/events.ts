@@ -9,6 +9,7 @@
 
 import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
+import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
 import type { Confidence, Verdict } from "./work";
 
@@ -292,6 +293,18 @@ export type EventPayloads = {
    */
   "deployment.succeeded": DeploymentEventData;
   "deployment.failed": DeploymentEventData;
+  /**
+   * A deployment was made, wherever it runs: reported through the API, by
+   * a g1t Actions job with an `environment:`, or a g1t.page build. Its
+   * `payload` is left out: read the deployment for it.
+   */
+  "deployment.created": { repoId: string; deployment: Omit<RepoDeployment, "payload"> };
+  /** A deployment has a new status; `deployment` is as it is now. */
+  "deployment_status.created": {
+    repoId: string;
+    deployment: Omit<RepoDeployment, "payload">;
+    deploymentStatus: DeploymentStatus;
+  };
   /**
    * A package version was published, such as an image pushed by
    * `docker push`. `tags` are the tags that now point to it; `repoId` (and

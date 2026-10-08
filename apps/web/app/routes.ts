@@ -119,6 +119,10 @@ export default [
   route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
   // An invitation to a repository, answered by someone who cannot see it yet.
   route(":owner/:repo/invitations", "routes/repo/invitations.tsx"),
+  // The Files page's About as JSON, asked again while it is first worked out.
+  route(":owner/:repo/about.json", "routes/repo/about-json.ts"),
+  // Starring it, from the header's Star button.
+  route(":owner/:repo/star", "routes/repo/star.ts"),
   // Subscribing to its issues and pull requests, and watching it.
   route(":owner/:repo/notifications", "routes/repo/notifications.ts"),
   // A starter CI workflow, opened as a pull request (components/add-ci.tsx).
@@ -137,6 +141,12 @@ export default [
     route("commits", "routes/repo/commits.tsx"),
     route("branches", "routes/repo/branches.tsx"),
     route("tags", "routes/repo/tags.tsx"),
+    route("releases", "routes/repo/releases.tsx"),
+    route("releases/new", "routes/repo/release-new.tsx"),
+    route("releases/tag/*", "routes/repo/release.tsx"),
+    route("contributors", "routes/repo/contributors.tsx"),
+    route("activity", "routes/repo/activity.tsx"),
+    route("stargazers", "routes/repo/stargazers.tsx"),
     route("compare/*", "routes/repo/compare.tsx", { id: "routes/repo/compare-range" }),
     route("compare", "routes/repo/compare.tsx"),
     route("commit/:hash", "routes/repo/commit.tsx"),

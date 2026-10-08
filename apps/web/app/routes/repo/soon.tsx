@@ -1,5 +1,5 @@
 import { ArrowRight, Check, Sparkles } from "lucide-react";
-import { Link, data } from "react-router";
+import { Link, data, redirect } from "react-router";
 
 import type { Route } from "./+types/soon";
 import { page } from "../../lib/meta";
@@ -14,7 +14,12 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   });
 }
 
+/** Soon pages that have since been built, and where each is now. */
+const BUILT: Record<string, string> = { releases: "releases" };
+
 export function loader({ params }: Route.LoaderArgs) {
+  const built = BUILT[params.feature];
+  if (built) throw redirect(`/${params.owner}/${params.repo}/${built}`);
   const item = roadmapItem(params.feature);
   if (!item) throw data(null, { status: 404 });
   return { item };

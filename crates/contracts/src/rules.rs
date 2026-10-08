@@ -429,8 +429,9 @@ impl Default for MergeQueueRule {
 }
 
 /// `required_deployments`: a pull request's head must have deployed
-/// successfully to these environments: `preview` (its preview), or a
-/// project's slug for a repository with several.
+/// successfully to these environments: `preview` (its preview), a
+/// project's slug for a repository with several, or any environment
+/// deployments are reported to (its `deploy / <environment>` check).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DeploymentsRule {

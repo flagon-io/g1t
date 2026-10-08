@@ -1,3 +1,4 @@
+import type { Contributors, Languages, License, NewRelease, Release, ReleaseChange, RepoAbout, Stargazer, StarredRepo, Stars } from "./about";
 import type { User, Viewer } from "./identity";
 import type { Result } from "./result";
 
@@ -247,6 +248,35 @@ export interface ReposApi {
 
   /** The repository's tags, newest commit first, at most 100. */
   tags(path: RepoPath, viewer: Viewer): Promise<Result<Tag[]>>;
+
+  /**
+   * The Files page's About in one answer: license, security policy,
+   * languages, contributors, stars and releases. What comes from files and
+   * history is kept by commit and worked out in the background when it is
+   * behind the head (see `about.ts`).
+   */
+  about(path: RepoPath, viewer: Viewer): Promise<Result<RepoAbout>>;
+  languages(path: RepoPath, viewer: Viewer): Promise<Result<Languages>>;
+  /** Everyone whose commits are on the default branch, with their weeks. */
+  contributors(path: RepoPath, viewer: Viewer): Promise<Result<Contributors>>;
+  license(path: RepoPath, viewer: Viewer): Promise<Result<License | null>>;
+  /** How many starred it, and whether the viewer did. */
+  stars(path: RepoPath, viewer: Viewer): Promise<Result<Stars>>;
+  /** Stars it for the actor, or takes the star back. */
+  star(actor: User, path: RepoPath, starred: boolean): Promise<Result<Stars>>;
+  /** Who starred it, newest first, 100 a page from 1. */
+  stargazers(path: RepoPath, viewer: Viewer, page?: number): Promise<Result<Stargazer[]>>;
+  /** What a person starred that the viewer can see, newest first, at most 100. */
+  starred(username: string, viewer: Viewer): Promise<StarredRepo[]>;
+  /** Releases, newest first, at most 100: drafts only for those who can push. */
+  releases(path: RepoPath, viewer: Viewer): Promise<Result<Release[]>>;
+  /** One release by id or tag, or the latest. */
+  release(path: RepoPath, viewer: Viewer, which: { id?: string; tag?: string; latest?: boolean }): Promise<Result<Release>>;
+  /** Needs Write. A tag that does not exist yet is made at `target`. */
+  createRelease(actor: User, path: RepoPath, release: NewRelease): Promise<Result<Release>>;
+  updateRelease(actor: User, path: RepoPath, id: string, change: ReleaseChange): Promise<Result<Release>>;
+  /** The tag stays. */
+  deleteRelease(actor: User, path: RepoPath, id: string): Promise<Result<boolean>>;
 
   /**
    * Every file at `ref` (the default branch when null), at most `limit`

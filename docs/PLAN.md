@@ -1139,14 +1139,16 @@ human approval per path, and risk tiers, are still to come.
 is cost per merged change, not cost per request: a cheap attempt that
 fails and is retried on the same model costs more than one that finishes.
 
-- **Tiers and catalogue.** `small` (Claude Haiku 4.5, $1/$5 per million
-  input/output), `large` (Claude Sonnet 5.5, $2/$10) and `frontier`
+- **Tiers and catalogue.** `small` (Claude Haiku 5.5 since 2026-10-08,
+  $0.10/$0.50 per million input/output up to 100k-token prompts, five
+  times that above; it was Haiku 4.5 at $1/$5), `large` (Claude Sonnet 5.5, $2/$10) and `frontier`
   (Claude Opus 5.5, $4/$20). Models, names and list prices are
   configuration (`AGENT_ROUTING`), never code; prices there are for
   estimates only, runs are charged what AI Gateway priced them at.
 - **Starting tier by job.** Catch-up, answering a question, and reviews of
   at most 10 files and 200 lines touching no sensitive path: small.
-  Changes, revisions, plans and other reviews: large. Reviews over 60 files
+  Plans: small at high effort (Haiku 5.5 takes an effort level).
+  Changes, revisions and other reviews: large. Reviews over 60 files
   or 3,000 lines: frontier. Labels: `architecture` frontier, `security` off
   small, `docs`/`documentation`/`typo` let changes and answers start small.
 - **Escalation.** A failed (or guardrail-stopped) attempt at the same work
@@ -1158,8 +1160,10 @@ fails and is retried on the same model costs more than one that finishes.
   when this tier failed at least half of at least 5. No new tables: it
   reads work's `agent_runs` (model, status, confidence).
 - **Explained.** Every run's first step and session note is one line:
-  *Used a fast model (Claude Haiku 4.5): small change, 3 files and 80
-  lines.*
+  *Used a fast model (Claude Haiku 5.5): small change, 3 files and 80
+  lines.* Effort per kind of job (`effort` in `AGENT_ROUTING`: plan high,
+  answer medium, update low) is sent as `CLAUDE_CODE_EFFORT_LEVEL` on
+  g1t's tiers and named in that line.
 - **Chosen instead.** `model_routes` rows to g1t's models name `small`,
   `large` or `frontier`, or nothing for Auto (Integrations → Models).
   A workspace's own Anthropic key with no model named is routed by Auto

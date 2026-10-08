@@ -18,11 +18,12 @@ import {
   Link2,
   MapPin,
   Pencil,
+  Star,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link, redirect, useNavigate, useSearchParams } from "react-router";
 
-import type { Authored, AuthoredItem, AuthoredSort, AuthoredState, Profile } from "@g1t/contracts";
+import type { Authored, AuthoredItem, AuthoredSort, AuthoredState, Profile, StarredRepo } from "@g1t/contracts";
 
 import type { Route } from "./+types/user";
 import { page } from "../lib/meta";
@@ -34,7 +35,7 @@ import { notFound } from "../lib/not-found.server";
 import { identity, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
-type Tab = "overview" | "pulls" | "issues";
+type Tab = "overview" | "pulls" | "issues" | "stars";
 
 const EMPTY: Authored = {
   items: [],
@@ -77,7 +78,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   }
 
   const query = url.searchParams;
-  const tab: Tab = pick(query.get("tab"), ["pulls", "issues"] as const) ?? "overview";
+  const tab: Tab = pick(query.get("tab"), ["pulls", "issues", "stars"] as const) ?? "overview";
   const state = pick(query.get("state"), (tab === "pulls" ? ["open", "closed", "merged"] : ["open", "closed"]) as AuthoredState[]);
   const sort = pick(query.get("sort"), ["updated", "oldest"] as const satisfies AuthoredSort[]);
   const repo = query.get("repo")?.trim() || undefined;
@@ -95,7 +96,12 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     .then((publicIn) => identity.profileWorkspaces(username, viewer, publicIn));
   // The card is drawn for no one in particular, so its version uses what
   // everyone sees; for a signed-out viewer that is these counts already.
-  const [authored, shown] = await Promise.all([work.byAuthor(username, viewer, filter), workspaces]);
+  const [authored, shown, starred] = await Promise.all([
+    work.byAuthor(username, viewer, filter),
+    workspaces,
+    // What they starred that the viewer can see, on its own tab.
+    tab === "stars" ? repos.starred(username, viewer).catch(() => [] as StarredRepo[]) : ([] as StarredRepo[]),
+  ]);
   const activity = authored.ok ? authored.value : EMPTY;
   return {
     profile,
@@ -104,6 +110,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     activity,
     failed: !authored.ok,
     workspaces: shown,
+    starred,
     isSelf: viewer?.username === profile.username,
     publicCounts: viewer ? null : activity.counts,
   };
@@ -118,7 +125,13 @@ export default function UserProfile({ loaderData }: Route.ComponentProps) {
         <section className="min-w-0">
           <ProfileTabs username={profile.username} tab={tab} counts={activity.counts} />
           <div className="mt-6">
-            {tab === "overview" ? <Overview {...loaderData} /> : <WorkList {...loaderData} />}
+            {tab === "overview" ? (
+              <Overview {...loaderData} />
+            ) : tab === "stars" ? (
+              <StarredList starred={loaderData.starred} isSelf={isSelf} />
+            ) : (
+              <WorkList {...loaderData} />
+            )}
           </div>
         </section>
       </div>
@@ -268,7 +281,42 @@ function ProfileTabs({
       {item("overview", "Overview", <LayoutGrid size={15} />)}
       {item("pulls", "Pull requests", <GitPullRequest size={15} />, counts.pulls)}
       {item("issues", "Issues", <CircleDot size={15} />, counts.issues)}
+      {item("stars", "Stars", <Star size={15} />)}
     </nav>
+  );
+}
+
+// --- Stars -------------------------------------------------------------------------
+
+function StarredList({ starred, isSelf }: { starred: StarredRepo[]; isSelf: boolean }) {
+  if (starred.length === 0) {
+    return (
+      <EmptyState title={isSelf ? "You have not starred anything yet" : "No stars yet"}>
+        {isSelf ? "Star a repository from the button beside Watch to keep it here." : null}
+      </EmptyState>
+    );
+  }
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+      {starred.map(({ repo, starredAt, stars }) => (
+        <li key={repo.id} className="px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Link to={`/${repo.namespace}/${repo.name}`} className="min-w-0 truncate font-medium hover:text-accent">
+              <span className="text-muted">{repo.namespace}/</span>
+              {repo.name}
+            </Link>
+            <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted tabular-nums">
+              <Star size={13} className="text-faint" />
+              {stars.toLocaleString("en-US")}
+            </span>
+          </div>
+          {repo.description && <p className="mt-1 text-sm text-muted">{repo.description}</p>}
+          <p className="mt-1 text-xs text-faint">
+            Starred <TimeAgo at={starredAt} />
+          </p>
+        </li>
+      ))}
+    </ul>
   );
 }
 

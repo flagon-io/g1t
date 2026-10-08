@@ -538,6 +538,15 @@ pub struct WatchingArgs {
     pub repo_id: String,
 }
 
+/// `inbox_watchers`: how many watch a repository: all of its activity,
+/// or some of it (custom). The default (participating) and ignoring are
+/// not counted. Returns `u64`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchersArgs {
+    pub repo_id: String,
+}
+
 /// `inbox_watch`. No `level`: back to the default.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

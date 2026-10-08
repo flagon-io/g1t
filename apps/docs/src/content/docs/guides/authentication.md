@@ -322,6 +322,7 @@ On the form, scopes are a checklist grouped by area:
 | Agents | `agents:run` |
 | Workflows | `workflows:read`, `workflows:write` |
 | Checks | `checks:read`, `checks:write` |
+| Deployments | `deployments:read`, `deployments:write` |
 | Memory & search | `memory:read`, `memory:write` |
 | Account | `account:read`, `account:write` |
 | Notifications | `notifications:read`, `notifications:write` |
@@ -338,8 +339,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 
 | Scope | What it lets a token do |
 | --- | --- |
-| `repo:read` | See repositories, their settings, labels, timelines and security alerts, and search |
-| `repo:write` | Create repositories, rename branches and change how pull requests merge |
+| `repo:read` | See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search |
+| `repo:write` | Create repositories, rename branches, change how pull requests merge and publish releases |
 | `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
 | `code:read` | Clone and fetch private repositories with git |
 | `code:write` | Push commits with git |
@@ -357,10 +358,12 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
 | `checks:read` | Read commits' statuses, check runs, check suites and annotations |
 | `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
+| `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
+| `deployments:write` | Report deployments and their statuses, from any CI |
 | `memory:read` | Recall memory and search the workspace's context |
 | `memory:write` | Save memory for the next agent |
-| `account:read` | Read your email addresses, invites, invitations and pinned projects |
-| `account:write` | Change your email addresses, make invites, answer invitations and pin projects |
+| `account:read` | Read your email addresses, invites, invitations, pinned projects and stars |
+| `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
 | `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |
@@ -414,7 +417,7 @@ any box.
 | --- | --- |
 | Read only | Every `read` scope. Changes nothing. |
 | Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and `notifications:write`. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin scope. |
-| CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read`, `workflows:write`, `checks:read` and `checks:write`. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) on commits. |
+| CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read`, `workflows:write`, `checks:read`, `checks:write`, `deployments:read` and `deployments:write`. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 | Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
 
 Admin scopes change things that are hard to undo, or decide who can reach

@@ -28,7 +28,9 @@
 		// A repository's secrets and variables belong to its project.
 		{ "binding": "PROJECTS", "service": "g1t-projects" },
 		// Self-hosted runners' time, recorded on usage at $0.
-		{ "binding": "BILLING", "service": "g1t-billing" }
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		// A job with an `environment:` makes its run's deployment there.
+		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
 	],
 	// actions/cache entries, which the API writes: deleted here when they
 	// are evicted or expire.

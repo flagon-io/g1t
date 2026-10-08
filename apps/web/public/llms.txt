@@ -315,7 +315,7 @@ as `repo`, written `owner/name`.
 ## Scopes
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
-`repo`, `code`, `issues`, `pull_requests`, `workflows`, `checks`, `memory`,
+`repo`, `code`, `issues`, `pull_requests`, `workflows`, `checks`, `deployments`, `memory`,
 `account`, `notifications`, `access`, `webhooks`, `secrets`, `runners`, `models` (read, write or admin
 as each has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
 level includes the lower. A token may expire. It reaches every workspace
@@ -326,7 +326,9 @@ A token sees only the MCP tools and actions its scopes allow. A missing scope an
 Pushing needs `code:write`; cloning a private repository `code:read`. For
 an agent, use the Agent preset (every read scope but `runners:read`, plus `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run`, `memory:write`,
-`notifications:write`). `models:write` (sending requests through the AI
+`notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
+`code:write`, `packages:read`, `packages:write`, `workflows:read`,
+`workflows:write`, `deployments:read`, `deployments:write`). `models:write` (sending requests through the AI
 Gateway, which spends AI credit) is in no preset but full access.
 OAuth clients may send `scope`;
 the person can untick any; asking for none gives the Agent preset. Tokens
@@ -588,8 +590,32 @@ for a workspace's other projects). Builds and running apps
 read the project's secrets and variables available to Deployments, each
 key's Production or Preview row. Workers projects (`wrangler.jsonc`) and
 static sites build without configuration. Previews come down when the pull
-request closes and after idle days. There is no API for deployments yet.
+request closes and after idle days.
 Guide: https://docs.g1t.sh/guides/deployments/
+
+A repository's deployments, wherever they run, are one list: `source` is
+`api` (reported from any CI), `actions` (a g1t Actions job with
+`environment:`) or `g1t_page` (g1t.page builds, ids `dpl_…`, environments
+`production` and `preview`). Read with `GET {repo}/deployments` (filters
+`environment`, `ref`, `sha`, `task`, `state`, `source`, `creator`, `page`,
+`per_page`), `GET {repo}/deployments/{id}`, `GET {repo}/deployments/{id}/statuses`,
+`GET {repo}/environments` and `GET {repo}/environments/{environment}`
+(`deployments:read`, Read role). Report from a CI with
+`POST {repo}/deployments` (`ref`, optional `environment` (default
+`production`), `sha`, `task`, `description`, `payload`, `state`,
+`environment_url`, `log_url`), then
+`POST {repo}/deployments/{id}/statuses` with `state` (`queued`,
+`in_progress`, `success`, `failure`, `error`, `inactive`) and
+`environment_url` (`deployments:write`, Write role). A success makes the
+environment's older successful deployments `inactive` unless
+`auto_inactive: false`. Each status sets the commit check
+`deploy / <environment>`, which a ruleset's `required_deployments` rule can
+require. A g1t Actions job with `environment:` (or `{name, url}`) reports
+by itself, one deployment per run and environment; `deployment: false`
+opts out. MCP: the `workflow` tool's `list_deployments`, `get_deployment`,
+`create_deployment`, `deployment_statuses`, `create_deployment_status`,
+`list_environments`, `get_environment`. Webhooks: `deployment.created`,
+`deployment_status.created`. Guide: https://docs.g1t.sh/guides/deployments-api/
 
 ## Search
 

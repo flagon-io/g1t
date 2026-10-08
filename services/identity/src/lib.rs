@@ -610,6 +610,36 @@ impl Identity {
         Ok(names)
     }
 
+    /// `accounts`: the accounts behind these ids (at most 200), each with
+    /// its username and avatar, for lists that keep ids, such as who
+    /// starred a repository. Ids of no account are left out.
+    async fn accounts(&self, a: UsernamesArgs) -> Result<std::collections::HashMap<String, g1t_contracts::accounts::EmailOwner>> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            id: String,
+            username: String,
+            avatar: Option<String>,
+        }
+        let ids: Vec<String> = a.ids.into_iter().take(200).collect();
+        let mut found = std::collections::HashMap::new();
+        if ids.is_empty() {
+            return Ok(found);
+        }
+        let marks = vec!["?"; ids.len()].join(", ");
+        let bind: Vec<worker::wasm_bindgen::JsValue> = ids.iter().map(|id| id.as_str().into()).collect();
+        let rows = self
+            .db
+            .prepare(format!("SELECT id, username, avatar FROM users WHERE id IN ({marks})"))
+            .bind(&bind)?
+            .all()
+            .await?
+            .results::<Row>()?;
+        for row in rows {
+            found.insert(row.id.clone(), g1t_contracts::accounts::EmailOwner { id: row.id, username: row.username, avatar: row.avatar });
+        }
+        Ok(found)
+    }
+
     async fn list_ssh_keys(&self, a: UserArgs) -> Result<Vec<SshKey>> {
         let rows = self
             .db
@@ -835,6 +865,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_for_ssh_key" => reply(&identity.user_for_ssh_key(args(body)?).await?),
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
+        "accounts" => reply(&identity.accounts(args(body)?).await?),
         "notify_by_email" => reply(&identity.notify_by_email(args(body)?).await?),
         "profile" => reply(&identity.profile(args(body)?).await?),
         "update_profile" => {

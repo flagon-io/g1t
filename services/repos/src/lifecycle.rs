@@ -519,6 +519,10 @@ impl Registry {
                 self.db
                     .prepare("DELETE FROM branch_redirects WHERE repo_id = ?1")
                     .bind(&[id.into()])?,
+                // Its About, stars and releases (about.rs).
+                self.db.prepare("DELETE FROM repo_stats WHERE repo_id = ?1").bind(&[id.into()])?,
+                self.db.prepare("DELETE FROM repo_stars WHERE repo_id = ?1").bind(&[id.into()])?,
+                self.db.prepare("DELETE FROM releases WHERE repo_id = ?1").bind(&[id.into()])?,
             ])
             .await?;
         Ok(())

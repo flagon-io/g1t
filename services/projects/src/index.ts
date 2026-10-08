@@ -16,7 +16,20 @@ import { parse as parseYaml } from "yaml";
 
 import { NEEDS, repoRef } from "./access";
 import { effectiveDescription, ownDescription } from "./description";
-import { type KindFacts, type RootFiles, MANIFESTS, deploysSetting, detectKind, goFilesToRead, resolveKind } from "./kind";
+import {
+  type KindFacts,
+  type RootFiles,
+  MANIFESTS,
+  detectKind,
+  detectedKind,
+  goFilesToRead,
+  kindSetting,
+  neverRuns,
+  nextSetting,
+  resolveKind,
+  runsSetting,
+} from "./kind";
+import { cleanLinks, cleanUrl, projectLinks } from "./links";
 import { ACTIVE, decayed, raised } from "./activity";
 import { MAX_PINS, MAX_RECENT, MAX_VISITS, placePin, recentAfterPins, reorderPins } from "./pins";
 import { renameStatements } from "./rename";
@@ -41,11 +54,12 @@ import {
   staleMovedPaths,
   type Dependencies,
   type DependencyLink,
-  type DeploysSetting,
   type Ecosystem,
   type G1tEvent,
   type NewProject,
   type Project,
+  type ProjectChanges,
+  type ProjectKind,
   type ProjectEcosystem,
   type ProjectGraph,
   type ProjectShortcuts,
@@ -88,8 +102,16 @@ type Row = {
   repo_deleted_at: string | null;
   /** When its repository was archived; null while it is not. */
   repo_archived_at?: string | null;
-  /** auto, yes or no: whether it deploys (migrations/0007_deploys.sql). */
-  deploys?: string | null;
+  /** What a person set it to be and where it runs; null left to detection (migrations/0010_kind_and_links.sql). */
+  kind_setting?: string | null;
+  runs_setting?: string | null;
+  production_url?: string | null;
+  /** Its own homepage; null follows `repo_website`. */
+  homepage?: string | null;
+  repo_website?: string | null;
+  docs_url?: string | null;
+  /** Its other links, as JSON (src/links.ts). */
+  links?: string | null;
   detected_kind?: string | null;
   detected_detail?: string | null;
   detected_ecosystem?: string | null;
@@ -131,17 +153,13 @@ type NodeRow = { id: string; slug: string; workspace: string; alias: string | nu
 
 function toProject(row: Row): Project {
   const { description, inherited } = effectiveDescription(row);
-  const deploys = deploysSetting(row.deploys);
-  const facts: Omit<KindFacts, "deploys"> = {
+  const setting = { kind: kindSetting(row.kind_setting), runs: runsSetting(row.runs_setting) };
+  const facts: Omit<KindFacts, "setting"> = {
     deploymentsOn: row.deployments_on == null ? null : !!row.deployments_on,
     linkedPackage: row.linked_package ?? null,
-    detected:
-      row.detected_commit == null
-        ? null
-        : { kind: row.detected_kind === "app" || row.detected_kind === "library" ? row.detected_kind : null, detail: row.detected_detail ?? "" },
+    detected: row.detected_commit == null ? null : { kind: kindSetting(row.detected_kind), detail: row.detected_detail ?? "" },
   };
-  const { kind, reason } = resolveKind({ deploys, ...facts });
-  const auto = resolveKind({ deploys: "auto", ...facts });
+  const { kind, reason, runs } = resolveKind({ setting, ...facts });
   return {
     id: row.id,
     workspace: row.workspace,
@@ -159,11 +177,14 @@ function toProject(row: Row): Project {
     private: !!row.repo_private,
     archived: !!row.repo_archived_at,
     primary: !!row.is_primary,
-    deploys,
+    setting,
     kind,
     kindReason: reason,
-    detected: auto,
+    runs,
+    productionUrl: row.production_url ?? null,
+    detected: detectedKind(facts),
     ecosystem: (row.detected_ecosystem as ProjectEcosystem | null) ?? null,
+    links: projectLinks(row),
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -220,9 +241,9 @@ class Projects {
     if (existing) {
       await this.db
         .prepare(
-          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_description = ? WHERE repo_id = ?",
+          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_description = ?, repo_website = ? WHERE repo_id = ?",
         )
-        .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.description ?? null, repo.id)
+        .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.description ?? null, repo.website ?? null, repo.id)
         .run();
       return;
     }
@@ -230,9 +251,9 @@ class Projects {
     await this.db
       .prepare(
         // No description of its own: it shows the repository's, as that changes.
-        `INSERT INTO projects (id, workspace, slug, name, description, repo_description, repo_id, repo_namespace, repo_name, repo_private,
+        `INSERT INTO projects (id, workspace, slug, name, description, repo_description, repo_website, repo_id, repo_namespace, repo_name, repo_private,
            default_branch, root_dir, is_primary, created_by, created_at, updated_at, repo_archived_at)
-         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?)
          ON CONFLICT (workspace, slug) DO NOTHING`,
       )
       .bind(
@@ -241,6 +262,7 @@ class Projects {
         await this.freeSlug(repo.namespace.toLowerCase(), repo.name),
         repo.name,
         repo.description ?? null,
+        repo.website ?? null,
         repo.id,
         repo.namespace,
         repo.name,
@@ -412,8 +434,9 @@ class Projects {
     actor: User;
     workspace: string;
     slug: string;
-    changes: { name?: string; description?: string | null; rootDir?: string; deploys?: DeploysSetting };
+    changes: ProjectChanges;
   }): Promise<Result<Project>> {
+    const changes = a.changes ?? {};
     const workspace = a.workspace.toLowerCase();
     const row = await this.db
       .prepare("SELECT * FROM projects WHERE workspace = ? AND slug = ? AND repo_deleted_at IS NULL")
@@ -422,21 +445,56 @@ class Projects {
     if (!row) return fail("not_found", "There is no such project.");
     const allowed = this.changeable(row, a.actor, NEEDS.update);
     if (!allowed.ok) return allowed;
-    const name = a.changes.name?.trim() || row.name;
+    const name = changes.name?.trim() || row.name;
     // Blank or null goes back to following the repository's description.
-    const description = ownDescription(row.description, a.changes.description);
-    const rootDir = a.changes.rootDir === undefined ? row.root_dir : a.changes.rootDir.trim().replace(/^\/+|\/+$/g, "");
+    const description = ownDescription(row.description, changes.description);
+    const rootDir = changes.rootDir === undefined ? row.root_dir : String(changes.rootDir).trim().replace(/^\/+|\/+$/g, "");
     if (rootDir.split("/").some((part) => part === "..")) return fail("invalid", "The root directory is inside the repository.");
-    const deploys = a.changes.deploys === undefined ? deploysSetting(row.deploys) : deploysSetting(a.changes.deploys);
-    // Not deploying while Deployments run would leave apps up that no page
-    // offers: a person turns them off first, in Deployments settings.
-    const deploying = deploys === "no" && deploysSetting(row.deploys) !== "no" ? (row.deployments_on ?? (await this.deploymentsOn(row.id))) : false;
-    if (deploying) {
+    const known = (value: unknown, allowed: readonly string[], what: string) =>
+      value === undefined || allowed.includes(value as string) ? null : fail("invalid", `${what} is one of ${allowed.join(", ")}.`);
+    const badKind = known(changes.kind, ["auto", "app", "library", "tool", "docs", "other"], "kind");
+    if (badKind) return badKind;
+    const badRuns = known(changes.runs, ["auto", "g1t", "elsewhere"], "runs");
+    if (badRuns) return badRuns;
+    const before = { kind: kindSetting(row.kind_setting), runs: runsSetting(row.runs_setting) };
+    const setting = nextSetting(before, { kind: changes.kind as ProjectKind | "auto" | undefined, runs: changes.runs });
+    // Something that never runs, while Deployments run, would leave apps up
+    // that no page offers: a person turns them off first.
+    if (neverRuns(setting) && !neverRuns(before) && (row.deployments_on ?? (await this.deploymentsOn(row.id)))) {
       return fail("conflict", "Deployments are on for this project. Turn them off in its Deployments settings first.");
     }
+    const url = (value: string | null | undefined, current: string | null | undefined, what: string) =>
+      value === undefined ? { ok: true as const, value: current ?? null } : cleanUrl(value, what);
+    const production = url(changes.productionUrl, row.production_url, "The production address");
+    if (!production.ok) return fail("invalid", production.message);
+    const homepage = url(changes.homepage, row.homepage, "The homepage");
+    if (!homepage.ok) return fail("invalid", homepage.message);
+    const docs = url(changes.docsUrl, row.docs_url, "The docs address");
+    if (!docs.ok) return fail("invalid", docs.message);
+    let linksJson = row.links ?? null;
+    if (changes.links !== undefined) {
+      const links = cleanLinks(changes.links);
+      if (!links.ok) return fail("invalid", links.message);
+      linksJson = links.value.length ? JSON.stringify(links.value) : null;
+    }
     await this.db
-      .prepare("UPDATE projects SET name = ?, description = ?, root_dir = ?, deploys = ?, updated_at = ? WHERE id = ?")
-      .bind(name.slice(0, 100), description, rootDir, deploys, now(), row.id)
+      .prepare(
+        `UPDATE projects SET name = ?, description = ?, root_dir = ?, kind_setting = ?, runs_setting = ?, production_url = ?,
+           homepage = ?, docs_url = ?, links = ?, updated_at = ? WHERE id = ?`,
+      )
+      .bind(
+        name.slice(0, 100),
+        description,
+        rootDir,
+        setting.kind,
+        setting.runs,
+        production.value,
+        homepage.value,
+        docs.value,
+        linksJson,
+        now(),
+        row.id,
+      )
       .run();
     let saved = (await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!;
     // Another root has other files: read them again.
@@ -444,8 +502,33 @@ class Projects {
     return ok(toProject(saved));
   }
 
+  async publicLinks(a: { repos: { namespace: string; name: string }[] }): Promise<Record<string, string>> {
+    const keys = [...new Set((Array.isArray(a.repos) ? a.repos : []).slice(0, 100).map((r) => `${r.namespace}/${r.name}`.toLowerCase()))];
+    if (keys.length === 0) return {};
+    const rows = await this.db
+      .prepare(
+        `SELECT * FROM projects WHERE is_primary = 1 AND repo_private = 0 AND repo_deleted_at IS NULL
+         AND lower(repo_namespace || '/' || repo_name) IN (${keys.map(() => "?").join(", ")})`,
+      )
+      .bind(...keys)
+      .all<Row>();
+    const out: Record<string, string> = {};
+    for (const row of rows.results) {
+      const project = toProject(row);
+      const link = (project.runs === "elsewhere" ? project.productionUrl : null) ?? project.links.homepage ?? project.links.docs;
+      if (link) out[`${row.repo_namespace}/${row.repo_name}`.toLowerCase()] = link;
+    }
+    return out;
+  }
+
   async deploymentsChanged(a: { projectId: string; enabled: boolean }): Promise<void> {
-    await this.db.prepare("UPDATE projects SET deployments_on = ? WHERE id = ?").bind(a.enabled ? 1 : 0, a.projectId).run();
+    // Turned on, it runs on g1t: one said to run elsewhere moved here.
+    await this.db
+      .prepare(
+        "UPDATE projects SET deployments_on = ?1, runs_setting = CASE WHEN ?1 = 1 AND runs_setting = 'elsewhere' THEN 'g1t' ELSE runs_setting END WHERE id = ?2",
+      )
+      .bind(a.enabled ? 1 : 0, a.projectId)
+      .run();
   }
 
   // ---- Pinned and recent ---------------------------------------------------
@@ -952,8 +1035,8 @@ class Projects {
         const repo = await this.repoById(event.data.repoId);
         if (repo) {
           await this.db
-            .prepare("UPDATE projects SET repo_description = ? WHERE repo_id = ?")
-            .bind(repo.description ?? null, event.data.repoId)
+            .prepare("UPDATE projects SET repo_description = ?, repo_website = ? WHERE repo_id = ?")
+            .bind(repo.description ?? null, repo.website ?? null, event.data.repoId)
             .run();
         }
       }
@@ -1077,6 +1160,8 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
     case "visited":
       await service.visited(args);
       return Response.json(null);
+    case "public_links":
+      return Response.json(await service.publicLinks(args));
     case "context_for_repo":
       return Response.json(await service.contextForRepo(args));
     default:
