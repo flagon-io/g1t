@@ -1,6 +1,6 @@
 ---
 title: Managing a repository
-description: Rename a repository or a branch, change its default branch, website and topics, make it public or private, archive it, and delete and restore it.
+description: What a repository's About shows, and how to rename it or a branch, change its default branch, website and topics, make it public or private, archive it, and delete and restore it.
 ---
 
 A repository's details and its lifecycle are managed from its
@@ -8,6 +8,82 @@ A repository's details and its lifecycle are managed from its
 `g1t.sh/<workspace>/<repo>/settings/repository`, and from the API and MCP
 server. This guide covers each change, who can make it, and what happens
 when you do.
+
+## The About beside the files
+
+A repository's **Code** page shows its files with an **About** beside them,
+the way most code hosts lay it out. On a phone it comes after the files.
+
+| Part | What it shows |
+| --- | --- |
+| Description, website, topics | What you set under [Edit the details](#edit-the-details). |
+| **Readme** | A link to the README shown under the files. |
+| **License** | The license its `LICENSE` file holds, such as **MIT license**, linked to the file. **View license** when the text is not one g1t recognizes. `LICENCE`, `COPYING` and `UNLICENSE` are read too, with or without an extension, and an `SPDX-License-Identifier` line says it outright. |
+| **Security policy** | A link to `SECURITY.md` at the root, or in `.g1t`, `.github` or `docs`. |
+| **Activity** | The repository's [activity](#activity): pushes, merges, new branches and tags. |
+| **Stars**, **watching** | How many people [starred](#stars) it, and how many watch all or some of its activity from the [Watch menu](/guides/inbox/). |
+| **Releases** | How many [releases](/guides/releases/) it has and the latest, or **Create a new release** for people who can push. |
+| **Packages** | [Packages](/guides/packages/) linked to it, or how to publish the first. |
+| **Contributors** | How many people and agents made it, and the most active. See [contributors](#contributors). |
+| **Languages** | The languages it is written in, by bytes. See [languages](#languages). |
+
+The license, security policy, languages and contributors are read from the
+default branch in the background each time it moves, and kept by commit, so
+the page never waits for them. A repository pushed to for the first time
+shows **Reading the default branch…** for a few seconds.
+
+### Languages
+
+The bar counts the bytes of each language's files on the default branch.
+Programming and markup languages count; data such as JSON and YAML, and
+prose such as Markdown, do not. Neither do:
+
+| Files | Such as |
+| --- | --- |
+| Vendored | `node_modules/`, `vendor/`, `third_party/`, minified jQuery, and anything under a dot-directory such as `.github/` |
+| Generated | `dist/`, `*.min.js`, `*.pb.go`, lockfiles |
+| Documentation | `docs/`, `doc/`, `examples/` |
+
+Change what counts with `linguist-*` attributes in the repository's
+`.gitattributes` file at the root. A later line wins over an earlier one.
+
+```text
+vendor/ours/** -linguist-vendored
+*.gen.ts linguist-generated
+docs/** -linguist-documentation
+*.inc linguist-language=PHP
+*.sql linguist-detectable
+```
+
+A repository too large to read in full (more than 10,000 files) counts the
+files read.
+
+### Contributors
+
+**Insights → Contributors** lists everyone whose commits are on the default
+branch, most commits first, with their commits by week, and the
+repository's commits per week over the last year.
+
+| Who | How they are matched |
+| --- | --- |
+| A person | By an address they confirmed on their account, or their noreply address. Several addresses of one account count as one. |
+| g1t | Its own commits, by its address. |
+| Anyone else | By the name on their commits. |
+
+The newest 3,000 commits are counted.
+
+### Activity
+
+**Insights → Activity** lists, newest first, who pushed to which branch,
+created a branch or tag, merged a pull request, renamed a branch or changed
+the default branch, person or agent.
+
+### Stars
+
+Choose **Star** in the repository's header to keep it in your profile's
+**Stars** tab, at `g1t.sh/u/<you>?tab=stars`. The number beside it leads
+to who starred it. Anyone signed in who can read a repository can star it;
+stars on a private repository are seen only by people who can read it.
 
 ## The settings page
 
@@ -381,6 +457,21 @@ it.
 | `402 payment_required` | Making it private would take a free workspace's private storage over 1 GB. | Start [the g1t plan](/guides/usage-and-billing/#the-g1t-plan), or make room first. |
 
 Each refusal comes with a message that says what to do.
+
+## From the API and MCP
+
+| Route | MCP | What it does |
+| --- | --- | --- |
+| [`GET /repos/{owner}/{name}/languages`](/reference/api/repository-insights/get-languages/) | `repository` `languages` | Its languages by bytes, with `color` and `percent`. |
+| [`GET /repos/{owner}/{name}/contributors`](/reference/api/repository-insights/list-contributors/) | `repository` `contributors` | Its contributors with `kind`, `commits` and `weeks`. |
+| [`GET /repos/{owner}/{name}/license`](/reference/api/repository-insights/get-license/) | `repository` `license` | Its license's `spdx_id`, `name` and `path`. |
+| [`GET /repos/{owner}/{name}/stargazers`](/reference/api/stars/list-stargazers/) | `repository` `stargazers` | Who starred it, newest first. |
+| [`PUT /user/starred/{owner}/{name}`](/reference/api/stars/star-repo/) | `repository` `star` | Star it. `DELETE` takes the star back; `GET` says whether you did. |
+| [`GET /user/starred`](/reference/api/stars/list-starred/) | `repository` `list_starred` | What you starred. |
+
+Answers read from the default branch say which `commit` they are for and
+the `head` now; `pending` is true until the first is read. Stars take the
+`account:read` and `account:write` scopes; the rest `repo:read`.
 
 ## Events and the audit log
 

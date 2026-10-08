@@ -2,9 +2,11 @@ import type { Route } from "./+types/tree";
 import { page } from "../../lib/meta";
 import { TreeView } from "../../components/repo-view";
 import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
+import { aboutFor } from "../../lib/about.server";
 import { lastCommitsFor } from "../../lib/last-commits.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
+import { useProject } from "./layout";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const path = params["*"] ? `${params["*"]} · ` : "";
@@ -23,9 +25,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   // Each entry's last commit walks history: streamed in after the list.
   const lastCommits = lastCommitsFor(path, viewer, params.ref, params["*"] ?? "");
-  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null, lastCommits };
+  const value = unwrap(tree);
+  // At the root, the About beside the files, streamed in after them.
+  const about = value.head && !value.path ? aboutFor(path, viewer, value.repo.id) : null;
+  return { tree: value, branches: branches?.ok ? branches.value : null, lastCommits, about };
 }
 
 export default function Tree({ loaderData }: Route.ComponentProps) {
-  return <TreeView tree={loaderData.tree} branches={loaderData.branches} lastCommits={loaderData.lastCommits} />;
+  const project = useProject();
+  return (
+    <TreeView
+      tree={loaderData.tree}
+      branches={loaderData.branches}
+      lastCommits={loaderData.lastCommits}
+      about={loaderData.about}
+      canPush={Boolean(project?.access.can.push)}
+    />
+  );
 }

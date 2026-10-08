@@ -301,8 +301,8 @@ impl Scope {
     /// What it lets a token do, in plain words.
     pub fn describe(self) -> &'static str {
         match self {
-            Scope::RepoRead => "See repositories, their settings, labels, timelines and security alerts, and search",
-            Scope::RepoWrite => "Create repositories, rename branches and change how pull requests merge",
+            Scope::RepoRead => "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search",
+            Scope::RepoWrite => "Create repositories, rename branches, change how pull requests merge and publish releases",
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
@@ -320,8 +320,8 @@ impl Scope {
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
             Scope::MemoryRead => "Recall memory and search the workspace's context",
             Scope::MemoryWrite => "Save memory for the next agent",
-            Scope::AccountRead => "Read your email addresses, invites, invitations and pinned projects",
-            Scope::AccountWrite => "Change your email addresses, make invites, answer invitations and pin projects",
+            Scope::AccountRead => "Read your email addresses, invites, invitations, pinned projects and stars",
+            Scope::AccountWrite => "Change your email addresses, make invites, answer invitations, pin projects and star repositories",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::WorkspaceRead => "Read workspace settings, invites, integrations, model routes, teams and rulesets",
@@ -518,6 +518,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Your pinned projects: a preference of your account.
     ("list_pinned_projects", Scope::AccountRead),
     ("pin_project", Scope::AccountWrite),
+    // Your stars: a preference of your account.
+    ("list_starred", Scope::AccountRead),
+    ("check_starred", Scope::AccountRead),
+    ("star_repo", Scope::AccountWrite),
+    ("unstar_repo", Scope::AccountWrite),
     ("unpin_project", Scope::AccountWrite),
     ("reorder_pinned_projects", Scope::AccountWrite),
     // Your inbox: notifications, subscriptions and watching.
@@ -582,6 +587,19 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_repo", Scope::RepoRead),
     ("search", Scope::RepoRead),
     ("list_events", Scope::RepoRead),
+    // What the default branch says about a repository, who starred it, and
+    // its releases.
+    ("get_languages", Scope::RepoRead),
+    ("list_contributors", Scope::RepoRead),
+    ("get_license", Scope::RepoRead),
+    ("list_stargazers", Scope::RepoRead),
+    ("list_releases", Scope::RepoRead),
+    ("get_latest_release", Scope::RepoRead),
+    ("get_release_by_tag", Scope::RepoRead),
+    ("get_release", Scope::RepoRead),
+    ("create_release", Scope::RepoWrite),
+    ("update_release", Scope::RepoWrite),
+    ("delete_release", Scope::RepoWrite),
     ("list_labels", Scope::RepoRead),
     ("list_milestones", Scope::RepoRead),
     ("get_milestone", Scope::RepoRead),

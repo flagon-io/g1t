@@ -10,8 +10,8 @@ import { CodeLines } from "./code-lines";
 import { AgentSetup } from "./agent-setup";
 import { useAddresses } from "../lib/addresses";
 import { CloneBox } from "./clone-box";
+import { type AboutData, RepoAboutPanel } from "./repo-about";
 import { Markdown } from "./markdown";
-import { Topics } from "./topics";
 import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -280,11 +280,20 @@ export function TreeView({
   tree,
   branches = null,
   lastCommits = null,
+  about = null,
+  canPush = false,
+  deployments = null,
 }: {
   tree: Tree;
   branches?: Branch[] | null;
   /** Each entry's last commit, streamed in after the list. */
   lastCommits?: Promise<LastCommits | null> | null;
+  /** The About beside the files, at the root: streamed in after them. */
+  about?: AboutData | null;
+  /** Whether the viewer may push, for the About's "Create a new release". */
+  canPush?: boolean;
+  /** Slot: the About's Deployments section. */
+  deployments?: ReactNode;
 }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -354,44 +363,14 @@ export function TreeView({
       </div>
 
       {!path && (
-        <aside>
-          <h2 className="text-base font-semibold">About</h2>
-          <p className="mt-2.5 text-sm text-fg-soft">{repo.description ?? "No description."}</p>
-          <Topics topics={repo.topics} className="mt-3" />
-          <ul className="mt-4 space-y-2.5 text-sm text-muted">
-            {readme && (
-              <li>
-                <a href="#readme" className="inline-flex items-center gap-2 hover:text-fg">
-                  <BookOpen size={15} className="text-faint" />
-                  Readme
-                </a>
-              </li>
-            )}
-            <li>
-              <Link to={`${base}/commits`} className="inline-flex items-center gap-2 hover:text-fg">
-                <History size={15} className="text-faint" />
-                Commits
-              </Link>
-            </li>
-            {branches && (
-              <li>
-                <Link to={`${base}/branches`} className="inline-flex items-center gap-2 hover:text-fg">
-                  <GitBranch size={15} className="text-faint" />
-                  {branches.length} {branches.length === 1 ? "branch" : "branches"}
-                </Link>
-              </li>
-            )}
-            <li>
-              <Link to={`${base}/tags`} className="inline-flex items-center gap-2 hover:text-fg">
-                <TagIcon size={15} className="text-faint" />
-                Tags
-              </Link>
-            </li>
-          </ul>
-          <p className="mt-4 text-xs text-faint">
-            Created <TimeAgo at={repo.createdAt} />
-          </p>
-        </aside>
+        <RepoAboutPanel
+          repo={repo}
+          gitRef={ref}
+          readme={Boolean(readme)}
+          data={about ?? { about: null, watchers: null, packages: null }}
+          canPush={canPush}
+          deployments={deployments}
+        />
       )}
     </div>
   );

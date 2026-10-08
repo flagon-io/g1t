@@ -26,6 +26,7 @@ use g1t_contracts::security::{
 };
 
 use crate::alerts::{AlertKind, SecurityAlert};
+use crate::about::AboutOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -267,6 +268,8 @@ pub enum Op {
     Security(SecurityOp),
     /// Rulesets: rules.rs.
     Rules(RulesOp),
+    /// A repository's languages, contributors, license, stars and releases: about.rs.
+    About(AboutOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -629,7 +632,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 219] = [
+    pub const ALL: [Op; 234] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -849,6 +852,21 @@ impl Op {
         Op::Rules(RulesOp::UpdateWorkspaceRuleset),
         Op::Rules(RulesOp::DeleteWorkspaceRuleset),
         Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
+        Op::About(AboutOp::GetLanguages),
+        Op::About(AboutOp::ListContributors),
+        Op::About(AboutOp::GetLicense),
+        Op::About(AboutOp::ListStargazers),
+        Op::About(AboutOp::ListStarred),
+        Op::About(AboutOp::CheckStarred),
+        Op::About(AboutOp::Star),
+        Op::About(AboutOp::Unstar),
+        Op::About(AboutOp::ListReleases),
+        Op::About(AboutOp::GetLatestRelease),
+        Op::About(AboutOp::GetReleaseByTag),
+        Op::About(AboutOp::GetRelease),
+        Op::About(AboutOp::CreateRelease),
+        Op::About(AboutOp::UpdateRelease),
+        Op::About(AboutOp::DeleteRelease),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1035,6 +1053,7 @@ impl Op {
             Op::GetCodeownersErrors => "get_codeowners_errors",
             Op::Security(op) => op.name(),
             Op::Rules(op) => op.name(),
+            Op::About(op) => op.name(),
         }
     }
 
@@ -1533,6 +1552,7 @@ impl Op {
             }
             Op::Security(op) => op.description(),
             Op::Rules(op) => op.description(),
+            Op::About(op) => op.description(),
         }
     }
 
@@ -2843,11 +2863,15 @@ impl Op {
             ),
             Op::Security(op) => op.input(),
             Op::Rules(op) => op.input(),
+            Op::About(op) => op.input(),
         }
     }
 
     /// Whether the operation refuses an anonymous caller outright.
     pub(crate) fn needs_user(self) -> bool {
+        if let Op::About(op) = self {
+            return !op.anonymous();
+        }
         !matches!(
             self,
             Op::ListRepos
@@ -2880,6 +2904,9 @@ impl Op {
     /// Whether the operation is about one repository, named by `repo`.
     pub(crate) fn needs_repo(self) -> bool {
         if let Op::Rules(op) = self {
+            return op.needs_repo();
+        }
+        if let Op::About(op) = self {
             return op.needs_repo();
         }
         if let Op::Security(op) = self {
@@ -2985,6 +3012,9 @@ impl Op {
     /// subscriptions and watching) or their pins. Nobody else's business,
     /// so not audited.
     pub(crate) fn personal(self) -> bool {
+        if let Op::About(op) = self {
+            return op.personal();
+        }
         matches!(
             self,
             Op::ListNotifications
@@ -4848,6 +4878,7 @@ impl Op {
             // each answer its public shape.
             Op::Security(op) => crate::security::run(op, services, viewer, input).await,
             Op::Rules(op) => crate::rules::run(op, services, viewer, input).await,
+            Op::About(op) => crate::about::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

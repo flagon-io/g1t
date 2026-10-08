@@ -124,6 +124,39 @@
       ]
     },
     {
+      "name": "Repository insights",
+      "description": "What a repository's default branch says about it, read in the background and kept by commit: the languages it is written in, who made it, and its license.",
+      "x-tools": [
+        "get_languages",
+        "list_contributors",
+        "get_license"
+      ]
+    },
+    {
+      "name": "Stars",
+      "description": "Starring a repository, to keep it and to say you like it: who starred one, and what you starred.",
+      "x-tools": [
+        "list_stargazers",
+        "list_starred",
+        "check_starred",
+        "star_repo",
+        "unstar_repo"
+      ]
+    },
+    {
+      "name": "Releases",
+      "description": "A release is a tag published with a title and notes. The latest is the newest published one that is neither a draft nor a prerelease.",
+      "x-tools": [
+        "list_releases",
+        "create_release",
+        "get_latest_release",
+        "get_release_by_tag",
+        "get_release",
+        "update_release",
+        "delete_release"
+      ]
+    },
+    {
       "name": "Access",
       "description": "Who can do what in a repository: repository roles, people given a role on one repository (outside collaborators when they are not members), invitations, and a workspace's base permission.",
       "x-tools": [
@@ -6465,6 +6498,1787 @@
               }
             }
           }
+        }
+      }
+    },
+    "/user/starred": {
+      "get": {
+        "operationId": "list_starred",
+        "tags": [
+          "Stars"
+        ],
+        "summary": "List repositories you starred",
+        "description": "The repositories you starred that you can still see, newest first, at most 100: each repository, when you starred it (starred_at) and how many stars it has.",
+        "x-operation": "list_starred",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "list_starred",
+        "x-scope": "account:read",
+        "security": [
+          {
+            "token": [
+              "account:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "repo": {
+                      "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "namespace": "flagon-io",
+                      "name": "hello",
+                      "description": "A tiny service that says hello.",
+                      "is_private": false,
+                      "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "default_branch": "main",
+                      "fork_of": null,
+                      "protected": true,
+                      "created_at": "2026-09-28T14:11:52.640Z",
+                      "topics": [
+                        "cli"
+                      ],
+                      "website": "https://hello.g1t.page",
+                      "archived_at": null
+                    },
+                    "starred_at": "2026-10-06T18:30:00.000Z",
+                    "stars": 12
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/starred/{owner}/{name}": {
+      "get": {
+        "operationId": "check_starred",
+        "tags": [
+          "Stars"
+        ],
+        "summary": "Check whether you starred a repository",
+        "description": "Whether you starred a repository (starred), and how many people have (stars).",
+        "x-operation": "check_starred",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "starred",
+        "x-scope": "account:read",
+        "security": [
+          {
+            "token": [
+              "account:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "starred": true,
+                  "stars": 12
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "star_repo",
+        "tags": [
+          "Stars"
+        ],
+        "summary": "Star a repository",
+        "description": "Star a repository you can see. Starring one you starred already changes nothing. Returns starred and the count of stars. People only: a workspace's or an agent's token cannot.",
+        "x-operation": "star_repo",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "star",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "starred": true,
+                  "stars": 13
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unstar_repo",
+        "tags": [
+          "Stars"
+        ],
+        "summary": "Unstar a repository",
+        "description": "Take back your star from a repository. Returns starred (false) and the count of stars.",
+        "x-operation": "unstar_repo",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "unstar",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "starred": false,
+                  "stars": 12
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/stargazers": {
+      "get": {
+        "operationId": "list_stargazers",
+        "tags": [
+          "Stars"
+        ],
+        "summary": "List who starred a repository",
+        "description": "Who starred a repository, newest first: each username, avatar and starred_at. 100 a page; page from 1.",
+        "x-operation": "list_stargazers",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "stargazers",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The page, from 1; 100 a page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "username": "ada",
+                    "avatar": null,
+                    "starred_at": "2026-10-06T18:30:00.000Z"
+                  },
+                  {
+                    "username": "sam",
+                    "avatar": null,
+                    "starred_at": "2026-10-02T09:12:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "page": 1
+        }
+      }
+    },
+    "/repos/{owner}/{name}/languages": {
+      "get": {
+        "operationId": "get_languages",
+        "tags": [
+          "Repository insights"
+        ],
+        "summary": "Get a repository's languages",
+        "description": "The languages a repository's default branch is written in, by bytes, largest first: each with its name, color, bytes and percent. Programming and markup languages count; data (JSON, YAML) and prose (Markdown) do not, nor do vendored, generated and documentation files, unless the repository's .gitattributes says otherwise (linguist-vendored, linguist-generated, linguist-documentation, linguist-language, linguist-detectable). Worked out in the background for the default branch's head and kept by commit: commit says which commit the answer is for, and pending is true while the first is worked out (ask again in a few seconds). partial is true when the repository was too large to read in full.\n\nWhile `pending` is true, `languages` is empty: the default branch is being read for the first time. When `commit` is not `head`, the answer is for an older commit while the newer one is read.",
+        "x-operation": "get_languages",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "languages",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "head": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "commit": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "computed_at": "2026-10-07T09:14:03.000Z",
+                  "pending": false,
+                  "partial": false,
+                  "languages": [
+                    {
+                      "name": "Rust",
+                      "color": "#dea584",
+                      "bytes": 184213,
+                      "percent": 71.4
+                    },
+                    {
+                      "name": "TypeScript",
+                      "color": "#3178c6",
+                      "bytes": 61022,
+                      "percent": 23.7
+                    },
+                    {
+                      "name": "Shell",
+                      "color": "#89e051",
+                      "bytes": 12650,
+                      "percent": 4.9
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/contributors": {
+      "get": {
+        "operationId": "list_contributors",
+        "tags": [
+          "Repository insights"
+        ],
+        "summary": "List a repository's contributors",
+        "description": "Everyone whose commits are on a repository's default branch, most commits first: each with kind (user, matched to an account by an address they confirmed or their noreply address; g1t, g1t itself; author, anyone else, by the name on their commits), name, username and avatar for a user, commits, first_at, last_at, and weeks (commits per week, for the 100 most active). total is how many there are (at most 500 are listed), commits how many were read (the newest 3,000), and weeks the repository's commits by week, oldest first. Worked out in the background and kept by commit, as for get_languages.\n\nRead from the newest 3,000 commits of the default branch. A person's addresses count as one when they confirmed them on their account; their noreply address counts too.",
+        "x-operation": "list_contributors",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "contributors",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "head": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "commit": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "computed_at": "2026-10-07T09:14:03.000Z",
+                  "pending": false,
+                  "partial": false,
+                  "total": 3,
+                  "commits": 126,
+                  "contributors": [
+                    {
+                      "kind": "g1t",
+                      "name": "g1t",
+                      "username": null,
+                      "avatar": null,
+                      "commits": 71,
+                      "first_at": "2026-09-29T08:00:00.000Z",
+                      "last_at": "2026-10-07T08:41:00.000Z",
+                      "weeks": [
+                        {
+                          "week": "2026-09-28",
+                          "commits": 40
+                        },
+                        {
+                          "week": "2026-10-05",
+                          "commits": 31
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "user",
+                      "name": "ada",
+                      "username": "ada",
+                      "avatar": "5f2b8c1d9e7a3f6b4c0d2e8a1b9c7d5e3f1a0b2c4d6e8f0a1b3c5d7e9f0a2b4c",
+                      "commits": 52,
+                      "first_at": "2026-09-28T14:11:52.000Z",
+                      "last_at": "2026-10-06T16:02:11.000Z",
+                      "weeks": [
+                        {
+                          "week": "2026-09-28",
+                          "commits": 30
+                        },
+                        {
+                          "week": "2026-10-05",
+                          "commits": 22
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "author",
+                      "name": "Sam Okafor",
+                      "username": null,
+                      "avatar": null,
+                      "commits": 3,
+                      "first_at": "2026-10-02T11:20:00.000Z",
+                      "last_at": "2026-10-03T09:05:00.000Z",
+                      "weeks": [
+                        {
+                          "week": "2026-09-28",
+                          "commits": 3
+                        }
+                      ]
+                    }
+                  ],
+                  "weeks": [
+                    {
+                      "week": "2026-09-28",
+                      "commits": 73
+                    },
+                    {
+                      "week": "2026-10-05",
+                      "commits": 53
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/license": {
+      "get": {
+        "operationId": "get_license",
+        "tags": [
+          "Repository insights"
+        ],
+        "summary": "Get a repository's license",
+        "description": "The license in a repository's LICENSE file (or LICENCE, COPYING, UNLICENSE, with or without an extension) on its default branch: its spdx_id (null when the text is not one g1t recognizes), name (\"Other\" then) and path. Not found when it has none, or before the default branch has been read the first time.",
+        "x-operation": "get_license",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "license",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "spdx_id": "MIT",
+                  "name": "MIT License",
+                  "path": "LICENSE"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/releases": {
+      "get": {
+        "operationId": "list_releases",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "List releases",
+        "description": "A repository's releases, newest first, at most 100: each with its id (rel_…), tag_name, target (the commit the tag named), name, body (Markdown notes), draft, prerelease, author, created_at, published_at and latest (the newest published release that is neither a draft nor a prerelease). Drafts are listed only to those with the Write role.\n\nDrafts are listed only to those with the Write role; their `published_at` is null.",
+        "x-operation": "list_releases",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "list_releases",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+                    "tag_name": "v1.2.0",
+                    "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                    "name": "Greetings by name",
+                    "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+                    "draft": false,
+                    "prerelease": false,
+                    "author": "ada",
+                    "created_at": "2026-10-06T16:02:11.000Z",
+                    "published_at": "2026-10-06T16:02:11.000Z",
+                    "latest": true
+                  },
+                  {
+                    "id": "rel_01m3x8q2w4e6r8t0y2u4i6o8p0",
+                    "tag_name": "v1.1.0",
+                    "target": "3b2a19f8e7d6c5b4a392817069f3c2a1b7e5d4c3",
+                    "name": "First release",
+                    "body": "The first release.",
+                    "draft": false,
+                    "prerelease": false,
+                    "author": "ada",
+                    "created_at": "2026-09-30T10:00:00.000Z",
+                    "published_at": "2026-09-30T10:00:00.000Z",
+                    "latest": false
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_release",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Create a release",
+        "description": "Publish a release of a tag, with a title (release_name; name in the answer) and notes (body, Markdown). A tag that does not exist yet is made at target (a branch or commit; the default branch when left out), as a lightweight tag, under the repository's tag rulesets. draft keeps it from everyone without the Write role until it is published; prerelease marks it not ready for everyone, so it is never the latest. One release per tag. Needs the Write role.\n\nA tag that already exists is released as it is, and `target` is ignored. One release per tag: releasing a tag again is refused with `conflict`.",
+        "x-operation": "create_release",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "create_release",
+        "x-scope": "repo:write",
+        "security": [
+          {
+            "token": [
+              "repo:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+                  "tag_name": "v1.2.0",
+                  "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "name": "Greetings by name",
+                  "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+                  "draft": false,
+                  "prerelease": false,
+                  "author": "ada",
+                  "created_at": "2026-10-06T16:02:11.000Z",
+                  "published_at": "2026-10-06T16:02:11.000Z",
+                  "latest": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tag_name": {
+                    "type": "string",
+                    "description": "The tag to release, such as v1.2.0. Made at target when it does not exist yet."
+                  },
+                  "target": {
+                    "type": "string",
+                    "description": "A branch or commit to make a new tag at. The default branch when left out; ignored for a tag that exists."
+                  },
+                  "release_name": {
+                    "type": "string",
+                    "description": "Its title (name in the answer), at most 200 characters; under a repository's address `name` is the repository's. The tag's name is shown when it has none."
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Its notes, Markdown, at most 125,000 characters."
+                  },
+                  "draft": {
+                    "type": "boolean",
+                    "description": "Seen only by those with the Write role until published."
+                  },
+                  "prerelease": {
+                    "type": "boolean",
+                    "description": "Not ready for everyone: never the latest release."
+                  }
+                },
+                "required": [
+                  "tag_name"
+                ]
+              },
+              "example": {
+                "tag_name": "v1.2.0",
+                "target": "main",
+                "release_name": "Greetings by name",
+                "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+                "draft": false,
+                "prerelease": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/releases/latest": {
+      "get": {
+        "operationId": "get_latest_release",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Get the latest release",
+        "description": "The latest release: the newest published release that is neither a draft nor a prerelease. Not found when there is none.",
+        "x-operation": "get_latest_release",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "latest_release",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+                  "tag_name": "v1.2.0",
+                  "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "name": "Greetings by name",
+                  "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+                  "draft": false,
+                  "prerelease": false,
+                  "author": "ada",
+                  "created_at": "2026-10-06T16:02:11.000Z",
+                  "published_at": "2026-10-06T16:02:11.000Z",
+                  "latest": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/releases/tags/{tag}": {
+      "get": {
+        "operationId": "get_release_by_tag",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Get a release by its tag",
+        "description": "The release of one tag. A tag with slashes is URL-encoded in the path.",
+        "x-operation": "get_release_by_tag",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "get_release_by_tag",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The tag's name, such as v1.2.0."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+                  "tag_name": "v1.2.0",
+                  "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "name": "Greetings by name",
+                  "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+                  "draft": false,
+                  "prerelease": false,
+                  "author": "ada",
+                  "created_at": "2026-10-06T16:02:11.000Z",
+                  "published_at": "2026-10-06T16:02:11.000Z",
+                  "latest": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "tag": "v1.2.0"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/releases/{id}": {
+      "get": {
+        "operationId": "get_release",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Get a release",
+        "description": "One release by its id (rel_…), with its tag, target commit, title, notes and whether it is a draft, a prerelease or the latest. A draft is found only by those with the Write role.",
+        "x-operation": "get_release",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "get_release",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The release's id: rel_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+                  "tag_name": "v1.2.0",
+                  "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "name": "Greetings by name",
+                  "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+                  "draft": false,
+                  "prerelease": false,
+                  "author": "ada",
+                  "created_at": "2026-10-06T16:02:11.000Z",
+                  "published_at": "2026-10-06T16:02:11.000Z",
+                  "latest": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7"
+        }
+      },
+      "patch": {
+        "operationId": "update_release",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Update a release",
+        "description": "Change a release's name, body, draft or prerelease; fields left out stay as they are, and an empty release_name clears it. Setting draft to false publishes it (published_at is set the first time). Needs the Write role.",
+        "x-operation": "update_release",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "update_release",
+        "x-scope": "repo:write",
+        "security": [
+          {
+            "token": [
+              "repo:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The release's id: rel_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+                  "tag_name": "v1.2.0",
+                  "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+                  "name": "Greetings by name",
+                  "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)\n- Docs for `--name`",
+                  "draft": false,
+                  "prerelease": false,
+                  "author": "ada",
+                  "created_at": "2026-10-06T16:02:11.000Z",
+                  "published_at": "2026-10-06T16:02:11.000Z",
+                  "latest": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "release_name": {
+                    "type": "string",
+                    "description": "Its title (name in the answer), at most 200 characters; under a repository's address `name` is the repository's. The tag's name is shown when it has none."
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Its notes, Markdown, at most 125,000 characters."
+                  },
+                  "draft": {
+                    "type": "boolean",
+                    "description": "Seen only by those with the Write role until published."
+                  },
+                  "prerelease": {
+                    "type": "boolean",
+                    "description": "Not ready for everyone: never the latest release."
+                  }
+                }
+              },
+              "example": {
+                "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)\n- Docs for `--name`"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7"
+        }
+      },
+      "delete": {
+        "operationId": "delete_release",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Delete a release",
+        "description": "Delete a release. Its tag stays: delete that with git (git push origin :refs/tags/<tag>). Needs the Write role.",
+        "x-operation": "delete_release",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "delete_release",
+        "x-scope": "repo:write",
+        "security": [
+          {
+            "token": [
+              "repo:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The release's id: rel_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7"
         }
       }
     },

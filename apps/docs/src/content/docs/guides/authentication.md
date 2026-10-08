@@ -337,8 +337,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 
 | Scope | What it lets a token do |
 | --- | --- |
-| `repo:read` | See repositories, their settings, labels, timelines and security alerts, and search |
-| `repo:write` | Create repositories, rename branches and change how pull requests merge |
+| `repo:read` | See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search |
+| `repo:write` | Create repositories, rename branches, change how pull requests merge and publish releases |
 | `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
 | `code:read` | Clone and fetch private repositories with git |
 | `code:write` | Push commits with git |
@@ -356,8 +356,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
 | `memory:read` | Recall memory and search the workspace's context |
 | `memory:write` | Save memory for the next agent |
-| `account:read` | Read your email addresses, invites, invitations and pinned projects |
-| `account:write` | Change your email addresses, make invites, answer invitations and pin projects |
+| `account:read` | Read your email addresses, invites, invitations, pinned projects and stars |
+| `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
 | `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |

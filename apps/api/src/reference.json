@@ -9278,5 +9278,314 @@
         ]
       }
     }
+  },
+  "get_languages": {
+    "response": {
+      "head": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "commit": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "computed_at": "2026-10-07T09:14:03.000Z",
+      "pending": false,
+      "partial": false,
+      "languages": [
+        {
+          "name": "Rust",
+          "color": "#dea584",
+          "bytes": 184213,
+          "percent": 71.4
+        },
+        {
+          "name": "TypeScript",
+          "color": "#3178c6",
+          "bytes": 61022,
+          "percent": 23.7
+        },
+        {
+          "name": "Shell",
+          "color": "#89e051",
+          "bytes": 12650,
+          "percent": 4.9
+        }
+      ]
+    },
+    "notes": "While `pending` is true, `languages` is empty: the default branch is being read for the first time. When `commit` is not `head`, the answer is for an older commit while the newer one is read."
+  },
+  "list_contributors": {
+    "response": {
+      "head": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "commit": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "computed_at": "2026-10-07T09:14:03.000Z",
+      "pending": false,
+      "partial": false,
+      "total": 3,
+      "commits": 126,
+      "contributors": [
+        {
+          "kind": "g1t",
+          "name": "g1t",
+          "username": null,
+          "avatar": null,
+          "commits": 71,
+          "first_at": "2026-09-29T08:00:00.000Z",
+          "last_at": "2026-10-07T08:41:00.000Z",
+          "weeks": [
+            {
+              "week": "2026-09-28",
+              "commits": 40
+            },
+            {
+              "week": "2026-10-05",
+              "commits": 31
+            }
+          ]
+        },
+        {
+          "kind": "user",
+          "name": "ada",
+          "username": "ada",
+          "avatar": "5f2b8c1d9e7a3f6b4c0d2e8a1b9c7d5e3f1a0b2c4d6e8f0a1b3c5d7e9f0a2b4c",
+          "commits": 52,
+          "first_at": "2026-09-28T14:11:52.000Z",
+          "last_at": "2026-10-06T16:02:11.000Z",
+          "weeks": [
+            {
+              "week": "2026-09-28",
+              "commits": 30
+            },
+            {
+              "week": "2026-10-05",
+              "commits": 22
+            }
+          ]
+        },
+        {
+          "kind": "author",
+          "name": "Sam Okafor",
+          "username": null,
+          "avatar": null,
+          "commits": 3,
+          "first_at": "2026-10-02T11:20:00.000Z",
+          "last_at": "2026-10-03T09:05:00.000Z",
+          "weeks": [
+            {
+              "week": "2026-09-28",
+              "commits": 3
+            }
+          ]
+        }
+      ],
+      "weeks": [
+        {
+          "week": "2026-09-28",
+          "commits": 73
+        },
+        {
+          "week": "2026-10-05",
+          "commits": 53
+        }
+      ]
+    },
+    "notes": "Read from the newest 3,000 commits of the default branch. A person's addresses count as one when they confirmed them on their account; their noreply address counts too."
+  },
+  "get_license": {
+    "response": {
+      "spdx_id": "MIT",
+      "name": "MIT License",
+      "path": "LICENSE"
+    }
+  },
+  "list_stargazers": {
+    "query": {
+      "page": 1
+    },
+    "response": [
+      {
+        "username": "ada",
+        "avatar": null,
+        "starred_at": "2026-10-06T18:30:00.000Z"
+      },
+      {
+        "username": "sam",
+        "avatar": null,
+        "starred_at": "2026-10-02T09:12:00.000Z"
+      }
+    ]
+  },
+  "list_starred": {
+    "response": [
+      {
+        "repo": {
+          "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "namespace": "flagon-io",
+          "name": "hello",
+          "description": "A tiny service that says hello.",
+          "is_private": false,
+          "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+          "default_branch": "main",
+          "fork_of": null,
+          "protected": true,
+          "created_at": "2026-09-28T14:11:52.640Z",
+          "topics": [
+            "cli"
+          ],
+          "website": "https://hello.g1t.page",
+          "archived_at": null
+        },
+        "starred_at": "2026-10-06T18:30:00.000Z",
+        "stars": 12
+      }
+    ]
+  },
+  "check_starred": {
+    "response": {
+      "starred": true,
+      "stars": 12
+    }
+  },
+  "star_repo": {
+    "response": {
+      "starred": true,
+      "stars": 13
+    }
+  },
+  "unstar_repo": {
+    "response": {
+      "starred": false,
+      "stars": 12
+    }
+  },
+  "list_releases": {
+    "response": [
+      {
+        "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+        "tag_name": "v1.2.0",
+        "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+        "name": "Greetings by name",
+        "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+        "draft": false,
+        "prerelease": false,
+        "author": "ada",
+        "created_at": "2026-10-06T16:02:11.000Z",
+        "published_at": "2026-10-06T16:02:11.000Z",
+        "latest": true
+      },
+      {
+        "id": "rel_01m3x8q2w4e6r8t0y2u4i6o8p0",
+        "tag_name": "v1.1.0",
+        "target": "3b2a19f8e7d6c5b4a392817069f3c2a1b7e5d4c3",
+        "name": "First release",
+        "body": "The first release.",
+        "draft": false,
+        "prerelease": false,
+        "author": "ada",
+        "created_at": "2026-09-30T10:00:00.000Z",
+        "published_at": "2026-09-30T10:00:00.000Z",
+        "latest": false
+      }
+    ],
+    "notes": "Drafts are listed only to those with the Write role; their `published_at` is null."
+  },
+  "get_latest_release": {
+    "response": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+      "tag_name": "v1.2.0",
+      "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "name": "Greetings by name",
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+      "draft": false,
+      "prerelease": false,
+      "author": "ada",
+      "created_at": "2026-10-06T16:02:11.000Z",
+      "published_at": "2026-10-06T16:02:11.000Z",
+      "latest": true
+    }
+  },
+  "get_release_by_tag": {
+    "params": {
+      "tag": "v1.2.0"
+    },
+    "response": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+      "tag_name": "v1.2.0",
+      "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "name": "Greetings by name",
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+      "draft": false,
+      "prerelease": false,
+      "author": "ada",
+      "created_at": "2026-10-06T16:02:11.000Z",
+      "published_at": "2026-10-06T16:02:11.000Z",
+      "latest": true
+    }
+  },
+  "get_release": {
+    "params": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7"
+    },
+    "response": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+      "tag_name": "v1.2.0",
+      "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "name": "Greetings by name",
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+      "draft": false,
+      "prerelease": false,
+      "author": "ada",
+      "created_at": "2026-10-06T16:02:11.000Z",
+      "published_at": "2026-10-06T16:02:11.000Z",
+      "latest": true
+    }
+  },
+  "create_release": {
+    "request": {
+      "tag_name": "v1.2.0",
+      "target": "main",
+      "release_name": "Greetings by name",
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+      "draft": false,
+      "prerelease": false
+    },
+    "response": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+      "tag_name": "v1.2.0",
+      "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "name": "Greetings by name",
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)",
+      "draft": false,
+      "prerelease": false,
+      "author": "ada",
+      "created_at": "2026-10-06T16:02:11.000Z",
+      "published_at": "2026-10-06T16:02:11.000Z",
+      "latest": true
+    },
+    "notes": "A tag that already exists is released as it is, and `target` is ignored. One release per tag: releasing a tag again is refused with `conflict`."
+  },
+  "update_release": {
+    "params": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7"
+    },
+    "request": {
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)\n- Docs for `--name`"
+    },
+    "response": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7",
+      "tag_name": "v1.2.0",
+      "target": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",
+      "name": "Greetings by name",
+      "body": "## What changed\n\n- `hello` greets the caller by name (#12)\n- Faster start-up (#15)\n- Docs for `--name`",
+      "draft": false,
+      "prerelease": false,
+      "author": "ada",
+      "created_at": "2026-10-06T16:02:11.000Z",
+      "published_at": "2026-10-06T16:02:11.000Z",
+      "latest": true
+    }
+  },
+  "delete_release": {
+    "params": {
+      "id": "rel_01m4a2b7c9d3e5f7g9h1j3k5m7"
+    },
+    "response": {
+      "deleted": true
+    }
   }
 }

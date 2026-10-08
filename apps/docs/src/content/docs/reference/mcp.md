@@ -226,8 +226,10 @@ repositories, code on default branches, issues, pull requests and people.
 ## `repository`
 
 Repositories: find, read and create them, change their settings, manage
-their [labels](/guides/labels/) and [milestones](/guides/milestones/), and
-see and dismiss their [security alerts](/guides/security/). Deleting, purging
+their [labels](/guides/labels/) and [milestones](/guides/milestones/),
+see and dismiss their [security alerts](/guides/security/), read what their
+default branch says (languages, contributors, license), star them, and
+publish [releases](/guides/releases/). Deleting, purging
 and changing visibility need `confirm`, the repository's full name typed
 out.
 
@@ -259,6 +261,21 @@ out.
 | [`update_milestone`](/reference/api/labels-and-milestones/update-milestone/) | Change its `title`, `description`, `due_on` (`""` clears it) or `state` (`open` or `closed`). Triage role. | `repo`, `milestone` | `issues:write` |
 | [`delete_milestone`](/reference/api/labels-and-milestones/delete-milestone/) | Delete a milestone; what was in it is in none. Triage role. | `repo`, `milestone` | `issues:write` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
+| [`languages`](/reference/api/repository-insights/get-languages/) | Its [languages](/guides/managing-repositories/#languages) by bytes, each with `color` and `percent`, for the default branch's `commit`; `pending` while it is first read. | `repo` | `repo:read` |
+| [`contributors`](/reference/api/repository-insights/list-contributors/) | Its [contributors](/guides/managing-repositories/#contributors): `kind` (`user`, `g1t` or `author`), `commits` and `weeks`, and the repository's commits by week. | `repo` | `repo:read` |
+| [`license`](/reference/api/repository-insights/get-license/) | The license its `LICENSE` file holds: `spdx_id`, `name`, `path`. | `repo` | `repo:read` |
+| [`stargazers`](/reference/api/stars/list-stargazers/) | Who starred it, newest first, 100 a `page`. | `repo` | `repo:read` |
+| [`starred`](/reference/api/stars/check-starred/) | Whether you starred it, and how many have. | `repo` | `account:read` |
+| [`star`](/reference/api/stars/star-repo/) | Star it. People only. | `repo` | `account:write` |
+| [`unstar`](/reference/api/stars/unstar-repo/) | Take your star back. | `repo` | `account:write` |
+| [`list_starred`](/reference/api/stars/list-starred/) | Repositories you starred that you can still see. | None | `account:read` |
+| [`list_releases`](/reference/api/releases/list-releases/) | Its [releases](/guides/releases/), newest first; drafts only for the Write role. | `repo` | `repo:read` |
+| [`latest_release`](/reference/api/releases/get-latest-release/) | The newest published release that is neither a draft nor a prerelease. | `repo` | `repo:read` |
+| [`get_release`](/reference/api/releases/get-release/) | One release by `id`. | `repo`, `id` | `repo:read` |
+| [`get_release_by_tag`](/reference/api/releases/get-release-by-tag/) | The release of a `tag`. | `repo`, `tag` | `repo:read` |
+| [`create_release`](/reference/api/releases/create-release/) | Publish a release of `tag_name` with `release_name` and `body`; a new tag is made at `target`. `draft`, `prerelease`. Write role. | `repo`, `tag_name` | `repo:write` |
+| [`update_release`](/reference/api/releases/update-release/) | Change its `release_name`, `body`, `draft` or `prerelease`. Write role. | `repo`, `id` | `repo:write` |
+| [`delete_release`](/reference/api/releases/delete-release/) | Delete a release; its tag stays. Write role. | `repo`, `id` | `repo:write` |
 | [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
 | [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
 | [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. Owners of both workspaces only. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |

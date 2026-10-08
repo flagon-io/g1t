@@ -2,6 +2,7 @@
 
 use serde_json::{Map, Value};
 
+use crate::about::AboutOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -82,6 +83,24 @@ pub const ROUTES: &[Route] = &[
     route("PUT", "/repos/:owner/:name/issues/:number/subscription", Op::SetThreadSubscription, &[]),
     route("DELETE", "/repos/:owner/:name/issues/:number/subscription", Op::DeleteThreadSubscription, &[]),
     route("GET", "/user/subscriptions", Op::ListWatchedRepos, &[]),
+    // Stars: yours, and who starred a repository.
+    route("GET", "/user/starred", Op::About(AboutOp::ListStarred), &[]),
+    route("GET", "/user/starred/:owner/:name", Op::About(AboutOp::CheckStarred), &[]),
+    route("PUT", "/user/starred/:owner/:name", Op::About(AboutOp::Star), &[]),
+    route("DELETE", "/user/starred/:owner/:name", Op::About(AboutOp::Unstar), &[]),
+    route("GET", "/repos/:owner/:name/stargazers", Op::About(AboutOp::ListStargazers), &[("page", "page")]),
+    // What the default branch says about a repository, kept by commit.
+    route("GET", "/repos/:owner/:name/languages", Op::About(AboutOp::GetLanguages), &[]),
+    route("GET", "/repos/:owner/:name/contributors", Op::About(AboutOp::ListContributors), &[]),
+    route("GET", "/repos/:owner/:name/license", Op::About(AboutOp::GetLicense), &[]),
+    // Releases: `latest` and `tags/…` before an id.
+    route("GET", "/repos/:owner/:name/releases", Op::About(AboutOp::ListReleases), &[]),
+    route("POST", "/repos/:owner/:name/releases", Op::About(AboutOp::CreateRelease), &[]),
+    route("GET", "/repos/:owner/:name/releases/latest", Op::About(AboutOp::GetLatestRelease), &[]),
+    route("GET", "/repos/:owner/:name/releases/tags/:tag", Op::About(AboutOp::GetReleaseByTag), &[]),
+    route("GET", "/repos/:owner/:name/releases/:id", Op::About(AboutOp::GetRelease), &[]),
+    route("PATCH", "/repos/:owner/:name/releases/:id", Op::About(AboutOp::UpdateRelease), &[]),
+    route("DELETE", "/repos/:owner/:name/releases/:id", Op::About(AboutOp::DeleteRelease), &[]),
     // Your pinned projects in a workspace, in your order.
     route("GET", "/user/pinned_projects/:workspace", Op::ListPinnedProjects, &[]),
     route("PUT", "/user/pinned_projects/:workspace", Op::ReorderPinnedProjects, &[]),

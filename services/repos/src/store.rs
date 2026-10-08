@@ -172,6 +172,11 @@ pub trait GitRepo {
     async fn parents(&self, commit_hash: &str) -> Result<Option<Vec<String>>>;
     async fn read_tree(&self, tree_hash: &str) -> Result<Option<Vec<TreeEntry>>>;
     async fn read_blob(&self, blob_hash: &str) -> Result<Option<Vec<u8>>>;
+    /// A blob's size in bytes, `None` when it is missing. By default its
+    /// bytes are read; a store that can say less does.
+    async fn blob_size(&self, blob_hash: &str) -> Result<Option<u64>> {
+        Ok(self.read_blob(blob_hash).await?.map(|bytes| bytes.len() as u64))
+    }
     /// `None` when the ref or path does not resolve to a file.
     async fn read_file(&self, git_ref: &str, path: &str) -> Result<Option<Vec<u8>>>;
     /// Makes a copy of this repository under `target_key`, in the same
@@ -1112,6 +1117,30 @@ impl GitRepo for ArtifactsRepo {
             self.keep("blob", blob_hash, bytes.clone()).await;
         }
         Ok(bytes)
+    }
+
+    /// Kept for good by hash, as a blob is: its bytes never cross into
+    /// this isolate's memory, only the size of the store's answer.
+    async fn blob_size(&self, blob_hash: &str) -> Result<Option<u64>> {
+        let path = format!("size/{blob_hash}");
+        if let Some(bytes) = self.cached_at(&path, true).await
+            && let Some(size) = std::str::from_utf8(&bytes).ok().and_then(|text| text.parse().ok())
+        {
+            return Ok(Some(size));
+        }
+        let blob = self.call("readBlob", &[blob_hash.into()], true).await?;
+        let size = if blob.is_null() || blob.is_undefined() {
+            None
+        } else if let Some(bytes) = blob.dyn_ref::<Uint8Array>() {
+            Some(u64::from(bytes.length()))
+        } else {
+            js::get(&blob, "size").as_f64().map(|size| size as u64)
+        };
+        if let Some(size) = size {
+            meters::record_bytes("binding.read_blob", &self.key, 0, size);
+            self.keep_at(&path, size.to_string().into_bytes(), OBJECT_MAX_AGE).await;
+        }
+        Ok(size)
     }
 
     async fn read_file(&self, git_ref: &str, path: &str) -> Result<Option<Vec<u8>>> {

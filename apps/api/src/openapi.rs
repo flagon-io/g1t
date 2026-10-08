@@ -7,6 +7,7 @@
 use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
+use crate::about::AboutOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -99,6 +100,35 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ListCheckNames,
             Op::GetCodeownersErrors,
             Op::ListEvents,
+        ],
+    ),
+    (
+        "Repository insights",
+        "What a repository's default branch says about it, read in the background and kept by commit: the languages it is written in, who made it, and its license.",
+        &[Op::About(AboutOp::GetLanguages), Op::About(AboutOp::ListContributors), Op::About(AboutOp::GetLicense)],
+    ),
+    (
+        "Stars",
+        "Starring a repository, to keep it and to say you like it: who starred one, and what you starred.",
+        &[
+            Op::About(AboutOp::ListStargazers),
+            Op::About(AboutOp::ListStarred),
+            Op::About(AboutOp::CheckStarred),
+            Op::About(AboutOp::Star),
+            Op::About(AboutOp::Unstar),
+        ],
+    ),
+    (
+        "Releases",
+        "A release is a tag published with a title and notes. The latest is the newest published one that is neither a draft nor a prerelease.",
+        &[
+            Op::About(AboutOp::ListReleases),
+            Op::About(AboutOp::CreateRelease),
+            Op::About(AboutOp::GetLatestRelease),
+            Op::About(AboutOp::GetReleaseByTag),
+            Op::About(AboutOp::GetRelease),
+            Op::About(AboutOp::UpdateRelease),
+            Op::About(AboutOp::DeleteRelease),
         ],
     ),
     (
@@ -557,6 +587,7 @@ fn title(op: Op) -> &'static str {
         Op::GetCodeownersErrors => "List CODEOWNERS errors",
         Op::Security(op) => op.title(),
         Op::Rules(op) => op.title(),
+        Op::About(op) => op.title(),
     }
 }
 

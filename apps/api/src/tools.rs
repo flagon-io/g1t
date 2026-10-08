@@ -18,6 +18,7 @@ use g1t_contracts::identity::AgentScope;
 use g1t_contracts::scopes::{Level, NO_SCOPE, TokenAccess, scope_for};
 use serde_json::{Map, Value, json};
 
+use crate::about::AboutOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -59,7 +60,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, and see and dismiss their security alerts (secrets and vulnerable dependencies). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, and publish releases. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
@@ -88,6 +89,21 @@ pub const TOOLS: &[Tool] = &[
             a("update_milestone", Op::UpdateMilestone, "Change a milestone's title, description, due date or state"),
             a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
             a("list_events", Op::ListEvents, "Timeline: pushes, issues, pull requests, comments"),
+            a("languages", Op::About(AboutOp::GetLanguages), "Its languages by bytes, with colors and percentages"),
+            a("contributors", Op::About(AboutOp::ListContributors), "Who made it: commits per person, agent and author, by week"),
+            a("license", Op::About(AboutOp::GetLicense), "The license its LICENSE file holds"),
+            a("stargazers", Op::About(AboutOp::ListStargazers), "Who starred it"),
+            a("starred", Op::About(AboutOp::CheckStarred), "Whether you starred it, and how many have"),
+            a("star", Op::About(AboutOp::Star), "Star it"),
+            a("unstar", Op::About(AboutOp::Unstar), "Take your star back"),
+            a("list_starred", Op::About(AboutOp::ListStarred), "Repositories you starred"),
+            a("list_releases", Op::About(AboutOp::ListReleases), "Releases, newest first"),
+            a("latest_release", Op::About(AboutOp::GetLatestRelease), "The latest release"),
+            a("get_release", Op::About(AboutOp::GetRelease), "One release by id"),
+            a("get_release_by_tag", Op::About(AboutOp::GetReleaseByTag), "The release of a tag"),
+            a("create_release", Op::About(AboutOp::CreateRelease), "Publish a release of a tag, making the tag if needed"),
+            a("update_release", Op::About(AboutOp::UpdateRelease), "Change a release's title, notes, draft or prerelease"),
+            a("delete_release", Op::About(AboutOp::DeleteRelease), "Delete a release; its tag stays"),
             a("rename_branch", Op::RenameBranch, "Rename a branch"),
             a("rename", Op::RenameRepo, "Rename it; old addresses redirect"),
             a("transfer", Op::TransferRepo, "Move it to another workspace you own"),

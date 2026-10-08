@@ -32,8 +32,8 @@ export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
 
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
-  { scope: "repo:read", description: "See repositories, their settings, labels, timelines and security alerts, and search" },
-  { scope: "repo:write", description: "Create repositories, rename branches and change how pull requests merge" },
+  { scope: "repo:read", description: "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search" },
+  { scope: "repo:write", description: "Create repositories, rename branches, change how pull requests merge and publish releases" },
   { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
   { scope: "code:write", description: "Push commits with git" },
@@ -51,8 +51,8 @@ export const SCOPES = [
   { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
   { scope: "memory:read", description: "Recall memory and search the workspace's context" },
   { scope: "memory:write", description: "Save memory for the next agent" },
-  { scope: "account:read", description: "Read your email addresses, invites, invitations and pinned projects" },
-  { scope: "account:write", description: "Change your email addresses, make invites, answer invitations and pin projects" },
+  { scope: "account:read", description: "Read your email addresses, invites, invitations, pinned projects and stars" },
+  { scope: "account:write", description: "Change your email addresses, make invites, answer invitations, pin projects and star repositories" },
   { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
   { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
   { scope: "workspace:read", description: "Read workspace settings, invites, integrations, model routes, teams and rulesets" },
@@ -190,6 +190,11 @@ export const OPERATION_SCOPES = [
   // Your pinned projects: a preference of your account.
   ["list_pinned_projects", "account:read"],
   ["pin_project", "account:write"],
+  // Your stars: a preference of your account.
+  ["list_starred", "account:read"],
+  ["check_starred", "account:read"],
+  ["star_repo", "account:write"],
+  ["unstar_repo", "account:write"],
   ["unpin_project", "account:write"],
   ["reorder_pinned_projects", "account:write"],
   // Your inbox: notifications, subscriptions and watching.
@@ -250,6 +255,19 @@ export const OPERATION_SCOPES = [
   ["get_repo", "repo:read"],
   ["search", "repo:read"],
   ["list_events", "repo:read"],
+  // What the default branch says about a repository, who starred it, and
+  // its releases.
+  ["get_languages", "repo:read"],
+  ["list_contributors", "repo:read"],
+  ["get_license", "repo:read"],
+  ["list_stargazers", "repo:read"],
+  ["list_releases", "repo:read"],
+  ["get_latest_release", "repo:read"],
+  ["get_release_by_tag", "repo:read"],
+  ["get_release", "repo:read"],
+  ["create_release", "repo:write"],
+  ["update_release", "repo:write"],
+  ["delete_release", "repo:write"],
   ["list_labels", "repo:read"],
   ["list_milestones", "repo:read"],
   ["get_milestone", "repo:read"],

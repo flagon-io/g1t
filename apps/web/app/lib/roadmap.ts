@@ -120,16 +120,6 @@ export const ROADMAP: RoadmapItem[] = [
     today: { label: "Deployments", path: "deployments" },
   },
   {
-    key: "releases",
-    title: "Releases",
-    section: "Deployments",
-    summary: "Tagged releases with notes written from what landed.",
-    why: "Release notes from the pull requests and sessions that made the release: what changed, why, and who or what changed it.",
-    plans: ["Notes drafted from merged work", "Assets and checksums attached", "Published to the project's page and a feed"],
-    today: { label: "Commits", path: "commits" },
-  },
-
-  {
     key: "flags",
     title: "Feature flags",
     section: "Deployments",
