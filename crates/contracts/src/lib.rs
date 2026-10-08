@@ -17,6 +17,7 @@ pub mod checks;
 pub mod codeowners;
 pub mod credentials;
 pub mod events;
+pub mod fine_grained;
 pub mod github;
 pub mod guardrails;
 pub mod identity;

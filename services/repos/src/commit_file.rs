@@ -66,6 +66,10 @@ impl<S: GitStore> Repos<S> {
         if !valid_path(&a.path) {
             return Ok(Outcome::fail(FailureCode::Invalid, format!("{} is not a path a file can be written to.", a.path)));
         }
+        // A workflow file, written for a token without the scope for it.
+        if let Some(refused) = g1t_contracts::scopes::decide_workflow_files(a.actor.token.as_deref(), [a.path.as_str()]) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, refused.reason.unwrap_or_default()));
+        }
         if a.content.len() > MAX_CONTENT_BYTES {
             return Ok(Outcome::fail(FailureCode::Invalid, "The file is too large to write this way."));
         }

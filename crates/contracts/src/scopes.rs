@@ -1312,6 +1312,55 @@ mod tests {
     }
 
     #[test]
+    fn workflow_files_need_their_own_scope() {
+        for path in [".g1t/workflows/ci.yml", ".github/workflows/deploy.yaml", "/.github/workflows/x.yml", ".GitHub/Workflows/ci.yml", ".github/workflows"] {
+            assert!(is_workflow_file(path), "{path}");
+        }
+        for path in ["README.md", ".github/CODEOWNERS", ".github/workflowsx/ci.yml", "docs/.github/workflows/ci.yml", ".g1t/actions/ci.yml"] {
+            assert!(!is_workflow_file(path), "{path}");
+        }
+        let code = token(&[Scope::CodeWrite]);
+        let refused = decide_workflow_files(Some(&code), ["README.md", ".github/workflows/ci.yml"]).unwrap();
+        assert_eq!(refused.rule, "token:workflows");
+        assert!(refused.reason.as_deref().unwrap().contains(".github/workflows/ci.yml"));
+        assert!(refused.reason.as_deref().unwrap().contains("workflow_files:write"));
+        assert!(decide_workflow_files(Some(&code), ["README.md"]).is_none());
+        assert!(decide_workflow_files(Some(&token(&[Scope::CodeWrite, Scope::WorkflowFilesWrite])), [".g1t/workflows/ci.yml"]).is_none());
+        assert!(decide_workflow_files(Some(&TokenAccess::full()), [".g1t/workflows/ci.yml"]).is_none(), "full access");
+        assert!(decide_workflow_files(None, [".g1t/workflows/ci.yml"]).is_none(), "a signed-in person");
+        // A job's token never may, as GITHUB_TOKEN never may.
+        let job = TokenAccess { job: Some(JobToken::default()), ..TokenAccess::full() };
+        assert!(decide_workflow_files(Some(&job), [".g1t/workflows/ci.yml"]).unwrap().reason.unwrap().contains("job"));
+        // Nothing in a preset changes workflow files but full access.
+        for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
+            assert!(!preset.scopes().unwrap().contains(&Scope::WorkflowFilesWrite), "{}", preset.as_str());
+        }
+        assert!(!Scope::WorkflowFilesWrite.includes(Scope::WorkflowsWrite) && !Scope::WorkflowsWrite.includes(Scope::WorkflowFilesWrite));
+    }
+
+    #[test]
+    fn a_fine_grained_token_only_reads_outside_its_resource_owner() {
+        let reach = FineGrainedReach { workspace: Some("acme".into()), repositories: RepositorySelection::All, repo_ids: Vec::new() };
+        let fine = TokenAccess { fine_grained: Some(reach), ..token(&[Scope::RepoRead, Scope::IssuesRead, Scope::IssuesWrite]) };
+        assert!(decide(&fine, "create_issue", &json!({ "repo": "acme/web" })).allowed);
+        assert!(decide(&fine, "create_issue", &json!({ "repo": "Acme/web" })).allowed);
+        let elsewhere = decide(&fine, "create_issue", &json!({ "repo": "globex/site" }));
+        assert_eq!(elsewhere.rule, "token:resource-owner");
+        assert!(elsewhere.reason.unwrap().contains("acme"));
+        assert!(decide(&fine, "get_issue", &json!({ "repo": "globex/site" })).allowed, "public repositories elsewhere read");
+        assert!(!decide(&fine, "create_pull_request", &json!({ "repo": "acme/web" })).allowed, "its scopes still hold");
+        let mine = TokenAccess { fine_grained: Some(FineGrainedReach::default()), ..token(&[Scope::IssuesWrite]) };
+        assert!(decide(&mine, "create_issue", &json!({ "repo": "acme/web" })).reason.unwrap().contains("your account"));
+        assert!(fine.covers_repo("rep_1", "acme") && !fine.covers_repo("rep_1", "globex"));
+        let selected = FineGrainedReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()] };
+        assert!(selected.covers("rep_1", "ACME") && !selected.covers("rep_2", "acme"));
+        let public = FineGrainedReach { repositories: RepositorySelection::Public, ..selected.clone() };
+        assert!(!public.covers("rep_1", "acme") && public.owned_by("acme"));
+        assert!(token(&[]).covers_repo("rep_1", "anything"), "a classic token's reach is its owner's");
+        assert_eq!(RepositorySelection::parse("public_only"), Some(RepositorySelection::Public));
+    }
+
+    #[test]
     fn a_legacy_token_can_do_everything() {
         let legacy = TokenAccess { legacy: true, ..TokenAccess::full() };
         for (operation, _) in OPERATIONS {

@@ -44,6 +44,7 @@ mod signatures;
 mod stats;
 mod store;
 mod transfer;
+mod workflow_gate;
 
 use g1t_contracts::events::{
     Event, GitPush, NewEvent, Publish, RepoCreated, RepoForked, RepoUpdated, WorkspaceDeleted,

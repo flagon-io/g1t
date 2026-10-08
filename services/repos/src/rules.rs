@@ -167,6 +167,11 @@ impl<S: GitStore> Repos<S> {
     /// on. `body` is as much of the push as was read; `whole` says whether
     /// that is all of it, so that its commits can be read.
     pub(crate) async fn check_push(&self, repo: &Repo, pusher: Option<&User>, body: &[u8], whole: bool) -> Result<Option<Response>> {
+        // Workflow files need their own scope from a token, on a pull
+        // request's working copy too (workflow_gate.rs).
+        if let Some(response) = self.workflow_gate(repo, pusher, body, whole).await? {
+            return Ok(Some(response));
+        }
         if repo.fork_of.is_some() {
             return Ok(None);
         }

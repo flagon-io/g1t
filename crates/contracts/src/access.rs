@@ -856,8 +856,69 @@ mod tests {
             workspaces: vec![Membership::member("acme")],
             ..User::default()
         };
+        // Acting as the workspace with no token: a service, which does what
+        // an owner can.
         assert_eq!(permission(Some(&token), repo("rep_1", "acme", true)), Some(RepoRole::Admin));
         assert_eq!(permission(Some(&token), repo("rep_2", "globex", true)), None);
+    }
+
+    #[test]
+    fn a_workspace_token_has_write_unless_an_owner_gave_it_admin() {
+        let mut token = User {
+            id: "wsp_1".into(),
+            username: "acme".into(),
+            kind: PrincipalKind::Workspace,
+            workspaces: vec![Membership::member("acme")],
+            token: Some(Box::new(crate::scopes::TokenAccess::full())),
+            ..User::default()
+        };
+        let private = repo("rep_1", "acme", true);
+        assert_eq!(permission(Some(&token), private), Some(RepoRole::Write));
+        assert!(can(Some(&token), private, Capability::Push));
+        assert!(can(Some(&token), private, Capability::Merge));
+        assert!(!can(Some(&token), private, Capability::ManageIntegrations), "webhooks, secrets and deploy keys are an admin's");
+        assert!(!can(Some(&token), private, Capability::ManageAccess));
+        token.token.as_mut().unwrap().admin = true;
+        assert_eq!(permission(Some(&token), private), Some(RepoRole::Admin));
+        assert!(can(Some(&token), private, Capability::ManageIntegrations));
+        // Never deleting: that needs an owner, as a person.
+        assert!(!can(Some(&token), private, Capability::Delete));
+        assert_eq!(permission(Some(&token), repo("rep_2", "globex", true)), None);
+    }
+
+    #[test]
+    fn a_fine_grained_token_has_a_role_only_inside_its_reach() {
+        use crate::scopes::{FineGrainedReach, RepositorySelection, TokenAccess};
+        let mut person = user(&[("acme", Role::Owner, None), ("globex", Role::Member, None)], &[("rep_9", "initech", RepoRole::Write)]);
+        let reach = |workspace: Option<&str>, repositories, ids: &[&str]| {
+            Some(Box::new(TokenAccess {
+                fine_grained: Some(FineGrainedReach { workspace: workspace.map(str::to_owned), repositories, repo_ids: ids.iter().map(|id| (*id).to_owned()).collect() }),
+                ..TokenAccess::default()
+            }))
+        };
+        let web = repo("rep_1", "acme", true);
+        let api = repo("rep_2", "acme", true);
+        let site = repo("rep_3", "acme", false);
+        let elsewhere = repo("rep_4", "globex", true);
+        person.token = reach(Some("acme"), RepositorySelection::All, &[]);
+        assert_eq!(permission(Some(&person), web), Some(RepoRole::Admin));
+        assert_eq!(permission(Some(&person), elsewhere), None, "only its resource owner");
+        assert_eq!(permission(Some(&person), repo("rep_9", "initech", true)), None, "nor where its owner collaborates");
+        person.token = reach(Some("acme"), RepositorySelection::Selected, &["rep_1"]);
+        assert_eq!(permission(Some(&person), web), Some(RepoRole::Admin));
+        assert_eq!(permission(Some(&person), api), None);
+        // A public repository it does not reach still reads, and nothing more.
+        assert_eq!(permission(Some(&person), site), Some(RepoRole::Read));
+        assert!(can(Some(&person), site, Capability::Read));
+        assert!(!can(Some(&person), site, Capability::Participate));
+        person.token = reach(Some("acme"), RepositorySelection::Public, &[]);
+        assert_eq!(permission(Some(&person), web), None);
+        assert_eq!(permission(Some(&person), site), Some(RepoRole::Read));
+        person.token = reach(None, RepositorySelection::All, &[]);
+        assert_eq!(permission(Some(&person), web), None, "your own account reaches no workspace's repositories");
+        // A classic token reaches whatever its owner can.
+        person.token = Some(Box::new(TokenAccess::full()));
+        assert_eq!(permission(Some(&person), elsewhere), Some(RepoRole::Write));
     }
 
     #[test]
