@@ -1593,6 +1593,13 @@ export type PriceVersion = {
   reason: string;
   createdBy: string;
   appliedAt: string | null;
+  /**
+   * What `costMicros` is: `cost`, what g1t pays for a unit; `rate`, a price
+   * g1t sets with no cost behind it (the agent rate), so it is no cost;
+   * `weight`, a multiplier in millionths, not money. Absent from older
+   * billing: read as `cost`.
+   */
+  basis?: "cost" | "rate" | "weight" | "";
 };
 
 /** What `resetBilling` removed. */
@@ -1698,6 +1705,13 @@ export type SpendCaps = {
   fixedItems?: { name: string; monthlyMicros: number }[];
   /** Money in this month, through the last reconciled day. */
   revenueMicros: number;
+  /**
+   * Of this month's buckets, what was spent on workspaces whose billing a
+   * testing reset later wiped (still g1t's spend; the reconciled figures
+   * have it only where the reset kept it), and those workspaces.
+   */
+  resetMicros?: number;
+  resetWorkspaces?: string[];
 };
 
 /** A comped account's monthly budget, at cost. */

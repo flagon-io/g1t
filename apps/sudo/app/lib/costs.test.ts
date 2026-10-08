@@ -6,6 +6,7 @@ import type { CostDay, SpendCaps } from "@g1t/contracts";
 import {
   daySeries,
   daysBetween,
+  marginOnPrice,
   marginPercent,
   marginTone,
   parseBucket,
@@ -13,9 +14,13 @@ import {
   parseMapping,
   parseRange,
   percentLabel,
+  proposalOutcome,
   spendBanner,
   spendRows,
+  subscriptionsOver,
   unitDollars,
+  versionCells,
+  whoPaid,
 } from "./costs.ts";
 
 const day = (d: string, bucket: string, cf: number, own: number, value: number, cash: number): CostDay => ({
@@ -149,4 +154,49 @@ test("what g1t paid this month adds every bucket, the free tier and subscription
   const { rows, totalMicros } = spendRows(caps());
   assert.deepEqual(rows.map((r) => r.key), ["comped", "trial", "free", "fixed"]);
   assert.equal(totalMicros, 76_000_000);
+});
+
+test("charged without real money is what it cost g1t, never its price", () => {
+  const { rows } = spendRows(caps({ monthBuckets: [{ bucket: "unpaid", title: "Charged without real money", micros: 7_610_000 }] }));
+  assert.match(rows[0]!.note, /what it cost g1t, not what was charged/);
+});
+
+test("margins are a share of the price: cost plus 20% is 16.7%", () => {
+  assert.equal(percentLabel(marginOnPrice(20)), "16.7%");
+  assert.equal(marginOnPrice(0), 0);
+  // As By product showed it: $2.99 charged for models that cost $2.49.
+  assert.equal(percentLabel(marginPercent(2_988_000, 2_490_000)), "16.7%");
+});
+
+test("who g1t paid is the statement's all-in cost, subscriptions included", () => {
+  const subscriptions = subscriptionsOver(30_000_000, 30);
+  const paid = whoPaid({ costMicros: 2_490_000, cloudflareCostMicros: 0, modelsCostMicros: 2_490_000 }, subscriptions);
+  assert.deepEqual(paid, { totalMicros: 32_490_000, cloudflareMicros: 0, subscriptionsMicros: 30_000_000, modelsMicros: 2_490_000 });
+  assert.equal(subscriptionsOver(30_000_000, 7), 7_000_000);
+  // From older billing, Cloudflare's part is the rest.
+  assert.equal(whoPaid({ costMicros: 3_000_000, modelsCostMicros: 1_000_000 }, 0).cloudflareMicros, 2_000_000);
+});
+
+test("a rate g1t sets shows no cost, and a weight is no money", () => {
+  assert.deepEqual(versionCells({ costMicros: 250_000, priceMicros: 250_000, basis: "rate" }), {
+    cost: "—",
+    price: "$0.250",
+    note: "g1t's own rate: no cost behind it",
+  });
+  assert.equal(versionCells({ costMicros: 100_000, priceMicros: 100_000, basis: "weight" }).price, "×0.1");
+  assert.deepEqual(versionCells({ costMicros: 16.44, priceMicros: 19.73, basis: "cost" }), { cost: unitDollars(16.44), price: unitDollars(19.73), note: null });
+  // Older billing sends no basis: a cost.
+  assert.equal(versionCells({ costMicros: 1_000_000, priceMicros: 1_200_000 }).cost, "$1.00");
+});
+
+test("a rise replaced before its date says so, rather than missing its date", () => {
+  assert.equal(
+    proposalOutcome({ status: "superseded", decidedBy: "guardrail", effectiveAt: null }),
+    "applied by guardrail, then replaced by a later measurement before it took effect; nothing was charged at it",
+  );
+  // From before billing marked them superseded.
+  assert.match(proposalOutcome({ status: "applied", decidedBy: "guardrail", effectiveAt: null }) ?? "", /replaced by a later measurement/);
+  assert.equal(proposalOutcome({ status: "applied", decidedBy: "guardrail", effectiveAt: "2026-10-22T04:18:12.571Z" }), "applied by guardrail");
+  assert.equal(proposalOutcome({ status: "superseded", decidedBy: null, effectiveAt: null }), "replaced by a later measurement");
+  assert.equal(proposalOutcome({ status: "open", decidedBy: null, effectiveAt: null }), null);
 });

@@ -62,6 +62,27 @@ pub(crate) fn meters_of(source: &str) -> &'static [&'static str] {
 /// percent or two at a time, and an email for each would be noise.
 const EMAIL_RISE_PERCENT: f64 = 5.0;
 
+/// What a meter's `cost_micros` is (`PriceVersion::basis`): a weight of the
+/// agent rate's tokens is a multiplier; the agent rate and security
+/// activation are prices g1t sets, with no per-unit cost behind them (the
+/// models a run uses are charged apart, at cost); everything else is a
+/// cost g1t pays.
+pub(crate) fn basis_of(meter: &str) -> &'static str {
+    if meter.starts_with("agent_token_weight_") {
+        "weight"
+    } else if matches!(meter, "agent_tokens" | "agent_tokens_own") || meter == crate::features::SECURITY_METER {
+        "rate"
+    } else {
+        "cost"
+    }
+}
+
+/// Marks the proposals behind a meter's versions still waiting for their
+/// date as superseded, before a newer version replaces them; who decided
+/// it, and when, stay. Parameter: the meter.
+pub(crate) const SUPERSEDE_WAITING_SQL: &str = "UPDATE price_proposals SET status = 'superseded'
+     WHERE version_id IN (SELECT id FROM price_versions WHERE meter = ?1 AND applied_at IS NULL)";
+
 /// Owners told of rises per run, at most; the rest on the next run.
 const NOTICES_PER_RUN: usize = 40;
 
@@ -403,11 +424,14 @@ impl Billing {
             + 1;
         let id = format!("pv_{meter}_{next}");
         let now = rfc3339(now_ms());
-        // A newer decision replaces a rise still waiting for its date.
+        // A newer decision replaces a rise still waiting for its date. The
+        // proposal behind it never took effect: superseded, not "applied"
+        // with no date it is in force from.
         self.db
-            .prepare("DELETE FROM price_versions WHERE meter = ? AND applied_at IS NULL")
-            .bind(&[meter.into()])?
-            .run()
+            .batch(vec![
+                self.db.prepare(SUPERSEDE_WAITING_SQL).bind(&[meter.into()])?,
+                self.db.prepare("DELETE FROM price_versions WHERE meter = ? AND applied_at IS NULL").bind(&[meter.into()])?,
+            ])
             .await?;
         self.db
             .prepare(
@@ -524,6 +548,7 @@ impl Billing {
             .into_iter()
             .map(|v| PriceVersion {
                 price_micros: Price::price_for(v.cost_micros, v.markup_percent),
+                basis: basis_of(&v.meter).to_owned(),
                 id: v.id,
                 meter: v.meter,
                 version: v.version,
@@ -754,6 +779,32 @@ mod tests {
 
     fn effective_ms_for(now: u64) -> u64 {
         effective_ms(1.0, 2.0, now, 14, true)
+    }
+
+    #[test]
+    fn a_versions_cost_says_what_it_is() {
+        // The agent rate's $0.25 a million tokens is g1t's price, not what
+        // tokens cost g1t; the weights are multipliers.
+        assert_eq!(basis_of("agent_tokens"), "rate");
+        assert_eq!(basis_of("agent_tokens_own"), "rate");
+        assert_eq!(basis_of("security_activation"), "rate");
+        assert_eq!(basis_of("agent_token_weight_cache_read"), "weight");
+        // A provider's dollar passed on at cost, and Cloudflare's units, are costs.
+        for meter in ["agent_models", "gateway_models", "sandbox_second", "git_operations", "card_fee_percent"] {
+            assert_eq!(basis_of(meter), "cost", "{meter}");
+        }
+    }
+
+    #[test]
+    fn a_rise_replaced_before_its_date_is_superseded_not_applied() {
+        // 2026-10-07's sandbox rise (v2, due 10-21) was replaced by
+        // 10-08's (v3, due 10-22): v2's proposal never took effect.
+        let sql = SUPERSEDE_WAITING_SQL;
+        assert_eq!(crate::rename::parameters(sql), 1);
+        assert!(sql.contains("status = 'superseded'") && sql.contains("applied_at IS NULL") && !sql.contains("decided_"), "{sql}");
+        // A rise still waits its notice: the replacement is no shortcut.
+        let Decision::Auto { effective_ms } = decide(18.1817, 19.5181, guard(), now(), false) else { panic!() };
+        assert_eq!(rfc3339(effective_ms), "2026-10-20T04:17:00.000Z");
     }
 
     #[test]

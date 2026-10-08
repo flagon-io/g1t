@@ -503,8 +503,25 @@ impl Billing {
             .await?
             .and_then(|s| s.micros)
             .unwrap_or(0);
+        // What a testing reset wiped from the ledger is still here.
+        #[derive(Deserialize)]
+        struct Reset {
+            account: String,
+            micros: Option<i64>,
+        }
+        let reset = self
+            .db
+            .prepare(RESET_SPEND_SQL)
+            .bind(&[month_start.as_str().into()])?
+            .all()
+            .await?
+            .results::<Reset>()?;
+        let reset_micros = reset.iter().filter_map(|r| r.micros).sum();
+        let reset_workspaces = reset.into_iter().map(|r| r.account.strip_prefix("ws_").unwrap_or(&r.account).to_owned()).collect();
         let fixed = self.fixed_monthly(self.caps.fixed_monthly).await?;
         Ok(SpendCaps {
+            reset_micros,
+            reset_workspaces,
             day,
             month,
             today_micros,
@@ -549,6 +566,12 @@ impl Billing {
         Ok(Outcome::Ok(self.spend_caps().await?))
     }
 }
+
+/// g1t's own spend since `?1` on accounts a testing reset wiped later than
+/// the day it was spent (`admin_actions`, action `reset`), by account.
+pub(crate) const RESET_SPEND_SQL: &str = "SELECT s.account, SUM(s.micros) AS micros FROM g1t_spend s
+     WHERE s.day >= ?1 AND EXISTS (SELECT 1 FROM admin_actions a WHERE a.action = 'reset' AND a.account = s.account AND substr(a.created_at, 1, 10) >= s.day)
+     GROUP BY s.account HAVING SUM(s.micros) > 0 ORDER BY s.account";
 
 /// How sudo names a bucket of g1t's own spend.
 pub(crate) fn bucket_title(bucket: &str) -> &'static str {
@@ -672,6 +695,14 @@ mod tests {
         assert!(!covered_by_revenue(PlanKind::Paid, false, true, true));
         assert!(!covered_by_revenue(PlanKind::Internal, true, false, true));
         assert!(!covered_by_revenue(PlanKind::Free, false, false, true));
+    }
+
+    #[test]
+    fn spend_a_testing_reset_wiped_is_found_by_the_reset_after_it() {
+        // syntaqx's $7.41 of 2026-10-02 to 10-05, reset on 10-07: still
+        // g1t's spend, gone from its ledger.
+        assert_eq!(crate::rename::parameters(RESET_SPEND_SQL), 1);
+        assert!(RESET_SPEND_SQL.contains("a.action = 'reset'") && RESET_SPEND_SQL.contains("substr(a.created_at, 1, 10) >= s.day"));
     }
 
     #[test]
