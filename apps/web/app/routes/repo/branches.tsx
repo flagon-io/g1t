@@ -4,6 +4,7 @@ import { Form, Link } from "react-router";
 import type { Route } from "./+types/branches";
 import { ActiveBranches } from "../../components/branches";
 import { Avatar, EmptyState, TimeAgo, notACredential } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { readBranches } from "../../lib/branches.server";
 import { page } from "../../lib/meta";
 import { deployments, repos, work } from "../../lib/services.server";
@@ -96,9 +97,11 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
               <Avatar name={head.author} size={13} />
               <span className="shrink-0">{head.author}</span>
               <span className="text-faint">·</span>
-              <Link to={`${base}/commit/${head.hash}`} className="min-w-0 truncate hover:text-fg" title={head.message}>
-                {head.message}
-              </Link>
+              <Hint label={head.message}>
+                <Link to={`${base}/commit/${head.hash}`} className="min-w-0 truncate hover:text-fg">
+                  {head.message}
+                </Link>
+              </Hint>
               <span className="shrink-0 text-faint">
                 · <TimeAgo at={head.at} />
               </span>

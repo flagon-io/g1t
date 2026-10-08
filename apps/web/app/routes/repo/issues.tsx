@@ -7,6 +7,7 @@ import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
 import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Checkbox } from "../../components/ui/checkbox";
+import { Hint } from "../../components/ui/hint";
 import {
   Assignee,
   AssigneeStack,
@@ -279,13 +280,13 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
                   <span className="mt-0.5 flex shrink-0 items-center gap-3 text-xs text-muted">
                     <AssigneeStack people={issue.assignees} />
                     {issue.pullCount > 0 && (
-                      <span
-                        className="flex items-center gap-1"
-                        title={`${issue.pullCount} pull ${issue.pullCount === 1 ? "request" : "requests"}`}
-                      >
-                        <GitPullRequest size={13} />
-                        {issue.pullCount}
-                      </span>
+                      <Hint label={`${issue.pullCount} pull ${issue.pullCount === 1 ? "request" : "requests"}`}>
+                        <span className="flex items-center gap-1">
+                          <GitPullRequest size={13} />
+                          {issue.pullCount}
+                          <span className="sr-only">pull {issue.pullCount === 1 ? "request" : "requests"}</span>
+                        </span>
+                      </Hint>
                     )}
                     {issue.commentCount > 0 && (
                       <span className="flex items-center gap-1">

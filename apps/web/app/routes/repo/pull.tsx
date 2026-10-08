@@ -63,6 +63,7 @@ import {
   usePending,
 } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
+import { Hint } from "../../components/ui/hint";
 import { Loading, SkeletonLine } from "../../components/ui/skeleton";
 import { TabStrip } from "../../components/ui/tab-strip";
 import { WorkflowStatuses } from "../../components/actions";
@@ -1213,17 +1214,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           />
                         )}
                         <div className="flex flex-wrap items-center gap-3">
-                          <SubmitButton
-                            variant="accent"
-                            name="action"
-                            value="merge"
-                            disabled={mergeBlocked != null}
-                            title={mergeBlocked ?? undefined}
-                            pending={mergeQueue ? "Adding to the queue…" : "Merging…"}
-                          >
-                            {mergeQueue ? <Layers size={15} /> : <GitMerge size={15} />}
-                            {mergeQueue ? "Add to the merge queue" : `Merge into ${defaultBranch}`}
-                          </SubmitButton>
+                          <Hint label={mergeBlocked} disabled={mergeBlocked != null}>
+                            <SubmitButton
+                              variant="accent"
+                              name="action"
+                              value="merge"
+                              disabled={mergeBlocked != null}
+                              pending={mergeQueue ? "Adding to the queue…" : "Merging…"}
+                            >
+                              {mergeQueue ? <Layers size={15} /> : <GitMerge size={15} />}
+                              {mergeQueue ? "Add to the merge queue" : `Merge into ${defaultBranch}`}
+                            </SubmitButton>
+                          </Hint>
                           <span className={`text-xs ${mergeBlocked ? "text-danger" : "text-muted"}`}>
                             {mergeBlocked ?? (mergeQueue
                               ? `Tested together with everything ahead of it, then lands on ${defaultBranch}.`

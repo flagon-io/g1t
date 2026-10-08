@@ -43,6 +43,7 @@ import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable,
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
 import { ProductionChecklist } from "../../components/checklist";
 import { PackageIcon } from "../../components/package-icon";
+import { Hint } from "../../components/ui/hint";
 import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
@@ -421,9 +422,12 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
           <span className="font-mono text-faint">#{card.number}</span>
           <span className="grow" />
           {card.needsYou ? (
-            <span className="inline-flex items-center gap-1 text-warn" title="Stopped: a person decides what happens next">
-              <Hand size={11} /> you
-            </span>
+            <Hint label="Stopped: a person decides what happens next">
+              <span className="inline-flex items-center gap-1 text-warn">
+                <Hand size={11} /> you
+                <span className="sr-only">: stopped, a person decides what happens next</span>
+              </span>
+            </Hint>
           ) : stage === "landed" ? (
             <TimeAgo at={card.at} />
           ) : card.runStarted ? (
@@ -436,9 +440,11 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
           )}
         </span>
         {card.step && (
-          <span className="mt-1.5 block truncate font-mono text-[0.6875rem] text-fg/70" title={card.step}>
-            {card.runKind}: {card.step}
-          </span>
+          <Hint label={card.step}>
+            <span className="mt-1.5 block truncate font-mono text-[0.6875rem] text-fg/70">
+              {card.runKind}: {card.step}
+            </span>
+          </Hint>
         )}
       </Link>
     </li>
@@ -771,16 +777,12 @@ function Overview({
                 )}
                 {settings?.enabled ? (
                   loaderData.can.run && <Form method="post">
-                    <SubmitButton
-                      variant="quiet"
-                      name="intent"
-                      value="redeploy"
-                      pending="Redeploying…"
-                      title="Build production again from the default branch"
-                    >
-                      <RotateCw size={14} />
-                      Redeploy
-                    </SubmitButton>
+                    <Hint label="Build production again from the default branch">
+                      <SubmitButton variant="quiet" name="intent" value="redeploy" pending="Redeploying…">
+                        <RotateCw size={14} />
+                        Redeploy
+                      </SubmitButton>
+                    </Hint>
                   </Form>
                 ) : loaderData.can.manage_integrations && (
                   <ButtonLink to={`${base}/settings/deployments`} variant="accent">
@@ -829,12 +831,14 @@ function Overview({
             to={commit ? `${base}/commit/${commit.hash}` : undefined}
             value={
               commit ? (
-                <span title={commit.message.split("\n")[0]}>
-                  <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
-                  <span className="font-normal text-muted">
-                    <TimeAgo at={commit.authoredAt} />
+                <Hint label={commit.message.split("\n")[0]}>
+                  <span>
+                    <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
+                    <span className="font-normal text-muted">
+                      <TimeAgo at={commit.authoredAt} />
+                    </span>
                   </span>
-                </span>
+                </Hint>
               ) : (
                 "No commits yet"
               )
@@ -897,10 +901,12 @@ function Overview({
                   {run.title ?? "A run"} {run.number != null && <span className="text-faint">#{run.number}</span>}
                 </Link>
                 {run.step && (
-                  <p className="mt-1 truncate font-mono text-[0.6875rem] text-fg/70" title={run.step}>
-                    <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
-                    {run.step}
-                  </p>
+                  <Hint label={run.step}>
+                    <p className="mt-1 truncate font-mono text-[0.6875rem] text-fg/70">
+                      <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
+                      {run.step}
+                    </p>
+                  </Hint>
                 )}
                 <p className="mt-1.5 flex items-center gap-3 text-[0.6875rem] text-faint">
                   {formatCost(run.costUsd) && <span>{formatCost(run.costUsd)} so far</span>}

@@ -9,6 +9,7 @@ import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
 import { page } from "../../lib/meta";
 import { ComputeNote, EmptyState, ErrorText, SubmitButton, Textarea, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
 import { work } from "../../lib/services.server";
 import {
@@ -79,10 +80,12 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
             }
           />
           <div className="flex flex-wrap items-center gap-3">
-            <SubmitButton variant="accent" pending="Starting the planner…" disabled={!loaderData.can.run} title={whyNot(loaderData.can, "run")}>
-              <Sparkles size={15} />
-              Plan it
-            </SubmitButton>
+            <Hint label={whyNot(loaderData.can, "run")} disabled={!loaderData.can.run}>
+              <SubmitButton variant="accent" pending="Starting the planner…" disabled={!loaderData.can.run}>
+                <Sparkles size={15} />
+                Plan it
+              </SubmitButton>
+            </Hint>
             <span className="text-xs text-muted">
               Nothing is opened until you have read the plan.
             </span>

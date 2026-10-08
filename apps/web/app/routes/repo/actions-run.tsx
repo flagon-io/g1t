@@ -8,6 +8,7 @@ import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
 import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog } from "../../components/actions";
 import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { listArtifacts } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -106,13 +107,15 @@ function RanOn({ job, workspace }: { job: Job; workspace: string }) {
     );
     // A link to the runners for those who manage them, a label for everyone else.
     return runnersPage ? (
-      <Link to={`/${workspace}/-/runners`} className={`${badge} hover:text-fg`} title="Self-hosted runner">
-        {label}
-      </Link>
+      <Hint label="Self-hosted runner">
+        <Link to={`/${workspace}/-/runners`} className={`${badge} hover:text-fg`}>
+          {label}
+        </Link>
+      </Hint>
     ) : (
-      <span className={badge} title="Self-hosted runner">
-        {label}
-      </span>
+      <Hint label="Self-hosted runner">
+        <span className={badge}>{label}</span>
+      </Hint>
     );
   }
   if (!job.startedAt) return null;

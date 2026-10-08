@@ -6,6 +6,7 @@ import type { Commit } from "@g1t/contracts";
 import type { Route } from "./+types/commits";
 import { page } from "../../lib/meta";
 import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { accounts, repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -75,9 +76,11 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                     {rest && <p className="mt-1 line-clamp-1 text-sm text-muted">{rest}</p>}
                     <p className="mt-1 text-xs text-faint">
                       {owner ? (
-                        <Link to={`/u/${owner.username}`} className="relative z-10 text-muted hover:text-fg" title={commit.author.name}>
-                          {owner.username}
-                        </Link>
+                        <Hint label={commit.author.name}>
+                          <Link to={`/u/${owner.username}`} className="relative z-10 text-muted hover:text-fg">
+                            {owner.username}
+                          </Link>
+                        </Hint>
                       ) : (
                         commit.author.name
                       )}{" "}

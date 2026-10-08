@@ -7,6 +7,7 @@ import type { Route } from "./+types/packages";
 import { PackageIcon } from "../../components/package-icon";
 import { CopyLine, EmptyState, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Hint } from "../../components/ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
@@ -224,10 +225,13 @@ function PackageRow({ pkg }: { pkg: PackageSummary }) {
         <span className="hidden shrink-0 items-center gap-5 text-xs text-muted tabular-nums sm:flex">
           {pkg.latest && <span className="max-w-32 truncate font-mono text-fg-soft">{pkg.latest}</span>}
           <span className="w-16 text-right">{formatBytes(pkg.size)}</span>
-          <span className="inline-flex w-14 items-center justify-end gap-1" title={`${pkg.downloads.toLocaleString("en-US")} downloads`}>
-            <Download size={12} />
-            {shortCount(pkg.downloads)}
-          </span>
+          <Hint label={`${pkg.downloads.toLocaleString("en-US")} downloads`}>
+            <span className="inline-flex w-14 items-center justify-end gap-1">
+              <Download size={12} />
+              {shortCount(pkg.downloads)}
+              <span className="sr-only"> downloads</span>
+            </span>
+          </Hint>
         </span>
       </Link>
     </li>

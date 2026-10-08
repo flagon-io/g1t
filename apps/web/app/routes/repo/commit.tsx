@@ -9,6 +9,7 @@ import type { Route } from "./+types/commit";
 import { page } from "../../lib/meta";
 import { DiffView } from "../../components/diff-view";
 import { Avatar, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { Skeleton } from "../../components/ui/skeleton";
 import { immutable } from "../../lib/immutable.server";
 import { pullForCommit } from "../../lib/provenance.server";
@@ -157,9 +158,11 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
           <span className="flex items-center gap-2">
             <Avatar name={owner?.username ?? commit.author.name} image={owner?.avatar} size={20} />
             {owner ? (
-              <Link to={`/u/${owner.username}`} className="font-medium hover:underline" title={commit.author.name}>
-                {owner.username}
-              </Link>
+              <Hint label={commit.author.name}>
+                <Link to={`/u/${owner.username}`} className="font-medium hover:underline">
+                  {owner.username}
+                </Link>
+              </Hint>
             ) : (
               <span className="font-medium">{commit.author.name}</span>
             )}

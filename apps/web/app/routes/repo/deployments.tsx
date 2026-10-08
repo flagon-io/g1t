@@ -9,6 +9,7 @@ import { host, StatusDot } from "../../components/deploy";
 import type { Route } from "./+types/deployments";
 import { page } from "../../lib/meta";
 import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
 import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -132,17 +133,12 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
             </p>
           ) : (
             <Form method="post" className="mt-4">
-              <SubmitButton
-                variant="accent"
-                name="intent"
-                value="enable"
-                pending="Turning on…"
-                disabled={!can.manage_integrations}
-                title={whyNot(can, "manage_integrations")}
-              >
-                <Rocket size={14} />
-                Turn on deployments
-              </SubmitButton>
+              <Hint label={whyNot(can, "manage_integrations")} disabled={!can.manage_integrations}>
+                <SubmitButton variant="accent" name="intent" value="enable" pending="Turning on…" disabled={!can.manage_integrations}>
+                  <Rocket size={14} />
+                  Turn on deployments
+                </SubmitButton>
+              </Hint>
             </Form>
           )}
         </section>
@@ -297,31 +293,35 @@ function AppActions({ branch, up, compact }: { branch: string | null; up: boolea
     <Form method="post" className="flex items-center gap-2">
       {branch != null && <input type="hidden" name="branch" value={branch} />}
       <input type="hidden" name="app" value={app} />
-      <SubmitButton
-        variant="quiet"
-        name="intent"
-        value="redeploy"
-        match={{ app }}
-        icon={compact}
-        pending="Redeploying…"
-        title="Build again from the current head"
-      >
-        <RotateCw size={13} />
-        {!compact && "Redeploy"}
-      </SubmitButton>
-      {up && (
+      <Hint label="Build again from the current head">
         <SubmitButton
           variant="quiet"
           name="intent"
-          value="take-down"
+          value="redeploy"
           match={{ app }}
           icon={compact}
-          pending="Taking down…"
-          title="Take it down now"
+          pending="Redeploying…"
+          aria-label={compact ? "Redeploy" : undefined}
         >
-          <Trash2 size={13} />
-          {!compact && "Take down"}
+          <RotateCw size={13} />
+          {!compact && "Redeploy"}
         </SubmitButton>
+      </Hint>
+      {up && (
+        <Hint label="Take it down now">
+          <SubmitButton
+            variant="quiet"
+            name="intent"
+            value="take-down"
+            match={{ app }}
+            icon={compact}
+            pending="Taking down…"
+            aria-label={compact ? "Take down" : undefined}
+          >
+            <Trash2 size={13} />
+            {!compact && "Take down"}
+          </SubmitButton>
+        </Hint>
       )}
     </Form>
   );

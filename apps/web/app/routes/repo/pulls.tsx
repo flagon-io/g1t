@@ -5,6 +5,7 @@ import type { Route } from "./+types/pulls";
 import { page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
 import { AgentBadge, useActiveRuns } from "../../components/agents";
@@ -112,13 +113,15 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
           }))}
         />
         {loaderData.base && (
-          <Link
-            to={withFilter(list, current, "base", null)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-accent/40 bg-accent/5 px-2.5 text-sm"
-            title="Show pull requests into every branch"
-          >
-            Into <span className="font-mono">{loaderData.base}</span>
-          </Link>
+          <Hint label="Show pull requests into every branch">
+            <Link
+              to={withFilter(list, current, "base", null)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-accent/40 bg-accent/5 px-2.5 text-sm"
+            >
+              Into <span className="font-mono">{loaderData.base}</span>
+              <span className="sr-only">: show pull requests into every branch</span>
+            </Link>
+          </Hint>
         )}
         {filtered && (
           <Link to={state === "closed" ? `${list}?state=closed` : list} className="text-xs text-muted hover:text-fg">
