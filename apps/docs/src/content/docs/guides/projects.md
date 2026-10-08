@@ -166,7 +166,8 @@ A project's **Settings** has a tab for each part:
 | **Guardrails** | What agents may reach, run and spend while they work here. See [guardrails](/guides/guardrails/). |
 | **Repository** | The repository's name, description, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
 | **Access** | Who has a [role](/guides/access-and-roles/) on the repository, and invitations. |
-| **Branches and merging** | Branch protection, [required status checks](/guides/pull-requests/#required-status-checks), required approvals, the merge queue, auto-merge and how g1t's agents review. |
+| **Branches and merging** | Auto-merge, how g1t's agents review and revise, the CODEOWNERS file's errors, and what the rules hold for the default branch. |
+| **Rules** | [Rulesets](/guides/rules/): branch and tag protection, [required status checks](/guides/pull-requests/#required-status-checks), approvals, the merge queue, and rules for agents' changes, with Insights. |
 | **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
 | **Runners** | The project's own [self-hosted runners](/guides/self-hosted-runners/), and where its agents' work runs. |
 | **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
@@ -181,7 +182,7 @@ repository:
 | Tab | Needs |
 | --- | --- |
 | **General**, **Dependencies**, **Agents**, and on **Repository** its description, website and topics | Maintain |
-| **Branches and merging**, **Guardrails** | Maintain |
+| **Branches and merging**, **Rules**, **Guardrails** | Maintain |
 | **Access**: seeing who has a role; changing it | Write; Admin |
 | **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks** | Admin |
 | On **Repository**: its name, default branch, and the danger zone (visibility, archive) | Admin |

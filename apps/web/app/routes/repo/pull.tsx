@@ -9,6 +9,7 @@ import {
   CircleSlash,
   GitMerge,
   Layers,
+  Scale,
   GitPullRequestArrow,
   Hand,
   Loader,
@@ -24,7 +25,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { Await, Form, Link, redirect } from "react-router";
 
 import {
@@ -79,6 +80,7 @@ import {
   verdicts,
 } from "../../components/work";
 import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
@@ -242,10 +244,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     members: members?.ok ? members.value.map((person) => person.username) : [],
     // `workspace/slug` and name of each team the viewer can see.
     teams: teamList?.ok ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name })) : [],
-    requireUpToDate: protectedBase && settings.ok && settings.value.requireUpToDate,
-    mergeQueue: protectedBase && settings.ok && settings.value.mergeQueue,
-    requiredApprovals: protectedBase && settings.ok ? settings.value.requiredApprovals : 0,
-    canIgnoreChecks: !settings.ok || settings.value.allowIgnoringChecks,
+    // What the rules of the branch it merges into ask, as they stack; the
+    // default branch's settings where the rules are not known.
+    requireUpToDate: found.value.rules ? found.value.rules.strict : protectedBase && settings.ok && settings.value.requireUpToDate,
+    mergeQueue: found.value.rules ? found.value.rules.merge_queue : protectedBase && settings.ok && settings.value.mergeQueue,
+    requiredApprovals: found.value.rules
+      ? found.value.rules.required_approvals
+      : protectedBase && settings.ok
+        ? settings.value.requiredApprovals
+        : 0,
+    canIgnoreChecks: found.value.rules ? found.value.rules.allow_bypass_on_merge : !settings.ok || settings.value.allowIgnoringChecks,
     noChecks,
     // Who may open the pull request that adds CI: anyone who can push.
     canAddCi: can.push,
@@ -393,6 +401,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       ? await work.mergePull(user, path, number, {
           keepIssueOpen: form.get("keepIssueOpen") === "on",
           ignoreChecks: form.get("ignoreChecks") === "on",
+          bypassRules: form.get("bypassRules") === "on",
         })
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
@@ -597,6 +606,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     members,
     teams,
     codeOwners,
+    rules,
     tab,
     session,
     comparison,
@@ -681,18 +691,28 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
   useRefreshWhile(working || checking || reviewPending || catchingUp || settling || moving || landing || probing);
+  // The rules of its base it does not meet: checks show in their own
+  // section, so the rest stop the button here. Someone a ruleset lets
+  // bypass it may tick a box and merge past them.
+  const [bypassing, setBypassing] = useState(false);
+  const rulesUnmet = (rules?.unmet ?? []).filter((violation) => violation.rule !== "required_status_checks");
+  const rulesBypassable = rules?.bypassable ?? [];
   // Why the merge button cannot be pressed, if it cannot.
   const mergeBlocked = conflicting
     ? "Resolve the conflicts first."
     : probing
       ? "Waiting to find out whether it merges cleanly."
       : behind && requireUpToDate
-        ? `This repository requires it to be up to date with ${defaultBranch} first.`
+        ? `The rules for ${defaultBranch} require it to be up to date first.`
         : unchecked && !canIgnoreChecks
           ? `The checks ${defaultBranch} requires have to pass first.`
-          : ownersMissing
-            ? "Code owners have to approve first."
-            : null;
+          : rulesUnmet.length > 0
+            ? rulesUnmet[0]!.message
+            : rulesBypassable.length > 0 && !bypassing
+              ? `Rules for ${defaultBranch} are not met. You may bypass them.`
+              : ownersMissing
+                ? "Code owners have to approve first."
+                : null;
 
   return (
     // The changes get the whole width; people and settings are a tab away.
@@ -1181,6 +1201,47 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         </StatusRow>
                       )
                     )}
+                    {active && rules && (rulesUnmet.length > 0 || rulesBypassable.length > 0 || rules.evaluate.length > 0) && (
+                      <StatusRow
+                        icon={
+                          <Scale
+                            size={16}
+                            className={rulesUnmet.length > 0 ? "text-danger" : rulesBypassable.length > 0 ? "text-warn" : "text-info"}
+                          />
+                        }
+                        title={
+                          rulesUnmet.length > 0
+                            ? `Rules for ${defaultBranch} are not met yet`
+                            : rulesBypassable.length > 0
+                              ? `You may bypass the rules for ${defaultBranch}`
+                              : "Rulesets being evaluated would refuse this merge"
+                        }
+                      >
+                        <div className="mt-2 space-y-3">
+                          {rulesUnmet.length > 0 && <ViolationList violations={rulesUnmet} />}
+                          {rulesBypassable.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-xs text-muted">Not met, but a ruleset lets you bypass it:</p>
+                              <ViolationList violations={rulesBypassable} tone="warn" />
+                            </div>
+                          )}
+                          {rules.evaluate.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-xs text-muted">Rulesets in evaluate would refuse it for this; nothing is held up:</p>
+                              <ViolationList violations={rules.evaluate} tone="info" />
+                            </div>
+                          )}
+                          {canProtect && (
+                            <Link
+                              to={`${base}/settings/rules?branch=${encodeURIComponent(defaultBranch)}`}
+                              className="inline-block text-xs text-muted underline underline-offset-2 hover:text-fg"
+                            >
+                              See every rule for {defaultBranch}
+                            </Link>
+                          )}
+                        </div>
+                      </StatusRow>
+                    )}
                     {stalled && !lifecycle && (
                       <StatusRow icon={<Hand size={16} className="text-warn" />} title="Needs you">
                         {stalled}
@@ -1210,6 +1271,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           <CheckboxOption
                             name="ignoreChecks"
                             label={`Bypass the required checks: merge although ${requiredFailed ? "one failed" : "they have not all passed"}.`}
+                            labelClassName="text-xs text-muted"
+                          />
+                        )}
+                        {rulesBypassable.length > 0 && rulesUnmet.length === 0 && (
+                          <CheckboxOption
+                            name="bypassRules"
+                            checked={bypassing}
+                            onCheckedChange={(checked) => setBypassing(checked === true)}
+                            label={`Bypass the rules for ${defaultBranch}: merge although they are not met. It is recorded.`}
                             labelClassName="text-xs text-muted"
                           />
                         )}

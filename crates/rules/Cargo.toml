@@ -1,0 +1,13 @@
+[package]
+name = "g1t-rules"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "The rules engine: which rulesets hold for a branch or tag, and whether a push or a merge meets them."
+
+[dependencies]
+g1t-contracts.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Linear-time regular expressions only: pattern rules run on every push.
+regex = { version = "1.13", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }

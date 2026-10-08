@@ -1,13 +1,15 @@
-import { ChevronRight, ShieldCheck } from "lucide-react";
+import { ChevronRight, Scale, ShieldCheck } from "lucide-react";
 import { Suspense } from "react";
 import { Await, Form, Link } from "react-router";
+
+import { ruleInfo } from "../../lib/rules";
 
 import type { Route } from "./+types/settings-branches";
 import { page } from "../../lib/meta";
 import { AddCiPrompt } from "../../components/add-ci";
 import { CodeownersReportPanel, CodeownersReportSkeleton } from "../../components/codeowners";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { RequiredChecksPicker } from "../../components/required-checks";
+import { EnforcementBadge } from "../../components/rules";
 import { SettingChoice as Choice, SettingsSection as Section, SettingToggle as Toggle } from "../../components/settings-section";
 import { ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { actions, repos, work } from "../../lib/services.server";
@@ -29,17 +31,19 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     work.seenChecks(path, viewer),
     actions.workflows(path, viewer),
   ]);
+  const found = unwrap(repo);
+  // What holds for the default branch: shown here, changed in Rules.
+  const effective = await work.effectiveRules(path, found.defaultBranch, viewer).catch(() => null);
   // Streamed: the CODEOWNERS file is read and checked on its own time.
   const codeowners = work
     .codeownersErrors(path, viewer)
-    .then((found) => (found.ok ? found.value : null))
+    .then((report) => (report.ok ? report.value : null))
     .catch(() => null);
   return {
     codeowners,
-    repo: unwrap(repo),
+    repo: found,
     settings: unwrap(settings),
-    // The names to choose required checks from: what reported lately.
-    seen: seen.ok ? seen.value : [],
+    effective: effective?.ok ? effective.value : null,
     // Nothing to require until something runs: the page offers to add CI.
     noChecks: workflows.ok && workflows.value.length === 0 && seen.ok && seen.value.length === 0,
     canPush: access.can.push,
@@ -59,31 +63,28 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
   const on = (name: string) => form.get(name) === "on";
-  // Protection belongs to the repository and how its pull requests are
-  // handled to the work service; the page is one form over both.
-  const repo = await repos.update(user, path, { protected: on("protected") });
-  if (!repo.ok) return { saved: false, error: repo.error.message };
+  // Branch protection is the repository's rulesets' (Settings → Rules):
+  // what it holds is sent back as it is, so only how g1t's agents work
+  // changes here.
+  const current = await work.getSettings(path, user);
+  if (!current.ok) return { saved: false, error: current.error.message };
   const settings = await work.updateSettings(user, path, {
+    ...current.value,
     autoMerge: on("autoMerge"),
-    requiredChecks: form.getAll("requiredChecks").map(String),
-    requireUpToDate: on("requireUpToDate"),
-    requiredApprovals: count(form.get("requiredApprovals"), 0, 6),
-    countAgentApprovals: on("countAgentApprovals"),
-    allowIgnoringChecks: on("bypassChecks"),
     agentReview: on("agentReview"),
     maxRevisions: count(form.get("maxRevisions"), 0, 5),
-    mergeQueue: on("mergeQueue"),
     holdLowConfidence: on("holdLowConfidence"),
-    requireCodeOwnerReview: on("requireCodeOwnerReview"),
   });
   return settings.ok ? { saved: true, error: null } : { saved: false, error: settings.error.message };
 }
 
 export default function BranchSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, settings, seen, noChecks, canPush, codeowners } = loaderData;
+  const { repo, settings, effective, noChecks, canPush, codeowners } = loaderData;
   const branch = repo.defaultBranch;
   const base = `/${repo.namespace}/${repo.name}`;
   const archived = Boolean(repo.archivedAt);
+  const active = effective?.rules.filter((rule) => rule.enforcement === "active") ?? [];
+  const labels = [...new Set(active.map((rule) => ruleInfo(rule.type)?.label ?? rule.type))];
   return (
     <>
       <RepoSettingsHeading base={base} />
@@ -93,153 +94,119 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
           <AddCiPrompt owner={repo.namespace} repo={repo.name} canAdd={canPush && !archived} />
         </div>
       )}
-      <Form method="post" className="max-w-4xl">
-        <fieldset disabled={archived} className="min-w-0 space-y-8">
-          <Section title="Branch protection" about={`Rules for ${branch}, the branch every pull request merges into. They hold for people and agents alike.`}>
-            <Toggle name="protected" on={repo.protected} title={`Require a pull request to change ${branch}`}>
-              Pushing to {branch} is refused, for members and agents alike, and git says why. Changes reach it only by
-              merging a pull request. The first push to an empty repository is still allowed.
-            </Toggle>
-            <RequiredChecksPicker
-              required={settings.requiredChecks ?? []}
-              seen={seen}
-              mergeQueue={settings.mergeQueue}
-              disabled={archived}
-            />
-            <p className="-mt-4 text-sm text-muted">
-              Code scanning results and dependency review gate merges the same way: require the <strong>Code scanning</strong> and{" "}
-              <strong>Dependency review</strong> checks here once they have reported on a pull request. When each one fails is set in{" "}
-              <Link to={`/${repo.namespace}/${repo.name}/security/settings`} className="underline underline-offset-2 hover:text-fg">
-                Security settings
-              </Link>
-              .
-            </p>
-            <Toggle name="bypassChecks" on={settings.allowIgnoringChecks} title="Allow bypassing required checks">
-              Someone who may merge can tick a box to merge although a required check failed or has not finished, and
-              the pull request says who did. With this off, nobody can, and auto-merge never does.
-            </Toggle>
-            <Toggle
-              name="requireUpToDate"
-              on={settings.requireUpToDate}
-              title="Require branches to be up to date before merging"
-            >
-              With this off, a pull request can be merged after {branch} has moved: g1t brings it up to date as part of
-              merging, and asks you only if there is a conflict it cannot resolve. With it on, it has to catch up first
-              and its required checks pass again on the result, so what lands is exactly what was checked.
-            </Toggle>
-            <Choice
-              name="requiredApprovals"
-              value={settings.requiredApprovals}
-              title="Required approvals"
-              options={[
-                [0, "None"],
-                [1, "1"],
-                [2, "2"],
-                [3, "3"],
-              ]}
-            >
-              How many reviewers must approve before a pull request can merge. A reviewer who has since asked for
-              changes blocks it, and nobody approves their own.
-            </Choice>
-            <Toggle
-              name="requireCodeOwnerReview"
-              on={settings.requireCodeOwnerReview ?? false}
-              title="Require review from code owners"
-            >
-              A pull request waits until the owners of every file it changes, as the CODEOWNERS file on {branch} names
-              them, have approved.
-            </Toggle>
-            <Toggle name="countAgentApprovals" on={settings.countAgentApprovals} title="g1t's approval counts">
-              With this off, required approvals have to come from people, and an agent's review is advice.
-            </Toggle>
-            <Toggle name="mergeQueue" on={settings.mergeQueue} title="Merge through a queue">
-              Merging adds a pull request to the queue instead of changing {branch} at once. g1t builds it together with
-              every pull request ahead of it, several combinations at a time, and runs the workflows that run on{" "}
-              <code className="text-fg">merge_group</code> on each. {branch} only ever moves to a combination whose
-              required checks passed. One that fails leaves the queue and goes back to its author.
-            </Toggle>
-          </Section>
-
-          <Section
-            id="codeowners"
-            title="CODEOWNERS"
-            about={`Who owns which files, read from ${branch}. Owners are asked to review changes to their files.`}
+      <div className="max-w-4xl space-y-8">
+        <Section
+          title="Branch protection"
+          about={`What holds for ${branch} and every other branch is set by rulesets: for people and agents alike, and across the workspace.`}
+        >
+          <Link
+            to={`${base}/settings/rules`}
+            className="group flex items-start gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
           >
-            <Suspense fallback={<CodeownersReportSkeleton />}>
-              <Await resolve={codeowners}>
-                {(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}
-              </Await>
-            </Suspense>
-          </Section>
-
-          <Section
-            title="g1t"
-            about="What happens to a pull request g1t makes, from the moment it is ready. Its checks are the same workflows, and the rules above hold."
-          >
-            <Toggle name="agentReview" on={settings.agentReview} title="Review by a second agent">
-              A different agent reads each change and posts comments on lines, a summary and a verdict. If it asks for
-              changes, the author is sent back to make them. With this off, review is left to people.
-            </Toggle>
-            <Choice
-              name="maxRevisions"
-              value={settings.maxRevisions}
-              title="Revisions before asking you"
-              options={[
-                [0, "None"],
-                [1, "1"],
-                [2, "2"],
-                [3, "3"],
-                [5, "5"],
-              ]}
-            >
-              How many times an agent is sent back to fix a failed check, with what its jobs printed, or to address a
-              review, before g1t stops and the pull request says it needs you. After that, only a required check that
-              still fails holds it.
-            </Choice>
-            <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
-              A pull request g1t made lands without anyone pressing merge once every rule above is met, its required
-              checks included. With this off, it waits for a member. Pull requests from people and from other agents
-              always wait.
-            </Toggle>
-            <Toggle
-              name="holdLowConfidence"
-              on={settings.holdLowConfidence}
-              title="Ask a person before merging low-confidence changes"
-            >
-              g1t rates how sure it is of each change an agent finishes, from its required checks, revisions, review,
-              tests, size and guardrails. One it rates low waits for a member to approve it, instead of merging by itself
-              or joining the queue, and shows on Mission control as needing you.
-            </Toggle>
-            <Link
-              to={`${base}/settings/guardrails`}
-              className="group flex items-center gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
-            >
-              <ShieldCheck size={16} className="shrink-0 text-accent" />
-              <span className="min-w-0 grow">
-                <span className="block text-sm font-medium">Guardrails</span>
-                <span className="mt-0.5 block text-sm text-muted">
-                  What agents may reach, run and spend while they work on this repository.
+            <Scale size={16} className="mt-0.5 shrink-0 text-accent" />
+            <span className="min-w-0 grow">
+              <span className="block text-sm font-medium">Rules for {branch}</span>
+              <span className="mt-1 block text-sm text-muted">
+                {labels.length > 0 ? labels.join(" · ") : `No active rules hold for ${branch}: anyone who may push can change it.`}
+              </span>
+              {effective && effective.rulesets.length > 0 && (
+                <span className="mt-2 flex flex-wrap gap-2">
+                  {effective.rulesets.map((ruleset) => (
+                    <span key={ruleset.id} className="inline-flex items-center gap-1.5 text-xs text-muted">
+                      {ruleset.name} <EnforcementBadge enforcement={ruleset.enforcement} />
+                    </span>
+                  ))}
                 </span>
-              </span>
-              <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </Section>
+              )}
+            </span>
+            <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Section>
 
-          <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
-            <SubmitButton pending="Saving…" disabled={archived}>
-              Save settings
-            </SubmitButton>
-            {actionData?.saved && <span className="text-sm text-muted">Saved.</span>}
-            <ErrorText>{actionData?.error}</ErrorText>
-            {settings.updatedBy && settings.updatedAt && !actionData && (
-              <span className="text-xs text-faint">
-                Merge rules last changed by <span className="font-mono">{settings.updatedBy}</span>{" "}
-                <TimeAgo at={settings.updatedAt} />
-              </span>
-            )}
-          </div>
-        </fieldset>
-      </Form>
+        <Section
+          id="codeowners"
+          title="CODEOWNERS"
+          about={`Who owns which files, read from ${branch}. Owners are asked to review changes to their files.`}
+        >
+          <Suspense fallback={<CodeownersReportSkeleton />}>
+            <Await resolve={codeowners}>
+              {(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}
+            </Await>
+          </Suspense>
+        </Section>
+
+        <Form method="post">
+          <fieldset disabled={archived} className="min-w-0 space-y-8">
+            <Section
+              title="g1t"
+              about="What happens to a pull request g1t makes, from the moment it is ready. Its checks are the same workflows, and the branch's rules hold."
+            >
+              <Toggle name="agentReview" on={settings.agentReview} title="Review by a second agent">
+                A different agent reads each change and posts comments on lines, a summary and a verdict. If it asks for
+                changes, the author is sent back to make them. With this off, review is left to people.
+              </Toggle>
+              <Choice
+                name="maxRevisions"
+                value={settings.maxRevisions}
+                title="Revisions before asking you"
+                options={[
+                  [0, "None"],
+                  [1, "1"],
+                  [2, "2"],
+                  [3, "3"],
+                  [5, "5"],
+                ]}
+              >
+                How many times an agent is sent back to fix a failed check, with what its jobs printed, or to address a
+                review, before g1t stops and the pull request says it needs you. After that, only a required check that
+                still fails holds it.
+              </Choice>
+              <Toggle name="autoMerge" on={settings.autoMerge} title="Merge automatically when ready">
+                A pull request g1t made lands without anyone pressing merge once every rule of its branch is met, its
+                required checks included. A ruleset can turn this off for some branches, or ask for a confidence first
+                (Agent auto-merge). With this off, it waits for a member. Pull requests from people and from other agents
+                always wait.
+              </Toggle>
+              <Toggle
+                name="holdLowConfidence"
+                on={settings.holdLowConfidence}
+                title="Ask a person before merging low-confidence changes"
+              >
+                g1t rates how sure it is of each change an agent finishes, from its required checks, revisions, review,
+                tests, size and guardrails. One it rates low waits for a member to approve it, instead of merging by itself
+                or joining the queue, and shows on Mission control as needing you. A Confidence threshold rule asks for
+                more, branch by branch.
+              </Toggle>
+              <Link
+                to={`${base}/settings/guardrails`}
+                className="group flex items-center gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
+              >
+                <ShieldCheck size={16} className="shrink-0 text-accent" />
+                <span className="min-w-0 grow">
+                  <span className="block text-sm font-medium">Guardrails</span>
+                  <span className="mt-0.5 block text-sm text-muted">
+                    What agents may reach, run and spend while they work on this repository.
+                  </span>
+                </span>
+                <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </Section>
+
+            <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
+              <SubmitButton pending="Saving…" disabled={archived}>
+                Save settings
+              </SubmitButton>
+              {actionData?.saved && <span className="text-sm text-muted">Saved.</span>}
+              <ErrorText>{actionData?.error}</ErrorText>
+              {settings.updatedBy && settings.updatedAt && !actionData && (
+                <span className="text-xs text-faint">
+                  Last changed by <span className="font-mono">{settings.updatedBy}</span> <TimeAgo at={settings.updatedAt} />
+                </span>
+              )}
+            </div>
+          </fieldset>
+        </Form>
+      </div>
     </>
   );
 }

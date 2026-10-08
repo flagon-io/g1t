@@ -601,9 +601,27 @@ impl Work {
             let reasons = held.then(|| confidence.reasons.join(", "));
             (Some(confidence), reasons)
         };
+        // The rules of the branch it merges into, as g1t sees them when it
+        // merges by itself: what people must still do, whether an agent's
+        // change may land here unattended, and a cost cap that holds the
+        // agent until a person approves.
+        let gate = match self.repo_for(pull).await? {
+            Some(repo) => Some(self.merge_gate(&repo, pull, Some(&User::system(&repo.namespace)), false, true).await?),
+            None => None,
+        };
+        let level = confidence.as_ref().map(|confidence| confidence.level).or(pull.confidence.as_ref().map(|c| c.level));
+        let rules_allow_auto_merge = gate
+            .as_ref()
+            .is_none_or(|gate| g1t_rules::merge::auto_merge_refusal(&gate.requirements, level).is_none());
+        let held = gate.as_ref().and_then(|gate| {
+            g1t_rules::outcome::blocking(&gate.judged)
+                .into_iter()
+                .find(|violation| violation.rule == "cost_cap")
+                .map(|violation| format!("{} {}", violation.message, violation.remedy))
+        });
         let (lifecycle, next) = decide(Facts {
             draft: pull.status == PullStatus::Draft,
-            stalled: progress.stalled,
+            stalled: progress.stalled.or(held),
             working_on,
             check_status: pull.check_status,
             review_pending: self.review_pending(&pull.id).await?,
@@ -611,11 +629,11 @@ impl Work {
             review,
             behind,
             conflicting: self.conflicting_files(pull).await?.is_some(),
-            auto_merge: settings.auto_merge,
+            auto_merge: settings.auto_merge && rules_allow_auto_merge,
             require_up_to_date: settings.require_up_to_date,
             agent_review: settings.agent_review,
             max_revisions: settings.max_revisions,
-            approvals_missing: self.approvals_gap(&settings, pull).await?,
+            approvals_missing: gate.as_ref().and_then(|gate| gate.people_gap()),
             person_request: self
                 .person_request(pull, progress.revised_at.as_deref())
                 .await?,
@@ -1118,6 +1136,7 @@ impl Work {
                 summary: String::new(),
                 keep_issue_open: false,
                 ignore_checks: false,
+                bypass_rules: false,
             })
             .await?;
         match merged {
@@ -1266,6 +1285,7 @@ impl Work {
                 summary: String::new(),
                 keep_issue_open: request.keep_issue_open,
                 ignore_checks: true,
+                bypass_rules: false,
             })
             .await?;
         if let Outcome::Fail(failure) = merged {
@@ -1500,6 +1520,7 @@ mod tests {
                 description: None,
                 target_url: None,
                 updated_at: String::new(),
+                source: None,
             })
             .collect();
         let required: Vec<String> = required.iter().map(|name| (*name).to_owned()).collect();

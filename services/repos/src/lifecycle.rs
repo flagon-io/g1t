@@ -1356,6 +1356,29 @@ impl<S: GitStore> Repos<S> {
         let Some(head) = branches.iter().find(|b| b.name == from).map(|b| b.hash.clone()) else {
             return Ok(not_found());
         };
+        // A rename deletes one name and creates another: the rules of both
+        // hold (rules.rs).
+        let renamed = vec![
+            g1t_rules::push::RefChange {
+                git_ref: format!("refs/heads/{from}"),
+                old: Some(head.clone()),
+                new: None,
+                complete: true,
+                ..Default::default()
+            },
+            g1t_rules::push::RefChange {
+                git_ref: format!("refs/heads/{to}"),
+                old: None,
+                new: Some(head.clone()),
+                complete: true,
+                ..Default::default()
+            },
+        ];
+        if let crate::rules::Ruled::Refused { message, .. } =
+            self.check_changes(&repo, &a.actor, g1t_contracts::rules::Action::RenameRef, renamed).await?
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, message));
+        }
         let access = git.access(Scope::Write).await?;
         let made = land::push_pack(&access, &to, None, &head, EMPTY_PACK.to_vec()).await?;
         self.refs_moved(&repo.id).await;

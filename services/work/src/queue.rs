@@ -1,7 +1,8 @@
 //! The merge queue: pull requests are tested together with the ones ahead
 //! of them, and only a combination that passed reaches the default branch.
 //!
-//! A batch of up to [`BATCH`] entries is tested at once, speculatively: one
+//! A batch of up to the merge queue rule's `max_entries_to_build` entries (4 unless
+//! the default branch's rules say otherwise) is tested at once, speculatively: one
 //! sandbox per entry builds the default branch with that entry and every
 //! entry ahead of it merged in, and pushes the result to
 //! `g1t-queue/<entry>`. The repository's `merge_group` workflows then run
@@ -25,10 +26,6 @@ use worker::wasm_bindgen::JsValue;
 use crate::Work;
 use crate::checks::{hash, new_token};
 
-/// How many entries are tested at once.
-const BATCH: usize = 4;
-/// How long a batch may take before it is tested again.
-const TESTING_MINUTES: u64 = 45;
 /// How many entries that left the queue are shown.
 const RECENT: u32 = 20;
 /// Where tested states are pushed, in the repository itself.
@@ -177,7 +174,7 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        let enabled = self.settings(&repo.id).await?.merge_queue;
+        let enabled = self.default_branch_settings(&repo).await?.merge_queue;
         let (active, recent) = (self.entries(&repo.id, true).await?, self.entries(&repo.id, false).await?);
         let numbers: Vec<u32> = active.iter().chain(&recent).map(|row| row.number).collect();
         let pulls = try_join_all(numbers.iter().map(|number| self.pull(&repo.id, *number))).await?;
@@ -319,8 +316,10 @@ impl Work {
     /// entry ahead of it.
     pub(crate) async fn queue_build(&self, a: QueueBuildArgs) -> Result<Vec<QueueJob>> {
         let active = self.entries(&a.repo_id, true).await?;
+        // How the default branch's merge queue rule batches (rulesets.rs).
+        let rule = self.queue_rule(&a.repo_id).await?;
         // A batch that has taken too long is tested again.
-        let stale = minutes_ago(TESTING_MINUTES);
+        let stale = minutes_ago(u64::from(rule.check_response_timeout_minutes).max(1));
         let stuck: Vec<&EntryRow> = active
             .iter()
             .filter(|row| {
@@ -335,10 +334,16 @@ impl Work {
         if active.iter().any(|row| row.state() != QueueState::Waiting) {
             return Ok(Vec::new());
         }
-        let batch: Vec<EntryRow> = active.into_iter().take(BATCH).collect();
+        let batch: Vec<EntryRow> = active.into_iter().take(rule.max_entries_to_build.max(1) as usize).collect();
         let Some(first) = batch.first() else {
             return Ok(Vec::new());
         };
+        // Too few to start yet, and the oldest has not waited long enough.
+        if batch.len() < rule.min_entries_to_merge as usize
+            && first.created_at.as_str() > minutes_ago(u64::from(rule.min_entries_wait_minutes)).as_str()
+        {
+            return Ok(Vec::new());
+        }
         let Some(actor) = first.actor() else {
             return Ok(Vec::new());
         };
@@ -479,7 +484,7 @@ impl Work {
             (Some(commit), true) => self.start_merge_group(&row, commit).await.unwrap_or(0),
             _ => 0,
         };
-        let required = self.settings(&row.repo_id).await?.required_checks;
+        let required = self.settings_by_id(&row.repo_id).await?.required_checks;
         // Nothing runs on it, so the required checks never would report.
         let unchecked = (built && workflows == 0 && !required.is_empty()).then(|| {
             format!(

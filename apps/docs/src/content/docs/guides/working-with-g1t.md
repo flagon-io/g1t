@@ -230,23 +230,23 @@ request yourself starts it moving again.
 
 ### What a repository can ask for
 
-Under a project's **Settings → Branches and merging**, someone with the
-Maintain [role](/guides/access-and-roles/) or higher sets the rules its pull
-requests follow. **Branch protection** holds the rules for every pull
-request, a person's or an agent's; they are described in
-[required status checks](/guides/pull-requests/#required-status-checks):
+A project's [rulesets](/guides/rules/), under **Settings → Rules**, set
+what every pull request needs before it merges, a person's or an agent's:
+required checks, approvals, being up to date, the merge queue and the rest.
+Agents, g1t's included, follow them as people do. They are let through only
+when a ruleset lists g1t, or their token, as able to bypass it. Some rules
+are written for agents' changes:
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Require a pull request to change the default branch | Off | Refuses pushes to the default branch. |
-| Required status checks | None | The checks that must pass on a pull request's head before it merges. |
-| Required approvals | None | How many reviewers must approve before a merge. A reviewer who asked for changes blocks it. |
-| g1t's approval counts | On | Off means approvals have to come from people. |
-| Require branches to be up to date before merging | Off | On means catching up is a step of its own and the checks run again. |
-| Merge through a queue | Off | Merging tests a pull request together with those ahead of it; the default branch only moves to a combination that passed. See [merge queue](/guides/merge-queue/). |
-| Allow bypassing required checks | On | Lets someone who may merge merge without the required checks passing. Off means nobody can. |
+| Rule | What it does for an agent's change |
+| --- | --- |
+| A rule that holds for agents only | For example, one approval from a person, or no changes to `.g1t/workflows/**` and `CODEOWNERS`. A push that breaks it is refused, and git says which rule refused it. |
+| Confidence threshold | A change g1t [rates](#how-sure-the-agent-is) below the minimum waits for people's approval. |
+| Cost cap | Past the cap, the pull request neither merges nor goes back to its agent until a person approves it. It shows **Needs you**. |
+| Agent auto-merge | Whether g1t merges the agent's change into this branch by itself, and at what confidence. |
+| Merge window | Merges, g1t's included, wait outside the window and during a freeze. |
 
-In the **g1t** section, you set what g1t does with its own pull requests:
+Under **Settings → Branches and merging**, in the **g1t** section, you set
+what g1t does with its own pull requests:
 
 | Setting | Default | What it does |
 | --- | --- | --- |

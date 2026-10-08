@@ -241,8 +241,9 @@ what is missing:
 ## Require review from code owners
 
 Someone with the Maintain role or higher turns it on under the
-repository's **Settings → Branches and merging**, in **Branch protection**:
-**Require review from code owners**. It is off by default.
+repository's **Settings → Rules**, in a ruleset's **Require a pull request before merging** rule:
+**Require review from code owners**. It is off by default. From the API it
+is the `pull_request` rule's `require_code_owner_review` (see [rules](/guides/rules/)).
 
 With it on, a pull request merges only when every rule that owns a changed
 file has the approvals its section asks for, from its owners, and no code

@@ -237,9 +237,16 @@ out.
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
 | [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `private` and `default_branch` need Admin. | `repo` | `repo:write` |
-| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: the default branch's required checks, approvals, bypassing checks, being up to date, the merge queue, and how g1t's agents are reviewed, revised and merged. | `repo` | `repo:read` |
+| [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: how g1t's agents are reviewed, revised and merged, and the default branch's required checks, approvals, bypassing checks, being up to date and merge queue as its [rulesets](/guides/rules/) stack. | `repo` | `repo:read` |
 | [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds g1t's [low-confidence](/guides/working-with-g1t/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
 | [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
+| [`list_rulesets`](/reference/api/rules/list-repo-rulesets/) | Its [rulesets](/guides/rules/); `include_parents` adds the workspace's that hold in it. | `repo` | `repo:read` |
+| [`get_ruleset`](/reference/api/rules/get-repo-ruleset/) | One ruleset by `id`. | `repo`, `id` | `repo:read` |
+| [`create_ruleset`](/reference/api/rules/create-repo-ruleset/) | Create one: `ruleset_name`, `enforcement`, `target`, `conditions`, `bypass_actors`, `rules`. Maintain role. | `repo` | `repo:admin` |
+| [`update_ruleset`](/reference/api/rules/update-repo-ruleset/) | Change one; fields left out stay. Maintain role. | `repo`, `id` | `repo:admin` |
+| [`delete_ruleset`](/reference/api/rules/delete-repo-ruleset/) | Delete one. Maintain role. | `repo`, `id` | `repo:admin` |
+| [`branch_rules`](/reference/api/rules/get-branch-rules/) | Every rule that holds for a `branch` (or, with `target` `tag`, a tag), with the ruleset each comes from. | `repo`, `branch` | `repo:read` |
+| [`rule_evaluations`](/reference/api/rules/list-rule-evaluations/) | How its rules judged pushes and merges, newest first, with 30 days of insights. Write role. | `repo` | `repo:read` |
 | [`codeowners`](/reference/api/repositories/get-codeowners-errors/) | Its [CODEOWNERS file](/guides/codeowners/) checked as a linter would, on `ref` (the default branch unless you say): its `path`, `rules`, `sections`, and `errors`, each with `line`, `kind`, `token` and `message`. Read role. | `repo` | `repo:read` |
 | [`list_labels`](/reference/api/labels-and-milestones/list-labels/) | Its labels by name, each with `color`, `description`, and how many `issues` and `pulls` carry it. | `repo` | `repo:read` |
 | [`create_label`](/reference/api/labels-and-milestones/create-label/) | Create a label named `label`, with `color` (six hex digits; chosen from the name when left out) and `description`. Triage role. | `repo`, `label` | `issues:write` |
@@ -324,7 +331,7 @@ far.
 | [`remove_requested_reviewers`](/reference/api/pull-requests/remove-requested-reviewers/) | Stop asking them. Reviews they gave stay. | `repo`, `number` | `pull_requests:write` |
 | [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request, nor one g1t made for you. | `repo`, `number`, `verdict` | `pull_requests:write` |
 | [`close`](/reference/api/pull-requests/close-pull-request/) | Close it without merging. | `repo`, `number` | `pull_requests:write` |
-| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on its [base](/guides/base-branches/), or add it to the [merge queue](/guides/merge-queue/), once every [required check](/guides/pull-requests/#required-status-checks) has passed on its head. Into the default branch, it resolves its issue. `ignore_checks` bypasses required checks where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
+| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on its [base](/guides/base-branches/), or add it to the [merge queue](/guides/merge-queue/), once it meets every [rule](/guides/rules/) of its base, required checks included; `bypass_rules` merges past rules a ruleset lets you bypass. Into the default branch, it resolves its issue. `ignore_checks` bypasses required checks where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
 | [`merge_queue`](/reference/api/pull-requests/get-merge-queue/) | The pull requests waiting to land, in order, each with the state it is tested in and how that went; then those that recently landed or left. | `repo` | `pull_requests:read` |
 
 `record_session` takes a list of `entries`, each with a `kind` (`prompt`,
@@ -549,6 +556,12 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 | [`pin_project`](/reference/api/pinned-projects/pin-project/) | Pin a project you can see, at `position` (0 first) or at the end; at most 8 a workspace. Returns your pins. | `workspace`, `project` | `account:write` |
 | [`unpin_project`](/reference/api/pinned-projects/unpin-project/) | Unpin it. Returns your pins. | `workspace`, `project` | `account:write` |
 | [`reorder_pinned_projects`](/reference/api/pinned-projects/reorder-pinned-projects/) | Put your pins in a new order: `projects` names each pinned project's slug once. | `workspace`, `projects` | `account:write` |
+| [`list_rulesets`](/reference/api/rules/list-workspace-rulesets/) | The workspace's own [rulesets](/guides/rules/). Members only. | `workspace` | `workspace:read` |
+| [`get_ruleset`](/reference/api/rules/get-workspace-ruleset/) | One of them by `id`. Members only. | `workspace`, `id` | `workspace:read` |
+| [`create_ruleset`](/reference/api/rules/create-workspace-ruleset/) | Create one, with `conditions.repository` choosing its repositories. Owners only. | `workspace` | `workspace:admin` |
+| [`update_ruleset`](/reference/api/rules/update-workspace-ruleset/) | Change one. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`delete_ruleset`](/reference/api/rules/delete-workspace-ruleset/) | Delete one. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`rule_evaluations`](/reference/api/rules/list-workspace-rule-evaluations/) | How rules judged changes across its repositories, with insights. Members only. | `workspace` | `workspace:read` |
 
 ## `billing`
 

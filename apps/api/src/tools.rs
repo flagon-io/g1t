@@ -19,6 +19,7 @@ use g1t_contracts::scopes::{Level, NO_SCOPE, TokenAccess, scope_for};
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
+use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 
 pub struct Action {
@@ -58,16 +59,23 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings, check their CODEOWNERS file, manage their labels and milestones, and see and dismiss their security alerts (secrets and vulnerable dependencies). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, and see and dismiss their security alerts (secrets and vulnerable dependencies). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
             a("get", Op::GetRepo, "One repository"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
             a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection"),
-            a("get_settings", Op::GetRepoSettings, "Branch protection: required checks, approvals, how pull requests merge"),
-            a("update_settings", Op::UpdateRepoSettings, "Change branch protection and how pull requests merge"),
-            a("check_names", Op::ListCheckNames, "Check names reported lately, to require on the default branch"),
+            a("get_settings", Op::GetRepoSettings, "How pull requests merge, and the default branch's protection as its rules stack"),
+            a("update_settings", Op::UpdateRepoSettings, "Change how pull requests merge and the default branch protection ruleset"),
+            a("check_names", Op::ListCheckNames, "Check names reported lately, to require in a ruleset"),
+            a("list_rulesets", Op::Rules(RulesOp::ListRepoRulesets), "Its rulesets, and its workspace's that hold in it"),
+            a("get_ruleset", Op::Rules(RulesOp::GetRepoRuleset), "One ruleset"),
+            a("create_ruleset", Op::Rules(RulesOp::CreateRepoRuleset), "Create a ruleset for its branches or tags"),
+            a("update_ruleset", Op::Rules(RulesOp::UpdateRepoRuleset), "Change a ruleset"),
+            a("delete_ruleset", Op::Rules(RulesOp::DeleteRepoRuleset), "Delete a ruleset"),
+            a("branch_rules", Op::Rules(RulesOp::GetBranchRules), "Every rule that holds for a branch or tag, and where it comes from"),
+            a("rule_evaluations", Op::Rules(RulesOp::ListRuleEvaluations), "How its rules judged pushes and merges, with insights"),
             a("codeowners", Op::GetCodeownersErrors, "Problems in its CODEOWNERS file, by line"),
             a("list_labels", Op::ListLabels, "Labels, with colors and how many issues and pull requests carry each"),
             a("create_label", Op::CreateLabel, "Create a label"),
@@ -267,7 +275,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, and keep your own pinned projects at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, set rulesets that hold across its repositories, and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -287,6 +295,12 @@ pub const TOOLS: &[Tool] = &[
             a("pin_project", Op::PinProject, "Pin a project, at a position or the end"),
             a("unpin_project", Op::UnpinProject, "Unpin a project"),
             a("reorder_pinned_projects", Op::ReorderPinnedProjects, "Put your pins in a new order"),
+            a("list_rulesets", Op::Rules(RulesOp::ListWorkspaceRulesets), "Its rulesets, which hold across its repositories"),
+            a("get_ruleset", Op::Rules(RulesOp::GetWorkspaceRuleset), "One of its rulesets"),
+            a("create_ruleset", Op::Rules(RulesOp::CreateWorkspaceRuleset), "Create a ruleset for some or all of its repositories"),
+            a("update_ruleset", Op::Rules(RulesOp::UpdateWorkspaceRuleset), "Change one of its rulesets"),
+            a("delete_ruleset", Op::Rules(RulesOp::DeleteWorkspaceRuleset), "Delete one of its rulesets"),
+            a("rule_evaluations", Op::Rules(RulesOp::ListWorkspaceRuleEvaluations), "How rules judged changes across its repositories"),
         ],
     },
     Tool {
@@ -392,6 +406,7 @@ fn destructive(op: Op) -> bool {
     matches!(
         op,
         Op::Security(SecurityOp::DeleteCustomPattern | SecurityOp::BypassPushProtection)
+            | Op::Rules(RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset)
             | Op::DeleteWorkspace
             | Op::UpdateWorkspace
             | Op::DeleteRepo

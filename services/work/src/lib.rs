@@ -25,6 +25,7 @@ mod queue;
 mod retired;
 mod reviews;
 mod rows;
+mod rulesets;
 mod runs;
 mod settings;
 mod statuses;
@@ -53,14 +54,14 @@ use worker::{
 use retired::writable;
 use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot};
 
-const SOURCE: &str = "work";
+pub(crate) const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
 const MAX_ENTRY_CHARS: usize = 64_000;
 const MAX_TITLE_CHARS: usize = 200;
 const SESSION_PAGE: u32 = 500;
 const LIST_PAGE: u32 = 100;
 const MAX_ASSIGNEES: usize = 10;
-const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
+pub(crate) const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
 
 const ISSUE_COLUMNS: &str = "issues.*,
   (SELECT count(*) FROM pulls WHERE pulls.issue_id = issues.id) AS pull_count,
@@ -178,6 +179,9 @@ struct Work {
     /// A pull request's rows read in one batch for this request
     /// (prefetch.rs), which the helpers below read instead of the database.
     prefetched: std::cell::RefCell<Option<std::rc::Rc<prefetch::Prefetched>>>,
+    /// Repositories read in this request, by id, for rules that need one
+    /// where only a pull request is at hand (rulesets.rs `repo_for`).
+    known_repos: std::cell::RefCell<std::collections::HashMap<String, Repo>>,
 }
 
 impl Work {
@@ -244,7 +248,8 @@ impl Work {
     /// The repository, if the viewer may see it. Whether they may is
     /// decided by the repos service.
     async fn repo(&self, path: &RepoPath, viewer: &Viewer) -> Result<Outcome<Repo>> {
-        self.timing
+        let found: Outcome<Repo> = self
+            .timing
             .rpc(g1t_kit::call(
                 &self.repos,
                 "get",
@@ -253,7 +258,11 @@ impl Work {
                     viewer: viewer.clone(),
                 },
             ))
-            .await
+            .await?;
+        if let Outcome::Ok(repo) = &found {
+            self.known_repos.borrow_mut().insert(repo.id.clone(), repo.clone());
+        }
+        Ok(found)
     }
 
     /// The next number in the repository's sequence. Taking it is one
@@ -1333,7 +1342,8 @@ impl Work {
         let number = a.number;
         // Every row the page and the lifecycle read, in one batch started
         // beside the access check; the helpers below read from it.
-        let read = |repo_id: String| self.prefetch_pull(repo_id, number);
+        let namespace = a.repo.namespace.clone();
+        let read = |repo_id: String| self.prefetch_pull(repo_id, namespace.clone(), number);
         let Outcome::Ok((repo, Some(found))) = self.repo_then(&a.repo, &a.viewer, read).await? else {
             return Ok(no_pull());
         };
@@ -1346,7 +1356,7 @@ impl Work {
             found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
         self.keep_prefetched(Some(found));
         let default_branch = repo.default_branch.clone();
-        let detail = self.pull_detail(repo, Pull::from(row), issue, comments, stored).await;
+        let detail = self.pull_detail(repo, Pull::from(row), issue, comments, stored, &a.viewer).await;
         self.keep_prefetched(None);
         // The branch it merges into, named, for whoever reads it.
         Ok(match detail? {
@@ -1367,6 +1377,7 @@ impl Work {
         issue: Option<Issue>,
         comments: Vec<Comment>,
         stored: Option<StoredBehind>,
+        viewer: &Viewer,
     ) -> Result<Outcome<PullDetail>> {
         // Whether it is behind, as worked out with its mergeability on the
         // last push to either side (mergeability.rs), when that was for
@@ -1426,13 +1437,24 @@ impl Work {
         if confidence.is_some() {
             pull.confidence = confidence;
         }
-        let (statuses, settings) =
-            try_join(self.statuses(&repo.id, pull.head_commit.as_deref()), self.settings(&repo.id)).await?;
-        // The protection of the branch it merges into.
-        let settings = settings.for_base(pull.base_branch(&repo.default_branch), &repo.default_branch);
+        // The rules of the branch it merges into, as they stack, and which
+        // of them it does not meet yet, for whoever is looking.
+        let (statuses, settings, gate) = try_join3(
+            self.statuses(&repo.id, pull.head_commit.as_deref()),
+            self.settings_on(&repo, &pull),
+            async {
+                if pull.status.is_active() {
+                    self.merge_gate(&repo, &pull, viewer.as_ref(), false, true).await.map(Some)
+                } else {
+                    Ok(None)
+                }
+            },
+        )
+        .await?;
         let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
         Ok(Outcome::Ok(PullDetail {
             required_checks: required_checks(&settings.required_checks, &statuses),
+            rules: gate.map(|gate| rulesets::merge_rules(&gate.judged, &gate.requirements, pull.base_branch(&repo.default_branch) == repo.default_branch)),
             code_owners,
             comments,
             checks,
@@ -1831,35 +1853,30 @@ impl Work {
             }
         }
         let base = pull.base_branch(&repo.default_branch).to_owned();
-        // The protection of the branch it merges into: the default branch's
-        // settings, or none for another branch (RepoSettings::for_base).
-        let settings = self.settings(&repo.id).await?.for_base(&base, &repo.default_branch);
-        // The default branch's protection: its required checks must pass on
-        // the head, for a person's pull request and an agent's alike. Where
-        // the repository does not allow bypassing them, asking to bypass
-        // them changes nothing.
-        if !a.ignore_checks || !settings.allow_ignoring_checks {
-            let queue = (pull.check_status == Some(CheckStatus::Failed))
-                .then(|| "It failed in the merge queue; push a fix to try again.".to_owned());
-            let required = statuses::WorkflowFacts::of(
-                &self.statuses(&repo.id, pull.head_commit.as_deref()).await?,
-                &settings.required_checks,
-            )
-            .refusal();
-            if let Some(reason) = queue.or(required) {
-                let remedy = if settings.allow_ignoring_checks {
-                    "Wait or fix them, or bypass the required checks as you merge."
-                } else {
-                    "This repository only merges pull requests whose required checks pass."
-                };
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    format!("{reason} {remedy}"),
-                ));
-            }
+        // The rules of the branch it merges into, as they stack: the one
+        // gate for the merge button, the API, MCP, auto-merge and the queue,
+        // for a person's pull request and an agent's alike. A bypass counts
+        // when the merger asks for it, or for g1t when a ruleset lists it.
+        let gate = self.merge_gate(&repo, &pull, Some(&a.actor), a.ignore_checks, true).await?;
+        let bypassable = gate.bypassable();
+        let gate = if a.bypass_rules || a.actor.is_system() { gate } else { gate.without_bypass() };
+        let settings = rulesets::overlay(self.settings(&repo.id).await?, &gate.requirements, base == repo.default_branch);
+        if pull.check_status == Some(CheckStatus::Failed) && !(a.ignore_checks && settings.allow_ignoring_checks) {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "It failed in the merge queue; push a fix to try again.",
+            ));
         }
-        if let Some(missing) = self.approvals_gap(&settings, &pull).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict, missing));
+        if let Some(refusal) = gate.refusal() {
+            if access::can(Some(&a.actor), &repo, Capability::Merge) {
+                self.record_merge_evaluations(&repo, &pull, &gate).await;
+            }
+            let offer = if bypassable && !a.bypass_rules {
+                " You may bypass these rules: merge again and ask to bypass them (bypass_rules)."
+            } else {
+                ""
+            };
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{refusal}{offer}")));
         }
         // Known ahead of time to conflict: neither a merge nor the queue
         // would get through, so say what has to be resolved now.
@@ -1884,6 +1901,7 @@ impl Work {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
             }
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
+            self.record_merge_evaluations(&repo, &pull, &gate).await;
             return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open).await;
         }
 
@@ -1903,6 +1921,7 @@ impl Work {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
             }
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
+            self.record_merge_evaluations(&repo, &pull, &gate).await;
             self.request_landing(&pull, &a.actor, a.keep_issue_open)
                 .await?;
             return Ok(Outcome::Ok(pull));
@@ -1922,6 +1941,7 @@ impl Work {
         )
         .await?;
         let landed = check!(landed);
+        self.record_merge_evaluations(&repo, &pull, &gate).await;
         Ok(Outcome::Ok(
             self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed)
                 .await?,
@@ -2262,10 +2282,12 @@ impl Work {
             return Ok(());
         };
         let now = rfc3339(now_ms());
+        // Who moved it, for rules about the most recent push.
+        let pusher: JsValue = event.actor.as_deref().map_or(JsValue::NULL, Into::into);
         // The head moved, so whatever the checks said no longer applies, and
         // whatever step g1t was waiting on has been taken.
         let moved = "UPDATE pulls
-             SET head_commit = ?, updated_at = ?, check_status = NULL, check_run_id = NULL,
+             SET head_commit = ?, updated_at = ?, head_pushed_by = ?, head_pushed_at = ?, check_status = NULL, check_run_id = NULL,
                  working_on = NULL, working_until = NULL, stalled = NULL";
         let active = "status IN ('draft', 'open') AND head_commit IS NOT ?";
         let returning =
@@ -2280,6 +2302,8 @@ impl Work {
                     ))
                     .bind(&[
                         after.into(),
+                        now.as_str().into(),
+                        pusher.clone(),
                         now.as_str().into(),
                         repo_id.into(),
                         after.into(),
@@ -2297,6 +2321,8 @@ impl Work {
                     ))
                     .bind(&[
                         after.into(),
+                        now.as_str().into(),
+                        pusher.clone(),
                         now.as_str().into(),
                         repo_id.into(),
                         branch.into(),
@@ -2368,6 +2394,7 @@ fn service(env: &Env) -> Result<Work> {
         actions: env.service("ACTIONS")?,
         timing: g1t_kit::d1::Timing::default(),
         prefetched: std::cell::RefCell::new(None),
+        known_repos: std::cell::RefCell::new(std::collections::HashMap::new()),
     })
 }
 
@@ -2485,6 +2512,17 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "reply_mention" => reply(&work.reply_mention(args(body)?).await?),
         "get_agent_rules" => reply(&work.get_agent_rules(args(body)?).await?),
         "set_agent_rules" => reply(&work.set_agent_rules(args(body)?).await?),
+        // Rulesets (rulesets.rs): kept here, enforced here on merge and by
+        // repos on push.
+        "list_rulesets" => reply(&work.list_rulesets(args(body)?).await?),
+        "get_ruleset" => reply(&work.get_ruleset(args(body)?).await?),
+        "save_ruleset" => reply(&work.save_ruleset(args(body)?).await?),
+        "delete_ruleset" => reply(&work.delete_ruleset(args(body)?).await?),
+        "effective_rules" => reply(&work.effective_rules(args(body)?).await?),
+        "rule_evaluations" => reply(&work.rule_evaluations(args(body)?).await?),
+        "ref_rules" => reply(&work.ref_rules(args(body)?).await?),
+        "record_evaluations" => reply(&work.record_evaluations(args(body)?).await?),
+        "set_requires_pull_request" => reply(&work.set_requires_pull_request(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     };
     served.finish_timed(answered, &work.timing)
@@ -2496,7 +2534,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     let work = service(&env)?;
     for message in batch.messages()? {
         // A workspace renamed: its agent runs and memory move to the slug it has now.
-        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[memory::RENAMED, guardrails::RENAMED].concat()).await? {
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[memory::RENAMED, guardrails::RENAMED, rulesets::RENAMED].concat()).await? {
             message.ack();
             continue;
         }

@@ -225,6 +225,25 @@
       ]
     },
     {
+      "name": "Rules",
+      "description": "Rulesets: what may happen to a repository's branches and tags and what a pull request needs before it merges, for a repository or across a workspace; the rules that hold for one branch; and how they judged each push and merge, with insights.",
+      "x-tools": [
+        "list_repo_rulesets",
+        "create_repo_ruleset",
+        "get_repo_ruleset",
+        "update_repo_ruleset",
+        "delete_repo_ruleset",
+        "get_branch_rules",
+        "list_rule_evaluations",
+        "list_workspace_rulesets",
+        "create_workspace_ruleset",
+        "get_workspace_ruleset",
+        "update_workspace_ruleset",
+        "delete_workspace_ruleset",
+        "list_workspace_rule_evaluations"
+      ]
+    },
+    {
       "name": "Issues",
       "description": "What should change in a repository, with labels and comments. Issues and pull requests share one sequence of numbers.",
       "x-tools": [
@@ -19116,7 +19135,7 @@
           "Repositories"
         ],
         "summary": "Get repository settings",
-        "description": "How a repository handles pull requests, as its default branch's protection: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged. The same rules hold for a person's pull request and an agent's.",
+        "description": "How a repository handles pull requests: how g1t's agents are reviewed, revised and merged, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for a person's pull request and an agent's. list_repo_rulesets and get_branch_rules show every rule.",
         "x-operation": "get_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "get_settings",
@@ -19223,7 +19242,7 @@
           "Repositories"
         ],
         "summary": "Update repository settings",
-        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. With `require_code_owner_review`, a pull request merges only once the code owners of every file it changes, as the CODEOWNERS file of the branch it merges into names them, have approved it. Needs the Maintain role or higher.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
+        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
         "x-operation": "update_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_settings",
@@ -19509,6 +19528,3085 @@
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/rulesets": {
+      "get": {
+        "operationId": "list_repo_rulesets",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "List a repository's rulesets",
+        "description": "List a repository's rulesets: what may happen to its branches and tags, and what a pull request needs before it merges. With include_parents, also its workspace's rulesets that hold in it (level workspace). Each has its enforcement (active, evaluate: a dry run that records what it would have refused, or disabled), target (branch or tag), conditions (ref_name include and exclude patterns: fnmatch, ~DEFAULT_BRANCH, ~ALL), bypass_actors and rules. The one made from branch protection settings has source branch_protection.\n\nWith `include_parents`, the workspace's rulesets that hold in the repository come too, with `level` `workspace`. The ruleset made from the repository's branch protection settings has `source` `branch_protection`.",
+        "x-operation": "list_repo_rulesets",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "list_rulesets",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "include_parents",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Also list the workspace's rulesets that hold in it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                    "level": "repository",
+                    "workspace": "flagon-io",
+                    "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+                    "repository": "flagon-io/hello",
+                    "name": "Protect main",
+                    "enforcement": "active",
+                    "target": "branch",
+                    "conditions": {
+                      "ref_name": {
+                        "include": [
+                          "~DEFAULT_BRANCH"
+                        ],
+                        "exclude": []
+                      }
+                    },
+                    "bypass_actors": [
+                      {
+                        "kind": "role",
+                        "value": "admin",
+                        "mode": "pull_requests"
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "type": "deletion",
+                        "parameters": {},
+                        "applies_to": "everyone"
+                      },
+                      {
+                        "type": "non_fast_forward",
+                        "parameters": {},
+                        "applies_to": "everyone"
+                      },
+                      {
+                        "type": "pull_request",
+                        "parameters": {
+                          "required_approvals": 1,
+                          "count_agent_approvals": true,
+                          "dismiss_stale_reviews_on_push": true,
+                          "require_code_owner_review": true,
+                          "require_last_push_approval": false,
+                          "allowed_merge_methods": []
+                        },
+                        "applies_to": "everyone"
+                      },
+                      {
+                        "type": "required_status_checks",
+                        "parameters": {
+                          "checks": [
+                            {
+                              "context": "CI",
+                              "integration": "actions"
+                            }
+                          ],
+                          "strict": true,
+                          "paths": [],
+                          "allow_bypass_on_merge": false
+                        },
+                        "applies_to": "everyone"
+                      },
+                      {
+                        "type": "pull_request",
+                        "parameters": {
+                          "required_approvals": 1,
+                          "count_agent_approvals": false,
+                          "dismiss_stale_reviews_on_push": false,
+                          "require_code_owner_review": false,
+                          "require_last_push_approval": false,
+                          "allowed_merge_methods": []
+                        },
+                        "applies_to": "agents"
+                      },
+                      {
+                        "type": "file_path_restriction",
+                        "parameters": {
+                          "restricted_file_paths": [
+                            ".g1t/workflows/**",
+                            "CODEOWNERS"
+                          ]
+                        },
+                        "applies_to": "agents"
+                      }
+                    ],
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-07T14:02:11.318Z",
+                    "updated_by": "syntaqx",
+                    "updated_at": "2026-10-07T14:02:11.318Z"
+                  },
+                  {
+                    "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                    "level": "workspace",
+                    "workspace": "flagon-io",
+                    "name": "Release freeze",
+                    "enforcement": "evaluate",
+                    "target": "branch",
+                    "conditions": {
+                      "ref_name": {
+                        "include": [
+                          "~DEFAULT_BRANCH",
+                          "release/**"
+                        ],
+                        "exclude": []
+                      },
+                      "repository": {
+                        "include": [
+                          "~ALL"
+                        ],
+                        "exclude": [
+                          "sandbox-*"
+                        ],
+                        "visibility": "any",
+                        "topics": []
+                      }
+                    },
+                    "bypass_actors": [
+                      {
+                        "kind": "team",
+                        "value": "flagon-io/release",
+                        "mode": "always"
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "type": "merge_window",
+                        "parameters": {
+                          "time_zone": "-05:00",
+                          "windows": [
+                            {
+                              "days": [
+                                "mon",
+                                "tue",
+                                "wed",
+                                "thu"
+                              ],
+                              "start": "09:00",
+                              "end": "17:00"
+                            }
+                          ],
+                          "freezes": [
+                            {
+                              "start": "2026-12-20T00:00:00Z",
+                              "end": "2027-01-04T00:00:00Z",
+                              "reason": "Holidays"
+                            }
+                          ],
+                          "exceptions": []
+                        },
+                        "applies_to": "everyone"
+                      },
+                      {
+                        "type": "cost_cap",
+                        "parameters": {
+                          "max_usd": 25
+                        },
+                        "applies_to": "agents"
+                      }
+                    ],
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-07T14:02:11.318Z",
+                    "updated_by": "syntaqx",
+                    "updated_at": "2026-10-07T14:02:11.318Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "include_parents": "true"
+        }
+      },
+      "post": {
+        "operationId": "create_repo_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Create a repository ruleset",
+        "description": "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, confidence_threshold, cost_cap, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Maintain role. Returns the ruleset as saved, tidied.\n\nParameters left out take their defaults, and the ruleset comes back as saved: patterns trimmed, roles and teams lowercased. A pattern that does not compile, or a rule the target cannot hold (a pull request rule on tags), is refused with `invalid` and says why.",
+        "x-operation": "create_repo_ruleset",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "create_ruleset",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                  "level": "repository",
+                  "workspace": "flagon-io",
+                  "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+                  "repository": "flagon-io/hello",
+                  "name": "Protect main",
+                  "enforcement": "active",
+                  "target": "branch",
+                  "conditions": {
+                    "ref_name": {
+                      "include": [
+                        "~DEFAULT_BRANCH"
+                      ],
+                      "exclude": []
+                    }
+                  },
+                  "bypass_actors": [
+                    {
+                      "kind": "role",
+                      "value": "admin",
+                      "mode": "pull_requests"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "type": "deletion",
+                      "parameters": {},
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "non_fast_forward",
+                      "parameters": {},
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": true,
+                        "dismiss_stale_reviews_on_push": true,
+                        "require_code_owner_review": true,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "required_status_checks",
+                      "parameters": {
+                        "checks": [
+                          {
+                            "context": "CI",
+                            "integration": "actions"
+                          }
+                        ],
+                        "strict": true,
+                        "paths": [],
+                        "allow_bypass_on_merge": false
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": false,
+                        "dismiss_stale_reviews_on_push": false,
+                        "require_code_owner_review": false,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "agents"
+                    },
+                    {
+                      "type": "file_path_restriction",
+                      "parameters": {
+                        "restricted_file_paths": [
+                          ".g1t/workflows/**",
+                          "CODEOWNERS"
+                        ]
+                      },
+                      "applies_to": "agents"
+                    }
+                  ],
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ruleset_name": {
+                    "type": "string",
+                    "description": "What people call it, at most 100 characters. A ruleset as exported names it `name`, which is read too."
+                  },
+                  "enforcement": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "evaluate",
+                      "disabled"
+                    ],
+                    "description": "active: its rules hold. evaluate: nothing is refused, and what would have been is recorded. disabled: kept, not evaluated. Default active."
+                  },
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "branch",
+                      "tag"
+                    ],
+                    "description": "What its name conditions match. Default branch."
+                  },
+                  "conditions": {
+                    "type": "object",
+                    "properties": {
+                      "ref_name": {
+                        "type": "object",
+                        "description": "Which branches or tags: include and exclude, each a list of fnmatch patterns (* within a path segment, ** across them), ~DEFAULT_BRANCH or ~ALL.",
+                        "properties": {
+                          "include": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exclude": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "bypass_actors": {
+                    "type": "array",
+                    "description": "Who it does not hold for. Nobody bypasses unless listed, g1t included. kind role takes read, triage, write, maintain, admin (that role or higher) or owner; team its slug or workspace/slug; user a username; token a token id, or workspace for any of the workspace's tokens; g1t no value. mode always (pushes and merges) or pull_requests (merges only; a person merging asks to, with bypass_rules).",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "role",
+                            "team",
+                            "user",
+                            "token",
+                            "g1t"
+                          ]
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "always",
+                            "pull_requests"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "rules": {
+                    "type": "array",
+                    "description": "Its rules. Each: type, parameters (left-out parameters take their defaults) and applies_to (everyone, agents or people). See the Rules guide for every type's parameters.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "type": "object"
+                        },
+                        "applies_to": {
+                          "type": "string",
+                          "enum": [
+                            "everyone",
+                            "agents",
+                            "people"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "ruleset_name": "Protect main",
+                "enforcement": "active",
+                "target": "branch",
+                "conditions": {
+                  "ref_name": {
+                    "include": [
+                      "~DEFAULT_BRANCH"
+                    ],
+                    "exclude": []
+                  }
+                },
+                "bypass_actors": [
+                  {
+                    "kind": "role",
+                    "value": "admin",
+                    "mode": "pull_requests"
+                  }
+                ],
+                "rules": [
+                  {
+                    "type": "deletion",
+                    "parameters": {},
+                    "applies_to": "everyone"
+                  },
+                  {
+                    "type": "non_fast_forward",
+                    "parameters": {},
+                    "applies_to": "everyone"
+                  },
+                  {
+                    "type": "pull_request",
+                    "parameters": {
+                      "required_approvals": 1,
+                      "count_agent_approvals": true,
+                      "dismiss_stale_reviews_on_push": true,
+                      "require_code_owner_review": true,
+                      "require_last_push_approval": false,
+                      "allowed_merge_methods": []
+                    },
+                    "applies_to": "everyone"
+                  },
+                  {
+                    "type": "required_status_checks",
+                    "parameters": {
+                      "checks": [
+                        {
+                          "context": "CI",
+                          "integration": "actions"
+                        }
+                      ],
+                      "strict": true,
+                      "paths": [],
+                      "allow_bypass_on_merge": false
+                    },
+                    "applies_to": "everyone"
+                  },
+                  {
+                    "type": "pull_request",
+                    "parameters": {
+                      "required_approvals": 1,
+                      "count_agent_approvals": false,
+                      "dismiss_stale_reviews_on_push": false,
+                      "require_code_owner_review": false,
+                      "require_last_push_approval": false,
+                      "allowed_merge_methods": []
+                    },
+                    "applies_to": "agents"
+                  },
+                  {
+                    "type": "file_path_restriction",
+                    "parameters": {
+                      "restricted_file_paths": [
+                        ".g1t/workflows/**",
+                        "CODEOWNERS"
+                      ]
+                    },
+                    "applies_to": "agents"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/rulesets/{id}": {
+      "get": {
+        "operationId": "get_repo_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Get a repository ruleset",
+        "description": "Get one of a repository's rulesets by id (rs_…), or one of its workspace's that holds in it.",
+        "x-operation": "get_repo_ruleset",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "get_ruleset",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ruleset's id: rs_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                  "level": "repository",
+                  "workspace": "flagon-io",
+                  "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+                  "repository": "flagon-io/hello",
+                  "name": "Protect main",
+                  "enforcement": "active",
+                  "target": "branch",
+                  "conditions": {
+                    "ref_name": {
+                      "include": [
+                        "~DEFAULT_BRANCH"
+                      ],
+                      "exclude": []
+                    }
+                  },
+                  "bypass_actors": [
+                    {
+                      "kind": "role",
+                      "value": "admin",
+                      "mode": "pull_requests"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "type": "deletion",
+                      "parameters": {},
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "non_fast_forward",
+                      "parameters": {},
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": true,
+                        "dismiss_stale_reviews_on_push": true,
+                        "require_code_owner_review": true,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "required_status_checks",
+                      "parameters": {
+                        "checks": [
+                          {
+                            "context": "CI",
+                            "integration": "actions"
+                          }
+                        ],
+                        "strict": true,
+                        "paths": [],
+                        "allow_bypass_on_merge": false
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": false,
+                        "dismiss_stale_reviews_on_push": false,
+                        "require_code_owner_review": false,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "agents"
+                    },
+                    {
+                      "type": "file_path_restriction",
+                      "parameters": {
+                        "restricted_file_paths": [
+                          ".g1t/workflows/**",
+                          "CODEOWNERS"
+                        ]
+                      },
+                      "applies_to": "agents"
+                    }
+                  ],
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m"
+        }
+      },
+      "put": {
+        "operationId": "update_repo_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Update a repository ruleset",
+        "description": "Change a repository ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Takes the Maintain role.\n\nFields left out stay as they are. `rules` and `bypass_actors`, when given, replace the whole list.",
+        "x-operation": "update_repo_ruleset",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "update_ruleset",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ruleset's id: rs_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                  "level": "repository",
+                  "workspace": "flagon-io",
+                  "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+                  "repository": "flagon-io/hello",
+                  "name": "Protect main",
+                  "enforcement": "evaluate",
+                  "target": "branch",
+                  "conditions": {
+                    "ref_name": {
+                      "include": [
+                        "~DEFAULT_BRANCH"
+                      ],
+                      "exclude": []
+                    }
+                  },
+                  "bypass_actors": [
+                    {
+                      "kind": "role",
+                      "value": "admin",
+                      "mode": "pull_requests"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "type": "deletion",
+                      "parameters": {},
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "non_fast_forward",
+                      "parameters": {},
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": true,
+                        "dismiss_stale_reviews_on_push": true,
+                        "require_code_owner_review": true,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "required_status_checks",
+                      "parameters": {
+                        "checks": [
+                          {
+                            "context": "CI",
+                            "integration": "actions"
+                          }
+                        ],
+                        "strict": true,
+                        "paths": [],
+                        "allow_bypass_on_merge": false
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": false,
+                        "dismiss_stale_reviews_on_push": false,
+                        "require_code_owner_review": false,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "agents"
+                    },
+                    {
+                      "type": "file_path_restriction",
+                      "parameters": {
+                        "restricted_file_paths": [
+                          ".g1t/workflows/**",
+                          "CODEOWNERS"
+                        ]
+                      },
+                      "applies_to": "agents"
+                    }
+                  ],
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ruleset_name": {
+                    "type": "string",
+                    "description": "What people call it, at most 100 characters. A ruleset as exported names it `name`, which is read too."
+                  },
+                  "enforcement": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "evaluate",
+                      "disabled"
+                    ],
+                    "description": "active: its rules hold. evaluate: nothing is refused, and what would have been is recorded. disabled: kept, not evaluated. Default active."
+                  },
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "branch",
+                      "tag"
+                    ],
+                    "description": "What its name conditions match. Default branch."
+                  },
+                  "conditions": {
+                    "type": "object",
+                    "properties": {
+                      "ref_name": {
+                        "type": "object",
+                        "description": "Which branches or tags: include and exclude, each a list of fnmatch patterns (* within a path segment, ** across them), ~DEFAULT_BRANCH or ~ALL.",
+                        "properties": {
+                          "include": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exclude": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "bypass_actors": {
+                    "type": "array",
+                    "description": "Who it does not hold for. Nobody bypasses unless listed, g1t included. kind role takes read, triage, write, maintain, admin (that role or higher) or owner; team its slug or workspace/slug; user a username; token a token id, or workspace for any of the workspace's tokens; g1t no value. mode always (pushes and merges) or pull_requests (merges only; a person merging asks to, with bypass_rules).",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "role",
+                            "team",
+                            "user",
+                            "token",
+                            "g1t"
+                          ]
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "always",
+                            "pull_requests"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "rules": {
+                    "type": "array",
+                    "description": "Its rules. Each: type, parameters (left-out parameters take their defaults) and applies_to (everyone, agents or people). See the Rules guide for every type's parameters.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "type": "object"
+                        },
+                        "applies_to": {
+                          "type": "string",
+                          "enum": [
+                            "everyone",
+                            "agents",
+                            "people"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "enforcement": "evaluate"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m"
+        }
+      },
+      "delete": {
+        "operationId": "delete_repo_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Delete a repository ruleset",
+        "description": "Delete a repository ruleset. Its evaluations stay in the log. Takes the Maintain role.",
+        "x-operation": "delete_repo_ruleset",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "delete_ruleset",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ruleset's id: rs_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/rules/branches/{branch}": {
+      "get": {
+        "operationId": "get_branch_rules",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Get the rules for a branch",
+        "description": "Every rule that holds for a branch (or a tag, with target tag) of a repository, from every ruleset that targets it, the repository's and its workspace's: each with its type, parameters and applies_to, and the ruleset_id, ruleset_name, level and enforcement it comes from. Active rules come first, then those of rulesets in evaluate. rulesets lists the rulesets with who may bypass each. A branch name with slashes is URL-encoded in the path.\n\nA branch with slashes in its name is URL-encoded as one segment: `/rules/branches/release%2F1.x`. Add `?target=tag` for a tag.",
+        "x-operation": "get_branch_rules",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "branch_rules",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "branch",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The branch (or tag) name, such as main or release/1.x."
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "branch",
+                "tag"
+              ]
+            },
+            "description": "branch (the default) or tag."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "main",
+                  "target": "branch",
+                  "default_branch": true,
+                  "rules": [
+                    {
+                      "type": "deletion",
+                      "parameters": {},
+                      "applies_to": "everyone",
+                      "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "ruleset_name": "Protect main",
+                      "level": "repository",
+                      "enforcement": "active"
+                    },
+                    {
+                      "type": "non_fast_forward",
+                      "parameters": {},
+                      "applies_to": "everyone",
+                      "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "ruleset_name": "Protect main",
+                      "level": "repository",
+                      "enforcement": "active"
+                    },
+                    {
+                      "type": "pull_request",
+                      "parameters": {
+                        "required_approvals": 1,
+                        "count_agent_approvals": true,
+                        "dismiss_stale_reviews_on_push": true,
+                        "require_code_owner_review": true,
+                        "require_last_push_approval": false,
+                        "allowed_merge_methods": []
+                      },
+                      "applies_to": "everyone",
+                      "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "ruleset_name": "Protect main",
+                      "level": "repository",
+                      "enforcement": "active"
+                    },
+                    {
+                      "type": "required_status_checks",
+                      "parameters": {
+                        "checks": [
+                          {
+                            "context": "CI",
+                            "integration": "actions"
+                          }
+                        ],
+                        "strict": true,
+                        "paths": [],
+                        "allow_bypass_on_merge": false
+                      },
+                      "applies_to": "everyone",
+                      "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "ruleset_name": "Protect main",
+                      "level": "repository",
+                      "enforcement": "active"
+                    },
+                    {
+                      "type": "merge_window",
+                      "parameters": {
+                        "time_zone": "-05:00",
+                        "windows": [
+                          {
+                            "days": [
+                              "mon",
+                              "tue",
+                              "wed",
+                              "thu"
+                            ],
+                            "start": "09:00",
+                            "end": "17:00"
+                          }
+                        ],
+                        "freezes": [
+                          {
+                            "start": "2026-12-20T00:00:00Z",
+                            "end": "2027-01-04T00:00:00Z",
+                            "reason": "Holidays"
+                          }
+                        ],
+                        "exceptions": []
+                      },
+                      "applies_to": "everyone",
+                      "ruleset_id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                      "ruleset_name": "Release freeze",
+                      "level": "workspace",
+                      "enforcement": "evaluate"
+                    }
+                  ],
+                  "rulesets": [
+                    {
+                      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "name": "Protect main",
+                      "level": "repository",
+                      "enforcement": "active",
+                      "bypass_actors": [
+                        {
+                          "kind": "role",
+                          "value": "admin",
+                          "mode": "pull_requests"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                      "name": "Release freeze",
+                      "level": "workspace",
+                      "enforcement": "evaluate",
+                      "bypass_actors": [
+                        {
+                          "kind": "team",
+                          "value": "flagon-io/release",
+                          "mode": "always"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "branch": "main"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/rules/evaluations": {
+      "get": {
+        "operationId": "list_rule_evaluations",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "List a repository's rule evaluations",
+        "description": "List how a repository's rulesets judged pushes, merges and other changes to its branches and tags, newest first: the ruleset, the action (push, merge, create_ref, delete_ref, rename_ref or commit), the ref, the actor and whether they are a person, an agent or g1t, the verdict (pass, fail or bypass) and each rule broken with why. A fail of a ruleset in evaluate is what it would have refused. Filter by ruleset_id or verdict, or problems_only; page with before. insights counts the last 30 days by ruleset and by rule. Takes the Write role.\n\nA `fail` of a ruleset in `evaluate` is what it would have refused. Pass `next` as `before` for the next page. `insights` counts the last 30 days.",
+        "x-operation": "list_rule_evaluations",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "rule_evaluations",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ruleset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only this ruleset's evaluations."
+          },
+          {
+            "name": "verdict",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail",
+                "bypass"
+              ]
+            },
+            "description": "Only evaluations that came out this way."
+          },
+          {
+            "name": "problems_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only evaluations that broke a rule: failed, would have failed, or bypassed."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "An evaluation's id (rev_…): only older ones. The page's next."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many, 1 to 100; 30 by default."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "evaluations": [
+                    {
+                      "id": "rev_01kq3c4d5e6f7g8h9j0k1m2n3p",
+                      "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+                      "workspace": "flagon-io",
+                      "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "ruleset_name": "Protect main",
+                      "enforcement": "active",
+                      "action": "push",
+                      "git_ref": "refs/heads/main",
+                      "actor": "g1t",
+                      "actor_kind": "agent",
+                      "verdict": "fail",
+                      "violations": [
+                        {
+                          "rule": "pull_request",
+                          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                          "ruleset_name": "Protect main",
+                          "enforcement": "active",
+                          "message": "Changes to main must be made through a pull request.",
+                          "remedy": "Push a branch, open a pull request into main, and merge it."
+                        }
+                      ],
+                      "number": null,
+                      "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                      "repository": "flagon-io/hello",
+                      "created_at": "2026-10-07T14:02:11.318Z"
+                    }
+                  ],
+                  "next": null,
+                  "insights": {
+                    "days": 30,
+                    "total": 214,
+                    "passed": 198,
+                    "blocked": 9,
+                    "would_block": 5,
+                    "bypassed": 2,
+                    "by_ruleset": [
+                      {
+                        "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                        "ruleset_name": "Protect main",
+                        "enforcement": "active",
+                        "total": 120,
+                        "blocked": 9,
+                        "would_block": 0,
+                        "bypassed": 2
+                      }
+                    ],
+                    "by_rule": [
+                      {
+                        "rule": "pull_request",
+                        "count": 7
+                      },
+                      {
+                        "rule": "non_fast_forward",
+                        "count": 2
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        },
+        "x-example-query": {
+          "problems_only": "true"
+        }
+      }
+    },
+    "/workspaces/{workspace}/rulesets": {
+      "get": {
+        "operationId": "list_workspace_rulesets",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "List a workspace's rulesets",
+        "description": "List a workspace's own rulesets. Each holds in the repositories its conditions.repository selects: names matching include (fnmatch, or ~ALL) and not exclude, of a visibility (any, public or private), and carrying one of topics when given. Members only.",
+        "x-operation": "list_workspace_rulesets",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_rulesets",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                    "level": "workspace",
+                    "workspace": "flagon-io",
+                    "name": "Release freeze",
+                    "enforcement": "evaluate",
+                    "target": "branch",
+                    "conditions": {
+                      "ref_name": {
+                        "include": [
+                          "~DEFAULT_BRANCH",
+                          "release/**"
+                        ],
+                        "exclude": []
+                      },
+                      "repository": {
+                        "include": [
+                          "~ALL"
+                        ],
+                        "exclude": [
+                          "sandbox-*"
+                        ],
+                        "visibility": "any",
+                        "topics": []
+                      }
+                    },
+                    "bypass_actors": [
+                      {
+                        "kind": "team",
+                        "value": "flagon-io/release",
+                        "mode": "always"
+                      }
+                    ],
+                    "rules": [
+                      {
+                        "type": "merge_window",
+                        "parameters": {
+                          "time_zone": "-05:00",
+                          "windows": [
+                            {
+                              "days": [
+                                "mon",
+                                "tue",
+                                "wed",
+                                "thu"
+                              ],
+                              "start": "09:00",
+                              "end": "17:00"
+                            }
+                          ],
+                          "freezes": [
+                            {
+                              "start": "2026-12-20T00:00:00Z",
+                              "end": "2027-01-04T00:00:00Z",
+                              "reason": "Holidays"
+                            }
+                          ],
+                          "exceptions": []
+                        },
+                        "applies_to": "everyone"
+                      },
+                      {
+                        "type": "cost_cap",
+                        "parameters": {
+                          "max_usd": 25
+                        },
+                        "applies_to": "agents"
+                      }
+                    ],
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-07T14:02:11.318Z",
+                    "updated_by": "syntaqx",
+                    "updated_at": "2026-10-07T14:02:11.318Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "create_workspace_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Create a workspace ruleset",
+        "description": "Create a workspace ruleset, as for a repository, plus conditions.repository: which of the workspace's repositories it holds in (include and exclude name patterns, visibility, topics). Owners only.\n\n`conditions.repository` chooses the repositories it holds in; left out, every repository of the workspace.",
+        "x-operation": "create_workspace_ruleset",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "create_ruleset",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                  "level": "workspace",
+                  "workspace": "flagon-io",
+                  "name": "Release freeze",
+                  "enforcement": "evaluate",
+                  "target": "branch",
+                  "conditions": {
+                    "ref_name": {
+                      "include": [
+                        "~DEFAULT_BRANCH",
+                        "release/**"
+                      ],
+                      "exclude": []
+                    },
+                    "repository": {
+                      "include": [
+                        "~ALL"
+                      ],
+                      "exclude": [
+                        "sandbox-*"
+                      ],
+                      "visibility": "any",
+                      "topics": []
+                    }
+                  },
+                  "bypass_actors": [
+                    {
+                      "kind": "team",
+                      "value": "flagon-io/release",
+                      "mode": "always"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "type": "merge_window",
+                      "parameters": {
+                        "time_zone": "-05:00",
+                        "windows": [
+                          {
+                            "days": [
+                              "mon",
+                              "tue",
+                              "wed",
+                              "thu"
+                            ],
+                            "start": "09:00",
+                            "end": "17:00"
+                          }
+                        ],
+                        "freezes": [
+                          {
+                            "start": "2026-12-20T00:00:00Z",
+                            "end": "2027-01-04T00:00:00Z",
+                            "reason": "Holidays"
+                          }
+                        ],
+                        "exceptions": []
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "cost_cap",
+                      "parameters": {
+                        "max_usd": 25
+                      },
+                      "applies_to": "agents"
+                    }
+                  ],
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ruleset_name": {
+                    "type": "string",
+                    "description": "What people call it, at most 100 characters. A ruleset as exported names it `name`, which is read too."
+                  },
+                  "enforcement": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "evaluate",
+                      "disabled"
+                    ],
+                    "description": "active: its rules hold. evaluate: nothing is refused, and what would have been is recorded. disabled: kept, not evaluated. Default active."
+                  },
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "branch",
+                      "tag"
+                    ],
+                    "description": "What its name conditions match. Default branch."
+                  },
+                  "conditions": {
+                    "type": "object",
+                    "properties": {
+                      "ref_name": {
+                        "type": "object",
+                        "description": "Which branches or tags: include and exclude, each a list of fnmatch patterns (* within a path segment, ** across them), ~DEFAULT_BRANCH or ~ALL.",
+                        "properties": {
+                          "include": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exclude": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "repository": {
+                        "type": "object",
+                        "description": "Which of the workspace's repositories: include and exclude name patterns (or ~ALL), visibility (any, public, private) and topics (any of).",
+                        "properties": {
+                          "include": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exclude": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "visibility": {
+                            "type": "string",
+                            "enum": [
+                              "any",
+                              "public",
+                              "private"
+                            ]
+                          },
+                          "topics": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "bypass_actors": {
+                    "type": "array",
+                    "description": "Who it does not hold for. Nobody bypasses unless listed, g1t included. kind role takes read, triage, write, maintain, admin (that role or higher) or owner; team its slug or workspace/slug; user a username; token a token id, or workspace for any of the workspace's tokens; g1t no value. mode always (pushes and merges) or pull_requests (merges only; a person merging asks to, with bypass_rules).",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "role",
+                            "team",
+                            "user",
+                            "token",
+                            "g1t"
+                          ]
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "always",
+                            "pull_requests"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "rules": {
+                    "type": "array",
+                    "description": "Its rules. Each: type, parameters (left-out parameters take their defaults) and applies_to (everyone, agents or people). See the Rules guide for every type's parameters.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "type": "object"
+                        },
+                        "applies_to": {
+                          "type": "string",
+                          "enum": [
+                            "everyone",
+                            "agents",
+                            "people"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "ruleset_name": "Release freeze",
+                "enforcement": "evaluate",
+                "target": "branch",
+                "conditions": {
+                  "ref_name": {
+                    "include": [
+                      "~DEFAULT_BRANCH",
+                      "release/**"
+                    ],
+                    "exclude": []
+                  },
+                  "repository": {
+                    "include": [
+                      "~ALL"
+                    ],
+                    "exclude": [
+                      "sandbox-*"
+                    ],
+                    "visibility": "any",
+                    "topics": []
+                  }
+                },
+                "bypass_actors": [
+                  {
+                    "kind": "team",
+                    "value": "flagon-io/release",
+                    "mode": "always"
+                  }
+                ],
+                "rules": [
+                  {
+                    "type": "merge_window",
+                    "parameters": {
+                      "time_zone": "-05:00",
+                      "windows": [
+                        {
+                          "days": [
+                            "mon",
+                            "tue",
+                            "wed",
+                            "thu"
+                          ],
+                          "start": "09:00",
+                          "end": "17:00"
+                        }
+                      ],
+                      "freezes": [
+                        {
+                          "start": "2026-12-20T00:00:00Z",
+                          "end": "2027-01-04T00:00:00Z",
+                          "reason": "Holidays"
+                        }
+                      ],
+                      "exceptions": []
+                    },
+                    "applies_to": "everyone"
+                  },
+                  {
+                    "type": "cost_cap",
+                    "parameters": {
+                      "max_usd": 25
+                    },
+                    "applies_to": "agents"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/rulesets/{id}": {
+      "get": {
+        "operationId": "get_workspace_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Get a workspace ruleset",
+        "description": "Get one of a workspace's own rulesets by id (rs_…), with its conditions, bypass actors and rules. Members only.",
+        "x-operation": "get_workspace_ruleset",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "get_ruleset",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ruleset's id: rs_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                  "level": "workspace",
+                  "workspace": "flagon-io",
+                  "name": "Release freeze",
+                  "enforcement": "evaluate",
+                  "target": "branch",
+                  "conditions": {
+                    "ref_name": {
+                      "include": [
+                        "~DEFAULT_BRANCH",
+                        "release/**"
+                      ],
+                      "exclude": []
+                    },
+                    "repository": {
+                      "include": [
+                        "~ALL"
+                      ],
+                      "exclude": [
+                        "sandbox-*"
+                      ],
+                      "visibility": "any",
+                      "topics": []
+                    }
+                  },
+                  "bypass_actors": [
+                    {
+                      "kind": "team",
+                      "value": "flagon-io/release",
+                      "mode": "always"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "type": "merge_window",
+                      "parameters": {
+                        "time_zone": "-05:00",
+                        "windows": [
+                          {
+                            "days": [
+                              "mon",
+                              "tue",
+                              "wed",
+                              "thu"
+                            ],
+                            "start": "09:00",
+                            "end": "17:00"
+                          }
+                        ],
+                        "freezes": [
+                          {
+                            "start": "2026-12-20T00:00:00Z",
+                            "end": "2027-01-04T00:00:00Z",
+                            "reason": "Holidays"
+                          }
+                        ],
+                        "exceptions": []
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "cost_cap",
+                      "parameters": {
+                        "max_usd": 25
+                      },
+                      "applies_to": "agents"
+                    }
+                  ],
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n"
+        }
+      },
+      "put": {
+        "operationId": "update_workspace_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Update a workspace ruleset",
+        "description": "Change a workspace ruleset. Fields left out stay as they are; rules and bypass_actors, when given, replace the whole list. Owners only.",
+        "x-operation": "update_workspace_ruleset",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "update_ruleset",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ruleset's id: rs_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+                  "level": "workspace",
+                  "workspace": "flagon-io",
+                  "name": "Release freeze",
+                  "enforcement": "active",
+                  "target": "branch",
+                  "conditions": {
+                    "ref_name": {
+                      "include": [
+                        "~DEFAULT_BRANCH",
+                        "release/**"
+                      ],
+                      "exclude": []
+                    },
+                    "repository": {
+                      "include": [
+                        "~ALL"
+                      ],
+                      "exclude": [
+                        "sandbox-*"
+                      ],
+                      "visibility": "any",
+                      "topics": []
+                    }
+                  },
+                  "bypass_actors": [
+                    {
+                      "kind": "team",
+                      "value": "flagon-io/release",
+                      "mode": "always"
+                    }
+                  ],
+                  "rules": [
+                    {
+                      "type": "merge_window",
+                      "parameters": {
+                        "time_zone": "-05:00",
+                        "windows": [
+                          {
+                            "days": [
+                              "mon",
+                              "tue",
+                              "wed",
+                              "thu"
+                            ],
+                            "start": "09:00",
+                            "end": "17:00"
+                          }
+                        ],
+                        "freezes": [
+                          {
+                            "start": "2026-12-20T00:00:00Z",
+                            "end": "2027-01-04T00:00:00Z",
+                            "reason": "Holidays"
+                          }
+                        ],
+                        "exceptions": []
+                      },
+                      "applies_to": "everyone"
+                    },
+                    {
+                      "type": "cost_cap",
+                      "parameters": {
+                        "max_usd": 25
+                      },
+                      "applies_to": "agents"
+                    }
+                  ],
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T14:02:11.318Z",
+                  "updated_by": "syntaqx",
+                  "updated_at": "2026-10-07T14:02:11.318Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ruleset_name": {
+                    "type": "string",
+                    "description": "What people call it, at most 100 characters. A ruleset as exported names it `name`, which is read too."
+                  },
+                  "enforcement": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "evaluate",
+                      "disabled"
+                    ],
+                    "description": "active: its rules hold. evaluate: nothing is refused, and what would have been is recorded. disabled: kept, not evaluated. Default active."
+                  },
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "branch",
+                      "tag"
+                    ],
+                    "description": "What its name conditions match. Default branch."
+                  },
+                  "conditions": {
+                    "type": "object",
+                    "properties": {
+                      "ref_name": {
+                        "type": "object",
+                        "description": "Which branches or tags: include and exclude, each a list of fnmatch patterns (* within a path segment, ** across them), ~DEFAULT_BRANCH or ~ALL.",
+                        "properties": {
+                          "include": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exclude": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "repository": {
+                        "type": "object",
+                        "description": "Which of the workspace's repositories: include and exclude name patterns (or ~ALL), visibility (any, public, private) and topics (any of).",
+                        "properties": {
+                          "include": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "exclude": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "visibility": {
+                            "type": "string",
+                            "enum": [
+                              "any",
+                              "public",
+                              "private"
+                            ]
+                          },
+                          "topics": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "bypass_actors": {
+                    "type": "array",
+                    "description": "Who it does not hold for. Nobody bypasses unless listed, g1t included. kind role takes read, triage, write, maintain, admin (that role or higher) or owner; team its slug or workspace/slug; user a username; token a token id, or workspace for any of the workspace's tokens; g1t no value. mode always (pushes and merges) or pull_requests (merges only; a person merging asks to, with bypass_rules).",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "role",
+                            "team",
+                            "user",
+                            "token",
+                            "g1t"
+                          ]
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "always",
+                            "pull_requests"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "rules": {
+                    "type": "array",
+                    "description": "Its rules. Each: type, parameters (left-out parameters take their defaults) and applies_to (everyone, agents or people). See the Rules guide for every type's parameters.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "type": "object"
+                        },
+                        "applies_to": {
+                          "type": "string",
+                          "enum": [
+                            "everyone",
+                            "agents",
+                            "people"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "enforcement": "active"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n"
+        }
+      },
+      "delete": {
+        "operationId": "delete_workspace_ruleset",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Delete a workspace ruleset",
+        "description": "Delete a workspace ruleset: it stops holding in every repository it selected. Its evaluations stay in the log. Owners only.",
+        "x-operation": "delete_workspace_ruleset",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "delete_ruleset",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ruleset's id: rs_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n"
+        }
+      }
+    },
+    "/workspaces/{workspace}/rules/evaluations": {
+      "get": {
+        "operationId": "list_workspace_rule_evaluations",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "List a workspace's rule evaluations",
+        "description": "List how a workspace's rulesets, and its repositories' own, judged changes across its repositories, newest first, with 30 days of insights. Members only.",
+        "x-operation": "list_workspace_rule_evaluations",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "rule_evaluations",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "ruleset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only this ruleset's evaluations."
+          },
+          {
+            "name": "verdict",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail",
+                "bypass"
+              ]
+            },
+            "description": "Only evaluations that came out this way."
+          },
+          {
+            "name": "problems_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only evaluations that broke a rule: failed, would have failed, or bypassed."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "An evaluation's id (rev_…): only older ones. The page's next."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "How many, 1 to 100; 30 by default."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "evaluations": [
+                    {
+                      "id": "rev_01kq3c4d5e6f7g8h9j0k1m2n3p",
+                      "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+                      "workspace": "flagon-io",
+                      "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                      "ruleset_name": "Protect main",
+                      "enforcement": "active",
+                      "action": "push",
+                      "git_ref": "refs/heads/main",
+                      "actor": "g1t",
+                      "actor_kind": "agent",
+                      "verdict": "fail",
+                      "violations": [
+                        {
+                          "rule": "pull_request",
+                          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                          "ruleset_name": "Protect main",
+                          "enforcement": "active",
+                          "message": "Changes to main must be made through a pull request.",
+                          "remedy": "Push a branch, open a pull request into main, and merge it."
+                        }
+                      ],
+                      "number": null,
+                      "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+                      "repository": "flagon-io/hello",
+                      "created_at": "2026-10-07T14:02:11.318Z"
+                    }
+                  ],
+                  "next": null,
+                  "insights": {
+                    "days": 30,
+                    "total": 214,
+                    "passed": 198,
+                    "blocked": 9,
+                    "would_block": 5,
+                    "bypassed": 2,
+                    "by_ruleset": [
+                      {
+                        "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+                        "ruleset_name": "Protect main",
+                        "enforcement": "active",
+                        "total": 120,
+                        "blocked": 9,
+                        "would_block": 0,
+                        "bypassed": 2
+                      }
+                    ],
+                    "by_rule": [
+                      {
+                        "rule": "pull_request",
+                        "count": 7
+                      },
+                      {
+                        "rule": "non_fast_forward",
+                        "count": 2
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },
@@ -25255,6 +28353,9 @@
                         "team.repo_added",
                         "team.repo_role_changed",
                         "team.repo_removed",
+                        "ruleset.created",
+                        "ruleset.updated",
+                        "ruleset.deleted",
                         "issue.opened",
                         "issue.updated",
                         "issue.assigned",
@@ -25502,6 +28603,9 @@
                         "team.repo_added",
                         "team.repo_role_changed",
                         "team.repo_removed",
+                        "ruleset.created",
+                        "ruleset.updated",
+                        "ruleset.deleted",
                         "issue.opened",
                         "issue.updated",
                         "issue.assigned",
@@ -26395,6 +29499,9 @@
                         "team.repo_added",
                         "team.repo_role_changed",
                         "team.repo_removed",
+                        "ruleset.created",
+                        "ruleset.updated",
+                        "ruleset.deleted",
                         "issue.opened",
                         "issue.updated",
                         "issue.assigned",
@@ -26628,6 +29735,9 @@
                         "team.repo_added",
                         "team.repo_role_changed",
                         "team.repo_removed",
+                        "ruleset.created",
+                        "ruleset.updated",
+                        "ruleset.deleted",
                         "issue.opened",
                         "issue.updated",
                         "issue.assigned",
@@ -34288,7 +37398,7 @@
           "Pull requests"
         ],
         "summary": "Get a pull request",
-        "description": "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the default branch requires, as success, failure, pending or expected when nothing has reported it yet; empty for a pull request into another branch, which the default branch's protection does not cover), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them).\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/).",
+        "description": "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them).\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/).",
         "x-operation": "get_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "get",
@@ -36087,7 +39197,7 @@
           "Pull requests"
         ],
         "summary": "Merge a pull request",
-        "description": "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and, into the default branch, every check the default branch requires has passed on its head (see required_checks on get_pull_request); with ignore_checks, someone who may merge can bypass them where the repository allows it. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed.\n\nA draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by` and sets `superseded_by` on the pull requests it closes.",
+        "description": "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed.\n\nA draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by` and sets `superseded_by` on the pull requests it closes.",
         "x-operation": "merge_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "merge",
@@ -36248,7 +39358,11 @@
                   },
                   "ignore_checks": {
                     "type": "boolean",
-                    "description": "Merge although required checks have not passed, where the repository allows bypassing them (allow_ignoring_checks)."
+                    "description": "Merge although required checks have not passed, where the rule requiring them allows it (allow_bypass_on_merge)."
+                  },
+                  "bypass_rules": {
+                    "type": "boolean",
+                    "description": "Merge although rules are not met, where a ruleset lists you as one who may bypass it. Recorded as a bypass in its evaluations."
                   }
                 }
               },

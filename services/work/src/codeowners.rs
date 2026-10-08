@@ -292,7 +292,7 @@ impl Work {
         }))
     }
 
-    async fn repo_by_id(&self, repo_id: &str, namespace: &str) -> Result<Option<Repo>> {
+    pub(crate) async fn repo_by_id(&self, repo_id: &str, namespace: &str) -> Result<Option<Repo>> {
         let found: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
@@ -309,7 +309,7 @@ impl Work {
     }
 
     /// The target repository of a pull request, as g1t reads it.
-    async fn target_of(&self, pull: &Pull) -> Result<Option<Repo>> {
+    pub(crate) async fn target_of(&self, pull: &Pull) -> Result<Option<Repo>> {
         let path: Option<RepoPath> = g1t_kit::call(
             &self.repos,
             "path_by_id",
@@ -466,6 +466,7 @@ impl Work {
             state: state.to_owned(),
             description: Some(description),
             target_url,
+            source: Some("g1t".to_owned()),
         })
         .await?;
         Ok(())

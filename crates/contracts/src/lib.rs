@@ -26,6 +26,7 @@ mod outcome;
 pub mod packages;
 pub mod projects;
 pub mod repos;
+pub mod rules;
 pub mod runners;
 pub mod scopes;
 pub mod search;

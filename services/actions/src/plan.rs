@@ -1233,6 +1233,7 @@ impl Actions {
                     _ => "failed",
                 }),
                 "targetUrl": format!("{SITE}/{}/actions/runs/{}", run.repo, run.id),
+                "source": "actions",
             }),
         )
         .await;
@@ -1251,6 +1252,7 @@ impl Actions {
                 "state": "pending",
                 "description": format!("{} is running", run.name),
                 "targetUrl": format!("{SITE}/{}/actions/runs/{}", run.repo, run.id),
+                "source": "actions",
             }),
         )
         .await;

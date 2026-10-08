@@ -17,17 +17,21 @@ queue off to merge directly.
 
 ## Turn it on
 
-1. Open the project's **Settings → Branches and merging**. You need the Maintain
+1. Open the project's **Settings → Rules**. You need the Maintain
    [role](/guides/access-and-roles/) or higher on its repository.
-2. Turn on **Merge through a queue**.
-3. Save.
-4. Add `merge_group` to the `on:` of every workflow behind a
+2. Open the ruleset that covers the default branch, or create one.
+3. Choose **Add a rule**, then **Require the merge queue**. Set how many
+   pull requests it tests at once, the smallest batch it starts with and
+   how long it waits for one, and how long a batch's checks may take.
+4. Save.
+5. Add `merge_group` to the `on:` of every workflow behind a
    [required status check](/guides/pull-requests/#required-status-checks),
    so that it runs on the queue's states too
    ([below](#what-each-state-is-held-to)).
 
 From the API, send `merge_queue` to `PATCH /repos/{owner}/{name}/settings`
-(or `update_repo_settings`):
+(or `update_repo_settings`), which adds the rule to the "Default branch
+protection" [ruleset](/guides/rules/):
 
 ```sh
 curl -X PATCH https://api.g1t.sh/repos/acme/web/settings \
@@ -56,7 +60,7 @@ queue**. Closing a pull request also takes it out.
 
 ## How entries are tested
 
-g1t takes up to four entries from the front of the queue and tests them all
+g1t takes up to four entries (the rule's `max_entries_to_build`) from the front of the queue and tests them all
 at once, speculatively, each in its own sandbox. Each sandbox builds `main`
 with that entry and every entry ahead of it merged in, in queue order:
 
@@ -69,7 +73,7 @@ with that entry and every entry ahead of it merged in, in queue order:
 
 If every entry passes, the four can land one after another without being
 tested again. The next batch starts when nothing is being tested. A batch
-that takes longer than 45 minutes is tested again.
+that takes longer than 45 minutes (`check_response_timeout_minutes`) is tested again.
 
 ### What each state is held to
 

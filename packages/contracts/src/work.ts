@@ -2,6 +2,7 @@ import type { CodeownersReport, PullCodeOwners } from "./codeowners";
 import type { User, Viewer } from "./identity";
 import type { PullBranchUpdate, RepoPath } from "./repos";
 import type { Result } from "./result";
+import type { MergeRules, RulesApi } from "./rules";
 
 /**
  * The filter on lists of issues and pull requests. An open pull request is
@@ -215,6 +216,9 @@ export type Pull = {
    * not seeing through.
    */
   confidence?: Confidence | null;
+  /** Who last moved its head (a user id), and when; absent until a push after rulesets arrived. */
+  headPushedBy?: string;
+  headPushedAt?: string;
 };
 
 /** How sure g1t is that an agent's change is right. */
@@ -464,6 +468,12 @@ export type PullDetail = {
    * merges into) and whose approval is still needed. Absent without one.
    */
   codeOwners?: PullCodeOwners | null;
+  /**
+   * The rules of the branch it merges into it does not meet yet, for whoever
+   * is looking: what refuses the merge, what they may bypass, and what rulesets
+   * in evaluate would refuse. Absent once it is closed or merged.
+   */
+  rules?: MergeRules | null;
 };
 
 /** Where a required check stands on a commit; `expected` when nothing has reported it yet. */
@@ -818,7 +828,7 @@ export type RepoPulls = {
 };
 
 /** Issues, pull requests, comments and sessions. */
-export interface WorkApi {
+export interface WorkApi extends RulesApi {
   openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
   /**
    * Opens an issue to put g1t on at once: refused, with nothing
@@ -1017,8 +1027,10 @@ export interface WorkApi {
     number: number,
     options?: {
       keepIssueOpen?: boolean;
-      /** Merge although required checks have not passed, where the repository allows bypassing them. */
+      /** Merge although required checks have not passed, where the rule requiring them allows it. */
       ignoreChecks?: boolean;
+      /** Merge past rules a ruleset lets the actor bypass. Recorded as a bypass. */
+      bypassRules?: boolean;
     },
   ): Promise<Result<Pull>>;
   /**

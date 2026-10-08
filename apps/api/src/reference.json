@@ -8001,5 +8001,1231 @@
       "confidence": null
     },
     "notes": "A new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
+  },
+  "list_repo_rulesets": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "query": {
+      "include_parents": "true"
+    },
+    "response": [
+      {
+        "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+        "level": "repository",
+        "workspace": "flagon-io",
+        "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+        "repository": "flagon-io/hello",
+        "name": "Protect main",
+        "enforcement": "active",
+        "target": "branch",
+        "conditions": {
+          "ref_name": {
+            "include": [
+              "~DEFAULT_BRANCH"
+            ],
+            "exclude": []
+          }
+        },
+        "bypass_actors": [
+          {
+            "kind": "role",
+            "value": "admin",
+            "mode": "pull_requests"
+          }
+        ],
+        "rules": [
+          {
+            "type": "deletion",
+            "parameters": {},
+            "applies_to": "everyone"
+          },
+          {
+            "type": "non_fast_forward",
+            "parameters": {},
+            "applies_to": "everyone"
+          },
+          {
+            "type": "pull_request",
+            "parameters": {
+              "required_approvals": 1,
+              "count_agent_approvals": true,
+              "dismiss_stale_reviews_on_push": true,
+              "require_code_owner_review": true,
+              "require_last_push_approval": false,
+              "allowed_merge_methods": []
+            },
+            "applies_to": "everyone"
+          },
+          {
+            "type": "required_status_checks",
+            "parameters": {
+              "checks": [
+                {
+                  "context": "CI",
+                  "integration": "actions"
+                }
+              ],
+              "strict": true,
+              "paths": [],
+              "allow_bypass_on_merge": false
+            },
+            "applies_to": "everyone"
+          },
+          {
+            "type": "pull_request",
+            "parameters": {
+              "required_approvals": 1,
+              "count_agent_approvals": false,
+              "dismiss_stale_reviews_on_push": false,
+              "require_code_owner_review": false,
+              "require_last_push_approval": false,
+              "allowed_merge_methods": []
+            },
+            "applies_to": "agents"
+          },
+          {
+            "type": "file_path_restriction",
+            "parameters": {
+              "restricted_file_paths": [
+                ".g1t/workflows/**",
+                "CODEOWNERS"
+              ]
+            },
+            "applies_to": "agents"
+          }
+        ],
+        "created_by": "syntaqx",
+        "created_at": "2026-10-07T14:02:11.318Z",
+        "updated_by": "syntaqx",
+        "updated_at": "2026-10-07T14:02:11.318Z"
+      },
+      {
+        "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+        "level": "workspace",
+        "workspace": "flagon-io",
+        "name": "Release freeze",
+        "enforcement": "evaluate",
+        "target": "branch",
+        "conditions": {
+          "ref_name": {
+            "include": [
+              "~DEFAULT_BRANCH",
+              "release/**"
+            ],
+            "exclude": []
+          },
+          "repository": {
+            "include": [
+              "~ALL"
+            ],
+            "exclude": [
+              "sandbox-*"
+            ],
+            "visibility": "any",
+            "topics": []
+          }
+        },
+        "bypass_actors": [
+          {
+            "kind": "team",
+            "value": "flagon-io/release",
+            "mode": "always"
+          }
+        ],
+        "rules": [
+          {
+            "type": "merge_window",
+            "parameters": {
+              "time_zone": "-05:00",
+              "windows": [
+                {
+                  "days": [
+                    "mon",
+                    "tue",
+                    "wed",
+                    "thu"
+                  ],
+                  "start": "09:00",
+                  "end": "17:00"
+                }
+              ],
+              "freezes": [
+                {
+                  "start": "2026-12-20T00:00:00Z",
+                  "end": "2027-01-04T00:00:00Z",
+                  "reason": "Holidays"
+                }
+              ],
+              "exceptions": []
+            },
+            "applies_to": "everyone"
+          },
+          {
+            "type": "cost_cap",
+            "parameters": {
+              "max_usd": 25
+            },
+            "applies_to": "agents"
+          }
+        ],
+        "created_by": "syntaqx",
+        "created_at": "2026-10-07T14:02:11.318Z",
+        "updated_by": "syntaqx",
+        "updated_at": "2026-10-07T14:02:11.318Z"
+      }
+    ],
+    "notes": "With `include_parents`, the workspace's rulesets that hold in the repository come too, with `level` `workspace`. The ruleset made from the repository's branch protection settings has `source` `branch_protection`."
+  },
+  "get_repo_ruleset": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m"
+    },
+    "response": {
+      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+      "level": "repository",
+      "workspace": "flagon-io",
+      "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+      "repository": "flagon-io/hello",
+      "name": "Protect main",
+      "enforcement": "active",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "exclude": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "role",
+          "value": "admin",
+          "mode": "pull_requests"
+        }
+      ],
+      "rules": [
+        {
+          "type": "deletion",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "non_fast_forward",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": true,
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": true,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "checks": [
+              {
+                "context": "CI",
+                "integration": "actions"
+              }
+            ],
+            "strict": true,
+            "paths": [],
+            "allow_bypass_on_merge": false
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": false,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "agents"
+        },
+        {
+          "type": "file_path_restriction",
+          "parameters": {
+            "restricted_file_paths": [
+              ".g1t/workflows/**",
+              "CODEOWNERS"
+            ]
+          },
+          "applies_to": "agents"
+        }
+      ],
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_by": "syntaqx",
+      "updated_at": "2026-10-07T14:02:11.318Z"
+    }
+  },
+  "create_repo_ruleset": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "request": {
+      "ruleset_name": "Protect main",
+      "enforcement": "active",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "exclude": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "role",
+          "value": "admin",
+          "mode": "pull_requests"
+        }
+      ],
+      "rules": [
+        {
+          "type": "deletion",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "non_fast_forward",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": true,
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": true,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "checks": [
+              {
+                "context": "CI",
+                "integration": "actions"
+              }
+            ],
+            "strict": true,
+            "paths": [],
+            "allow_bypass_on_merge": false
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": false,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "agents"
+        },
+        {
+          "type": "file_path_restriction",
+          "parameters": {
+            "restricted_file_paths": [
+              ".g1t/workflows/**",
+              "CODEOWNERS"
+            ]
+          },
+          "applies_to": "agents"
+        }
+      ]
+    },
+    "response": {
+      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+      "level": "repository",
+      "workspace": "flagon-io",
+      "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+      "repository": "flagon-io/hello",
+      "name": "Protect main",
+      "enforcement": "active",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "exclude": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "role",
+          "value": "admin",
+          "mode": "pull_requests"
+        }
+      ],
+      "rules": [
+        {
+          "type": "deletion",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "non_fast_forward",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": true,
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": true,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "checks": [
+              {
+                "context": "CI",
+                "integration": "actions"
+              }
+            ],
+            "strict": true,
+            "paths": [],
+            "allow_bypass_on_merge": false
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": false,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "agents"
+        },
+        {
+          "type": "file_path_restriction",
+          "parameters": {
+            "restricted_file_paths": [
+              ".g1t/workflows/**",
+              "CODEOWNERS"
+            ]
+          },
+          "applies_to": "agents"
+        }
+      ],
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_by": "syntaqx",
+      "updated_at": "2026-10-07T14:02:11.318Z"
+    },
+    "notes": "Parameters left out take their defaults, and the ruleset comes back as saved: patterns trimmed, roles and teams lowercased. A pattern that does not compile, or a rule the target cannot hold (a pull request rule on tags), is refused with `invalid` and says why."
+  },
+  "update_repo_ruleset": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m"
+    },
+    "request": {
+      "enforcement": "evaluate"
+    },
+    "response": {
+      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+      "level": "repository",
+      "workspace": "flagon-io",
+      "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+      "repository": "flagon-io/hello",
+      "name": "Protect main",
+      "enforcement": "evaluate",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH"
+          ],
+          "exclude": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "role",
+          "value": "admin",
+          "mode": "pull_requests"
+        }
+      ],
+      "rules": [
+        {
+          "type": "deletion",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "non_fast_forward",
+          "parameters": {},
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": true,
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": true,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "checks": [
+              {
+                "context": "CI",
+                "integration": "actions"
+              }
+            ],
+            "strict": true,
+            "paths": [],
+            "allow_bypass_on_merge": false
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": false,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "agents"
+        },
+        {
+          "type": "file_path_restriction",
+          "parameters": {
+            "restricted_file_paths": [
+              ".g1t/workflows/**",
+              "CODEOWNERS"
+            ]
+          },
+          "applies_to": "agents"
+        }
+      ],
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_by": "syntaqx",
+      "updated_at": "2026-10-07T14:02:11.318Z"
+    },
+    "notes": "Fields left out stay as they are. `rules` and `bypass_actors`, when given, replace the whole list."
+  },
+  "delete_repo_ruleset": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m"
+    },
+    "response": {
+      "deleted": true
+    }
+  },
+  "get_branch_rules": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "branch": "main"
+    },
+    "response": {
+      "name": "main",
+      "target": "branch",
+      "default_branch": true,
+      "rules": [
+        {
+          "type": "deletion",
+          "parameters": {},
+          "applies_to": "everyone",
+          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "ruleset_name": "Protect main",
+          "level": "repository",
+          "enforcement": "active"
+        },
+        {
+          "type": "non_fast_forward",
+          "parameters": {},
+          "applies_to": "everyone",
+          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "ruleset_name": "Protect main",
+          "level": "repository",
+          "enforcement": "active"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approvals": 1,
+            "count_agent_approvals": true,
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": true,
+            "require_last_push_approval": false,
+            "allowed_merge_methods": []
+          },
+          "applies_to": "everyone",
+          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "ruleset_name": "Protect main",
+          "level": "repository",
+          "enforcement": "active"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "checks": [
+              {
+                "context": "CI",
+                "integration": "actions"
+              }
+            ],
+            "strict": true,
+            "paths": [],
+            "allow_bypass_on_merge": false
+          },
+          "applies_to": "everyone",
+          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "ruleset_name": "Protect main",
+          "level": "repository",
+          "enforcement": "active"
+        },
+        {
+          "type": "merge_window",
+          "parameters": {
+            "time_zone": "-05:00",
+            "windows": [
+              {
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu"
+                ],
+                "start": "09:00",
+                "end": "17:00"
+              }
+            ],
+            "freezes": [
+              {
+                "start": "2026-12-20T00:00:00Z",
+                "end": "2027-01-04T00:00:00Z",
+                "reason": "Holidays"
+              }
+            ],
+            "exceptions": []
+          },
+          "applies_to": "everyone",
+          "ruleset_id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+          "ruleset_name": "Release freeze",
+          "level": "workspace",
+          "enforcement": "evaluate"
+        }
+      ],
+      "rulesets": [
+        {
+          "id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "name": "Protect main",
+          "level": "repository",
+          "enforcement": "active",
+          "bypass_actors": [
+            {
+              "kind": "role",
+              "value": "admin",
+              "mode": "pull_requests"
+            }
+          ]
+        },
+        {
+          "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+          "name": "Release freeze",
+          "level": "workspace",
+          "enforcement": "evaluate",
+          "bypass_actors": [
+            {
+              "kind": "team",
+              "value": "flagon-io/release",
+              "mode": "always"
+            }
+          ]
+        }
+      ]
+    },
+    "notes": "A branch with slashes in its name is URL-encoded as one segment: `/rules/branches/release%2F1.x`. Add `?target=tag` for a tag."
+  },
+  "list_rule_evaluations": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "query": {
+      "problems_only": "true"
+    },
+    "response": {
+      "evaluations": [
+        {
+          "id": "rev_01kq3c4d5e6f7g8h9j0k1m2n3p",
+          "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+          "workspace": "flagon-io",
+          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "ruleset_name": "Protect main",
+          "enforcement": "active",
+          "action": "push",
+          "git_ref": "refs/heads/main",
+          "actor": "g1t",
+          "actor_kind": "agent",
+          "verdict": "fail",
+          "violations": [
+            {
+              "rule": "pull_request",
+              "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+              "ruleset_name": "Protect main",
+              "enforcement": "active",
+              "message": "Changes to main must be made through a pull request.",
+              "remedy": "Push a branch, open a pull request into main, and merge it."
+            }
+          ],
+          "number": null,
+          "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+          "repository": "flagon-io/hello",
+          "created_at": "2026-10-07T14:02:11.318Z"
+        }
+      ],
+      "next": null,
+      "insights": {
+        "days": 30,
+        "total": 214,
+        "passed": 198,
+        "blocked": 9,
+        "would_block": 5,
+        "bypassed": 2,
+        "by_ruleset": [
+          {
+            "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+            "ruleset_name": "Protect main",
+            "enforcement": "active",
+            "total": 120,
+            "blocked": 9,
+            "would_block": 0,
+            "bypassed": 2
+          }
+        ],
+        "by_rule": [
+          {
+            "rule": "pull_request",
+            "count": 7
+          },
+          {
+            "rule": "non_fast_forward",
+            "count": 2
+          }
+        ]
+      }
+    },
+    "notes": "A `fail` of a ruleset in `evaluate` is what it would have refused. Pass `next` as `before` for the next page. `insights` counts the last 30 days."
+  },
+  "list_workspace_rulesets": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+        "level": "workspace",
+        "workspace": "flagon-io",
+        "name": "Release freeze",
+        "enforcement": "evaluate",
+        "target": "branch",
+        "conditions": {
+          "ref_name": {
+            "include": [
+              "~DEFAULT_BRANCH",
+              "release/**"
+            ],
+            "exclude": []
+          },
+          "repository": {
+            "include": [
+              "~ALL"
+            ],
+            "exclude": [
+              "sandbox-*"
+            ],
+            "visibility": "any",
+            "topics": []
+          }
+        },
+        "bypass_actors": [
+          {
+            "kind": "team",
+            "value": "flagon-io/release",
+            "mode": "always"
+          }
+        ],
+        "rules": [
+          {
+            "type": "merge_window",
+            "parameters": {
+              "time_zone": "-05:00",
+              "windows": [
+                {
+                  "days": [
+                    "mon",
+                    "tue",
+                    "wed",
+                    "thu"
+                  ],
+                  "start": "09:00",
+                  "end": "17:00"
+                }
+              ],
+              "freezes": [
+                {
+                  "start": "2026-12-20T00:00:00Z",
+                  "end": "2027-01-04T00:00:00Z",
+                  "reason": "Holidays"
+                }
+              ],
+              "exceptions": []
+            },
+            "applies_to": "everyone"
+          },
+          {
+            "type": "cost_cap",
+            "parameters": {
+              "max_usd": 25
+            },
+            "applies_to": "agents"
+          }
+        ],
+        "created_by": "syntaqx",
+        "created_at": "2026-10-07T14:02:11.318Z",
+        "updated_by": "syntaqx",
+        "updated_at": "2026-10-07T14:02:11.318Z"
+      }
+    ]
+  },
+  "get_workspace_ruleset": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n"
+    },
+    "response": {
+      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+      "level": "workspace",
+      "workspace": "flagon-io",
+      "name": "Release freeze",
+      "enforcement": "evaluate",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH",
+            "release/**"
+          ],
+          "exclude": []
+        },
+        "repository": {
+          "include": [
+            "~ALL"
+          ],
+          "exclude": [
+            "sandbox-*"
+          ],
+          "visibility": "any",
+          "topics": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "team",
+          "value": "flagon-io/release",
+          "mode": "always"
+        }
+      ],
+      "rules": [
+        {
+          "type": "merge_window",
+          "parameters": {
+            "time_zone": "-05:00",
+            "windows": [
+              {
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu"
+                ],
+                "start": "09:00",
+                "end": "17:00"
+              }
+            ],
+            "freezes": [
+              {
+                "start": "2026-12-20T00:00:00Z",
+                "end": "2027-01-04T00:00:00Z",
+                "reason": "Holidays"
+              }
+            ],
+            "exceptions": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "cost_cap",
+          "parameters": {
+            "max_usd": 25
+          },
+          "applies_to": "agents"
+        }
+      ],
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_by": "syntaqx",
+      "updated_at": "2026-10-07T14:02:11.318Z"
+    }
+  },
+  "create_workspace_ruleset": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "ruleset_name": "Release freeze",
+      "enforcement": "evaluate",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH",
+            "release/**"
+          ],
+          "exclude": []
+        },
+        "repository": {
+          "include": [
+            "~ALL"
+          ],
+          "exclude": [
+            "sandbox-*"
+          ],
+          "visibility": "any",
+          "topics": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "team",
+          "value": "flagon-io/release",
+          "mode": "always"
+        }
+      ],
+      "rules": [
+        {
+          "type": "merge_window",
+          "parameters": {
+            "time_zone": "-05:00",
+            "windows": [
+              {
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu"
+                ],
+                "start": "09:00",
+                "end": "17:00"
+              }
+            ],
+            "freezes": [
+              {
+                "start": "2026-12-20T00:00:00Z",
+                "end": "2027-01-04T00:00:00Z",
+                "reason": "Holidays"
+              }
+            ],
+            "exceptions": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "cost_cap",
+          "parameters": {
+            "max_usd": 25
+          },
+          "applies_to": "agents"
+        }
+      ]
+    },
+    "response": {
+      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+      "level": "workspace",
+      "workspace": "flagon-io",
+      "name": "Release freeze",
+      "enforcement": "evaluate",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH",
+            "release/**"
+          ],
+          "exclude": []
+        },
+        "repository": {
+          "include": [
+            "~ALL"
+          ],
+          "exclude": [
+            "sandbox-*"
+          ],
+          "visibility": "any",
+          "topics": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "team",
+          "value": "flagon-io/release",
+          "mode": "always"
+        }
+      ],
+      "rules": [
+        {
+          "type": "merge_window",
+          "parameters": {
+            "time_zone": "-05:00",
+            "windows": [
+              {
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu"
+                ],
+                "start": "09:00",
+                "end": "17:00"
+              }
+            ],
+            "freezes": [
+              {
+                "start": "2026-12-20T00:00:00Z",
+                "end": "2027-01-04T00:00:00Z",
+                "reason": "Holidays"
+              }
+            ],
+            "exceptions": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "cost_cap",
+          "parameters": {
+            "max_usd": 25
+          },
+          "applies_to": "agents"
+        }
+      ],
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_by": "syntaqx",
+      "updated_at": "2026-10-07T14:02:11.318Z"
+    },
+    "notes": "`conditions.repository` chooses the repositories it holds in; left out, every repository of the workspace."
+  },
+  "update_workspace_ruleset": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n"
+    },
+    "request": {
+      "enforcement": "active"
+    },
+    "response": {
+      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n",
+      "level": "workspace",
+      "workspace": "flagon-io",
+      "name": "Release freeze",
+      "enforcement": "active",
+      "target": "branch",
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "~DEFAULT_BRANCH",
+            "release/**"
+          ],
+          "exclude": []
+        },
+        "repository": {
+          "include": [
+            "~ALL"
+          ],
+          "exclude": [
+            "sandbox-*"
+          ],
+          "visibility": "any",
+          "topics": []
+        }
+      },
+      "bypass_actors": [
+        {
+          "kind": "team",
+          "value": "flagon-io/release",
+          "mode": "always"
+        }
+      ],
+      "rules": [
+        {
+          "type": "merge_window",
+          "parameters": {
+            "time_zone": "-05:00",
+            "windows": [
+              {
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu"
+                ],
+                "start": "09:00",
+                "end": "17:00"
+              }
+            ],
+            "freezes": [
+              {
+                "start": "2026-12-20T00:00:00Z",
+                "end": "2027-01-04T00:00:00Z",
+                "reason": "Holidays"
+              }
+            ],
+            "exceptions": []
+          },
+          "applies_to": "everyone"
+        },
+        {
+          "type": "cost_cap",
+          "parameters": {
+            "max_usd": 25
+          },
+          "applies_to": "agents"
+        }
+      ],
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_by": "syntaqx",
+      "updated_at": "2026-10-07T14:02:11.318Z"
+    }
+  },
+  "delete_workspace_ruleset": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "rs_01kq3b2c3d4e5f6g7h8j9k0m1n"
+    },
+    "response": {
+      "deleted": true
+    }
+  },
+  "list_workspace_rule_evaluations": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "evaluations": [
+        {
+          "id": "rev_01kq3c4d5e6f7g8h9j0k1m2n3p",
+          "repo_id": "rep_01kq0f3a7b8c9d0e1f2g3h4j5k",
+          "workspace": "flagon-io",
+          "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+          "ruleset_name": "Protect main",
+          "enforcement": "active",
+          "action": "push",
+          "git_ref": "refs/heads/main",
+          "actor": "g1t",
+          "actor_kind": "agent",
+          "verdict": "fail",
+          "violations": [
+            {
+              "rule": "pull_request",
+              "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+              "ruleset_name": "Protect main",
+              "enforcement": "active",
+              "message": "Changes to main must be made through a pull request.",
+              "remedy": "Push a branch, open a pull request into main, and merge it."
+            }
+          ],
+          "number": null,
+          "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+          "repository": "flagon-io/hello",
+          "created_at": "2026-10-07T14:02:11.318Z"
+        }
+      ],
+      "next": null,
+      "insights": {
+        "days": 30,
+        "total": 214,
+        "passed": 198,
+        "blocked": 9,
+        "would_block": 5,
+        "bypassed": 2,
+        "by_ruleset": [
+          {
+            "ruleset_id": "rs_01kq3a8b9c0d1e2f3g4h5j6k7m",
+            "ruleset_name": "Protect main",
+            "enforcement": "active",
+            "total": 120,
+            "blocked": 9,
+            "would_block": 0,
+            "bypassed": 2
+          }
+        ],
+        "by_rule": [
+          {
+            "rule": "pull_request",
+            "count": 7
+          },
+          {
+            "rule": "non_fast_forward",
+            "count": 2
+          }
+        ]
+      }
+    }
   }
 }

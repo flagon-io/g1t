@@ -71,14 +71,14 @@ fn mode(kind: EntryKind) -> &'static str {
 }
 
 /// Objects for a walk: the pushed pack's first, then the repository's.
-struct Objects<'a, R: GitRepo> {
-    pack: &'a Pack,
-    repo: &'a R,
-    reads: Cell<u32>,
+pub(crate) struct Objects<'a, R: GitRepo> {
+    pub(crate) pack: &'a Pack,
+    pub(crate) repo: &'a R,
+    pub(crate) reads: Cell<u32>,
 }
 
 impl<R: GitRepo> Objects<'_, R> {
-    async fn tree(&self, id: &str) -> Result<Vec<TreeItem>> {
+    pub(crate) async fn tree(&self, id: &str) -> Result<Vec<TreeItem>> {
         if let Some(items) = self.pack.tree(id) {
             return Ok(items);
         }
@@ -101,7 +101,7 @@ impl<R: GitRepo> Objects<'_, R> {
         self.repo.read_blob(id).await
     }
 
-    async fn commit_tree(&self, id: &str) -> Result<Option<String>> {
+    pub(crate) async fn commit_tree(&self, id: &str) -> Result<Option<String>> {
         if let Some(commit) = self.pack.commit(id) {
             return Ok(Some(commit.tree));
         }
@@ -257,7 +257,7 @@ async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, change
 }
 
 /// Fetches what a thin pack's deltas are based on from the repository.
-async fn supply_bases<R: GitRepo>(pack: &mut Pack, repo: &R) -> Result<()> {
+pub(crate) async fn supply_bases<R: GitRepo>(pack: &mut Pack, repo: &R) -> Result<()> {
     for _ in 0..3 {
         let missing = pack.missing_bases();
         if missing.is_empty() {

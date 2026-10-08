@@ -30,10 +30,13 @@ mod refs;
 mod refs_cache;
 mod registry;
 mod resilience;
+mod rule_facts;
+mod rules;
 mod run_access;
 mod secret_scan;
 mod shards;
 mod shared;
+mod signatures;
 mod store;
 mod transfer;
 
@@ -185,6 +188,10 @@ pub(crate) struct Repos<S: GitStore> {
     security: Option<Fetcher>,
     /// Asked whether a workspace is on a plan, for its private storage.
     billing: Option<Fetcher>,
+    /// Says which rulesets hold for a change to a branch or tag, and keeps
+    /// how they judged it (rules.rs). `None` where it is not deployed: the
+    /// old protection flag then holds on push.
+    work: Option<Fetcher>,
     /// Told when a repository moves, for the tokens of agents at work on it.
     identity: Option<Fetcher>,
     /// What a free workspace's private repositories may hold.
@@ -354,6 +361,23 @@ impl<S: GitStore> Repos<S> {
             website,
             ..repo
         };
+        // Whether the default branch takes only pull requests is now its
+        // branch protection ruleset's to say (work's rulesets.rs).
+        if let (Some(protected), Some(work)) = (a.protected, &self.work) {
+            #[derive(Serialize)]
+            struct RequirePullRequest<'a> {
+                repo: &'a Repo,
+                protected: bool,
+                actor: &'a User,
+            }
+            let set: Result<Outcome<bool>> =
+                g1t_kit::call(work, "set_requires_pull_request", &RequirePullRequest { repo: &updated, protected, actor: &a.actor }).await;
+            match set {
+                Ok(Outcome::Ok(_)) => {}
+                Ok(Outcome::Fail(failure)) => return Ok(Outcome::Fail(failure)),
+                Err(error) => return Err(error),
+            }
+        }
         if let Some(private) = wants_private {
             return self.change_visibility(updated, private, &a.actor, a.surface).await;
         }
@@ -1634,9 +1658,6 @@ impl<S: GitStore> Repos<S> {
         // again before git uses it (forks.rs).
         self.live(&repo).await?;
         timing.mark("access");
-        // A protected default branch takes changes only from a merged pull
-        // request, which lands without going through here.
-        let protected = (repo.protected && repo.fork_of.is_none()).then(|| repo.default_branch.clone());
         // Clones check out the default branch g1t keeps, which can have
         // changed since the store made the repository.
         let default_branch = repo.fork_of.is_none().then(|| repo.default_branch.clone());
@@ -1755,6 +1776,9 @@ impl<S: GitStore> Repos<S> {
         let again = if get { Some(request.clone()?) } else { None };
         // Push protection: a push that adds a secret is refused. See secret_scan.rs.
         let scan = async |body: &[u8]| self.protect(&repo, viewer.as_ref(), body).await;
+        // Rulesets: what the rules of the branches and tags it changes
+        // refuse is declined, saying which rule and why (rules.rs).
+        let rules = async |head: &[u8], whole: bool| self.check_push(&repo, viewer.as_ref(), head, whole).await;
         // What a push may bring (pack_limits.rs): the repository's size is
         // its own and its pull requests' working copies'.
         let limits = if write && !get {
@@ -1772,7 +1796,7 @@ impl<S: GitStore> Repos<S> {
             body,
             git,
             &access,
-            protected.as_deref(),
+            rules,
             default_branch.as_deref(),
             limits,
             scan,
@@ -1792,7 +1816,7 @@ impl<S: GitStore> Repos<S> {
                     None,
                     git,
                     &access,
-                    protected.as_deref(),
+                    async |_: &[u8], _: bool| Ok(None),
                     default_branch.as_deref(),
                     git_http::PushLimits::default(),
                     nothing,
@@ -1804,7 +1828,7 @@ impl<S: GitStore> Repos<S> {
             match outcome {
                 git_http::Push::Forwarded(forwarded) => forwarded,
                 git_http::Push::Refused(response) => {
-                    after.ended(403, Some("The push would change a protected branch.".to_owned()));
+                    after.ended(403, Some("The push was declined by rules.".to_owned()));
                     after.spawn(env, ctx);
                     return Ok(response);
                 }
@@ -2081,6 +2105,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
         security: env.service("SECURITY").ok(),
         billing: env.service("BILLING").ok(),
         identity: env.service("IDENTITY").ok(),
+        work: env.service("WORK").ok(),
         free_private_bytes: git_ops::free_private_bytes(env),
         fork_days: forks::retention_days(env),
         repo_limit: env
@@ -2255,6 +2280,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "delete_branch" => reply(&repos.delete_branch(args(body)?).await?),
         "commit_file" => reply(&repos.commit_file(args(body)?).await?),
         "compare" => reply(&repos.compare(args(body)?).await?),
+        // Services only: a pull request's commits, as rules look at them (rules.rs).
+        "inspect_commits" => reply(&repos.inspect_commits(args(body)?).await?),
         "scan_history" => reply(&repos.scan_history(args(body)?).await?),
         "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
         "match_pattern" => reply(&repos.match_pattern(args(body)?).await?),

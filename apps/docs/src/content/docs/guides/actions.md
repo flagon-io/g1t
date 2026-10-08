@@ -209,9 +209,9 @@ person or an agent, and its runs report a check named after the workflow:
 a workflow with `name: CI` reports `CI`, with the status context
 `CI / pull_request` (the workflow's name and the event).
 
-- **Which checks a merge needs** is up to the default branch's
-  [required status checks](/guides/pull-requests/#required-status-checks),
-  under **Settings → Branches and merging**. A required check that failed,
+- **Which checks a merge needs** is up to the [rules](/guides/rules/) of the branch it merges into,
+  their [required status checks](/guides/pull-requests/#required-status-checks),
+  under **Settings → Rules**. A required check that failed,
   is still running or has not reported holds the merge. Checks that are not
   required are shown on the pull request and never hold it.
 - **In a repository that merges through the [merge queue](/guides/merge-queue/)**,

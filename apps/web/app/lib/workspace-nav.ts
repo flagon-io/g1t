@@ -51,6 +51,7 @@ export const SETTINGS_PAGES = [
   "settings",
   "repositories",
   "tokens",
+  "rules",
   "guardrails",
   "secrets",
   "runners",

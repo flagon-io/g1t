@@ -1,10 +1,11 @@
 //! Statuses on commits: what workflow runs (and other tools, such as
 //! deployments) say about a pull request's head. These are its checks.
 //!
-//! The default branch's protection names the checks that must pass
-//! (`RepoSettings::required_checks`): a required check that failed, is
-//! still running or has not reported refuses the merge, for everyone and
-//! for the merge queue. Where g1t sees an agent's pull request through,
+//! The rules of the branch a pull request merges into name the checks that
+//! must pass (rulesets.rs; `RepoSettings::required_checks` as they stack):
+//! a required check that failed, is still running or has not reported
+//! refuses the merge, for everyone and for the merge queue (`g1t_rules`
+//! says so). Where g1t sees an agent's pull request through,
 //! any check that failed sends the agent back to fix it, with what the
 //! failing jobs printed; once it is out of revisions, only a required
 //! check holds the pull request for a person.
@@ -29,6 +30,8 @@ struct StatusRow {
     description: Option<String>,
     target_url: Option<String>,
     updated_at: String,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 impl From<StatusRow> for CommitStatus {
@@ -39,6 +42,7 @@ impl From<StatusRow> for CommitStatus {
             description: row.description,
             target_url: row.target_url,
             updated_at: row.updated_at,
+            source: row.source,
         }
     }
 }
@@ -81,34 +85,6 @@ impl WorkflowFacts {
     pub(crate) fn expected(&self) -> Vec<String> {
         self.required_in(RequiredState::Expected)
     }
-
-    /// Why a merge has to wait, if it does: a required check that failed,
-    /// is still running, or has not reported. Other checks never hold it.
-    pub(crate) fn refusal(&self) -> Option<String> {
-        let failed = self.required_failed();
-        if !failed.is_empty() {
-            return Some(format!("The required {} {} failed.", checks_word(&failed), list(&failed)));
-        }
-        let running = self.required_in(RequiredState::Pending);
-        if !running.is_empty() {
-            let verb = if running.len() == 1 { "is" } else { "are" };
-            return Some(format!("The required {} {} {verb} still running.", checks_word(&running), list(&running)));
-        }
-        let expected = self.expected();
-        if !expected.is_empty() {
-            let verb = if expected.len() == 1 { "has" } else { "have" };
-            return Some(format!(
-                "The required {} {} {verb} not reported on this commit yet.",
-                checks_word(&expected),
-                list(&expected)
-            ));
-        }
-        None
-    }
-}
-
-fn checks_word(names: &[String]) -> &'static str {
-    if names.len() == 1 { "check" } else { "checks" }
 }
 
 /// The check names in `(context, last reported)` rows, most recent first:
@@ -159,7 +135,7 @@ impl Work {
     /// Where a commit's checks stand, against the repository's required ones.
     pub(crate) async fn facts(&self, repo_id: &str, sha: Option<&str>) -> Result<WorkflowFacts> {
         let (statuses, settings) =
-            futures_util::future::try_join(self.statuses(repo_id, sha), self.settings(repo_id)).await?;
+            futures_util::future::try_join(self.statuses(repo_id, sha), self.settings_by_id(repo_id)).await?;
         Ok(WorkflowFacts::of(&statuses, &settings.required_checks))
     }
 
@@ -195,7 +171,7 @@ impl Work {
         }
         Ok(self
             .db
-            .prepare("SELECT context, state, description, target_url, updated_at FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")
+            .prepare("SELECT context, state, description, target_url, updated_at, source FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")
             .bind(&[repo_id.into(), sha.into()])?
             .all()
             .await?
@@ -211,11 +187,12 @@ impl Work {
         }
         self.db
             .prepare(
-                "INSERT INTO commit_statuses (repo_id, sha, context, state, description, target_url, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO commit_statuses (repo_id, sha, context, state, description, target_url, updated_at, source)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id, sha, context) DO UPDATE SET
                    state = excluded.state, description = excluded.description,
-                   target_url = excluded.target_url, updated_at = excluded.updated_at",
+                   target_url = excluded.target_url, updated_at = excluded.updated_at,
+                   source = excluded.source",
             )
             .bind(&[
                 a.repo_id.as_str().into(),
@@ -225,6 +202,7 @@ impl Work {
                 a.description.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 a.target_url.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 rfc3339(now_ms()).into(),
+                a.source.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
             ])?
             .run()
             .await?;
@@ -300,6 +278,7 @@ mod tests {
             description: None,
             target_url: None,
             updated_at: String::new(),
+            source: None,
         }
     }
 
@@ -314,20 +293,16 @@ mod tests {
         let free = WorkflowFacts::of(&statuses, &[]);
         assert_eq!(free.pending, ["CI / push"]);
         assert_eq!(free.failed, ["Lint / pull_request"]);
-        assert!(free.refusal().is_none());
-        // Failures come before waiting.
+        assert!(free.required_failed().is_empty() && free.expected().is_empty());
         let both = WorkflowFacts::of(&statuses, &names(&["CI", "Lint"]));
-        assert_eq!(both.refusal().unwrap(), "The required check Lint failed.");
-        let waiting = WorkflowFacts::of(&[status("A / pull_request", "pending"), status("B", "pending")], &names(&["A", "B"]));
-        assert_eq!(waiting.refusal().unwrap(), "The required checks A and B are still running.");
-        assert!(WorkflowFacts::of(&[status("Docs", "success")], &names(&["Docs"])).refusal().is_none());
+        assert_eq!(both.required_failed(), ["Lint"]);
+        assert!(WorkflowFacts::of(&[status("Docs", "success")], &names(&["Docs"])).required_failed().is_empty());
     }
 
     #[test]
-    fn a_required_check_nothing_reported_holds_a_merge() {
+    fn a_required_check_nothing_reported_is_expected() {
         let facts = WorkflowFacts::of(&[status("CI / pull_request", "success")], &names(&["CI", "Deploy"]));
         assert_eq!(facts.expected(), ["Deploy"]);
-        assert_eq!(facts.refusal().unwrap(), "The required check Deploy has not reported on this commit yet.");
     }
 
     #[test]

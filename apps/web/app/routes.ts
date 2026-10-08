@@ -103,6 +103,8 @@ export default [
     route("-/audit", "routes/workspace/audit.tsx"),
     route("-/audit/export", "routes/workspace/audit-export.ts"),
     route("-/guardrails", "routes/workspace/guardrails.tsx"),
+    route("-/rules", "routes/workspace/rules.tsx"),
+    route("-/rules/:id", "routes/workspace/ruleset.tsx"),
     // What the workspace will have across its projects.
     route("-/soon/:feature", "routes/workspace/soon.tsx"),
   ]),
@@ -180,6 +182,8 @@ export default [
     route("settings/repository", "routes/repo/settings-repository.tsx"),
     route("settings/access", "routes/repo/settings-access.tsx"),
     route("settings/branches", "routes/repo/settings-branches.tsx"),
+    route("settings/rules", "routes/repo/settings-rules.tsx"),
+    route("settings/rules/:id", "routes/repo/settings-ruleset.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
     route("settings/runners", "routes/repo/settings-runners.tsx"),

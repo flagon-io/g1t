@@ -7,7 +7,7 @@
 //! encoded again, so that every field the type has is sent, not only the
 //! ones an example shows.
 
-use g1t_contracts::{access, actions, codeowners, integrations, repos, search, teams, webhooks, work};
+use g1t_contracts::{access, actions, codeowners, integrations, repos, rules, search, teams, webhooks, work};
 use g1t_kit::wire::{self, USER_KEYED};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -15,6 +15,7 @@ use serde_json::{Map, Value, json};
 
 use crate::openapi::document;
 use crate::operations::Op;
+use crate::rules::RulesOp;
 
 /// A key as `#[serde(rename_all = "camelCase")]` writes it.
 fn camel_key(key: &str) -> String {
@@ -90,6 +91,24 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::SetTeamRepo => return through::<teams::TeamRepo>(op, as_is),
         Op::DeleteTeam | Op::RemoveTeamMember | Op::RemoveTeamRepo => return through::<bool>(op, as_is),
         Op::GetCodeownersErrors => return through::<codeowners::CodeOwnersReport>(op, as_is),
+        // Rulesets travel in `snake_case` between services too.
+        Op::Rules(RulesOp::ListRepoRulesets | RulesOp::ListWorkspaceRulesets) => {
+            return through::<Vec<rules::Ruleset>>(op, as_is);
+        }
+        Op::Rules(
+            RulesOp::GetRepoRuleset
+            | RulesOp::CreateRepoRuleset
+            | RulesOp::UpdateRepoRuleset
+            | RulesOp::GetWorkspaceRuleset
+            | RulesOp::CreateWorkspaceRuleset
+            | RulesOp::UpdateWorkspaceRuleset,
+        ) => return through::<rules::Ruleset>(op, as_is),
+        Op::Rules(RulesOp::GetBranchRules) => return through::<rules::EffectiveRules>(op, as_is),
+        Op::Rules(RulesOp::ListRuleEvaluations | RulesOp::ListWorkspaceRuleEvaluations) => {
+            return through::<rules::EvaluationPage>(op, as_is);
+        }
+        // Built by the API itself.
+        Op::Rules(RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset) => return as_is,
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {

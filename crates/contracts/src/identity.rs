@@ -107,6 +107,15 @@ pub struct UserArgs {
     pub user: User,
 }
 
+/// `ssh_key_owners`: services only. The account (user id) that registered
+/// each key, by fingerprint (`SHA256:…`, as `ssh-keygen -lf` prints it),
+/// for verifying commits signed with SSH keys. Returns a map of the
+/// fingerprints found to user ids.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SshKeyOwnersArgs {
+    pub fingerprints: Vec<String>,
+}
+
 /// `add_ssh_key`: `public_key` is one line in OpenSSH format.
 /// Returns `Outcome<SshKey>`.
 #[derive(Debug, Serialize, Deserialize)]

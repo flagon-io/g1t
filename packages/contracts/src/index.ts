@@ -26,6 +26,7 @@ export * from "./packages";
 export * from "./projects";
 export * from "./repos";
 export * from "./result";
+export * from "./rules";
 export * from "./runner";
 export * from "./runners";
 export * from "./scopes";

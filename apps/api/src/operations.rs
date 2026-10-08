@@ -26,6 +26,7 @@ use g1t_contracts::security::{
 };
 
 use crate::alerts::{AlertKind, SecurityAlert};
+use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
 use g1t_contracts::work::*;
@@ -263,6 +264,8 @@ pub enum Op {
     GetCodeownersErrors,
     /// The security suite's operations: see [`crate::security`].
     Security(SecurityOp),
+    /// Rulesets: rules.rs.
+    Rules(RulesOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -625,7 +628,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 205] = [
+    pub const ALL: [Op; 218] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -831,6 +834,19 @@ impl Op {
         Op::Security(SecurityOp::GetWorkspaceSettings),
         Op::Security(SecurityOp::UpdateWorkspaceSettings),
         Op::Security(SecurityOp::GetOverview),
+        Op::Rules(RulesOp::ListRepoRulesets),
+        Op::Rules(RulesOp::GetRepoRuleset),
+        Op::Rules(RulesOp::CreateRepoRuleset),
+        Op::Rules(RulesOp::UpdateRepoRuleset),
+        Op::Rules(RulesOp::DeleteRepoRuleset),
+        Op::Rules(RulesOp::GetBranchRules),
+        Op::Rules(RulesOp::ListRuleEvaluations),
+        Op::Rules(RulesOp::ListWorkspaceRulesets),
+        Op::Rules(RulesOp::GetWorkspaceRuleset),
+        Op::Rules(RulesOp::CreateWorkspaceRuleset),
+        Op::Rules(RulesOp::UpdateWorkspaceRuleset),
+        Op::Rules(RulesOp::DeleteWorkspaceRuleset),
+        Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1015,6 +1031,7 @@ impl Op {
             Op::RemoveRequestedReviewers => "remove_requested_reviewers",
             Op::GetCodeownersErrors => "get_codeowners_errors",
             Op::Security(op) => op.name(),
+            Op::Rules(op) => op.name(),
         }
     }
 
@@ -1099,10 +1116,10 @@ impl Op {
                 "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
             Op::GetRepoSettings => {
-                "How a repository handles pull requests, as its default branch's protection: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged. The same rules hold for a person's pull request and an agent's."
+                "How a repository handles pull requests: how g1t's agents are reviewed, revised and merged, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for a person's pull request and an agent's. list_repo_rulesets and get_branch_rules show every rule."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. With `require_code_owner_review`, a pull request merges only once the code owners of every file it changes, as the CODEOWNERS file of the branch it merges into names them, have approved it. Needs the Maintain role or higher."
+                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher."
             }
             Op::ListCheckNames => {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
@@ -1218,7 +1235,7 @@ impl Op {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed. Filter by a label's name, a milestone's number, or base, the branch they merge into."
             }
             Op::GetPullRequest => {
-                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the default branch requires, as success, failure, pending or expected when nothing has reported it yet; empty for a pull request into another branch, which the default branch's protection does not cover), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them)."
+                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them)."
             }
             Op::CreatePullRequest => {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
@@ -1238,7 +1255,7 @@ impl Op {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
             Op::MergePullRequest => {
-                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and, into the default branch, every check the default branch requires has passed on its head (see required_checks on get_pull_request); with ignore_checks, someone who may merge can bypass them where the repository allows it. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
+                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
@@ -1509,6 +1526,7 @@ impl Op {
                 "Check a repository's CODEOWNERS file as a linter would. g1t reads it from one branch (`ref`, the default branch unless you say): the first of `.g1t/CODEOWNERS`, `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS` and `.gitlab/CODEOWNERS` that exists. Returns its `path` (null when there is none), the `ref` read, its `size`, how many `rules` it has, its `sections`, and `errors`: each with its `line` (0 for the file as a whole), `kind`, the `token` at fault and a `message` saying how to fix it. `kind` is `too_large`, `negation`, `character_range`, `bad_pattern`, `bad_owner`, `bad_section`, `unknown_user`, `unknown_team`, `unknown_email`, `no_write_access` or `team_no_access`. Needs the Read role; a public repository's is open to anyone."
             }
             Op::Security(op) => op.description(),
+            Op::Rules(op) => op.description(),
         }
     }
 
@@ -2209,7 +2227,11 @@ impl Op {
                     },
                     "ignore_checks": {
                         "type": "boolean",
-                        "description": "Merge although required checks have not passed, where the repository allows bypassing them (allow_ignoring_checks).",
+                        "description": "Merge although required checks have not passed, where the rule requiring them allows it (allow_bypass_on_merge).",
+                    },
+                    "bypass_rules": {
+                        "type": "boolean",
+                        "description": "Merge although rules are not met, where a ruleset lists you as one who may bypass it. Recorded as a bypass in its evaluations.",
                     },
                 })),
                 &["repo", "number"],
@@ -2806,6 +2828,7 @@ impl Op {
                 &["repo"],
             ),
             Op::Security(op) => op.input(),
+            Op::Rules(op) => op.input(),
         }
     }
 
@@ -2831,6 +2854,7 @@ impl Op {
                 | Op::ListCheckNames
                 | Op::GetMergeQueue
                 | Op::GetCodeownersErrors
+                | Op::Rules(RulesOp::ListRepoRulesets | RulesOp::GetRepoRuleset | RulesOp::GetBranchRules)
         )
     }
 
@@ -2841,6 +2865,9 @@ impl Op {
 
     /// Whether the operation is about one repository, named by `repo`.
     pub(crate) fn needs_repo(self) -> bool {
+        if let Op::Rules(op) = self {
+            return op.needs_repo();
+        }
         if let Op::Security(op) = self {
             return op.needs_repo();
         }
@@ -3078,6 +3105,7 @@ impl Op {
             summary: text(input, "summary"),
             keep_issue_open: input["keep_issue_open"].as_bool() == Some(true),
             ignore_checks: input["ignore_checks"].as_bool() == Some(true),
+            bypass_rules: input["bypass_rules"].as_bool() == Some(true),
         };
         let Services {
             identity,
@@ -4801,6 +4829,7 @@ impl Op {
             // The security suite: the security service decides, this gives
             // each answer its public shape.
             Op::Security(op) => crate::security::run(op, services, viewer, input).await,
+            Op::Rules(op) => crate::rules::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

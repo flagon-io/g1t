@@ -61,30 +61,31 @@ has no checks**: nothing proves a change works, for people or for agents.
 
 ## Required status checks
 
-Rules for merging belong to the default branch, and hold for every pull
-request into it; a pull request into another branch is not held to them
-(see [pull requests into other branches](/guides/base-branches/)).
-Someone with the Maintain [role](/guides/access-and-roles/)
-or higher sets them under the repository's **Settings → Branches and
-merging**, in **Branch protection**:
+What a pull request needs before it merges is set by the
+[rulesets](/guides/rules/) that cover the branch it merges into, the
+repository's and its workspace's. They hold for every pull request into
+that branch, a person's or an agent's. Someone with the Maintain
+[role](/guides/access-and-roles/) or higher sets them under the
+repository's **Settings → Rules**:
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Require a pull request to change the default branch | Off | Refuses pushes to the default branch; changes reach it only by merging. See [protected branches](/guides/git/#protected-branches). |
-| Required status checks | None | The checks that must pass on a pull request's head before it merges. |
-| Required approvals | None | How many reviewers must approve before a merge, 0 to 3 on the page (up to 6 from the API). A reviewer who asked for changes blocks it. |
-| g1t's approval counts | On | Off means approvals have to come from people. |
-| Require review from code owners | Off | On means the owners of every file a pull request changes, as its [CODEOWNERS file](/guides/codeowners/) says, must approve before it merges. See [require review from code owners](/guides/codeowners/#require-review-from-code-owners). |
-| Require branches to be up to date before merging | Off | On means a pull request behind the default branch has to catch up, and its checks run again, before it merges. |
-| Merge through a queue | Off | See [merge queue](/guides/merge-queue/). |
-| Allow bypassing required checks | On | Lets someone who may merge tick **bypass** when merging, to merge without the required checks passing. Off means nobody can. |
+| Rule | What it does |
+| --- | --- |
+| Require a pull request before merging | Refuses pushes to the branch, so changes reach it only by merging. Sets the approvals a merge needs, whether an agent's approval counts, whether approvals before the latest push count, and whether [code owners](/guides/codeowners/#require-review-from-code-owners) must approve. |
+| Require status checks to pass | The checks that must pass on a pull request's head before it merges, whether it must be up to date with the branch first, whether someone who may merge can bypass the checks, and optionally only when some paths change. |
+| Require the merge queue | See [merge queue](/guides/merge-queue/). |
+| Require deployments to succeed | A pull request's head must have deployed to these environments. |
+
+[Rules](/guides/rules/#rules) lists every rule, including those for
+agents' changes, confidence, cost, sensitive paths and merge windows.
+The merge box on a pull request lists each rule it does not meet yet, with
+the ruleset it comes from and what to do about it.
 
 ### Choosing the checks
 
-**Required status checks** offers the check names reported on the
-repository's commits in the last 30 days, each with the events it was seen
-for, such as `pull_request` and `merge_group`. Pick from the list, or type a
-name that has not reported yet. A repository can require at most 20.
+**Require status checks to pass** offers the check names reported on the
+repository's commits in the last 30 days. Pick from them, or type a name
+that has not reported yet. A check can be pinned to the integration that
+must report it, such as workflows or deployments.
 
 A required check is met by a status of that name on the pull request's head,
 whatever event reported it:
@@ -92,15 +93,15 @@ whatever event reported it:
 | What reported it | What the merge does |
 | --- | --- |
 | A status that failed | Refused: "The required check CI failed." |
-| A status still pending | Held: "The required check CI is still running." |
-| Nothing yet | Held: "The required check CI has not reported on this commit yet." |
+| A status still pending | Held: "The required check CI has not finished." |
+| Nothing yet | Held: "The required check CI has not reported on its latest commit." |
 | Success | Allowed |
 
 The same rule holds wherever a pull request merges: the merge button,
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
 a g1t agent's [automatic merge](/guides/working-with-g1t/#merging-automatically)
-and the [merge queue](/guides/merge-queue/). With **Allow bypassing required
-checks** on, the merge button has a **bypass** box, and the API takes
+and the [merge queue](/guides/merge-queue/). Where the rule lets a merger bypass the
+required checks, the merge button has a **bypass** box, and the API takes
 `ignore_checks: true`.
 
 A check that only exists once a workflow has run, such as `CI` from a
@@ -131,7 +132,9 @@ takes `required_checks`, which replaces the whole list, along with
 `merge_queue`, `allow_ignoring_checks` and `require_code_owner_review`;
 [`get_repo_settings`](/reference/api/repositories/get-repo-settings/)
 returns them. On the MCP server they are the `repository` tool's
-`check_names`, `get_settings` and `update_settings` actions.
+`check_names`, `get_settings` and `update_settings` actions. They read and
+write the "Default branch protection" ruleset; [rulesets](/guides/rules/#from-the-api)
+have routes of their own.
 
 ## Reviewers
 

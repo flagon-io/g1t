@@ -53,7 +53,10 @@
 		{ "binding": "SECURITY", "service": "g1t-security" },
 		// Whether a workspace far past its free git operations is on the
 		// plan (src/git_ops.rs); asked only then.
-		{ "binding": "BILLING", "service": "g1t-billing" }
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		// Rulesets: which hold for a push or another change to a branch or
+		// tag, and where how they judged it is kept (src/rules.rs).
+		{ "binding": "WORK", "service": "g1t-work" }
 	],
 	// A free workspace past this many git operations in a month is slowed
 	// to this many an hour, never charged (src/git_ops.rs). It is billing's

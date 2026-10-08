@@ -344,11 +344,33 @@ fn pkt_line(payload: &[u8]) -> Vec<u8> {
     line
 }
 
+/// The branches and tags a push asks to change, as rules see them: the
+/// full ref, where it pointed (`None`: it is created) and where it will
+/// (`None`: it is deleted).
+pub(crate) fn ref_updates(body: &[u8]) -> Vec<(String, Option<String>, Option<String>)> {
+    commands(body)
+        .0
+        .into_iter()
+        .filter(|command| command.name.starts_with(HEADS) || command.name.starts_with(TAGS))
+        .map(|Command { old, new, name }| (name, (old != ZERO_ID).then_some(old), (new != ZERO_ID).then_some(new)))
+        .collect()
+}
+
+/// A report-status answer, as git expects it.
+pub(crate) fn report_response(report: Vec<u8>) -> Result<Response> {
+    let headers = Headers::new();
+    headers.set("content-type", "application/x-git-receive-pack-result")?;
+    headers.set("cache-control", "no-cache")?;
+    Ok(Response::from_bytes(report)?.with_headers(headers))
+}
+
 /// What git is told when a push would change a protected branch: every ref
 /// in it is declined, with the reason against the protected one, so that
 /// git prints it beside the branch. `None` if the push leaves the branch
-/// alone, or creates it in a repository that does not have it yet.
-fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
+/// alone, or creates it in a repository that does not have it yet. Only
+/// where rulesets cannot be read (an installation without the work
+/// service); rulesets decide everywhere else (rules.rs).
+pub(crate) fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
     let (commands, capabilities) = commands(body);
     let reference = format!("{HEADS}{protected}");
     if !commands
@@ -468,7 +490,8 @@ pub struct Forwarded {
 /// What became of a git request.
 pub enum Push {
     Forwarded(Forwarded),
-    /// A push to a protected branch, answered here without reaching the store.
+    /// A push the rules of its branches or tags refuse (rules.rs), answered
+    /// here without reaching the store.
     Refused(Response),
     /// A push that adds a secret nobody allowed, answered the same way.
     Blocked(Response),
@@ -821,7 +844,7 @@ async fn without_early_pack(mut response: Response) -> Result<Response> {
 }
 
 /// Sends the request on to the git store and returns its response as is,
-/// unless it is a push that would change the `protected` branch, one the
+/// unless it is a push the rules refuse (`rules`, rules.rs), one the
 /// store could not hold (`limits`, pack_limits.rs), or one that `scan`
 /// (push protection) answers itself. A fetch's ref listing has its `HEAD`
 /// pointed at `default_branch` (see [`with_head`]). A POST's body is
@@ -839,7 +862,7 @@ pub async fn forward(
     read: Option<Vec<u8>>,
     git: &GitRequest,
     access: &GitAccess,
-    protected: Option<&str>,
+    rules: impl AsyncFnOnce(&[u8], bool) -> Result<Option<Response>>,
     default_branch: Option<&str>,
     limits: PushLimits,
     scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
@@ -858,7 +881,7 @@ pub async fn forward(
     let namespace = crate::store::health_namespace(&access.remote);
 
     if method == Method::Post && git.endpoint == "git-receive-pack" {
-        return push(request, &url, headers, protected, limits, scan, &namespace).await;
+        return push(request, &url, headers, rules, limits, scan, &namespace).await;
     }
 
     // A read: the ref advertisement, `ls-refs`, or a fetch of objects.
@@ -945,7 +968,7 @@ async fn push(
     mut request: Request,
     url: &str,
     headers: Headers,
-    protected: Option<&str>,
+    rules: impl AsyncFnOnce(&[u8], bool) -> Result<Option<Response>>,
     limits: PushLimits,
     scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
     namespace: &str,
@@ -970,17 +993,13 @@ async fn push(
             }
         }
     }
-    let report_headers = || -> Result<Headers> {
-        let headers = Headers::new();
-        headers.set("content-type", "application/x-git-receive-pack-result")?;
-        headers.set("cache-control", "no-cache")?;
-        Ok(headers)
-    };
-    if let Some(report) = protected.and_then(|branch| refusal(&head, branch)) {
+    // The rules of the branches and tags it changes, first: what they
+    // refuse is refused whatever else is wrong with it.
+    if let Some(response) = rules(&head, ended).await? {
         if !ended {
             drain(&mut stream).await?;
         }
-        return Ok(Push::Refused(Response::from_bytes(report)?.with_headers(report_headers()?)));
+        return Ok(Push::Refused(response));
     }
     if !ended && limits.large == LargePushes::Refuse && violation.is_none() {
         let size = head.len() as u64 + drain(&mut stream).await?;

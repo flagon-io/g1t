@@ -173,6 +173,10 @@ pub struct PullRow {
     /// The branch it merges into; NULL for the default branch.
     #[serde(default)]
     pub base_branch: Option<String>,
+    #[serde(default)]
+    pub head_pushed_by: Option<String>,
+    #[serde(default)]
+    pub head_pushed_at: Option<String>,
 }
 
 impl From<PullRow> for Pull {
@@ -226,6 +230,8 @@ impl From<PullRow> for Pull {
                 .unwrap_or_default(),
             milestone: milestone_ref(row.milestone, row.milestone_title),
             base: row.base_branch,
+            head_pushed_by: row.head_pushed_by,
+            head_pushed_at: row.head_pushed_at,
         }
     }
 }

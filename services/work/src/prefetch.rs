@@ -62,6 +62,8 @@ pub(crate) enum Slot {
     Denials,
     Unanswered,
     Planned,
+    Rulesets,
+    Adopted,
 }
 
 /// How many runs `latest_checks` and `earlier_checks` show together.
@@ -71,6 +73,8 @@ pub(crate) const RECENT_RUNS: u32 = 11;
 pub(crate) struct Prefetched {
     pub(crate) pull_id: String,
     pub(crate) repo_id: String,
+    /// The workspace its rulesets were read for, lowercase.
+    pub(crate) namespace: String,
     /// Its head commit when read, which its statuses are for.
     pub(crate) head: Option<String>,
     results: Vec<D1Result>,
@@ -175,7 +179,7 @@ impl Work {
 
     /// Everything a pull request's page and its lifecycle read, in one
     /// batch. `None` when there is no such pull request.
-    pub(crate) async fn prefetch_pull(&self, repo_id: String, number: u32) -> Result<Option<Prefetched>> {
+    pub(crate) async fn prefetch_pull(&self, repo_id: String, namespace: String, number: u32) -> Result<Option<Prefetched>> {
         let key = || -> [JsValue; 2] { [repo_id.as_str().into(), number.into()] };
         let with = |extra: JsValue| -> [JsValue; 3] { [repo_id.as_str().into(), number.into(), extra] };
         let repo_only = || -> [JsValue; 1] { [repo_id.as_str().into()] };
@@ -238,7 +242,7 @@ impl Work {
             )?,
             // Slot::Statuses: on its head (statuses.rs `statuses`).
             self.statement(
-                "SELECT context, state, description, target_url, updated_at FROM commit_statuses
+                "SELECT context, state, description, target_url, updated_at, source FROM commit_statuses
                  WHERE repo_id = ?1 AND sha = (SELECT head_commit FROM pulls WHERE repo_id = ?1 AND number = ?2)
                  ORDER BY context",
                 &key(),
@@ -307,6 +311,9 @@ impl Work {
                  LIMIT 1",
                 &key(),
             )?,
+            // Slot::Rulesets and Slot::Adopted (rulesets.rs `rulesets_for`)
+            self.statement(crate::rulesets::prefetch_sql().0, &[repo_id.as_str().into(), namespace.to_lowercase().into()])?,
+            self.statement(crate::rulesets::prefetch_sql().1, &repo_only())?,
         ];
         let count = statements.len() as u32;
         let results = self.timing.db(count, self.db.batch(statements)).await?;
@@ -321,6 +328,7 @@ impl Work {
         Ok(Some(Prefetched {
             pull_id: row.id,
             repo_id,
+            namespace: namespace.to_lowercase(),
             head: row.head_commit,
             results,
         }))
