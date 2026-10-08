@@ -743,6 +743,44 @@ servers (Sentry, Linear and so on) it may use while working.
   inside other actions), downloads from other repositories, and npm
   trusted publishing, which depends on npm accepting g1t's issuer.
 
+### Runner image: Java, .NET and Ruby (built 2026-10-08)
+
+The base (`services/runner/base/Dockerfile`) adds Temurin 21, the .NET 8
+SDK and Ruby 3.3, placed where the setup actions look so common workflows
+run unmodified and download nothing:
+
+- **Java** in `RUNNER_TOOL_CACHE/Java_Temurin-Hotspot_jdk/<semver, + as
+  ->/x64` with `x64.complete`; `JAVA_HOME`, `JAVA_HOME_21_X64` and `PATH`
+  set. `actions/setup-java` (`temurin`, `21`) resolves it from the cache.
+- **.NET** in `/usr/share/dotnet` (setup-dotnet's Linux install dir),
+  owned by `node`; `DOTNET_ROOT` set, telemetry off. `setup-dotnet` with
+  `8.0.x` keeps it while it is the newest 8.0 SDK, else installs beside it.
+- **Ruby** built from source into `RUNNER_TOOL_CACHE/Ruby/<v>/x64` with
+  `x64.complete`, on `PATH`. On Debian, `ruby/setup-ruby` counts as
+  self-hosted and uses only the tool cache, so any version but 3.3 fails
+  (documented in limitations).
+
+**`gh`: not installed.** With `GH_HOST=g1t.sh`, `gh` treats g1t as
+GitHub Enterprise Server: REST under `https://g1t.sh/api/v3` and GraphQL at
+`https://g1t.sh/api/graphql`. Both are 404 today (the API is REST at
+`api.g1t.sh`, and `GITHUB_GRAPHQL_URL` is empty), and `pr`, `issue`, `repo`
+and `run` are GraphQL-first, so even `gh api` alone would need the
+`/api/v3` prefix. Jobs call the API with `curl` and `$GITHUB_API_URL`
+(documented in the Actions guide).
+
+**Later:** to make `gh` useful, `g1t.sh/api/v3/*` proxying to the REST API
+(enough for `gh api` and `gh auth status`), then a GraphQL subset for the
+`pr`/`issue` read paths. Ship `gh` in the base only once those exist.
+More preinstalled Rubies (3.2, 3.4) if workflows ask, at roughly 75 MB
+each. `setup-dotnet@v5` first installs the current LTS .NET runtime (10,
+a 36 MB download) every run before finding SDK 8 already there;
+preinstalling that runtime would skip it.
+
+**Size:** the base went from 3.18 GB to 4.52 GB as `docker image inspect`
+reports it (813 MB to about 1.2 GB compressed): Temurin 308 MB (without
+`src.zip`), .NET 512 MB (without the SDK's translations), Ruby 74 MB,
+headers and ICU 44 MB.
+
 ## A repository that maintains itself
 
 > **2026-10-04:** the user asked for Dependabot, GitHub Advanced Security and

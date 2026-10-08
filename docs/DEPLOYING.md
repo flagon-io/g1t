@@ -221,8 +221,10 @@ pushes it and rewrites the file; commit the file, and the next deploy
 builds the runner's image on it. `npm run test:deploy` fails while the
 folder and the file disagree, so a change to the base's Dockerfile cannot
 merge without the base it describes. Layers go from what changes least to
-most (system packages, Go, Rust, the Claude Code CLI), and the apt and npm
-caches stay in BuildKit's cache, out of the image.
+most (system packages, Go, Rust, Java, .NET and Ruby, the Claude Code
+CLI), and the apt and npm caches stay in BuildKit's cache, out of the
+image. Ruby is compiled from source in a single step (a few minutes on a
+cold cache) that removes its source tree before the layer is written.
 
 The base's build cache is the base itself: it is built with
 `BUILDKIT_INLINE_CACHE`, which records in the image how each layer was
@@ -444,9 +446,19 @@ not), `all` and `dry_run` (plan only).
 ### What the sandbox has
 
 The base image (`services/runner/base/Dockerfile`) has Node 24, npm, git,
-Go, zstd, Docker, musl-tools, and Rust stable for the `node` user with
-rustfmt, clippy and the `wasm32-unknown-unknown` target, but not
-worker-build. The workflow's `rustup target add wasm32-unknown-unknown` is
+Go, zstd, Docker, musl-tools, Rust stable for the `node` user with
+rustfmt, clippy and the `wasm32-unknown-unknown` target, Java (Temurin 21),
+the .NET 8 SDK and Ruby 3.3, but not worker-build or `gh`. Java and Ruby
+sit in the tool cache (`/home/runner/_tool/Java_Temurin-Hotspot_jdk/<semver
+with + as ->/x64` and `/home/runner/_tool/Ruby/<version>/x64`, each with
+an `x64.complete` marker), which is where `actions/setup-java` and
+`ruby/setup-ruby` look; .NET is in `/usr/share/dotnet`, owned by `node`,
+which is where `actions/setup-dotnet` installs. Bumping one means changing
+its version and checksum `ARG`s together (Java's tool cache name is
+Adoptium's `version_data.semver`; .NET's SHA-512 is in its release
+metadata; Ruby's SHA-256 is in `cache.ruby-lang.org/pub/ruby/index.txt`).
+The user docs list what jobs get in
+`apps/docs/src/content/docs/guides/actions.md` (The runner). The workflow's `rustup target add wasm32-unknown-unknown` is
 then a no-op, and worker-build is restored from the cache, installed on a
 miss. The image job adds `x86_64-unknown-linux-musl` (about 30 MB from
 `static.rust-lang.org`) and keeps its Cargo target in the cache. worker-build
