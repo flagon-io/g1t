@@ -2982,10 +2982,10 @@ impl Op {
     }
 
     /// Runs the operation. One that found nothing, or was refused, under a
-    /// workspace slug that has since been renamed runs again under the
-    /// workspace's current slug, and one naming a repository by a path it
-    /// was transferred away from runs again at its path now; neither
-    /// outcome changed anything.
+    /// workspace slug that has since been renamed, or under an alias staff
+    /// set, runs again under the workspace's current slug, and one naming a
+    /// repository by a path it was transferred away from runs again at its
+    /// path now; neither outcome changed anything.
     pub async fn run(
         self,
         services: &Services,

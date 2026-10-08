@@ -5,7 +5,9 @@
 //! repository (`owner/name`) or a workspace by a slug the workspace has
 //! since been renamed from is run again under the slug it has now, so
 //! scripts and agents written against the old address keep working while
-//! it redirects.
+//! it redirects. A workspace alias g1t's staff set (identity's aliases.rs:
+//! `g1t` for `flagon-io`) resolves the same way, for good, so responses
+//! name the workspace by its own slug.
 
 use g1t_contracts::identity::SlugArgs;
 use serde_json::Value;
@@ -103,6 +105,20 @@ mod tests {
         assert_eq!(
             moved_to(&input, "flagon-io/g1t"),
             json!({ "repo": "flagon-io/g1t", "number": 4 })
+        );
+    }
+
+    #[test]
+    fn an_alias_is_run_again_under_its_workspace() {
+        let input = json!({ "repo": "g1t/g1t", "number": 7 });
+        assert_eq!(named_slug(&input), Some("g1t"));
+        assert_eq!(
+            rewrite(&input, "g1t", "flagon-io"),
+            json!({ "repo": "flagon-io/g1t", "number": 7 })
+        );
+        assert_eq!(
+            rewrite(&json!({ "workspace": "G1T" }), "g1t", "flagon-io"),
+            json!({ "workspace": "flagon-io" })
         );
     }
 
