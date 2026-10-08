@@ -736,7 +736,7 @@ export function ResetBillingForm({ workspace, pathname, error }: { workspace: st
     <Section
       id="reset"
       title="Reset billing (testing)"
-      description="Wipes this workspace's billing: its ledger and balance, plan, limits, trial, invoices, holds, signals and cost rows. The workspace, its members and its repositories stay. Only while billing is on Stripe's test key."
+      description="Wipes this workspace's billing: its ledger and balance, plan, limits, trial, invoices, holds, signals and cost rows. What its usage cost g1t is kept, and counted on Costs & margin as given away (testing resets). The workspace, its members and its repositories stay. Only while billing is on Stripe's test key."
     >
       <form method="post" action={`${pathname}#reset`} className="space-y-4">
         <input type="hidden" name="intent" value="reset" />

@@ -4,7 +4,10 @@ import { Await, Form, Link } from "react-router";
 
 import type { Blame, BlobView as Blob, Branch, Commit, LastCommits, TreeView as Tree } from "@g1t/contracts";
 
+import type { DeploymentEnvironments } from "@g1t/contracts";
+
 import { BlameView } from "./blame-view";
+import { DeploymentsPanel } from "./deployments-panel";
 import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
@@ -282,6 +285,7 @@ export function TreeView({
   lastCommits = null,
   about = null,
   canPush = false,
+  homepage = null,
   deployments = null,
 }: {
   tree: Tree;
@@ -292,8 +296,10 @@ export function TreeView({
   about?: AboutData | null;
   /** Whether the viewer may push, for the About's "Create a new release". */
   canPush?: boolean;
-  /** Slot: the About's Deployments section. */
-  deployments?: ReactNode;
+  /** The project's homepage; the repository's website when null. */
+  homepage?: string | null;
+  /** The repository's environments, for the About's Deployments section. */
+  deployments?: DeploymentEnvironments | null;
 }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -369,7 +375,8 @@ export function TreeView({
           readme={Boolean(readme)}
           data={about ?? { about: null, watchers: null, packages: null }}
           canPush={canPush}
-          deployments={deployments}
+          homepage={homepage}
+          deployments={<DeploymentsPanel base={base} summary={deployments} className="border-t border-line pt-4" />}
         />
       )}
     </div>

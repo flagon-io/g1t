@@ -27,6 +27,7 @@ use g1t_contracts::security::{
 
 use crate::alerts::{AlertKind, SecurityAlert};
 use crate::about::AboutOp;
+use crate::deployments::DeploymentsOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -56,6 +57,8 @@ pub struct Services {
     pub security: Fetcher,
     /// Projects: a person's pinned ones.
     pub projects: Fetcher,
+    /// Deployments wherever they run, and environments.
+    pub deployments: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -80,6 +83,7 @@ impl Services {
             search: env.service("SEARCH")?,
             security: env.service("SECURITY")?,
             projects: env.service("PROJECTS")?,
+            deployments: env.service("DEPLOYMENTS")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -239,6 +243,9 @@ pub enum Op {
     PinProject,
     UnpinProject,
     ReorderPinnedProjects,
+    ListProjects,
+    GetProject,
+    UpdateProject,
     ListTeams,
     GetTeam,
     CreateTeam,
@@ -270,6 +277,8 @@ pub enum Op {
     Rules(RulesOp),
     /// A repository's languages, contributors, license, stars and releases: about.rs.
     About(AboutOp),
+    /// Deployments wherever they run, and environments: deployments.rs.
+    Deployments(DeploymentsOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -632,7 +641,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 234] = [
+    pub const ALL: [Op; 244] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -783,6 +792,9 @@ impl Op {
         Op::PinProject,
         Op::UnpinProject,
         Op::ReorderPinnedProjects,
+        Op::ListProjects,
+        Op::GetProject,
+        Op::UpdateProject,
         Op::ListTeams,
         Op::GetTeam,
         Op::CreateTeam,
@@ -867,6 +879,13 @@ impl Op {
         Op::About(AboutOp::CreateRelease),
         Op::About(AboutOp::UpdateRelease),
         Op::About(AboutOp::DeleteRelease),
+        Op::Deployments(DeploymentsOp::ListDeployments),
+        Op::Deployments(DeploymentsOp::CreateDeployment),
+        Op::Deployments(DeploymentsOp::GetDeployment),
+        Op::Deployments(DeploymentsOp::ListDeploymentStatuses),
+        Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
+        Op::Deployments(DeploymentsOp::ListEnvironments),
+        Op::Deployments(DeploymentsOp::GetEnvironment),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1026,6 +1045,9 @@ impl Op {
             Op::PinProject => "pin_project",
             Op::UnpinProject => "unpin_project",
             Op::ReorderPinnedProjects => "reorder_pinned_projects",
+            Op::ListProjects => "list_projects",
+            Op::GetProject => "get_project",
+            Op::UpdateProject => "update_project",
             Op::ListTeams => "list_teams",
             Op::GetTeam => "get_team",
             Op::CreateTeam => "create_team",
@@ -1054,6 +1076,7 @@ impl Op {
             Op::Security(op) => op.name(),
             Op::Rules(op) => op.name(),
             Op::About(op) => op.name(),
+            Op::Deployments(op) => op.name(),
         }
     }
 
@@ -1475,6 +1498,15 @@ impl Op {
             Op::ReorderPinnedProjects => {
                 "Put your pins in a workspace in a new order: `projects` names every pinned project's slug, once, in the order you want them. Returns your pins, in order."
             }
+            Op::ListProjects => {
+                "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when g1t deploys it, `elsewhere` when it is deployed by other means, at `production_url`), and its `links`."
+            }
+            Op::GetProject => {
+                "A project: what it is (`kind`, and `kind_reason` saying why), where it runs (`runs` and `production_url`), what you set and what detection decides (`setting` and `detected`), its repository and `root_dir`, and its homepage, docs and other `links`. A private repository's project is found only by those who can see the repository."
+            }
+            Op::UpdateProject => {
+                "Change a project: its name, description, root directory, what it is, where it runs and its links. Only what you give changes. kind auto and runs auto leave each to detection. Setting runs makes it an app unless it is docs; making it a library, tool or other while Deployments are on is refused, so turn Deployments off first. Give description or homepage as null or \"\" to follow the repository's again, and production_url or docs_url as null or \"\" to clear it. links replaces its other links: at most 10, each a label of up to 40 characters and an http or https address (https:// is added when you leave the scheme out). Needs the Maintain role or higher on its repository."
+            }
             Op::ListTeams => {
                 "A workspace's teams that you can see, yours first, then by name. A team is a group of the workspace's members, given roles on repositories together, mentioned as @workspace/team and asked to review together. A secret team is seen only by its own people and the workspace's owners. Each team has its `slug`, `name`, `description`, `visibility` (`visible` or `secret`), `parent`, whether its people are notified when it is mentioned (`notify`), its `review_assignment`, how many people, repositories and child teams it has (`members_count`, `repos_count`, `child_teams_count`), your own `viewer_role` in it, and whether you may change it (`can_manage`). `query` narrows them by name or slug. Members of the workspace only."
             }
@@ -1553,6 +1585,7 @@ impl Op {
             Op::Security(op) => op.description(),
             Op::Rules(op) => op.description(),
             Op::About(op) => op.description(),
+            Op::Deployments(op) => op.description(),
         }
     }
 
@@ -2697,6 +2730,50 @@ impl Op {
                 }),
                 &["workspace", "projects"],
             ),
+            Op::ListProjects => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::GetProject => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "project": { "type": "string", "description": "The project's slug, as in g1t.sh/{workspace}/{project}." },
+                }),
+                &["workspace", "project"],
+            ),
+            Op::UpdateProject => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "project": { "type": "string", "description": "The project's slug, as in g1t.sh/{workspace}/{project}." },
+                    "name": { "type": "string", "description": "Its name." },
+                    "description": { "type": ["string", "null"], "description": "Its own description. null or \"\" follows its repository's again." },
+                    "root_dir": { "type": "string", "description": "Where in the repository it lives, such as apps/web; \"\" for the whole repository." },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["auto", "app", "library", "tool", "docs", "other"],
+                        "description": "What it is. auto leaves it to detection. A library, tool or other runs nowhere.",
+                    },
+                    "runs": {
+                        "type": "string",
+                        "enum": ["auto", "g1t", "elsewhere"],
+                        "description": "Where it runs: g1t when g1t deploys it, elsewhere when it is deployed by other means. auto leaves it to Deployments.",
+                    },
+                    "production_url": { "type": ["string", "null"], "description": "Production's address when it runs elsewhere. null or \"\" clears it." },
+                    "homepage": { "type": ["string", "null"], "description": "Its homepage. null or \"\" follows its repository's website again." },
+                    "docs_url": { "type": ["string", "null"], "description": "Where its documentation is read. null or \"\" clears it." },
+                    "links": {
+                        "type": "array",
+                        "maxItems": 10,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": { "type": "string", "maxLength": 40 },
+                                "url": { "type": "string", "description": "An http or https address; https:// is added when you leave the scheme out." },
+                            },
+                            "required": ["label", "url"],
+                        },
+                        "description": "Its other links, replacing the ones it has. [] removes them all.",
+                    },
+                }),
+                &["workspace", "project"],
+            ),
             Op::ListTeams => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -2864,6 +2941,7 @@ impl Op {
             Op::Security(op) => op.input(),
             Op::Rules(op) => op.input(),
             Op::About(op) => op.input(),
+            Op::Deployments(op) => op.input(),
         }
     }
 
@@ -2892,7 +2970,16 @@ impl Op {
                 | Op::ListCheckNames
                 | Op::GetMergeQueue
                 | Op::GetCodeownersErrors
+                | Op::ListProjects
+                | Op::GetProject
                 | Op::Rules(RulesOp::ListRepoRulesets | RulesOp::GetRepoRuleset | RulesOp::GetBranchRules)
+                | Op::Deployments(
+                    DeploymentsOp::ListDeployments
+                        | DeploymentsOp::GetDeployment
+                        | DeploymentsOp::ListDeploymentStatuses
+                        | DeploymentsOp::ListEnvironments
+                        | DeploymentsOp::GetEnvironment
+                )
         )
     }
 
@@ -2983,6 +3070,9 @@ impl Op {
                 | Op::PinProject
                 | Op::UnpinProject
                 | Op::ReorderPinnedProjects
+                | Op::ListProjects
+                | Op::GetProject
+                | Op::UpdateProject
                 | Op::ListTeams
                 | Op::GetTeam
                 | Op::CreateTeam
@@ -4874,11 +4964,17 @@ impl Op {
             Op::ListPinnedProjects | Op::PinProject | Op::UnpinProject | Op::ReorderPinnedProjects => {
                 crate::pins::run(self, services, viewer, input).await
             }
+            // What a project is, where it runs and its links: the projects
+            // service keeps them and decides who may change them.
+            Op::ListProjects | Op::GetProject | Op::UpdateProject => {
+                crate::projects::run(self, services, viewer, input).await
+            }
             // The security suite: the security service decides, this gives
             // each answer its public shape.
             Op::Security(op) => crate::security::run(op, services, viewer, input).await,
             Op::Rules(op) => crate::rules::run(op, services, viewer, input).await,
             Op::About(op) => crate::about::run(op, services, viewer, input).await,
+            Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

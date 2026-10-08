@@ -8,6 +8,14 @@
 #   core, edge, front   the units of each stage, in jobs that share a build;
 #            a stage starts only when the one before it succeeded
 #
+# Each run that deploys is one production deployment of g1t.sh, made by the
+# jobs that name `environment: production` (one per run, however many jobs):
+# in progress when the first starts, then a success or a failure when the
+# run ends. It shows on the project's Deployments page and as the commit's
+# `deploy / production` check. The plan job reads production's secrets
+# with `deployment: false`, so a dry run or a change that deploys nothing
+# makes no deployment.
+#
 # Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row), the
 # variable CLOUDFLARE_ACCOUNT_ID, and api.cloudflare.com among the project's
 # workflow-only domains for deploy.yml in production (Settings, Guardrails),
@@ -61,7 +69,10 @@ jobs:
     name: Plan
     needs: check
     runs-on: ubuntu-latest
-    environment: production
+    # Production's secrets, without a deployment: planning deploys nothing.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 15
     outputs:
       migrate: ${{ steps.plan.outputs.migrate }}
@@ -96,7 +107,9 @@ jobs:
     needs: plan
     if: ${{ needs.plan.outputs.migrate == 'true' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: production
+      url: https://g1t.sh
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -115,7 +128,9 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
     # Rust builds get 4 vCPUs; everything else the standard machine.
     runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
-    environment: production
+    environment:
+      name: production
+      url: https://g1t.sh
     timeout-minutes: 60
     strategy:
       # A deploy cut off halfway is worse than one that finishes: the other
@@ -182,7 +197,9 @@ jobs:
     needs: [plan, migrate, core]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
     runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
-    environment: production
+    environment:
+      name: production
+      url: https://g1t.sh
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -195,7 +212,9 @@ jobs:
     needs: [plan, migrate, core, edge]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
     runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
-    environment: production
+    environment:
+      name: production
+      url: https://g1t.sh
     timeout-minutes: 60
     strategy:
       fail-fast: false

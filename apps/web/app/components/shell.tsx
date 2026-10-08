@@ -1389,6 +1389,7 @@ const SECTIONS: Record<string, string> = {
   teams: "Teams",
   tokens: "Access tokens",
   usage: "Usage",
+  gateway: "AI Gateway",
   billing: "Billing and plans",
   integrations: "Integrations",
   webhooks: "Webhooks",

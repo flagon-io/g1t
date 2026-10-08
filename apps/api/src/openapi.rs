@@ -8,6 +8,7 @@ use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
+use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -45,6 +46,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         "Pinned projects",
         "The projects you keep at the top of a workspace's sidebar, in your order, up to eight a workspace. Your own: personal tokens and sessions only.",
         &[Op::ListPinnedProjects, Op::PinProject, Op::UnpinProject, Op::ReorderPinnedProjects],
+    ),
+    (
+        "Projects",
+        "A project is what a workspace builds and runs, from a repository or a root directory in one. Each says what it is, where it runs and where to find it: its homepage, docs and other links.",
+        &[Op::ListProjects, Op::GetProject, Op::UpdateProject],
     ),
     (
         "Workspaces",
@@ -344,6 +350,19 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Deployments",
+        "A repository's deployments wherever they run: reported from any CI with these routes, made by g1t Actions jobs with an `environment:`, or built on g1t.page. Each has statuses, shows on its commit as the check `deploy / <environment>`, and belongs to an environment.",
+        &[
+            Op::Deployments(DeploymentsOp::ListDeployments),
+            Op::Deployments(DeploymentsOp::CreateDeployment),
+            Op::Deployments(DeploymentsOp::GetDeployment),
+            Op::Deployments(DeploymentsOp::ListDeploymentStatuses),
+            Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
+            Op::Deployments(DeploymentsOp::ListEnvironments),
+            Op::Deployments(DeploymentsOp::GetEnvironment),
+        ],
+    ),
+    (
         "Secrets and variables",
         "Values that workflows and deployments read, per repository or for a whole workspace, with a row per environment.",
         &[
@@ -568,6 +587,9 @@ fn title(op: Op) -> &'static str {
         Op::PinProject => "Pin a project",
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",
+        Op::ListProjects => "List a workspace's projects",
+        Op::GetProject => "Get a project",
+        Op::UpdateProject => "Update a project",
         Op::ListTeams => "List teams",
         Op::GetTeam => "Get a team",
         Op::CreateTeam => "Create a team",
@@ -588,6 +610,7 @@ fn title(op: Op) -> &'static str {
         Op::Security(op) => op.title(),
         Op::Rules(op) => op.title(),
         Op::About(op) => op.title(),
+        Op::Deployments(op) => op.title(),
     }
 }
 

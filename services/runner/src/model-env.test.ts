@@ -44,13 +44,13 @@ function customHeaders(vars: Record<string, string>): Record<string, string> {
 
 const small: ChangeSize = { files: 3, lines: 80, sensitive: [] };
 
-test("Auto starts each kind of job on its tier: fast for catching up and answering, standard for changes and plans", () => {
+test("Auto starts each kind of job on its tier: fast for catching up, answering and plans, standard for changes", () => {
   assert.equal(chooseTier("update", {}, routes), "small");
   assert.equal(chooseTier("answer", {}, routes), "small");
   assert.equal(chooseTier("implement", {}, routes), "large");
   assert.equal(chooseTier("revise", {}, routes), "large");
   assert.equal(chooseTier("implement", { change: small }, routes), "large");
-  assert.equal(chooseTier("plan", {}, routes), "large");
+  assert.equal(chooseTier("plan", {}, routes), "small");
   assert.equal(chooseTier("plan", { labels: ["architecture"] }, routes), "frontier");
 });
 
@@ -85,7 +85,8 @@ test("labels move work: architecture to the most capable, documentation to the f
   assert.equal(chooseTier("implement", { labels: ["docs"] }, routes), "small");
   assert.equal(chooseTier("answer", { labels: ["typo"] }, routes), "small");
   // A small label never takes a review or a plan down.
-  assert.equal(chooseTier("plan", { labels: ["docs"] }, routes), "large");
+  assert.equal(chooseTier("plan", { labels: ["docs"] }, routes), "small");
+  assert.equal(chooseTier("plan", { labels: ["security"] }, routes), "large");
   // Security outranks documentation.
   assert.equal(chooseTier("implement", { labels: ["docs", "security"] }, routes), "large");
 });
@@ -95,7 +96,7 @@ test("a failed attempt goes one tier up, and repeated failures to the most capab
   assert.equal(chooseTier("review", { change: small, retry: true }, routes), "large");
   assert.equal(chooseTier("implement", { failures: 1 }, routes), "frontier");
   assert.equal(chooseTier("update", { failures: 2 }, routes), "frontier");
-  assert.equal(chooseTier("plan", { failures: 1 }, routes), "frontier");
+  assert.equal(chooseTier("plan", { failures: 1 }, routes), "large");
   const why = route("update", { failures: 2 }, routes).reason;
   assert.equal(why, "Used the most capable model (Claude Opus 5.5): the last 2 attempts at this work failed.");
 });
@@ -199,7 +200,7 @@ test("the configuration decides the catalogue, the rules and the limits", () => 
   assert.deepEqual(parsed.tiers.frontier, DEFAULT_ROUTING.tiers.frontier);
   assert.equal(chooseTier("update", {}, parsed), "large");
   // A rule that names no tier keeps the default.
-  assert.equal(chooseTier("plan", {}, parsed), "large");
+  assert.equal(chooseTier("plan", {}, parsed), "small");
   assert.equal(parsed.tasks.answer, "change");
   assert.equal(chooseTier("review", { change: { ...small, lines: 51 } }, parsed), "large");
   assert.equal(chooseTier("review", { change: { ...small, files: 10, lines: 50 } }, parsed), "small");
@@ -315,4 +316,12 @@ test("a request built from these variables reaches a gateway as expected", async
     metadata: '{"task":"implement","tier":"large","repo":"acme/site","pull":12}',
     model: "claude-sonnet-5-5",
   });
+});
+
+test("Each kind of job has its effort: plans think hard, answers less, catching up least", () => {
+  assert.deepEqual(DEFAULT_ROUTING.effort, { plan: "high", answer: "medium", update: "low" });
+  const parsed = parseRouting(JSON.stringify({ effort: { implement: "xhigh", plan: "enormous", nonsense: "low" } }));
+  assert.equal(parsed.effort.implement, "xhigh");
+  assert.equal(parsed.effort.plan, "high");
+  assert.equal((parsed.effort as Record<string, string>).nonsense, undefined);
 });

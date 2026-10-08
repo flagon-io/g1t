@@ -3,6 +3,7 @@
 use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
+use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -109,6 +110,10 @@ pub const ROUTES: &[Route] = &[
     route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
     route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
     route("PATCH", "/workspaces/:workspace", Op::UpdateWorkspace, &[]),
+    // A workspace's projects: what each is, where it runs, its links.
+    route("GET", "/workspaces/:workspace/projects", Op::ListProjects, &[]),
+    route("GET", "/workspaces/:workspace/projects/:project", Op::GetProject, &[]),
+    route("PATCH", "/workspaces/:workspace/projects/:project", Op::UpdateProject, &[]),
     route("PUT", "/workspaces/:workspace/base_permission", Op::SetBasePermission, &[]),
     route(
         "GET",
@@ -281,6 +286,19 @@ pub const ROUTES: &[Route] = &[
         Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
         &[("ruleset_id", "ruleset_id"), ("verdict", "verdict"), ("problems_only", "problems_only"), ("before", "before"), ("limit", "limit")],
     ),
+    // Deployments wherever they run, their statuses, and environments.
+    route(
+        "GET",
+        "/repos/:owner/:name/deployments",
+        Op::Deployments(DeploymentsOp::ListDeployments),
+        &[("environment", "environment"), ("ref", "ref"), ("sha", "sha"), ("task", "task"), ("state", "state"), ("source", "source"), ("creator", "creator"), ("page", "page"), ("per_page", "per_page")],
+    ),
+    route("POST", "/repos/:owner/:name/deployments", Op::Deployments(DeploymentsOp::CreateDeployment), &[]),
+    route("GET", "/repos/:owner/:name/deployments/:id", Op::Deployments(DeploymentsOp::GetDeployment), &[]),
+    route("GET", "/repos/:owner/:name/deployments/:id/statuses", Op::Deployments(DeploymentsOp::ListDeploymentStatuses), &[]),
+    route("POST", "/repos/:owner/:name/deployments/:id/statuses", Op::Deployments(DeploymentsOp::CreateDeploymentStatus), &[]),
+    route("GET", "/repos/:owner/:name/environments", Op::Deployments(DeploymentsOp::ListEnvironments), &[]),
+    route("GET", "/repos/:owner/:name/environments/:environment", Op::Deployments(DeploymentsOp::GetEnvironment), &[]),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
     route(
         "POST",
@@ -879,6 +897,10 @@ pub fn resolve(
     // a label's name spaces.
     if let Some(branch) = param("branch") {
         input.insert("branch".to_owned(), Value::String(percent_decoded(branch)));
+    }
+    // An environment's name may hold slashes and spaces, URL-encoded.
+    if let Some(environment) = param("environment") {
+        input.insert("environment".to_owned(), Value::String(percent_decoded(environment)));
     }
     if let Some(label) = param("label") {
         input.insert("label".to_owned(), Value::String(percent_decoded(label)));

@@ -3,7 +3,17 @@
  * pages say, worked out without the server: labels, the language bar,
  * and an activity line for each event worth one.
  */
-import type { Contributor, G1tEvent, LanguageShare, License, WeekCommits } from "@g1t/contracts";
+import type { Contributor, G1tEvent, LanguageShare, License, Project, WeekCommits } from "@g1t/contracts";
+
+/**
+ * The address the About links to: the project's homepage (its own, or its
+ * repository's website it follows), else production when it runs
+ * elsewhere. Null leaves the repository's website.
+ */
+export function projectHomepage(project: Pick<Project, "links" | "runs" | "productionUrl"> | null): string | null {
+  if (!project) return null;
+  return project.links?.homepage ?? (project.runs === "elsewhere" ? project.productionUrl : null) ?? null;
+}
 
 /** "MIT license", as the About names it; "View license" for one not recognized. */
 export function licenseLabel(license: License): string {

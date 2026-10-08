@@ -1,7 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { type KindFacts, type RootFiles, deploysSetting, detectKind, goFilesToRead, resolveKind } from "./kind.ts";
+import {
+  type KindFacts,
+  type RootFiles,
+  detectKind,
+  goFilesToRead,
+  kindSetting,
+  neverRuns,
+  nextSetting,
+  resolveKind,
+  runsSetting,
+} from "./kind.ts";
 
 const root = (text: Record<string, string>, more: Partial<RootFiles> = {}): RootFiles => ({
   entries: [...Object.keys(text), ...(more.entries ?? [])],
@@ -82,14 +92,43 @@ test("the language's manifest decides before package.json, and a Workers config 
   assert.deepEqual(detectKind(root({}, { entries: ["README.md"] })), { kind: null, detail: "No manifest at the root says what it is.", ecosystem: null });
 });
 
-const auto: KindFacts = { deploys: "auto", deploymentsOn: false, linkedPackage: null, detected: null };
+const auto: KindFacts = { setting: { kind: null, runs: null }, deploymentsOn: false, linkedPackage: null, detected: null };
 
 test("the setting wins over everything", () => {
-  assert.equal(resolveKind({ ...auto, deploys: "yes", linkedPackage: "Composer package psr/log" }).kind, "app");
-  assert.deepEqual(resolveKind({ ...auto, deploys: "no", deploymentsOn: true }), {
+  assert.equal(resolveKind({ ...auto, setting: { kind: "app", runs: "g1t" }, linkedPackage: "Composer package psr/log" }).kind, "app");
+  assert.deepEqual(resolveKind({ ...auto, setting: { kind: "library", runs: null }, deploymentsOn: true }), {
     kind: "library",
-    reason: { by: "set", detail: "Set in its settings: it doesn't deploy." },
+    reason: { by: "set", detail: "Set in its settings: a library." },
+    runs: null,
   });
+  assert.equal(resolveKind({ ...auto, setting: { kind: "tool", runs: null } }).reason.detail, "Set in its settings: a tool.");
+});
+
+test("where it runs: set, or on g1t while Deployments are on, or nobody has said", () => {
+  // An app deployed by its own CI: no nag to turn on Deployments.
+  const elsewhere = resolveKind({ ...auto, setting: { kind: null, runs: "elsewhere" }, detected: { kind: "library", detail: "" } });
+  assert.deepEqual([elsewhere.kind, elsewhere.runs, elsewhere.reason.by], ["app", "elsewhere", "set"]);
+  assert.equal(resolveKind({ ...auto, deploymentsOn: true }).runs, "g1t");
+  assert.equal(resolveKind({ ...auto, setting: { kind: "app", runs: "g1t" } }).runs, "g1t");
+  // Detected an app, Deployments off: unknown, so the page asks instead of nagging.
+  assert.equal(resolveKind({ ...auto, detected: { kind: "app", detail: "wrangler.jsonc at the root." } }).runs, null);
+  // Docs can be a site; a library, a tool and other never run.
+  assert.equal(resolveKind({ ...auto, setting: { kind: "docs", runs: null }, deploymentsOn: true }).runs, "g1t");
+  for (const kind of ["library", "tool", "other"] as const) {
+    assert.equal(resolveKind({ ...auto, setting: { kind, runs: "g1t" }, deploymentsOn: true }).runs, null);
+  }
+});
+
+test("a change to the setting keeps it coherent", () => {
+  const none = { kind: null, runs: null };
+  assert.deepEqual(nextSetting(none, { runs: "elsewhere" }), { kind: null, runs: "elsewhere" });
+  assert.deepEqual(nextSetting({ kind: "app", runs: "g1t" }, { kind: "library" }), { kind: "library", runs: null });
+  assert.deepEqual(nextSetting({ kind: "docs", runs: "elsewhere" }, { kind: "docs" }), { kind: "docs", runs: "elsewhere" });
+  assert.deepEqual(nextSetting({ kind: "tool", runs: null }, { runs: "g1t" }), { kind: "app", runs: "g1t" });
+  assert.deepEqual(nextSetting({ kind: "app", runs: "g1t" }, { kind: "auto", runs: "auto" }), none);
+  assert.equal(neverRuns({ kind: "other", runs: null }), true);
+  assert.equal(neverRuns({ kind: "docs", runs: null }), false);
+  assert.equal(neverRuns(none), false);
 });
 
 test("on auto: Deployments on, then packages, then files, then an app", () => {
@@ -98,15 +137,31 @@ test("on auto: Deployments on, then packages, then files, then an app", () => {
   assert.deepEqual(resolveKind({ ...auto, linkedPackage: "Composer package psr/log", detected: library }), {
     kind: "library",
     reason: { by: "packages", detail: "Its repository publishes the Composer package psr/log." },
+    runs: null,
   });
-  assert.deepEqual(resolveKind({ ...auto, detected: library }), { kind: "library", reason: { by: "files", ...{ detail: library.detail } } });
+  assert.deepEqual(resolveKind({ ...auto, detected: library }), { kind: "library", reason: { by: "files", detail: library.detail }, runs: null });
   assert.equal(resolveKind({ ...auto, detected: { kind: "app", detail: "package.json has a start script." } }).reason.by, "files");
   assert.deepEqual(resolveKind({ ...auto, deploymentsOn: null, detected: { kind: null, detail: "" } }).kind, "app");
   assert.equal(resolveKind(auto).reason.by, "default");
 });
 
-test("an unknown setting is auto", () => {
-  assert.equal(deploysSetting("no"), "no");
-  assert.equal(deploysSetting(null), "auto");
-  assert.equal(deploysSetting("sometimes"), "auto");
+test("an unknown setting is left to detection", () => {
+  assert.equal(kindSetting("tool"), "tool");
+  assert.equal(kindSetting("auto"), null);
+  assert.equal(kindSetting("yes"), null);
+  assert.equal(runsSetting("elsewhere"), "elsewhere");
+  assert.equal(runsSetting("sometimes"), null);
+});
+
+test("detection says tool, and docs, where the files do", () => {
+  assert.deepEqual(detectKind(root({ "package.json": '{"name":"x","bin":{"x":"cli.js"}}' })), {
+    kind: "tool",
+    detail: 'package.json has "bin" and nothing to import.',
+    ecosystem: "npm",
+  });
+  // Something to import as well as a command: a library.
+  assert.equal(detectKind(root({ "package.json": '{"main":"x.js","bin":"cli.js"}' })).kind, "library");
+  assert.equal(detectKind(root({ "package.json": '{"scripts":{"start":"docusaurus start"}}' }, { entries: ["docusaurus.config.ts"] })).kind, "docs");
+  assert.equal(detectKind(root({}, { entries: ["mkdocs.yml", "docs/"] })).detail, "mkdocs.yml at the root builds documentation.");
+  assert.equal(resolveKind({ ...auto, detected: { kind: "docs", detail: "mkdocs.yml at the root builds documentation." } }).kind, "docs");
 });

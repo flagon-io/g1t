@@ -83,6 +83,7 @@ import { monthCost } from "./metering";
 import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarget } from "./moves";
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
+import { RepoDeployments, sourceOf } from "./repo-deployments";
 
 type Env = {
   DB: D1Database;
@@ -286,6 +287,28 @@ class Deployments {
     return projectsClient(this.env.PROJECTS);
   }
 
+  /** A repository's deployments wherever they run: reported, from g1t Actions, and these builds. */
+  get repoDeployments(): RepoDeployments {
+    return new RepoDeployments(this.env);
+  }
+
+  /**
+   * Publishes a build's change in the repository-wide model
+   * (`deployment.created`, `deployment_status.created`), as a reported
+   * deployment's are. Never fails the build.
+   */
+  private async buildChanged(id: string, created = false): Promise<void> {
+    try {
+      const row = await this.deploymentRow(id);
+      if (!row) return;
+      const project = (await this.projects.byRepo(row.repo_id)).find((p) => p.id === row.project_id);
+      const defaultBranch = project?.source.kind === "hosted" ? project.source.defaultBranch : "main";
+      await this.repoDeployments.buildChanged(row, defaultBranch, created);
+    } catch (error) {
+      console.error("build change not published", id, String(error));
+    }
+  }
+
   /** The workspace itself, as the service acts for it. */
   private async workspaceActor(slug: string): Promise<User | null> {
     const workspace = await identityClient(this.env.IDENTITY).getWorkspace(slug);
@@ -460,8 +483,9 @@ class Deployments {
     const project = found.value;
     const before = await this.toSettings(project, await this.settingsRow(project.id));
     const next = { ...before, ...a.changes };
-    if (next.enabled && !before.enabled && project.deploys === "no") {
-      return fail("conflict", "This project is set not to deploy. Change that in its General settings first.");
+    // A library, a tool or other, as set in its settings, does not deploy.
+    if (next.enabled && !before.enabled && project.setting?.kind && project.setting.kind !== "app" && project.setting.kind !== "docs") {
+      return fail("conflict", "This project is set to be something that doesn't deploy. Change what it is in its General settings first.");
     }
     if (next.enabled && !before.enabled) {
       // Turning it on starts paid work: only with the workspace's plan.
@@ -857,6 +881,7 @@ class Deployments {
       .bind(now(), script, id)
       .run();
     await this.status(repo.id, input.commit, project, "pending", "Building", `${this.env.SITE}/${project.workspace}/${project.slug}/deployments/${id}`);
+    await this.buildChanged(id, true);
     // What the project's secrets and variables give builds of this kind.
     const build = await this.resolve(
       { id: project.id, slug: project.slug, repoId: repo.id, repo: repo.path },
@@ -991,6 +1016,7 @@ class Deployments {
           .prepare("UPDATE deployments SET status = 'building', started_at = ? WHERE id = ?")
           .bind(now(), id)
           .run();
+        await this.buildChanged(id);
         return Response.json(ok(true));
       case "session": {
         const manifest = body.manifest as Manifest | undefined;
@@ -1066,6 +1092,7 @@ class Deployments {
         await this.notePeak(row.workspace);
         await this.statusFor(row, "success", row.kind === "preview" ? "Preview is live" : "Production is live", appUrl(row.script));
         await this.announce(row, null);
+        await this.buildChanged(id);
         // A screenshot of production as it now is, for the project's overview.
         if (row.kind === "production") {
           await this.env.SCREENSHOTS?.capture({ host: appHost(row.script), commit: row.commit_sha }).catch((error) =>
@@ -1152,6 +1179,7 @@ class Deployments {
     if (seconds) await this.chargeBuild(row, seconds);
     await this.statusFor(row, "failure", "Deployment failed", `${this.env.SITE}/${row.workspace}/${row.slug}/deployments/${id}`);
     await this.announce(row, message.slice(0, 300));
+    await this.buildChanged(id);
   }
 
   /**
@@ -1347,6 +1375,7 @@ class Deployments {
         break;
       case "repo.purged":
         await this.repoPurged(event.data.repoId);
+        await this.repoDeployments.purge(event.data.repoId);
         break;
       case "repo.default_branch_changed":
         await this.defaultBranchChanged(event.data.repoId, event.data.to, event.actor ?? "g1t");
@@ -2271,6 +2300,24 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
       return service.removeDomain(args);
     case "refresh_domain":
       return service.refreshDomain(args);
+    // A repository's deployments wherever they run (repo-deployments.ts).
+    case "list_deployments":
+      return service.repoDeployments.list({ ...args, source: args.source == null ? null : sourceOf(args.source) ?? "none" });
+    case "get_deployment":
+      return service.repoDeployments.get(args);
+    case "list_deployment_statuses":
+      return service.repoDeployments.statuses(args);
+    case "list_environments":
+      return service.repoDeployments.environments(args);
+    case "get_environment":
+      return service.repoDeployments.environment(args);
+    case "create_deployment":
+      return service.repoDeployments.create(args);
+    case "create_deployment_status":
+      return service.repoDeployments.createStatus(args);
+    // For the actions service: a run's deployment to one environment.
+    case "actions_deployment":
+      return service.repoDeployments.fromActions(args);
     default:
       return undefined;
   }

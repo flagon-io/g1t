@@ -139,7 +139,7 @@ opens on the site, or through the API without naming an agent, is a person's.
 | Require a pull request before merging | `pull_request` | Pushes straight to the branch are refused. A pull request into it needs what the parameters say. |
 | Require status checks to pass | `required_status_checks` | These checks must pass on a pull request's head before it merges. |
 | Require the merge queue | `merge_queue` | Merging into the default branch adds the pull request to the [merge queue](/guides/merge-queue/), with these settings. On other branches it merges directly. |
-| Require deployments to succeed | `required_deployments` | A pull request's head must have deployed successfully to these environments. |
+| Require deployments to succeed | `required_deployments` | A pull request's head must have deployed successfully to these environments: on g1t.page, or anywhere it was reported. |
 
 `pull_request` parameters:
 
@@ -173,7 +173,11 @@ and the longest wait among them.
 
 `required_deployments` takes `environments`. `preview` is a pull request's
 [preview deployment](/guides/deployments/). A project's slug is that
-project's deployment, when a repository has several.
+project's deployment, when a repository has several. Any other name is an
+environment [deployments are reported to](/guides/deployments-api/), from
+any CI or by a g1t Actions job with an `environment:`: a successful
+`deploy / <environment>` check on the head meets it, such as
+`deploy / staging` for `staging`. Names are matched without regard to case.
 
 ### Commits
 

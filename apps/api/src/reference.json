@@ -6317,6 +6317,227 @@
     ],
     "notes": "Name every pinned project once; anything else is refused with `422 invalid`."
   },
+  "list_projects": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+        "workspace": "flagon-io",
+        "slug": "g1t",
+        "name": "g1t",
+        "description": "Git hosting where people and agents work together.",
+        "description_inherited": true,
+        "url": "https://g1t.sh/flagon-io/g1t",
+        "repository": "flagon-io/g1t",
+        "root_dir": "",
+        "default_branch": "main",
+        "private": false,
+        "archived": false,
+        "primary": true,
+        "kind": "app",
+        "kind_reason": {
+          "by": "set",
+          "detail": "Set to an app that runs elsewhere."
+        },
+        "runs": "elsewhere",
+        "production_url": "https://g1t.sh",
+        "setting": {
+          "kind": "app",
+          "runs": "elsewhere"
+        },
+        "detected": {
+          "kind": "app",
+          "reason": {
+            "by": "files",
+            "detail": "wrangler.jsonc at its root makes it an app."
+          }
+        },
+        "ecosystem": null,
+        "links": {
+          "homepage": "https://g1t.sh",
+          "homepage_inherited": true,
+          "docs": "https://docs.g1t.sh",
+          "custom": [
+            {
+              "label": "Status",
+              "url": "https://status.g1t.sh"
+            }
+          ]
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "updated_at": "2026-10-07T11:20:00.000Z",
+        "pushed_at": "2026-10-07T10:00:00.000Z"
+      },
+      {
+        "id": "prj_01kkp3n2a7e5v8sk3b6g9j4m1y",
+        "workspace": "flagon-io",
+        "slug": "hello",
+        "name": "hello",
+        "description": "Greets people from the command line.",
+        "description_inherited": false,
+        "url": "https://g1t.sh/flagon-io/hello",
+        "repository": "flagon-io/hello",
+        "root_dir": "",
+        "default_branch": "main",
+        "private": false,
+        "archived": false,
+        "primary": true,
+        "kind": "library",
+        "kind_reason": {
+          "by": "files",
+          "detail": "composer.json says it is a library."
+        },
+        "runs": null,
+        "production_url": null,
+        "setting": {
+          "kind": null,
+          "runs": null
+        },
+        "detected": {
+          "kind": "library",
+          "reason": {
+            "by": "files",
+            "detail": "composer.json says it is a library."
+          }
+        },
+        "ecosystem": "composer",
+        "links": {
+          "homepage": null,
+          "homepage_inherited": false,
+          "docs": null,
+          "custom": []
+        },
+        "created_at": "2026-09-12T14:30:00.000Z",
+        "updated_at": "2026-10-01T09:12:00.000Z",
+        "pushed_at": null
+      }
+    ],
+    "notes": "By name. Projects whose repository you cannot see are left out; without a token you see public ones only. `kind` is what the project is, from `setting` where a person set it and from detection otherwise (`detected`, shown beside it); `kind_reason` says why. `runs` is null for what is not deployed. `homepage_inherited` is true while the homepage is its repository's website. `pushed_at` is null until its repository is pushed to. See [Projects](/guides/projects/)."
+  },
+  "get_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": {
+      "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+      "workspace": "flagon-io",
+      "slug": "g1t",
+      "name": "g1t",
+      "description": "Git hosting where people and agents work together.",
+      "description_inherited": true,
+      "url": "https://g1t.sh/flagon-io/g1t",
+      "repository": "flagon-io/g1t",
+      "root_dir": "",
+      "default_branch": "main",
+      "private": false,
+      "archived": false,
+      "primary": true,
+      "kind": "app",
+      "kind_reason": {
+        "by": "set",
+        "detail": "Set to an app that runs elsewhere."
+      },
+      "runs": "elsewhere",
+      "production_url": "https://g1t.sh",
+      "setting": {
+        "kind": "app",
+        "runs": "elsewhere"
+      },
+      "detected": {
+        "kind": "app",
+        "reason": {
+          "by": "files",
+          "detail": "wrangler.jsonc at its root makes it an app."
+        }
+      },
+      "ecosystem": null,
+      "links": {
+        "homepage": "https://g1t.sh",
+        "homepage_inherited": true,
+        "docs": "https://docs.g1t.sh",
+        "custom": [
+          {
+            "label": "Status",
+            "url": "https://status.g1t.sh"
+          }
+        ]
+      },
+      "created_at": "2026-09-01T10:00:00.000Z",
+      "updated_at": "2026-10-07T11:20:00.000Z",
+      "pushed_at": "2026-10-07T10:00:00.000Z"
+    },
+    "notes": "`404` for a project that does not exist or whose repository you cannot see. `setting` holds what a person set, each part null while it is left to detection. `ecosystem` is where a library's files say it is published (`composer`, `npm`, `cargo`, `go` or `python`), or null. See [What a project is](/guides/projects/#what-a-project-is)."
+  },
+  "update_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "request": {
+      "kind": "app",
+      "runs": "elsewhere",
+      "production_url": "https://g1t.sh",
+      "docs_url": "https://docs.g1t.sh",
+      "links": [
+        {
+          "label": "Status",
+          "url": "https://status.g1t.sh"
+        }
+      ]
+    },
+    "response": {
+      "id": "prj_01kkp3m8w2f6t9qh4c7d1r5n0x",
+      "workspace": "flagon-io",
+      "slug": "g1t",
+      "name": "g1t",
+      "description": "Git hosting where people and agents work together.",
+      "description_inherited": true,
+      "url": "https://g1t.sh/flagon-io/g1t",
+      "repository": "flagon-io/g1t",
+      "root_dir": "",
+      "default_branch": "main",
+      "private": false,
+      "archived": false,
+      "primary": true,
+      "kind": "app",
+      "kind_reason": {
+        "by": "set",
+        "detail": "Set to an app that runs elsewhere."
+      },
+      "runs": "elsewhere",
+      "production_url": "https://g1t.sh",
+      "setting": {
+        "kind": "app",
+        "runs": "elsewhere"
+      },
+      "detected": {
+        "kind": "app",
+        "reason": {
+          "by": "files",
+          "detail": "wrangler.jsonc at its root makes it an app."
+        }
+      },
+      "ecosystem": null,
+      "links": {
+        "homepage": "https://g1t.sh",
+        "homepage_inherited": true,
+        "docs": "https://docs.g1t.sh",
+        "custom": [
+          {
+            "label": "Status",
+            "url": "https://status.g1t.sh"
+          }
+        ]
+      },
+      "created_at": "2026-09-01T10:00:00.000Z",
+      "updated_at": "2026-10-07T11:20:00.000Z",
+      "pushed_at": "2026-10-07T10:00:00.000Z"
+    },
+    "notes": "Only the fields given change. `kind` and `runs` take `auto` to go back to detection. Setting `runs` makes the project an app unless it is docs. Making it a `library`, `tool` or `other` while [Deployments](/guides/deployments/) are on is refused with `409 conflict`: turn them off first. `description` and `homepage` given as null or `\"\"` follow the repository's again; `production_url` and `docs_url` given as null or `\"\"` are cleared. `links` replaces the project's other links: at most 10, each with a `label` of up to 40 characters and an http or https `url` (`https://` is added when you leave the scheme out); anything else is refused with `422 invalid`. Needs the Maintain role or higher on the project's repository. Recorded in the [audit log](/guides/audit-log/). See [Settings](/guides/projects/#settings)."
+  },
   "list_secret_scanning_alerts": {
     "params": {
       "owner": "flagon-io",
@@ -9277,6 +9498,362 @@
           }
         ]
       }
+    }
+  },
+  "list_deployments": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "query": {
+      "environment": "production",
+      "per_page": "2"
+    },
+    "response": {
+      "deployments": [
+        {
+          "id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+          "environment": "production",
+          "ref": "main",
+          "sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "task": "deploy",
+          "description": "Deploy",
+          "payload": {},
+          "transient_environment": false,
+          "production_environment": true,
+          "state": "success",
+          "environment_url": "https://g1t.sh",
+          "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+          "creator": "syntaqx",
+          "source": "actions",
+          "run_id": "run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+          "run_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+          "project": null,
+          "number": null,
+          "created_at": "2026-10-07T18:02:11.204Z",
+          "updated_at": "2026-10-07T18:19:47.881Z"
+        }
+      ],
+      "total_count": 304,
+      "page": 1,
+      "per_page": 2
+    },
+    "notes": "Every deployment of the repository in one list, wherever it ran: `source` is `api` for those reported with [`POST /repos/{owner}/{name}/deployments`](/reference/api/deployments/create-deployment/), `actions` for those a g1t Actions job with an `environment:` made, and `g1t_page` for [g1t.page](/guides/deployments/) builds, whose ids start `dpl_`. `state` is the latest status's. See [Deployments API](/guides/deployments-api/)."
+  },
+  "create_deployment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "request": {
+      "ref": "main",
+      "environment": "staging",
+      "description": "Deployed by the release pipeline",
+      "payload": {
+        "pipeline": 4182,
+        "region": "us-east"
+      },
+      "state": "in_progress",
+      "log_url": "https://ci.example.com/pipelines/4182"
+    },
+    "response": {
+      "id": "dep_01kq7z9a1c3e5g7j9m1p3r5t7v",
+      "environment": "staging",
+      "ref": "main",
+      "sha": "4b8d0f2a6c1e3579bd02468ace13579bdf02468a",
+      "task": "deploy",
+      "description": "Deployed by the release pipeline",
+      "payload": {
+        "pipeline": 4182,
+        "region": "us-east"
+      },
+      "transient_environment": false,
+      "production_environment": false,
+      "state": "in_progress",
+      "environment_url": null,
+      "log_url": "https://ci.example.com/pipelines/4182",
+      "creator": "flagon-io",
+      "source": "api",
+      "run_id": null,
+      "run_url": null,
+      "project": null,
+      "number": null,
+      "created_at": "2026-10-06T21:40:03.512Z",
+      "updated_at": "2026-10-06T21:40:03.512Z",
+      "statuses": [
+        {
+          "id": "dst_01kq7z9a1d4f6h8k0m2p4r6t8v",
+          "deployment_id": "dep_01kq7z9a1c3e5g7j9m1p3r5t7v",
+          "state": "in_progress",
+          "description": "Deployed by the release pipeline",
+          "environment_url": null,
+          "log_url": "https://ci.example.com/pipelines/4182",
+          "creator": "flagon-io",
+          "created_at": "2026-10-06T21:40:03.512Z"
+        }
+      ]
+    },
+    "notes": "Report from any CI with an access token that has `deployments:write` (the CI preset has it) and the Write role. Then report each step with [`POST …/deployments/{id}/statuses`](/reference/api/deployments/create-deployment-status/). Each status sets the check `deploy / <environment>` on the commit. A g1t Actions job with an `environment:` does all of this itself. See [Deployments API](/guides/deployments-api/)."
+  },
+  "get_deployment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m"
+    },
+    "response": {
+      "id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+      "environment": "production",
+      "ref": "main",
+      "sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+      "task": "deploy",
+      "description": "Deploy",
+      "payload": {},
+      "transient_environment": false,
+      "production_environment": true,
+      "state": "success",
+      "environment_url": "https://g1t.sh",
+      "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+      "creator": "syntaqx",
+      "source": "actions",
+      "run_id": "run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+      "run_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+      "project": null,
+      "number": null,
+      "created_at": "2026-10-07T18:02:11.204Z",
+      "updated_at": "2026-10-07T18:19:47.881Z",
+      "statuses": [
+        {
+          "id": "dst_01kq8m3t5w0a2c4e6g8j0m2p4r",
+          "deployment_id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+          "state": "in_progress",
+          "description": "Deploy is deploying",
+          "environment_url": "https://g1t.sh",
+          "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+          "creator": "syntaqx",
+          "created_at": "2026-10-07T18:02:11.204Z"
+        },
+        {
+          "id": "dst_01kq8n4v6x8z0b2d4f6h8k0m2p",
+          "deployment_id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+          "state": "success",
+          "description": "Deploy deployed",
+          "environment_url": "https://g1t.sh",
+          "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+          "creator": "syntaqx",
+          "created_at": "2026-10-07T18:19:47.881Z"
+        }
+      ]
+    },
+    "notes": "`statuses` are oldest first. A g1t.page build's (`dpl_…`) are read from the build: queued, building, how it ended, and `inactive` once a newer build replaced it or it was taken down."
+  },
+  "list_deployment_statuses": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m"
+    },
+    "response": [
+      {
+        "id": "dst_01kq8n4v6x8z0b2d4f6h8k0m2p",
+        "deployment_id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+        "state": "success",
+        "description": "Deploy deployed",
+        "environment_url": "https://g1t.sh",
+        "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+        "creator": "syntaqx",
+        "created_at": "2026-10-07T18:19:47.881Z"
+      },
+      {
+        "id": "dst_01kq8m3t5w0a2c4e6g8j0m2p4r",
+        "deployment_id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+        "state": "in_progress",
+        "description": "Deploy is deploying",
+        "environment_url": "https://g1t.sh",
+        "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+        "creator": "syntaqx",
+        "created_at": "2026-10-07T18:02:11.204Z"
+      }
+    ]
+  },
+  "create_deployment_status": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "dep_01kq7z9a1c3e5g7j9m1p3r5t7v"
+    },
+    "request": {
+      "state": "failure",
+      "description": "Smoke tests failed",
+      "log_url": "https://ci.example.com/pipelines/4182"
+    },
+    "response": {
+      "id": "dst_01kq7zc2e4g6j8m0p2r4t6v8x0",
+      "deployment_id": "dep_01kq7z9a1c3e5g7j9m1p3r5t7v",
+      "state": "failure",
+      "description": "Smoke tests failed",
+      "environment_url": null,
+      "log_url": "https://ci.example.com/pipelines/4182",
+      "creator": "flagon-io",
+      "created_at": "2026-10-06T21:44:58.020Z"
+    },
+    "notes": "`queued` and `in_progress` set the commit's `deploy / <environment>` check pending; `success`, `failure` and `error` settle it; `inactive` leaves it. A success makes the environment's older successful deployments `inactive` unless `auto_inactive` is false. A g1t.page build (`dpl_…`) answers `409`: its statuses come from the build."
+  },
+  "list_environments": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "response": {
+      "total_count": 304,
+      "environments": [
+        {
+          "name": "production",
+          "url": "https://g1t.sh",
+          "production_environment": true,
+          "transient_environment": false,
+          "deployments_count": 281,
+          "latest": {
+            "id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+            "environment": "production",
+            "ref": "main",
+            "sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+            "task": "deploy",
+            "description": "Deploy",
+            "payload": {},
+            "transient_environment": false,
+            "production_environment": true,
+            "state": "success",
+            "environment_url": "https://g1t.sh",
+            "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+            "creator": "syntaqx",
+            "source": "actions",
+            "run_id": "run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+            "run_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+            "project": null,
+            "number": null,
+            "created_at": "2026-10-07T18:02:11.204Z",
+            "updated_at": "2026-10-07T18:19:47.881Z"
+          },
+          "current": {
+            "id": "dep_01kq8m3t5v7x9z1b3d5f7h9k2m",
+            "environment": "production",
+            "ref": "main",
+            "sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+            "task": "deploy",
+            "description": "Deploy",
+            "payload": {},
+            "transient_environment": false,
+            "production_environment": true,
+            "state": "success",
+            "environment_url": "https://g1t.sh",
+            "log_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+            "creator": "syntaqx",
+            "source": "actions",
+            "run_id": "run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+            "run_url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_01kq8m2r4t6v8x0z2b4d6f8h0k",
+            "project": null,
+            "number": null,
+            "created_at": "2026-10-07T18:02:11.204Z",
+            "updated_at": "2026-10-07T18:19:47.881Z"
+          },
+          "updated_at": "2026-10-07T18:19:47.881Z"
+        },
+        {
+          "name": "staging",
+          "url": null,
+          "production_environment": false,
+          "transient_environment": false,
+          "deployments_count": 19,
+          "latest": {
+            "id": "dep_01kq7z9a1c3e5g7j9m1p3r5t7v",
+            "environment": "staging",
+            "ref": "main",
+            "sha": "4b8d0f2a6c1e3579bd02468ace13579bdf02468a",
+            "task": "deploy",
+            "description": "Deployed by the release pipeline",
+            "payload": {
+              "pipeline": 4182,
+              "region": "us-east"
+            },
+            "transient_environment": false,
+            "production_environment": false,
+            "state": "failure",
+            "environment_url": null,
+            "log_url": "https://ci.example.com/pipelines/4182",
+            "creator": "flagon-io",
+            "source": "api",
+            "run_id": null,
+            "run_url": null,
+            "project": null,
+            "number": null,
+            "created_at": "2026-10-06T21:40:03.512Z",
+            "updated_at": "2026-10-06T21:44:58.020Z"
+          },
+          "current": null,
+          "updated_at": "2026-10-06T21:44:58.020Z"
+        }
+      ]
+    },
+    "notes": "Production comes first, then the most recently deployed. `latest` is the newest deployment whatever its state; `current` is the newest that succeeded and is still active, and `url` is where it is served."
+  },
+  "get_environment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "docs",
+      "environment": "preview"
+    },
+    "response": {
+      "name": "preview",
+      "url": "https://docs-git-docs-deployments-flagon-io.g1t.page",
+      "production_environment": false,
+      "transient_environment": true,
+      "deployments_count": 87,
+      "latest": {
+        "id": "dpl_01kq8p2b4d6f8h0k2m4p6r8t0v",
+        "environment": "preview",
+        "ref": "docs-deployments",
+        "sha": "e2f4a6c8b0d1e3f5a7c9b1d3e5f7a9c1b3d5e7f9",
+        "task": "deploy",
+        "description": "Preview of docs-deployments on g1t.page",
+        "payload": {},
+        "transient_environment": true,
+        "production_environment": false,
+        "state": "success",
+        "environment_url": "https://docs-git-docs-deployments-flagon-io.g1t.page",
+        "log_url": "https://g1t.sh/flagon-io/docs/deployments/dpl_01kq8p2b4d6f8h0k2m4p6r8t0v",
+        "creator": "syntaqx",
+        "source": "g1t_page",
+        "run_id": null,
+        "run_url": null,
+        "project": "docs",
+        "number": 412,
+        "created_at": "2026-10-08T01:12:44.630Z",
+        "updated_at": "2026-10-08T01:13:52.101Z"
+      },
+      "current": {
+        "id": "dpl_01kq8p2b4d6f8h0k2m4p6r8t0v",
+        "environment": "preview",
+        "ref": "docs-deployments",
+        "sha": "e2f4a6c8b0d1e3f5a7c9b1d3e5f7a9c1b3d5e7f9",
+        "task": "deploy",
+        "description": "Preview of docs-deployments on g1t.page",
+        "payload": {},
+        "transient_environment": true,
+        "production_environment": false,
+        "state": "success",
+        "environment_url": "https://docs-git-docs-deployments-flagon-io.g1t.page",
+        "log_url": "https://g1t.sh/flagon-io/docs/deployments/dpl_01kq8p2b4d6f8h0k2m4p6r8t0v",
+        "creator": "syntaqx",
+        "source": "g1t_page",
+        "run_id": null,
+        "run_url": null,
+        "project": "docs",
+        "number": 412,
+        "created_at": "2026-10-08T01:12:44.630Z",
+        "updated_at": "2026-10-08T01:13:52.101Z"
+      },
+      "updated_at": "2026-10-08T01:13:52.101Z"
     }
   },
   "get_languages": {

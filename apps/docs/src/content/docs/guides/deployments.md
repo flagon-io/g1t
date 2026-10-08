@@ -41,12 +41,18 @@ When the [default branch changes](/guides/managing-repositories/), production
 is built again from the new default branch. An
 [archived](/guides/managing-repositories/) repository's apps keep serving.
 
+Every build is also a deployment in the repository's one list of
+deployments, beside those reported from any CI and those g1t Actions
+jobs make, with the source `g1t_page` and the environment `production` or
+`preview`. See [Deployments API](/guides/deployments-api/) to read them,
+report your own, and hear of them by webhook.
+
 An app runs only while it answers a request. One nobody visits runs
 nothing and costs nothing, and the next visit wakes it in milliseconds.
 
 Deployments are part of the [g1t plan](/guides/usage-and-billing/#the-g1t-plan),
-and are opt-in per project. A project with deployments off says
-**Deployments are off** on its overview, with **Turn on deployments** for
+and are opt-in per project. A project set to deploy on g1t, with
+deployments off, says **Deployments are off** on its overview, with **Turn on deployments** for
 people with the Admin [role](/guides/access-and-roles/) on its repository. Nothing builds or runs until you turn them on, and one click turns
 them off again.
 
@@ -66,12 +72,15 @@ them off again.
 Production starts building at once from the default branch. Every pull
 request opened or pushed to from then on gets a preview.
 
-A project g1t takes for a library or a tool, such as a Composer package,
-does not offer to deploy on its overview; it shows its packages instead.
-Its **Deployments** page still turns them on, and doing so makes it an
-app. A project set to **Doesn't deploy** cannot have deployments turned
-on until the setting changes. See
-[apps and libraries](/guides/projects/#apps-and-libraries).
+Deployments are for projects g1t runs. Not every project is one: a
+library, a tool or documentation is published rather than deployed, and
+an app may be deployed by its own pipeline somewhere else. Only a project
+that is [an app or site deployed on g1t](/guides/projects/#what-a-project-is)
+is asked to turn deployments on. Any other project's **Deployments** page
+still turns them on; doing so makes it an app deployed on g1t, including
+one that was deployed elsewhere. A project set to be a library, a tool or
+something else cannot have deployments turned on until that setting
+changes.
 
 While payments on g1t are in test mode, no real card is charged: use the
 test card `4242 4242 4242 4242` with any future date and any code.

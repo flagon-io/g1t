@@ -230,6 +230,71 @@ fn ancestor_failed(needs_of: &std::collections::HashMap<&str, Vec<&str>>, key: &
     false
 }
 
+/// A job's `environment:`, as deployments read it: its name, the address in
+/// `environment.url` once its expressions are filled in from the run, and
+/// whether the job deploys to it. A job with `deployment: false` only reads
+/// the environment's secrets and variables, and makes no deployment.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct JobEnvironment {
+    pub(crate) name: String,
+    pub(crate) url: Option<String>,
+    pub(crate) deploys: bool,
+}
+
+/// The environment `environment:` names, as written in `raw` (a job), with
+/// `contexts` to fill in expressions: null when it names none, or only
+/// through an expression this cannot read before the job runs.
+pub(crate) fn environment_of(raw: &Value, contexts: &Map<String, Value>) -> Option<JobEnvironment> {
+    let scope = Scope { contexts, status: Status::Success, hash_files: None };
+    let plain = |value: &Value| -> Option<String> {
+        let text = match value {
+            Value::String(text) if text.contains("${{") => expr::interpolate_value(value, &scope).ok().map(|v| expr::to_text(&v))?,
+            Value::String(text) => text.clone(),
+            _ => return None,
+        };
+        let text = text.trim().to_owned();
+        (!text.is_empty()).then_some(text)
+    };
+    match raw.get("environment")? {
+        name @ Value::String(_) => Some(JobEnvironment { name: plain(name)?, url: None, deploys: true }),
+        Value::Object(env) => {
+            let name = plain(env.get("name")?)?;
+            let url = env
+                .get("url")
+                .and_then(plain)
+                .filter(|url| url.starts_with("https://") || url.starts_with("http://"));
+            let deploys = !matches!(env.get("deployment"), Some(Value::Bool(false)))
+                && !matches!(env.get("deployment"), Some(Value::String(text)) if text.trim() == "false");
+            Some(JobEnvironment { name, url, deploys })
+        }
+        _ => None,
+    }
+}
+
+/// The contexts a job's `runs-on` and `environment` are read with before it
+/// runs: the run's `github`, its inputs, and the job's matrix.
+fn start_contexts(run: &RunRow, job: &JobRow, key: &str) -> Map<String, Value> {
+    let mut contexts = Map::new();
+    contexts.insert("github".into(), run.info().context(key, "", run.action.as_deref()));
+    contexts.insert("inputs".into(), Value::Object(run.inputs()));
+    contexts.insert("matrix".into(), job.matrix.as_deref().and_then(|m| serde_json::from_str(m).ok()).unwrap_or_else(|| json!({})));
+    contexts
+}
+
+/// The job as its workflow (or the workflow it calls) defines it.
+fn job_spec(run: &RunRow, job: &JobRow) -> Option<workflow::Job> {
+    match job.callee() {
+        Some((_, spec, _)) => Some(spec),
+        None => workflow::parse(&run.source).ok().and_then(|w| w.jobs.into_iter().find(|j| j.id == job.key)),
+    }
+}
+
+/// The environment a job deploys to, if it deploys.
+pub(crate) fn deploys_to(run: &RunRow, job: &JobRow) -> Option<JobEnvironment> {
+    let spec = job_spec(run, job)?;
+    environment_of(&spec.raw, &start_contexts(run, job, &spec.id)).filter(|env| env.deploys)
+}
+
 /// What the runner is told about a job it starts, from its workflow: the
 /// environment it names plainly, and the machine its `runs-on` asks for
 /// (`instance_for`; none for the standard one).
@@ -254,10 +319,7 @@ fn start_details(run: &RunRow, job: &JobRow) -> StartDetails {
     };
     // `runs-on` as the job was queued with: its matrix and the run's
     // inputs. A label that needs more than those is the standard machine.
-    let mut contexts = Map::new();
-    contexts.insert("github".into(), run.info().context(&spec.id, "", run.action.as_deref()));
-    contexts.insert("inputs".into(), Value::Object(run.inputs()));
-    contexts.insert("matrix".into(), job.matrix.as_deref().and_then(|m| serde_json::from_str(m).ok()).unwrap_or_else(|| json!({})));
+    let contexts = start_contexts(run, job, &spec.id);
     let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
     let labels: Vec<String> = match expr::interpolate_value(&spec.runs_on, &scope).unwrap_or(Value::Null) {
         Value::String(label) => vec![label],
@@ -278,6 +340,23 @@ fn start_details(run: &RunRow, job: &JobRow) -> StartDetails {
 
 fn now() -> String {
     rfc3339(now_ms())
+}
+
+/// How a finished run went for one environment, from the conclusions of
+/// the jobs that deploy to it: failed if any failed, an error if any was
+/// cancelled, else a success; nothing when none ran (all skipped).
+pub(crate) fn deployment_outcome(conclusions: &[Option<String>]) -> Option<&'static str> {
+    let ran: Vec<&str> = conclusions.iter().flatten().map(String::as_str).filter(|c| *c != "skipped").collect();
+    if ran.is_empty() {
+        return None;
+    }
+    if ran.iter().any(|c| *c == "failure" || *c == "timed_out") {
+        return Some("failure");
+    }
+    if ran.contains(&"cancelled") {
+        return Some("error");
+    }
+    Some("success")
 }
 
 impl Actions {
@@ -1044,6 +1123,8 @@ impl Actions {
             .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")));
             if let Outcome::Fail(refused) = started {
                 Box::pin(self.finish_job(&job.id, "failure", Some(&refused.message), None)).await?;
+            } else {
+                self.job_started(&job.id).await?;
             }
         }
         Ok(())
@@ -1067,6 +1148,13 @@ impl Actions {
             .first::<JobRow>(None)
             .await?;
         let Some(job) = finished else { return Ok(()) };
+        // A job that deploys failed: so did its run's deployment, now.
+        if conclusion == "failure" && job.continue_on_error == 0 && job.started_at.is_some()
+            && let Some(run) = self.run_row(&job.run_id).await?
+            && let Some(env) = deploys_to(&run, &job)
+        {
+            self.report_deployment(&run, &env, "failure", false).await;
+        }
         // A self-hosted runner's job: the runner is free again, and its time
         // is recorded, at nothing.
         if job.runner_id.is_some() {
@@ -1167,6 +1255,7 @@ impl Actions {
             return Ok(());
         }
         self.report_status(run, conclusion).await?;
+        self.settle_deployments(run, &jobs, conclusion == "cancelled").await;
         let published: Result<()> = g1t_kit::call(
             &self.events,
             "publish",
@@ -1209,6 +1298,80 @@ impl Actions {
             }
         }
         Ok(())
+    }
+
+    /// Tells the deployments service how a run's deployment to `env` stands:
+    /// made when its first job naming the environment starts, failed when one
+    /// of them fails, and settled (`last`) when the run finishes. Never fails
+    /// the run: a deployment that could not be recorded is logged.
+    async fn report_deployment(&self, run: &RunRow, env: &JobEnvironment, state: &str, last: bool) {
+        let path = repo_path(&run.repo);
+        let reported: Result<Value> = g1t_kit::call(
+            &self.deployments,
+            "actions_deployment",
+            &json!({
+                "repoId": run.repo_id,
+                "repo": { "namespace": path.namespace, "name": path.name },
+                "runId": run.id,
+                "attempt": run.attempt,
+                "runUrl": format!("{SITE}/{}/actions/runs/{}", run.repo, run.id),
+                "environment": env.name,
+                "url": env.url,
+                "ref": run.git_ref,
+                "sha": run.sha,
+                "state": state,
+                "final": last,
+                "creator": run.actor,
+                "workflow": run.name,
+            }),
+        )
+        .await;
+        if let Err(error) = reported {
+            worker::console_error!("actions: deployment to {} not recorded for run {}: {error}", env.name, run.id);
+        }
+    }
+
+    /// A job that deploys has started: its run's deployment to the
+    /// environment is under way.
+    pub(crate) async fn job_started(&self, job_id: &str) -> Result<()> {
+        let Some(job) = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[job_id.into()])?.first::<JobRow>(None).await? else {
+            return Ok(());
+        };
+        let Some(run) = self.run_row(&job.run_id).await? else { return Ok(()) };
+        if let Some(env) = deploys_to(&run, &job) {
+            self.report_deployment(&run, &env, "in_progress", false).await;
+        }
+        Ok(())
+    }
+
+    /// The run is over: each environment its jobs deployed to takes the
+    /// outcome of those jobs (`deployment_outcome`).
+    async fn settle_deployments(&self, run: &RunRow, jobs: &[JobRow], cancelled: bool) {
+        let mut seen: Vec<(JobEnvironment, Vec<Option<String>>)> = Vec::new();
+        for job in jobs {
+            let Some(env) = deploys_to(run, job) else { continue };
+            let conclusion = if cancelled && job.conclusion.as_deref() != Some("skipped") && job.started_at.is_some() {
+                Some("cancelled".to_owned())
+            } else if job.started_at.is_none() {
+                Some("skipped".to_owned())
+            } else {
+                job.conclusion.clone()
+            };
+            match seen.iter_mut().find(|(known, _)| known.name.eq_ignore_ascii_case(&env.name)) {
+                Some((known, conclusions)) => {
+                    if known.url.is_none() {
+                        known.url = env.url.clone();
+                    }
+                    conclusions.push(conclusion);
+                }
+                None => seen.push((env, vec![conclusion])),
+            }
+        }
+        for (env, conclusions) in seen {
+            if let Some(state) = deployment_outcome(&conclusions) {
+                self.report_deployment(run, &env, state, true).await;
+            }
+        }
     }
 
     /// Tells the pull request (or commit) how the run went, as a status.
@@ -1792,5 +1955,51 @@ mod status_of_needs {
         let needs = HashMap::from([("a", vec!["b"]), ("b", vec!["a"])]);
         assert!(!ancestor_failed(&needs, "a", |_| false));
         assert!(!ancestor_failed(&needs, "missing", |_| true));
+    }
+}
+
+#[cfg(test)]
+mod deployments {
+    use serde_json::{Map, Value, json};
+
+    use super::{JobEnvironment, deployment_outcome, environment_of};
+
+    #[test]
+    fn a_jobs_environment_is_read_for_deployments() {
+        let contexts: Map<String, Value> = serde_json::from_value(json!({
+            "github": { "ref_name": "main", "repository": "acme/web" },
+            "inputs": { "target": "staging" },
+            "matrix": {},
+        }))
+        .unwrap();
+        let read = |raw: Value| environment_of(&raw, &contexts);
+        assert_eq!(read(json!({})), None);
+        assert_eq!(
+            read(json!({ "environment": "production" })),
+            Some(JobEnvironment { name: "production".into(), url: None, deploys: true })
+        );
+        assert_eq!(
+            read(json!({ "environment": { "name": "production", "url": "https://g1t.sh" } })),
+            Some(JobEnvironment { name: "production".into(), url: Some("https://g1t.sh".into()), deploys: true })
+        );
+        // Expressions are filled in from the run.
+        assert_eq!(
+            read(json!({ "environment": { "name": "${{ inputs.target }}", "url": "https://${{ github.ref_name }}.example.com" } })),
+            Some(JobEnvironment { name: "staging".into(), url: Some("https://main.example.com".into()), deploys: true })
+        );
+        // Secrets only: no deployment.
+        assert!(!read(json!({ "environment": { "name": "production", "deployment": false } })).unwrap().deploys);
+        // Only http(s) addresses.
+        assert_eq!(read(json!({ "environment": { "name": "production", "url": "javascript:alert(1)" } })).unwrap().url, None);
+    }
+
+    #[test]
+    fn a_runs_outcome_for_an_environment() {
+        let of = |list: &[&str]| deployment_outcome(&list.iter().map(|c| Some((*c).to_owned())).collect::<Vec<_>>());
+        assert_eq!(of(&["success", "skipped"]), Some("success"));
+        assert_eq!(of(&["success", "failure"]), Some("failure"));
+        assert_eq!(of(&["success", "cancelled"]), Some("error"));
+        assert_eq!(of(&["skipped"]), None);
+        assert_eq!(deployment_outcome(&[None]), None);
     }
 }

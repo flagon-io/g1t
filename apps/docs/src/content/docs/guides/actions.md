@@ -42,7 +42,7 @@ gives their values out, so they cannot be copied across.
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run. |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is the workspace's own token for the run; `GITHUB_TOKEN` is its alias. |
-| `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work. |
+| `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. |
 | `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
 | `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
 
@@ -66,7 +66,9 @@ anything in it that runs differently.
 - **Environments' protection rules** (required reviewers, wait timers,
   branch limits). A job with `environment:` gets that environment's
   [values](/guides/secrets-and-variables/#a-value-per-environment), and runs
-  without waiting.
+  without waiting. It still records a
+  [deployment](/guides/deployments-api/#deployments-from-g1t-actions)
+  unless it says `deployment: false`.
 
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
@@ -264,7 +266,9 @@ with an **Add CI** button. Anyone who can push to the repository can use it:
 Secrets are read as `${{ secrets.KEY }}` and config as `${{ vars.KEY }}`,
 from the rows under **Settings → Secrets and variables** that are
 available to Workflows. A job with `environment: production` reads each
-key's Production row; other jobs read the rows for all environments. See
+key's Production row; other jobs read the rows for all environments. A
+job with an `environment:` also makes a deployment to it; see
+[deployments from g1t Actions](/guides/deployments-api/#deployments-from-g1t-actions). See
 [Secrets and variables](/guides/secrets-and-variables/) for how rows,
 environments and the workspace's rows work.
 

@@ -326,12 +326,12 @@ function LoadedSections({
   return (
     <>
       <Releases base={base} about={about} canPush={canPush} />
-      {deployments}
       <Suspense fallback={<SectionSkeleton title="Packages" />}>
         <Await resolve={packages} errorElement={<Packages packages={null} />}>
           {(found) => <Packages packages={found} />}
         </Await>
       </Suspense>
+      {deployments}
       <Contributors base={base} about={about} />
       <Section title="Languages">
         {about.pending ? <Reading /> : about.languages.length > 0 ? <LanguageBar languages={about.languages} /> : <p className="text-sm text-muted">No code to count</p>}
@@ -372,15 +372,9 @@ export function RepoAboutPanel({
   readme: boolean;
   data: AboutData;
   canPush: boolean;
-  /**
-   * The project's home page. The repository's website until project links
-   * are wired in; the project's own link takes its place then.
-   */
+  /** The project's homepage (lib/about.ts `projectHomepage`); the repository's website when null. */
   homepage?: string | null;
-  /**
-   * Slot: the Deployments section (production and previews with their
-   * times), built beside this panel. Null leaves no section.
-   */
+  /** The Deployments section (deployments-panel.tsx): each environment's latest. */
   deployments?: ReactNode;
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
@@ -426,8 +420,8 @@ export function RepoAboutPanel({
         fallback={
           <>
             <SectionSkeleton title="Releases" />
-            {deployments}
             <SectionSkeleton title="Packages" />
+            {deployments}
             <SectionSkeleton title="Contributors" />
             <SectionSkeleton title="Languages" />
           </>

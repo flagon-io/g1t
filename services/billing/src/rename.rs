@@ -113,6 +113,9 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE OR IGNORE own_counts SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM own_counts WHERE workspace = ?2",
     "UPDATE margin_alerts SET subject = ?1 WHERE kind = 'workspace' AND subject = ?2",
+    // What testing resets wiped that g1t paid for: kept, under the new slug
+    // (a row under both slugs at the same instant cannot happen).
+    "UPDATE OR IGNORE reset_costs SET workspace = ?1 WHERE workspace = ?2",
     // Holds, spikes, requests and the plan's payments: many per workspace.
     "UPDATE reservations SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE reservations SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
@@ -316,7 +319,7 @@ mod tests {
             "allowance_use", "trial_grants", "credit_grants", "storage_days",
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
             "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
-            "workspace_costs", "own_counts", "ai_reload", "ai_reloads", "tax_and_fees",
+            "workspace_costs", "own_counts", "ai_reload", "ai_reloads", "tax_and_fees", "reset_costs",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

@@ -10,11 +10,13 @@ mod alerts;
 mod audit;
 mod billing;
 mod blobs;
+mod deployments;
 mod mcp;
 mod notifications;
 mod oauth;
 mod openapi;
 mod pins;
+mod projects;
 mod operations;
 mod renamed;
 #[cfg(test)]

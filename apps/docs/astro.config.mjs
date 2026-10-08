@@ -74,6 +74,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Projects', slug: 'guides/projects' },
 						{ label: 'Deployments', slug: 'guides/deployments' },
+						{ label: 'Deployments API', slug: 'guides/deployments-api' },
 						{ label: 'Packages', slug: 'guides/packages' },
 						{ label: 'Container images', slug: 'guides/containers' },
 						{ label: 'npm', slug: 'guides/npm' },

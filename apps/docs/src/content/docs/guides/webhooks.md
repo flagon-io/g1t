@@ -94,7 +94,9 @@ With these headers:
 | `checks.completed` | A pull request's checks finished: every status on its head has reported and none is still pending, or the merge queue took it out. `data.number`, `data.commit`, and `data.status`, `passed` or `failed`. |
 | `review.completed` | g1t reviewed a pull request. `data.verdict`. |
 | `workflow.completed` | A [workflow](/guides/actions/) run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |
-| `deployment.succeeded`, `deployment.failed` | A build of a [project](/guides/deployments/) finished, for production or a pull request's preview. `data.deployment_id`, `data.project`, `data.kind` (`production` or `preview`), `data.number` for a preview, `data.commit`, `data.path`, `data.error` on failure, and `data.recovered` when a success follows a failure. |
+| `deployment.succeeded`, `deployment.failed` | A g1t.page build of a [project](/guides/deployments/) finished, for production or a pull request's preview. `data.deployment_id`, `data.project`, `data.kind` (`production` or `preview`), `data.number` for a preview, `data.commit`, `data.path`, `data.error` on failure, and `data.recovered` when a success follows a failure. |
+| `deployment.created` | A deployment was made, from any source: reported through the [API](/guides/deployments-api/), made by a g1t Actions job with an `environment:`, or a g1t.page build. `data.repo_id` and `data.deployment`, without its `payload`. |
+| `deployment_status.created` | A deployment got a status, from any source. `data.repo_id`, `data.deployment` without its `payload`, and `data.deployment_status`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
 | `session.appended` | An agent's session grew. Busy: choose it only if you need it. |
 | `agent.asked` | An agent asked the agent on another pull request a question, or handed it work, while that one was not at work; g1t wakes it to answer. |
