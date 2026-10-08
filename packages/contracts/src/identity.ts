@@ -591,7 +591,7 @@ export type DeletedWorkspace = {
   name: string;
   /** RFC 3339. */
   deletedAt: string;
-  /** The username of the owner who deleted it. */
+  /** The username of the owner who deleted it, or the staff member who deleted it with the account that alone owned it. */
   deletedBy: string;
   /** RFC 3339: when it is purged unless restored first. */
   purgeAfter: string;

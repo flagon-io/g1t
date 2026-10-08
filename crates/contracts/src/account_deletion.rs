@@ -6,7 +6,11 @@
 //! themselves, typing their username and proving it is them
 //! ([`crate::accounts::Reauth`]); g1t's staff can delete one from sudo with
 //! a reason. Neither is possible while the account is the only owner of a
-//! live workspace: its owner transfers it or deletes it first. Accounts
+//! live workspace: its owner transfers it or deletes it first. Staff may
+//! instead delete those workspaces with it, in the same request
+//! ([`AdminDeleteAccountArgs::with_sole_workspaces`]), unless one of them is
+//! protected or its billing cannot settle ([`staff_sole_owner_refusal`]).
+//! Accounts
 //! that run g1t, and the names g1t shows for itself, can never be deleted
 //! ([`is_protected_account`]).
 //!
@@ -64,9 +68,44 @@ pub struct SoleOwnedWorkspace {
     pub members: u32,
     /// Why billing could not close it yet if it were deleted now, in words
     /// for its owner: what deleting it first would need. Null when nothing
-    /// is owed, and always for staff.
+    /// is owed.
     #[serde(default)]
     pub billing: Option<String>,
+    /// It can never be deleted, by anyone (`PROTECTED_WORKSPACES`, or its
+    /// row says so), so staff cannot delete it with the account either.
+    #[serde(default)]
+    pub protected: bool,
+}
+
+impl SoleOwnedWorkspace {
+    /// Why staff cannot delete it with the account, or `None`.
+    pub fn refusal(&self) -> Option<String> {
+        if self.protected {
+            return Some(crate::identity::protected_refusal(&self.slug));
+        }
+        self.billing.clone()
+    }
+}
+
+/// Why staff cannot delete an account together with the workspaces it is
+/// the only owner of: each one that is protected or whose billing cannot
+/// settle, said in turn. `None` when every one can go.
+pub fn staff_sole_owner_refusal(workspaces: &[SoleOwnedWorkspace]) -> Option<String> {
+    let reasons: Vec<String> = workspaces.iter().filter_map(SoleOwnedWorkspace::refusal).collect();
+    if reasons.is_empty() {
+        return None;
+    }
+    Some(format!("Nothing was deleted. {}", reasons.join(" ")))
+}
+
+/// A workspace staff deleted together with the account that alone owned
+/// it, kept in the account's [`AccountWent`] so sudo can show it and purge
+/// it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDeletedWith {
+    pub workspace_id: String,
+    pub slug: String,
 }
 
 /// `check_account_deletion` (takes `UserArgs`, people only) returns
@@ -170,6 +209,11 @@ pub struct AccountWent {
     /// Why staff deleted it.
     #[serde(default)]
     pub reason: Option<String>,
+    /// The workspaces it was the only owner of that staff deleted with it,
+    /// in the same request (`with_sole_workspaces`). Each is deleted the
+    /// way an owner deletes one, and restored or purged on its own.
+    #[serde(default)]
+    pub deleted_workspaces: Vec<WorkspaceDeletedWith>,
 }
 
 /// An account deleted and kept until `purge_after` for staff to restore.
@@ -191,8 +235,9 @@ pub struct DeletedAccount {
 
 /// `admin_delete_account`: staff delete an account, with a reason (kept in
 /// sudo's audit log and the account's record). `confirm` is the username
-/// typed out. Refused for a protected account and while it is the only
-/// owner of a live workspace, as for the person. Returns `Outcome<bool>`.
+/// typed out. Refused for a protected account, and while it is the only
+/// owner of a live workspace unless `with_sole_workspaces`. Returns
+/// `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminDeleteAccountArgs {
@@ -202,6 +247,16 @@ pub struct AdminDeleteAccountArgs {
     pub confirm: String,
     /// The staff member, by email.
     pub staff: String,
+    /// Delete the workspaces the account is the only owner of first, each
+    /// exactly as its owner would (billing closes it, `workspace.deleting`,
+    /// its audit log), with the staff member as `deleted_by`, then the
+    /// account. Refused whole, deleting nothing, while any of them is
+    /// protected or its billing cannot settle
+    /// ([`staff_sole_owner_refusal`]). Should one fail on the way (a card
+    /// declined that moment), the account is not deleted, and the failure
+    /// says which workspace, and which went before it.
+    #[serde(default)]
+    pub with_sole_workspaces: bool,
 }
 
 /// `admin_restore_account` and `admin_purge_account`: staff restore a
@@ -223,7 +278,31 @@ mod tests {
     use crate::identity::protected_names;
 
     fn sole(slug: &str) -> SoleOwnedWorkspace {
-        SoleOwnedWorkspace { slug: slug.into(), name: slug.into(), members: 1, billing: None }
+        SoleOwnedWorkspace { slug: slug.into(), name: slug.into(), members: 1, billing: None, protected: false }
+    }
+
+    #[test]
+    fn staff_are_told_each_workspace_that_cannot_go_with_the_account() {
+        assert_eq!(staff_sole_owner_refusal(&[]), None);
+        assert_eq!(staff_sole_owner_refusal(&[sole("acme"), sole("globex")]), None);
+        let protected = SoleOwnedWorkspace { protected: true, ..sole("flagon-io") };
+        let owing = SoleOwnedWorkspace { billing: Some("globex has an unpaid invoice.".into()), ..sole("globex") };
+        assert_eq!(
+            staff_sole_owner_refusal(&[sole("acme"), protected, owing]).unwrap(),
+            "Nothing was deleted. flagon-io is protected and can never be deleted. globex has an unpaid invoice."
+        );
+    }
+
+    #[test]
+    fn older_records_and_requests_read_without_the_new_fields() {
+        let old: AccountWent =
+            serde_json::from_str(r#"{"workspaces":1,"teams":0,"repositories":0,"tokens":0,"sshKeys":0}"#).unwrap();
+        assert!(old.deleted_workspaces.is_empty());
+        let args: AdminDeleteAccountArgs =
+            serde_json::from_str(r#"{"username":"ada","reason":"r","staff":"s","withSoleWorkspaces":true}"#).unwrap();
+        assert!(args.with_sole_workspaces);
+        let args: AdminDeleteAccountArgs = serde_json::from_str(r#"{"username":"ada","reason":"r","staff":"s"}"#).unwrap();
+        assert!(!args.with_sole_workspaces);
     }
 
     #[test]

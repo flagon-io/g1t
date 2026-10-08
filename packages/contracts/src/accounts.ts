@@ -197,10 +197,20 @@ export interface AccountsAdminApi {
   removeEmail(username: string, email: string, reason: string, staff: string): Promise<Result<AdminUser>>;
   /**
    * Deletes an account, with the reason and the username typed out. Refused
-   * for a protected account and while it is the only owner of a live
-   * workspace. Recorded in sudo's audit log (`account_deleted`).
+   * for a protected account, and while it is the only owner of a live
+   * workspace unless `withSoleWorkspaces`: then each of those is deleted
+   * first, as its owner would, and the account last. Refused whole while any
+   * of them is protected or its billing cannot settle; a workspace failing
+   * on the way stops it before the account. Recorded in sudo's audit log
+   * (`workspace_deleted` for each, `account_deleted`).
    */
-  deleteAccount(username: string, reason: string, confirm: string, staff: string): Promise<Result<boolean>>;
+  deleteAccount(
+    username: string,
+    reason: string,
+    confirm: string,
+    staff: string,
+    withSoleWorkspaces?: boolean,
+  ): Promise<Result<boolean>>;
   /** Deleted accounts not purged yet, newest first. */
   deletedAccounts(): Promise<DeletedAccount[]>;
   /** Brings a deleted account back within its window, with the memberships it left. Publishes `user.restored`. */
@@ -245,7 +255,8 @@ export function accountsAdminClient(identity: ServiceBinding): AccountsAdminApi 
   return {
     user: (username) => call(identity, "admin_user", { username }),
     removeEmail: (username, email, reason, staff) => call(identity, "admin_remove_email", { username, email, reason, staff }),
-    deleteAccount: (username, reason, confirm, staff) => call(identity, "admin_delete_account", { username, reason, confirm, staff }),
+    deleteAccount: (username, reason, confirm, staff, withSoleWorkspaces) =>
+      call(identity, "admin_delete_account", { username, reason, confirm, staff, withSoleWorkspaces: withSoleWorkspaces ?? false }),
     deletedAccounts: () => call(identity, "admin_deleted_accounts", {}),
     restoreAccount: (userId, staff) => call(identity, "admin_restore_account", { userId, staff }),
     purgeAccount: (userId, staff, confirm) => call(identity, "admin_purge_account", { userId, staff, confirm }),

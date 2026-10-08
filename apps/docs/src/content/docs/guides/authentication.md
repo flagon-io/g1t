@@ -994,6 +994,17 @@ in as yourself, never with a token or as an agent.
 Billing belongs to workspaces, not to accounts, so once no workspace
 depends on you alone there is nothing for billing to settle.
 
+When g1t's staff delete an account, on its owner's request or for abuse,
+the workspaces it alone owns are not left without an owner. Staff either
+wait for another owner to be made, or delete those workspaces together
+with the account, each exactly as its owner would: its billing is settled
+first, everything in it goes with it, and it is kept 30 days for a
+restore like any deleted workspace. Its audit log records the deletion as
+g1t's staff. Staff never do this for a workspace whose billing cannot be
+settled yet (an unpaid invoice, prepaid credit, usage still being metered),
+or for one of the workspaces g1t protects; if any of them stands in the
+way, nothing is deleted.
+
 ### What happens
 
 At once, when you delete it:

@@ -1,14 +1,24 @@
 import { ArrowLeft } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
 
-import { ACCOUNT_RESTORE_DAYS, type AdminUser, securityEventLabel } from "@g1t/contracts";
+import { ACCOUNT_RESTORE_DAYS, type AdminUser, WORKSPACE_RESTORE_DAYS, securityEventLabel } from "@g1t/contracts";
 
 import type { Route } from "./+types/user";
 import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Section, When } from "~/components/ui";
-import { accountWentSummary, confirmsUsername, staffDeletionRefusal } from "~/lib/deleted-accounts";
-import { daysLeft } from "~/lib/deleted-workspaces";
+import {
+  type DeletedWithAccount,
+  accountWentSummary,
+  confirmsUsername,
+  deletedWithAccount,
+  soleOwnerNote,
+  soleWorkspaceRefusal,
+  soleWorkspacesRefusal,
+  staffDeleteProblem,
+  staffDeletionRefusal,
+} from "~/lib/deleted-accounts";
+import { confirmsPurge, daysLeft } from "~/lib/deleted-workspaces";
 import { text } from "~/lib/forms";
-import { accountsAdmin } from "~/lib/services.server";
+import { accountsAdmin, identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 
@@ -23,20 +33,41 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   if (result.ok && !result.value) throw data("No such account.", { status: 404 });
   const url = new URL(request.url);
   const done = url.searchParams.get("done");
+  const slug = url.searchParams.get("slug") ?? "";
+  // The workspaces staff deleted with it, each with its deletion while it
+  // waits to be purged.
+  const user = result.ok ? result.value : null;
+  const went = user?.deleted?.went;
+  let workspaces: DeletedWithAccount[] = [];
+  let workspacesError: string | null = null;
+  if (went && (went.deletedWorkspaces ?? []).length > 0) {
+    const deleted = await settle(identity.deletedWorkspaces());
+    workspaces = deletedWithAccount(went, deleted.ok ? deleted.value : []);
+    workspacesError = deleted.ok ? null : deleted.error;
+  }
+  const messages: Record<string, string> = {
+    deleted: "Deleted the account.",
+    "deleted-with-workspaces": "Deleted the account and the workspaces it alone owned.",
+    restored: "Restored the account.",
+    "workspace-purged": `Purged ${slug}.`,
+  };
   return {
-    user: result.ok ? result.value : null,
+    user,
     error: result.ok ? null : result.error,
     removed: url.searchParams.get("removed"),
-    done: done === "deleted" ? "Deleted the account." : done === "restored" ? "Restored the account." : null,
+    done: done ? (messages[done] ?? null) : null,
+    workspaces,
+    workspacesError,
     now: Date.now(),
   };
 }
 
 /**
  * Removes an address (the reason is required, recorded and shown to the
- * person), or deletes, restores or purges the account. Identity checks
- * each again: protection, the workspaces it owns alone, the typed
- * username, the restore window.
+ * person), or deletes, restores or purges the account, or purges a
+ * workspace deleted with it. Identity checks each again: protection, the
+ * workspaces it owns alone and whether they can go, the typed username or
+ * slug, the restore window.
  */
 export async function action({ params, request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
@@ -46,13 +77,27 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   if (intent === "delete-account") {
     const reason = text(form, "reason");
     const confirm = text(form, "confirm");
-    if (!reason) return data({ error: "Say why the account is being deleted.", account: true }, { status: 422 });
-    if (!confirmsUsername(params.username, confirm)) {
-      return data({ error: `Type ${params.username} to confirm.`, account: true }, { status: 422 });
-    }
-    const result = await accountsAdmin.deleteAccount(params.username, reason, confirm, staff.email);
+    const withWorkspaces = text(form, "with-workspaces") === "1";
+    const problem = staffDeleteProblem({
+      username: params.username,
+      reason,
+      confirm,
+      withWorkspaces,
+      acknowledged: text(form, "acknowledge") === "on",
+    });
+    if (problem) return data({ error: problem, account: true }, { status: 422 });
+    const result = await accountsAdmin.deleteAccount(params.username, reason, confirm, staff.email, withWorkspaces);
     if (!result.ok) return data({ error: result.error.message, account: true }, { status: 422 });
-    throw back("deleted");
+    throw back(withWorkspaces ? "deleted-with-workspaces" : "deleted");
+  }
+  if (intent === "purge-workspace") {
+    const id = text(form, "id");
+    const slug = text(form, "slug");
+    const confirm = text(form, "confirm");
+    if (!confirmsPurge(slug, confirm)) return data({ error: `Type ${slug} to confirm.`, workspace: id }, { status: 422 });
+    const result = await identity.purgeWorkspace(id, staff.email, confirm);
+    if (!result.ok) return data({ error: result.error.message, workspace: id }, { status: 422 });
+    throw redirect(`/users/${encodeURIComponent(params.username)}?done=workspace-purged&slug=${encodeURIComponent(slug)}`);
   }
   if (intent === "restore-account") {
     const result = await accountsAdmin.restoreAccount(text(form, "id"), staff.email);
@@ -77,8 +122,9 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 }
 
 export default function User({ loaderData, actionData }: Route.ComponentProps) {
-  const { user, error, removed, done, now } = loaderData;
+  const { user, error, removed, done, workspaces, workspacesError, now } = loaderData;
   const accountError = actionData && "account" in actionData ? actionData.error : null;
+  const workspaceError = actionData && "workspace" in actionData ? { id: actionData.workspace, error: actionData.error } : null;
   if (!user) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-8 sm:py-10">
@@ -183,16 +229,38 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
         )}
       </Section>
 
-      <AccountSection user={user} error={accountError} now={now} />
+      <AccountSection
+        user={user}
+        error={accountError}
+        workspaces={workspaces}
+        workspacesError={workspacesError}
+        workspaceError={workspaceError}
+        now={now}
+      />
     </main>
   );
 }
 
 /**
- * Deleting the account, or, once it is deleted, restoring or purging it.
- * Every form is plain HTML: sudo ships no JavaScript.
+ * Deleting the account, or, once it is deleted, restoring or purging it
+ * and the workspaces deleted with it. Every form is plain HTML: sudo ships
+ * no JavaScript.
  */
-function AccountSection({ user, error, now }: { user: AdminUser; error: string | null; now: number }) {
+function AccountSection({
+  user,
+  error,
+  workspaces,
+  workspacesError,
+  workspaceError,
+  now,
+}: {
+  user: AdminUser;
+  error: string | null;
+  workspaces: DeletedWithAccount[];
+  workspacesError: string | null;
+  workspaceError: { id: string; error: string } | null;
+  now: number;
+}) {
   const deleted = user.deleted;
   if (deleted) {
     const left = daysLeft(deleted.purgeAfter, now);
@@ -200,7 +268,7 @@ function AccountSection({ user, error, now }: { user: AdminUser; error: string |
       <Section
         id="account"
         title="Deleted account"
-        description={`Deleted ${deleted.went.staff ? `by ${deleted.went.staff}` : "by the person"}. Kept ${ACCOUNT_RESTORE_DAYS} days for a restore, then purged.`}
+        description={`Deleted ${deleted.went.staff ? `by ${deleted.went.staff}` : "by the person"}. Kept ${ACCOUNT_RESTORE_DAYS} days for a restore, then purged. Staff can purge it now.`}
         className="mt-6"
       >
         <div className="space-y-3 text-sm">
@@ -218,6 +286,9 @@ function AccountSection({ user, error, now }: { user: AdminUser; error: string |
           </p>
           {deleted.went.reason && <p className="text-muted">Reason: {deleted.went.reason}</p>}
           <p className="text-muted">Left: {accountWentSummary(deleted.went)}</p>
+          {workspaces.length > 0 && (
+            <DeletedWorkspaces workspaces={workspaces} error={workspacesError} workspaceError={workspaceError} now={now} />
+          )}
           {error && <Notice tone="error">{error}</Notice>}
           <div className="flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-end sm:justify-between">
             <form method="post">
@@ -250,32 +321,18 @@ function AccountSection({ user, error, now }: { user: AdminUser; error: string |
     );
   }
   const refusal = staffDeletionRefusal(user.deletion);
+  const sole = user.deletion.sole_owner_of;
+  const blocked = soleWorkspacesRefusal(user.deletion);
   return (
     <Section
       id="account"
       title="Delete account"
-      description={`Signs it out everywhere, ends its tokens and keys, and takes it out of every workspace. Kept ${ACCOUNT_RESTORE_DAYS} days for a restore, then purged; its username is never given out again. Only when the person asks, or for abuse, with a reason.`}
+      description={`Signs it out everywhere, ends its tokens and keys, and takes it out of every workspace. Kept ${ACCOUNT_RESTORE_DAYS} days for a restore, then purged; its username is never given out again. Only when the person asks, for abuse, or for an account g1t no longer uses, with a reason.`}
       className="mt-6"
     >
       {refusal ? (
-        <div className="space-y-3 text-sm">
-          <Notice tone="warn">{refusal}</Notice>
-          {user.deletion.sole_owner_of.length > 0 && (
-            <ul className="divide-y divide-line rounded-md border border-line">
-              {user.deletion.sole_owner_of.map((workspace) => (
-                <li key={workspace.slug} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
-                  <Link to={`/workspaces/${workspace.slug}`} className="text-fg hover:underline">
-                    {workspace.name} <span className="font-mono text-xs text-muted">{workspace.slug}</span>
-                  </Link>
-                  <span className="text-xs text-faint">
-                    {workspace.members} member{workspace.members === 1 ? "" : "s"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : (
+        <Notice tone="warn">{refusal}</Notice>
+      ) : sole.length === 0 ? (
         <details className="rounded-md border border-danger/30 px-3 py-2" open={Boolean(error)}>
           <summary className="cursor-pointer text-sm text-danger">Delete this account</summary>
           <form method="post" className="mt-3 grid gap-3 sm:max-w-md">
@@ -294,7 +351,152 @@ function AccountSection({ user, error, now }: { user: AdminUser; error: string |
             </div>
           </form>
         </details>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <Notice tone="warn">{soleOwnerNote(user.deletion)}</Notice>
+          <ul className="divide-y divide-line rounded-md border border-line">
+            {sole.map((workspace) => {
+              const why = soleWorkspaceRefusal(workspace);
+              return (
+                <li key={workspace.slug} className="space-y-1 px-4 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link to={`/workspaces/${workspace.slug}`} className="text-fg hover:underline">
+                      {workspace.name} <span className="font-mono text-xs text-muted">{workspace.slug}</span>
+                    </Link>
+                    <span className="flex flex-wrap items-center gap-1.5 text-xs text-faint">
+                      {workspace.protected && <Badge tone="info">Protected</Badge>}
+                      {!workspace.protected && workspace.billing && <Badge tone="danger">Billing</Badge>}
+                      {workspace.members} member{workspace.members === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {why && <p className="text-xs text-danger">{why}</p>}
+                </li>
+              );
+            })}
+          </ul>
+          {blocked ? (
+            <>
+              <Notice tone="error">{blocked}</Notice>
+              {error && <Notice tone="error">{error}</Notice>}
+            </>
+          ) : (
+            <details className="rounded-md border border-danger/30 px-3 py-2" open={Boolean(error)}>
+              <summary className="cursor-pointer text-sm text-danger">Delete account and the workspaces it alone owns</summary>
+              <form method="post" className="mt-3 grid gap-3 sm:max-w-md">
+                <input type="hidden" name="intent" value="delete-account" />
+                <input type="hidden" name="with-workspaces" value="1" />
+                <p className="text-muted">
+                  Deletes {sole.map((workspace) => workspace.slug).join(", ")} first, each as its owner would (billing closes it, its
+                  repositories go with it, kept {WORKSPACE_RESTORE_DAYS} days for a restore), then the account. If a workspace cannot go,
+                  the account is not deleted.
+                </p>
+                <Field label="Reason (kept in sudo's audit log)">
+                  <Input name="reason" required maxLength={200} placeholder="Retired test account" />
+                </Field>
+                <Field label={`Type ${user.username} to confirm`}>
+                  <Input name="confirm" required autoComplete="off" spellCheck={false} className="font-mono" />
+                </Field>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" name="acknowledge" required className="mt-0.5 accent-[var(--g1t-accent)]" />
+                  <span>
+                    {sole.length === 1 ? (
+                      <>
+                        The workspace <span className="font-mono">{sole[0].slug}</span> is deleted too, with everything in it.
+                      </>
+                    ) : (
+                      <>
+                        The {sole.length} workspaces <span className="font-mono">{sole.map((workspace) => workspace.slug).join(", ")}</span> are
+                        deleted too, with everything in them.
+                      </>
+                    )}
+                  </span>
+                </label>
+                {error && <Notice tone="error">{error}</Notice>}
+                <div>
+                  <Button type="submit" variant="danger">
+                    Delete account and {sole.length === 1 ? "its workspace" : `its ${sole.length} workspaces`}
+                  </Button>
+                </div>
+              </form>
+            </details>
+          )}
+        </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * The workspaces staff deleted with the account: each waiting to be purged
+ * can be purged now (identity purges only a workspace still deleted), or
+ * restored from Deleted workspaces.
+ */
+function DeletedWorkspaces({
+  workspaces,
+  error,
+  workspaceError,
+  now,
+}: {
+  workspaces: DeletedWithAccount[];
+  error: string | null;
+  workspaceError: { id: string; error: string } | null;
+  now: number;
+}) {
+  return (
+    <div className="space-y-2 border-t border-line pt-4">
+      <p className="text-fg">Workspaces deleted with it</p>
+      <p className="text-muted">
+        Purge them before the account if they should go now: once the account is purged, this page is gone (they stay on{" "}
+        <Link to="/workspaces/deleted" className="text-fg hover:underline">
+          Deleted workspaces
+        </Link>
+        ). To undo it all, restore the account first, then each workspace, so it comes back with its owner.
+      </p>
+      {error && <Notice tone="error">Could not load deleted workspaces: {error}</Notice>}
+      <ul className="divide-y divide-line rounded-md border border-line">
+        {workspaces.map((workspace) => {
+          const waiting = workspace.deleted;
+          const left = waiting ? daysLeft(waiting.purgeAfter, now) : 0;
+          return (
+            <li key={workspace.workspaceId} className="space-y-2 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono">{workspace.slug}</span>
+                {waiting ? (
+                  waiting.restorable ? (
+                    <Badge tone="warn">
+                      {left} day{left === 1 ? "" : "s"} left
+                    </Badge>
+                  ) : (
+                    <Badge tone="danger">Being purged</Badge>
+                  )
+                ) : (
+                  <Badge>Purged or restored</Badge>
+                )}
+              </div>
+              {waiting &&
+                (waiting.went.protected ? (
+                  <p className="text-xs text-muted">Protected: it can never be purged.</p>
+                ) : (
+                  <form method="post" className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <input type="hidden" name="intent" value="purge-workspace" />
+                    <input type="hidden" name="id" value={workspace.workspaceId} />
+                    <input type="hidden" name="slug" value={workspace.slug} />
+                    <label className="grid gap-1 text-xs text-muted">
+                      <span>
+                        Type <span className="font-mono text-fg">{workspace.slug}</span> to purge it now
+                      </span>
+                      <Input name="confirm" autoComplete="off" spellCheck={false} className="font-mono" />
+                    </label>
+                    <Button type="submit" variant="danger">
+                      Purge now
+                    </Button>
+                  </form>
+                ))}
+              {workspaceError && workspaceError.id === workspace.workspaceId && <Notice tone="error">{workspaceError.error}</Notice>}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

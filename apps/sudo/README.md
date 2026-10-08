@@ -79,16 +79,39 @@ roadmap.
   account from Settings does: signs them out everywhere, ends their tokens,
   SSH keys, deploy keys they added and applications, takes them out of
   every workspace, team and repository, and emails their addresses that
-  staff deleted it. It is refused while the account is the **only owner of
-  a live workspace**: the page lists those workspaces instead of the form,
-  each linking to its page. Each needs another owner first (an owner makes
-  one under People), or to be deleted by its owner, which settles its
-  billing; staff never delete a customer's workspace to get an account
-  out. Accounts that can never be deleted (`g1t`, `g1t-agent`, `ghost`,
+  staff deleted it. While the account is the **only owner of a live
+  workspace**, the page lists those workspaces, each linking to its page,
+  and the form becomes **Delete account and the workspaces it alone
+  owns**: the reason, the username typed, and a box ticked to say the
+  named workspaces go too (`admin_delete_account` with
+  `withSoleWorkspaces`). Use it for an account g1t no longer needs, such
+  as a retired test account and its personal workspace; for a customer,
+  prefer another owner first (an owner makes one under People). Identity
+  checks every one of those workspaces before anything is deleted: one
+  that is protected, or whose billing cannot settle (`close_workspace`:
+  an unpaid invoice, prepaid credit, usage still metering, an enterprise
+  account), refuses the whole deletion, and the page says which and why
+  beside each, instead of the form. Then it deletes each workspace exactly
+  as its owner would (billing closes it, `workspace.deleting`, its
+  repositories and apps go with it, kept 30 days), with the staff member
+  as who deleted it, and the account last. Each workspace is recorded in
+  its own audit log as g1t (rule `staff`) and in sudo's
+  (`workspace_deleted`, with the reason); the account in sudo's
+  (`account_deleted`, naming the workspaces). Should one fail on the way
+  (a card declined that moment), the account is not deleted and the
+  error names the workspace and any that went before; restore those from
+  Deleted workspaces, or try again. Accounts that can never be deleted (`g1t`, `g1t-agent`, `ghost`,
   and whatever identity's `PROTECTED_ACCOUNTS` names, by username or id)
   are marked **Protected** and offer no form. A deleted account's page
   says so, with who deleted it, why, when it is purged, and **Restore** and
-  **Purge now**, as on Deleted accounts.
+  **Purge now**, as on Deleted accounts; both work at once, with no wait.
+  When workspaces were deleted with it, it lists them too, each with its
+  own **Purge now** (`admin_purge_workspace`, the slug typed; identity
+  purges only a workspace that is still deleted, never a protected one),
+  so staff can remove everything straight away. Purge the workspaces
+  first: once the account is purged its page is gone (they stay on
+  Deleted workspaces). To undo it all, restore the account first, then
+  each workspace, so it comes back with its owner.
 - **Deleted accounts** (`/users/deleted`, linked from Workspaces):
   accounts deleted by the person or by staff, newest first
   (`admin_deleted_accounts`), each with who deleted it (the person, or the

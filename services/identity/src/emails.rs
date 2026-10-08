@@ -1129,9 +1129,13 @@ impl Identity {
         let log = self.security_events(user_id, true).await?;
         let emails = view(&account, rows);
         // Whether it can be deleted, and its deletion while it waits to be
-        // purged (account_deletion.rs).
+        // purged (account_deletion.rs). For each workspace it owns alone,
+        // whether staff could delete it with the account: protected, or
+        // billing that cannot settle.
         let deleted = self.deleted_account(&account.id).await?;
-        let deletion = self.account_deletion_facts(&account.id, &account.username, None).await?;
+        let deletion = self
+            .account_deletion_facts(&account.id, &account.username, crate::account_deletion::AskBilling::Staff)
+            .await?;
         Ok(Some(AdminUser {
             id: account.id,
             username: account.username,

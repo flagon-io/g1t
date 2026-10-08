@@ -13,6 +13,18 @@
 //! the account co-owns is someone else's to pay for, and one it owns alone
 //! is in the way already.
 //!
+//! Staff can instead delete those workspaces with the account
+//! (`with_sole_workspaces`), say a retired test account that owns only its
+//! own personal workspace. Every one is checked first: if any is protected
+//! or its billing cannot settle, nothing is deleted and staff are told
+//! which ([`staff_steps`]). Then each is deleted exactly as its owner would
+//! delete it (deletion.rs, [`Identity::staff_delete_workspace`]), and the
+//! account last ([`run_steps`]): should a workspace fail on the way, the
+//! account is not deleted and the failure names it. The account's record
+//! lists the workspaces that went with it, so sudo can purge them at once
+//! too. They lose the account as a member when it is deleted, so to undo
+//! it all, staff restore the account first and then its workspaces.
+//!
 //! Deleting is soft first, as for a workspace. At once, in one batch: the
 //! row gets `deleted_at`, `deleted_by` and `purge_after`
 //! ([`ACCOUNT_RESTORE_DAYS`] on); its sessions, access tokens (classic,
@@ -43,11 +55,12 @@
 //!
 //! There is no API route for any of this: only the site and sudo call it.
 
+use std::future::Future;
+
 use g1t_contracts::FailureCode;
 use g1t_contracts::Outcome;
 use g1t_contracts::User;
 use g1t_contracts::account_deletion::*;
-use g1t_contracts::billing::CloseWorkspaceArgs;
 use g1t_contracts::events::{UserDeleted, UserDeleting, UserRestored};
 use g1t_contracts::identity::{UserArgs, protected_names};
 use g1t_contracts::time::rfc3339;
@@ -57,6 +70,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Identity;
+use crate::deletion::staff_billing_actor;
 use crate::security::is_person;
 
 type Refusal = (FailureCode, String);
@@ -99,6 +113,112 @@ pub fn may_delete(deletion: &AccountDeletion, confirm: &str) -> std::result::Res
         return Err((FailureCode::Invalid, format!("Type {} to confirm.", deletion.username)));
     }
     Ok(())
+}
+
+/// What staff deleting an account does, in order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Step {
+    /// Delete this workspace, which the account is the only owner of.
+    Workspace(String),
+    /// Then the account.
+    Account,
+}
+
+/// Whether staff may delete an account, and what that takes, in order:
+/// with `with_sole_workspaces`, every workspace it is the only owner of,
+/// and the account last. Refused whole, before anything is deleted, for a
+/// protected account; while it owns workspaces alone and staff did not ask
+/// to delete them; while any of those is protected or its billing cannot
+/// settle; and until the username is typed.
+pub fn staff_steps(deletion: &AccountDeletion, with_sole_workspaces: bool, confirm: &str) -> std::result::Result<Vec<Step>, Refusal> {
+    if deletion.protected {
+        return Err((FailureCode::Forbidden, protected_account_refusal(&deletion.username)));
+    }
+    let sole = &deletion.sole_owner_of;
+    if !sole.is_empty() {
+        if !with_sole_workspaces {
+            let reason = sole_owner_refusal(sole).unwrap_or_default();
+            // Staff read "you" as the account's.
+            let reason = reason.replacen("You are the only owner", &format!("{} is the only owner", deletion.username), 1);
+            return Err((FailureCode::Conflict, reason));
+        }
+        if let Some(reason) = staff_sole_owner_refusal(sole) {
+            let code = if sole.iter().any(|workspace| workspace.protected) { FailureCode::Forbidden } else { FailureCode::PaymentRequired };
+            return Err((code, reason));
+        }
+    }
+    if !confirms_username(&deletion.username, confirm) {
+        return Err((FailureCode::Invalid, format!("Type {} to confirm.", deletion.username)));
+    }
+    let mut steps: Vec<Step> = if with_sole_workspaces { sole.iter().map(|workspace| Step::Workspace(workspace.slug.clone())).collect() } else { Vec::new() };
+    steps.push(Step::Account);
+    Ok(steps)
+}
+
+/// Why a staff deletion stopped at `failed`, after deleting `deleted`.
+pub fn stopped_at(username: &str, deleted: &[WorkspaceDeletedWith], failed: &str, why: &str) -> String {
+    let why = why.trim();
+    if deleted.is_empty() {
+        return format!("{failed} could not be deleted: {why} Nothing was deleted.");
+    }
+    let slugs: Vec<&str> = deleted.iter().map(|workspace| workspace.slug.as_str()).collect();
+    let went = match slugs.as_slice() {
+        [one] => (*one).to_owned(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [] => String::new(),
+    };
+    format!(
+        "{failed} could not be deleted: {why} {went} {} deleted already (restore from Deleted workspaces if need be); {username} was not deleted.",
+        if slugs.len() == 1 { "was" } else { "were" }
+    )
+}
+
+/// Runs `steps` in order: each workspace with `workspace`, then the
+/// account with `account`, given the workspaces that went. The first
+/// workspace that fails stops it, before the account is deleted, saying
+/// which ([`stopped_at`]).
+pub async fn run_steps<W, WF, A, AF>(username: &str, steps: &[Step], mut workspace: W, account: A) -> Result<Outcome<Vec<WorkspaceDeletedWith>>>
+where
+    W: FnMut(String) -> WF,
+    WF: Future<Output = Result<Outcome<WorkspaceDeletedWith>>>,
+    A: FnOnce(Vec<WorkspaceDeletedWith>) -> AF,
+    AF: Future<Output = Result<()>>,
+{
+    let mut deleted: Vec<WorkspaceDeletedWith> = Vec::new();
+    let mut account = Some(account);
+    for step in steps {
+        match step {
+            Step::Workspace(slug) => {
+                let (code, why) = match workspace(slug.clone()).await {
+                    Ok(Outcome::Ok(gone)) => {
+                        deleted.push(gone);
+                        continue;
+                    }
+                    Ok(Outcome::Fail(failure)) => (failure.code, failure.message),
+                    Err(error) => (FailureCode::Conflict, error.to_string()),
+                };
+                return Ok(Outcome::fail(code, stopped_at(username, &deleted, slug, &why)));
+            }
+            Step::Account => {
+                if let Some(account) = account.take() {
+                    account(deleted.clone()).await?;
+                }
+            }
+        }
+    }
+    Ok(Outcome::Ok(deleted))
+}
+
+/// Whose billing `account_deletion_facts` asks about, for each workspace
+/// the account owns alone.
+#[derive(Clone, Copy)]
+pub(crate) enum AskBilling<'a> {
+    /// Nobody: what stands in the way is enough.
+    No,
+    /// The person, for their own deletion page.
+    Person(&'a User),
+    /// g1t's staff, who may delete the workspaces with the account.
+    Staff,
 }
 
 /// Whether staff may restore a deleted account, now `now`.
@@ -336,14 +456,17 @@ impl Identity {
     async fn sole_owned(&self, user_id: &str) -> Result<Vec<SoleOwnedWorkspace>> {
         #[derive(Deserialize)]
         struct Row {
+            id: String,
             slug: String,
             name: String,
             members: u32,
+            #[serde(default)]
+            protected: u8,
         }
         let rows = self
             .db
             .prepare(
-                "SELECT w.slug, w.name,
+                "SELECT w.id, w.slug, w.name, w.protected,
                    (SELECT count(*) FROM workspace_members a WHERE a.workspace_id = w.id) AS members
                  FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
                  WHERE m.user_id = ?1 AND m.role = 'owner' AND w.deleted_at IS NULL
@@ -355,16 +478,19 @@ impl Identity {
             .all()
             .await?
             .results::<Row>()?;
-        Ok(rows
-            .into_iter()
-            .map(|row| SoleOwnedWorkspace { slug: row.slug, name: row.name, members: row.members, billing: None })
-            .collect())
+        let mut sole = Vec::with_capacity(rows.len());
+        for row in rows {
+            let protected = self.is_protected(&row.id, &row.slug, row.protected != 0).await?;
+            sole.push(SoleOwnedWorkspace { slug: row.slug, name: row.name, members: row.members, billing: None, protected });
+        }
+        Ok(sole)
     }
 
     /// What deleting the account would take with it, and what stands in
-    /// the way. With `actor` (the person), billing says for each workspace
-    /// they own alone what deleting it first would need.
-    pub(crate) async fn account_deletion_facts(&self, user_id: &str, username: &str, actor: Option<&User>) -> Result<AccountDeletion> {
+    /// the way. Asked (`ask`), billing says for each workspace it owns
+    /// alone what deleting that workspace would need: for the person, as
+    /// themselves; for staff, as the owner billing closes it for.
+    pub(crate) async fn account_deletion_facts(&self, user_id: &str, username: &str, ask: AskBilling<'_>) -> Result<AccountDeletion> {
         #[derive(Deserialize)]
         struct Counts {
             workspaces: u32,
@@ -390,22 +516,18 @@ impl Identity {
             .await?
             .unwrap_or(Counts { workspaces: 0, tokens: 0, ssh_keys: 0, applications: 0, repositories: 0 });
         let mut sole_owner_of = self.sole_owned(user_id).await?;
-        if let Some(actor) = actor
-            && !sole_owner_of.is_empty()
-        {
-            let billing = self.env.service("BILLING")?;
-            for workspace in &mut sole_owner_of {
-                let closing: Result<Outcome<bool>> = g1t_kit::call(
-                    &billing,
-                    "close_workspace",
-                    &CloseWorkspaceArgs { actor: actor.clone(), workspace: workspace.slug.clone(), dry_run: true },
-                )
-                .await;
-                workspace.billing = match closing {
-                    Ok(Outcome::Fail(failure)) => Some(failure.message),
-                    _ => None,
-                };
-            }
+        for workspace in &mut sole_owner_of {
+            let actor = match ask {
+                AskBilling::No => break,
+                AskBilling::Person(person) => person.clone(),
+                AskBilling::Staff => staff_billing_actor(user_id, "g1t staff", &workspace.slug),
+            };
+            workspace.billing = match self.billing_refusal(&actor, &workspace.slug).await {
+                Ok(refusal) => refusal,
+                // Staff are not let through on a billing that did not
+                // answer: deleting it would ask again and stop there.
+                Err(error) => matches!(ask, AskBilling::Staff).then(|| format!("Billing did not answer for {}: {error}", workspace.slug)),
+            };
         }
         Ok(AccountDeletion {
             username: username.to_owned(),
@@ -428,7 +550,7 @@ impl Identity {
         let Some(live) = self.live_account("id", &a.user.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Account not found."));
         };
-        Ok(Outcome::Ok(self.account_deletion_facts(&live.id, &live.username, Some(&a.user)).await?))
+        Ok(Outcome::Ok(self.account_deletion_facts(&live.id, &live.username, AskBilling::Person(&a.user)).await?))
     }
 
     /// `delete_account`: the person deletes their own account.
@@ -439,7 +561,7 @@ impl Identity {
         let Some(live) = self.live_account("id", &a.user.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Account not found."));
         };
-        let deletion = self.account_deletion_facts(&live.id, &live.username, None).await?;
+        let deletion = self.account_deletion_facts(&live.id, &live.username, AskBilling::No).await?;
         if let Err((code, message)) = may_delete_own(true, &deletion, &a.confirm) {
             return Ok(Outcome::fail(code, message));
         }
@@ -448,11 +570,13 @@ impl Identity {
         if let Some(refusal) = self.proof(&live.id, &a.reauth).await?.refusal() {
             return Ok(refusal);
         }
-        self.soft_delete(&live, &deletion, Some(&live.id), None).await?;
+        self.soft_delete(&live, &deletion, Some(&live.id), None, Vec::new()).await?;
         Ok(Outcome::Ok(true))
     }
 
-    /// `admin_delete_account`: staff delete an account, with a reason.
+    /// `admin_delete_account`: staff delete an account, with a reason, and
+    /// with `with_sole_workspaces` the workspaces it is the only owner of
+    /// first.
     pub async fn admin_delete_account(&self, a: AdminDeleteAccountArgs) -> Result<Outcome<bool>> {
         let staff = a.staff.trim();
         let reason = a.reason.trim();
@@ -465,17 +589,37 @@ impl Identity {
         let Some(live) = self.live_account("username", &a.username.trim().to_lowercase()).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account, or it is already deleted."));
         };
-        let deletion = self.account_deletion_facts(&live.id, &live.username, None).await?;
-        if let Err((code, message)) = may_delete(&deletion, &a.confirm) {
-            // Staff read "you" as the account's.
-            let message = message.replacen("You are the only owner", &format!("{} is the only owner", live.username), 1);
-            return Ok(Outcome::fail(code, message));
-        }
-        self.soft_delete(&live, &deletion, None, Some((staff, reason))).await?;
+        // Billing is asked only when it matters: the workspaces go too.
+        let ask = if a.with_sole_workspaces { AskBilling::Staff } else { AskBilling::No };
+        let deletion = self.account_deletion_facts(&live.id, &live.username, ask).await?;
+        let steps = match staff_steps(&deletion, a.with_sole_workspaces, &a.confirm) {
+            Ok(steps) => steps,
+            Err((code, message)) => return Ok(Outcome::fail(code, message)),
+        };
+        let (owner_id, owner, live_ref, deletion_ref) = (live.id.as_str(), live.username.as_str(), &live, &deletion);
+        let done = run_steps(
+            &live.username,
+            &steps,
+            move |slug| async move { self.staff_delete_workspace(&slug, owner_id, owner, staff, reason).await },
+            move |workspaces| async move {
+                self.soft_delete(live_ref, deletion_ref, None, Some((staff, reason)), workspaces).await
+            },
+        )
+        .await?;
+        let workspaces = match done {
+            Outcome::Ok(workspaces) => workspaces,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let with = if workspaces.is_empty() {
+            String::new()
+        } else {
+            let slugs: Vec<&str> = workspaces.iter().map(|workspace| workspace.slug.as_str()).collect();
+            format!(" and the workspaces it alone owned ({})", slugs.join(", "))
+        };
         self.record_for_staff(
             &live.username,
             "account_deleted",
-            &format!("Deleted the account {}: {reason}", live.username),
+            &format!("Deleted the account {}{with}: {reason}", live.username),
             staff,
         )
         .await;
@@ -489,9 +633,11 @@ impl Identity {
         deletion: &AccountDeletion,
         deleted_by: Option<&str>,
         staff: Option<(&str, &str)>,
+        workspaces: Vec<WorkspaceDeletedWith>,
     ) -> Result<()> {
         let id = live.id.as_str();
-        let snapshot = self.snapshot(id, deletion, staff).await?;
+        let mut snapshot = self.snapshot(id, deletion, staff).await?;
+        snapshot.went.deleted_workspaces = workspaces;
         let now = now_ms();
         let at = rfc3339(now);
         let purge = purge_after(now);
@@ -571,6 +717,7 @@ impl Identity {
                 ssh_keys: deletion.ssh_keys,
                 staff: staff.map(|(who, _)| who.to_owned()),
                 reason: staff.map(|(_, why)| why.to_owned()),
+                deleted_workspaces: Vec::new(),
             },
             memberships,
             teams,
@@ -760,7 +907,136 @@ mod tests {
     }
 
     fn sole(slug: &str) -> SoleOwnedWorkspace {
-        SoleOwnedWorkspace { slug: slug.into(), name: slug.into(), members: 2, billing: None }
+        SoleOwnedWorkspace { slug: slug.into(), name: slug.into(), members: 2, billing: None, protected: false }
+    }
+
+    /// Polls a future to its end. What these tests run never waits.
+    fn block_on<F: Future>(future: F) -> F::Output {
+        use std::task::{Context, Poll, Waker};
+        let mut future = std::pin::pin!(future);
+        let mut cx = Context::from_waker(Waker::noop());
+        loop {
+            if let Poll::Ready(value) = future.as_mut().poll(&mut cx) {
+                return value;
+            }
+        }
+    }
+
+    fn gone(slug: &str) -> WorkspaceDeletedWith {
+        WorkspaceDeletedWith { workspace_id: format!("wsp_{slug}"), slug: slug.into() }
+    }
+
+    /// Runs `steps` against a record of what was done, with the workspaces
+    /// in `failing` refusing.
+    fn run(steps: &[Step], failing: &[&str]) -> (Outcome<Vec<WorkspaceDeletedWith>>, Vec<String>) {
+        let done = std::cell::RefCell::new(Vec::<String>::new());
+        let outcome = block_on(run_steps(
+            "ada",
+            steps,
+            |slug| {
+                let refused = failing.contains(&slug.as_str());
+                if !refused {
+                    done.borrow_mut().push(format!("workspace {slug}"));
+                }
+                async move {
+                    if refused {
+                        Ok(Outcome::fail(FailureCode::PaymentRequired, format!("The card on file was declined for {slug}.")))
+                    } else {
+                        Ok(Outcome::Ok(gone(&slug)))
+                    }
+                }
+            },
+            |workspaces| {
+                let slugs: Vec<String> = workspaces.iter().map(|workspace| workspace.slug.clone()).collect();
+                done.borrow_mut().push(format!("account with [{}]", slugs.join(", ")));
+                async { Ok(()) }
+            },
+        ))
+        .unwrap();
+        (outcome, done.into_inner())
+    }
+
+    #[test]
+    fn with_its_workspaces_staff_delete_each_then_the_account() {
+        let owner = AccountDeletion { sole_owner_of: vec![sole("ada"), sole("ada-labs")], ..deletion("ada") };
+        let steps = staff_steps(&owner, true, "ada").unwrap();
+        assert_eq!(steps, vec![Step::Workspace("ada".into()), Step::Workspace("ada-labs".into()), Step::Account]);
+        let (outcome, done) = run(&steps, &[]);
+        assert_eq!(done, vec!["workspace ada", "workspace ada-labs", "account with [ada, ada-labs]"]);
+        match outcome {
+            Outcome::Ok(workspaces) => assert_eq!(workspaces, vec![gone("ada"), gone("ada-labs")]),
+            Outcome::Fail(failure) => panic!("{}", failure.message),
+        }
+        // Without them, only the account, and only when it owns none alone.
+        assert_eq!(staff_steps(&deletion("ada"), false, "ada").unwrap(), vec![Step::Account]);
+        assert_eq!(staff_steps(&deletion("ada"), true, "ada").unwrap(), vec![Step::Account]);
+    }
+
+    #[test]
+    fn without_asking_for_its_workspaces_staff_are_told_it_owns_them() {
+        let owner = AccountDeletion { sole_owner_of: vec![sole("acme")], ..deletion("ada") };
+        assert_eq!(
+            staff_steps(&owner, false, "ada").unwrap_err(),
+            (
+                FailureCode::Conflict,
+                "ada is the only owner of acme. Make someone else an owner of it, or delete it, first.".to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn a_protected_workspace_refuses_the_whole_deletion_before_anything_goes() {
+        let flagon = SoleOwnedWorkspace { protected: true, ..sole("flagon-io") };
+        let owner = AccountDeletion { sole_owner_of: vec![sole("ada"), flagon], ..deletion("ada") };
+        let (code, message) = staff_steps(&owner, true, "ada").unwrap_err();
+        assert_eq!(code, FailureCode::Forbidden);
+        assert_eq!(message, "Nothing was deleted. flagon-io is protected and can never be deleted.");
+        // A protected account, whatever it owns.
+        let protected = AccountDeletion { protected: true, ..deletion("g1t") };
+        assert_eq!(staff_steps(&protected, true, "g1t").unwrap_err().0, FailureCode::Forbidden);
+    }
+
+    #[test]
+    fn billing_that_cannot_settle_refuses_the_whole_deletion_before_anything_goes() {
+        let owing = SoleOwnedWorkspace { billing: Some("ada-labs has an unpaid invoice. Pay it from the workspace's Billing page first.".into()), ..sole("ada-labs") };
+        let owner = AccountDeletion { sole_owner_of: vec![sole("ada"), owing], ..deletion("ada") };
+        let (code, message) = staff_steps(&owner, true, "ada").unwrap_err();
+        assert_eq!(code, FailureCode::PaymentRequired);
+        assert_eq!(message, "Nothing was deleted. ada-labs has an unpaid invoice. Pay it from the workspace's Billing page first.");
+    }
+
+    #[test]
+    fn staff_type_the_username_after_everything_else() {
+        let owner = AccountDeletion { sole_owner_of: vec![sole("ada")], ..deletion("ada") };
+        assert_eq!(staff_steps(&owner, true, "").unwrap_err(), (FailureCode::Invalid, "Type ada to confirm.".into()));
+        assert_eq!(staff_steps(&owner, true, "grace").unwrap_err().0, FailureCode::Invalid);
+    }
+
+    #[test]
+    fn a_workspace_failing_on_the_way_stops_before_the_account() {
+        let steps = vec![Step::Workspace("ada".into()), Step::Workspace("ada-labs".into()), Step::Workspace("ada-old".into()), Step::Account];
+        let (outcome, done) = run(&steps, &["ada-labs"]);
+        // ada went; ada-labs refused; ada-old and the account were not tried.
+        assert_eq!(done, vec!["workspace ada"]);
+        let Outcome::Fail(failure) = outcome else { panic!("the account must not be deleted") };
+        assert_eq!(failure.code, FailureCode::PaymentRequired);
+        assert_eq!(
+            failure.message,
+            "ada-labs could not be deleted: The card on file was declined for ada-labs. ada was deleted already (restore from Deleted workspaces if need be); ada was not deleted."
+        );
+        // Failing first, nothing went at all.
+        let (outcome, done) = run(&steps, &["ada"]);
+        assert!(done.is_empty());
+        let Outcome::Fail(failure) = outcome else { panic!("the account must not be deleted") };
+        assert_eq!(failure.message, "ada could not be deleted: The card on file was declined for ada. Nothing was deleted.");
+    }
+
+    #[test]
+    fn what_stopped_it_names_what_went_before() {
+        assert_eq!(
+            stopped_at("ada", &[gone("a"), gone("b")], "c", "Declined. "),
+            "c could not be deleted: Declined. a and b were deleted already (restore from Deleted workspaces if need be); ada was not deleted."
+        );
     }
 
     #[test]
@@ -825,7 +1101,16 @@ mod tests {
     #[test]
     fn what_it_left_is_kept_for_a_restore_and_read_back() {
         let snapshot = Snapshot {
-            went: AccountWent { workspaces: 2, teams: 1, repositories: 1, tokens: 3, ssh_keys: 1, staff: Some("s@g1t.sh".into()), reason: Some("asked".into()) },
+            went: AccountWent {
+                workspaces: 2,
+                teams: 1,
+                repositories: 1,
+                tokens: 3,
+                ssh_keys: 1,
+                staff: Some("s@g1t.sh".into()),
+                reason: Some("asked".into()),
+                deleted_workspaces: vec![gone("ada")],
+            },
             memberships: vec![Member {
                 workspace_id: "wsp_1".into(),
                 role: "owner".into(),
