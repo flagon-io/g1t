@@ -945,9 +945,10 @@ impl<S: GitStore> Repos<S> {
     }
 
     /// How far each branch head has moved from the default branch's head,
-    /// in one call (drift.rs). Each answer is kept in this colo's cache by
+    /// in one call (drift.rs). Each count is kept in this colo's cache by
     /// repository and the pair of hashes, for good: neither history can
-    /// change. A head that moved is the only one walked.
+    /// change. A head that moved is the only one walked. A failed read is
+    /// not kept, and "too far to count" only for a day.
     async fn branch_drift(&self, a: BranchDriftArgs) -> Result<Outcome<BranchDrifts>> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
@@ -957,7 +958,9 @@ impl<S: GitStore> Repos<S> {
         }
         let heads: Vec<String> = a.heads.into_iter().take(MAX_DRIFT_HEADS).collect();
         let git = self.read_git(&repo).await?;
-        let key = |head: &str| format!("https://drift.g1t.internal/{}/{}/{head}", repo.id, a.base);
+        // v2: answers kept before 2026-10-09 said "no count" for every
+        // branch whose default branch took a merge since it left (drift.rs).
+        let key = |head: &str| format!("https://drift.g1t.internal/v2/{}/{}/{head}", repo.id, a.base);
         let cache = worker::Cache::default();
         let (base, kept) = futures_util::future::join(
             git.log(&a.base, 1),
@@ -986,7 +989,10 @@ impl<S: GitStore> Repos<S> {
             if found.settled
                 && let Ok(mut response) = worker::Response::from_json(&answer)
             {
-                let _ = response.headers_mut().set("cache-control", "public, max-age=31536000, immutable");
+                // A count is kept for good; "too far to count" for a day, so
+                // a change to how far a walk goes reaches it.
+                let max_age = if answer.drift.is_some() { "public, max-age=31536000, immutable" } else { "public, max-age=86400" };
+                let _ = response.headers_mut().set("cache-control", max_age);
                 let _ = cache.put(key(&head).as_str(), response).await;
             }
             fresh.insert(head, answer);

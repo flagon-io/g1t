@@ -748,6 +748,25 @@ pub fn splice(short: &[Commit], at: usize, kept: Vec<Commit>, limit: u32) -> Vec
     out
 }
 
+/// The history from `short[0]`, from the newest of `kept` (each the history
+/// kept from the commit of `short` at the same index, if any) that really
+/// is the history from that commit: it starts there and goes on to the
+/// next commit `short` lists, so the join repeats and skips nothing.
+pub fn splice_first(short: &[Commit], kept: Vec<Option<Vec<Commit>>>, limit: u32) -> Option<Vec<Commit>> {
+    kept.into_iter().enumerate().skip(1).find_map(|(at, kept)| {
+        let kept = kept?;
+        let starts = kept.first().is_some_and(|first| short.get(at).is_some_and(|commit| commit.hash == first.hash));
+        let goes_on = match (short.get(at + 1), kept.get(1)) {
+            (Some(next), Some(kept_next)) => next.hash == kept_next.hash,
+            // `short` ends at `at`: it reached the first commit, or its limit.
+            (None, _) => true,
+            // The kept history ends where `short` goes on.
+            (Some(_), None) => false,
+        };
+        (starts && goes_on).then(|| splice(short, at, kept, limit))
+    })
+}
+
 /// Whether a ref is a full commit hash (SHA-1 or SHA-256), whose history
 /// can be kept for good.
 pub fn is_commit_hash(git_ref: &str) -> bool {
@@ -888,16 +907,19 @@ impl ArtifactsRepo {
             // The whole history fits in the short read.
             return Ok(short);
         }
-        let kept = futures_util::future::join_all(short.iter().enumerate().skip(1).map(|(at, commit)| async move {
+        let kept = futures_util::future::join_all(short.iter().enumerate().map(|(at, commit)| async move {
+            if at == 0 {
+                return None;
+            }
             let Some(CacheKey::Forever(path)) = log_key(&commit.hash, limit, None) else {
                 return None;
             };
             let bytes = self.peek(&path).await?;
-            serde_json::from_slice::<Vec<Commit>>(&bytes).ok().map(|kept| (at, kept))
+            serde_json::from_slice::<Vec<Commit>>(&bytes).ok()
         }))
         .await;
-        match kept.into_iter().flatten().next() {
-            Some((at, kept)) => Ok(splice(&short, at, kept, limit)),
+        match splice_first(&short, kept, limit) {
+            Some(history) => Ok(history),
             None => self.read_log(hash, limit).await,
         }
     }
@@ -1300,6 +1322,53 @@ mod tests {
         assert_eq!(hashes(&splice(&short, 2, kept.clone(), 6)), ["c5", "c4", "c3", "c2", "c1", "c0"]);
         // A kept history that reached the first commit ends there.
         assert_eq!(hashes(&splice(&short, 2, chain(&["c3", "c2"]), 10)), ["c5", "c4", "c3", "c2"]);
+    }
+
+    #[test]
+    fn a_splice_joins_at_the_newest_kept_history_without_repeats_or_gaps() {
+        // 16 read from c20; histories of 8 kept from c17 and c12.
+        let all: Vec<String> = (0..=20).rev().map(|i| format!("c{i}")).collect();
+        let names: Vec<&str> = all.iter().map(String::as_str).collect();
+        let short = chain(&names[..16]);
+        let kept_from = |name: &str| {
+            let at = names.iter().position(|n| *n == name).unwrap();
+            chain(&names[at..(at + 8).min(names.len())])
+        };
+        let mut kept: Vec<Option<Vec<Commit>>> = vec![None; short.len()];
+        kept[3] = Some(kept_from("c17"));
+        kept[8] = Some(kept_from("c12"));
+        let joined = splice_first(&short, kept.clone(), 8).unwrap();
+        assert_eq!(hashes(&joined), names[..8]);
+        // Newest first, every commit once, each the first parent of the one before.
+        let joined = splice_first(&short, kept, 11).unwrap();
+        assert_eq!(hashes(&joined), names[..11]);
+        for pair in joined.windows(2) {
+            assert_eq!(pair[0].parents.first(), Some(&pair[1].hash));
+        }
+        let unique: std::collections::HashSet<_> = joined.iter().map(|commit| &commit.hash).collect();
+        assert_eq!(unique.len(), joined.len());
+    }
+
+    #[test]
+    fn a_kept_history_that_does_not_fit_is_not_spliced() {
+        let short = chain(&["c5", "c4", "c3", "c2"]);
+        // Kept under c4's key, but from somewhere else.
+        let wrong = vec![None, Some(chain(&["x4", "x3"])), None, None];
+        assert!(splice_first(&short, wrong, 10).is_none());
+        // Starts at c4 but goes on to another commit.
+        let forked = vec![None, Some(chain(&["c4", "y3"])), None, None];
+        assert!(splice_first(&short, forked, 10).is_none());
+        // Ends at c4 where `short` goes on: not the history from c4.
+        let cut = vec![None, Some(chain(&["c4"])), None, None];
+        assert!(splice_first(&short, cut, 10).is_none());
+        // The commit read itself is never spliced onto.
+        let own = vec![Some(chain(&["c5", "c4"])), None, None, None];
+        assert!(splice_first(&short, own, 10).is_none());
+        // Nothing kept.
+        assert!(splice_first(&short, vec![None; 4], 10).is_none());
+        // The last commit read: anything kept from it fits.
+        let last = vec![None, None, None, Some(chain(&["c2", "c1", "c0"]))];
+        assert_eq!(hashes(&splice_first(&short, last, 10).unwrap()), ["c5", "c4", "c3", "c2", "c1", "c0"]);
     }
 
     #[test]
