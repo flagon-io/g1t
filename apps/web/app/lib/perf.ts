@@ -100,7 +100,11 @@ export function sessionFor(service: string, bookmarks: Bookmarks, writing: boole
  * page called `get` (repos, projects), so every one set the cookie, was
  * never kept in the public cache, and sent the next 30 s of the person's
  * reads to the primary. `stars`, `about` and `public_links` (2026-10-08)
- * did the same to every project page and Explore for 13 hours.
+ * did the same to every project page and Explore for 13 hours. `tags`,
+ * `commit_checks` and `shortcuts` (every overview), and the Files page's
+ * `last_commits`, `languages`, `contributors` and `license`, still made a
+ * signed-in view count as a write until 2026-10-08: the cookie, 30 s of
+ * primary reads, and no sidebar cache after every overview.
  */
 const READS = new Set(
   (
@@ -113,7 +117,8 @@ const READS = new Set(
     "routes run run_context run_cost runner_groups runner_settings runners runs scorecards search search_memories " +
     "settings statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
     "user_for_session usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
-    "stars about public_links"
+    "stars about public_links branch_drift tags last_commits languages contributors license releases release " +
+    "stargazers starred commit_checks shortcuts"
   ).split(" "),
 );
 

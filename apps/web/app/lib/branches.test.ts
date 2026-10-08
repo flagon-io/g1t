@@ -1,60 +1,63 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bounded, drift, type Link } from "./branches.ts";
+import type { BranchDrifts, Commit } from "@g1t/contracts";
 
-/** A history from `[hash, ...parents]` rows. */
-const graph = (...rows: string[][]): Link[] => rows.map(([hash, ...parents]) => ({ hash: hash as string, parents }));
+import { activeBranches, branchesToRead } from "./branches.ts";
 
-// main: m1 <- m2 <- m3; the branch left at m2 and added b1 <- b2.
-const forked = graph(["m3", "m2"], ["m2", "m1"], ["m1"], ["b2", "b1"], ["b1", "m2"]);
-
-test("a branch two ahead of where main was, with main one further on", () => {
-  assert.deepEqual(drift("b2", "m3", forked), { ahead: 2, behind: 1 });
+const commit = (hash: string, at: string, message = `${hash}\n\nbody`): Commit => ({
+  hash,
+  treeHash: `t${hash}`,
+  message,
+  author: { name: "Ada", email: "ada@example.com" },
+  parents: [],
+  authoredAt: at,
 });
 
-test("a branch at main's head is level", () => {
-  assert.deepEqual(drift("m3", "m3", forked), { ahead: 0, behind: 0 });
+const branches = [
+  { name: "main", hash: "m3" },
+  { name: "old", hash: "o1" },
+  { name: "fix", hash: "f2" },
+  { name: "idea", hash: "i1" },
+];
+const pulls = [{ branch: "fix", number: 7, title: "Fix it", checkStatus: "passed" as const, status: "open" as const }];
+
+test("branches with an open pull request are read first, the default branch never", () => {
+  const read = branchesToRead({ defaultBranch: "main", branches, pulls }, 2);
+  assert.deepEqual(read.reading.map((b) => b.name), ["fix", "old"]);
+  assert.equal(read.total, 3);
+  assert.equal(read.mainHead, "m3");
 });
 
-test("a branch merged long ago is nothing ahead and all of main since behind", () => {
-  const history = graph(["m5", "m4"], ["m4", "m3"], ["m3", "m2"], ["m2", "m1"]);
-  // Neither history was read to its start, but they meet in what was.
-  assert.deepEqual(drift("m2", "m5", history), { ahead: 0, behind: 3 });
+test("no default branch head, nothing to measure against", () => {
+  assert.equal(branchesToRead({ defaultBranch: "trunk", branches, pulls: [] }, 10).mainHead, null);
 });
 
-test("a merge into main counts the merged side once", () => {
-  // main merged side branch s1 <- s2 at m3; the branch is still at m1.
-  const history = graph(["m3", "m2", "s2"], ["s2", "s1"], ["s1", "m1"], ["m2", "m1"], ["m1"], ["b1", "m1"]);
-  assert.deepEqual(drift("b1", "m3", history), { ahead: 1, behind: 4 });
-});
-
-test("histories that never meet count everything on each, once read to the start", () => {
-  const history = graph(["b2", "b1"], ["b1"], ["m2", "m1"], ["m1"]);
-  assert.deepEqual(drift("b2", "m2", history), { ahead: 2, behind: 2 });
-});
-
-test("no answer when what was read stops before the two meet", () => {
-  // Main's history was read only to m2, whose parent the branch may share.
-  const history = graph(["m3", "m2"], ["m2", "m1"], ["b2", "b1"], ["b1", "m0"]);
-  assert.equal(drift("b2", "m3", history), null);
-});
-
-test("no answer without either head", () => {
-  assert.equal(drift("b9", "m3", forked), null);
-  assert.equal(drift("b2", "m9", forked), null);
-});
-
-test("bounded loads everything in order, never more at once than asked", async () => {
-  let running = 0;
-  let most = 0;
-  const out = await bounded([5, 1, 4, 2, 3], 2, async (wait) => {
-    running++;
-    most = Math.max(most, running);
-    await new Promise((done) => setTimeout(done, wait));
-    running--;
-    return wait * 10;
+test("each branch gets its measured commit and drift, newest first, by head hash", () => {
+  const measured: BranchDrifts = {
+    base: commit("m3", "2026-10-08T00:00:00Z"),
+    branches: [
+      { head: "f2", commit: commit("f2", "2026-10-07T00:00:00Z"), drift: { ahead: 2, behind: 1 } },
+      { head: "o1", commit: commit("o1", "2026-01-01T00:00:00Z"), drift: null },
+      { head: "i1", commit: commit("i1", "2026-10-08T00:00:00Z", "one line"), drift: { ahead: 1, behind: 0 } },
+    ],
+  };
+  const { reading } = branchesToRead({ defaultBranch: "main", branches, pulls }, 10);
+  const shown = activeBranches(reading, measured, { pulls, previews: [{ number: 7, url: "https://fix.g1t.page" }] });
+  assert.deepEqual(shown.map((b) => b.name), ["idea", "fix", "old"]);
+  assert.deepEqual(shown[1], {
+    name: "fix",
+    commit: { hash: "f2", message: "f2", author: "Ada", at: "2026-10-07T00:00:00Z" },
+    drift: { ahead: 2, behind: 1 },
+    pull: { number: 7, title: "Fix it", checkStatus: "passed", draft: false },
+    preview: "https://fix.g1t.page",
   });
-  assert.deepEqual(out, [50, 10, 40, 20, 30]);
-  assert.equal(most, 2);
+  assert.equal(shown[2]?.drift, null);
+});
+
+test("when repos could not answer, the branches still show, without commits or counts", () => {
+  const { reading } = branchesToRead({ defaultBranch: "main", branches, pulls: [] }, 10);
+  const shown = activeBranches(reading, null, { pulls: [], previews: [] });
+  assert.equal(shown.length, 3);
+  assert.ok(shown.every((b) => b.commit == null && b.drift == null && b.pull == null));
 });

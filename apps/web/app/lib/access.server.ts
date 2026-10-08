@@ -14,7 +14,7 @@ import {
 } from "@g1t/contracts";
 
 import type { ViewerAccess } from "./access";
-import { repos, work } from "./services.server";
+import { projects, repos, work } from "./services.server";
 import { getViewer } from "./session.server";
 
 type Context = Parameters<typeof getViewer>[0];
@@ -63,6 +63,24 @@ export function repoFor(context: Context, params: RepoParams): Promise<Result<Re
   let found = seen.get(key);
   if (!found) {
     found = repos.get({ namespace: params.owner ?? "", name: params.repo ?? "" }, getViewer(context));
+    seen.set(key, found);
+  }
+  return found;
+}
+
+/**
+ * One lookup of a project per request: the project's layout and its
+ * overview load at the same time and both need it.
+ */
+const projectLookups = new WeakMap<object, Map<string, ReturnType<typeof projects.get>>>();
+
+export function projectFor(context: Context, params: RepoParams): ReturnType<typeof projects.get> {
+  const key = `${params.owner}/${params.repo}`.toLowerCase();
+  let seen = projectLookups.get(context);
+  if (!seen) projectLookups.set(context, (seen = new Map()));
+  let found = seen.get(key);
+  if (!found) {
+    found = projects.get(params.owner ?? "", params.repo ?? "", getViewer(context));
     seen.set(key, found);
   }
   return found;

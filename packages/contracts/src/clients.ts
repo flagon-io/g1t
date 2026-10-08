@@ -367,6 +367,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
       call("git_access", { path, viewer, service }),
     branches: (path, viewer) => call("branches", { path, viewer }),
     lastCommits: (path, viewer, ref, treePath) => call("last_commits", { path, viewer, ref, treePath }),
+    branchDrift: (path, viewer, base, heads) => call("branch_drift", { path, viewer, base, heads }),
     tags: (path, viewer) => call("tags", { path, viewer }),
     about: (path, viewer) => call("about", { path, viewer }),
     languages: (path, viewer) => call("languages", { path, viewer }),

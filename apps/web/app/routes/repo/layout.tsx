@@ -20,7 +20,7 @@ import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
-import { accessFor, countsFor, repoFor } from "../../lib/access.server";
+import { accessFor, countsFor, projectFor, repoFor } from "../../lib/access.server";
 import { inbox, projects, repos } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
@@ -36,7 +36,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const [repo, counts, found, watching, shortcuts, stars] = await Promise.all([
     repoFor(context, params),
     countsFor(context, params),
-    projects.get(params.owner, params.repo, viewer),
+    projectFor(context, params),
     // How the person watches it, for the header's Watch menu, as soon as
     // the repository is known.
     viewer

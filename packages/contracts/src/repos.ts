@@ -246,6 +246,13 @@ export interface ReposApi {
   /** Which commit last changed each entry of a directory at `ref` (the default branch when null). */
   lastCommits(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<LastCommits>>;
 
+  /**
+   * How far each branch head has moved from `base` (the default branch's
+   * head commit), with each head's commit and `base`'s own, in one call.
+   * Kept by the pair of hashes in the repos service.
+   */
+  branchDrift(path: RepoPath, viewer: Viewer, base: string, heads: string[]): Promise<Result<BranchDrifts>>;
+
   /** The repository's tags, newest commit first, at most 100. */
   tags(path: RepoPath, viewer: Viewer): Promise<Result<Tag[]>>;
 
@@ -371,6 +378,18 @@ export type Branch = { name: string; hash: string };
 
 /** Each entry's last commit; `complete` is false when some were not reached. */
 export type LastCommits = { entries: { name: string; commit: Commit }[]; complete: boolean };
+
+/** Commits a branch has that the default branch does not, and the other way round. */
+export type BranchDriftCount = { ahead: number; behind: number };
+
+/**
+ * `base`'s commit, and each head's commit and drift in the order asked;
+ * `drift` is null when the two histories do not meet within what is read.
+ */
+export type BranchDrifts = {
+  base: Commit | null;
+  branches: { head: string; commit: Commit | null; drift: BranchDriftCount | null }[];
+};
 
 /** A tag, and its commit when it could be read. */
 export type Tag = { name: string; commit: Commit | null };

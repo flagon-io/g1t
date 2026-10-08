@@ -22,6 +22,8 @@ import {
   Rocket,
   RotateCw,
 } from "lucide-react";
+import { waitUntil } from "cloudflare:workers";
+import { isbot } from "isbot";
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
@@ -92,7 +94,7 @@ import { DocsHead, ElsewhereHead, type ExternalDeployment, OtherHead, WhereItRun
 import { actions, agents, deployments, events as eventLog, identity, packages, projects, repos, work } from "../../lib/services.server";
 import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
-import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
+import { accessTo, countsFor, projectFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { DeploymentsPanel } from "../../components/deployments-panel";
 import { environmentUrl, productionEnvironment } from "../../lib/deployments";
@@ -111,6 +113,11 @@ const PACKAGES_SHOWN = 3;
 const COMMITS_SHOWN = 5;
 /** How long Active branches may take before the section links to Branches instead. */
 const BRANCHES_WAIT_MS = 3_500;
+/**
+ * The same for a crawler, which gets the page only once everything in it
+ * has settled (entry.server.tsx): past this, it gets the link to Branches.
+ */
+const BRANCHES_WAIT_CRAWLER_MS = 700;
 
 /**
  * The overview streams: the layout's header and tabs (one repository
@@ -119,11 +126,12 @@ const BRANCHES_WAIT_MS = 3_500;
  * same response as it settles. Crawlers wait for all of it
  * (entry.server.tsx). Before, the first byte waited on the slowest of them.
  */
-export function loader({ params, context }: Route.LoaderArgs) {
-  return { overview: overviewData({ params, context }) };
+export function loader({ params, context, request }: Route.LoaderArgs) {
+  const userAgent = request.headers.get("user-agent");
+  return { overview: overviewData({ params, context }, Boolean(userAgent && isbot(userAgent))) };
 }
 
-async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params" | "context">) {
+async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params" | "context">, crawler: boolean) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const ref = { workspace: params.owner, slug: params.repo };
@@ -140,7 +148,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const forMembers = <T,>(start: () => Promise<T>): Promise<T | null> =>
     memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
-  const projectP = soft(projects.get(params.owner, params.repo, viewer));
+  const projectP = soft(projectFor(context, params));
   // A library or a tool shows its packages where an app shows production,
   // and every project g1t does not deploy counts a workflow in its checklist.
   // Deployments from anywhere (g1t.page, g1t Actions, the API), by environment, for anyone who can read it.
@@ -182,13 +190,17 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
       return { main, total: read.total, shown: read.shown.slice(0, BRANCHES_SHOWN) };
     },
   );
-  // Active branches read several logs each: streamed, so the rest shows
-  // first. Bounded well inside the response's stream timeout
-  // (entry.server.tsx): a promise still pending when the stream ends never
-  // settles in the browser, and its skeleton would stay.
+  // Active branches walk history when a branch or the default branch has
+  // moved: streamed, so the rest shows first. Bounded well inside the
+  // response's stream timeout (entry.server.tsx): a promise still pending
+  // when the stream ends never settles in the browser, and its skeleton
+  // would stay. The walk finishes after the page if it must (waitUntil),
+  // so repos keeps the answer and the next view has it. Crawlers, which
+  // wait for the whole page, wait for it only briefly.
+  waitUntil(branchesP.then(() => undefined, () => undefined));
   const branches = Promise.race([
     branchesP.catch(() => null),
-    new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), BRANCHES_WAIT_MS)),
+    new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), crawler ? BRANCHES_WAIT_CRAWLER_MS : BRANCHES_WAIT_MS)),
   ]);
   const [{ insider: member, can }, project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root, packageList, workflows, tagList] = await Promise.all([
     accessP,

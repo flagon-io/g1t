@@ -13,6 +13,7 @@ mod coalesce;
 mod commit_file;
 mod contributors;
 mod diff;
+mod drift;
 mod fallback;
 mod forks;
 mod git_http;
@@ -74,6 +75,8 @@ const MAX_TEXT_BYTES: usize = 512 * 1024;
 const MAX_ANCESTRY: u32 = 1000;
 /// The most tags a repository's Tags page reads and lists.
 const MAX_TAGS_READ: usize = 100;
+/// Branch heads measured in one `branch_drift` call.
+const MAX_DRIFT_HEADS: usize = 100;
 
 /// One path segment, percent-encoded for a cache key.
 fn urlencoding_segment(segment: &str) -> String {
@@ -941,19 +944,101 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(found))
     }
 
+    /// How far each branch head has moved from the default branch's head,
+    /// in one call (drift.rs). Each answer is kept in this colo's cache by
+    /// repository and the pair of hashes, for good: neither history can
+    /// change. A head that moved is the only one walked.
+    async fn branch_drift(&self, a: BranchDriftArgs) -> Result<Outcome<BranchDrifts>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        if !store::is_commit_hash(&a.base) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "The default branch's head is a full commit hash."));
+        }
+        let heads: Vec<String> = a.heads.into_iter().take(MAX_DRIFT_HEADS).collect();
+        let git = self.read_git(&repo).await?;
+        let key = |head: &str| format!("https://drift.g1t.internal/{}/{}/{head}", repo.id, a.base);
+        let cache = worker::Cache::default();
+        let (base, kept) = futures_util::future::join(
+            git.log(&a.base, 1),
+            futures_util::future::join_all(heads.iter().map(|head| {
+                let (cache, url) = (&cache, key(head));
+                async move {
+                    if !store::is_commit_hash(head) {
+                        return None;
+                    }
+                    let mut found = cache.get(url.as_str(), false).await.ok()??;
+                    found.json::<BranchDrift>().await.ok()
+                }
+            })),
+        )
+        .await;
+        let missing: Vec<String> = heads
+            .iter()
+            .zip(&kept)
+            .filter(|(head, kept)| kept.is_none() && store::is_commit_hash(head))
+            .map(|(head, _)| head.clone())
+            .collect();
+        let measured = drift::measure(&git, &a.base, &missing).await;
+        let mut fresh: HashMap<String, BranchDrift> = HashMap::new();
+        for (head, found) in missing.into_iter().zip(measured) {
+            let answer = BranchDrift { head: head.clone(), commit: found.commit, drift: found.drift };
+            if found.settled
+                && let Ok(mut response) = worker::Response::from_json(&answer)
+            {
+                let _ = response.headers_mut().set("cache-control", "public, max-age=31536000, immutable");
+                let _ = cache.put(key(&head).as_str(), response).await;
+            }
+            fresh.insert(head, answer);
+        }
+        let branches = heads
+            .iter()
+            .zip(kept)
+            .map(|(head, kept)| {
+                kept.or_else(|| fresh.get(head).cloned())
+                    .unwrap_or_else(|| BranchDrift { head: head.clone(), commit: None, drift: None })
+            })
+            .collect();
+        Ok(Outcome::Ok(BranchDrifts { base: base.ok().and_then(|log| log.into_iter().next()), branches }))
+    }
+
     /// The repository's tags, newest commit first, at most 100.
     async fn tags(&self, a: g1t_contracts::repos::TagsArgs) -> Result<Outcome<Vec<g1t_contracts::repos::Tag>>> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
         };
-        let git = self.store.open(&store_key(&repo)).await?;
+        // Kept until the refs move, as the branch list is (store.rs): listing
+        // the refs is a round trip to the store on every call otherwise.
+        let version = refs_cache::usable(registry::refs_state(&repo.id), now_ms()).filter(|_| !self.store.on_fallback(&store_key(&repo)));
+        let kept_at = version.map(|version| format!("https://tags.g1t.internal/{}/{version}", repo.id));
+        if let Some(url) = &kept_at
+            && let Ok(Some(mut kept)) = worker::Cache::default().get(url.as_str(), false).await
+            && let Ok(tags) = kept.json::<Vec<g1t_contracts::repos::Tag>>().await
+        {
+            return Ok(Outcome::Ok(tags));
+        }
+        let (tags, complete) = self.read_tags(&repo).await?;
+        if complete
+            && let Some(url) = &kept_at
+            && let Ok(mut response) = worker::Response::from_json(&tags)
+        {
+            let _ = response.headers_mut().set("cache-control", "public, max-age=300");
+            let _ = worker::Cache::default().put(url.as_str(), response).await;
+        }
+        Ok(Outcome::Ok(tags))
+    }
+
+    /// The tags, and whether every one's commit was read (only then kept).
+    async fn read_tags(&self, repo: &Repo) -> Result<(Vec<g1t_contracts::repos::Tag>, bool)> {
+        let git = self.store.open(&store_key(repo)).await?;
         let access = git.access(Scope::Read).await?;
         let named: Vec<(String, String)> = refs::heads_and_tags(refs::all(&access).await?)
             .into_iter()
             .filter_map(|(name, hash)| name.strip_prefix("refs/tags/").map(|tag| (tag.to_owned(), hash)))
             .collect();
-        let read = self.read_git(&repo).await?;
+        let read = self.read_git(repo).await?;
         let commits = futures_util::future::join_all(named.iter().take(MAX_TAGS_READ).map(|(_, hash)| read.log(hash, 1))).await;
+        let complete = commits.iter().all(Result::is_ok);
         let mut tags: Vec<g1t_contracts::repos::Tag> = named
             .into_iter()
             .zip(commits.into_iter().map(|found| found.ok().and_then(|list| list.into_iter().next())).chain(std::iter::repeat(None)))
@@ -964,7 +1049,7 @@ impl<S: GitStore> Repos<S> {
             at(b).cmp(&at(a)).then_with(|| b.name.cmp(&a.name))
         });
         tags.truncate(MAX_TAGS_READ);
-        Ok(Outcome::Ok(tags))
+        Ok((tags, complete))
     }
 
     /// The repository's branches, default branch first.
@@ -2229,7 +2314,7 @@ mod backup_path_tests {
 
 /// Read methods whose answer is an `Outcome`: when the git store is busy,
 /// the site is told so in words instead of failing the page.
-const OUTCOME_READS: [&str; 6] = ["tree", "blob", "log", "branches", "blame", "compare"];
+const OUTCOME_READS: [&str; 7] = ["tree", "blob", "log", "branches", "blame", "compare", "branch_drift"];
 
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
@@ -2327,6 +2412,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "branches" => reply(&repos.branches(args(body)?).await?),
         "last_commits" => reply(&repos.last_commits(args(body)?).await?),
+        "branch_drift" => reply(&repos.branch_drift(args(body)?).await?),
         "tags" => reply(&repos.tags(args(body)?).await?),
         // The About: what the Files page shows beside the files (about.rs).
         // What is kept behind the head is worked out again after the answer.

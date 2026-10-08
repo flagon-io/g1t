@@ -733,6 +733,21 @@ const VERSIONED_MAX_AGE: &str = "public, max-age=300";
 /// the store would not be.
 const ABSENT_MAX_AGE: &str = "public, max-age=600";
 
+/// Histories by hash at least this long are put together from a short
+/// read and one kept before, where they can be (`spliced_log`).
+const SPLICE_FROM: u32 = 100;
+/// How many commits that short read takes.
+const SPLICE_PROBE: u32 = 16;
+
+/// `short[..at]` followed by `kept` (the history from `short[at]`), cut
+/// to `limit` commits.
+pub fn splice(short: &[Commit], at: usize, kept: Vec<Commit>, limit: u32) -> Vec<Commit> {
+    let mut out: Vec<Commit> = short[..at.min(short.len())].to_vec();
+    out.extend(kept);
+    out.truncate(limit as usize);
+    out
+}
+
 /// Whether a ref is a full commit hash (SHA-1 or SHA-256), whose history
 /// can be kept for good.
 pub fn is_commit_hash(git_ref: &str) -> bool {
@@ -841,6 +856,65 @@ impl ArtifactsRepo {
             None => meters::record("cache.miss", &self.key, 0, 0),
         }
         found
+    }
+
+    /// A history from the store itself.
+    async fn read_log(&self, git_ref: &str, limit: u32) -> Result<Vec<Commit>> {
+        let options = js::to_js(&serde_json::json!({ "ref": git_ref, "limit": limit }))?;
+        let raw: Vec<RawCommit> = js::from_js(&self.call("log", &[options], true).await?)?;
+        Ok(raw
+            .into_iter()
+            .map(|commit| Commit {
+                hash: commit.hash,
+                tree_hash: commit.tree_hash,
+                message: commit.message,
+                author: commit.author,
+                parents: commit.parents,
+                authored_at: rfc3339(commit.authored_at * 1000),
+            })
+            .collect())
+    }
+
+    /// A long history by commit hash, from a short read and one kept
+    /// before: when a branch moves a few commits, the history from its new
+    /// head is those commits, then the history kept from its old one (the
+    /// first-parent chain from a commit never changes). Only when none of
+    /// the short read's commits has the same history kept is the whole of
+    /// it read. A default branch that moved by a merge then costs a read
+    /// of [`SPLICE_PROBE`] commits instead of a thousand.
+    async fn spliced_log(&self, hash: &str, limit: u32) -> Result<Vec<Commit>> {
+        let short = self.read_log(hash, SPLICE_PROBE).await?;
+        if (short.len() as u32) < SPLICE_PROBE {
+            // The whole history fits in the short read.
+            return Ok(short);
+        }
+        let kept = futures_util::future::join_all(short.iter().enumerate().skip(1).map(|(at, commit)| async move {
+            let Some(CacheKey::Forever(path)) = log_key(&commit.hash, limit, None) else {
+                return None;
+            };
+            let bytes = self.peek(&path).await?;
+            serde_json::from_slice::<Vec<Commit>>(&bytes).ok().map(|kept| (at, kept))
+        }))
+        .await;
+        match kept.into_iter().flatten().next() {
+            Some((at, kept)) => Ok(splice(&short, at, kept, limit)),
+            None => self.read_log(hash, limit).await,
+        }
+    }
+
+    /// A kept answer, if there is one, without counting a miss: the
+    /// splice looks for many and expects most to be absent.
+    async fn peek(&self, path: &str) -> Option<Vec<u8>> {
+        let url = self.cache_url(path);
+        if let Some(bytes) = MEMORY.with(|memory| memory.borrow().get(&url)) {
+            meters::record("cache.memory_hit", &self.key, 0, bytes.len() as u64);
+            return Some(bytes);
+        }
+        let mut response = worker::Cache::default().get(url.clone(), false).await.ok()??;
+        let bytes = response.bytes().await.ok()?;
+        meters::record("cache.edge_hit", &self.key, 0, bytes.len() as u64);
+        MEMORY.with(|memory| memory.borrow_mut().put(url, &bytes));
+        Some(bytes)
     }
 
     async fn cached(&self, kind: &str, hash: &str) -> Option<Vec<u8>> {
@@ -1033,19 +1107,10 @@ impl GitRepo for ArtifactsRepo {
         {
             return Ok(commits);
         }
-        let options = js::to_js(&serde_json::json!({ "ref": git_ref, "limit": limit }))?;
-        let raw: Vec<RawCommit> = js::from_js(&self.call("log", &[options], true).await?)?;
-        let commits: Vec<Commit> = raw
-            .into_iter()
-            .map(|commit| Commit {
-                hash: commit.hash,
-                tree_hash: commit.tree_hash,
-                message: commit.message,
-                author: commit.author,
-                parents: commit.parents,
-                authored_at: rfc3339(commit.authored_at * 1000),
-            })
-            .collect();
+        let commits = match &key {
+            Some(CacheKey::Forever(_)) if limit >= SPLICE_FROM => self.spliced_log(git_ref, limit).await?,
+            _ => self.read_log(git_ref, limit).await?,
+        };
         // An unknown ref logs nothing; that is not kept, in case it arrives.
         if !commits.is_empty()
             && let Ok(bytes) = serde_json::to_vec(&commits)
@@ -1206,6 +1271,44 @@ impl GitRepo for ArtifactsRepo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chain(names: &[&str]) -> Vec<Commit> {
+        names
+            .iter()
+            .enumerate()
+            .map(|(at, name)| Commit {
+                hash: (*name).to_owned(),
+                tree_hash: String::new(),
+                message: String::new(),
+                author: g1t_contracts::repos::Signature { name: "a".into(), email: "a@example.com".into() },
+                parents: names.get(at + 1).map(|parent| vec![(*parent).to_owned()]).unwrap_or_default(),
+                authored_at: String::new(),
+            })
+            .collect()
+    }
+
+    fn hashes(commits: &[Commit]) -> Vec<&str> {
+        commits.iter().map(|commit| commit.hash.as_str()).collect()
+    }
+
+    #[test]
+    fn a_history_is_the_new_commits_then_the_one_kept_from_an_old_head() {
+        // The branch moved from c3 to c5; c3's history (limit 4) was kept.
+        let short = chain(&["c5", "c4", "c3", "c2"]);
+        let kept = chain(&["c3", "c2", "c1", "c0"]);
+        assert_eq!(hashes(&splice(&short, 2, kept.clone(), 4)), ["c5", "c4", "c3", "c2"]);
+        assert_eq!(hashes(&splice(&short, 2, kept.clone(), 6)), ["c5", "c4", "c3", "c2", "c1", "c0"]);
+        // A kept history that reached the first commit ends there.
+        assert_eq!(hashes(&splice(&short, 2, chain(&["c3", "c2"]), 10)), ["c5", "c4", "c3", "c2"]);
+    }
+
+    #[test]
+    fn only_long_histories_by_hash_are_spliced() {
+        assert!(SPLICE_PROBE < SPLICE_FROM);
+        let hash = "a".repeat(40);
+        assert!(matches!(log_key(&hash, SPLICE_FROM, None), Some(CacheKey::Forever(_))));
+        assert!(matches!(log_key("main", SPLICE_FROM, Some(1)), Some(CacheKey::Versioned(_))));
+    }
 
     fn access(token: &str) -> GitAccess {
         GitAccess {
