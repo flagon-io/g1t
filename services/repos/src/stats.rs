@@ -45,6 +45,10 @@ const NEVER_READ: [&str; 3] = ["node_modules", "bower_components", "jspm_package
 /// Where a security policy may be.
 const POLICY_DIRS: [&str; 4] = ["", ".g1t/", ".github/", "docs/"];
 
+/// How the About is worked out; a row kept by an older version is worked
+/// out again. 1: g1t's older commit addresses count as g1t.
+pub const STATS_VERSION: f64 = 1.0;
+
 /// What `repo_stats` keeps for the About, without the full contributors.
 #[derive(Debug, Default, Deserialize)]
 pub struct Kept {
@@ -57,6 +61,9 @@ pub struct Kept {
     pub languages: Option<String>,
     pub contributors_total: f64,
     pub contributors_top: Option<String>,
+    /// [`STATS_VERSION`] when it was worked out.
+    #[serde(default)]
+    pub version: f64,
 }
 
 impl Kept {
@@ -69,7 +76,7 @@ impl Kept {
     /// or what is kept is partial, and none is under way.
     pub fn wants_run(&self, head: Option<&str>, now: u64) -> bool {
         let Some(head) = head else { return false };
-        let behind = self.commit_hash.as_deref() != Some(head) || self.partial > 0.0;
+        let behind = self.commit_hash.as_deref() != Some(head) || self.partial > 0.0 || self.version < STATS_VERSION;
         // A partial answer is tried again at most every lease.
         let rested = self.partial == 0.0 || self.started_ms.is_none_or(|started| now.saturating_sub(started as u64) >= LEASE_MS);
         behind && rested && !self.running(now)
@@ -102,7 +109,7 @@ impl Kept {
 pub async fn kept(db: &D1Database, repo_id: &str) -> Result<Kept> {
     Ok(db
         .prepare(
-            "SELECT commit_hash, computed_at, started_ms, partial, license, security_policy, languages, contributors_total, contributors_top
+            "SELECT commit_hash, computed_at, started_ms, partial, license, security_policy, languages, contributors_total, contributors_top, version
              FROM repo_stats WHERE repo_id = ?",
         )
         .bind(&[repo_id.into()])?
@@ -190,7 +197,7 @@ pub async fn keep(db: &D1Database, repo_id: &str, worked: &Worked) -> Result<()>
     db.prepare(
         "UPDATE repo_stats SET commit_hash = ?2, computed_at = ?3, started_ms = CASE WHEN ?4 = 1 THEN started_ms ELSE NULL END,
            partial = ?4, license = ?5, security_policy = ?6, languages = ?7, contributors_total = ?8, contributors_top = ?9,
-           contributors = ?10
+           contributors = ?10, version = ?11
          WHERE repo_id = ?1",
     )
     .bind(&[
@@ -210,6 +217,7 @@ pub async fn keep(db: &D1Database, repo_id: &str, worked: &Worked) -> Result<()>
         JsValue::from_f64(f64::from(worked.contributors_total)),
         json(&top).into(),
         json(&full).into(),
+        JsValue::from_f64(STATS_VERSION),
     ])?
     .run()
     .await?;
@@ -398,9 +406,11 @@ mod tests {
         let none = Kept::default();
         assert!(none.wants_run(Some("c2"), now));
         assert!(!none.wants_run(None, now), "an empty repository has nothing to work out");
-        let current = Kept { commit_hash: Some("c2".into()), ..Kept::default() };
+        let current = Kept { commit_hash: Some("c2".into()), version: STATS_VERSION, ..Kept::default() };
         assert!(!current.wants_run(Some("c2"), now));
         assert!(current.wants_run(Some("c3"), now));
+        let older = Kept { commit_hash: Some("c2".into()), version: STATS_VERSION - 1.0, ..Kept::default() };
+        assert!(older.wants_run(Some("c2"), now), "an answer worked out the old way is worked out again");
         let running = Kept { commit_hash: Some("c2".into()), started_ms: Some((now - 1_000) as f64), ..Kept::default() };
         assert!(!running.wants_run(Some("c3"), now));
         let died = Kept { commit_hash: Some("c2".into()), started_ms: Some((now - LEASE_MS - 1) as f64), ..Kept::default() };

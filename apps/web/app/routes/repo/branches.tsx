@@ -3,7 +3,8 @@ import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/branches";
 import { ActiveBranches } from "../../components/branches";
-import { Avatar, EmptyState, TimeAgo, notACredential } from "../../components/ui";
+import { CommitAvatars, CommitNames } from "../../components/commit-person";
+import { EmptyState, TimeAgo, notACredential } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { readBranches } from "../../lib/branches.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
@@ -99,8 +100,10 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
           <span className="rounded-full border border-line px-2 py-px text-xs text-muted">default</span>
           {head && (
             <span className="flex min-w-0 grow basis-64 items-center gap-1.5 text-xs text-muted">
-              <Avatar name={head.author} size={13} />
-              <span className="shrink-0">{head.author}</span>
+              <CommitAvatars commit={head} size={14} max={2} />
+              <span className="shrink-0">
+                <CommitNames commit={head} className="hover:text-fg" />
+              </span>
               <span className="text-faint">·</span>
               <Hint label={head.message}>
                 <Link to={`${base}/commit/${head.hash}`} className="min-w-0 truncate hover:text-fg">

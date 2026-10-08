@@ -1512,7 +1512,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     ) : (
                       <Avatar name={name} size={20} />
                     )}
-                    <span className="grow truncate font-mono text-xs">{name}</span>
+                    <span className="grow truncate font-mono text-xs">
+                      <PersonLink name={name} className="hover:underline" />
+                    </span>
                     {pending ? (
                       <span className="flex items-center gap-1.5 text-xs text-muted">
                         <span className="size-1.5 animate-pulse rounded-full bg-accent" />
@@ -1610,7 +1612,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               {pull.assignees.map((name) => (
                 <li key={name} className="flex items-center gap-2 px-1">
                   <Avatar name={name} size={20} />
-                  <span className="grow truncate font-mono text-xs">{name}</span>
+                  <span className="grow truncate font-mono text-xs">
+                    <PersonLink name={name} className="hover:underline" />
+                  </span>
                 </li>
               ))}
               {pull.assignees.length === 0 && (

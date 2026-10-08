@@ -2,7 +2,10 @@ import { BookOpen, Check, ChevronDown, Code2, File, FileArchive, Folder, FolderG
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
-import type { Blame, BlobView as Blob, Branch, Commit, LastCommits, TreeView as Tree } from "@g1t/contracts";
+import type { BlobView as Blob, Branch, TreeView as RawTree } from "@g1t/contracts";
+
+import type { FileCommits, ShownBlame, ShownCommit } from "../lib/commit-people";
+import { CommitAvatars, CommitNames } from "./commit-person";
 
 import type { DeploymentEnvironments } from "@g1t/contracts";
 
@@ -16,7 +19,7 @@ import { CloneBox } from "./clone-box";
 import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { type AboutData, RepoAboutPanel } from "./repo-about";
 import { Markdown } from "./markdown";
-import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
+import { CopyLine, TimeAgo, notACredential } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Hint } from "./ui/hint";
@@ -68,11 +71,16 @@ function Breadcrumbs({
 }
 
 /** The bar above a file listing: the latest commit, its checks, and the way to the history. */
-function CommitBar({ commit, base, checks }: { commit: Commit; base: string; checks?: ChecksSource }) {
+/** A tree as the page gets it: its latest commit with its people. */
+export type Tree = Omit<RawTree, "head"> & { head: ShownCommit | null };
+
+function CommitBar({ commit, base, checks }: { commit: ShownCommit; base: string; checks?: ChecksSource }) {
   return (
     <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-sm">
-      <Avatar name={commit.author.name} />
-      <span className="shrink-0 font-medium">{commit.author.name}</span>
+      <CommitAvatars commit={commit} />
+      <span className="shrink-0 font-medium">
+        <CommitNames commit={commit} />
+      </span>
       <Link to={`${base}/commit/${commit.hash}`} className="truncate text-muted hover:text-fg hover:underline">
         {commit.message.split("\n")[0]}
       </Link>
@@ -241,7 +249,7 @@ function FileRows({
   gitRef: string;
   prefix: string;
   entries: Tree["entries"];
-  last: LastCommits | null | undefined;
+  last: FileCommits | null | undefined;
 }) {
   const byName = new Map((last?.entries ?? []).map((entry) => [entry.name, entry.commit]));
   return (
@@ -294,7 +302,7 @@ export function TreeView({
   tree: Tree;
   branches?: Branch[] | null;
   /** Each entry's last commit, streamed in after the list. */
-  lastCommits?: Promise<LastCommits | null> | null;
+  lastCommits?: Promise<FileCommits | null> | null;
   /** The latest commit's checks, streamed in. */
   checks?: ChecksSource;
   /** The About beside the files, at the root: streamed in after them. */
@@ -406,7 +414,7 @@ export function BlobView({
   /** Syntax-highlighted HTML per line, when the language is known. */
   html: string[] | null;
   /** Shown instead of the plain file when asked for, with HTML per line. */
-  blame?: { blame: Blame; lines: string[] | null } | null;
+  blame?: { blame: ShownBlame; lines: string[] | null } | null;
 }) {
   const { repo, ref, path, size, text } = blob;
   const lines = text?.replace(/\n$/, "").split("\n");

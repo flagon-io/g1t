@@ -8,17 +8,30 @@
  */
 import { waitUntil } from "cloudflare:workers";
 
-import type { LastCommits, RepoPath, Viewer } from "@g1t/contracts";
+import type { RepoPath, Viewer } from "@g1t/contracts";
 
+import type { FileCommits } from "./commit-people";
 import { repos } from "./services.server";
 
 /** How long the page waits for the column. */
 const WAIT_MS = 3_000;
 
-export function lastCommitsFor(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<LastCommits | null> {
+export function lastCommitsFor(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<FileCommits | null> {
   const walk = repos
     .lastCommits(path, viewer, ref, treePath)
-    .then((found) => (found.ok ? found.value : null))
+    // The rows show a commit's subject and age, never who made it: their
+    // addresses stay on the server.
+    .then((found): FileCommits | null =>
+      found.ok
+        ? {
+            complete: found.value.complete,
+            entries: found.value.entries.map(({ name, commit }) => ({
+              name,
+              commit: { hash: commit.hash, message: commit.message, authoredAt: commit.authoredAt },
+            })),
+          }
+        : null,
+    )
     .catch(() => null);
   waitUntil(walk);
   return Promise.race([walk, new Promise<null>((resolve) => setTimeout(() => resolve(null), WAIT_MS))]);

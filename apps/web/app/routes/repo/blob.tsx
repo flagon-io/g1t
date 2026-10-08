@@ -6,6 +6,7 @@ import { CodeownersFileErrors } from "../../components/codeowners";
 import { BlobView } from "../../components/repo-view";
 import { highlightLines } from "../../lib/highlight.server";
 import { repos, work } from "../../lib/services.server";
+import { showCommits } from "../../lib/commit-people.server";
 import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -35,7 +36,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     return {
       blob,
       html: null,
-      blame: { blame: blame.value, lines: await highlightLines(blob.path, blob.text) },
+      blame: {
+        // Every commit's people at once.
+        blame: { ...blame.value, commits: await showCommits(blame.value.commits) },
+        lines: await highlightLines(blob.path, blob.text),
+      },
       branches,
       codeowners,
     };

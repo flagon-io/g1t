@@ -681,3 +681,56 @@ are filtered for whoever is looking:
 Someone signed out sees your public work and the workspaces where you made
 a public project; nothing else. The link preview for a profile uses only
 public work.
+
+### The card over a name
+
+Hold the pointer over a person's name or picture anywhere on g1t, or move
+the keyboard focus to their name, and a card opens with their profile at a
+glance:
+
+| On the card | Shown when |
+| --- | --- |
+| Picture, name, username and pronouns | Always |
+| Bio and location | They filled them in |
+| **Member of** | The same workspaces their profile shows you, at most three named |
+| **Committed to this repository in the past day**, **week** or **month** | You opened it inside a repository you can read, and their latest commit on its default branch is that recent |
+
+On a touch screen no card opens: a tap goes to the profile. `@g1t` has a
+card of its own, about putting g1t to work. `ghost`, which stands in for
+deleted accounts, has no card.
+
+### Commits and your account
+
+A commit shows as yours, with your username, picture, profile link and
+card, when its author address is one of your
+[confirmed addresses](/guides/authentication/#email-addresses) or your
+noreply address. This holds everywhere a commit appears: the Files page,
+history, a commit, blame, branches, tags, comparisons and the
+Contributors list, which counts every address of yours as one person.
+
+To have commits made on your own machine show as yours without publishing
+your address, commit with your noreply address:
+
+1. Open [Settings → Emails](https://g1t.sh/settings/emails) and copy your
+   noreply address. It looks like
+   `<8 characters of your account id>+<username>@users.noreply.g1t.sh`.
+2. Set it for every repository, or leave out `--global` for one:
+
+   ```sh
+   git config --global user.email "6c1d0efg+sam@users.noreply.g1t.sh"
+   ```
+
+3. Commit and push as usual. Commits you made before keep the address they
+   were made with; add that address to your account and confirm it to have
+   them show as yours.
+
+| A commit's address | Shown as |
+| --- | --- |
+| One of your confirmed addresses, or your noreply address | You |
+| An address added to an account but not confirmed | The name in the commit |
+| An address no account has | The name in the commit, with a plain picture, no link and no card |
+| A deleted account's noreply address | `ghost` |
+| g1t's own (`g1t@users.noreply.g1t.sh`) | `g1t` |
+
+`Co-authored-by` trailers are matched the same way, and their pictures sit
+beside the author's. An address itself is never shown on g1t.

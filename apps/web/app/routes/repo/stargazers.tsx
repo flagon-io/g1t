@@ -6,6 +6,7 @@ import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
 import { repos } from "../../lib/services.server";
 import { unwrap } from "../../lib/session.server";
+import { UserCard } from "../../components/user-card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Stargazers · ${params.owner}/${params.repo} · g1t` });
@@ -36,9 +37,11 @@ export default function Stargazers({ loaderData }: Route.ComponentProps) {
             <li key={person.username} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
               <Avatar name={person.username} image={person.avatar} size={36} />
               <div className="min-w-0">
-                <Link to={`/u/${person.username}`} className="block truncate text-sm font-medium hover:text-accent">
-                  {person.username}
-                </Link>
+                <UserCard username={person.username}>
+                  <Link to={`/u/${person.username}`} className="block truncate text-sm font-medium hover:text-accent">
+                    {person.username}
+                  </Link>
+                </UserCard>
                 <p className="text-xs text-faint">
                   Starred <TimeAgo at={person.starredAt} />
                 </p>

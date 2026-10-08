@@ -24,6 +24,7 @@ import {
 } from "./ui/alert-dialog";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
+import { UserCard } from "./user-card";
 
 export { IssueIcon, PullIcon };
 
@@ -203,22 +204,35 @@ export function PersonLink({
   label?: string;
   children?: ReactNode;
 }) {
-  // g1t itself has no profile; its name carries a small label instead.
+  // g1t itself has no profile; its name carries a small label instead, and
+  // its card says what it is.
   if (name === "g1t" && !children) {
     return (
-      <span className="inline-flex items-baseline gap-1">
-        <span className={className}>g1t</span>
-        <span className="rounded border border-line px-1 text-[0.625rem] leading-[1.35] font-medium text-muted">bot</span>
-      </span>
+      <UserCard username="g1t">
+        <span tabIndex={0} className="inline-flex items-baseline gap-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-accent">
+          <span className={className}>g1t</span>
+          <span className="rounded border border-line px-1 text-[0.625rem] leading-[1.35] font-medium text-muted">bot</span>
+        </span>
+      </UserCard>
     );
   }
-  if (name === "g1t" || !/^[a-z0-9-]{1,39}$/i.test(name)) {
+  if (name === "g1t") {
+    return (
+      <UserCard username="g1t">
+        <span className={className}>{children}</span>
+      </UserCard>
+    );
+  }
+  // Ghost, a deleted account, has no profile and no card.
+  if (name === "ghost" || !/^[a-z0-9-]{1,39}$/i.test(name)) {
     return <span className={className}>{children ?? name}</span>;
   }
   return (
-    <Link to={`/u/${name.toLowerCase()}`} className={className} aria-label={label}>
-      {children ?? name}
-    </Link>
+    <UserCard username={name}>
+      <Link to={`/u/${name.toLowerCase()}`} className={className} aria-label={label}>
+        {children ?? name}
+      </Link>
+    </UserCard>
   );
 }
 

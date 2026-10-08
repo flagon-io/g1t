@@ -17,6 +17,7 @@ import {
 
 import { Badge } from "./ui/badge";
 import { Skeleton } from "./ui/skeleton";
+import { UserCard } from "./user-card";
 
 /** The guide to the file. */
 export const CODEOWNERS_DOCS = "https://docs.g1t.sh/guides/codeowners/";
@@ -45,9 +46,11 @@ export function OwnerLink({ owner }: { owner: string }) {
   }
   if (owner.startsWith("@") && /^[a-z0-9-]{1,39}$/i.test(name) && name !== "g1t") {
     return (
-      <Link to={`/u/${name.toLowerCase()}`} className={className}>
-        {owner}
-      </Link>
+      <UserCard username={name.toLowerCase()}>
+        <Link to={`/u/${name.toLowerCase()}`} className={className}>
+          {owner}
+        </Link>
+      </UserCard>
     );
   }
   return <span className="font-mono text-xs text-fg-soft">{owner}</span>;

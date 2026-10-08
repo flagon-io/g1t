@@ -12,6 +12,7 @@ import { Switch } from "../../../components/ui/switch";
 import { teamPath } from "../../../lib/teams";
 import { identity } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
+import { UserCard } from "../../../components/user-card";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -75,9 +76,11 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <Avatar name={member.username} image={member.avatar} size={28} />
                   <div className="min-w-0 grow basis-32 truncate">
-                    <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
-                      {member.username}
-                    </Link>
+                    <UserCard username={member.username}>
+                      <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
+                        {member.username}
+                      </Link>
+                    </UserCard>
                     {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
                   </div>
                   {member.via ? (

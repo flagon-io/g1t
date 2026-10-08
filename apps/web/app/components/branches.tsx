@@ -4,10 +4,12 @@ import { Link } from "react-router";
 import type { Pull } from "@g1t/contracts";
 
 import type { Drift } from "../lib/branches";
+import type { CommitPerson } from "../lib/commit-people";
+import { CommitAvatars, CommitNames } from "./commit-person";
 import { CheckBadge } from "./checks";
 import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { host } from "./deploy";
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
 import { Hint } from "./ui/hint";
 
 function drift({ ahead, behind }: Drift, main: string): string {
@@ -16,7 +18,7 @@ function drift({ ahead, behind }: Drift, main: string): string {
 
 export type ActiveBranch = {
   name: string;
-  commit: { hash: string; message: string; author: string; at: string } | null;
+  commit: { hash: string; message: string; author: CommitPerson; coAuthors: CommitPerson[]; at: string } | null;
   /** Null when the two histories were not read far enough to meet. */
   drift: Drift | null;
   pull: { number: number; title: string; checkStatus: Pull["checkStatus"]; draft: boolean } | null;
@@ -50,8 +52,10 @@ export function ActiveBranches({
             </Link>
             {branch.commit && (
               <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted">
-                <Avatar name={branch.commit.author} size={13} />
-                <span className="shrink-0">{branch.commit.author}</span>
+                <CommitAvatars commit={branch.commit} size={14} max={2} />
+                <span className="shrink-0">
+                  <CommitNames commit={branch.commit} className="hover:text-fg" />
+                </span>
                 <span className="text-faint">·</span>
                 <Hint label={branch.commit.message}>
                   <Link to={`${base}/commit/${branch.commit.hash}`} className="min-w-0 truncate hover:text-fg">

@@ -1,4 +1,4 @@
-import { Check, Copy, LoaderCircle } from "lucide-react";
+import { Check, Copy, LoaderCircle, User } from "lucide-react";
 import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
 
@@ -313,6 +313,19 @@ export function Avatar({
         style={{ width: size, height: size, borderRadius: size * 0.24 }}
       >
         <Mark className="size-full" />
+      </span>
+    );
+  }
+  // ghost stands in for deleted accounts: a plain silhouette, as for
+  // anyone on a commit who has no account.
+  if (name === "ghost" && !image) {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex shrink-0 items-center justify-center rounded-full bg-line text-faint"
+        style={{ width: size, height: size }}
+      >
+        <User size={Math.round(size * 0.62)} strokeWidth={2.25} />
       </span>
     );
   }

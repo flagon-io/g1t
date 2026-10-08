@@ -16,7 +16,8 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { Checkbox } from "./ui/checkbox";
-import { type AlertKind, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
+import { type AlertKind, G1T_MENTION_HREF, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
+import { UserCard } from "./user-card";
 
 /** The text inside a React tree, for anchors and copying. */
 function textOf(node: ReactNode): string {
@@ -178,6 +179,17 @@ export function Markdown({
           h4: ({ children }) => <Heading level={4}>{children}</Heading>,
           a({ href = "", children, node }) {
             const ref = (node?.properties as { dataRef?: string } | undefined)?.dataRef;
+            if (ref === "mention") {
+              // `@name` may be a person (with a card) or a workspace (none).
+              const name = href === G1T_MENTION_HREF ? "g1t" : href.replace(/^\//, "");
+              return (
+                <UserCard username={name}>
+                  <Link to={href} prefetch="intent" className="font-medium">
+                    {children}
+                  </Link>
+                </UserCard>
+              );
+            }
             if (ref) {
               return (
                 <Link

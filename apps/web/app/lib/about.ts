@@ -3,7 +3,7 @@
  * pages say, worked out without the server: labels, the language bar,
  * and an activity line for each event worth one.
  */
-import type { Contributor, G1tEvent, LanguageShare, License, Project, WeekCommits } from "@g1t/contracts";
+import type { G1tEvent, LanguageShare, License, Project, WeekCommits } from "@g1t/contracts";
 
 /**
  * The address the About links to: the project's homepage (its own, or its
@@ -41,10 +41,6 @@ export function languageBar(languages: LanguageShare[], least = 1): LanguageShar
   return [...shown, { name: "Other", color: null, bytes, percent }];
 }
 
-/** Where a contributor's name leads: their profile, for an account. */
-export function contributorHref(contributor: Contributor): string | null {
-  return contributor.kind === "user" && contributor.username ? `/u/${contributor.username}` : null;
-}
 
 /** The tallest week, for a chart's scale: never zero. */
 export function peak(weeks: WeekCommits[]): number {

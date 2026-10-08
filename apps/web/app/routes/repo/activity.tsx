@@ -11,6 +11,7 @@ import { requireRepo } from "../../lib/access.server";
 import { ACTIVITY_TYPES, type ActivityLine, activityLine } from "../../lib/about";
 import { page } from "../../lib/meta";
 import { events, identity } from "../../lib/services.server";
+import { UserCard } from "../../components/user-card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Activity · ${params.owner}/${params.repo} · g1t` });
@@ -112,9 +113,11 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
                   <span className="inline-flex items-center gap-1.5 align-middle">
                     <Avatar name={who ?? "someone"} size={18} system={who === "g1t"} />
                     {who && who !== "g1t" ? (
-                      <Link to={`/u/${who}`} className="font-medium hover:text-accent">
-                        {who}
-                      </Link>
+                      <UserCard username={who}>
+                        <Link to={`/u/${who}`} className="font-medium hover:text-accent">
+                          {who}
+                        </Link>
+                      </UserCard>
                     ) : (
                       <span className="font-medium">{who ?? "Someone"}</span>
                     )}

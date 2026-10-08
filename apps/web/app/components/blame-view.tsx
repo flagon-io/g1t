@@ -11,12 +11,13 @@ import {
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
-import type { Blame, Commit } from "@g1t/contracts";
+import type { ShownBlame, ShownCommit } from "../lib/commit-people";
 
 import type { loader as whyLoader } from "../routes/repo/why";
 import { repoAt } from "../lib/markdown-plugins";
+import { CommitAvatars, CommitNames } from "./commit-person";
 import { Markdown } from "./markdown";
-import { Avatar, TimeAgo } from "./ui";
+import { TimeAgo } from "./ui";
 import { Skeleton } from "./ui/skeleton";
 
 /**
@@ -36,10 +37,10 @@ export function BlameView({
   lines: string[];
   /** Highlighted HTML per line, when the language is known. */
   html: string[] | null;
-  blame: Blame;
+  blame: ShownBlame;
 }) {
   const commits = useMemo(
-    () => new Map<string, Commit>(blame.commits.map((commit) => [commit.hash, commit])),
+    () => new Map<string, ShownCommit>(blame.commits.map((commit) => [commit.hash, commit])),
     [blame.commits],
   );
   // Newer commits are brighter: rank them by when they were written.
@@ -121,7 +122,7 @@ export function BlameView({
                     <td className="w-72 max-w-72 border-r border-line px-3 align-top font-sans">
                       {first && commit && (
                         <span className="flex items-center gap-2 py-0.5 text-xs">
-                          <Avatar name={commit.author.name} size={16} />
+                          <CommitAvatars commit={commit} size={16} max={2} />
                           <span className={`min-w-0 grow truncate ${selected ? "text-fg" : "text-muted"}`}>
                             {commit.message.split("\n")[0]}
                           </span>
@@ -232,8 +233,8 @@ function WhyPanel({
               {current.commit.message.split("\n")[0]}
             </Link>
             <p className="mt-1.5 flex items-center gap-2 text-xs text-muted">
-              <Avatar name={current.commit.author.name} size={14} />
-              {current.commit.author.name} · <TimeAgo at={current.commit.authoredAt} /> ·{" "}
+              <CommitAvatars commit={current.commit} size={14} />
+              <CommitNames commit={current.commit} className="text-fg" /> · <TimeAgo at={current.commit.authoredAt} /> ·{" "}
               <span className="font-mono">{current.commit.hash.slice(0, 7)}</span>
             </p>
           </section>

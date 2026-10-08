@@ -3,6 +3,7 @@ import { data } from "react-router";
 import type { SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/why";
+import { showOneCommit } from "../../lib/commit-people.server";
 import { pullForCommit } from "../../lib/provenance.server";
 import { repos, work } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
@@ -65,7 +66,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     repos.log(path, viewer, params.hash, 1),
     pullForCommit(path, viewer, params.hash),
   ]);
-  const commit = log.ok ? log.value[0] : undefined;
+  const commit = await showOneCommit(log.ok ? log.value[0] : undefined);
   if (!commit) throw data(null, { status: 404 });
   if (!pull) return { commit, pull: null, issue: null, steps: [] as SessionEntry[] };
   const [detail, session] = await Promise.all([
