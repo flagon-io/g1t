@@ -152,6 +152,24 @@ read-only calls per unit, in parallel; a plan of all 22 units takes about
 6. Prints a table: unit, stage, result, version id, time. Each unit's full
    output is kept in `$TMPDIR/g1t-deploy/<unit>.log`.
 
+#### Migrations run while the old code is still live
+
+Migrations apply before any code, and a stage takes a minute or more, so
+for that long the code in production is the old code reading the new
+schema. A migration must keep the old code right:
+
+- **Add, never change meaning.** New tables and columns (with defaults) are
+  safe. Rewriting what existing rows mean is not: on 2026-10-08,
+  `billing/0039` turned comped accounts into `custom` terms at 100%, and
+  for about 40 seconds the old billing code, which knew only `comped`, saw
+  flagon-io as a free workspace and refused its workflows.
+- **Change meaning in two deploys.** First ship code that reads both the old
+  and the new form (and keeps writing the old one); then, in a later
+  deploy, the migration that rewrites the rows; then, if you like, code
+  that drops the old form.
+- **Never drop or rename** a column or table the live code reads in the same
+  deploy that stops reading it.
+
 #### Telling the status page about a deploy
 
 Restarts during a deploy can make a part slow for a minute, which the
