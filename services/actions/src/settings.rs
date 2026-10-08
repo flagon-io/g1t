@@ -215,6 +215,22 @@ impl Actions {
         Ok(Some(project))
     }
 
+    /// The environments a repository's own secrets and variables name.
+    pub(crate) async fn secret_environments(&self, repo_id: &str) -> Result<Vec<String>> {
+        let Some(project) = self.project_of(repo_id).await? else {
+            return Ok(Vec::new());
+        };
+        let mut out: Vec<String> = Vec::new();
+        for row in self.rows(&project.id).await? {
+            for environment in row.environments() {
+                if !out.contains(&environment) {
+                    out.push(environment);
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// `secret`, `variable`, or `None` for both.
     fn kind(kind: &str) -> Outcome<Option<&'static str>> {
         match kind {

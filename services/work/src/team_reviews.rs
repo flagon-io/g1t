@@ -276,7 +276,7 @@ impl Work {
             ));
         }
         for (kind, data) in events {
-            self.publish_as(kind, &pull.repo_id, actor.map(|actor| actor.id.clone()), data)
+            self.publish_as(kind, &pull.repo_id, actor.map(|actor| actor.id.clone()), g1t_contracts::events::marked(data, actor))
                 .await?;
         }
         Ok(())

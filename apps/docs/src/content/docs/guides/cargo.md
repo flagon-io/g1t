@@ -149,8 +149,8 @@ A private crate you cannot see looks exactly like one that does not exist.
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-add and publish the workspace's crates. A workflow runs no `cargo login`:
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can install the workspace's crates,
+and publish them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token). A workflow runs no `cargo login`:
 give Cargo the registry, its credential provider and the token in the
 environment, each named for the registry:
 
@@ -158,6 +158,9 @@ environment, each named for the registry:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       CARGO_REGISTRIES_ACME_INDEX: sparse+https://g1t.sh/-/cargo/acme/index/
       CARGO_REGISTRIES_ACME_CREDENTIAL_PROVIDER: cargo:token

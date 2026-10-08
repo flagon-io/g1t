@@ -9919,6 +9919,251 @@
       "updated_at": "2026-10-08T01:13:52.101Z"
     }
   },
+  "update_environment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "environment": "production"
+    },
+    "request": {
+      "wait_timer": 10,
+      "prevent_self_review": true,
+      "reviewers": [
+        {
+          "type": "User",
+          "name": "syntaqx"
+        },
+        {
+          "type": "Team",
+          "name": "deployers"
+        }
+      ],
+      "deployment_branch_policy": {
+        "protected_branches": true,
+        "custom_branch_policies": false
+      }
+    },
+    "response": {
+      "name": "production",
+      "protection_rules": [
+        {
+          "type": "required_reviewers",
+          "prevent_self_review": true,
+          "reviewers": [
+            {
+              "type": "User",
+              "reviewer": {
+                "login": "syntaqx"
+              }
+            },
+            {
+              "type": "Team",
+              "reviewer": {
+                "slug": "deployers"
+              }
+            }
+          ]
+        },
+        {
+          "type": "wait_timer",
+          "wait_timer": 10
+        },
+        {
+          "type": "branch_policy"
+        }
+      ],
+      "deployment_branch_policy": {
+        "protected_branches": true,
+        "custom_branch_policies": false
+      },
+      "branch_policies": [],
+      "can_admins_bypass": true,
+      "protected": true,
+      "updated_at": "2026-10-08T09:12:44.103Z",
+      "updated_by": "syntaqx"
+    },
+    "notes": "Fields left out stay as they are. A job with `environment: production` now waits for syntaqx or someone in deployers to approve it, then ten minutes, and runs only on a protected branch."
+  },
+  "delete_environment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "environment": "staging"
+    },
+    "response": {
+      "deleted": true
+    }
+  },
+  "get_pending_deployments": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "run_01kq9b3d5f7h9k1n3q5s7u9w1y"
+    },
+    "response": [
+      {
+        "environment": {
+          "name": "production"
+        },
+        "state": "waiting",
+        "needs_review": true,
+        "wait_until": "2026-10-08T09:31:02.551Z",
+        "current_user_can_approve": true,
+        "reviewers": [
+          {
+            "type": "User",
+            "reviewer": {
+              "login": "syntaqx"
+            }
+          },
+          {
+            "type": "Team",
+            "reviewer": {
+              "slug": "deployers"
+            }
+          }
+        ],
+        "jobs": [
+          "Deploy the core services"
+        ],
+        "reviewed_by": null,
+        "comment": null,
+        "reviewed_at": null
+      }
+    ]
+  },
+  "review_pending_deployments": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "run_01kq9b3d5f7h9k1n3q5s7u9w1y"
+    },
+    "request": {
+      "environment_names": [
+        "production"
+      ],
+      "state": "approved",
+      "comment": "Release notes checked."
+    },
+    "response": [
+      {
+        "environment": {
+          "name": "production"
+        },
+        "state": "approved",
+        "needs_review": true,
+        "wait_until": "2026-10-08T09:31:02.551Z",
+        "current_user_can_approve": false,
+        "reviewers": [
+          {
+            "type": "User",
+            "reviewer": {
+              "login": "syntaqx"
+            }
+          },
+          {
+            "type": "Team",
+            "reviewer": {
+              "slug": "deployers"
+            }
+          }
+        ],
+        "jobs": [
+          "Deploy the core services"
+        ],
+        "reviewed_by": "syntaqx",
+        "comment": "Release notes checked.",
+        "reviewed_at": "2026-10-08T09:22:15.871Z"
+      }
+    ],
+    "notes": "The jobs still wait for the wait timer, until `wait_until`, unless an admin approved past the rules."
+  },
+  "approve_workflow_run": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "run_01kq9a2c4e6g8j0m2p4r6t8v0x"
+    },
+    "response": {
+      "id": "run_01kq9a2c4e6g8j0m2p4r6t8v0x",
+      "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+      "path": ".g1t/workflows/ci.yml",
+      "name": "CI",
+      "title": "Fix a typo in the README",
+      "number": 41,
+      "attempt": 1,
+      "event": "pull_request",
+      "ref": "refs/pull/88/merge",
+      "sha": "4c1e7a9b2d5f8e0a3c6b9d2f5a8c1e4b7d0f3a6c",
+      "pull": 88,
+      "status": "queued",
+      "conclusion": null,
+      "error": null,
+      "actor": "octo-fan",
+      "created_at": "2026-10-08T08:02:11.004Z",
+      "started_at": null,
+      "finished_at": null
+    }
+  },
+  "get_workflow_permissions": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "response": {
+      "default_workflow_permissions": "read",
+      "can_approve_pull_request_reviews": false
+    }
+  },
+  "set_workflow_permissions": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "request": {
+      "default_workflow_permissions": "write"
+    },
+    "response": {
+      "default_workflow_permissions": "write",
+      "can_approve_pull_request_reviews": false
+    }
+  },
+  "get_fork_pr_approval": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "response": {
+      "approval_policy": "outside_contributors"
+    }
+  },
+  "set_fork_pr_approval": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "request": {
+      "approval_policy": "all_external_contributors"
+    },
+    "response": {
+      "approval_policy": "all_external_contributors"
+    }
+  },
+  "create_repository_dispatch": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "request": {
+      "event_type": "docs-published",
+      "client_payload": {
+        "version": "2026.10.08"
+      }
+    },
+    "response": {
+      "runs": 1
+    }
+  },
   "get_languages": {
     "response": {
       "head": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",

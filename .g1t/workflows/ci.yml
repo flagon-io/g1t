@@ -14,6 +14,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Its token only reads: it checks the code out and nothing more.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

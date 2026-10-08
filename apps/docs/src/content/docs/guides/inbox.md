@@ -21,6 +21,7 @@ Your inbox holds one **thread** for each thing you were told about:
 - a pull request
 - a workflow on one branch
 - a deployment: a project's production, or one pull request's preview
+- a workflow run waiting for your review to deploy to an environment
 
 When something new happens on a thread, it comes back to the top of your
 inbox, unread, even if you had marked it done. It is not added a second
@@ -43,7 +44,7 @@ table is shown.
 | Reason | Shown as | Why you were told |
 | --- | --- | --- |
 | `agent` | agent waiting | An agent is waiting on you: it asked a question, or it stopped until a person steps in. |
-| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. |
+| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. Also a workflow run waiting for you, as one of an [environment's reviewers](/guides/actions/#environments), to approve its deployment. |
 | `assign` | assigned | You were assigned, or you are an assignee. |
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
 | `team_mention` | team mentioned | Someone mentioned a [team](/guides/teams/#mentions) you are in with `@workspace/team`, or a team you are in was mentioned on it before. |
@@ -66,6 +67,7 @@ what it was:
 | g1t stopped on a pull request until a person steps in | The same people | `agent` | Needs you |
 | Someone asked for reviews on a pull request, or opened one with reviewers | The reviewers asked | `review_requested` | Needs you |
 | Someone asked a team to review a pull request | Everyone in the team and its child teams, or, with [review assignment](/guides/teams/#review-assignment), the people picked | `review_requested` | Needs you |
+| A workflow run's jobs wait for an [environment's reviewers](/guides/actions/#environments) | Each reviewer, and everyone in a reviewing team ("Deploy is waiting for your review to deploy to production in acme/api"), but not whoever started the run when it may not approve it | `review_requested` | Needs you |
 | A pull request changes files a [CODEOWNERS file](/guides/codeowners/) gives you or your team | The owners asked: "acme/api#42 changes files you own" | `review_requested` | Needs you |
 | Someone assigned people to an issue or pull request, or opened one with assignees | The people newly assigned | `assign` | Info |
 | Checks failed, or could not run, on a pull request | The person the pull request belongs to | `ci_activity` | Error |

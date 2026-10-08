@@ -41,6 +41,11 @@ on:
         type: boolean
         default: false
 
+# Its token only reads: deploying uses CLOUDFLARE_API_TOKEN, and g1t
+# records the deployments itself.
+permissions:
+  contents: read
+
 # One deploy at a time, and never one cut off halfway: the next waits.
 concurrency:
   group: deploy-production

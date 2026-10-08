@@ -199,6 +199,8 @@ export default [
     route("settings/rules/:id", "routes/repo/settings-ruleset.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),
+    route("settings/actions", "routes/repo/settings-actions.tsx"),
+    route("settings/environments", "routes/repo/settings-environments.tsx"),
     route("settings/runners", "routes/repo/settings-runners.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/domains", "routes/repo/settings-domains.tsx"),

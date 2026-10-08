@@ -411,6 +411,20 @@ export const OPERATION_SCOPES = [
   ["get_environment", "deployments:read"],
   ["create_deployment", "deployments:write"],
   ["create_deployment_status", "deployments:write"],
+  // What keeps runs safe: the runs environments hold and reviewing them,
+  // approving a pull request's run, and a repository's own rules for its
+  // environments and tokens, which are an admin's.
+  ["get_pending_deployments", "workflows:read"],
+  ["review_pending_deployments", "workflows:write"],
+  ["approve_workflow_run", "workflows:write"],
+  ["get_workflow_permissions", "repo:read"],
+  ["get_fork_pr_approval", "repo:read"],
+  ["update_environment", "repo:admin"],
+  ["delete_environment", "repo:admin"],
+  ["set_workflow_permissions", "repo:admin"],
+  ["set_fork_pr_approval", "repo:admin"],
+  // Starting workflows from outside, as a push would.
+  ["create_repository_dispatch", "code:write"],
   ["recall", "memory:read"],
   ["search_context", "memory:read"],
   ["get_entity", "memory:read"],

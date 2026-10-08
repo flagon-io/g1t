@@ -22,7 +22,12 @@ export type DispatchInput = {
   options?: string[];
 };
 
-export type RunStatus = "pending" | "queued" | "in_progress" | "completed";
+/**
+ * `action_required`: a pull request's run from outside, waiting for someone
+ * with the Write role to approve it. `waiting`: its jobs are held by an
+ * environment's protection rules (a run's detail says so; lists do not).
+ */
+export type RunStatus = "pending" | "action_required" | "queued" | "in_progress" | "waiting" | "completed";
 export type Conclusion = "success" | "failure" | "cancelled" | "skipped";
 
 export type WorkflowRun = {
@@ -81,21 +86,106 @@ export type Job = {
   key: string;
   name: string;
   needs: string[];
-  /** `calling`: running the reusable workflow it calls, whose jobs follow it. */
-  status: "waiting" | "queued" | "in_progress" | "calling" | "completed";
+  /**
+   * `calling`: running the reusable workflow it calls, whose jobs follow it.
+   * `pending`: held by its environment's protection rules; `reason` says for what.
+   */
+  status: "waiting" | "pending" | "queued" | "in_progress" | "calling" | "completed";
   conclusion: Conclusion | null;
   steps: StepState[];
   annotations: Annotation[];
   reason: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  /** The environment it names, once its needs are done. */
+  environment?: string | null;
   /** Its `runs-on` names self-hosted runners. */
   selfHosted?: boolean;
   /** The self-hosted runner that took it, by name. */
   runner?: string | null;
 };
 
-export type RunDetail = { run: WorkflowRun; jobs: Job[]; notes: WorkflowNote[] };
+export type RunDetail = {
+  run: WorkflowRun;
+  jobs: Job[];
+  notes: WorkflowNote[];
+  /** For a pull request's run from outside: whether it waits for, or had, approval. */
+  approval?: RunApproval | null;
+  /** The environments whose protection rules hold its jobs, this attempt. */
+  pendingDeployments?: PendingDeployment[];
+};
+
+export type RunApproval = {
+  state: "required" | "approved";
+  /** Why it waits, in words. */
+  reason: string;
+  approvedBy: string | null;
+};
+
+/** One person or team who may approve an environment's jobs. */
+export type EnvironmentReviewer = { type: "user" | "team"; name: string };
+
+/** A branch or tag pattern an environment takes deployments from. */
+export type BranchPattern = { name: string; type: "branch" | "tag" };
+
+/** The most reviewers an environment may have. */
+export const MAX_ENVIRONMENT_REVIEWERS = 6;
+/** The longest wait timer, in minutes (30 days). */
+export const MAX_WAIT_MINUTES = 43_200;
+
+/**
+ * An environment and its protection rules. Jobs naming it with
+ * `environment:` wait until the rules let them through, and only then get
+ * its secrets.
+ */
+export type Environment = {
+  /** Lowercase. */
+  name: string;
+  reviewers: EnvironmentReviewer[];
+  preventSelfReview: boolean;
+  waitMinutes: number;
+  /** `protected`: branches the rules protect; `selected`: `branchPatterns`. */
+  branchPolicy: "all" | "protected" | "selected";
+  branchPatterns: BranchPattern[];
+  adminsBypass: boolean;
+  /** Whether it has rules saved; false for one only named by a workflow or a secret. */
+  protected: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+/** What changes an environment's rules; left out is unchanged. */
+export type EnvironmentChange = Partial<
+  Pick<Environment, "reviewers" | "preventSelfReview" | "waitMinutes" | "branchPolicy" | "branchPatterns" | "adminsBypass">
+>;
+
+/** An environment holding a run's jobs, and where its rules stand. */
+export type PendingDeployment = {
+  environment: string;
+  state: "waiting" | "approved" | "rejected";
+  needsReview: boolean;
+  /** When its wait timer lets its jobs start. */
+  waitUntil: string | null;
+  reviewers: EnvironmentReviewer[];
+  /** The jobs it holds, by name. */
+  jobs: string[];
+  /** Whether the viewer may approve or reject it now. */
+  canReview: boolean;
+  reviewedBy: string | null;
+  comment: string | null;
+  reviewedAt: string | null;
+};
+
+/** Which pull requests' runs wait for approval, least strict first. */
+export const APPROVAL_POLICIES = ["first_time_contributors", "outside_contributors", "all_external_contributors"] as const;
+export type ApprovalPolicy = (typeof APPROVAL_POLICIES)[number];
+
+/** A repository's choices for its workflows. */
+export type ActionsSettings = {
+  /** What a workflow without `permissions:` gets: `read` (the default) or `write`. */
+  defaultPermissions: "read" | "write";
+  approvalPolicy: ApprovalPolicy;
+};
 
 export type LogChunk = { seq: number; step: number; text: string };
 export type JobLog = { chunks: LogChunk[]; done: boolean };
@@ -185,4 +275,24 @@ export interface ActionsApi {
   ): Promise<Result<Setting>>;
   /** One row by `id`, or every row of the key. */
   deleteSetting(actor: User, owner: SettingsOwner, kind: SettingKindFilter, name: string, id?: string): Promise<Result<boolean>>;
+  /** Lets a pull request's run from outside start. Write role. */
+  approveRun(actor: User, repo: RepoPath, id: string): Promise<Result<WorkflowRun>>;
+  pendingDeployments(repo: RepoPath, viewer: Viewer, id: string): Promise<Result<PendingDeployment[]>>;
+  /** Approves or rejects the jobs `environments` hold (every waiting one when empty). */
+  reviewDeployments(
+    actor: User,
+    repo: RepoPath,
+    id: string,
+    state: "approved" | "rejected",
+    environments?: string[],
+    comment?: string,
+  ): Promise<Result<PendingDeployment[]>>;
+  actionsSettings(repo: RepoPath, viewer: Viewer): Promise<Result<ActionsSettings>>;
+  /** Admin role. Left out is unchanged. */
+  setActionsSettings(actor: User, repo: RepoPath, change: Partial<ActionsSettings>): Promise<Result<ActionsSettings>>;
+  /** Every environment the repository's rules, secrets, workflows or jobs name. */
+  environments(repo: RepoPath, viewer: Viewer): Promise<Result<Environment[]>>;
+  /** Admin role. */
+  setEnvironment(actor: User, repo: RepoPath, name: string, change: EnvironmentChange): Promise<Result<Environment>>;
+  deleteEnvironment(actor: User, repo: RepoPath, name: string): Promise<Result<boolean>>;
 }

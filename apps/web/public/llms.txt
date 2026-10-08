@@ -495,9 +495,19 @@ key, Secret or Config, the environments it applies to (all, or e.g.
 production/preview, or a job's `environment:`), and whether workflows,
 deployments or both read it. API: `{repo}/actions/secrets` and
 `{repo}/actions/variables` (GitHub's routes) with extra `environments`,
-`available_to`, `repositories`, `note`, `id`. Trusted jobs get
-`secrets.G1T_TOKEN` (the workspace's token; `GITHUB_TOKEN` is its alias),
-which cannot change secrets. A pull request's runs and preview are trusted
+`available_to`, `repositories`, `note`, `id`. Every job gets
+`secrets.G1T_TOKEN` (`GITHUB_TOKEN` is its alias): a token for that job
+only, reaching its repository only, with the scopes its `permissions:`
+give (default `contents: read`, `packages: read`), revoked when the job
+ends; what it changes starts no workflows except `workflow_dispatch` and
+`repository_dispatch` (`POST {repo}/dispatches`). It cannot change
+secrets. A job naming an environment with protection rules (required
+reviewers, wait timer, branch limits; `PUT {repo}/environments/{name}`)
+waits until they pass, and reviewers approve it at
+`POST {repo}/actions/runs/{id}/pending_deployments`. A pull request's
+runs from outside may wait as `action_required` until someone with Write
+approves them (`POST {repo}/actions/runs/{id}/approve`); agents cannot
+approve runs or deployments. A pull request's runs and preview are trusted
 only when its author has `write` or higher on the repository (a member or
 an outside collaborator), or is g1t working on its own; for one g1t made,
 the role of whoever asked for it (`requested_by`) counts. Anyone else's run

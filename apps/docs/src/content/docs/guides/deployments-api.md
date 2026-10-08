@@ -213,6 +213,13 @@ first. Each has:
 without regard to case. URL-encode a name with slashes:
 `…/environments/review%2Ffeature-x`.
 
+An environment with [protection rules](/guides/actions/#environments)
+also has `protection_rules` (`required_reviewers`, `wait_timer`,
+`branch_policy`), `deployment_branch_policy`, `branch_policies` and
+`can_admins_bypass`, and is listed even before anything deploys to it.
+`PUT …/environments/{environment}` sets the rules and `DELETE` removes
+them.
+
 ## Read deployments
 
 | Route | What it returns |
@@ -380,8 +387,12 @@ jobs:
       - run: ./plan.sh
 ```
 
-A job's `G1T_TOKEN` has full access, so a step can also report deployments
-of its own with the API.
+A job's `G1T_TOKEN` can also report deployments of its own with the API,
+given `deployments: write` in its [`permissions:`](/guides/actions/#the-jobs-token).
+
+A job that names an environment with
+[protection rules](/guides/actions/#environments) waits for them before it
+starts, and its deployment is made only once it does.
 
 ## Webhooks
 
@@ -409,6 +420,8 @@ The [`workflow` tool](/reference/mcp/#workflow) has an action for each route:
 | `create_deployment_status` | `POST /repos/{owner}/{name}/deployments/{id}/statuses` |
 | `list_environments` | `GET /repos/{owner}/{name}/environments` |
 | `get_environment` | `GET /repos/{owner}/{name}/environments/{environment}` |
+| `update_environment` | `PUT /repos/{owner}/{name}/environments/{environment}` |
+| `delete_environment` | `DELETE /repos/{owner}/{name}/environments/{environment}` |
 
 They take the repository as `repo`, written `owner/name`, and the same
 fields as the routes.

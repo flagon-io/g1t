@@ -55,13 +55,16 @@ docker pull g1t.sh/acme/web@sha256:…
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-push and pull the workspace's images:
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can pull the workspace's images, and
+push them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token):
 
 ```yaml
 jobs:
   image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - name: Sign in to g1t.sh
@@ -72,8 +75,8 @@ jobs:
           docker push g1t.sh/${{ github.repository }}:${{ github.sha }}
 ```
 
-Runs that get no secrets (a pull request from someone without Write) get an
-empty token, and cannot push. See
+Runs that get no secrets (a pull request from someone without Write) get a
+token that only reads, and cannot push. See
 [secrets and variables](/guides/actions/#secrets-and-variables).
 
 ## The 100 MB limit

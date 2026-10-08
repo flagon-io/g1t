@@ -94,6 +94,9 @@ pub struct AuditActor {
     pub credential_id: Option<String>,
 }
 
+/// The `run_kind` of what a workflow job's token did.
+pub const WORKFLOW_JOB: &str = "workflow_job";
+
 impl AuditActor {
     pub fn of(user: &User) -> Self {
         let kind = match user.kind {
@@ -103,6 +106,8 @@ impl AuditActor {
             PrincipalKind::System => ActorKind::System,
         };
         let acting: Option<&Acting> = user.acting.as_deref();
+        // A workflow job's token: what it does is the job's, under its run.
+        let job = user.token.as_deref().and_then(|token| token.job.as_ref().map(|job| (token, job)));
         AuditActor {
             actor_kind: Some(kind),
             actor: user.username.clone(),
@@ -111,11 +116,15 @@ impl AuditActor {
             on_behalf_of: acting.map(|acting| acting.on_behalf_of.username.clone()),
             run_id: acting
                 .and_then(|acting| acting.run())
-                .and_then(|run| run.run_id.clone()),
+                .and_then(|run| run.run_id.clone())
+                .or_else(|| job.map(|(_, job)| job.run_id.clone())),
             run_kind: acting
                 .and_then(|acting| acting.run())
-                .map(|run| run.kind.as_str().to_owned()),
-            credential_id: acting.map(|acting| acting.credential_id.clone()),
+                .map(|run| run.kind.as_str().to_owned())
+                .or_else(|| job.map(|_| WORKFLOW_JOB.to_owned())),
+            credential_id: acting
+                .map(|acting| acting.credential_id.clone())
+                .or_else(|| job.map(|(token, _)| token.token_id.clone())),
         }
     }
 

@@ -275,14 +275,17 @@ exist.
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-resolve and deploy the workspace's artifacts. With the `settings.xml`
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can resolve the workspace's artifacts,
+and deploy them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token). With the `settings.xml`
 above, give it to Maven as `G1T_TOKEN`:
 
 ```yaml
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       G1T_TOKEN: ${{ secrets.G1T_TOKEN }}
     steps:

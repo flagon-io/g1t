@@ -157,6 +157,34 @@ pub struct CreateAccessTokenArgs {
     pub listed: bool,
 }
 
+/// `create_job_token`: a workflow job's `G1T_TOKEN`. It acts as the
+/// repository's workspace, reaches that repository only, holds `scopes`
+/// (from the job's `permissions`), and is never listed. The actions service
+/// revokes it when the job ends (`revoke_job_tokens`); `ttl_seconds` is a
+/// backstop. Returns `CreatedAccessToken`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateJobTokenArgs {
+    /// The workspace the repository belongs to, as its own principal.
+    pub workspace: User,
+    pub repo: crate::repos::RepoPath,
+    pub run_id: String,
+    pub job_id: String,
+    /// What the token is listed as in logs: `G1T_TOKEN for acme/web run 4`.
+    pub name: String,
+    pub ttl_seconds: u64,
+    /// As `resource:level`; unknown names are left out.
+    pub scopes: Vec<String>,
+}
+
+/// `revoke_job_tokens`: ends a workflow job's tokens at once, when the job
+/// finishes or is cancelled. Only job tokens are touched. Returns `bool`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeJobTokensArgs {
+    pub job_id: String,
+}
+
 /// `update_access_token`: changes what one of a person's tokens may do.
 /// The token itself is unchanged. Returns `Outcome<AccessToken>`.
 #[derive(Debug, Serialize, Deserialize)]

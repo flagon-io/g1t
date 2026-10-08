@@ -9,7 +9,9 @@ Every workspace keeps an audit log. It records:
   reads included: every API and MCP call, every clone and fetch, every push.
 - **Every change people and workspace tokens make** through the API, the
   MCP server and git: opening and closing issues, comments, merges,
-  settings, pushes. Reads by people are not recorded.
+  settings, pushes. Reads by people are not recorded. A workflow job's
+  [`G1T_TOKEN`](/guides/actions/#the-jobs-token) is recorded as that job's,
+  under its run.
 
 - **A repository's lifecycle**, wherever the change was made, g1t.sh
   included. A transfer is recorded in both workspaces' logs, and a
@@ -50,12 +52,12 @@ only ever added: nothing edits or removes one.
 | Time | When it happened, to the millisecond. |
 | Actor | Who did it: a person, an agent, or a workspace token. |
 | On behalf of | For an agent, the person it worked for: `g1t on behalf of syntaqx`. |
-| Run | The agent run, with its kind: `implement`, `review`, `update` and so on. |
+| Run | The agent run, with its kind: `implement`, `review`, `update` and so on; or the workflow run whose job's token did it, as `workflow_job`. |
 | Credential | The id of the token used. |
 | Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
 | Target | The repository, the issue or pull request number, and for git the refs it moved. |
 | Outcome | `allowed` or `denied`. |
-| Rule | What decided it: the run's scope, such as `run:implement/tools`; a refusal rule, such as `scope:repository`; or, for people, their own access. A refusal by the repository's own rules is `service` (or `repository` for git). |
+| Rule | What decided it: the run's scope, such as `run:implement/tools`; a refusal rule, such as `scope:repository`, or `token:repository` for a workflow job's token used on another repository; or, for people, their own access. A refusal by the repository's own rules is `service` (or `repository` for git). |
 | Result | `ok`, or the reason it failed. |
 | Request id | The request's id, the same one Cloudflare logs it under. |
 

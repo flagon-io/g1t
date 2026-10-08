@@ -87,7 +87,8 @@ workspace's repository lists only its public packages.
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` can install the workspace's private packages:
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can install the workspace's private
+packages (its `packages: read` permission, in the default):
 
 ```yaml
 jobs:

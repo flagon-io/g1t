@@ -8,8 +8,8 @@ use g1t_actions::expr::{self, Scope, Status};
 use g1t_actions::matrix;
 use g1t_actions::workflow::{self, Workflow};
 use g1t_contracts::access::Capability;
-use g1t_contracts::actions::{JobCallArgs, RunActionArgs, StartJobArgs, WorkflowRun};
-use g1t_contracts::identity::{CreateAccessTokenArgs, CreatedAccessToken};
+use g1t_contracts::actions::{JobCallArgs, RunActionArgs, RunApproval, StartJobArgs, WorkflowRun};
+use g1t_contracts::identity::{CreateJobTokenArgs, CreatedAccessToken, RevokeJobTokensArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use worker::Result;
 
+use crate::protection::Gate;
 use crate::sync::WorkflowRow;
 use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, RUNNING_PER_WORKSPACE, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, optional, repo_path};
 use g1t_contracts::runners::{Wanted, waiting_reason};
@@ -57,6 +58,9 @@ pub struct NewRun {
     pub actor_id: Option<String>,
     pub actor: Option<String>,
     pub trusted: bool,
+    /// Why the run waits for someone with the Write role to approve it
+    /// before anything starts: a pull request from outside (protection.rs).
+    pub approval: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -88,9 +92,19 @@ pub struct RunRow {
     pub created_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    /// JSON `RunApproval`, for a run that needed approval (migration 0006).
+    #[serde(default)]
+    pub approval: Option<String>,
+    /// Whether its concurrency group cancels what it replaces.
+    #[serde(default)]
+    pub cancel_in_progress: u32,
 }
 
 impl RunRow {
+    pub fn approval(&self) -> Option<RunApproval> {
+        self.approval.as_deref().and_then(|text| serde_json::from_str(text).ok())
+    }
+
     pub fn info(&self) -> RunInfo {
         let mut info: RunInfo = serde_json::from_str(&self.info).unwrap_or_default();
         info.run_id = self.id.clone();
@@ -169,6 +183,15 @@ pub struct JobRow {
     pub runner_id: Option<String>,
     #[serde(default)]
     pub runner_name: Option<String>,
+    /// The environment it names, read when its needs were done; a job its
+    /// rules hold is `pending` (migration 0006).
+    #[serde(default)]
+    pub environment: Option<String>,
+    /// Its own `concurrency` group, and whether that cancels what it replaces.
+    #[serde(default)]
+    pub concurrency_group: Option<String>,
+    #[serde(default)]
+    pub cancel_in_progress: u32,
 }
 
 impl JobRow {
@@ -289,10 +312,24 @@ fn job_spec(run: &RunRow, job: &JobRow) -> Option<workflow::Job> {
     }
 }
 
-/// The environment a job deploys to, if it deploys.
+/// The environment a job deploys to, if it deploys: by the name read when
+/// its needs were done (which may have needed their outputs), else as
+/// its `environment:` reads now.
 pub(crate) fn deploys_to(run: &RunRow, job: &JobRow) -> Option<JobEnvironment> {
     let spec = job_spec(run, job)?;
-    environment_of(&spec.raw, &start_contexts(run, job, &spec.id)).filter(|env| env.deploys)
+    let read = environment_of(&spec.raw, &start_contexts(run, job, &spec.id));
+    let env = match (read, &job.environment) {
+        (Some(env), Some(name)) => Some(JobEnvironment { name: name.clone(), ..env }),
+        (Some(env), None) => Some(env),
+        (None, Some(name)) => {
+            let deployment = spec.raw.get("environment").and_then(|env| env.get("deployment"));
+            let deploys = !matches!(deployment, Some(Value::Bool(false)))
+                && !matches!(deployment, Some(Value::String(text)) if text.trim() == "false");
+            Some(JobEnvironment { name: name.clone(), url: None, deploys })
+        }
+        (None, None) => None,
+    };
+    env.filter(|env| env.deploys)
 }
 
 /// What the runner is told about a job it starts, from its workflow: the
@@ -312,11 +349,8 @@ fn start_details(run: &RunRow, job: &JobRow) -> StartDetails {
             None => return StartDetails::default(),
         },
     };
-    let environment = match spec.raw.get("environment") {
-        Some(Value::String(name)) if !name.contains("${{") => Some(name.clone()),
-        Some(Value::Object(env)) => env.get("name").and_then(Value::as_str).filter(|n| !n.contains("${{")).map(str::to_owned),
-        _ => None,
-    };
+    // As read when its needs were done, an expression's included.
+    let environment = job.environment.clone();
     // `runs-on` as the job was queued with: its matrix and the run's
     // inputs. A label that needs more than those is the standard machine.
     let contexts = start_contexts(run, job, &spec.id);
@@ -442,12 +476,14 @@ impl Actions {
             .and_then(|c| expr::interpolate_value(&c.cancel_in_progress, &scope).ok())
             .is_some_and(|value| expr::truthy(&value));
 
+        let approval = new.approval.as_ref().map(|reason| RunApproval { state: "required".into(), reason: reason.clone(), approved_by: None });
         let inserted = self
             .db
             .prepare(
                 "INSERT OR IGNORE INTO runs (id, workflow_id, repo_id, repo, path, name, title, number, event, action, git_ref, sha,
-                   pull, status, actor, actor_id, source, info, inputs, trusted, concurrency_group, event_key, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                   pull, status, actor, actor_id, source, info, inputs, trusted, concurrency_group, event_key, created_at,
+                   approval, cancel_in_progress)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
             )
             .bind(&[
                 id.as_str().into(),
@@ -463,6 +499,7 @@ impl Actions {
                 info.git_ref.as_str().into(),
                 info.sha.as_str().into(),
                 new.pull.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                if approval.is_some() { "action_required" } else { "queued" }.into(),
                 optional(new.actor.as_deref()),
                 optional(new.actor_id.as_deref()),
                 new.source.as_str().into(),
@@ -472,6 +509,8 @@ impl Actions {
                 optional(group.as_deref()),
                 new.event_key.as_str().into(),
                 now().into(),
+                approval.as_ref().map(serde_json::to_string).transpose()?.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                u32::from(cancel_in_progress).into(),
             ])?
             .first::<Value>(None)
             .await?;
@@ -503,12 +542,30 @@ impl Actions {
         }
         self.db.batch(statements).await?;
 
-        // One run at a time per concurrency group.
-        if let Some(group) = &group {
+        // A pull request's run from outside waits to be approved; it joins
+        // its concurrency group once it is (protection.rs, approve_run).
+        if approval.is_some() {
+            return Ok(Some(id));
+        }
+        if let Some(run) = self.run_row(&id).await? {
+            self.enter_group(&run).await?;
+        }
+        Ok(Some(id))
+    }
+
+    /// A run about to start: one run at a time per concurrency group, as on
+    /// GitHub. A newer run replaces one that waits in the group, and with
+    /// `cancel-in-progress` the one that runs; otherwise it waits as
+    /// `pending` for the one that runs. Then it moves along.
+    pub(crate) async fn enter_group(&self, run: &RunRow) -> Result<()> {
+        if let Some(group) = &run.concurrency_group {
+            let cancel_in_progress = run.cancel_in_progress != 0;
             let others = self
                 .db
-                .prepare("SELECT * FROM runs WHERE repo_id = ? AND concurrency_group = ? AND id != ? AND status != 'completed' ORDER BY id")
-                .bind(&[new.repo.id.as_str().into(), group.as_str().into(), id.as_str().into()])?
+                .prepare(
+                    "SELECT * FROM runs WHERE repo_id = ? AND concurrency_group = ? AND id != ? AND status NOT IN ('completed', 'action_required') ORDER BY id",
+                )
+                .bind(&[run.repo_id.as_str().into(), group.as_str().into(), run.id.as_str().into()])?
                 .all()
                 .await?
                 .results::<RunRow>()?;
@@ -521,14 +578,13 @@ impl Actions {
             if !cancel_in_progress && others.iter().any(|other| other.status != "pending") {
                 self.db
                     .prepare("UPDATE runs SET status = 'pending' WHERE id = ?")
-                    .bind(&[id.as_str().into()])?
+                    .bind(&[run.id.as_str().into()])?
                     .run()
                     .await?;
-                return Ok(Some(id));
+                return Ok(());
             }
         }
-        self.advance(&id).await?;
-        Ok(Some(id))
+        self.advance(&run.id).await
     }
 
     /// A run that could not start, such as for a workflow file that does not read.
@@ -587,7 +643,7 @@ impl Actions {
         // Each pass may finish jobs (skipped ones), which may free others.
         for _ in 0..20 {
             let Some(run) = self.run_row(run_id).await? else { return Ok(()) };
-            if run.status == "completed" || run.status == "pending" {
+            if matches!(run.status.as_str(), "completed" | "pending" | "action_required") {
                 return Ok(());
             }
             let workflow = match workflow::parse(&run.source) {
@@ -718,6 +774,8 @@ impl Actions {
         // Whether pull requests from forks may use self-hosted runners here,
         // asked once, and only for a run that is not trusted.
         let mut forks_allowed: Option<bool> = None;
+        // Each concurrency group its jobs join, and whether it cancels.
+        let mut groups: Vec<(String, bool)> = Vec::new();
         let mut statements = Vec::new();
         for (index, combination) in combinations.iter().enumerate() {
             let mut contexts = contexts.clone();
@@ -802,7 +860,7 @@ impl Actions {
                 .get("continue-on-error")
                 .and_then(|value| expr::interpolate_value(value, &scope).ok())
                 .is_some_and(|value| expr::truthy(&value));
-            let (status, conclusion, finished) = match &reason {
+            let (mut status, mut conclusion, mut finished) = match &reason {
                 Some(_) => ("completed", Some("failure"), Some(now())),
                 None => ("queued", None, None),
             };
@@ -813,6 +871,43 @@ impl Actions {
             } else {
                 (None, None)
             };
+            // The environment it names, an expression read now, and what
+            // that environment's protection rules say: it starts, waits as
+            // `pending` (protection.rs), or may not deploy there.
+            let environment = environment_of(&job.raw, &contexts).map(|env| env.name);
+            if status == "queued"
+                && let Some(name) = &environment
+            {
+                match self.gate(run, name).await? {
+                    Gate::Open => {}
+                    Gate::Held(why) => {
+                        status = "pending";
+                        reason = Some(why);
+                    }
+                    Gate::Refused(why) => {
+                        (status, conclusion, finished) = ("completed", Some("failure"), Some(now()));
+                        reason = Some(why);
+                    }
+                }
+            }
+            // Its own concurrency group.
+            let job_group = job
+                .concurrency
+                .as_ref()
+                .and_then(|c| expr::interpolate(&c.group, &scope).ok())
+                .map(|group| group.trim().to_owned())
+                .filter(|group| !group.is_empty());
+            let job_cancel = job
+                .concurrency
+                .as_ref()
+                .and_then(|c| expr::interpolate_value(&c.cancel_in_progress, &scope).ok())
+                .is_some_and(|value| expr::truthy(&value));
+            if status != "completed"
+                && let Some(group) = &job_group
+                && !groups.iter().any(|(known, _)| known == group)
+            {
+                groups.push((group.clone(), job_cancel));
+            }
             let values: Vec<worker::wasm_bindgen::JsValue> = vec![
                 name.into(),
                 serde_json::to_string(combination)?.into(),
@@ -825,6 +920,9 @@ impl Actions {
                 optional(finished.as_deref()),
                 optional(labels_json.as_deref()),
                 optional(queued_at.as_deref()),
+                optional(environment.as_deref()),
+                optional(job_group.as_deref()),
+                u32::from(job_cancel).into(),
             ];
             if index == 0 {
                 let mut bound = values;
@@ -833,7 +931,8 @@ impl Actions {
                     self.db
                         .prepare(
                             "UPDATE jobs SET name = ?, matrix = ?, status = ?, conclusion = ?, reason = ?, timeout_minutes = ?,
-                               continue_on_error = ?, max_parallel = ?, finished_at = ?, labels = ?, queued_at = ? WHERE id = ?",
+                               continue_on_error = ?, max_parallel = ?, finished_at = ?, labels = ?, queued_at = ?, environment = ?,
+                               concurrency_group = ?, cancel_in_progress = ? WHERE id = ?",
                         )
                         .bind(&bound)?,
                 );
@@ -853,14 +952,61 @@ impl Actions {
                     self.db
                         .prepare(
                             "INSERT INTO jobs (id, run_id, repo_id, namespace, key, ordinal, needs, call, name, matrix, status, conclusion, reason,
-                               timeout_minutes, continue_on_error, max_parallel, finished_at, labels, queued_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                               timeout_minutes, continue_on_error, max_parallel, finished_at, labels, queued_at, environment,
+                               concurrency_group, cancel_in_progress)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&bound)?,
                 );
             }
         }
         self.db.batch(statements).await?;
+        self.replace_in_groups(run, &row.key, &groups).await
+    }
+
+    /// A job queued in its own concurrency group: with `cancel-in-progress`
+    /// it cancels the group's other jobs; otherwise it replaces any that
+    /// are queued and not started, and waits for the one running
+    /// (`start_queued` starts one of a group at a time). As on GitHub.
+    async fn replace_in_groups(&self, run: &RunRow, key: &str, groups: &[(String, bool)]) -> Result<()> {
+        if groups.is_empty() {
+            return Ok(());
+        }
+        #[derive(Deserialize)]
+        struct Id {
+            id: String,
+        }
+        let mine: Vec<String> = self
+            .db
+            .prepare("SELECT id FROM jobs WHERE run_id = ? AND key = ?")
+            .bind(&[run.id.as_str().into(), key.into()])?
+            .all()
+            .await?
+            .results::<Id>()?
+            .into_iter()
+            .map(|row| row.id)
+            .collect();
+        let mut moved: Vec<String> = Vec::new();
+        for (group, cancel) in groups {
+            let others = self
+                .db
+                .prepare("SELECT * FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status IN ('queued', 'pending', 'in_progress')")
+                .bind(&[run.repo_id.as_str().into(), group.as_str().into()])?
+                .all()
+                .await?
+                .results::<JobRow>()?;
+            for other in others.iter().filter(|other| !mine.contains(&other.id)) {
+                if *cancel || other.status == "queued" {
+                    self.stop_job(other, "A newer job in the same concurrency group replaced it.").await?;
+                    if !moved.contains(&other.run_id) {
+                        moved.push(other.run_id.clone());
+                    }
+                }
+            }
+        }
+        for other_run in moved.iter().filter(|id| **id != run.id) {
+            Box::pin(self.advance(other_run)).await?;
+        }
         Ok(())
     }
 
@@ -1079,6 +1225,19 @@ impl Actions {
                     continue;
                 }
             }
+            // One job of a concurrency group runs at a time.
+            if let Some(group) = &job.concurrency_group {
+                let running = self
+                    .db
+                    .prepare("SELECT COUNT(*) AS n FROM jobs WHERE repo_id = ? AND concurrency_group = ? AND status = 'in_progress' AND id != ?")
+                    .bind(&[job.repo_id.as_str().into(), group.as_str().into(), job.id.as_str().into()])?
+                    .first::<Count>(None)
+                    .await?
+                    .map_or(0, |count| count.n);
+                if running > 0 {
+                    continue;
+                }
+            }
             let token = random_hex(24);
             let at = now();
             let claimed = self
@@ -1148,6 +1307,8 @@ impl Actions {
             .first::<JobRow>(None)
             .await?;
         let Some(job) = finished else { return Ok(()) };
+        // Its G1T_TOKEN stops working with it.
+        self.revoke_job_tokens(&job.id).await;
         // A job that deploys failed: so did its run's deployment, now.
         if conclusion == "failure" && job.continue_on_error == 0 && job.started_at.is_some()
             && let Some(run) = self.run_row(&job.run_id).await?
@@ -1214,16 +1375,29 @@ impl Actions {
             .bind(&[reason.into(), now().into(), job.id.as_str().into()])?
             .first::<JobRow>(None)
             .await?;
+        if stopped.as_ref().is_some_and(|row| row.started_at.is_some()) {
+            self.revoke_job_tokens(&job.id).await;
+        }
         if let Some(stopped) = stopped.filter(|row| row.runner_id.is_some()) {
             self.released(&stopped).await?;
         }
         Ok(())
     }
 
+    /// Ends a job's tokens at once. A failure is logged: the token expires
+    /// on its own soon after the job's time limit.
+    async fn revoke_job_tokens(&self, job_id: &str) {
+        let revoked: Result<bool> =
+            g1t_kit::call(&self.identity, "revoke_job_tokens", &RevokeJobTokensArgs { job_id: job_id.to_owned() }).await;
+        if let Err(error) = revoked {
+            worker::console_error!("actions: the tokens of job {job_id} were not revoked: {error}");
+        }
+    }
+
     /// Finishes the run when every job has.
     async fn finish_if_done(&self, run_id: &str) -> Result<()> {
         let Some(run) = self.run_row(run_id).await? else { return Ok(()) };
-        if run.status == "completed" || run.status == "pending" {
+        if matches!(run.status.as_str(), "completed" | "pending" | "action_required") {
             return Ok(());
         }
         let jobs = self.job_rows(run_id).await?;
@@ -1413,7 +1587,11 @@ impl Actions {
                 "sha": run.sha,
                 "context": format!("{} / {}", run.name, run.event),
                 "state": "pending",
-                "description": format!("{} is running", run.name),
+                "description": if run.status == "action_required" {
+                    format!("{} is waiting for approval", run.name)
+                } else {
+                    format!("{} is running", run.name)
+                },
                 "targetUrl": format!("{SITE}/{}/actions/runs/{}", run.repo, run.id),
                 "source": "actions",
             }),
@@ -1432,7 +1610,7 @@ impl Actions {
         for job in self.job_rows(&run.id).await?.iter().filter(|job| job.status != "completed") {
             self.stop_job(job, reason).await?;
         }
-        if run.status == "pending" {
+        if run.status == "pending" || run.status == "action_required" {
             self.db.prepare("UPDATE runs SET status = 'queued' WHERE id = ?").bind(&[run.id.as_str().into()])?.run().await?;
         }
         self.advance(&run.id).await
@@ -1522,7 +1700,8 @@ impl Actions {
                     .prepare(
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
                            matrix = NULL, call = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
-                           labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL WHERE run_id = ? AND key = ?",
+                           labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL,
+                           concurrency_group = NULL, cancel_in_progress = 0 WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
@@ -1590,37 +1769,47 @@ impl Actions {
         let spec = &spec;
         let repo = repo_path(&run.repo);
         let trusted = run.trusted != 0;
-        // The job's `environment:`, by name: entries with a value for it give
-        // that value instead of their default, as GitHub's environment
-        // secrets do.
-        let environment: Option<String> = match spec.raw.get("environment") {
-            Some(Value::String(name)) if !name.contains("${{") => Some(name.clone()),
-            Some(Value::Object(env)) => env.get("name").and_then(Value::as_str).filter(|n| !n.contains("${{")).map(str::to_owned),
-            _ => None,
-        };
-        // G1T_TOKEN, and GITHUB_TOKEN as its alias: the workspace's own
-        // token, for as long as the job may run.
-        let token = if trusted {
-            match self.workspace_actor(&repo.namespace).await? {
-                Some(workspace) => {
-                    let created: CreatedAccessToken = g1t_kit::call(
-                        &self.identity,
-                        "create_access_token",
-                        &CreateAccessTokenArgs {
-                            user: workspace,
-                            name: format!("G1T_TOKEN for {} run {}", run.repo, run.number),
-                            ttl_seconds: Some(u64::from(job.timeout_minutes) * 60 + 600),
-                            scopes: None,
-                            listed: false,
-                        },
-                    )
-                    .await?;
-                    created.token
-                }
-                None => String::new(),
+        // The job's `environment:`, by name, as read when its needs were done
+        // (an expression included), once the environment's protection rules
+        // let it start: entries with a value for it give that value instead
+        // of their default, as GitHub's environment secrets do.
+        let environment: Option<String> = job.environment.clone();
+        // What its token may do: its `permissions:` (a called workflow's
+        // jobs no more than the job that calls it), else the repository's
+        // default; read-only for a pull request from outside.
+        let default = self.token_default(&run.repo_id).await?;
+        let mut permissions = spec.permissions(&workflow, default);
+        if let Some(parent) = &job.call().filter(|c| c["role"] == "callee").and_then(|c| c["parent"].as_str().map(str::to_owned)) {
+            let top = parent.split('/').next().unwrap_or(parent);
+            if let Some(caller_job) = caller.jobs.iter().find(|j| j.id == top) {
+                permissions = permissions.capped_by(&caller_job.permissions(&caller, default));
             }
-        } else {
-            String::new()
+        }
+        if !trusted {
+            permissions = permissions.read_only();
+        }
+        // G1T_TOKEN, and GITHUB_TOKEN as its alias: a token of the
+        // workspace's that reaches this repository only, with the scopes
+        // its permissions give, until the job ends.
+        let token = match self.workspace_actor(&repo.namespace).await? {
+            Some(workspace) => {
+                let created: CreatedAccessToken = g1t_kit::call(
+                    &self.identity,
+                    "create_job_token",
+                    &CreateJobTokenArgs {
+                        workspace,
+                        repo: repo.clone(),
+                        run_id: run.id.clone(),
+                        job_id: job.id.clone(),
+                        name: format!("G1T_TOKEN for {} run {}", run.repo, run.number),
+                        ttl_seconds: u64::from(job.timeout_minutes) * 60 + 600,
+                        scopes: permissions.scopes().into_iter().map(str::to_owned).collect(),
+                    },
+                )
+                .await?;
+                created.token
+            }
+            None => String::new(),
         };
         // A run that is not trusted (a pull request from outside the
         // workspace) gets no secrets and an empty token.
@@ -1631,7 +1820,8 @@ impl Actions {
         };
         secrets.insert("G1T_TOKEN".into(), Value::String(token.clone()));
         secrets.insert("GITHUB_TOKEN".into(), Value::String(token.clone()));
-        let masks: Vec<String> = secrets.values().filter_map(|v| v.as_str()).filter(|v| v.len() >= 4).map(str::to_owned).collect();
+        // Each secret as it is, a line at a time, base64 and JSON-escaped.
+        let masks: Vec<String> = g1t_actions::mask::all_variants(secrets.values().filter_map(|v| v.as_str()));
         let vars = self.variables_for(&run.repo_id, &run.repo, environment.as_deref(), trusted).await?;
 
         let jobs = self.job_rows(&run.id).await?;
@@ -1726,6 +1916,8 @@ impl Actions {
             },
             "timeoutMinutes": job.timeout_minutes,
             "masks": masks,
+            // As the job's log lists them at its start.
+            "permissions": permissions.listed().into_iter().map(|(name, access)| (name.to_owned(), json!(access.as_str()))).collect::<Map<String, Value>>(),
         })))
     }
 
@@ -1877,6 +2069,10 @@ impl Actions {
         }
         if let Err(error) = self.sweep_runners(now_ms).await {
             worker::console_error!("actions: the runners' sweep failed: {error}");
+        }
+        // Jobs held at an environment whose wait timer has run out.
+        if let Err(error) = self.release_gates().await {
+            worker::console_error!("actions: environments' gates failed: {error}");
         }
         // Once an hour: the cache's expired entries, and its storage.
         if (now_ms / 60_000) % 60 == 7

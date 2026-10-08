@@ -193,7 +193,8 @@ lists a commit's suites. A suite completing sends `check_suite.completed`.
 
 ## From a workflow
 
-A workflow job reports extra check runs with its own `G1T_TOKEN`. They
+A workflow job reports extra check runs with its own `G1T_TOKEN`, given
+`checks: write` in its [`permissions:`](/guides/actions/#the-jobs-token). They
 report as **g1t Actions**:
 
 ```yaml
@@ -265,7 +266,7 @@ These are left out of a repository's timeline.
 | --- | --- |
 | Anyone who can read the repository | See its checks, and read them through the API with `checks:read` (no token for a public repository) |
 | The Write role and up, with `checks:write` | Report statuses and check runs, and ask for them to run again |
-| A workflow job, with `G1T_TOKEN` | The same, in its repository |
+| A workflow job, with `G1T_TOKEN` and `checks: write` or `statuses: write` | The same, in its repository |
 | g1t's agents | Read checks, never report them |
 
 An agent's own work is never judged by checks it reported: what a check

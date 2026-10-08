@@ -3,6 +3,43 @@
 
 use serde::Serialize;
 
+/// The key in an event's `data` that marks what a workflow job's own token
+/// (`G1T_TOKEN`) did, with the run's id as its value. The actions service
+/// starts no workflows for such an event, as GitHub starts none for what
+/// its `GITHUB_TOKEN` does, so a workflow cannot set itself off.
+pub const CAUSED_BY_JOB: &str = "causedByJob";
+
+/// The run whose job's token caused an event, if one did.
+pub fn caused_by_job(data: &serde_json::Value) -> Option<&str> {
+    data[CAUSED_BY_JOB].as_str().filter(|run| !run.is_empty())
+}
+
+/// The run whose job's token `actor` is acting with, if it is one.
+pub fn job_run_of(actor: &crate::User) -> Option<&str> {
+    actor.token.as_deref().and_then(|token| token.job.as_ref()).map(|job| job.run_id.as_str())
+}
+
+/// `data` as JSON, marked as a workflow job's doing when `actor` acted
+/// with a job's token (see [`CAUSED_BY_JOB`]).
+pub fn marked<T: Serialize>(data: T, actor: Option<&crate::User>) -> serde_json::Value {
+    let mut value = serde_json::to_value(data).unwrap_or(serde_json::Value::Null);
+    if let (Some(run), serde_json::Value::Object(map)) = (actor.and_then(job_run_of), &mut value) {
+        map.insert(CAUSED_BY_JOB.to_owned(), serde_json::Value::String(run.to_owned()));
+    }
+    value
+}
+
+/// `data` as JSON, marked as a workflow job's doing when the event it
+/// follows from (`cause`, its data) was: a push by a job's token moves its
+/// pull request, and that starts no workflows either.
+pub fn carried<T: Serialize>(data: T, cause: &serde_json::Value) -> serde_json::Value {
+    let mut value = serde_json::to_value(data).unwrap_or(serde_json::Value::Null);
+    if let (Some(run), serde_json::Value::Object(map)) = (caused_by_job(cause), &mut value) {
+        map.insert(CAUSED_BY_JOB.to_owned(), serde_json::Value::String(run.to_owned()));
+    }
+    value
+}
+
 /// What a publisher supplies; the bus fills in the id and time.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +106,10 @@ pub struct GitPush {
     /// `before..after` after it landed. Absent otherwise.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub unscanned: bool,
+    /// Set when a workflow job's token pushed: the run's id (see
+    /// [`CAUSED_BY_JOB`]). Absent otherwise.
+    #[serde(rename = "causedByJob", skip_serializing_if = "Option::is_none")]
+    pub caused_by_job: Option<String>,
 }
 
 /// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
@@ -756,6 +797,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn what_a_job_token_did_is_marked_and_carried_on() {
+        let mut actor = crate::User { id: "wsp_1".into(), username: "acme".into(), ..crate::User::default() };
+        let plain = marked(serde_json::json!({ "number": 4 }), Some(&actor));
+        assert_eq!(caused_by_job(&plain), None);
+        actor.token = Some(Box::new(crate::scopes::TokenAccess {
+            job: Some(crate::scopes::JobToken { run_id: "run_9".into(), job_id: "job_1".into() }),
+            ..Default::default()
+        }));
+        let by_job = marked(serde_json::json!({ "number": 4 }), Some(&actor));
+        assert_eq!(caused_by_job(&by_job), Some("run_9"));
+        assert_eq!(by_job["number"], 4);
+        // A push by the job's token, and the pull request it moves.
+        let push = GitPush {
+            repo_id: "rep_1".into(),
+            git_ref: "refs/heads/fix".into(),
+            before: Some("a".into()),
+            after: "b".into(),
+            default_branch: false,
+            unscanned: false,
+            caused_by_job: job_run_of(&actor).map(str::to_owned),
+        };
+        let push = serde_json::to_value(push).unwrap();
+        assert_eq!(caused_by_job(&push), Some("run_9"));
+        assert_eq!(caused_by_job(&carried(serde_json::json!({ "number": 4 }), &push)), Some("run_9"));
+        assert_eq!(caused_by_job(&carried(serde_json::json!({ "number": 4 }), &serde_json::json!({}))), None);
+    }
+
+    #[test]
     fn a_push_says_it_was_unscanned_only_when_it_was() {
         let push = |unscanned| GitPush {
             repo_id: "rep_1".into(),
@@ -764,6 +833,7 @@ mod tests {
             after: "abc".into(),
             default_branch: false,
             unscanned,
+            caused_by_job: None,
         };
         let quiet = serde_json::to_value(push(false)).unwrap();
         assert!(quiet.get("unscanned").is_none());

@@ -4,6 +4,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use g1t_actions::mask;
 use serde_json::{Value, json};
 
 /// How long log lines wait before they are sent.
@@ -42,7 +43,8 @@ impl Api {
     }
 }
 
-/// The job's log, masked, sent in batches.
+/// The job's log, masked, sent in batches. `masks` holds every form of
+/// every secret (`g1t_actions::mask`), longest first.
 pub(crate) struct Log {
     pub(crate) api: Api,
     pub(crate) masks: Vec<String>,
@@ -52,7 +54,9 @@ pub(crate) struct Log {
 }
 
 impl Log {
-    pub(crate) fn new(api: Api, masks: Vec<String>) -> Log {
+    pub(crate) fn new(api: Api, mut masks: Vec<String>) -> Log {
+        masks.retain(|mask| !mask.is_empty());
+        masks.sort_by_key(|mask| std::cmp::Reverse(mask.len()));
         Log {
             api,
             masks,
@@ -69,13 +73,22 @@ impl Log {
     }
 
     pub(crate) fn mask(&self, text: &str) -> String {
-        let mut out = text.to_owned();
-        for mask in self.masks.iter().filter(|mask| !mask.is_empty()) {
-            if out.contains(mask.as_str()) {
-                out = out.replace(mask.as_str(), "***");
+        mask::apply(text, &self.masks)
+    }
+
+    /// `::add-mask::`: masks `value` from here on, in every form it can
+    /// take (each line, base64, JSON-escaped), as a secret is.
+    pub(crate) fn add_mask(&mut self, value: &str) {
+        let mut added = false;
+        for variant in mask::variants(value) {
+            if !self.masks.contains(&variant) {
+                self.masks.push(variant);
+                added = true;
             }
         }
-        out
+        if added {
+            self.masks.sort_by_key(|mask| std::cmp::Reverse(mask.len()));
+        }
     }
 
     pub(crate) fn line(&mut self, text: &str) {
@@ -115,18 +128,74 @@ impl Log {
 
     pub(crate) fn annotation(&mut self, level: &str, message: &str, properties: &serde_json::Map<String, Value>) {
         let message = self.mask(message);
+        let title = properties.get("title").and_then(Value::as_str).map(|title| self.mask(title));
         self.api.report(json!({
             "kind": "annotation",
             "level": level,
             "message": message,
-            "title": properties.get("title"),
+            "title": title,
             "file": properties.get("file"),
             "line": properties.get("line").and_then(|l| l.as_str()).and_then(|l| l.parse::<u32>().ok()),
         }));
     }
 
     pub(crate) fn done(&mut self, conclusion: &str, outputs: &serde_json::Map<String, Value>, reason: Option<&str>) {
+        let outputs = self.withhold_secrets(outputs);
         self.flush();
         self.api.report(json!({ "kind": "done", "conclusion": conclusion, "outputs": outputs, "reason": reason }));
+    }
+
+    /// The job's outputs without any that hold a secret, as on GitHub: an
+    /// output goes to other jobs and to the run's page, where no mask
+    /// reaches. Each one left out is warned of in the log.
+    pub(crate) fn withhold_secrets(&mut self, outputs: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+        let mut kept = serde_json::Map::new();
+        for (name, value) in outputs {
+            let text = match value {
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+            if mask::reveals(&text, &self.masks) {
+                self.line(&format!("##[warning]The output `{name}` was left out: it holds a secret."));
+                continue;
+            }
+            kept.insert(name.clone(), value.clone());
+        }
+        kept
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn log(secrets: &[&str]) -> Log {
+        let api = Api { base: "http://127.0.0.1:9".into(), job: "job_1".into(), token: "t".into() };
+        Log::new(api, mask::all_variants(secrets.iter().copied()))
+    }
+
+    #[test]
+    fn outputs_holding_a_secret_are_left_out() {
+        let mut log = log(&["s3cr3t-token"]);
+        let mut outputs = serde_json::Map::new();
+        outputs.insert("version".into(), json!("1.2.0"));
+        outputs.insert("leak".into(), json!("token=s3cr3t-token"));
+        outputs.insert("encoded".into(), json!("czNjcjN0LXRva2Vu"));
+        let kept = log.withhold_secrets(&outputs);
+        assert_eq!(kept.keys().collect::<Vec<_>>(), ["version"]);
+        assert!(log.buffer.contains("The output `leak` was left out"));
+        assert!(log.buffer.contains("The output `encoded` was left out"));
+    }
+
+    #[test]
+    fn added_masks_cover_every_form() {
+        let mut log = log(&[]);
+        log.add_mask("line one\nline two");
+        assert_eq!(log.mask("first: line one"), "first: ***");
+        assert_eq!(log.mask("then line two"), "then ***");
+        // Longest first: the whole value, not its pieces.
+        log.add_mask("abc");
+        log.add_mask("abcdef");
+        assert_eq!(log.mask("abcdef"), "***");
     }
 }

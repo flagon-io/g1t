@@ -7,7 +7,7 @@
 //! keeps working when the member who set it up leaves.
 
 use g1t_contracts::identity::*;
-use g1t_contracts::scopes::{FULL_ACCESS, Scope, TokenAccess, parse_scopes, scopes_text};
+use g1t_contracts::scopes::{FULL_ACCESS, JobToken, Scope, TokenAccess, parse_scopes, scopes_text};
 use g1t_contracts::time::{SQL_NOW, rfc3339};
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, Viewer, new_id};
 use g1t_kit::now_ms;
@@ -102,6 +102,14 @@ struct Presented {
     scopes: Option<String>,
     #[serde(default)]
     name: Option<String>,
+    /// Set on a workflow job's token (job_tokens.rs): its repository, job
+    /// and run.
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    job_id: Option<String>,
+    #[serde(default)]
+    job_run_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -122,7 +130,8 @@ impl Identity {
         let Some(presented) = self
             .db
             .prepare(format!(
-                "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name
+                "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name,
+                   repo, job_id, job_run_id
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
@@ -169,6 +178,11 @@ impl Identity {
                 scopes,
                 legacy,
                 name: presented.name.clone(),
+                repo: presented.repo.clone(),
+                job: match (&presented.job_id, &presented.job_run_id) {
+                    (Some(job_id), Some(run_id)) => Some(JobToken { run_id: run_id.clone(), job_id: job_id.clone() }),
+                    _ => None,
+                },
             }));
         }
         Ok(viewer)
@@ -280,6 +294,28 @@ impl Identity {
             .run()
             .await?;
         Ok(CreatedAccessToken { token, info })
+    }
+
+    /// A workspace's own token that expires and is never listed: what a
+    /// workflow job's token is minted as (job_tokens.rs).
+    pub(crate) async fn mint_for_workspace(
+        &self,
+        workspace_id: &str,
+        name: &str,
+        ttl_seconds: u64,
+        grant: &Grant,
+    ) -> Result<CreatedAccessToken> {
+        self.mint(
+            Owner::Workspace {
+                id: workspace_id,
+                created_by: None,
+            },
+            name,
+            Some(ttl_seconds),
+            grant,
+            false,
+        )
+        .await
     }
 
     pub async fn create_access_token(

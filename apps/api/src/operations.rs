@@ -29,6 +29,7 @@ use crate::alerts::{AlertKind, SecurityAlert};
 use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::deployments::DeploymentsOp;
+use crate::protection::ProtectionOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -283,6 +284,9 @@ pub enum Op {
     About(AboutOp),
     /// Deployments wherever they run, and environments: deployments.rs.
     Deployments(DeploymentsOp),
+    /// Environments' protection rules, approving runs, the token's default
+    /// permissions and repository dispatch: protection.rs.
+    Protection(ProtectionOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -645,7 +649,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 257] = [
+    pub const ALL: [Op; 267] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -903,6 +907,16 @@ impl Op {
         Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
         Op::Deployments(DeploymentsOp::ListEnvironments),
         Op::Deployments(DeploymentsOp::GetEnvironment),
+        Op::Protection(ProtectionOp::UpdateEnvironment),
+        Op::Protection(ProtectionOp::DeleteEnvironment),
+        Op::Protection(ProtectionOp::GetPendingDeployments),
+        Op::Protection(ProtectionOp::ReviewPendingDeployments),
+        Op::Protection(ProtectionOp::ApproveWorkflowRun),
+        Op::Protection(ProtectionOp::GetWorkflowPermissions),
+        Op::Protection(ProtectionOp::SetWorkflowPermissions),
+        Op::Protection(ProtectionOp::GetForkPrApproval),
+        Op::Protection(ProtectionOp::SetForkPrApproval),
+        Op::Protection(ProtectionOp::CreateRepositoryDispatch),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1096,6 +1110,7 @@ impl Op {
             Op::Checks(op) => op.name(),
             Op::About(op) => op.name(),
             Op::Deployments(op) => op.name(),
+            Op::Protection(op) => op.name(),
         }
     }
 
@@ -1609,6 +1624,7 @@ impl Op {
             Op::Checks(op) => op.description(),
             Op::About(op) => op.description(),
             Op::Deployments(op) => op.description(),
+            Op::Protection(op) => op.description(),
         }
     }
 
@@ -2980,6 +2996,7 @@ impl Op {
             Op::Checks(op) => op.input(),
             Op::About(op) => op.input(),
             Op::Deployments(op) => op.input(),
+            Op::Protection(op) => op.input(),
         }
     }
 
@@ -3021,6 +3038,9 @@ impl Op {
                         | DeploymentsOp::ListDeploymentStatuses
                         | DeploymentsOp::ListEnvironments
                         | DeploymentsOp::GetEnvironment
+                )
+                | Op::Protection(
+                    ProtectionOp::GetPendingDeployments | ProtectionOp::GetWorkflowPermissions | ProtectionOp::GetForkPrApproval
                 )
         )
     }
@@ -5039,6 +5059,7 @@ impl Op {
             Op::Checks(op) => crate::checks::run(op, services, viewer, input).await,
             Op::About(op) => crate::about::run(op, services, viewer, input).await,
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
+            Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

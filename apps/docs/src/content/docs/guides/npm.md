@@ -79,13 +79,16 @@ published.
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-install and publish the workspace's packages:
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can install the workspace's packages,
+and publish them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token):
 
 ```yaml
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

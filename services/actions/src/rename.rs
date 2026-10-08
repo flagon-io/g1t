@@ -34,6 +34,9 @@ pub const PURGED: &[&str] = &[
     "DELETE FROM workflows WHERE repo_id = ?1",
     "DELETE FROM synced WHERE repo_id = ?1",
     "DELETE FROM settings WHERE scope <> 'workspace' AND owner = ?1",
+    "DELETE FROM repo_settings WHERE repo_id = ?1",
+    "DELETE FROM environments WHERE repo_id = ?1",
+    "DELETE FROM environment_gates WHERE repo_id = ?1",
     // Its cache's objects are deleted from R2 by the next sweep, then the rows.
     "UPDATE cache_entries SET status = 'expired' WHERE repo_id = ?1",
 ];

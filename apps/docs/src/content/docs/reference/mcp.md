@@ -402,7 +402,8 @@ one short fact at a time, never a secret. See
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
 cancelling or rerunning them; checks on commits (statuses, check runs and
 check suites, a workflow job being a check run); a repository's deployments
-and environments; and the self-hosted runners workflows run on. See
+and environments, with their protection rules; approving runs and
+deployments; and the self-hosted runners workflows run on. See
 [GitHub Actions](/guides/actions/), [Checks](/guides/checks/),
 [Deployments API](/guides/deployments-api/) and
 [self-hosted runners](/guides/self-hosted-runners/).
@@ -435,7 +436,17 @@ and environments; and the self-hosted runners workflows run on. See
 | [`deployment_statuses`](/reference/api/deployments/list-deployment-statuses/) | A deployment's statuses, newest first. | `repo`, `id` | `deployments:read` |
 | [`create_deployment_status`](/reference/api/deployments/create-deployment-status/) | Report where a deployment is: `state` (`queued`, `in_progress`, `success`, `failure`, `error` or `inactive`), with optional `description`, `environment_url`, `log_url` and `auto_inactive`. Not for a g1t.page build. Write role. | `repo`, `id`, `state` | `deployments:write` |
 | [`list_environments`](/reference/api/deployments/list-environments/) | Environments with their address, current and latest deployments, production first. | `repo` | `deployments:read` |
-| [`get_environment`](/reference/api/deployments/get-environment/) | One environment by name. | `repo`, `environment` | `deployments:read` |
+| [`get_environment`](/reference/api/deployments/get-environment/) | One environment by name, with its protection rules. | `repo`, `environment` | `deployments:read` |
+| [`update_environment`](/reference/api/run-protection/update-environment/) | Set an environment's [protection rules](/guides/actions/#environments): `reviewers` (up to 6, `{"type": "User" or "Team", "name"}`), `prevent_self_review`, `wait_timer` (minutes), `deployment_branch_policy`, `branch_policies` and `can_admins_bypass`. Admin role. | `repo`, `environment` | `repo:admin` |
+| [`delete_environment`](/reference/api/run-protection/delete-environment/) | Remove an environment's protection rules; its secrets and deployments stay. Admin role. | `repo`, `environment` | `repo:admin` |
+| [`pending_deployments`](/reference/api/run-protection/get-pending-deployments/) | The environments holding a run's jobs: their state, reviewers, wait timer, jobs, and whether you may approve. | `repo`, `id` | `workflows:read` |
+| [`review_deployments`](/reference/api/run-protection/review-pending-deployments/) | Approve or reject a run's jobs for `environment_names` (every waiting one if left out), with a `comment`. One of the environment's reviewers, or an admin. | `repo`, `id`, `state` | `workflows:write` |
+| [`approve_run`](/reference/api/run-protection/approve-workflow-run/) | Let a pull request's run from outside start ([approval](/guides/actions/#pull-requests-from-outside)). Write role. | `repo`, `id` | `workflows:write` |
+| [`get_permissions`](/reference/api/run-protection/get-workflow-permissions/) | What a job's token gets when its workflow writes no `permissions:`: `read` or `write`. | `repo` | `repo:read` |
+| [`set_permissions`](/reference/api/run-protection/set-workflow-permissions/) | Set `default_workflow_permissions` to `read` or `write`. Admin role. | `repo`, `default_workflow_permissions` | `repo:admin` |
+| [`get_approval_policy`](/reference/api/run-protection/get-fork-pr-approval/) | Which pull requests' runs wait for approval. | `repo` | `repo:read` |
+| [`set_approval_policy`](/reference/api/run-protection/set-fork-pr-approval/) | Set `approval_policy`: `first_time_contributors`, `outside_contributors` or `all_external_contributors`. Admin role. | `repo`, `approval_policy` | `repo:admin` |
+| [`repository_dispatch`](/reference/api/run-protection/create-repository-dispatch/) | Start the default branch's `repository_dispatch` workflows for `event_type`, with `client_payload`. Write role. | `repo`, `event_type` | `code:write` |
 | [`list_runners`](/reference/api/runners/list-runners-for-workspace/) | [Self-hosted runners](/guides/self-hosted-runners/): a workspace's (`workspace`), or a repository's own and the workspace's it may use (`repo`), with status, labels and what each is running. | `workspace` or `repo` | `runners:read` |
 | [`create_runner_token`](/reference/api/runners/create-runner-registration-token-for-workspace/) | A registration token for `g1t-runner register`, an hour long; `group` for a workspace's. Owners, or a repository's admins; not workspace tokens. | `workspace` or `repo` | `runners:admin` |
 | [`remove_runner`](/reference/api/runners/remove-runner-for-workspace/) | Remove a runner; a job it is running fails. | `workspace` or `repo`, `id` | `runners:admin` |

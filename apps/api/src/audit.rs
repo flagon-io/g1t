@@ -270,6 +270,7 @@ mod tests {
                 scopes: scopes.map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
                 legacy,
                 name: None,
+                ..TokenAccess::default()
             })),
             ..User::default()
         }

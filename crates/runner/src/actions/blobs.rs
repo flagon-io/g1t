@@ -6,7 +6,9 @@
 //! A cache entry is a tar archive, compressed with zstd where the machine
 //! has it (gzip otherwise), of up to 2 GB: uploaded in parts, and
 //! downloaded straight to a file. Its `path` takes globs (`**` included)
-//! and `!` patterns that leave paths out, as `actions/cache` does.
+//! and `!` patterns that leave paths out, as `actions/cache` does. Each is
+//! saved and found under a version, the hash of its `path` and compression,
+//! and g1t keeps it under the ref whose run saved it.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -82,12 +84,12 @@ impl Job {
 
     /// Saves `file` as the cache entry `key`, in parts. `Ok(false)` when
     /// the key is already cached.
-    fn upload_cache(&mut self, key: &str, file: &Path) -> Result<bool, String> {
+    fn upload_cache(&mut self, key: &str, version: &str, file: &Path) -> Result<bool, String> {
         let size = std::fs::metadata(file).map_err(|e| e.to_string())?.len();
         if size > MAX_CACHE_ENTRY {
             return Err(format!("it is {} MB, more than a cache entry may be ({} MB)", size / 1_048_576, MAX_CACHE_ENTRY / 1_048_576));
         }
-        let started = match ureq::post(&self.url(&format!("cache/uploads?key={}&size={size}", urlencode(key))))
+        let started = match ureq::post(&self.url(&format!("cache/uploads?key={}&size={size}&version={}", urlencode(key), urlencode(version))))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(60))
             .call()
@@ -274,11 +276,13 @@ impl Job {
             return (false, BTreeMap::new());
         }
         let paths = self.cache_paths(with);
+        let version = cache_version(with.get("path").map(String::as_str).unwrap_or_default(), compression());
         let restore = lines(with.get("restore-keys").map(String::as_str).unwrap_or_default());
         let query = format!(
-            "cache?key={}&restore={}",
+            "cache?key={}&restore={}&version={}",
             urlencode(&key),
-            urlencode(&restore.join("\n"))
+            urlencode(&restore.join("\n")),
+            urlencode(&version)
         );
         let archive = self.temp.join("cache-restore.tar");
         let started = Instant::now();
@@ -316,14 +320,14 @@ impl Job {
                 name: format!("Post {title}"),
                 condition: "success()".into(),
                 env: BTreeMap::new(),
-                run: PostRun::CacheSave { key, paths },
+                run: PostRun::CacheSave { key, paths, version },
             });
         }
         (true, outputs)
     }
 
     /// Saves paths under a key, unless the key is taken.
-    pub(crate) fn cache_save(&mut self, key: &str, paths: &[String]) -> bool {
+    pub(crate) fn cache_save(&mut self, key: &str, paths: &[String], version: &str) -> bool {
         if paths.iter().all(|p| p.starts_with('!')) {
             self.log.line("##[warning]Nothing to cache: no `path`.");
             return true;
@@ -343,7 +347,7 @@ impl Job {
         }
         let size = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
         let packed = started.elapsed().as_secs_f64();
-        match self.upload_cache(key, &archive) {
+        match self.upload_cache(key, version, &archive) {
             Ok(true) => self.log.line(&format!(
                 "Cache saved with key: {key} ({}, packed in {packed:.1}s, sent in {:.1}s)",
                 megabytes(size),
@@ -372,7 +376,8 @@ impl Job {
     pub(crate) fn cache_save_now(&mut self, with: &BTreeMap<String, String>) -> (bool, BTreeMap<String, String>) {
         let key = with.get("key").cloned().unwrap_or_default();
         let paths = self.cache_paths(with);
-        (self.cache_save(&key, &paths), BTreeMap::new())
+        let version = cache_version(with.get("path").map(String::as_str).unwrap_or_default(), compression());
+        (self.cache_save(&key, &paths, &version), BTreeMap::new())
     }
 }
 
@@ -385,6 +390,23 @@ fn refusal(response: ureq::Response) -> String {
 
 fn megabytes(bytes: u64) -> String {
     if bytes < 1_048_576 { format!("{} KB", bytes.div_ceil(1024)) } else { format!("{:.1} MB", bytes as f64 / 1_048_576.0) }
+}
+
+/// How this machine compresses cache entries: zstd where it has it, else
+/// gzip, as `pack_script` decides.
+fn compression() -> &'static str {
+    let zstd = Command::new("sh").args(["-c", "command -v zstd"]).output().is_ok_and(|out| out.status.success());
+    if zstd { "zstd" } else { "gzip" }
+}
+
+/// An entry's version: the hash of its `path` lines, as written, and its
+/// compression, as `actions/cache` makes one. The same key saved for other
+/// paths, or packed another way, is another entry.
+fn cache_version(path: &str, compression: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut parts = lines(path);
+    parts.push(compression.to_owned());
+    hex::encode(Sha256::digest(parts.join("|").as_bytes()))
 }
 
 /// The lines of a cache's `path`, absolute: `~/` is `home`, a relative
@@ -463,6 +485,15 @@ fn urlencode(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cache_entrys_version_follows_its_paths_and_compression() {
+        let version = cache_version("~/.cargo/registry\ntarget", "zstd");
+        assert_eq!(version.len(), 64);
+        assert_eq!(version, cache_version("~/.cargo/registry\n\ntarget\n", "zstd"), "blank lines do not count");
+        assert_ne!(version, cache_version("~/.cargo/registry", "zstd"));
+        assert_ne!(version, cache_version("~/.cargo/registry\ntarget", "gzip"));
+    }
 
     #[test]
     fn cache_paths_take_home_globs_and_exclusions() {

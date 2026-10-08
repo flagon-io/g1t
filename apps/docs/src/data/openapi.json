@@ -428,6 +428,22 @@
       ]
     },
     {
+      "name": "Run protection",
+      "description": "What keeps workflow runs safe: environments' protection rules (required reviewers, a wait timer, which branches may deploy) and the reviews of the jobs they hold, approving a pull request's run from outside, what a job's token gets when its workflow writes no `permissions:`, and repository_dispatch, which a job's own token may send.",
+      "x-tools": [
+        "update_environment",
+        "delete_environment",
+        "get_pending_deployments",
+        "review_pending_deployments",
+        "approve_workflow_run",
+        "get_workflow_permissions",
+        "set_workflow_permissions",
+        "get_fork_pr_approval",
+        "set_fork_pr_approval",
+        "create_repository_dispatch"
+      ]
+    },
+    {
       "name": "Secrets and variables",
       "description": "Values that workflows and deployments read, per repository or for a whole workspace, with a row per environment.",
       "x-tools": [
@@ -28149,7 +28165,7 @@
           "Deployments"
         ],
         "summary": "List environments",
-        "description": "List the environments a repository's deployments went to, those people use directly first (production by name before others), then the most recently deployed. Each has its name, url (where its current deployment is served), production_environment, transient_environment, deployments_count, latest (its newest deployment, whatever its state), current (its newest successful deployment that is still active) and updated_at. total_count counts deployments across every environment. Needs the Read role.\n\nProduction comes first, then the most recently deployed. `latest` is the newest deployment whatever its state; `current` is the newest that succeeded and is still active, and `url` is where it is served.",
+        "description": "List the environments a repository's deployments went to, those people use directly first (production by name before others), then the most recently deployed, and after them those with protection rules but no deployment yet. Each has its name, url (where its current deployment is served), production_environment, transient_environment, deployments_count, latest (its newest deployment, whatever its state), current (its newest successful deployment that is still active) and updated_at, and, when it has rules, protection_rules (required_reviewers, wait_timer, branch_policy), deployment_branch_policy, branch_policies and can_admins_bypass. total_count counts deployments across every environment. Needs the Read role.\n\nProduction comes first, then the most recently deployed. `latest` is the newest deployment whatever its state; `current` is the newest that succeeded and is still active, and `url` is where it is served.",
         "x-operation": "list_environments",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_environments",
@@ -28336,7 +28352,7 @@
           "Deployments"
         ],
         "summary": "Get an environment",
-        "description": "Get one environment by name, matched without regard to case, with its current and latest deployments. A name with slashes is URL-encoded in the path. Needs the Read role.",
+        "description": "Get one environment by name, matched without regard to case, with its current and latest deployments and its protection rules (see update_environment). An environment with rules but no deployment yet is found too. A name with slashes is URL-encoded in the path. Needs the Read role.",
         "x-operation": "get_environment",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_environment",
@@ -28484,6 +28500,1430 @@
           "owner": "flagon-io",
           "name": "docs",
           "environment": "preview"
+        }
+      },
+      "put": {
+        "operationId": "update_environment",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Create or update an environment's protection rules",
+        "description": "Create an environment's protection rules, or change them; fields left out stay as they are. A job that names the environment with `environment:` waits, once its needs are done, until the rules let it through, and only then gets the environment's secrets. reviewers: up to 6, each {\"type\": \"User\" or \"Team\", \"name\": a username or a team's slug} (id is read as the name too); a job waits until one of them approves it. prevent_self_review: whoever started the run may not approve it. wait_timer: minutes each job waits, 0 to 43200. deployment_branch_policy: null lets every branch deploy; {\"protected_branches\": true} only branches the repository's rules protect (the default branch included); {\"custom_branch_policies\": true} only the branches and tags in branch_policies, each {\"name\": a pattern such as release/*, \"type\": \"branch\" or \"tag\"}. can_admins_bypass (true unless you say): admins may approve without being reviewers, which also skips the wait. The environment's name is up to 40 letters, digits, - and _, matched without regard to case. Needs the Admin role. Returns the environment with its protection_rules.\n\nFields left out stay as they are. A job with `environment: production` now waits for syntaqx or someone in deployers to approve it, then ten minutes, and runs only on a protected branch.",
+        "x-operation": "update_environment",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "update_environment",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The environment's name, such as production."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "name": "production",
+                  "protection_rules": [
+                    {
+                      "type": "required_reviewers",
+                      "prevent_self_review": true,
+                      "reviewers": [
+                        {
+                          "type": "User",
+                          "reviewer": {
+                            "login": "syntaqx"
+                          }
+                        },
+                        {
+                          "type": "Team",
+                          "reviewer": {
+                            "slug": "deployers"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "wait_timer",
+                      "wait_timer": 10
+                    },
+                    {
+                      "type": "branch_policy"
+                    }
+                  ],
+                  "deployment_branch_policy": {
+                    "protected_branches": true,
+                    "custom_branch_policies": false
+                  },
+                  "branch_policies": [],
+                  "can_admins_bypass": true,
+                  "protected": true,
+                  "updated_at": "2026-10-08T09:12:44.103Z",
+                  "updated_by": "syntaqx"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "wait_timer": {
+                    "type": "integer",
+                    "description": "Minutes each job waits before it may start, 0 to 43200."
+                  },
+                  "prevent_self_review": {
+                    "type": "boolean",
+                    "description": "Whoever started a run may not approve its jobs."
+                  },
+                  "reviewers": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "description": "Up to 6 people or teams who may approve its jobs; empty for none.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "User",
+                            "Team"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "A username, or a team's slug in the repository's workspace."
+                        }
+                      }
+                    }
+                  },
+                  "deployment_branch_policy": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "description": "null: every branch may deploy. protected_branches: only protected ones. custom_branch_policies: only those in branch_policies.",
+                    "properties": {
+                      "protected_branches": {
+                        "type": "boolean"
+                      },
+                      "custom_branch_policies": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "branch_policies": {
+                    "type": "array",
+                    "description": "With custom_branch_policies: the branches and tags that may deploy, at most 50.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "A pattern, such as main, release/* or v*."
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "branch",
+                            "tag"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "can_admins_bypass": {
+                    "type": "boolean",
+                    "description": "Admins may approve without being reviewers, skipping the wait. True unless you say."
+                  }
+                }
+              },
+              "example": {
+                "wait_timer": 10,
+                "prevent_self_review": true,
+                "reviewers": [
+                  {
+                    "type": "User",
+                    "name": "syntaqx"
+                  },
+                  {
+                    "type": "Team",
+                    "name": "deployers"
+                  }
+                ],
+                "deployment_branch_policy": {
+                  "protected_branches": true,
+                  "custom_branch_policies": false
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "environment": "production"
+        }
+      },
+      "delete": {
+        "operationId": "delete_environment",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Delete an environment's protection rules",
+        "description": "Delete an environment's protection rules: its jobs run without waiting from then on. Its secrets, variables and deployments stay. Needs the Admin role.",
+        "x-operation": "delete_environment",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "delete_environment",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The environment's name, such as production."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "environment": "staging"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/runs/{id}/pending_deployments": {
+      "get": {
+        "operationId": "get_pending_deployments",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Get a run's pending deployments",
+        "description": "The environments whose protection rules hold a run's jobs, this attempt: each with the environment's name, state (waiting, approved or rejected), wait_timer and wait_until (when its timer lets its jobs start), its reviewers, the jobs it holds, who reviewed it and their comment, and current_user_can_approve. Needs the Read role.",
+        "x-operation": "get_pending_deployments",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "pending_deployments",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The run's id, run_…."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "environment": {
+                      "name": "production"
+                    },
+                    "state": "waiting",
+                    "needs_review": true,
+                    "wait_until": "2026-10-08T09:31:02.551Z",
+                    "current_user_can_approve": true,
+                    "reviewers": [
+                      {
+                        "type": "User",
+                        "reviewer": {
+                          "login": "syntaqx"
+                        }
+                      },
+                      {
+                        "type": "Team",
+                        "reviewer": {
+                          "slug": "deployers"
+                        }
+                      }
+                    ],
+                    "jobs": [
+                      "Deploy the core services"
+                    ],
+                    "reviewed_by": null,
+                    "comment": null,
+                    "reviewed_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "run_01kq9b3d5f7h9k1n3q5s7u9w1y"
+        }
+      },
+      "post": {
+        "operationId": "review_pending_deployments",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Review a run's pending deployments",
+        "description": "Approve or reject the jobs a run's environments hold. environment_names names them (every waiting one if left out; environment_ids is read as names too); state is approved or rejected; comment is kept with the review. Only one of the environment's reviewers may, or an admin when can_admins_bypass is on, which also skips the wait timer; with prevent_self_review, not whoever started the run. A rejected environment's jobs fail. A workflow job's own token cannot review. Returns the pending deployments as they stand.\n\nThe jobs still wait for the wait timer, until `wait_until`, unless an admin approved past the rules.",
+        "x-operation": "review_pending_deployments",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "review_deployments",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The run's id, run_…."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "environment": {
+                      "name": "production"
+                    },
+                    "state": "approved",
+                    "needs_review": true,
+                    "wait_until": "2026-10-08T09:31:02.551Z",
+                    "current_user_can_approve": false,
+                    "reviewers": [
+                      {
+                        "type": "User",
+                        "reviewer": {
+                          "login": "syntaqx"
+                        }
+                      },
+                      {
+                        "type": "Team",
+                        "reviewer": {
+                          "slug": "deployers"
+                        }
+                      }
+                    ],
+                    "jobs": [
+                      "Deploy the core services"
+                    ],
+                    "reviewed_by": "syntaqx",
+                    "comment": "Release notes checked.",
+                    "reviewed_at": "2026-10-08T09:22:15.871Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "environment_names": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The environments to review; every waiting one if left out."
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "comment": {
+                    "type": "string",
+                    "description": "Why, kept with the review."
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "example": {
+                "environment_names": [
+                  "production"
+                ],
+                "state": "approved",
+                "comment": "Release notes checked."
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "run_01kq9b3d5f7h9k1n3q5s7u9w1y"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/runs/{id}/approve": {
+      "post": {
+        "operationId": "approve_workflow_run",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Approve a workflow run",
+        "description": "Let a run of a pull request from outside start: it waits as action_required, by the repository's approval policy (get_fork_pr_approval), until someone with the Write role approves it. A workflow job's own token cannot approve. Returns the run.",
+        "x-operation": "approve_workflow_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "approve_run",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The run's id, run_…."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "run_01kq9a2c4e6g8j0m2p4r6t8v0x",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "path": ".g1t/workflows/ci.yml",
+                  "name": "CI",
+                  "title": "Fix a typo in the README",
+                  "number": 41,
+                  "attempt": 1,
+                  "event": "pull_request",
+                  "ref": "refs/pull/88/merge",
+                  "sha": "4c1e7a9b2d5f8e0a3c6b9d2f5a8c1e4b7d0f3a6c",
+                  "pull": 88,
+                  "status": "queued",
+                  "conclusion": null,
+                  "error": null,
+                  "actor": "octo-fan",
+                  "created_at": "2026-10-08T08:02:11.004Z",
+                  "started_at": null,
+                  "finished_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "run_01kq9a2c4e6g8j0m2p4r6t8v0x"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/permissions/workflow": {
+      "get": {
+        "operationId": "get_workflow_permissions",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Get the default workflow permissions",
+        "description": "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read; the default) or write (every permission). can_approve_pull_request_reviews is always false: a job's token never approves pull requests. Needs the Read role.",
+        "x-operation": "get_workflow_permissions",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_permissions",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "default_workflow_permissions": "read",
+                  "can_approve_pull_request_reviews": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        }
+      },
+      "put": {
+        "operationId": "set_workflow_permissions",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Set the default workflow permissions",
+        "description": "Set default_workflow_permissions to read or write. Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role.",
+        "x-operation": "set_workflow_permissions",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_permissions",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "default_workflow_permissions": "write",
+                  "can_approve_pull_request_reviews": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "default_workflow_permissions": {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "write"
+                    ]
+                  }
+                },
+                "required": [
+                  "default_workflow_permissions"
+                ]
+              },
+              "example": {
+                "default_workflow_permissions": "write"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/permissions/fork-pr-contributor-approval": {
+      "get": {
+        "operationId": "get_fork_pr_approval",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Get the approval policy for outside pull requests",
+        "description": "Which pull requests' runs wait for someone with the Write role to approve them before anything runs (approve_workflow_run): approval_policy is first_time_contributors (a pull request from someone outside the workspace who has not had one merged here), outside_contributors (the default: also everyone outside who cannot push here) or all_external_contributors (everyone outside the workspace, outside collaborators included). Members never wait, nor does g1t's own work. Needs the Read role.",
+        "x-operation": "get_fork_pr_approval",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_approval_policy",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "approval_policy": "outside_contributors"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        }
+      },
+      "put": {
+        "operationId": "set_fork_pr_approval",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Set the approval policy for outside pull requests",
+        "description": "Set approval_policy: first_time_contributors, outside_contributors or all_external_contributors. Needs the Admin role.",
+        "x-operation": "set_fork_pr_approval",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_approval_policy",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "approval_policy": "all_external_contributors"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "approval_policy": {
+                    "type": "string",
+                    "enum": [
+                      "first_time_contributors",
+                      "outside_contributors",
+                      "all_external_contributors"
+                    ]
+                  }
+                },
+                "required": [
+                  "approval_policy"
+                ]
+              },
+              "example": {
+                "approval_policy": "all_external_contributors"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/dispatches": {
+      "post": {
+        "operationId": "create_repository_dispatch",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Create a repository dispatch event",
+        "description": "Start the default branch's workflows that run `on: repository_dispatch` for event_type (those listing it under types, or with none). client_payload, a JSON object of at most 10 properties and 64 KB, is github.event.client_payload; github.event.action is event_type. A workflow job's own token may send one: with workflow_dispatch, it is how one workflow starts another. Needs the Write role (code:write). Returns how many runs started.",
+        "x-operation": "create_repository_dispatch",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "repository_dispatch",
+        "x-scope": "code:write",
+        "security": [
+          {
+            "token": [
+              "code:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "runs": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event_type": {
+                    "type": "string",
+                    "description": "What happened, 1 to 100 characters; workflows choose it with `types:`."
+                  },
+                  "client_payload": {
+                    "type": "object",
+                    "description": "Anything the workflows should read, as github.event.client_payload."
+                  }
+                },
+                "required": [
+                  "event_type"
+                ]
+              },
+              "example": {
+                "event_type": "docs-published",
+                "client_payload": {
+                  "version": "2026.10.08"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
         }
       }
     },

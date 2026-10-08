@@ -232,9 +232,11 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
   work.
 - Actions that cache through the hosted toolkit's own cache service, such as
   `setup-node` with `cache: npm`. They run without it; use `actions/cache`.
-- Environments' protection rules: required reviewers, wait timers and branch
-  limits. A job with `environment:` gets that environment's values and runs
-  without waiting.
+- `on: delete`: deleting a branch or tag starts no workflows. New branches
+  and tags start `create` and `push` workflows.
+- OIDC tokens for jobs (`permissions: id-token: write`). Keep cloud
+  credentials in [secrets](/guides/secrets-and-variables/), and protect them
+  with an [environment's rules](/guides/actions/#environments).
 
 See [Not yet](/guides/actions/#not-yet). **Status.** Planned.
 

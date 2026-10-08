@@ -84,18 +84,25 @@ Secrets go only to trusted runs:
 
 Anyone else's pull request, such as one from a fork or by someone with
 Read or Triage (who may open one on a private repository too), runs its
-workflows, and builds its preview, with config only: no secrets, and an
-empty `G1T_TOKEN`.
+workflows, and builds its preview, with config only: no secrets, and a
+`G1T_TOKEN` that can only read. Its runs may first wait for someone with
+Write to [approve them](/guides/actions/#pull-requests-from-outside).
+
+A job that names an environment gets that environment's secrets only once
+the environment's [protection rules](/guides/actions/#environments) let it
+through: required reviewers, a wait timer, and which branches may deploy.
 
 ## G1T_TOKEN
 
-Every trusted workflow job gets `${{ secrets.G1T_TOKEN }}`: a token of the
-workspace's own for the run, which acts on g1t as the workspace and expires
-when the job could no longer be running. `${{ secrets.GITHUB_TOKEN }}` and
-`${{ github.token }}` are the same token, so workflows written for GitHub
-work unchanged.
+Every workflow job gets `${{ secrets.G1T_TOKEN }}`: a token for that job
+alone, which reaches its repository only, can do what the job's
+`permissions:` say, and stops working when the job ends.
+`${{ secrets.GITHUB_TOKEN }}` and `${{ github.token }}` are the same token,
+so workflows written for GitHub work unchanged. See
+[the job's token](/guides/actions/#the-jobs-token).
 
 ```yaml
+# On the job: permissions: { issues: write }
 - name: Open an issue when the nightly build fails
   if: failure()
   run: |
@@ -104,9 +111,9 @@ work unchanged.
       -d '{"title":"Nightly build failed"}'
 ```
 
-`G1T_TOKEN` can read secrets' names but never change secrets or variables,
-so a workflow cannot rewrite what it runs with. Neither can any workspace
-access token: use a person's token, or the site.
+`G1T_TOKEN` can neither list nor change secrets or variables, so a
+workflow cannot read or rewrite what it runs with. No workspace access
+token can change them either: use a person's token, or the site.
 
 ## From the API
 

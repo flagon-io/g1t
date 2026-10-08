@@ -30,6 +30,13 @@ on:
         type: boolean
         default: false
 
+# Its token pushes the branch with base.json and opens the pull request.
+# What a job's token does starts no workflows, so that pull request's
+# checks start when someone pushes to it or runs CI by hand.
+permissions:
+  contents: write
+  pull-requests: write
+
 concurrency:
   group: runner-base
   cancel-in-progress: false

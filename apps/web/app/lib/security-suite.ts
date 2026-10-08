@@ -159,6 +159,11 @@ on:
   schedule:
     - cron: "27 4 * * 1"
 
+# The job's token reads the code and uploads the results.
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   scan:
     name: Code scanning

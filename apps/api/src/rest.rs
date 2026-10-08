@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
 use crate::deployments::DeploymentsOp;
+use crate::protection::ProtectionOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -323,6 +324,37 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/repos/:owner/:name/deployments/:id/statuses", Op::Deployments(DeploymentsOp::CreateDeploymentStatus), &[]),
     route("GET", "/repos/:owner/:name/environments", Op::Deployments(DeploymentsOp::ListEnvironments), &[]),
     route("GET", "/repos/:owner/:name/environments/:environment", Op::Deployments(DeploymentsOp::GetEnvironment), &[]),
+    // Environments' protection rules, and the runs they hold.
+    route("PUT", "/repos/:owner/:name/environments/:environment", Op::Protection(ProtectionOp::UpdateEnvironment), &[]),
+    route("DELETE", "/repos/:owner/:name/environments/:environment", Op::Protection(ProtectionOp::DeleteEnvironment), &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/runs/:id/pending_deployments",
+        Op::Protection(ProtectionOp::GetPendingDeployments),
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/runs/:id/pending_deployments",
+        Op::Protection(ProtectionOp::ReviewPendingDeployments),
+        &[],
+    ),
+    route("POST", "/repos/:owner/:name/actions/runs/:id/approve", Op::Protection(ProtectionOp::ApproveWorkflowRun), &[]),
+    route("GET", "/repos/:owner/:name/actions/permissions/workflow", Op::Protection(ProtectionOp::GetWorkflowPermissions), &[]),
+    route("PUT", "/repos/:owner/:name/actions/permissions/workflow", Op::Protection(ProtectionOp::SetWorkflowPermissions), &[]),
+    route(
+        "GET",
+        "/repos/:owner/:name/actions/permissions/fork-pr-contributor-approval",
+        Op::Protection(ProtectionOp::GetForkPrApproval),
+        &[],
+    ),
+    route(
+        "PUT",
+        "/repos/:owner/:name/actions/permissions/fork-pr-contributor-approval",
+        Op::Protection(ProtectionOp::SetForkPrApproval),
+        &[],
+    ),
+    route("POST", "/repos/:owner/:name/dispatches", Op::Protection(ProtectionOp::CreateRepositoryDispatch), &[]),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
     route(
         "POST",

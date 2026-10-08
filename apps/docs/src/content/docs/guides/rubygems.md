@@ -154,13 +154,16 @@ A private gem you cannot see looks exactly like one that does not exist.
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-install and push the workspace's gems:
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can install the workspace's gems, and
+push them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token):
 
 ```yaml
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       GEM_HOST_API_KEY: ${{ secrets.G1T_TOKEN }}
       BUNDLE_G1T__SH: g1t:${{ secrets.G1T_TOKEN }}

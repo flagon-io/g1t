@@ -20,6 +20,30 @@ fn read(name: &str) -> Workflow {
 }
 
 #[test]
+fn every_workflow_asks_for_only_what_its_token_does() {
+    use g1t_actions::permissions::{Access, TokenDefault};
+    let job = |name: &str, id: &str| {
+        let workflow = read(name);
+        let job = workflow.jobs.iter().find(|job| job.id == id).unwrap().clone();
+        job.permissions(&workflow, TokenDefault::Restricted)
+    };
+    // CI and Deploy only read: nothing they do writes with the token.
+    for (name, id) in [("ci.yml", "rust"), ("deploy.yml", "core"), ("runner-release.yml", "binaries")] {
+        let permissions = job(name, id);
+        assert!(permissions.listed().iter().all(|(_, access)| *access <= Access::Read), "{name} {id}");
+    }
+    // The runner base pushes a branch and opens a pull request.
+    let base = job("runner-base.yml", "build");
+    assert_eq!(base.get("contents"), Access::Write);
+    assert_eq!(base.get("pull-requests"), Access::Write);
+    assert_eq!(base.get("packages"), Access::None);
+    // The runner's image goes to g1t's registry.
+    let image = job("runner-release.yml", "image");
+    assert_eq!(image.get("packages"), Access::Write);
+    assert_eq!(image.get("contents"), Access::Read);
+}
+
+#[test]
 fn every_workflow_reads_and_runs_on_g1t() {
     let mut count = 0;
     for entry in std::fs::read_dir(workflows_dir()).unwrap() {

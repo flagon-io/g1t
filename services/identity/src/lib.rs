@@ -19,6 +19,7 @@ mod oauth;
 mod paid;
 mod profiles;
 mod rename;
+mod job_tokens;
 mod run_credentials;
 mod security;
 mod teams;
@@ -891,6 +892,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "create_run_credential" => reply(&identity.create_run_credential(args(body)?).await?),
         "bind_run_credentials" => reply(&identity.bind_run_credentials(args(body)?).await?),
         "revoke_run_credentials" => reply(&identity.revoke_run_credentials(args(body)?).await?),
+        "create_job_token" => reply(&identity.create_job_token(args(body)?).await?),
+        "revoke_job_tokens" => reply(&identity.revoke_job_tokens(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove("access_tokens", args(body)?).await?),
         // Invites and the waitlist; see invites.rs.
         "registration" => reply(&identity.registration_mode()),

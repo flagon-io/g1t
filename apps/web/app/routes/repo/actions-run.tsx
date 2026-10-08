@@ -1,8 +1,8 @@
-import { AlertTriangle, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Info, Package, RotateCw, ServerCog, Square, XCircle } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Hourglass, Info, Package, Play, RotateCw, ServerCog, ShieldAlert, Square, Users, X, XCircle } from "lucide-react";
 import { type ReactNode } from "react";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
-import type { Annotation, Job, StepState } from "@g1t/contracts";
+import type { Annotation, EnvironmentReviewer, Job, PendingDeployment, RunApproval, StepState } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
@@ -38,13 +38,32 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const repo = { namespace: params.owner, name: params.repo };
-  const intent = String((await request.formData()).get("intent"));
+  const form = await request.formData();
+  const intent = String(form.get("intent"));
+  // Reviewing a deployment is the environment's reviewers' to do: the
+  // service says who may.
+  if (intent === "approve-deployment" || intent === "reject-deployment") {
+    const environment = String(form.get("environment") ?? "");
+    const comment = String(form.get("comment") ?? "").trim();
+    const done = await actions.reviewDeployments(
+      user,
+      repo,
+      params.id,
+      intent === "approve-deployment" ? "approved" : "rejected",
+      environment ? [environment] : [],
+      comment || undefined,
+    );
+    return done.ok ? {} : { error: done.error.message };
+  }
+  // Everything else, approving a run from outside included, needs Write.
   const refused = await refusal(context, params, "run");
   if (refused) return { error: refused };
   const done =
-    intent === "cancel"
-      ? await actions.cancel(user, repo, params.id)
-      : await actions.rerun(user, repo, params.id, intent === "rerun-failed");
+    intent === "approve-run"
+      ? await actions.approveRun(user, repo, params.id)
+      : intent === "cancel"
+        ? await actions.cancel(user, repo, params.id)
+        : await actions.rerun(user, repo, params.id, intent === "rerun-failed");
   return done.ok ? {} : { error: done.error.message };
 }
 
@@ -135,10 +154,10 @@ function JobView({ job, base }: { job: Job; base: string }) {
   return (
     <section className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <StatusIcon status={job.status} conclusion={job.conclusion} size={18} />
+        <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={18} />
         <h3 className="text-base font-semibold">{job.name}</h3>
         <span className="text-sm text-muted">
-          {standingWord(job)}
+          {standingWord({ ...job, of: "job" })}
           {job.startedAt && ` · ${duration(job.startedAt, job.finishedAt)}`}
         </span>
         <RanOn job={job} workspace={base.split("/")[1]!} />
@@ -182,15 +201,237 @@ function JobView({ job, base }: { job: Job; base: string }) {
   );
 }
 
+/** A run held by its environments, in words that say what for: a review, or only a wait timer. */
+function runWord(status: string, deployments: PendingDeployment[]): string | null {
+  if (status !== "waiting") return null;
+  const waiting = deployments.filter((deployment) => deployment.state === "waiting");
+  return waiting.length > 0 && waiting.every((deployment) => !deployment.needsReview) ? "Waiting for a wait timer" : null;
+}
+
+/** Whether a wait timer has yet to run out. */
+function timerRunning(deployment: PendingDeployment): boolean {
+  return Boolean(deployment.waitUntil && new Date(deployment.waitUntil).getTime() > Date.now());
+}
+
+/** Whether environments still hold some of the run's jobs. */
+function held(deployments: PendingDeployment[]): boolean {
+  return deployments.some(
+    (deployment) => deployment.state === "waiting" || (deployment.state === "approved" && timerRunning(deployment)),
+  );
+}
+
+/** `in 12m`, `in 2h 5m`: how long until a time. */
+function untilWords(at: string): string {
+  const minutes = Math.max(1, Math.ceil((new Date(at).getTime() - Date.now()) / 60_000));
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `in ${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}`;
+  return `in ${Math.round(hours / 24)}d`;
+}
+
+/** A user by name, a team as @team. */
+function ReviewerChip({ reviewer }: { reviewer: EnvironmentReviewer }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-raised px-1.5 py-0.5 font-mono text-xs text-fg/85">
+      {reviewer.type === "team" && <Users size={11} className="text-muted" />}
+      {reviewer.type === "team" ? `@${reviewer.name}` : reviewer.name}
+    </span>
+  );
+}
+
+/** A pull request's run from outside, waiting for someone with Write to let it start. */
+function ApprovalPanel({ approval, member, busy }: { approval: RunApproval; member: boolean; busy: boolean }) {
+  return (
+    <section className="flex flex-col gap-4 rounded-xl border border-warn/30 bg-warn/5 p-4 sm:flex-row sm:items-start">
+      <ShieldAlert size={18} className="mt-0.5 hidden shrink-0 text-warn sm:block" />
+      <div className="min-w-0 grow space-y-1.5 text-sm">
+        <h3 className="flex items-center gap-2 font-medium">
+          <ShieldAlert size={16} className="shrink-0 text-warn sm:hidden" />
+          Approval required
+        </h3>
+        <p className="text-fg/85">{approval.reason}</p>
+        <p className="text-muted">
+          Nothing in this run starts, and it gets no secrets and no token, until someone with the Write role approves it.
+          {!member && " Ask someone with the Write role on this repository to approve it."}
+        </p>
+      </div>
+      {member && (
+        <Form method="post" className="shrink-0">
+          <SubmitButton name="intent" value="approve-run" variant="accent" disabled={busy} pending="Approving…">
+            <Play size={13} />
+            Approve and run
+          </SubmitButton>
+        </Form>
+      )}
+    </section>
+  );
+}
+
+const DEPLOYMENT_ICON: Record<PendingDeployment["state"], ReactNode> = {
+  waiting: <Hourglass size={15} className="shrink-0 text-warn" />,
+  approved: (
+    <span className="inline-flex shrink-0 rounded-full bg-success/15 p-0.5 text-success">
+      <Check size={11} strokeWidth={3} />
+    </span>
+  ),
+  rejected: (
+    <span className="inline-flex shrink-0 rounded-full bg-danger/15 p-0.5 text-danger">
+      <X size={11} strokeWidth={3} />
+    </span>
+  ),
+};
+
+/** Where one environment's rules stand for this run, and a way to review it for those who may. */
+function DeploymentRow({ deployment, busy }: { deployment: PendingDeployment; busy: boolean }) {
+  const waiting = deployment.state === "waiting";
+  const timer = timerRunning(deployment);
+  const words =
+    deployment.state === "approved"
+      ? timer
+        ? "Approved · waiting for its wait timer"
+        : "Approved"
+      : deployment.state === "rejected"
+        ? "Rejected"
+        : deployment.needsReview
+          ? "Waiting for review"
+          : "Waiting for its wait timer";
+  return (
+    <li className="space-y-3 px-4 py-4">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        {DEPLOYMENT_ICON[deployment.state]}
+        <span className="font-mono text-sm font-medium">{deployment.environment}</span>
+        <span className="text-sm text-muted">{words}</span>
+      </div>
+      <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[7rem_1fr]">
+        {deployment.jobs.length > 0 && (
+          <>
+            <dt className="text-muted">{deployment.jobs.length === 1 ? "Job" : "Jobs"}</dt>
+            <dd className="flex min-w-0 flex-wrap gap-1.5">
+              {deployment.jobs.map((job) => (
+                <span key={job} className="rounded-md bg-raised px-1.5 py-0.5 text-xs">
+                  {job}
+                </span>
+              ))}
+            </dd>
+          </>
+        )}
+        {deployment.reviewers.length > 0 && (
+          <>
+            <dt className="text-muted">Reviewers</dt>
+            <dd className="flex min-w-0 flex-wrap gap-1.5">
+              {deployment.reviewers.map((reviewer) => (
+                <ReviewerChip key={`${reviewer.type}:${reviewer.name}`} reviewer={reviewer} />
+              ))}
+            </dd>
+          </>
+        )}
+        {deployment.waitUntil && (waiting || timer) && (
+          <>
+            <dt className="text-muted">Wait timer</dt>
+            <dd>
+              {timer ? (
+                <>
+                  Starts at{" "}
+                  <time dateTime={deployment.waitUntil} suppressHydrationWarning>
+                    {new Date(deployment.waitUntil).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                  </time>{" "}
+                  <span className="text-muted" suppressHydrationWarning>
+                    ({untilWords(deployment.waitUntil)})
+                  </span>
+                </>
+              ) : (
+                "Done"
+              )}
+            </dd>
+          </>
+        )}
+        {deployment.reviewedBy && (
+          <>
+            <dt className="text-muted">{deployment.state === "rejected" ? "Rejected by" : "Approved by"}</dt>
+            <dd className="min-w-0">
+              <span className="font-mono text-xs">{deployment.reviewedBy}</span>
+              {deployment.reviewedAt && (
+                <span className="text-muted">
+                  {" "}
+                  · <TimeAgo at={deployment.reviewedAt} />
+                </span>
+              )}
+              {deployment.comment && <p className="mt-1 whitespace-pre-wrap break-words text-fg/85">{deployment.comment}</p>}
+            </dd>
+          </>
+        )}
+      </dl>
+      {waiting && deployment.needsReview && deployment.canReview && (
+        <Form method="post" className="space-y-3">
+          <input type="hidden" name="environment" value={deployment.environment} />
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Comment (optional)</span>
+            <textarea
+              name="comment"
+              rows={2}
+              maxLength={1000}
+              placeholder="Why you approve or reject it"
+              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <SubmitButton name="intent" value="approve-deployment" variant="accent" disabled={busy} pending="Approving…">
+              <Check size={13} />
+              Approve and deploy
+            </SubmitButton>
+            <SubmitButton name="intent" value="reject-deployment" variant="danger" disabled={busy} pending="Rejecting…">
+              <X size={13} />
+              Reject
+            </SubmitButton>
+          </div>
+        </Form>
+      )}
+      {waiting && deployment.needsReview && !deployment.canReview && (
+        <p className="text-sm text-muted">
+          {deployment.reviewers.length > 0
+            ? "Only its reviewers can approve or reject it."
+            : "Only someone this environment's rules name can approve or reject it."}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** The environments holding the run's jobs, each with where its rules stand. */
+function DeploymentsPanel({ deployments, busy }: { deployments: PendingDeployment[]; busy: boolean }) {
+  const review = deployments.some((deployment) => deployment.state === "waiting" && deployment.needsReview);
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-surface">
+      <header className="flex items-start gap-2.5 border-b border-line px-4 py-3">
+        <Hourglass size={16} className="mt-0.5 shrink-0 text-warn" />
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">{review ? "Waiting for review" : "Waiting to deploy"}</h3>
+          <p className="mt-0.5 text-sm text-muted">
+            Jobs that deploy to these environments wait until each environment's protection rules let them through, and
+            only then get its secrets.
+          </p>
+        </div>
+      </header>
+      <ul className="divide-y divide-line">
+        {deployments.map((deployment) => (
+          <DeploymentRow key={deployment.environment} deployment={deployment} busy={busy} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function ActionsRun({ loaderData, actionData, params }: Route.ComponentProps) {
   const { detail, artifacts, member } = loaderData;
   const { run, jobs, notes } = detail;
+  const deployments = detail.pendingDeployments ?? [];
   const base = `/${params.owner}/${params.repo}`;
   const [search] = useSearchParams();
   // One of the run's buttons is working: the others wait for it.
   const busy = usePending();
   const live = run.status !== "completed";
-  useRefreshWhile(live, 2500);
+  // Waiting on a person needs no quick refresh; a running job does.
+  useRefreshWhile(live, run.status === "action_required" || run.status === "waiting" ? 8000 : 2500);
 
   // The job asked for, else one that failed, is running, or the first.
   const selected =
@@ -237,7 +478,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
           )}
         </div>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-          <span>{standingWord(run)}</span>
+          <span>{runWord(run.status, deployments) ?? standingWord(run)}</span>
           <span className="inline-flex items-center gap-1 font-mono text-xs">
             <GitBranch size={12} />
             {shortRef(run.ref)}
@@ -257,10 +498,13 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
           </span>
           {run.startedAt && <span className="font-mono text-xs">{duration(run.startedAt, run.finishedAt)}</span>}
           {run.attempt > 1 && <span>Attempt {run.attempt}</span>}
+          {detail.approval?.state === "approved" && detail.approval.approvedBy && <span>Approved by {detail.approval.approvedBy}</span>}
         </p>
       </header>
 
       <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
+      {detail.approval?.state === "required" && <ApprovalPanel approval={detail.approval} member={member} busy={busy} />}
+      {live && held(deployments) && <DeploymentsPanel deployments={deployments} busy={busy} />}
       {run.error && (
         <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm">
           <p className="font-medium text-danger">The workflow file could not be used</p>
@@ -305,7 +549,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                   job.id === selected?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
                 }`}
               >
-                <StatusIcon status={job.status} conclusion={job.conclusion} size={14} />
+                <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={14} />
                 <span className="min-w-0 truncate">{job.name}</span>
                 <span className="ml-auto shrink-0 font-mono text-xs text-faint">{duration(job.startedAt, job.finishedAt)}</span>
               </Link>

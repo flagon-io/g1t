@@ -75,8 +75,8 @@ impl DeploymentsOp {
             DeploymentsOp::CreateDeployment => "Report a deployment of a commit to an environment, from any CI or script. ref is the branch, tag or commit deployed; sha is resolved from it unless you give the whole commit id. environment is production unless you say (any name up to 255 characters, such as staging or review/feature-x; names are matched without regard to case, and the first spelling is kept). task is deploy unless you say; payload is any JSON object, returned as given. production_environment is true for an environment named production unless you say; transient_environment marks one that goes away, such as a review app. Its first status is state (queued unless you say), with environment_url and log_url. Each status also shows on the commit as the check `deploy / <environment>`, which a ruleset's required_deployments rule can require. Needs the Write role. Returns the deployment with its statuses.",
             DeploymentsOp::ListDeploymentStatuses => "List a deployment's statuses, newest first: each with its state, description, environment_url, log_url, creator and created_at. A g1t.page build's are read from the build itself. Needs the Read role.",
             DeploymentsOp::CreateDeploymentStatus => "Add a status to a reported deployment: state (queued, in_progress, success, failure, error or inactive), description, environment_url (where it is served) and log_url (where its output can be read). The deployment takes its state, and any address it gives. A success with auto_inactive (true unless you say) makes the environment's older successful deployments inactive. The commit's `deploy / <environment>` check follows: pending while queued or in progress, then success, failure or error. A g1t.page build's statuses come from the build and cannot be added to. Needs the Write role.",
-            DeploymentsOp::ListEnvironments => "List the environments a repository's deployments went to, those people use directly first (production by name before others), then the most recently deployed. Each has its name, url (where its current deployment is served), production_environment, transient_environment, deployments_count, latest (its newest deployment, whatever its state), current (its newest successful deployment that is still active) and updated_at. total_count counts deployments across every environment. Needs the Read role.",
-            DeploymentsOp::GetEnvironment => "Get one environment by name, matched without regard to case, with its current and latest deployments. A name with slashes is URL-encoded in the path. Needs the Read role.",
+            DeploymentsOp::ListEnvironments => "List the environments a repository's deployments went to, those people use directly first (production by name before others), then the most recently deployed, and after them those with protection rules but no deployment yet. Each has its name, url (where its current deployment is served), production_environment, transient_environment, deployments_count, latest (its newest deployment, whatever its state), current (its newest successful deployment that is still active) and updated_at, and, when it has rules, protection_rules (required_reviewers, wait_timer, branch_policy), deployment_branch_policy, branch_policies and can_admins_bypass. total_count counts deployments across every environment. Needs the Read role.",
+            DeploymentsOp::GetEnvironment => "Get one environment by name, matched without regard to case, with its current and latest deployments and its protection rules (see update_environment). An environment with rules but no deployment yet is found too. A name with slashes is URL-encoded in the path. Needs the Read role.",
         }
     }
 
@@ -258,7 +258,16 @@ pub async fn run(op: DeploymentsOp, services: &Services, viewer: &Viewer, input:
     } else {
         args.insert("viewer".into(), serde_json::to_value(viewer)?);
     }
-    g1t_kit::call(&services.deployments, method, &Value::Object(args)).await
+    let answered: Outcome<Value> = g1t_kit::call(&services.deployments, method, &Value::Object(args)).await?;
+    // Environments carry their protection rules, kept by the actions service.
+    match op {
+        DeploymentsOp::ListEnvironments => crate::protection::with_protection(services, viewer, input, answered, None).await,
+        DeploymentsOp::GetEnvironment => {
+            let name = input["environment"].as_str().unwrap_or_default().trim().to_owned();
+            crate::protection::with_protection(services, viewer, input, answered, Some(&name)).await
+        }
+        _ => Ok(answered),
+    }
 }
 
 #[cfg(test)]

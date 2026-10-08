@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::filter::{Filter, Patterns};
+use crate::permissions::{self, Permissions};
 
 /// Where workflows live: GitHub's `.github/workflows`, under g1t's own
 /// folder, so moving a repository to g1t is renaming `.github` to `.g1t`.
@@ -27,8 +28,14 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
     "workflow_run",
     "merge_group",
     "create",
-    "delete",
 ];
+
+/// Events GitHub has that g1t knows of but never sends: a workflow on one
+/// of them is told so, rather than waiting for a run that never comes.
+pub const UNSENT_EVENTS: &[(&str, &str)] = &[(
+    "delete",
+    "g1t does not start runs when a branch or tag is deleted yet, so the `delete` trigger never starts it. New branches and tags start `create` and `push` workflows.",
+)];
 
 /// The `types` each event has when a workflow gives none, as on GitHub.
 pub fn default_types(event: &str) -> &'static [&'static str] {
@@ -134,9 +141,24 @@ pub struct Job {
     pub max_parallel: Option<u32>,
     /// A reusable workflow it calls (`uses:` on a job).
     pub uses: Option<String>,
+    /// Its own `permissions`, which replace the workflow's.
+    pub permissions: Option<Permissions>,
+    /// Its own `concurrency`: at most one job of its group runs at a time.
+    pub concurrency: Option<Concurrency>,
     pub steps: Vec<Step>,
     /// The whole job as written, for the sandbox.
     pub raw: Value,
+}
+
+impl Job {
+    /// What its token may do: its own `permissions`, else its workflow's,
+    /// else `default` (the repository's choice).
+    pub fn permissions(&self, workflow: &Workflow, default: permissions::TokenDefault) -> Permissions {
+        self.permissions
+            .clone()
+            .or_else(|| workflow.permissions.clone())
+            .unwrap_or_else(|| Permissions::default_for(default))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -146,6 +168,8 @@ pub struct Workflow {
     pub triggers: Vec<Trigger>,
     pub env: Map<String, Value>,
     pub concurrency: Option<Concurrency>,
+    /// Its top-level `permissions`, for every job that writes none.
+    pub permissions: Option<Permissions>,
     pub jobs: Vec<Job>,
     pub notes: Vec<Note>,
     /// The whole workflow as written.
@@ -302,7 +326,9 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         _ => return Err("`on` is an event, a list of events, or a mapping of events to their filters.".to_owned()),
     }
     for trigger in &triggers {
-        if !SUPPORTED_EVENTS.contains(&trigger.event.as_str()) {
+        if let Some((_, why)) = UNSENT_EVENTS.iter().find(|(event, _)| *event == trigger.event) {
+            note(Severity::Unsupported, None, (*why).to_owned());
+        } else if !SUPPORTED_EVENTS.contains(&trigger.event.as_str()) {
             note(
                 Severity::Unsupported,
                 None,
@@ -313,7 +339,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             note(
                 Severity::Info,
                 None,
-                "`pull_request_target` runs like `pull_request`, on the pull request's head, with the repository's secrets.".to_owned(),
+                "`pull_request_target` runs in the base's context: the default branch's copy of this workflow, at the default branch's head, with the repository's secrets. It does not check out the pull request's changes; a step that does runs code anyone could have written, with those secrets.".to_owned(),
             );
         }
         if trigger.event == "workflow_call" && triggers.len() == 1 {
@@ -325,13 +351,14 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         Some(Value::Object(env)) => env.clone(),
         _ => Map::new(),
     };
-    let concurrency = match root.get("concurrency") {
-        Some(Value::String(group)) => Some(Concurrency { group: group.clone(), cancel_in_progress: Value::Bool(false) }),
-        Some(Value::Object(spec)) => text(spec.get("group")).map(|group| Concurrency {
-            group,
-            cancel_in_progress: spec.get("cancel-in-progress").cloned().unwrap_or(Value::Bool(false)),
-        }),
-        _ => None,
+    let concurrency = concurrency_of(root.get("concurrency"));
+    let permissions = match root.get("permissions") {
+        None => None,
+        Some(value) => {
+            let (permissions, unknown) = permissions::parse(value)?;
+            permission_notes(&permissions, &unknown, None, &mut note);
+            Some(permissions)
+        }
     };
 
     let Some(Value::Object(job_specs)) = root.get("jobs") else {
@@ -414,8 +441,16 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             note(Severity::Warning, Some(id), "`container`: steps run on g1t's runner image instead of that container.".to_owned());
         }
         if spec.contains_key("environment") {
-            note(Severity::Info, Some(id), "`environment`: the job gets the values its secrets and variables give this environment; protection rules (approvals, wait timers, branch limits) are not enforced on g1t yet. Unless it says `deployment: false`, the run records a deployment to it.".to_owned());
+            note(Severity::Info, Some(id), "`environment`: the job gets the values its secrets and variables give this environment once the environment's protection rules (required reviewers, a wait timer, which branches may deploy) let it through. Unless it says `deployment: false`, the run records a deployment to it.".to_owned());
         }
+        let job_permissions = match spec.get("permissions") {
+            None => None,
+            Some(value) => {
+                let (permissions, unknown) = permissions::parse(value).map_err(|problem| format!("Job `{id}`: {problem}"))?;
+                permission_notes(&permissions, &unknown, Some(id), &mut note);
+                Some(permissions)
+            }
+        };
         let (matrix, fail_fast, max_parallel) = match spec.get("strategy") {
             Some(Value::Object(strategy)) => (
                 strategy.get("matrix").cloned(),
@@ -441,6 +476,8 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             fail_fast,
             max_parallel,
             uses,
+            permissions: job_permissions,
+            concurrency: concurrency_of(spec.get("concurrency")),
             steps,
             raw: Value::Object(spec.clone()),
         });
@@ -458,6 +495,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         triggers,
         env,
         concurrency,
+        permissions,
         jobs,
         notes,
         raw,
@@ -466,6 +504,33 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         return Err("The jobs' `needs` go round in a circle.".to_owned());
     }
     Ok(workflow)
+}
+
+/// `concurrency`, as a group's name or a mapping with `group` and
+/// `cancel-in-progress`.
+fn concurrency_of(value: Option<&Value>) -> Option<Concurrency> {
+    match value {
+        Some(Value::String(group)) => Some(Concurrency { group: group.clone(), cancel_in_progress: Value::Bool(false) }),
+        Some(Value::Object(spec)) => text(spec.get("group")).map(|group| Concurrency {
+            group,
+            cancel_in_progress: spec.get("cancel-in-progress").cloned().unwrap_or(Value::Bool(false)),
+        }),
+        _ => None,
+    }
+}
+
+/// What to say about `permissions` that grant less on g1t than they name.
+fn permission_notes(permissions: &Permissions, unknown: &[String], job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) {
+    for name in unknown {
+        note(Severity::Warning, job, format!("`permissions.{name}`: the token has no permission called that, so it grants nothing."));
+    }
+    if permissions.get("id-token") == permissions::Access::Write {
+        note(
+            Severity::Warning,
+            job,
+            "`permissions.id-token: write`: g1t does not issue OIDC tokens to jobs yet, so a step that asks for one fails. Keep cloud credentials in secrets instead.".to_owned(),
+        );
+    }
 }
 
 /// What to say about an action g1t runs differently, if anything.
@@ -613,6 +678,89 @@ jobs:
         let routed: Vec<&str> = workflow.notes.iter().filter(|n| n.message.starts_with("`self-hosted`")).map(|n| n.message.as_str()).collect();
         assert_eq!(routed.len(), 2);
         assert!(routed.iter().all(|m| m.contains("self-hosted runners") && !m.contains("Linux")));
+    }
+
+    #[test]
+    fn permissions_are_read_at_both_levels() {
+        use crate::permissions::{Access, TokenDefault};
+        let workflow = parse(
+            "on: push
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  plain:
+    runs-on: ubuntu-latest
+    steps: [{ run: 'true' }]
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps: [{ run: 'true' }]
+  quiet:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        let plain = workflow.jobs[0].permissions(&workflow, TokenDefault::Restricted);
+        assert_eq!(plain.get("pull-requests"), Access::Write);
+        assert_eq!(plain.get("contents"), Access::Read);
+        // A job's own permissions replace the workflow's whole.
+        let release = workflow.jobs[1].permissions(&workflow, TokenDefault::Permissive);
+        assert_eq!(release.get("contents"), Access::Write);
+        assert_eq!(release.get("pull-requests"), Access::None);
+        assert_eq!(workflow.jobs[2].permissions(&workflow, TokenDefault::Permissive).scopes(), ["repo:read"]);
+        // Without any, the repository's default.
+        let bare = parse("on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ run: 'true' }]").unwrap();
+        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Restricted).get("contents"), Access::Read);
+        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Restricted).get("issues"), Access::None);
+        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Permissive).get("issues"), Access::Write);
+        // What reads but grants nothing is said.
+        let odd = parse("on: push\npermissions: { id-token: write, wiki: read }\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        assert!(odd.notes.iter().any(|n| n.message.contains("OIDC")));
+        assert!(odd.notes.iter().any(|n| n.message.contains("`permissions.wiki`")));
+        assert!(parse("on: push\npermissions: read\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap_err().contains("read-all"));
+        assert!(
+            parse("on: push\njobs:\n  a:\n    runs-on: x\n    permissions: { contents: admin }\n    steps: [{ run: 'true' }]")
+                .unwrap_err()
+                .contains("Job `a`")
+        );
+    }
+
+    #[test]
+    fn a_job_has_its_own_concurrency() {
+        let workflow = parse(
+            "on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: true
+    steps: [{ run: 'true' }]
+  named:
+    runs-on: ubuntu-latest
+    concurrency: just-one
+    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        let deploy = workflow.jobs[0].concurrency.as_ref().unwrap();
+        assert_eq!(deploy.group, "deploy-${{ github.ref }}");
+        assert_eq!(deploy.cancel_in_progress, Value::Bool(true));
+        assert_eq!(workflow.jobs[1].concurrency.as_ref().unwrap().group, "just-one");
+        assert!(workflow.concurrency.is_none());
+    }
+
+    #[test]
+    fn events_g1t_never_sends_are_said_and_pull_request_target_is_the_base() {
+        let workflow = parse("on: [create, delete, repository_dispatch, pull_request_target]\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        let unsupported: Vec<&str> = workflow.notes.iter().filter(|n| n.severity == Severity::Unsupported).map(|n| n.message.as_str()).collect();
+        assert_eq!(unsupported.len(), 1, "{unsupported:?}");
+        assert!(unsupported[0].contains("`delete`"));
+        let target = workflow.notes.iter().find(|n| n.message.starts_with("`pull_request_target`")).unwrap();
+        assert!(target.message.contains("default branch"));
+        assert!(!target.message.contains("on the pull request's head"));
     }
 
     #[test]
