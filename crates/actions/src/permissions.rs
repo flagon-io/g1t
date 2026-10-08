@@ -33,7 +33,9 @@ pub const NAMES: [&str; 16] = [
     "statuses",
 ];
 
-/// Permissions g1t has nothing behind: accepted, and they grant nothing.
+/// Permissions that grant no scope of the token: g1t has nothing behind
+/// most of them, and `id-token` lets the job ask for an OIDC token instead
+/// (services/actions/src/runtime.rs).
 pub const WITHOUT_EFFECT: [&str; 5] = ["attestations", "discussions", "id-token", "models", "repository-projects"];
 
 /// How much of one permission.

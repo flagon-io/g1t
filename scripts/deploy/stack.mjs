@@ -270,7 +270,8 @@ export function buildGroups(units, images = []) {
   for (const unit of units.filter((u) => u.kind !== "rust-worker")) {
     add(images.includes(unit.id) ? `${unit.id}-image` : unit.kind === "ts-worker" ? "ts" : unit.id, unit.id);
   }
-  return [...groups].map(([group, ids]) => ({ group, units: ids.join(","), rust: group.startsWith("rust") }));
+  // `image`: the job builds a Containers image (Docker, on a larger machine).
+  return [...groups].map(([group, ids]) => ({ group, units: ids.join(","), rust: group.startsWith("rust"), image: group.endsWith("-image") }));
 }
 
 /**

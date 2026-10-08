@@ -18,7 +18,8 @@ use g1t_actions::filter::Pattern;
 use g1t_actions::permissions::TokenDefault;
 use g1t_contracts::access::{self, AccessSource, Capability, CollaboratorPermissionArgs, PermissionInfo};
 use g1t_contracts::actions::{
-    APPROVAL_POLICIES, ActionsSettings, ActionsSettingsArgs, BranchPattern, DeleteEnvironmentArgs, Environment, EnvironmentReviewer,
+    APPROVAL_POLICIES, ActionsSettings, ActionsSettingsArgs, SetWorkspaceActionsSettingsArgs, WorkspaceActionsSettings,
+    WorkspaceActionsSettingsArgs, BranchPattern, DeleteEnvironmentArgs, Environment, EnvironmentReviewer,
     EnvironmentsArgs, MAX_ENVIRONMENT_REVIEWERS, MAX_WAIT_MINUTES, PendingDeployment, PendingDeploymentsArgs, ReviewDeploymentsArgs,
     RunActionArgs, RunApproval, SetActionsSettingsArgs, SetEnvironmentArgs, WorkflowRun,
 };
@@ -41,10 +42,44 @@ fn now() -> String {
     rfc3339(now_ms())
 }
 
-#[derive(Deserialize)]
+/// A repository's own choices (migrations 0006 and 0007); null is unchosen.
+#[derive(Default, Deserialize)]
 struct SettingsRow {
+    default_permissions: Option<String>,
+    approval_policy: Option<String>,
+    can_approve_pulls: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct WorkspaceRow {
     default_permissions: String,
-    approval_policy: String,
+    max_permissions: String,
+    can_approve_pulls: u32,
+}
+
+/// What a workflow without `permissions:` gets: the repository's choice,
+/// else `write` for a repository made before restricted tokens
+/// (`grandfathered`), else its workspace's default; never more than the
+/// workspace's maximum.
+pub(crate) fn effective_default(chosen: Option<TokenDefault>, grandfathered: bool, workspace_default: TokenDefault, maximum: TokenDefault) -> TokenDefault {
+    let wanted = chosen.unwrap_or(if grandfathered { TokenDefault::Permissive } else { workspace_default });
+    if maximum == TokenDefault::Restricted { TokenDefault::Restricted } else { wanted }
+}
+
+/// The workspace's policy, or its defaults.
+fn workspace_policy(row: Option<WorkspaceRow>) -> WorkspaceActionsSettings {
+    match row {
+        Some(row) => WorkspaceActionsSettings {
+            default_permissions: row.default_permissions,
+            max_permissions: row.max_permissions,
+            can_approve_pull_requests: row.can_approve_pulls != 0,
+        },
+        None => WorkspaceActionsSettings {
+            default_permissions: TokenDefault::Restricted.as_str().to_owned(),
+            max_permissions: TokenDefault::Permissive.as_str().to_owned(),
+            can_approve_pull_requests: false,
+        },
+    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -219,36 +254,85 @@ pub(crate) enum Gate {
 }
 
 impl Actions {
-    // --- The repository's choices -----------------------------------------------
+    // --- The repository's and workspace's choices -------------------------------
 
-    /// A repository's choices, or the defaults.
-    pub(crate) async fn repo_settings(&self, repo_id: &str) -> Result<ActionsSettings> {
-        let row = self
+    async fn repo_choices(&self, repo_id: &str) -> Result<SettingsRow> {
+        Ok(self
             .db
-            .prepare("SELECT default_permissions, approval_policy FROM repo_settings WHERE repo_id = ?")
+            .prepare("SELECT default_permissions, approval_policy, can_approve_pulls FROM repo_settings WHERE repo_id = ?")
             .bind(&[repo_id.into()])?
             .first::<SettingsRow>(None)
+            .await?
+            .unwrap_or_default())
+    }
+
+    /// A workspace's policy for its repositories' tokens, or the defaults.
+    pub(crate) async fn workspace_settings(&self, workspace: &str) -> Result<WorkspaceActionsSettings> {
+        let row = self
+            .db
+            .prepare("SELECT default_permissions, max_permissions, can_approve_pulls FROM workspace_actions_settings WHERE namespace = ?")
+            .bind(&[workspace.to_lowercase().into()])?
+            .first::<WorkspaceRow>(None)
             .await?;
-        Ok(match row {
-            Some(row) => ActionsSettings { default_permissions: row.default_permissions, approval_policy: row.approval_policy },
-            None => ActionsSettings {
-                default_permissions: TokenDefault::Restricted.as_str().to_owned(),
-                approval_policy: DEFAULT_APPROVAL_POLICY.to_owned(),
-            },
+        Ok(workspace_policy(row))
+    }
+
+    /// Whether `repo` was made before restricted tokens began, and so keeps
+    /// read and write until someone chooses otherwise.
+    async fn grandfathered(&self, repo: &Repo) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Since {
+            value: String,
+        }
+        let since = self
+            .db
+            .prepare("SELECT value FROM actions_meta WHERE key = 'restricted_since'")
+            .first::<Since>(None)
+            .await?;
+        Ok(since.is_some_and(|since| !repo.created_at.is_empty() && repo.created_at.as_str() < since.value.as_str()))
+    }
+
+    /// A repository's settings as they hold, its workspace's taken in.
+    pub(crate) async fn repo_settings(&self, repo: &Repo) -> Result<ActionsSettings> {
+        let row = self.repo_choices(&repo.id).await?;
+        let workspace = self.workspace_settings(&repo.namespace).await?;
+        let chosen = row.default_permissions.as_deref().and_then(TokenDefault::parse);
+        let default = effective_default(
+            chosen,
+            self.grandfathered(repo).await?,
+            TokenDefault::parse(&workspace.default_permissions).unwrap_or_default(),
+            TokenDefault::parse(&workspace.max_permissions).unwrap_or(TokenDefault::Permissive),
+        );
+        Ok(ActionsSettings {
+            default_permissions: default.as_str().to_owned(),
+            default_chosen: chosen.is_some(),
+            max_permissions: workspace.max_permissions.clone(),
+            approval_policy: row.approval_policy.unwrap_or_else(|| DEFAULT_APPROVAL_POLICY.to_owned()),
+            can_approve_pull_requests: workspace.can_approve_pull_requests && row.can_approve_pulls == Some(1),
+            workspace_allows_pull_requests: workspace.can_approve_pull_requests,
         })
     }
 
-    /// What a workflow without `permissions:` gets in the repository.
-    pub(crate) async fn token_default(&self, repo_id: &str) -> Result<TokenDefault> {
-        let settings = self.repo_settings(repo_id).await?;
-        Ok(TokenDefault::parse(&settings.default_permissions).unwrap_or_default())
+    /// What a workflow without `permissions:` gets in the repository, and
+    /// whether its jobs may open and approve pull requests.
+    pub(crate) async fn token_policy(&self, repo_id: &str) -> Result<(TokenDefault, bool)> {
+        let Some((repo, _)) = self.repo_by_id(repo_id).await? else {
+            return Ok((TokenDefault::Restricted, false));
+        };
+        let settings = self.repo_settings(&repo).await?;
+        Ok((TokenDefault::parse(&settings.default_permissions).unwrap_or_default(), settings.can_approve_pull_requests))
+    }
+
+    /// The approval policy of a repository.
+    pub(crate) async fn approval_policy(&self, repo_id: &str) -> Result<String> {
+        Ok(self.repo_choices(repo_id).await?.approval_policy.unwrap_or_else(|| DEFAULT_APPROVAL_POLICY.to_owned()))
     }
 
     pub async fn actions_settings(&self, a: ActionsSettingsArgs) -> Result<Outcome<ActionsSettings>> {
         let Some(repo) = self.visible_repo(&a.repo, &a.viewer).await? else {
             return Ok(fail(FailureCode::NotFound, "There is no such repository."));
         };
-        Ok(Outcome::Ok(self.repo_settings(&repo.id).await?))
+        Ok(Outcome::Ok(self.repo_settings(&repo).await?))
     }
 
     pub async fn set_actions_settings(&self, a: SetActionsSettingsArgs) -> Result<Outcome<ActionsSettings>> {
@@ -256,29 +340,111 @@ impl Actions {
             return Ok(refused);
         }
         let repo = check!(self.may(&a.actor, &a.repo, Capability::ManageIntegrations).await?);
-        let mut settings = self.repo_settings(&repo.id).await?;
-        if let Some(default) = &a.default_permissions {
-            match TokenDefault::parse(default) {
-                Some(parsed) => settings.default_permissions = parsed.as_str().to_owned(),
-                None => return Ok(fail(FailureCode::Invalid, "default_permissions is read or write.")),
-            }
+        let mut row = self.repo_choices(&repo.id).await?;
+        let workspace = self.workspace_settings(&repo.namespace).await?;
+        if let Some(default) = a.default_permissions.as_deref().map(str::trim) {
+            row.default_permissions = match default {
+                "inherit" | "" => None,
+                other => match TokenDefault::parse(other) {
+                    Some(TokenDefault::Permissive) if workspace.max_permissions == "read" => {
+                        return Ok(fail(
+                            FailureCode::Forbidden,
+                            format!("{} holds its repositories' tokens to read-only: an owner can change that in the workspace's Actions settings.", repo.namespace),
+                        ));
+                    }
+                    Some(parsed) => Some(parsed.as_str().to_owned()),
+                    None => return Ok(fail(FailureCode::Invalid, "default_permissions is read, write or inherit.")),
+                },
+            };
         }
         if let Some(policy) = &a.approval_policy {
             let policy = policy.trim();
             if !APPROVAL_POLICIES.contains(&policy) {
                 return Ok(fail(FailureCode::Invalid, format!("approval_policy is one of {}.", APPROVAL_POLICIES.join(", "))));
             }
-            settings.approval_policy = policy.to_owned();
+            row.approval_policy = Some(policy.to_owned());
         }
+        if let Some(allow) = a.can_approve_pull_requests {
+            if allow && !workspace.can_approve_pull_requests {
+                return Ok(fail(
+                    FailureCode::Forbidden,
+                    format!("{} does not let its repositories' jobs open or approve pull requests: an owner can allow it in the workspace's Actions settings.", repo.namespace),
+                ));
+            }
+            row.can_approve_pulls = Some(u32::from(allow));
+        }
+        // 0006's artifact retention is kept, or its default for a new row.
         self.db
             .prepare(
-                "INSERT INTO repo_settings (repo_id, default_permissions, approval_policy, updated_at, updated_by) VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT (repo_id) DO UPDATE SET default_permissions = ?2, approval_policy = ?3, updated_at = ?4, updated_by = ?5",
+                "INSERT INTO repo_settings (repo_id, artifact_retention_days, default_permissions, approval_policy, can_approve_pulls, updated_at, updated_by)
+                 VALUES (?1, ?7, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT (repo_id) DO UPDATE SET default_permissions = ?2, approval_policy = ?3, can_approve_pulls = ?4,
+                   updated_at = ?5, updated_by = ?6",
             )
             .bind(&[
                 repo.id.as_str().into(),
+                optional(row.default_permissions.as_deref()),
+                optional(row.approval_policy.as_deref()),
+                row.can_approve_pulls.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                now().into(),
+                a.actor.username.as_str().into(),
+                g1t_contracts::actions::ARTIFACT_RETENTION_DEFAULT_DAYS.into(),
+            ])?
+            .run()
+            .await?;
+        Ok(Outcome::Ok(self.repo_settings(&repo).await?))
+    }
+
+    pub async fn workspace_actions_settings(&self, a: WorkspaceActionsSettingsArgs) -> Result<Outcome<WorkspaceActionsSettings>> {
+        let workspace = a.workspace.trim().to_lowercase();
+        if !a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&workspace)) {
+            return Ok(fail(FailureCode::NotFound, "There is no such workspace."));
+        }
+        Ok(Outcome::Ok(self.workspace_settings(&workspace).await?))
+    }
+
+    pub async fn set_workspace_actions_settings(&self, a: SetWorkspaceActionsSettingsArgs) -> Result<Outcome<WorkspaceActionsSettings>> {
+        if let Some(refused) = refuse_job_token(&a.actor) {
+            return Ok(refused);
+        }
+        let workspace = a.workspace.trim().to_lowercase();
+        if a.actor.kind != PrincipalKind::User || a.actor.role_in(&workspace) != Some(g1t_contracts::Role::Owner) {
+            return Ok(fail(FailureCode::Forbidden, format!("Only an owner of {workspace} can change its Actions settings.")));
+        }
+        let mut settings = self.workspace_settings(&workspace).await?;
+        let level = |text: &str, field: &str| -> std::result::Result<String, String> {
+            TokenDefault::parse(text.trim()).map(|parsed| parsed.as_str().to_owned()).ok_or_else(|| format!("{field} is read or write."))
+        };
+        if let Some(text) = &a.default_permissions {
+            match level(text, "default_permissions") {
+                Ok(parsed) => settings.default_permissions = parsed,
+                Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+            }
+        }
+        if let Some(text) = &a.max_permissions {
+            match level(text, "max_permissions") {
+                Ok(parsed) => settings.max_permissions = parsed,
+                Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+            }
+        }
+        if settings.max_permissions == "read" {
+            settings.default_permissions = "read".to_owned();
+        }
+        if let Some(allow) = a.can_approve_pull_requests {
+            settings.can_approve_pull_requests = allow;
+        }
+        self.db
+            .prepare(
+                "INSERT INTO workspace_actions_settings (namespace, default_permissions, max_permissions, can_approve_pulls, updated_at, updated_by)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT (namespace) DO UPDATE SET default_permissions = ?2, max_permissions = ?3, can_approve_pulls = ?4,
+                   updated_at = ?5, updated_by = ?6",
+            )
+            .bind(&[
+                workspace.as_str().into(),
                 settings.default_permissions.as_str().into(),
-                settings.approval_policy.as_str().into(),
+                settings.max_permissions.as_str().into(),
+                u32::from(settings.can_approve_pull_requests).into(),
                 now().into(),
                 a.actor.username.as_str().into(),
             ])?
@@ -894,7 +1060,7 @@ impl Actions {
         if owner.id == AGENT_ID || owner.kind == PrincipalKind::System {
             return Ok(None);
         }
-        let policy = self.repo_settings(&repo.id).await?.approval_policy;
+        let policy = self.approval_policy(&repo.id).await?;
         let permission: Outcome<PermissionInfo> = g1t_kit::call(
             &self.identity,
             "collaborator_permission",
@@ -988,6 +1154,26 @@ mod tests {
 
     fn pattern(name: &str, kind: &str) -> BranchPattern {
         BranchPattern { name: name.into(), kind: kind.into() }
+    }
+
+    #[test]
+    fn the_default_token_the_github_way() {
+        use TokenDefault::{Permissive, Restricted};
+        // A new repository takes its workspace's default: read-only unless it says.
+        assert_eq!(effective_default(None, false, Restricted, Permissive), Restricted);
+        assert_eq!(effective_default(None, false, Permissive, Permissive), Permissive);
+        // One made before restricted tokens keeps read and write.
+        assert_eq!(effective_default(None, true, Restricted, Permissive), Permissive);
+        // A repository's own choice wins...
+        assert_eq!(effective_default(Some(Restricted), true, Permissive, Permissive), Restricted);
+        assert_eq!(effective_default(Some(Permissive), false, Restricted, Permissive), Permissive);
+        // ...but never past the workspace's maximum.
+        assert_eq!(effective_default(Some(Permissive), true, Permissive, Restricted), Restricted);
+        assert_eq!(effective_default(None, true, Restricted, Restricted), Restricted);
+        // A workspace without a row: new repositories read-only, writes allowed, no pull requests.
+        let policy = workspace_policy(None);
+        assert_eq!((policy.default_permissions.as_str(), policy.max_permissions.as_str()), ("read", "write"));
+        assert!(!policy.can_approve_pull_requests);
     }
 
     #[test]
@@ -1099,7 +1285,7 @@ mod tests {
         let mut actor = User { id: "wsp_1".into(), username: "acme".into(), kind: PrincipalKind::Workspace, ..User::default() };
         assert!(refuse_job_token::<()>(&actor).is_none());
         actor.token = Some(Box::new(g1t_contracts::scopes::TokenAccess {
-            job: Some(g1t_contracts::scopes::JobToken { run_id: "run_1".into(), job_id: "job_1".into() }),
+            job: Some(g1t_contracts::scopes::JobToken { run_id: "run_1".into(), job_id: "job_1".into(), pull_requests: false }),
             ..Default::default()
         }));
         assert!(refuse_job_token::<()>(&actor).is_some());

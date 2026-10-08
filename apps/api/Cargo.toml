@@ -15,6 +15,7 @@ serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 worker.workspace = true
 base64 = "0.22"
+sha2 = "0.10"
 form_urlencoded = "1"
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the

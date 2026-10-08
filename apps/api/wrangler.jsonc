@@ -33,10 +33,11 @@
 		// A person's pinned projects: list_pinned_projects and changing them.
 		{ "binding": "PROJECTS", "service": "g1t-projects" }
 	],
-	// GitHub Actions artifacts, in chunks, with KV's own expiry (and cache
+	// GitHub Actions artifacts older runners kept, in chunks, with KV's own
+	// expiry, read until it passes (and cache
 	// entries saved before the cache moved to R2, until they expire).
 	"kv_namespaces": [{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" }],
-	// actions/cache entries, up to 2 GB each, uploaded in parts. The actions
+	// actions/cache entries (`c/`) and artifacts (`a/`), uploaded in parts. The actions
 	// service lists them and decides what is kept (services/actions/src/cache.rs).
 	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
 	"observability": { "enabled": true }

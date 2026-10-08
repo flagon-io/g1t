@@ -19,6 +19,7 @@ use g1t_contracts::scopes::{Level, NO_SCOPE, TokenAccess, scope_for};
 use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
+use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
@@ -201,7 +202,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions and repository dispatch. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions and repository dispatch. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -212,6 +213,13 @@ pub const TOOLS: &[Tool] = &[
             a("cancel", Op::CancelWorkflowRun, "Cancel a run"),
             a("rerun", Op::RerunWorkflowRun, "Run a finished run again"),
             a("update", Op::UpdateWorkflow, "Turn a workflow on or off"),
+            a("list_artifacts", Op::Artifacts(ArtifactsOp::ListArtifacts), "A repository's artifacts, newest first; or a run's with run_artifacts"),
+            a("run_artifacts", Op::Artifacts(ArtifactsOp::ListRunArtifacts), "One run's artifacts"),
+            a("get_artifact", Op::Artifacts(ArtifactsOp::GetArtifact), "One artifact: size, digest, expiry, run"),
+            a("download_artifact", Op::Artifacts(ArtifactsOp::DownloadArtifact), "A 10-minute link to an artifact's zip"),
+            a("delete_artifact", Op::Artifacts(ArtifactsOp::DeleteArtifact), "Delete an artifact before it expires"),
+            a("artifact_retention", Op::Artifacts(ArtifactsOp::GetArtifactRetention), "Days the repository keeps artifacts"),
+            a("set_artifact_retention", Op::Artifacts(ArtifactsOp::SetArtifactRetention), "Change the days the repository keeps artifacts"),
             a("combined_status", Op::Checks(ChecksOp::GetCombinedStatus), "A commit's statuses and the state they add up to"),
             a("list_statuses", Op::Checks(ChecksOp::ListCommitStatuses), "A commit's statuses, newest first"),
             a("set_status", Op::Checks(ChecksOp::CreateCommitStatus), "Set a status on a commit"),
@@ -241,6 +249,8 @@ pub const TOOLS: &[Tool] = &[
             a("get_approval_policy", Op::Protection(ProtectionOp::GetForkPrApproval), "Which pull requests' runs wait for approval"),
             a("set_approval_policy", Op::Protection(ProtectionOp::SetForkPrApproval), "Set which pull requests' runs wait for approval"),
             a("repository_dispatch", Op::Protection(ProtectionOp::CreateRepositoryDispatch), "Start repository_dispatch workflows with an event"),
+            a("get_workspace_permissions", Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions), "A workspace's default and maximum token permissions"),
+            a("set_workspace_permissions", Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions), "Set them, and whether jobs may open pull requests"),
             a("list_runners", Op::ListRunners, "Self-hosted runners, with status, labels and what each is doing"),
             a("create_runner_token", Op::CreateRunnerRegistrationToken, "A one-hour token for g1t-runner register"),
             a("remove_runner", Op::RemoveRunner, "Remove a self-hosted runner"),

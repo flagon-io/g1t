@@ -1777,7 +1777,9 @@ impl Actions {
         // What its token may do: its `permissions:` (a called workflow's
         // jobs no more than the job that calls it), else the repository's
         // default; read-only for a pull request from outside.
-        let default = self.token_default(&run.repo_id).await?;
+        // The repository's default, its workspace's taken in, and whether
+        // its jobs may open and approve pull requests.
+        let (default, pull_requests) = self.token_policy(&run.repo_id).await?;
         let mut permissions = spec.permissions(&workflow, default);
         if let Some(parent) = &job.call().filter(|c| c["role"] == "callee").and_then(|c| c["parent"].as_str().map(str::to_owned)) {
             let top = parent.split('/').next().unwrap_or(parent);
@@ -1804,6 +1806,7 @@ impl Actions {
                         name: format!("G1T_TOKEN for {} run {}", run.repo, run.number),
                         ttl_seconds: u64::from(job.timeout_minutes) * 60 + 600,
                         scopes: permissions.scopes().into_iter().map(str::to_owned).collect(),
+                        pull_requests: pull_requests && trusted,
                     },
                 )
                 .await?;
@@ -1821,8 +1824,20 @@ impl Actions {
         secrets.insert("G1T_TOKEN".into(), Value::String(token.clone()));
         secrets.insert("GITHUB_TOKEN".into(), Value::String(token.clone()));
         // Each secret as it is, a line at a time, base64 and JSON-escaped.
-        let masks: Vec<String> = g1t_actions::mask::all_variants(secrets.values().filter_map(|v| v.as_str()));
+        let mut masks: Vec<String> = g1t_actions::mask::all_variants(secrets.values().filter_map(|v| v.as_str()));
         let vars = self.variables_for(&run.repo_id, &run.repo, environment.as_deref(), trusted).await?;
+        // The toolkit's runtime token (runtime.rs), for as long as the job
+        // may run; the API puts it and the toolkit's addresses in the
+        // job's variables.
+        let runtime_token = crate::runtime::runtime_token(
+            &job.id,
+            &job.run_id,
+            job.token_hash.as_deref().unwrap_or_default(),
+            now_ms() / 1000,
+            u64::from(job.timeout_minutes) * 60 + 600,
+        );
+        masks.push(runtime_token.clone());
+        let retention_days = self.retention_setting(&run.repo_id).await?;
 
         let jobs = self.job_rows(&run.id).await?;
         let mut needs = Map::new();
@@ -1847,9 +1862,11 @@ impl Actions {
         let info = run.info();
         let mut github = info.context(&job.key, &token, run.action.as_deref());
         github["token"] = json!(token);
+        github["retention_days"] = json!(retention_days);
         // On a self-hosted runner, `runner` and `RUNNER_*` describe that
         // machine rather than g1t's sandbox.
         let mut variables = info.variables(&job.key);
+        variables.insert("GITHUB_RETENTION_DAYS".into(), json!(retention_days.to_string()));
         let runner = match &job.runner_id {
             Some(id) => self.runner_context_for(id, &mut variables).await?,
             None => runner_context(),
@@ -1918,6 +1935,12 @@ impl Actions {
             "masks": masks,
             // As the job's log lists them at its start.
             "permissions": permissions.listed().into_iter().map(|(name, access)| (name.to_owned(), json!(access.as_str()))).collect::<Map<String, Value>>(),
+            // Whether the job may ask for an OIDC token decides whether it
+            // is told where to.
+            "runtime": {
+                "token": runtime_token,
+                "idToken": self.oidc_allowed(&run, &job),
+            },
         })))
     }
 
@@ -2079,6 +2102,15 @@ impl Actions {
             && let Err(error) = self.sweep_cache(now_ms).await
         {
             worker::console_error!("actions: the cache's sweep failed: {error}");
+        }
+        // And artifacts past their time, and the toolkit's abandoned parts.
+        if (now_ms / 60_000) % 60 == 37 {
+            if let Err(error) = self.sweep_artifacts(now_ms).await {
+                worker::console_error!("actions: the artifacts' sweep failed: {error}");
+            }
+            if let Err(error) = self.sweep_blob_parts(now_ms).await {
+                worker::console_error!("actions: the blob parts' sweep failed: {error}");
+            }
         }
         self.start_queued().await
     }

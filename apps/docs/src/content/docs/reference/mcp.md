@@ -400,7 +400,7 @@ one short fact at a time, never a secret. See
 ## `workflow`
 
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
-cancelling or rerunning them; checks on commits (statuses, check runs and
+cancelling or rerunning them; their artifacts; checks on commits (statuses, check runs and
 check suites, a workflow job being a check run); a repository's deployments
 and environments, with their protection rules; approving runs and
 deployments; and the self-hosted runners workflows run on. See
@@ -418,6 +418,13 @@ deployments; and the self-hosted runners workflows run on. See
 | [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
 | [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
 | [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
+| [`list_artifacts`](/reference/api/actions/list-artifacts/) | The repository's artifacts, newest first, with size, digest and expiry; `name`, `page`, `per_page`. | `repo` | `workflows:read` |
+| [`run_artifacts`](/reference/api/actions/list-workflow-run-artifacts/) | One run's artifacts; `name`. | `repo`, `id` (the run) | `workflows:read` |
+| [`get_artifact`](/reference/api/actions/get-artifact/) | One artifact by its number. | `repo`, `id` | `workflows:read` |
+| [`download_artifact`](/reference/api/actions/download-artifact/) | A link to its zip that needs no token, good for 10 minutes, as `url`. | `repo`, `id` | `workflows:read` |
+| [`delete_artifact`](/reference/api/actions/delete-artifact/) | Delete it before it expires. Write role. | `repo`, `id` | `workflows:write` |
+| [`artifact_retention`](/reference/api/actions/get-artifact-retention/) | The days the repository keeps artifacts, and the most it may. | `repo` | `workflows:read` |
+| [`set_artifact_retention`](/reference/api/actions/set-artifact-retention/) | Set those days, 1 to 90. Maintain role. | `repo`, `days` | `workflows:write` |
 | [`combined_status`](/reference/api/checks/get-combined-status/) | A commit's statuses, one per context, and the `state` they add up to. `ref` is a SHA, branch or tag. | `repo`, `ref` | `checks:read` |
 | [`list_statuses`](/reference/api/checks/list-commit-statuses/) | A commit's statuses, newest first. | `repo`, `ref` | `checks:read` |
 | [`set_status`](/reference/api/checks/create-commit-status/) | Set a status: `state`, `context`, `description`, `target_url`. Write role. | `repo`, `sha`, `state` | `checks:write` |
@@ -442,8 +449,10 @@ deployments; and the self-hosted runners workflows run on. See
 | [`pending_deployments`](/reference/api/run-protection/get-pending-deployments/) | The environments holding a run's jobs: their state, reviewers, wait timer, jobs, and whether you may approve. | `repo`, `id` | `workflows:read` |
 | [`review_deployments`](/reference/api/run-protection/review-pending-deployments/) | Approve or reject a run's jobs for `environment_names` (every waiting one if left out), with a `comment`. One of the environment's reviewers, or an admin. | `repo`, `id`, `state` | `workflows:write` |
 | [`approve_run`](/reference/api/run-protection/approve-workflow-run/) | Let a pull request's run from outside start ([approval](/guides/actions/#pull-requests-from-outside)). Write role. | `repo`, `id` | `workflows:write` |
-| [`get_permissions`](/reference/api/run-protection/get-workflow-permissions/) | What a job's token gets when its workflow writes no `permissions:`: `read` or `write`. | `repo` | `repo:read` |
-| [`set_permissions`](/reference/api/run-protection/set-workflow-permissions/) | Set `default_workflow_permissions` to `read` or `write`. Admin role. | `repo`, `default_workflow_permissions` | `repo:admin` |
+| [`get_permissions`](/reference/api/run-protection/get-workflow-permissions/) | What a job's token gets when its workflow writes no `permissions:` (`read` or `write`), the workspace's maximum, and whether jobs may open and approve pull requests. | `repo` | `repo:read` |
+| [`set_permissions`](/reference/api/run-protection/set-workflow-permissions/) | Set `default_workflow_permissions` (`read`, `write` or `inherit`) and `can_approve_pull_request_reviews`. Admin role. | `repo` | `repo:admin` |
+| [`get_workspace_permissions`](/reference/api/run-protection/get-workspace-workflow-permissions/) | A workspace's default for new repositories, its maximum, and whether its repositories may let jobs open and approve pull requests. Members. | `workspace` | `workspace:read` |
+| [`set_workspace_permissions`](/reference/api/run-protection/set-workspace-workflow-permissions/) | Change them: `default_workflow_permissions`, `max_workflow_permissions`, `can_approve_pull_request_reviews`. Owners. | `workspace` | `workspace:admin` |
 | [`get_approval_policy`](/reference/api/run-protection/get-fork-pr-approval/) | Which pull requests' runs wait for approval. | `repo` | `repo:read` |
 | [`set_approval_policy`](/reference/api/run-protection/set-fork-pr-approval/) | Set `approval_policy`: `first_time_contributors`, `outside_contributors` or `all_external_contributors`. Admin role. | `repo`, `approval_policy` | `repo:admin` |
 | [`repository_dispatch`](/reference/api/run-protection/create-repository-dispatch/) | Start the default branch's `repository_dispatch` workflows for `event_type`, with `client_payload`. Write role. | `repo`, `event_type` | `code:write` |

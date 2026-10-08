@@ -175,6 +175,9 @@ pub struct CreateJobTokenArgs {
     pub ttl_seconds: u64,
     /// As `resource:level`; unknown names are left out.
     pub scopes: Vec<String>,
+    /// Whether it may open and approve pull requests (`JobToken::pull_requests`).
+    #[serde(default)]
+    pub pull_requests: bool,
 }
 
 /// `revoke_job_tokens`: ends a workflow job's tokens at once, when the job

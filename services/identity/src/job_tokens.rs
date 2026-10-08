@@ -24,11 +24,12 @@ impl Identity {
             )
             .await?;
         self.db
-            .prepare("UPDATE access_tokens SET repo = ?, job_id = ?, job_run_id = ? WHERE id = ?")
+            .prepare("UPDATE access_tokens SET repo = ?, job_id = ?, job_run_id = ?, job_pulls = ? WHERE id = ?")
             .bind(&[
                 format!("{}/{}", a.repo.namespace, a.repo.name).to_lowercase().into(),
                 a.job_id.as_str().into(),
                 a.run_id.as_str().into(),
+                u32::from(a.pull_requests).into(),
                 created.info.id.as_str().into(),
             ])?
             .run()

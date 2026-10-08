@@ -681,6 +681,23 @@ export interface BillingAdminApi {
   setCostMapping(mapping: CostMappingInput, by: string): Promise<Result<CostMapping>>;
   /** Reads Cloudflare's bill and reconciles now, as the daily run does. */
   runCosts(by: string): Promise<Result<CostsRun>>;
+  /** Agents & models: the catalogue, each purpose's default, and the latest checks. */
+  models(): Promise<AdminModels>;
+  /** Approve a model (its prices confirmed), retire it, or restore it. Needs a reason. */
+  decideModel(
+    model: string,
+    decision: "approve" | "retire" | "restore",
+    details: { name?: string | null; tierHint?: string | null; prices?: ModelPrices | null },
+    reason: string,
+    by: string,
+  ): Promise<Result<CatalogueModel>>;
+  /** One purpose's default: a model, or for a job its tier and effort. Needs a reason. */
+  setModelDefault(
+    purpose: string,
+    value: { model?: string | null; tier?: string | null; effort?: string | null },
+    reason: string,
+    by: string,
+  ): Promise<Result<ModelDefault>>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
@@ -923,6 +940,10 @@ export interface BillingApi {
    */
   /** What the AI Gateway offers on g1t's key, with prices per million tokens. */
   gatewayModels(): Promise<GatewayModel[]>;
+  /** Every purpose's default model as it applies now, and each job's tier and effort. */
+  modelDefaults(): Promise<ModelDefaults>;
+  /** What one provider lists now, from the models service's discovery. */
+  recordDiscovery(provider: string, models: ProviderModel[], by: string, error?: string | null): Promise<DiscoveryResult>;
   /**
    * Whether a workspace's next AI Gateway request may go to g1t's models:
    * fails with `payment_required` and what to do when it is over its spend
@@ -1207,6 +1228,140 @@ export type GatewayModel = {
   overCacheWriteMicros?: number;
   overCacheWrite1hMicros?: number;
 };
+
+// --- The model catalogue ------------------------------------------------------
+
+/** Where a model stands: only `available` ones are routed to. */
+export type ModelStatus = "available" | "new" | "deprecated" | "retired";
+
+/** One model in g1t's catalogue: its prices and what g1t knows about it. */
+export type CatalogueModel = GatewayModel & {
+  /** Other ids the provider lists it by, such as a dated one. */
+  aliases: string[];
+  family: string;
+  /** The agent tier it suits: `small`, `large`, `frontier`, or empty. */
+  tierHint: string;
+  contextWindow: number;
+  maxOutput: number;
+  /** Any of `effort`, `thinking`, `tools`, `vision`, `embeddings`. */
+  capabilities: string[];
+  dimensions: number;
+  status: ModelStatus;
+  /** Its prices are known. An unpriced model is never routed to, offered or charged for. */
+  priced: boolean;
+  source: "discovered" | "staff";
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  missingSince: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  note: string;
+  /** A typical agent run on it, in millionths of a dollar; 0 when unpriced or embeddings. */
+  typicalRunMicros: number;
+};
+
+/** One model as its provider lists it, from the models service's discovery. */
+export type ProviderModel = {
+  id: string;
+  name: string;
+  /** `chat`, `embeddings`, or anything else (counted as listed, never added). */
+  kind: string;
+  contextWindow: number;
+  maxOutput: number;
+  capabilities: string[];
+  /** Workers AI lists a price per million tokens; Anthropic does not. */
+  price: { inputMicros: number; outputMicros: number } | null;
+};
+
+/** What one check of a provider found. */
+export type DiscoveryResult = {
+  provider: string;
+  checkedAt: string;
+  by: string;
+  listed: number;
+  added: string[];
+  deprecated: string[];
+  restored: string[];
+  error: string | null;
+};
+
+/** The purposes a default model is chosen for. */
+export type ModelPurpose = "tier_small" | "tier_large" | "tier_frontier" | "background" | "gateway_first";
+
+/** One purpose's default, as staff last set it. */
+export type ModelDefault = {
+  /** A `ModelPurpose`, or `job_<kind>`. */
+  purpose: string;
+  model: string | null;
+  /** For a job: `small`, `large`, `frontier` or `change`. */
+  tier: string | null;
+  effort: string | null;
+  updatedAt: string;
+  updatedBy: string;
+  reason: string;
+};
+
+/** A model purpose's default as it applies now. */
+export type ResolvedModel = {
+  purpose: string;
+  chosen: string;
+  /** The model to use; null when nothing suits (callers keep their own fallback). */
+  model: GatewayModel | null;
+  capabilities: string[];
+  /** Why it is not the chosen model, in a sentence. */
+  note: string | null;
+};
+
+/** One kind of agent job's starting tier and effort. */
+export type JobDefault = { kind: string; tier: string; effort: string | null };
+
+/** Every purpose's model as it applies now, and each job's tier and effort. */
+export type ModelDefaults = { models: ResolvedModel[]; jobs: JobDefault[] };
+
+/** One check of one provider. */
+export type ModelCheck = {
+  id: string;
+  provider: string;
+  checkedAt: string;
+  by: string;
+  listed: number;
+  added: string[];
+  deprecated: string[];
+  error: string | null;
+};
+
+/** The tokens of the typical agent run estimates are priced from. */
+export type TypicalRun = { requests: number; input: number; output: number; cacheRead: number; cacheWrite: number };
+
+/** sudo's Agents & models. */
+export type AdminModels = {
+  catalogue: CatalogueModel[];
+  defaults: ModelDefault[];
+  resolved: ModelDefaults;
+  checks: ModelCheck[];
+  typical: TypicalRun;
+};
+
+/** A model's prices as staff confirm them, per million tokens in millionths of a dollar. */
+export type ModelPrices = {
+  inputMicros: number;
+  outputMicros: number;
+  cacheReadMicros: number;
+  cacheWriteMicros: number;
+  cacheWrite1hMicros: number;
+  threshold: number;
+  overInputMicros: number;
+  overOutputMicros: number;
+  overCacheReadMicros: number;
+  overCacheWriteMicros: number;
+  overCacheWrite1hMicros: number;
+};
+
+/** The models service's `Discovery` entrypoint, for sudo's "Check for new models". */
+export interface ModelDiscoveryApi {
+  /** Lists every provider's models now and records what changed: one result per provider. */
+  check(by: string): Promise<DiscoveryResult[]>;
+}
 
 /** The format a gateway request was sent in. */
 export type GatewayFormat = "anthropic" | "openai";

@@ -165,7 +165,13 @@ pub(crate) fn run(mut command: Command, timeout: Duration, log: &mut Log, comman
                     log.line(&shown);
                 }
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => log.tick(),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // The job's Docker Engine starting, from its own thread.
+                for note in crate::docker::take_notes() {
+                    log.line(&note);
+                }
+                log.tick();
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
         if Instant::now() >= deadline {

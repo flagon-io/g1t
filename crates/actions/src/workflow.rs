@@ -356,7 +356,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
         None => None,
         Some(value) => {
             let (permissions, unknown) = permissions::parse(value)?;
-            permission_notes(&permissions, &unknown, None, &mut note);
+            permission_notes(&unknown, None, &mut note);
             Some(permissions)
         }
     };
@@ -435,10 +435,18 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             }
         }
         if spec.contains_key("services") {
-            note(Severity::Unsupported, Some(id), "`services` containers (such as a database) are not started on g1t yet.".to_owned());
+            note(
+                Severity::Info,
+                Some(id),
+                "`services`: each service runs in Docker beside the steps and is reached at `localhost:<port>`. On g1t's machines it is the job's own Docker Engine, the service is also reached by its name, and two services cannot listen on the same port.".to_owned(),
+            );
         }
         if spec.contains_key("container") {
-            note(Severity::Warning, Some(id), "`container`: steps run on g1t's runner image instead of that container.".to_owned());
+            note(
+                Severity::Info,
+                Some(id),
+                "`container`: the steps run inside that image, in Docker (on g1t's machines, the job's own Engine), with the workspace at the same path as on the runner (`/home/runner/work`), not `/__w`.".to_owned(),
+            );
         }
         if spec.contains_key("environment") {
             note(Severity::Info, Some(id), "`environment`: the job gets the values its secrets and variables give this environment once the environment's protection rules (required reviewers, a wait timer, which branches may deploy) let it through. Unless it says `deployment: false`, the run records a deployment to it.".to_owned());
@@ -447,7 +455,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             None => None,
             Some(value) => {
                 let (permissions, unknown) = permissions::parse(value).map_err(|problem| format!("Job `{id}`: {problem}"))?;
-                permission_notes(&permissions, &unknown, Some(id), &mut note);
+                permission_notes(&unknown, Some(id), &mut note);
                 Some(permissions)
             }
         };
@@ -519,17 +527,10 @@ fn concurrency_of(value: Option<&Value>) -> Option<Concurrency> {
     }
 }
 
-/// What to say about `permissions` that grant less on g1t than they name.
-fn permission_notes(permissions: &Permissions, unknown: &[String], job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) {
+/// What to say about `permissions` names the token does not have.
+fn permission_notes(unknown: &[String], job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) {
     for name in unknown {
         note(Severity::Warning, job, format!("`permissions.{name}`: the token has no permission called that, so it grants nothing."));
-    }
-    if permissions.get("id-token") == permissions::Access::Write {
-        note(
-            Severity::Warning,
-            job,
-            "`permissions.id-token: write`: g1t does not issue OIDC tokens to jobs yet, so a step that asks for one fails. Keep cloud credentials in secrets instead.".to_owned(),
-        );
     }
 }
 
@@ -537,7 +538,7 @@ fn permission_notes(permissions: &Permissions, unknown: &[String], job: Option<&
 /// `caches`: the step sets a `cache` input.
 fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
     if uses.starts_with("docker://") {
-        return Some((Severity::Unsupported, format!("`{uses}`: Docker actions do not run on g1t yet.")));
+        return Some((Severity::Info, format!("`{uses}` runs in Docker (on g1t's machines, the job's own Engine).")));
     }
     let name = uses.split('@').next().unwrap_or(uses).to_ascii_lowercase();
     match name.as_str() {
@@ -651,8 +652,10 @@ jobs:
             workflow.notes.iter().filter(|n| n.severity == Severity::Unsupported).map(|n| n.message.as_str()).collect();
         assert!(unsupported.iter().any(|m| m.contains("`release`")));
         assert!(unsupported.iter().any(|m| m.contains("windows-latest")));
-        assert!(unsupported.iter().any(|m| m.contains("services")));
-        assert!(unsupported.iter().any(|m| m.contains("docker://alpine")));
+        assert!(!unsupported.iter().any(|m| m.contains("services")));
+        assert!(!unsupported.iter().any(|m| m.contains("docker://alpine")));
+        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("own Docker Engine") && n.message.contains("localhost")));
+        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.starts_with("`docker://alpine`")));
         assert!(unsupported.iter().any(|m| m.contains("pwsh")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("actions/cache")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/setup-node")));
@@ -718,7 +721,7 @@ jobs:
         assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Permissive).get("issues"), Access::Write);
         // What reads but grants nothing is said.
         let odd = parse("on: push\npermissions: { id-token: write, wiki: read }\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
-        assert!(odd.notes.iter().any(|n| n.message.contains("OIDC")));
+        assert!(!odd.notes.iter().any(|n| n.message.contains("id-token")), "OIDC tokens are issued");
         assert!(odd.notes.iter().any(|n| n.message.contains("`permissions.wiki`")));
         assert!(parse("on: push\npermissions: read\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap_err().contains("read-all"));
         assert!(

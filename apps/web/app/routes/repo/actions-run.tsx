@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Hourglass, Info, Package, Play, RotateCw, ServerCog, ShieldAlert, Square, Users, X, XCircle } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Hourglass, Info, Package, Play, RotateCw, ServerCog, ShieldAlert, Square, Trash2, Users, X, XCircle } from "lucide-react";
 import { type ReactNode } from "react";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
@@ -10,6 +10,7 @@ import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog
 import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { listArtifacts } from "../../lib/artifacts.server";
+import { expiresIn, formatBytes } from "../../lib/artifacts";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
@@ -22,8 +23,11 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  const detail = unwrap(await actions.run({ namespace: params.owner, name: params.repo }, viewer, params.id));
-  const artifacts = await listArtifacts(params.id).catch(() => []);
+  const repo = { namespace: params.owner, name: params.repo };
+  const [detail, artifacts] = await Promise.all([
+    actions.run(repo, viewer, params.id).then(unwrap),
+    listArtifacts(repo, viewer, params.id).catch(() => []),
+  ]);
   // Cancelling and re-running need Write.
   return {
     detail,
@@ -58,6 +62,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // Everything else, approving a run from outside included, needs Write.
   const refused = await refusal(context, params, "run");
   if (refused) return { error: refused };
+  if (intent === "delete-artifact") {
+    const deleted = await actions.deleteArtifact(user, repo, Number(form.get("artifact")));
+    return deleted.ok ? {} : { error: deleted.error.message };
+  }
   const done =
     intent === "approve-run"
       ? await actions.approveRun(user, repo, params.id)
@@ -517,20 +525,44 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
           <h3 className="flex items-center gap-2 text-sm font-medium">
             <Package size={14} className="text-muted" />
             Artifacts
-            <span className="font-normal text-faint">· kept for 14 days</span>
+            <span className="font-normal text-faint">
+              · {artifacts.length} · {formatBytes(artifacts.reduce((sum, a) => sum + a.size, 0))}
+            </span>
           </h3>
           <ul className="mt-3 divide-y divide-line text-sm">
             {artifacts.map((artifact) => (
-              <li key={artifact.name} className="flex items-center gap-3 py-2">
-                <span className="min-w-0 grow truncate font-mono text-[0.8125rem]">{artifact.name}</span>
-                <span className="shrink-0 text-xs text-faint">{Math.max(1, Math.round(artifact.size / 1024))} KB</span>
-                <a
-                  href={`${base}/actions/runs/${run.id}/artifacts/${encodeURIComponent(artifact.name)}`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
-                >
-                  <Download size={12} />
-                  Download
-                </a>
+              <li key={artifact.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <span className="min-w-0 grow basis-full truncate font-mono text-[0.8125rem] sm:basis-40">{artifact.name}</span>
+                <span className="flex shrink-0 items-center gap-3 text-xs text-faint">
+                  <span>{formatBytes(artifact.size)}</span>
+                  {artifact.expiresAt && <span>{expiresIn(artifact.expiresAt)}</span>}
+                </span>
+                <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                  <a
+                    href={`${base}/actions/runs/${run.id}/artifacts/${encodeURIComponent(artifact.name)}`}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
+                  >
+                    <Download size={12} />
+                    Download
+                  </a>
+                  {member && artifact.id != null && (
+                    <Form method="post" preventScrollReset>
+                      <input type="hidden" name="artifact" value={artifact.id} />
+                      <Hint label={`Delete ${artifact.name} now`}>
+                        <SubmitButton
+                          name="intent"
+                          value="delete-artifact"
+                          icon
+                          disabled={busy}
+                          aria-label={`Delete ${artifact.name}`}
+                          className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-danger disabled:opacity-50"
+                        >
+                          <Trash2 size={12} />
+                        </SubmitButton>
+                      </Hint>
+                    </Form>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

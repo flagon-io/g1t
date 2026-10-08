@@ -184,24 +184,41 @@ You can't resolve a merge conflict on the pull request's page.
 
 ## Actions and runners
 
-### No Docker in g1t's sandboxes
+### Docker shares the job's network
 
-On g1t's own machines, a job's `container:` image is not used (its steps
-run on g1t's runner image instead), and a step cannot run `docker build`.
-Docker container actions (`uses: docker://…`, or an action that runs as a
-Docker image) and `services:` containers, such as a database, do not run
-on any runner yet, self-hosted ones included.
+A job's Docker Engine runs its containers on the job's own network, not on
+networks of their own. A service is reached at `localhost` and by its
+name, as on GitHub, but two containers cannot listen on the same port, and
+`docker network create` gives no separation between containers.
 
-- **Why.** Jobs run in Cloudflare Containers, which offer no supported way
-  to run Docker or another image builder inside a container.
-- **Instead.** Run `container:` jobs and image builds on a
-  [self-hosted runner](/guides/self-hosted-runners/). A runner in Docker
-  mode runs each job in its `container:` image. To build images, register a
-  runner with `--no-docker` on a machine that has Docker, and its steps can
-  call `docker build` and `docker push`. Self-hosted time costs nothing. For
-  a database, start it from a `run:` step on a self-hosted runner.
-- **Status.** Docker container actions and `services:` are planned. Image
-  builds on g1t's machines depend on Cloudflare.
+- **Why.** Jobs run in Cloudflare Containers, which let a container run
+  Docker but not route a container network of its own out, or change its
+  packet filter. Sharing the job's network is also what keeps the job's
+  guardrails on every container.
+- **Instead.** Give containers that would clash different ports.
+- **Status.** Not scheduled.
+
+### No `type=gha` build cache
+
+Buildx's GitHub Actions cache backend (`cache-to: type=gha`) is skipped on
+g1t, and the build runs without a cache.
+
+- **Why.** It talks to GitHub's cache service, which g1t's cache does not
+  speak yet.
+- **Instead.** Use a registry cache in g1t's container registry
+  (`type=registry`), or `type=local` with `actions/cache`. See
+  [caching image builds](/guides/actions/#caching-image-builds).
+- **Status.** Planned.
+
+### No multi-platform image builds on g1t's machines
+
+Building an image for another platform, such as `linux/arm64`, needs QEMU's
+emulators, which g1t's machines do not have set up.
+
+- **Instead.** Build other platforms on a
+  [self-hosted runner](/guides/self-hosted-runners/) of that architecture,
+  or one with QEMU set up.
+- **Status.** Planned.
 
 ### Linux only on g1t's machines
 
@@ -220,7 +237,8 @@ machines.
 | One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours. |
 | One cache entry | 2 GiB, compressed. A larger one is not saved. |
 | A repository's caches | 10 GiB together. Past it, the entries restored longest ago are removed. |
-| One artifact | 60 MB, kept for 14 days |
+| One artifact | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90. |
+| A run's artifacts | 10 GiB together. |
 
 The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 [self-hosted runner](/guides/self-hosted-runners/). See
@@ -230,15 +248,32 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 
 - Reusable workflows from another repository. Ones in the same repository
   work.
-- Actions that cache through the hosted toolkit's own cache service, such as
-  `setup-node` with `cache: npm`. They run without it; use `actions/cache`.
+- Actions that upload or download artifacts with the toolkit's artifact
+  library themselves. The library refuses to run against any server but
+  github.com. `actions/upload-artifact`, `actions/download-artifact` and
+  `actions/upload-artifact/merge` work, as g1t runs them itself.
+- A cache entry between 100 and 128 MB saved by an action built on the
+  toolkit, such as `setup-node` with `cache: npm`. The toolkit sends an
+  entry under 128 MB in one request, and g1t takes at most 100 MB in one
+  request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
+  the job goes on; smaller and larger entries are saved.
 - `on: delete`: deleting a branch or tag starts no workflows. New branches
   and tags start `create` and `push` workflows.
-- OIDC tokens for jobs (`permissions: id-token: write`). Keep cloud
-  credentials in [secrets](/guides/secrets-and-variables/), and protect them
-  with an [environment's rules](/guides/actions/#environments).
 
 See [Not yet](/guides/actions/#not-yet). **Status.** Planned.
+
+### No npm trusted publishing or provenance
+
+A workflow on g1t can't publish to npm with trusted publishing, or with
+`--provenance`.
+
+- **Why.** Both trade the job's OIDC token with npm and Sigstore, which
+  accept tokens only from the CI services they list. g1t's
+  [OIDC tokens](/guides/actions/#oidc-tokens) work with any cloud that
+  lets you add an issuer, and npm does not.
+- **Instead.** Publish with a granular access token in a secret
+  (`NODE_AUTH_TOKEN`); see [npm](/guides/actions/#npm).
+- **Status.** Depends on npm.
 
 ## Deployments
 

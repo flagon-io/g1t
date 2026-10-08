@@ -923,10 +923,12 @@ dependencies = [
 name = "g1t-actions-service"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "g1t-actions",
  "g1t-contracts",
  "g1t-kit",
  "g1t-secrets",
+ "hex",
  "serde",
  "serde_json",
  "worker",
@@ -942,6 +944,7 @@ dependencies = [
  "g1t-kit",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "worker",
 ]
 
@@ -1094,7 +1097,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "crc32fast",
  "ed25519-dalek",
+ "flate2",
  "g1t-actions",
  "g1t-scan",
  "hex",

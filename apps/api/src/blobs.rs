@@ -1,15 +1,24 @@
-//! Artifacts and the cache of GitHub Actions jobs.
+//! Artifacts and the cache of GitHub Actions jobs, as g1t's own runner
+//! reaches them. (Actions built on GitHub's toolkit reach the same entries
+//! through toolkit.rs.)
 //!
-//! Artifacts are kept in Workers KV in chunks, with KV's own expiry: 14
-//! days with their run. Cache entries are kept in R2 (ACTIONS_CACHE), up
-//! to 2 GB each, uploaded in parts; the actions service lists them and
-//! decides what is found, what fits and what is evicted
-//! (services/actions/src/cache.rs). Entries saved in KV before the cache
-//! moved are still found there until they expire.
+//! Artifacts are kept in R2 (ACTIONS_CACHE, under `a/`), uploaded in
+//! parts; the actions service lists them and decides names, sizes and how
+//! long each is kept (services/actions/src/artifacts.rs). Artifacts older
+//! runners kept in Workers KV are still listed and found there until KV
+//! expires them. Cache entries are kept in R2 too, up to 2 GB each,
+//! uploaded in parts; the actions service decides what is found, what
+//! fits and what is evicted (services/actions/src/cache.rs).
 //!
 //! A sandbox reaches these with its job's token:
 //!
-//! - `GET /actions/jobs/{job}/artifacts`, `PUT|GET .../artifacts/{name}`
+//! - `GET /actions/jobs/{job}/artifacts[?run_id=]`: its run's (or another run's)
+//! - `POST .../artifacts/uploads?name=&size=&retention_days=&overwrite=&format=`:
+//!   `{ id, upload, part_bytes, retention_days, expires_at }`
+//! - `PUT .../artifacts/uploads/{id}/{part}?upload=`, `POST …/complete` with
+//!   `{ size, parts, digest }`, `DELETE .../artifacts/uploads/{id}?upload=`
+//! - `GET .../artifacts/{id}/download[?run_id=]`, `DELETE .../artifacts/{id}`
+//! - `PUT|GET .../artifacts/{name}`: a whole artifact by name (older runners)
 //! - `GET .../cache?key=&restore=`: the entry, streamed, its key in `x-g1t-key`
 //! - `POST .../cache/uploads?key=&size=`: `{ id, upload, part_bytes }`
 //! - `PUT .../cache/uploads/{id}/{part}?upload=`: one part, `{ part, etag }`
@@ -17,26 +26,25 @@
 //! - `DELETE .../cache/uploads/{id}?upload=`: gives the upload up
 //! - `PUT .../cache?key=`: a whole entry of at most 60 MB at once (older runners)
 //!
-//! People download an artifact at
-//! `/repos/{owner}/{repo}/actions/runs/{run}/artifacts/{name}`.
+//! People download an artifact through the REST API (artifacts.rs), or by
+//! name at `/repos/{owner}/{repo}/actions/runs/{run}/artifacts/{name}`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use worker::kv::KvStore;
-use worker::{Bucket, Env, Request, Response, Result, UploadedPart};
+use worker::{Bucket, Env, Request, Response, Result, UploadedPart, Url};
 
 use g1t_contracts::actions::{
-    CACHE_PART_BYTES, CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs,
+    ARTIFACT_PART_BYTES, Artifact, ArtifactArgs, ArtifactBlob, ArtifactCommitArgs, ArtifactReservation, ArtifactReserveArgs, CACHE_PART_BYTES,
+    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs, JobArtifactsArgs,
 };
 use g1t_contracts::{FailureCode, Outcome};
 
 use crate::operations::Services;
 
-/// KV's largest value is 25 MiB; chunks stay under it.
-const CHUNK: usize = 20 * 1024 * 1024;
-/// The largest artifact or cache entry, kept within a Worker's memory.
+/// The largest artifact or cache entry an older runner sends at once,
+/// held in a Worker's memory.
 const MAX_BYTES: usize = 60 * 1024 * 1024;
-const ARTIFACT_TTL: u64 = 14 * 24 * 60 * 60;
 
 #[derive(Serialize, Deserialize)]
 struct Meta {
@@ -50,22 +58,6 @@ struct Meta {
 
 fn store(env: &Env) -> Result<KvStore> {
     env.kv("BLOBS")
-}
-
-async fn put(kv: &KvStore, base: &str, name: &str, bytes: &[u8], ttl: u64) -> Result<()> {
-    let chunks: Vec<&[u8]> = if bytes.is_empty() { vec![&[][..]] } else { bytes.chunks(CHUNK).collect() };
-    for (index, chunk) in chunks.iter().enumerate() {
-        kv.put_bytes(&format!("{base}#{index}"), chunk)?.expiration_ttl(ttl).execute().await?;
-    }
-    let meta = Meta { size: bytes.len(), chunks: chunks.len(), at: g1t_kit::now_ms(), name: name.to_owned() };
-    // The metadata travels with the key in listings, so the newest entry
-    // can be found without reading each.
-    kv.put(base, serde_json::to_string(&meta)?)?
-        .metadata(&meta)?
-        .expiration_ttl(ttl)
-        .execute()
-        .await?;
-    Ok(())
 }
 
 async fn get(kv: &KvStore, base: &str) -> Result<Option<Vec<u8>>> {
@@ -112,10 +104,6 @@ fn error(status: u16, message: &str) -> Result<Response> {
     Ok(crate::reply(&json!({ "error": { "message": message } }))?.with_status(status))
 }
 
-fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 200 && !name.starts_with('.') && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '))
-}
-
 fn decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -154,7 +142,7 @@ fn query(request: &Request, name: &str) -> Option<String> {
 
 /// A sandbox storing or fetching an artifact or cache entry. `rest` is
 /// the path after `/actions/jobs/`.
-pub async fn for_job(mut request: Request, env: &Env, services: &Services, method: &str, rest: &str) -> Result<Response> {
+pub async fn for_job(request: Request, env: &Env, services: &Services, method: &str, rest: &str) -> Result<Response> {
     let (job, what) = rest.split_once('/').unwrap_or((rest, ""));
     let token = request
         .headers()
@@ -170,32 +158,9 @@ pub async fn for_job(mut request: Request, env: &Env, services: &Services, metho
     let repo = owner["repoId"].as_str().unwrap_or_default().to_owned();
     let kv = store(env)?;
     match (method, what) {
-        ("GET", "artifacts") => {
-            let listed: Vec<Value> = list(&kv, &format!("a/{run}/"))
-                .await?
-                .into_iter()
-                .map(|(_, meta)| json!({ "name": meta.name, "size": meta.size }))
-                .collect();
-            crate::reply(&listed)
-        }
-        (_, what) if what.starts_with("artifacts/") => {
-            let name = decode(&what["artifacts/".len()..]);
-            if !valid_name(&name) {
-                return error(400, "That is not an artifact name.");
-            }
-            let base = format!("a/{run}/{name}");
-            if method == "PUT" {
-                let bytes = request.bytes().await?;
-                if bytes.len() > MAX_BYTES {
-                    return error(413, "Artifacts are at most 60 MB.");
-                }
-                put(&kv, &base, &name, &bytes, ARTIFACT_TTL).await?;
-                return crate::reply(&json!({ "name": name, "size": bytes.len() }));
-            }
-            match get(&kv, &base).await? {
-                Some(bytes) => Response::from_bytes(bytes),
-                None => error(404, "No such artifact."),
-            }
+        (_, what) if what == "artifacts" || what.starts_with("artifacts/") => {
+            let bucket = env.bucket("ACTIONS_CACHE")?;
+            artifacts(request, &kv, &bucket, services, method, job, &token, &run, &repo, what).await
         }
         (_, what) if what == "cache" || what.starts_with("cache/") => {
             let bucket = env.bucket("ACTIONS_CACHE")?;
@@ -260,7 +225,7 @@ async fn cache(
             let found: Outcome<Option<CacheHit>> = g1t_kit::call(
                 &services.actions,
                 "cache_lookup",
-                &CacheLookupArgs { job: job.to_owned(), token: token.to_owned(), key: key.clone(), restore, version: version.clone() },
+                &CacheLookupArgs { job: job.to_owned(), token: token.to_owned(), key: key.clone(), restore, version: Some(version.clone()).filter(|v| !v.is_empty()) },
             )
             .await?;
             let found = match refused(found) {
@@ -292,7 +257,7 @@ async fn cache(
             let reserved: Outcome<CacheReservation> = g1t_kit::call(
                 &services.actions,
                 "cache_reserve",
-                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size: bytes.len() as u64, version: version.clone() },
+                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size: bytes.len() as u64, version: Some(version.clone()).filter(|v| !v.is_empty()) },
             )
             .await?;
             let reserved = match reserved {
@@ -315,7 +280,7 @@ async fn cache(
             let reserved: Outcome<CacheReservation> = g1t_kit::call(
                 &services.actions,
                 "cache_reserve",
-                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size, version: version.clone() },
+                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size, version: Some(version.clone()).filter(|v| !v.is_empty()) },
             )
             .await?;
             let reserved = match refused(reserved) {
@@ -372,6 +337,226 @@ fn object_of(repo: &str, id: &str) -> String {
     format!("c/{repo}/{id}")
 }
 
+/// Where an artifact is in R2, as the actions service names it.
+fn artifact_object(repo: &str, id: u64) -> String {
+    format!("a/{repo}/{id}")
+}
+
+/// An artifact as a job's runner lists it.
+fn for_runner(artifact: &Artifact) -> Value {
+    json!({
+        "id": artifact.id,
+        "name": artifact.name,
+        "size": artifact.size,
+        "digest": artifact.digest,
+        "format": artifact.format,
+        "created_at": artifact.created_at,
+        "expires_at": artifact.expires_at,
+    })
+}
+
+/// An R2 object streamed back, with what it is.
+async fn stream(bucket: &Bucket, object: &str, format: &str) -> Result<Response> {
+    let Some(found) = bucket.get(object).execute().await? else { return error(404, "That artifact is gone: it expired or was deleted.") };
+    let size = found.size();
+    let Some(body) = found.body() else { return error(404, "That artifact is gone: it expired or was deleted.") };
+    let mut response = Response::from_body(body.response_body()?)?;
+    let headers = response.headers_mut();
+    headers.set("content-length", &size.to_string())?;
+    headers.set("content-type", if format == "tgz" { "application/gzip" } else { "application/zip" })?;
+    headers.set("x-g1t-format", format)?;
+    Ok(response)
+}
+
+/// A job's artifacts: listing its run's (or another run's of its
+/// repository), uploading in parts, downloading, deleting; and the whole
+/// uploads and downloads by name of older runners.
+#[allow(clippy::too_many_arguments)]
+async fn artifacts(
+    mut request: Request,
+    kv: &KvStore,
+    bucket: &Bucket,
+    services: &Services,
+    method: &str,
+    job: &str,
+    token: &str,
+    run: &str,
+    repo: &str,
+    what: &str,
+) -> Result<Response> {
+    let parts: Vec<&str> = what.split('/').collect();
+    let upload_id = query(&request, "upload").unwrap_or_default();
+    let credential = |id: Option<u64>, name: Option<String>, run_id: Option<String>| JobArtifactsArgs {
+        job: job.to_owned(),
+        token: token.to_owned(),
+        run_id,
+        name,
+        id,
+    };
+    let actions = &services.actions;
+    match (method, parts.as_slice()) {
+        ("GET", ["artifacts"]) => {
+            let run_id = query(&request, "run_id").filter(|r| !r.is_empty());
+            let found: Outcome<Vec<Artifact>> = g1t_kit::call(actions, "job_artifacts", &credential(None, None, run_id.clone())).await?;
+            match refused(found) {
+                Ok(found) => {
+                    let mut listed: Vec<Value> = found.iter().map(for_runner).collect();
+                    // Artifacts older runners kept in KV, for the days they
+                    // are still there.
+                    let legacy_run = run_id.as_deref().unwrap_or(run);
+                    for (_, meta) in list(kv, &format!("a/{legacy_run}/")).await? {
+                        if !listed.iter().any(|a| a["name"] == meta.name.as_str()) {
+                            listed.push(json!({ "name": meta.name, "size": meta.size, "format": "tgz" }));
+                        }
+                    }
+                    crate::reply(&listed)
+                }
+                Err(reply) => reply,
+            }
+        }
+        ("POST", ["artifacts", "uploads"]) => {
+            let flag = |name: &str| query(&request, name).is_some_and(|v| v == "true");
+            let args = ArtifactReserveArgs {
+                job: job.to_owned(),
+                token: token.to_owned(),
+                name: query(&request, "name").unwrap_or_default(),
+                size: query(&request, "size").and_then(|s| s.parse().ok()).unwrap_or(0),
+                retention_days: query(&request, "retention_days").and_then(|d| d.parse().ok()).unwrap_or(0),
+                expires_at: None,
+                overwrite: flag("overwrite"),
+                format: query(&request, "format"),
+            };
+            let reserved: Outcome<ArtifactReservation> = g1t_kit::call(actions, "artifact_reserve", &args).await?;
+            let reserved = match refused(reserved) {
+                Ok(reserved) => reserved,
+                Err(reply) => return reply,
+            };
+            let upload = bucket.create_multipart_upload(&reserved.object).execute().await?;
+            crate::reply(&json!({
+                "id": reserved.id,
+                "upload": upload.upload_id().await,
+                "part_bytes": ARTIFACT_PART_BYTES,
+                "retention_days": reserved.retention_days,
+                "expires_at": reserved.expires_at,
+            }))
+        }
+        ("PUT", ["artifacts", "uploads", id, part]) => {
+            let (Ok(id), Ok(part)) = (id.parse::<u64>(), part.parse::<u16>()) else {
+                return error(400, "A part is numbered from 1, of an artifact named by its number.");
+            };
+            if part == 0 || upload_id.is_empty() {
+                return error(400, "A part is numbered from 1, and names its upload.");
+            }
+            let length = request.headers().get("content-length")?.and_then(|l| l.parse::<u64>().ok()).unwrap_or(0);
+            if length == 0 || length > ARTIFACT_PART_BYTES {
+                return error(413, &format!("A part is 1 to {} MB, with its length.", ARTIFACT_PART_BYTES / 1_048_576));
+            }
+            let Some(body) = request.inner().body() else { return error(400, "The part is empty.") };
+            let upload = bucket.resume_multipart_upload(artifact_object(repo, id), &upload_id)?;
+            let uploaded = upload.upload_part(part, body).await?;
+            crate::reply(&json!({ "part": uploaded.part_number(), "etag": uploaded.etag() }))
+        }
+        ("POST", ["artifacts", "uploads", id, "complete"]) => {
+            let Ok(id) = id.parse::<u64>() else { return error(404, "No such upload.") };
+            let done: Value = request.json().await.unwrap_or(Value::Null);
+            let mut parts: Vec<Part> = serde_json::from_value(done["parts"].clone()).unwrap_or_default();
+            if parts.is_empty() {
+                return error(400, "Send { size, parts: [{ part, etag }], digest }.");
+            }
+            parts.sort_by_key(|p| p.part);
+            let upload = bucket.resume_multipart_upload(artifact_object(repo, id), &upload_id)?;
+            let object = match upload.complete(parts.into_iter().map(|p| UploadedPart::new(p.part, p.etag))).await {
+                Ok(object) => object,
+                Err(problem) => {
+                    let _: Outcome<bool> = g1t_kit::call(actions, "artifact_abort", &credential(Some(id), None, None)).await?;
+                    return error(400, &format!("The upload could not be completed: {problem}"));
+                }
+            };
+            let args = ArtifactCommitArgs {
+                job: job.to_owned(),
+                token: token.to_owned(),
+                id: Some(id),
+                name: None,
+                // What R2 holds, not what the runner says.
+                size: object.size(),
+                digest: done["digest"].as_str().map(str::to_owned),
+            };
+            let committed: Outcome<Artifact> = g1t_kit::call(actions, "artifact_commit", &args).await?;
+            match refused(committed) {
+                Ok(artifact) => crate::reply(&for_runner(&artifact)),
+                Err(reply) => reply,
+            }
+        }
+        ("DELETE", ["artifacts", "uploads", id]) => {
+            let Ok(id) = id.parse::<u64>() else { return error(404, "No such upload.") };
+            if let Ok(upload) = bucket.resume_multipart_upload(artifact_object(repo, id), &upload_id) {
+                let _ = upload.abort().await;
+            }
+            let _: Outcome<bool> = g1t_kit::call(actions, "artifact_abort", &credential(Some(id), None, None)).await?;
+            crate::reply(&json!({ "aborted": true }))
+        }
+        ("GET", ["artifacts", id, "download"]) => {
+            let Ok(id) = id.parse::<u64>() else { return error(404, "No such artifact.") };
+            // Any run of the job's repository: the service checks.
+            let found: Outcome<ArtifactBlob> = g1t_kit::call(actions, "job_artifact", &credential(Some(id), None, query(&request, "run_id"))).await?;
+            match found {
+                Outcome::Ok(found) => stream(bucket, &found.object, &found.artifact.format).await,
+                Outcome::Fail(failure) => error(failure.code.http_status(), &failure.message),
+            }
+        }
+        ("DELETE", ["artifacts", id]) => {
+            let Ok(id) = id.parse::<u64>() else { return error(404, "No such artifact.") };
+            let done: Outcome<Artifact> = g1t_kit::call(actions, "job_delete_artifact", &credential(Some(id), None, None)).await?;
+            match refused(done) {
+                Ok(artifact) => crate::reply(&for_runner(&artifact)),
+                Err(reply) => reply,
+            }
+        }
+        // Older runners: a whole artifact of at most 60 MB, by name.
+        ("PUT", ["artifacts", name]) => {
+            let name = decode(name);
+            let bytes = request.bytes().await?;
+            if bytes.len() > MAX_BYTES {
+                return error(413, "An artifact sent at once is at most 60 MB; newer runners upload it in parts.");
+            }
+            let args = ArtifactReserveArgs {
+                job: job.to_owned(),
+                token: token.to_owned(),
+                name: name.clone(),
+                size: bytes.len() as u64,
+                format: Some("tgz".to_owned()),
+                ..ArtifactReserveArgs::default()
+            };
+            let reserved: Outcome<ArtifactReservation> = g1t_kit::call(actions, "artifact_reserve", &args).await?;
+            let reserved = match refused(reserved) {
+                Ok(reserved) => reserved,
+                Err(reply) => return reply,
+            };
+            let size = bytes.len() as u64;
+            bucket.put(&reserved.object, bytes).execute().await?;
+            let args = ArtifactCommitArgs { job: job.to_owned(), token: token.to_owned(), id: Some(reserved.id), name: None, size, digest: None };
+            let committed: Outcome<Artifact> = g1t_kit::call(actions, "artifact_commit", &args).await?;
+            match refused(committed) {
+                Ok(_) => crate::reply(&json!({ "name": name, "size": size })),
+                Err(reply) => reply,
+            }
+        }
+        ("GET", ["artifacts", name]) => {
+            let name = decode(name);
+            let found: Outcome<ArtifactBlob> = g1t_kit::call(actions, "job_artifact", &credential(None, Some(name.clone()), None)).await?;
+            match found {
+                Outcome::Ok(found) => stream(bucket, &found.object, &found.artifact.format).await,
+                // One an older runner kept in KV.
+                Outcome::Fail(_) => match get(kv, &format!("a/{run}/{name}")).await? {
+                    Some(bytes) => Response::from_bytes(bytes),
+                    None => error(404, "No such artifact."),
+                },
+            }
+        }
+        _ => error(404, "No such endpoint."),
+    }
+}
+
 /// Marks an uploaded entry ready, and deletes what that evicted.
 async fn commit(bucket: &Bucket, services: &Services, job: &str, token: &str, id: &str, size: u64) -> Result<()> {
     let committed: Outcome<CacheCommitted> = g1t_kit::call(
@@ -412,6 +597,21 @@ pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Vi
         return error(status, &refused.message);
     }
     let name = decode(name);
+    // Kept in R2: a redirect to a link signed for a few minutes.
+    let args = ArtifactArgs {
+        repo: g1t_contracts::repos::RepoPath { namespace: owner.to_owned(), name: repo.to_owned() },
+        viewer: viewer.clone(),
+        id: None,
+        run: Some(run.to_owned()),
+        name: Some(name.clone()),
+    };
+    let found: Outcome<ArtifactBlob> = g1t_kit::call(&services.actions, "artifact_download", &args).await?;
+    if let Outcome::Ok(found) = found
+        && !found.blob.is_empty()
+    {
+        return Response::redirect_with_status(Url::parse(&crate::artifacts::blob_url(&services.addresses.api, &found.blob))?, 302);
+    }
+    // Kept in KV by an older runner.
     match get(&store(env)?, &format!("a/{run}/{name}")).await? {
         Some(bytes) => {
             let mut response = Response::from_bytes(bytes)?;
@@ -424,11 +624,3 @@ pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Vi
     }
 }
 
-/// A run's artifacts, for its page.
-pub async fn of_run(env: &Env, run: &str) -> Result<Vec<Value>> {
-    Ok(list(&store(env)?, &format!("a/{run}/"))
-        .await?
-        .into_iter()
-        .map(|(_, meta)| json!({ "name": meta.name, "size": meta.size, "at": meta.at }))
-        .collect())
-}

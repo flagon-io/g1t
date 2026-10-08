@@ -92,6 +92,7 @@ stars on a private repository are seen only by people who can read it.
 | **Name** | The repository's name, the second part of its address. |
 | **Details** | Its description, website and topics, shown on its page, in [search and Explore](/guides/search/). |
 | **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, the [merge queue](/guides/merge-queue/) and what agents do. What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
+| **Artifacts** | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts). |
 | **Danger zone** | Change visibility, archive, [transfer](/guides/transferring-repositories/) and delete. Shown to people with the Admin role. |
 
 While a repository is [archived](#archive-a-repository), the settings that
@@ -105,6 +106,7 @@ Owners of its workspace have Admin on it.
 | Change | Needs |
 | --- | --- |
 | Description, website, topics | Maintain |
+| How long artifacts are kept | Maintain |
 | Default branch | Admin |
 | Rename a branch | Write; Admin for the default branch |
 | Rename the repository | Admin |

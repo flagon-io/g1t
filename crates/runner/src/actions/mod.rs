@@ -9,13 +9,16 @@
 //! job's definition, its contexts and its secrets, is fetched with them.
 
 mod blobs;
+mod containers;
 mod files;
+mod glob;
 mod paths;
 mod process;
 mod report;
 mod uses;
+mod zip;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -56,6 +59,8 @@ pub(crate) struct Post {
 pub(crate) enum PostRun {
     Node { action_dir: PathBuf, script: String },
     CacheSave { key: String, paths: Vec<String>, version: String },
+    /// A Docker action's `post-entrypoint`.
+    Docker(containers::DockerRun),
 }
 
 pub(crate) struct Job {
@@ -81,6 +86,21 @@ pub(crate) struct Job {
     /// What the last Node process left, for the step that ran it.
     pub(crate) last_node_outputs: BTreeMap<String, String>,
     pub(crate) last_node_state: BTreeMap<String, String>,
+    /// The names of the sandbox's own variables, which a container does
+    /// not get.
+    host_env: BTreeSet<String>,
+    /// Whether this job has a Docker Engine of its own (g1t's machines).
+    pub(crate) docker_hosted: bool,
+    /// The job's network, once its containers have one.
+    pub(crate) network: Option<String>,
+    /// `services:`, by their names, and their containers' names.
+    pub(crate) services: Vec<(String, String)>,
+    /// `container:`, once started.
+    pub(crate) container: Option<containers::JobContainer>,
+    /// The `job` context's `container` and `services`.
+    pub(crate) job_context: Map<String, Value>,
+    /// Docker actions' images built in this job.
+    pub(crate) built_actions: containers::Built,
 }
 
 fn text_map(value: Option<&Value>) -> BTreeMap<String, String> {
@@ -105,6 +125,11 @@ impl Job {
         self.base_env.get(name).cloned()
     }
 
+    /// What earlier steps added to `PATH`, newest first.
+    pub(crate) fn path_prepend_entries(&self) -> &[String] {
+        &self.path_prepend
+    }
+
     fn status(&self) -> Status {
         if self.failed { Status::Failure } else { Status::Success }
     }
@@ -114,7 +139,7 @@ impl Job {
         let mut contexts = self.contexts.clone();
         contexts.insert("env".into(), Value::Object(env.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect()));
         contexts.insert("steps".into(), Value::Object(frame.steps.clone()));
-        contexts.insert("job".into(), json!({ "status": if self.failed { "failure" } else { "success" } }));
+        contexts.insert("job".into(), containers::job_context(if self.failed { "failure" } else { "success" }, &self.job_context));
         if let Some(inputs) = &frame.inputs {
             contexts.insert("inputs".into(), inputs.clone());
         }
@@ -140,7 +165,7 @@ impl Job {
 
     /// The `env` context for a step: the workflow's, the job's, what earlier
     /// steps wrote to `GITHUB_ENV`, and the frame's.
-    fn env_context(&self, frame: &Frame) -> BTreeMap<String, String> {
+    pub(crate) fn env_context(&self, frame: &Frame) -> BTreeMap<String, String> {
         let mut env = self.added_env.clone();
         env.extend(self.workflow_env.clone());
         env.extend(self.job_env.clone());
@@ -228,6 +253,8 @@ impl Job {
         let (program, args, extension): (String, Vec<String>, &str) = match shell {
             // A self-hosted Windows runner, as GitHub's: PowerShell.
             None if cfg!(windows) => (windows_powershell(), powershell_args(), "ps1"),
+            // A job container without bash, as GitHub's runner does.
+            None if self.container.as_ref().is_some_and(|c| c.shell == "sh") => ("sh".into(), vec!["-e".into(), "{0}".into()], "sh"),
             None => ("bash".into(), vec!["-e".into(), "{0}".into()], "sh"),
             Some("bash") => ("bash".into(), vec!["--noprofile".into(), "--norc".into(), "-eo".into(), "pipefail".into(), "{0}".into()], "sh"),
             Some("sh") => ("sh".into(), vec!["-e".into(), "{0}".into()], "sh"),
@@ -274,8 +301,19 @@ impl Job {
             Some(dir) => self.workspace.join(dir),
             None => self.workspace.clone(),
         };
-        let mut command = Command::new(&program);
-        command.args(&args).current_dir(&dir).env_clear().envs(self.process_env(env, &files));
+        let full = self.process_env(env, &files);
+        let in_container = self.container.as_ref().map(|c| c.path.clone()).and_then(|image_path| {
+            let inside = self.container_env(env, full.clone(), &image_path);
+            self.in_container(&program, &args, &dir, inside)
+        });
+        let command = match in_container {
+            Some(command) => command,
+            None => {
+                let mut command = Command::new(&program);
+                command.args(&args).current_dir(&dir).env_clear().envs(full);
+                command
+            }
+        };
         let mut commands = Commands {
             debug: self.debug,
             ..Commands::default()
@@ -481,6 +519,11 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
     std::fs::create_dir_all(&temp).context("could not make the temporary folder")?;
     std::fs::write(temp.join("event.json"), serde_json::to_string_pretty(&spec["event"])?)?;
 
+    let host_env: BTreeSet<String> = std::env::vars().map(|(name, _)| name).collect();
+    // Docker of the job's own, on g1t's machines (crate::docker).
+    let docker_hosted = cfg!(target_os = "linux")
+        && std::env::var("G1T_DOCKER").as_deref() == Ok("on")
+        && spec["variables"]["RUNNER_ENVIRONMENT"].as_str() != Some("self-hosted");
     // This process's environment, less what only it should see.
     let mut base_env: BTreeMap<String, String> =
         std::env::vars().filter(|(name, _)| !matches!(name.as_str(), "ACTIONS_TOKEN" | "ACTIONS_JOB" | "MODE") && !name.starts_with("G1T_")).collect();
@@ -520,6 +563,13 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
         debug,
         last_node_outputs: BTreeMap::new(),
         last_node_state: BTreeMap::new(),
+        host_env,
+        docker_hosted,
+        network: None,
+        services: Vec::new(),
+        container: None,
+        job_context: Map::new(),
+        built_actions: containers::Built::new(),
     };
 
     // The workflow's env reads github, secrets, inputs and vars; the job's
@@ -585,11 +635,28 @@ fn run_job(job: &mut Job) {
         }
         job.log.line("##[endgroup]");
     }
+    if job.docker_hosted {
+        let registry = job.contexts["github"]["server_url"].as_str().and_then(crate::docker::engine::registry_host);
+        let token = job.contexts.get("secrets").and_then(|s| s.get("G1T_TOKEN")).map(expr::to_text).filter(|t| !t.is_empty());
+        let options = crate::docker::engine::Options { registry: registry.zip(token) };
+        if let Err(problem) = crate::docker::engine::enable(options) {
+            job.log.line(&format!("##[warning]Docker is not available in this job: {problem}"));
+            job.docker_hosted = false;
+        }
+    }
+    let containers_started = job.start_containers();
     job.log.flush();
 
     let mut frame = Frame::default();
-    for (index, step) in steps.iter().enumerate() {
+    if !containers_started {
+        job.failed = true;
+        for (index, name) in job.step_names.clone().iter().enumerate() {
+            job.log.step_state(index as u32 + 1, name, "completed", Some("skipped"));
+        }
+    }
+    for (index, step) in steps.iter().enumerate().filter(|_| containers_started) {
         job.step(&mut frame, step, index as u32 + 1, true, &defaults);
+        job.log_docker_notes();
         if job.remaining().is_zero() {
             job.log.line("##[error]The job ran past its time limit.");
             job.failed = true;
@@ -614,11 +681,23 @@ fn run_job(job: &mut Job) {
         let ok = match &post.run {
             PostRun::Node { action_dir, script } => job.run_node(action_dir, script, &post.env),
             PostRun::CacheSave { key, paths, version } => job.cache_save(key, paths, version),
+            PostRun::Docker(run) => job.run_docker(run).0,
         };
         job.log.step_state(number, &post.name, "completed", Some(if ok { "success" } else { "failure" }));
         if !ok {
             job.failed = true;
         }
+    }
+
+    // GitHub's "Stop containers": services' logs, and everything removed.
+    if job.has_containers() {
+        let number = job.step_names.len() as u32 + 1;
+        job.step_names.push("Stop containers".into());
+        job.report_steps();
+        job.log.step(number);
+        job.log.step_state(number, "Stop containers", "in_progress", None);
+        job.stop_containers();
+        job.log.step_state(number, "Stop containers", "completed", Some("success"));
     }
 
     // The job's outputs, read now that every step has run.

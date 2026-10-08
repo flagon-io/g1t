@@ -539,6 +539,324 @@ fn anthropic_format() -> String {
     "anthropic".to_owned()
 }
 
+// --- The model catalogue ----------------------------------------------------
+//
+// Every model g1t can use, in one table (billing's `gateway_models`): the
+// models agents run on, the AI Gateway's, and the embeddings model. New
+// models are found by the models service listing each provider daily
+// (`record_discovery`) and wait as `new` until staff approve them in sudo.
+// Which model each purpose uses by default is staff's choice
+// (`model_defaults`), read by the runner and the AI Gateway.
+
+/// Where a model stands. Only `available` models are routed to; the AI
+/// Gateway offers `available` and `deprecated` ones that have a price.
+pub mod model_status {
+    /// Approved and priced: routed to and offered.
+    pub const AVAILABLE: &str = "available";
+    /// Found by discovery and not approved yet: never routed to, offered or charged.
+    pub const NEW: &str = "new";
+    /// The provider stopped listing it: still offered to anyone who names
+    /// it, but no default routes to it.
+    pub const DEPRECATED: &str = "deprecated";
+    /// Staff retired it: neither routed to nor offered.
+    pub const RETIRED: &str = "retired";
+}
+
+/// One model in the catalogue: its prices (as the AI Gateway reads them)
+/// and what g1t knows about it. `admin_models` returns these.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogueModel {
+    #[serde(flatten)]
+    pub prices: GatewayModel,
+    /// Other ids the provider lists it by, such as a dated one.
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    /// `haiku`, `sonnet`, `opus`, `fable`, or a Workers AI author.
+    #[serde(default)]
+    pub family: String,
+    /// The agent tier it suits: `small`, `large`, `frontier`, or empty.
+    #[serde(default)]
+    pub tier_hint: String,
+    /// Tokens it reads at most; 0 when not known.
+    #[serde(default)]
+    pub context_window: u64,
+    /// Tokens it writes at most; 0 when not known.
+    #[serde(default)]
+    pub max_output: u64,
+    /// Any of `effort`, `thinking`, `tools`, `vision`, `embeddings`.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// An embeddings model's vector length; 0 otherwise or when not known.
+    #[serde(default)]
+    pub dimensions: u32,
+    /// `available`, `new`, `deprecated` or `retired` (`model_status`).
+    pub status: String,
+    /// Whether its prices are known. An unpriced model is never routed to,
+    /// offered or charged for.
+    pub priced: bool,
+    /// `discovered` (found by listing its provider) or `staff`.
+    pub source: String,
+    #[serde(default)]
+    pub first_seen_at: Option<String>,
+    /// When its provider last listed it.
+    #[serde(default)]
+    pub last_seen_at: Option<String>,
+    /// Since when its provider has not listed it.
+    #[serde(default)]
+    pub missing_since: Option<String>,
+    #[serde(default)]
+    pub approved_by: Option<String>,
+    #[serde(default)]
+    pub approved_at: Option<String>,
+    #[serde(default)]
+    pub note: String,
+    /// What a typical agent run would cost on it, in millionths of a
+    /// dollar, from its prices (`typical_run` in billing's catalogue.rs);
+    /// 0 for an embeddings or unpriced model.
+    #[serde(default)]
+    pub typical_run_micros: i64,
+}
+
+/// A provider's list price per million tokens, as its listing gives it, in
+/// millionths of a dollar.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedPrice {
+    pub input_micros: i64,
+    #[serde(default)]
+    pub output_micros: i64,
+}
+
+/// One model as its provider lists it, from the models service's
+/// discovery.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModel {
+    /// The provider's id: `claude-haiku-5-5`, `@cf/openai/gpt-oss-120b`.
+    pub id: String,
+    /// For people, as the provider names it.
+    #[serde(default)]
+    pub name: String,
+    /// `chat`, `embeddings`, or anything else (not added to the catalogue,
+    /// but still counted as listed).
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub context_window: u64,
+    #[serde(default)]
+    pub max_output: u64,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// Workers AI lists a price with each model; Anthropic does not.
+    #[serde(default)]
+    pub price: Option<ListedPrice>,
+}
+
+/// `record_discovery`: what one provider lists now, from the models
+/// service (daily, or when staff press "Check for new models"). Billing
+/// adds new ids as `new`, marks ones no longer listed `deprecated`, records
+/// the check and emails staff about anything new. With `error` (the listing
+/// failed) only the check is recorded. Returns `DiscoveryResult`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordDiscoveryArgs {
+    /// `anthropic` or `workers-ai`.
+    pub provider: String,
+    #[serde(default)]
+    pub models: Vec<ProviderModel>,
+    /// The staff member who asked, or `schedule`.
+    pub by: String,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// What one check found.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryResult {
+    pub provider: String,
+    pub checked_at: String,
+    pub by: String,
+    /// Ids the provider listed.
+    pub listed: u32,
+    /// Ids added to the catalogue as `new`.
+    pub added: Vec<String>,
+    /// Catalogue models the provider no longer lists, now `deprecated`.
+    pub deprecated: Vec<String>,
+    /// Deprecated models listed again.
+    pub restored: Vec<String>,
+    /// The listing failed: nothing changed.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// Which model, tier or effort one purpose uses by default, as staff last
+/// set it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDefault {
+    /// `tier_small`, `tier_large`, `tier_frontier`, `background`,
+    /// `gateway_first`, or `job_<kind>` for `implement`, `revise`,
+    /// `answer`, `review`, `update` and `plan`.
+    pub purpose: String,
+    /// The model, for a model purpose.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// For a job: `small`, `large`, `frontier`, or `change` (sized by the change).
+    #[serde(default)]
+    pub tier: Option<String>,
+    /// For a job: `low`, `medium`, `high`, `xhigh` or `max`; none for the harness's own.
+    #[serde(default)]
+    pub effort: Option<String>,
+    pub updated_at: String,
+    pub updated_by: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// A model purpose's default as it applies now: the chosen model, or the
+/// one routing falls back to when the chosen one cannot be used.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedModel {
+    pub purpose: String,
+    /// The model staff chose.
+    pub chosen: String,
+    /// The model to use, with its prices; none when neither the chosen
+    /// model nor any other suits (callers keep their own fallback).
+    #[serde(default)]
+    pub model: Option<GatewayModel>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// Why it is not the chosen one, in a sentence: `Claude Haiku 5.5 is
+    /// retired; using Claude Haiku 4.5.`
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// One kind of agent job's starting tier and effort.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobDefault {
+    /// `implement`, `revise`, `answer`, `review`, `update` or `plan`.
+    pub kind: String,
+    /// `small`, `large`, `frontier` or `change`.
+    pub tier: String,
+    #[serde(default)]
+    pub effort: Option<String>,
+}
+
+/// `model_defaults` takes nothing and returns this: every purpose's model
+/// as it applies now, and each job's tier and effort. Read by the runner
+/// (cached a minute) and the AI Gateway.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDefaults {
+    pub models: Vec<ResolvedModel>,
+    pub jobs: Vec<JobDefault>,
+}
+
+/// A check of one provider, as `model_checks` keeps it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCheck {
+    pub id: String,
+    pub provider: String,
+    pub checked_at: String,
+    pub by: String,
+    pub listed: u32,
+    pub added: Vec<String>,
+    pub deprecated: Vec<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// `admin_models` takes nothing and returns this: sudo's Agents & models.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModels {
+    /// Every model, `new` ones first, then by provider and position.
+    pub catalogue: Vec<CatalogueModel>,
+    pub defaults: Vec<ModelDefault>,
+    pub resolved: ModelDefaults,
+    /// The latest checks, newest first.
+    pub checks: Vec<ModelCheck>,
+    /// The token mix `typical_run_micros` prices, for the page to state.
+    pub typical: TypicalRun,
+}
+
+/// The tokens of the typical agent run estimates are priced from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TypicalRun {
+    pub requests: u64,
+    /// Per request.
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+}
+
+/// A model's prices as staff confirm them, per million tokens in
+/// millionths of a dollar.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModelPrices {
+    pub input_micros: i64,
+    pub output_micros: i64,
+    pub cache_read_micros: i64,
+    pub cache_write_micros: i64,
+    #[serde(default)]
+    pub cache_write_1h_micros: i64,
+    #[serde(default)]
+    pub threshold: u64,
+    #[serde(default)]
+    pub over_input_micros: i64,
+    #[serde(default)]
+    pub over_output_micros: i64,
+    #[serde(default)]
+    pub over_cache_read_micros: i64,
+    #[serde(default)]
+    pub over_cache_write_micros: i64,
+    #[serde(default)]
+    pub over_cache_write_1h_micros: i64,
+}
+
+/// `admin_decide_model`: `approve` a model (its prices confirmed, made
+/// available), `retire` one, or `restore` a retired or deprecated one.
+/// Audited. Returns `Outcome<CatalogueModel>`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AdminDecideModelArgs {
+    pub model: String,
+    pub decision: String,
+    /// On approval: the name people see, and the prices.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub tier_hint: Option<String>,
+    #[serde(default)]
+    pub prices: Option<ModelPrices>,
+    pub reason: String,
+    pub by: String,
+}
+
+/// `admin_set_model_default`: one purpose's default. A model purpose takes
+/// `model` (available, priced, and suited to the purpose); a job takes
+/// `tier` and `effort`. Audited with the old and new values and why.
+/// Returns `Outcome<ModelDefault>`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AdminSetModelDefaultArgs {
+    pub purpose: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub tier: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+    pub reason: String,
+    pub by: String,
+}
+
 /// `gateway_admit`: whether a workspace's next AI Gateway request may go to
 /// g1t's models. Fails with `payment_required` and what to do when it may
 /// not: over its spend limit, out of AI credit, or not on the plan. Returns

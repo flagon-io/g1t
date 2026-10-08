@@ -25,13 +25,15 @@ pub enum ProtectionOp {
     GetForkPrApproval,
     SetForkPrApproval,
     CreateRepositoryDispatch,
+    GetWorkspaceWorkflowPermissions,
+    SetWorkspaceWorkflowPermissions,
 }
 
 impl ProtectionOp {
     /// Every one: `Op::ALL` lists each as `Op::Protection(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [ProtectionOp; 10] = [
+    pub const ALL: [ProtectionOp; 12] = [
         ProtectionOp::UpdateEnvironment,
         ProtectionOp::DeleteEnvironment,
         ProtectionOp::GetPendingDeployments,
@@ -42,6 +44,8 @@ impl ProtectionOp {
         ProtectionOp::GetForkPrApproval,
         ProtectionOp::SetForkPrApproval,
         ProtectionOp::CreateRepositoryDispatch,
+        ProtectionOp::GetWorkspaceWorkflowPermissions,
+        ProtectionOp::SetWorkspaceWorkflowPermissions,
     ];
 
     pub fn name(self) -> &'static str {
@@ -56,7 +60,15 @@ impl ProtectionOp {
             ProtectionOp::GetForkPrApproval => "get_fork_pr_approval",
             ProtectionOp::SetForkPrApproval => "set_fork_pr_approval",
             ProtectionOp::CreateRepositoryDispatch => "create_repository_dispatch",
+            ProtectionOp::GetWorkspaceWorkflowPermissions => "get_workspace_workflow_permissions",
+            ProtectionOp::SetWorkspaceWorkflowPermissions => "set_workspace_workflow_permissions",
         }
+    }
+
+    /// Whether it is about one repository, named by `repo`; the rest are a
+    /// workspace's.
+    pub fn needs_repo(self) -> bool {
+        !matches!(self, ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::SetWorkspaceWorkflowPermissions)
     }
 
     pub fn title(self) -> &'static str {
@@ -71,6 +83,8 @@ impl ProtectionOp {
             ProtectionOp::GetForkPrApproval => "Get the approval policy for outside pull requests",
             ProtectionOp::SetForkPrApproval => "Set the approval policy for outside pull requests",
             ProtectionOp::CreateRepositoryDispatch => "Create a repository dispatch event",
+            ProtectionOp::GetWorkspaceWorkflowPermissions => "Get a workspace's default workflow permissions",
+            ProtectionOp::SetWorkspaceWorkflowPermissions => "Set a workspace's default workflow permissions",
         }
     }
 
@@ -81,22 +95,31 @@ impl ProtectionOp {
             ProtectionOp::GetPendingDeployments => "The environments whose protection rules hold a run's jobs, this attempt: each with the environment's name, state (waiting, approved or rejected), wait_timer and wait_until (when its timer lets its jobs start), its reviewers, the jobs it holds, who reviewed it and their comment, and current_user_can_approve. Needs the Read role.",
             ProtectionOp::ReviewPendingDeployments => "Approve or reject the jobs a run's environments hold. environment_names names them (every waiting one if left out; environment_ids is read as names too); state is approved or rejected; comment is kept with the review. Only one of the environment's reviewers may, or an admin when can_admins_bypass is on, which also skips the wait timer; with prevent_self_review, not whoever started the run. A rejected environment's jobs fail. A workflow job's own token cannot review. Returns the pending deployments as they stand.",
             ProtectionOp::ApproveWorkflowRun => "Let a run of a pull request from outside start: it waits as action_required, by the repository's approval policy (get_fork_pr_approval), until someone with the Write role approves it. A workflow job's own token cannot approve. Returns the run.",
-            ProtectionOp::GetWorkflowPermissions => "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read; the default) or write (every permission). can_approve_pull_request_reviews is always false: a job's token never approves pull requests. Needs the Read role.",
-            ProtectionOp::SetWorkflowPermissions => "Set default_workflow_permissions to read or write. Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role.",
+            ProtectionOp::GetWorkflowPermissions => "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read) or write (every permission). Unless the repository chose (default_chosen), a repository made before restricted tokens has write and a newer one its workspace's default; it is never more than the workspace's max_workflow_permissions. can_approve_pull_request_reviews says whether its jobs may open and approve pull requests (off unless chosen, and only where the workspace allows it). Needs the Read role.",
+            ProtectionOp::SetWorkflowPermissions => "Set default_workflow_permissions to read, write (refused where the workspace's maximum is read) or inherit (back to the workspace's default, or write for a repository made before restricted tokens), and can_approve_pull_request_reviews, \"Allow g1t Actions to create and approve pull requests\" (refused where the workspace does not allow it). Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role.",
             ProtectionOp::GetForkPrApproval => "Which pull requests' runs wait for someone with the Write role to approve them before anything runs (approve_workflow_run): approval_policy is first_time_contributors (a pull request from someone outside the workspace who has not had one merged here), outside_contributors (the default: also everyone outside who cannot push here) or all_external_contributors (everyone outside the workspace, outside collaborators included). Members never wait, nor does g1t's own work. Needs the Read role.",
             ProtectionOp::SetForkPrApproval => "Set approval_policy: first_time_contributors, outside_contributors or all_external_contributors. Needs the Admin role.",
+            ProtectionOp::GetWorkspaceWorkflowPermissions => "A workspace's policy for its repositories' job tokens: default_workflow_permissions (read, the default, or write) is what a repository made from now on gets until it chooses; max_workflow_permissions (write, the default, or read) is the most any repository's default may be, so read holds every repository to read-only; can_approve_pull_request_reviews (off by default) lets its repositories allow jobs to open and approve pull requests. Members only.",
+            ProtectionOp::SetWorkspaceWorkflowPermissions => "Change a workspace's default_workflow_permissions, max_workflow_permissions and can_approve_pull_request_reviews; fields left out stay as they are. A maximum of read makes the default read too. Owners only.",
             ProtectionOp::CreateRepositoryDispatch => "Start the default branch's workflows that run `on: repository_dispatch` for event_type (those listing it under types, or with none). client_payload, a JSON object of at most 10 properties and 64 KB, is github.event.client_payload; github.event.action is event_type. A workflow job's own token may send one: with workflow_dispatch, it is how one workflow starts another. Needs the Write role (code:write). Returns how many runs started.",
         }
     }
 
     /// Whether it changes anything (the caller is its actor).
     pub fn writes(self) -> bool {
-        !matches!(self, ProtectionOp::GetPendingDeployments | ProtectionOp::GetWorkflowPermissions | ProtectionOp::GetForkPrApproval)
+        !matches!(
+            self,
+            ProtectionOp::GetPendingDeployments
+                | ProtectionOp::GetWorkflowPermissions
+                | ProtectionOp::GetForkPrApproval
+                | ProtectionOp::GetWorkspaceWorkflowPermissions
+        )
     }
 
     pub fn input(self) -> Value {
         let repo = json!({ "type": "string", "description": "Repository as \"owner/name\", e.g. \"flagon-io/hello\"." });
         let run = json!({ "type": "string", "description": "The run's id, run_…." });
+        let workspace = json!({ "type": "string", "description": "The workspace's name, e.g. \"acme\"." });
         let environment = json!({ "type": "string", "description": "The environment's name, such as production." });
         let (properties, required): (Value, &[&str]) = match self {
             ProtectionOp::UpdateEnvironment => (
@@ -155,9 +178,20 @@ impl ProtectionOp {
             ProtectionOp::SetWorkflowPermissions => (
                 json!({
                     "repo": repo,
-                    "default_workflow_permissions": { "type": "string", "enum": ["read", "write"] },
+                    "default_workflow_permissions": { "type": "string", "enum": ["read", "write", "inherit"] },
+                    "can_approve_pull_request_reviews": { "type": "boolean", "description": "Allow g1t Actions to create and approve pull requests." },
                 }),
-                &["repo", "default_workflow_permissions"],
+                &["repo"],
+            ),
+            ProtectionOp::GetWorkspaceWorkflowPermissions => (json!({ "workspace": workspace }), &["workspace"]),
+            ProtectionOp::SetWorkspaceWorkflowPermissions => (
+                json!({
+                    "workspace": workspace,
+                    "default_workflow_permissions": { "type": "string", "enum": ["read", "write"], "description": "What new repositories get." },
+                    "max_workflow_permissions": { "type": "string", "enum": ["read", "write"], "description": "The most any repository's default may be." },
+                    "can_approve_pull_request_reviews": { "type": "boolean", "description": "Let repositories allow jobs to open and approve pull requests." },
+                }),
+                &["workspace"],
             ),
             ProtectionOp::SetForkPrApproval => (
                 json!({
@@ -384,15 +418,46 @@ pub(crate) async fn with_protection(services: &Services, viewer: &Viewer, input:
     })
 }
 
+/// A workspace's policy, in the standard shape.
+fn workspace_view(settings: &Value) -> Value {
+    json!({
+        "default_workflow_permissions": settings["defaultPermissions"],
+        "max_workflow_permissions": settings["maxPermissions"],
+        "can_approve_pull_request_reviews": settings["canApprovePullRequests"],
+    })
+}
+
 pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
-    let Some(repo) = repo_path(input) else {
-        return Ok(Outcome::fail(FailureCode::Invalid, "Give the repository as \"owner/name\"."));
-    };
     if op.writes() && viewer.is_none() {
         return Ok(Outcome::fail(FailureCode::Unauthenticated, "This needs a g1t access token."));
     }
     let actor = || viewer.clone().unwrap_or_default();
     let actions = &services.actions;
+    if !op.needs_repo() {
+        let Some(workspace) = text(input, "workspace") else {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Name the workspace."));
+        };
+        let settings: Outcome<Value> = if op == ProtectionOp::GetWorkspaceWorkflowPermissions {
+            g1t_kit::call(actions, "workspace_actions_settings", &json!({ "viewer": viewer, "workspace": workspace })).await?
+        } else {
+            g1t_kit::call(
+                actions,
+                "set_workspace_actions_settings",
+                &json!({
+                    "actor": actor(),
+                    "workspace": workspace,
+                    "defaultPermissions": text(input, "default_workflow_permissions"),
+                    "maxPermissions": text(input, "max_workflow_permissions"),
+                    "canApprovePullRequests": flag(input, "can_approve_pull_request_reviews"),
+                }),
+            )
+            .await?
+        };
+        return Ok(map(settings, |s| workspace_view(&s)));
+    }
+    let Some(repo) = repo_path(input) else {
+        return Ok(Outcome::fail(FailureCode::Invalid, "Give the repository as \"owner/name\"."));
+    };
     let id = text(input, "id").unwrap_or_default();
     let environment = text(input, "environment").unwrap_or_default();
     Ok(match op {
@@ -445,11 +510,23 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
                 g1t_kit::call(
                     actions,
                     "set_actions_settings",
-                    &json!({ "actor": actor(), "repo": repo, "defaultPermissions": text(input, "default_workflow_permissions").unwrap_or_default() }),
+                    &json!({
+                        "actor": actor(),
+                        "repo": repo,
+                        "defaultPermissions": text(input, "default_workflow_permissions"),
+                        "canApprovePullRequests": flag(input, "can_approve_pull_request_reviews"),
+                    }),
                 )
                 .await?
             };
-            map(settings, |s| json!({ "default_workflow_permissions": s["defaultPermissions"], "can_approve_pull_request_reviews": false }))
+            map(settings, |s| {
+                json!({
+                    "default_workflow_permissions": s["defaultPermissions"],
+                    "default_chosen": s["defaultChosen"],
+                    "max_workflow_permissions": s["maxPermissions"],
+                    "can_approve_pull_request_reviews": s["canApprovePullRequests"],
+                })
+            })
         }
         ProtectionOp::GetForkPrApproval | ProtectionOp::SetForkPrApproval => {
             let settings: Outcome<Value> = if op == ProtectionOp::GetForkPrApproval {
@@ -477,6 +554,10 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
             )
             .await?;
             map(started, |runs| json!({ "runs": runs }))
+        }
+        // Answered above, before a repository is read.
+        ProtectionOp::GetWorkspaceWorkflowPermissions | ProtectionOp::SetWorkspaceWorkflowPermissions => {
+            Outcome::fail(FailureCode::Invalid, "Name the workspace.")
         }
     })
 }
@@ -525,7 +606,8 @@ mod tests {
     fn each_operation_is_described_with_a_schema() {
         for op in ProtectionOp::ALL {
             assert!(!op.title().is_empty() && op.description().len() > 40, "{}", op.name());
-            assert!(op.input()["required"].as_array().unwrap().contains(&json!("repo")), "{}", op.name());
+            let needs = if op.needs_repo() { "repo" } else { "workspace" };
+            assert!(op.input()["required"].as_array().unwrap().contains(&json!(needs)), "{}", op.name());
         }
     }
 }

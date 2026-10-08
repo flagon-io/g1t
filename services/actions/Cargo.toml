@@ -14,6 +14,8 @@ g1t-contracts.workspace = true
 g1t-kit.workspace = true
 g1t-secrets.workspace = true
 serde.workspace = true
+base64 = "0.22"
+hex = "0.4"
 serde_json = { workspace = true, features = ["preserve_order"] }
 worker.workspace = true
 

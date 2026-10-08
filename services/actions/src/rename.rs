@@ -7,6 +7,8 @@ pub const STATEMENTS: &[&str] = &[
     "UPDATE jobs SET namespace = ?1 WHERE namespace = ?2",
     "UPDATE cache_entries SET namespace = ?1 WHERE namespace = ?2",
     "UPDATE cache_days SET namespace = ?1 WHERE namespace = ?2",
+    "UPDATE artifacts SET namespace = ?1 WHERE namespace = ?2",
+    "UPDATE workspace_actions_settings SET namespace = ?1 WHERE namespace = ?2",
     "UPDATE workflows SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE runs SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
 ];
@@ -21,6 +23,7 @@ pub const TRANSFERRED: &[&str] = &[
     "UPDATE runs SET repo = ?1 WHERE repo_id = ?5 AND repo = ?2",
     "UPDATE jobs SET namespace = ?3 WHERE repo_id = ?5 AND namespace = ?4",
     "UPDATE cache_entries SET namespace = ?3 WHERE repo_id = ?5 AND namespace = ?4",
+    "UPDATE artifacts SET namespace = ?3 WHERE repo_id = ?5 AND namespace = ?4",
 ];
 
 /// A repository purged (see `g1t_kit::lifecycle`): its workflows, runs,
@@ -34,15 +37,20 @@ pub const PURGED: &[&str] = &[
     "DELETE FROM workflows WHERE repo_id = ?1",
     "DELETE FROM synced WHERE repo_id = ?1",
     "DELETE FROM settings WHERE scope <> 'workspace' AND owner = ?1",
-    "DELETE FROM repo_settings WHERE repo_id = ?1",
     "DELETE FROM environments WHERE repo_id = ?1",
     "DELETE FROM environment_gates WHERE repo_id = ?1",
     // Its cache's objects are deleted from R2 by the next sweep, then the rows.
     "UPDATE cache_entries SET status = 'expired' WHERE repo_id = ?1",
+    // Its artifacts too, and its own settings.
+    "UPDATE artifacts SET status = 'expired' WHERE repo_id = ?1",
+    "DELETE FROM repo_settings WHERE repo_id = ?1",
 ];
 
 /// A workspace deleted: its own secrets and variables go. `?1` its slug.
-pub const DELETED: &[&str] = &["DELETE FROM settings WHERE scope = 'workspace' AND owner = ?1"];
+pub const DELETED: &[&str] = &[
+    "DELETE FROM settings WHERE scope = 'workspace' AND owner = ?1",
+    "DELETE FROM workspace_actions_settings WHERE namespace = ?1",
+];
 
 #[cfg(test)]
 mod tests {

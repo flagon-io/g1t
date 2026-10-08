@@ -215,6 +215,7 @@ export async function baseVersions(ref) {
     'echo "rust=$(rustc --version | cut -d" " -f2)"',
     'echo "git=$(git --version | cut -d" " -f3)"',
     'echo "claude_code=$(claude --version | cut -d" " -f1)"',
+    'echo "docker=$(dockerd --version | cut -d" " -f3 | tr -d ,)"',
     'echo "debian=$(cat /etc/debian_version)"',
   ].join("; ");
   const found = await exec("docker", ["run", "--rm", "--platform", "linux/amd64", "--entrypoint", "bash", ref, "-c", script]);

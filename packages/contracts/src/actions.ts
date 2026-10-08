@@ -182,9 +182,37 @@ export type ApprovalPolicy = (typeof APPROVAL_POLICIES)[number];
 
 /** A repository's choices for its workflows. */
 export type ActionsSettings = {
-  /** What a workflow without `permissions:` gets: `read` (the default) or `write`. */
+  /**
+   * What a workflow without `permissions:` gets. Unchosen, a repository made
+   * before restricted tokens keeps `write`; a newer one takes its
+   * workspace's default. Never more than `maxPermissions`.
+   */
   defaultPermissions: "read" | "write";
+  /** Whether the repository chose it. */
+  defaultChosen: boolean;
+  /** The most the workspace lets a repository's default be. */
+  maxPermissions: "read" | "write";
   approvalPolicy: ApprovalPolicy;
+  /** "Allow g1t Actions to create and approve pull requests". */
+  canApprovePullRequests: boolean;
+  /** Whether the workspace lets its repositories turn that on. */
+  workspaceAllowsPullRequests: boolean;
+};
+
+/** What changes a repository's choices; `inherit` unchooses its default. */
+export type ActionsSettingsChange = {
+  defaultPermissions?: "read" | "write" | "inherit";
+  approvalPolicy?: ApprovalPolicy;
+  canApprovePullRequests?: boolean;
+};
+
+/** A workspace's policy for its repositories' job tokens. */
+export type WorkspaceActionsSettings = {
+  /** What a repository made from now on gets by default. */
+  defaultPermissions: "read" | "write";
+  /** The most any repository's default may be. */
+  maxPermissions: "read" | "write";
+  canApprovePullRequests: boolean;
 };
 
 export type LogChunk = { seq: number; step: number; text: string };
@@ -289,10 +317,56 @@ export interface ActionsApi {
   ): Promise<Result<PendingDeployment[]>>;
   actionsSettings(repo: RepoPath, viewer: Viewer): Promise<Result<ActionsSettings>>;
   /** Admin role. Left out is unchanged. */
-  setActionsSettings(actor: User, repo: RepoPath, change: Partial<ActionsSettings>): Promise<Result<ActionsSettings>>;
+  setActionsSettings(actor: User, repo: RepoPath, change: ActionsSettingsChange): Promise<Result<ActionsSettings>>;
+  /** Members. */
+  workspaceActionsSettings(workspace: string, viewer: Viewer): Promise<Result<WorkspaceActionsSettings>>;
+  /** Owners. Left out is unchanged. */
+  setWorkspaceActionsSettings(
+    actor: User,
+    workspace: string,
+    change: Partial<WorkspaceActionsSettings>,
+  ): Promise<Result<WorkspaceActionsSettings>>;
   /** Every environment the repository's rules, secrets, workflows or jobs name. */
   environments(repo: RepoPath, viewer: Viewer): Promise<Result<Environment[]>>;
   /** Admin role. */
   setEnvironment(actor: User, repo: RepoPath, name: string, change: EnvironmentChange): Promise<Result<Environment>>;
   deleteEnvironment(actor: User, repo: RepoPath, name: string): Promise<Result<boolean>>;
+  /** A repository's artifacts, newest first, or one run's. */
+  artifacts(repo: RepoPath, viewer: Viewer, filter?: { run?: string; name?: string; page?: number; per_page?: number }): Promise<Result<ArtifactList>>;
+  /** One artifact by id, or by run and name, with a token to download it for a few minutes. */
+  artifactDownload(repo: RepoPath, viewer: Viewer, by: { id?: number; run?: string; name?: string }): Promise<Result<ArtifactBlob>>;
+  /** Needs the Write role. */
+  deleteArtifact(actor: User, repo: RepoPath, id: number): Promise<Result<Artifact>>;
+  /** How long the repository keeps artifacts; with `days`, sets it (Maintain). */
+  artifactRetention(repo: RepoPath, viewer: Viewer, days?: number): Promise<Result<ArtifactRetention>>;
 }
+
+/**
+ * A workflow run's artifact, kept in R2 for its retention days. Mirrors
+ * `g1t_contracts::actions::Artifact` (which travels in `snake_case`).
+ */
+export type Artifact = {
+  id: number;
+  name: string;
+  size: number;
+  /** `sha256:<hex>`, when the uploader said. */
+  digest: string | null;
+  /** `zip`, or `tgz` for one an older runner sent. */
+  format: string;
+  run_id: string;
+  job_id: string;
+  repo_id: string;
+  expired: boolean;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  head_branch?: string | null;
+  head_sha?: string | null;
+};
+
+export type ArtifactList = { total_count: number; artifacts: Artifact[] };
+
+/** An artifact, where it is, and a signed token for the API's `/actions/toolkit/blobs/{blob}`. */
+export type ArtifactBlob = { artifact: Artifact; object: string; blob: string };
+
+export type ArtifactRetention = { days: number; maximum_allowed_days: number };

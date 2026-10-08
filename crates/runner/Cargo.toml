@@ -13,6 +13,9 @@ sha2 = "0.10"
 serde_yaml = "0.9"
 toml = "0.8"
 hex = "0.4"
+# Packing and unpacking artifacts as ZIP files (actions/zip.rs).
+flate2 = "1"
+crc32fast = "1"
 # Checking that a release of the self-hosted runner is g1t's.
 ed25519-dalek = "3"
 anyhow = "1"

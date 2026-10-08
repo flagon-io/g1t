@@ -411,7 +411,14 @@
         "dispatch_workflow",
         "cancel_workflow_run",
         "rerun_workflow_run",
-        "update_workflow"
+        "update_workflow",
+        "list_artifacts",
+        "list_workflow_run_artifacts",
+        "get_artifact",
+        "download_artifact",
+        "delete_artifact",
+        "get_artifact_retention",
+        "set_artifact_retention"
       ]
     },
     {
@@ -440,7 +447,9 @@
         "set_workflow_permissions",
         "get_fork_pr_approval",
         "set_fork_pr_approval",
-        "create_repository_dispatch"
+        "create_repository_dispatch",
+        "get_workspace_workflow_permissions",
+        "set_workspace_workflow_permissions"
       ]
     },
     {
@@ -29334,7 +29343,7 @@
           "Run protection"
         ],
         "summary": "Get the default workflow permissions",
-        "description": "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read; the default) or write (every permission). can_approve_pull_request_reviews is always false: a job's token never approves pull requests. Needs the Read role.",
+        "description": "What a job's G1T_TOKEN (GITHUB_TOKEN) may do when its workflow and job write no `permissions:`: default_workflow_permissions is read (contents and packages read) or write (every permission). Unless the repository chose (default_chosen), a repository made before restricted tokens has write and a newer one its workspace's default; it is never more than the workspace's max_workflow_permissions. can_approve_pull_request_reviews says whether its jobs may open and approve pull requests (off unless chosen, and only where the workspace allows it). Needs the Read role.",
         "x-operation": "get_workflow_permissions",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_permissions",
@@ -29375,6 +29384,8 @@
                 "schema": {},
                 "example": {
                   "default_workflow_permissions": "read",
+                  "default_chosen": true,
+                  "max_workflow_permissions": "write",
                   "can_approve_pull_request_reviews": false
                 }
               }
@@ -29432,7 +29443,7 @@
           "Run protection"
         ],
         "summary": "Set the default workflow permissions",
-        "description": "Set default_workflow_permissions to read or write. Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role.",
+        "description": "Set default_workflow_permissions to read, write (refused where the workspace's maximum is read) or inherit (back to the workspace's default, or write for a repository made before restricted tokens), and can_approve_pull_request_reviews, \"Allow g1t Actions to create and approve pull requests\" (refused where the workspace does not allow it). Workflows that write `permissions:` get what they write either way, and a pull request's run from outside gets read-only. Needs the Admin role.",
         "x-operation": "set_workflow_permissions",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "set_permissions",
@@ -29472,6 +29483,8 @@
                 "schema": {},
                 "example": {
                   "default_workflow_permissions": "write",
+                  "default_chosen": true,
+                  "max_workflow_permissions": "write",
                   "can_approve_pull_request_reviews": false
                 }
               }
@@ -29529,7 +29542,7 @@
           }
         },
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -29539,13 +29552,15 @@
                     "type": "string",
                     "enum": [
                       "read",
-                      "write"
+                      "write",
+                      "inherit"
                     ]
+                  },
+                  "can_approve_pull_request_reviews": {
+                    "type": "boolean",
+                    "description": "Allow g1t Actions to create and approve pull requests."
                   }
-                },
-                "required": [
-                  "default_workflow_permissions"
-                ]
+                }
               },
               "example": {
                 "default_workflow_permissions": "write"
@@ -29924,6 +29939,229 @@
         "x-example-params": {
           "owner": "flagon-io",
           "name": "g1t"
+        }
+      }
+    },
+    "/workspaces/{workspace}/actions/permissions/workflow": {
+      "get": {
+        "operationId": "get_workspace_workflow_permissions",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Get a workspace's default workflow permissions",
+        "description": "A workspace's policy for its repositories' job tokens: default_workflow_permissions (read, the default, or write) is what a repository made from now on gets until it chooses; max_workflow_permissions (write, the default, or read) is the most any repository's default may be, so read holds every repository to read-only; can_approve_pull_request_reviews (off by default) lets its repositories allow jobs to open and approve pull requests. Members only.",
+        "x-operation": "get_workspace_workflow_permissions",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_workspace_permissions",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "default_workflow_permissions": "read",
+                  "max_workflow_permissions": "write",
+                  "can_approve_pull_request_reviews": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "put": {
+        "operationId": "set_workspace_workflow_permissions",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Set a workspace's default workflow permissions",
+        "description": "Change a workspace's default_workflow_permissions, max_workflow_permissions and can_approve_pull_request_reviews; fields left out stay as they are. A maximum of read makes the default read too. Owners only.\n\nA maximum of read holds every repository's default to read-only, and makes the workspace's default read too.",
+        "x-operation": "set_workspace_workflow_permissions",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_workspace_permissions",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "default_workflow_permissions": "read",
+                  "max_workflow_permissions": "read",
+                  "can_approve_pull_request_reviews": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "default_workflow_permissions": {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "write"
+                    ],
+                    "description": "What new repositories get."
+                  },
+                  "max_workflow_permissions": {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "write"
+                    ],
+                    "description": "The most any repository's default may be."
+                  },
+                  "can_approve_pull_request_reviews": {
+                    "type": "boolean",
+                    "description": "Let repositories allow jobs to open and approve pull requests."
+                  }
+                }
+              },
+              "example": {
+                "max_workflow_permissions": "read"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },
@@ -40124,6 +40362,934 @@
         },
         "x-example-query": {
           "after": 0
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/artifacts": {
+      "get": {
+        "operationId": "list_artifacts",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "List a repository's artifacts",
+        "description": "List a repository's artifacts that have not expired, newest first: each with its id (a number), name, size_in_bytes, digest (sha256:… of its zip), created_at, expires_at, archive_download_url, and workflow_run (its run's id, head_branch and head_sha). Narrow with name; page with page and per_page (30 by default, at most 100). total_count counts every match. Needs the Read role; a public repository's are open to anyone.\n\nExpired and deleted artifacts are not listed. `workflow_run.id` is the run's id, which `get_workflow_run` takes.",
+        "x-operation": "list_artifacts",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "list_artifacts",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Only artifacts with exactly this name."
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The page, from 1."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Artifacts a page: 30 unless you say, at most 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 9,
+                  "artifacts": [
+                    {
+                      "id": 4182,
+                      "node_id": "artifact_4182",
+                      "name": "web-dist",
+                      "size_in_bytes": 18734120,
+                      "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+                      "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+                      "expired": false,
+                      "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+                      "created_at": "2026-10-08T14:03:51.204Z",
+                      "updated_at": "2026-10-08T14:03:52.880Z",
+                      "expires_at": "2026-10-22T14:03:51.204Z",
+                      "workflow_run": {
+                        "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+                        "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                        "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                        "head_branch": "main",
+                        "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        },
+        "x-example-query": {
+          "name": "web-dist",
+          "per_page": "1"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/runs/{id}/artifacts": {
+      "get": {
+        "operationId": "list_workflow_run_artifacts",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "List a workflow run's artifacts",
+        "description": "List one workflow run's artifacts that have not expired, oldest first, in the same shape as list_artifacts. Narrow with name. Needs the Read role.",
+        "x-operation": "list_workflow_run_artifacts",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "run_artifacts",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The run's id (run_…)."
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Only the artifact with exactly this name."
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 2,
+                  "artifacts": [
+                    {
+                      "id": 4181,
+                      "node_id": "artifact_4181",
+                      "name": "coverage",
+                      "size_in_bytes": 412870,
+                      "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4181",
+                      "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4181/zip",
+                      "expired": false,
+                      "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+                      "created_at": "2026-10-08T14:03:51.204Z",
+                      "updated_at": "2026-10-08T14:03:52.880Z",
+                      "expires_at": "2026-10-22T14:03:51.204Z",
+                      "workflow_run": {
+                        "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+                        "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                        "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                        "head_branch": "main",
+                        "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+                      }
+                    },
+                    {
+                      "id": 4182,
+                      "node_id": "artifact_4182",
+                      "name": "web-dist",
+                      "size_in_bytes": 18734120,
+                      "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+                      "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+                      "expired": false,
+                      "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+                      "created_at": "2026-10-08T14:03:51.204Z",
+                      "updated_at": "2026-10-08T14:03:52.880Z",
+                      "expires_at": "2026-10-22T14:03:51.204Z",
+                      "workflow_run": {
+                        "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+                        "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                        "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                        "head_branch": "main",
+                        "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/artifacts/{id}": {
+      "get": {
+        "operationId": "get_artifact",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Get an artifact",
+        "description": "Get one artifact by its id: its name, size_in_bytes, digest, when it was made and when it expires, and its run. Needs the Read role.",
+        "x-operation": "get_artifact",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_artifact",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "description": "The artifact's id, a number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": 4182,
+                  "node_id": "artifact_4182",
+                  "name": "web-dist",
+                  "size_in_bytes": 18734120,
+                  "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+                  "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+                  "expired": false,
+                  "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+                  "created_at": "2026-10-08T14:03:51.204Z",
+                  "updated_at": "2026-10-08T14:03:52.880Z",
+                  "expires_at": "2026-10-22T14:03:51.204Z",
+                  "workflow_run": {
+                    "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+                    "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                    "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                    "head_branch": "main",
+                    "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "4182"
+        }
+      },
+      "delete": {
+        "operationId": "delete_artifact",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Delete an artifact",
+        "description": "Delete an artifact before it expires: its bytes go at once and its id stops resolving. Needs the Write role.",
+        "x-operation": "delete_artifact",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "delete_artifact",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "description": "The artifact's id, a number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true,
+                  "id": 4181,
+                  "name": "coverage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "4181"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/artifacts/{id}/zip": {
+      "get": {
+        "operationId": "download_artifact",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Download an artifact",
+        "description": "A link to download an artifact as a zip file (an artifact an older runner kept is a .tar.gz), good for 10 minutes and needing no token. Over REST, GET …/zip answers 302 with the link in Location, as GitHub does: `curl -L` follows it. Over MCP the link is returned as url, with expires_at. Needs the Read role.\n\nOver REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o web-dist.zip …/zip` saves the file; the body above is what the MCP `workflow` tool's `download_artifact` returns. The link needs no token and stops working after 10 minutes.",
+        "x-operation": "download_artifact",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "download_artifact",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "description": "The artifact's id, a number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "url": "https://api.g1t.sh/actions/toolkit/blobs/eyJrIjoiYXJ0aWZhY3QiLCJpIjoiNDE4MiJ9.q3VbS1x9",
+                  "expires_at": "2026-10-08T15:13:00.000Z",
+                  "artifact": {
+                    "id": 4182,
+                    "node_id": "artifact_4182",
+                    "name": "web-dist",
+                    "size_in_bytes": 18734120,
+                    "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+                    "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+                    "expired": false,
+                    "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+                    "created_at": "2026-10-08T14:03:51.204Z",
+                    "updated_at": "2026-10-08T14:03:52.880Z",
+                    "expires_at": "2026-10-22T14:03:51.204Z",
+                    "workflow_run": {
+                      "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+                      "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                      "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                      "head_branch": "main",
+                      "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "4182"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/permissions/artifact-and-log-retention": {
+      "get": {
+        "operationId": "get_artifact_retention",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Get artifact retention",
+        "description": "How many days the repository keeps artifacts (days), and the most it may choose (maximum_allowed_days, 90). A workflow's retention-days can ask for fewer days, never more. Needs the Read role.",
+        "x-operation": "get_artifact_retention",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "artifact_retention",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "days": 14,
+                  "maximum_allowed_days": 90
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        }
+      },
+      "put": {
+        "operationId": "set_artifact_retention",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Set artifact retention",
+        "description": "Set how many days the repository keeps artifacts by default, and at most: days, from 1 to 90. Artifacts already uploaded keep the expiry they were given. Needs the Maintain role.\n\nOnly artifacts uploaded afterwards are kept the new number of days. A workflow's `retention-days` asks for fewer, never more.",
+        "x-operation": "set_artifact_retention",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_artifact_retention",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "days": 30,
+                  "maximum_allowed_days": 90
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90,
+                    "description": "Days to keep artifacts, by default and at most."
+                  }
+                },
+                "required": [
+                  "days"
+                ]
+              },
+              "example": {
+                "days": 30
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
         }
       }
     },

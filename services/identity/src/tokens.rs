@@ -110,6 +110,8 @@ struct Presented {
     job_id: Option<String>,
     #[serde(default)]
     job_run_id: Option<String>,
+    #[serde(default)]
+    job_pulls: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -131,7 +133,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name,
-                   repo, job_id, job_run_id
+                   repo, job_id, job_run_id, job_pulls
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
@@ -180,7 +182,11 @@ impl Identity {
                 name: presented.name.clone(),
                 repo: presented.repo.clone(),
                 job: match (&presented.job_id, &presented.job_run_id) {
-                    (Some(job_id), Some(run_id)) => Some(JobToken { run_id: run_id.clone(), job_id: job_id.clone() }),
+                    (Some(job_id), Some(run_id)) => Some(JobToken {
+                        run_id: run_id.clone(),
+                        job_id: job_id.clone(),
+                        pull_requests: presented.job_pulls == Some(1),
+                    }),
                     _ => None,
                 },
             }));

@@ -802,7 +802,7 @@ mod tests {
         let plain = marked(serde_json::json!({ "number": 4 }), Some(&actor));
         assert_eq!(caused_by_job(&plain), None);
         actor.token = Some(Box::new(crate::scopes::TokenAccess {
-            job: Some(crate::scopes::JobToken { run_id: "run_9".into(), job_id: "job_1".into() }),
+            job: Some(crate::scopes::JobToken { run_id: "run_9".into(), job_id: "job_1".into(), pull_requests: false }),
             ..Default::default()
         }));
         let by_job = marked(serde_json::json!({ "number": 4 }), Some(&actor));

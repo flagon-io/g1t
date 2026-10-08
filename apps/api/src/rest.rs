@@ -3,6 +3,7 @@
 use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
+use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
@@ -355,6 +356,18 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("POST", "/repos/:owner/:name/dispatches", Op::Protection(ProtectionOp::CreateRepositoryDispatch), &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/actions/permissions/workflow",
+        Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
+        &[],
+    ),
+    route(
+        "PUT",
+        "/workspaces/:workspace/actions/permissions/workflow",
+        Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
+        &[],
+    ),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
     route(
         "POST",
@@ -667,6 +680,15 @@ pub const ROUTES: &[Route] = &[
         Op::GetJobLogs,
         &[("after", "after")],
     ),
+    // Artifacts, at GitHub's addresses. `…/zip` answers with a redirect to
+    // a signed link (lib.rs).
+    route("GET", "/repos/:owner/:name/actions/artifacts", Op::Artifacts(ArtifactsOp::ListArtifacts), &[("name", "name"), ("page", "page"), ("per_page", "per_page")]),
+    route("GET", "/repos/:owner/:name/actions/runs/:id/artifacts", Op::Artifacts(ArtifactsOp::ListRunArtifacts), &[("name", "name")]),
+    route("GET", "/repos/:owner/:name/actions/artifacts/:id", Op::Artifacts(ArtifactsOp::GetArtifact), &[]),
+    route("GET", "/repos/:owner/:name/actions/artifacts/:id/zip", Op::Artifacts(ArtifactsOp::DownloadArtifact), &[]),
+    route("DELETE", "/repos/:owner/:name/actions/artifacts/:id", Op::Artifacts(ArtifactsOp::DeleteArtifact), &[]),
+    route("GET", "/repos/:owner/:name/actions/permissions/artifact-and-log-retention", Op::Artifacts(ArtifactsOp::GetArtifactRetention), &[]),
+    route("PUT", "/repos/:owner/:name/actions/permissions/artifact-and-log-retention", Op::Artifacts(ArtifactsOp::SetArtifactRetention), &[]),
     route(
         "GET",
         "/repos/:owner/:name/actions/secrets",

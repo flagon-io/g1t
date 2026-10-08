@@ -468,13 +468,13 @@ toward the limit and never use the trial.
 
 ### Actions cache
 
-What a workspace's [`actions/cache`](/guides/actions/#the-cache) entries
-hold is measured every hour, and each day's largest figure counts. A
+What a workspace's [`actions/cache`](/guides/actions/#the-cache) entries and its runs'
+[artifacts](/guides/actions/#artifacts) hold is measured every hour, and each day's largest figure counts. A
 month's GB-months are those days added up, divided by 30, charged at
 $0.018 a GB-month: R2's $0.015, plus 20%. It is charged from the first
 byte, to workspaces on the plan only, as **Actions cache storage** under
 **Git operations & storage**. A free workspace's caches are never charged;
-they are held to the same 10 GiB a repository as everyone's.
+they are held to the same 10 GiB a repository, and 10 GiB of artifacts a run, as everyone's.
 
 ### Private repository storage
 
@@ -968,7 +968,7 @@ time. Every member can see it.
   | Self-hosted runner time | Each job on your own runners, at $0. |
   | Deployments | Builds as they finish; each month's requests, CPU time and custom domains when it closes. |
   | Private storage | Storage past the free 1 GB, once a month. |
-  | Actions cache storage | What `actions/cache` held, on the plan, once a month. |
+  | Actions cache storage | What `actions/cache` and artifacts held, on the plan, once a month. |
   | Git operations | Operations past the free 50,000, once a month. |
   | Search embeddings | Private text put in the search index, once a month. |
   | Security scans | History scans and dependency checks, once a month. |

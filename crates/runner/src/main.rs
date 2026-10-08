@@ -40,6 +40,7 @@ mod checks;
 mod clone;
 mod confidence;
 mod deploy;
+mod docker;
 mod guard;
 mod harness;
 mod learned;
@@ -206,6 +207,10 @@ pub(crate) fn run(reporter: &mut Reporter) -> Result<String> {
 }
 
 fn main() {
+    // The runc the job's Docker Engine starts containers with (docker/oci.rs).
+    if docker::oci::invoked_as_runc() {
+        docker::oci::main();
+    }
     // A self-hosted runner's commands; the modes below are what it, and
     // g1t's sandboxes, run work with.
     let args: Vec<String> = std::env::args().skip(1).collect();

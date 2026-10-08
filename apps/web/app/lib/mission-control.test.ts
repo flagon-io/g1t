@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   type Merged,
+  placePushes,
   change,
   checksFact,
   confidenceAsk,
@@ -369,4 +370,20 @@ test("a job waiting for a self-hosted runner says so, not that an agent went qui
   const why = whyFor(reasonFor(runner), runner);
   assert.match(why, /self-hosted runner/);
   assert.doesNotMatch(why, /agent/);
+});
+
+test("each push to the default branch places the commits it brought, at its time, from one read of the history", () => {
+  const c = (hash: string, parents = ["p"], author = "Chase Pierce") => ({ hash, parents, author: { name: author } });
+  // Newest first: a Wednesday push of two, a Monday push of one, a merge, and g1t's own commit.
+  const history = [c("w2"), c("w1"), c("m1"), c("merge", ["a", "b"]), c("bot", ["p"], "g1t"), c("old")];
+  const pushes = [
+    { time: "2026-10-07T12:00:00Z", data: { after: "w2", before: "m1" } },
+    { time: "2026-10-05T12:00:00Z", data: { after: "m1", before: "old" } },
+    { time: "2026-10-01T12:00:00Z", data: { after: "gone", before: "older" } },
+  ];
+  assert.deepEqual(placePushes(history, pushes), [
+    { hash: "m1", at: "2026-10-05T12:00:00Z" },
+    { hash: "w2", at: "2026-10-07T12:00:00Z" },
+    { hash: "w1", at: "2026-10-07T12:00:00Z" },
+  ]);
 });

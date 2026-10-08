@@ -10,4 +10,7 @@
 ALTER TABLE access_tokens ADD COLUMN repo TEXT;
 ALTER TABLE access_tokens ADD COLUMN job_id TEXT;
 ALTER TABLE access_tokens ADD COLUMN job_run_id TEXT;
+-- 1 when the job may open and approve pull requests (its repository and
+-- workspace allow it); 0 or null otherwise.
+ALTER TABLE access_tokens ADD COLUMN job_pulls INTEGER;
 CREATE INDEX access_tokens_job ON access_tokens (job_id) WHERE job_id IS NOT NULL;

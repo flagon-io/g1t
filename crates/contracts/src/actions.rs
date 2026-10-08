@@ -252,11 +252,69 @@ pub struct PendingDeployment {
 #[serde(rename_all = "camelCase")]
 pub struct ActionsSettings {
     /// What a workflow without `permissions:` gets: `read` (contents and
-    /// packages read; the default) or `write` (every permission).
+    /// packages read) or `write` (every permission). Unchosen, a repository
+    /// made before restricted tokens keeps `write`; a newer one takes its
+    /// workspace's default. Never more than the workspace's maximum.
     pub default_permissions: String,
+    /// Whether the repository chose it, rather than taking it as above.
+    #[serde(default)]
+    pub default_chosen: bool,
+    /// The most the workspace lets a repository's default be.
+    #[serde(default = "write")]
+    pub max_permissions: String,
     /// Which pull requests' runs wait for approval: `first_time_contributors`,
     /// `outside_contributors` (the default) or `all_external_contributors`.
     pub approval_policy: String,
+    /// Whether a job's token may open pull requests and approve them. Off
+    /// unless the repository turns it on, and only where the workspace
+    /// allows it.
+    #[serde(default)]
+    pub can_approve_pull_requests: bool,
+    /// Whether the workspace lets its repositories turn that on.
+    #[serde(default)]
+    pub workspace_allows_pull_requests: bool,
+}
+
+fn write() -> String {
+    "write".to_owned()
+}
+
+/// A workspace's policy for its repositories' tokens.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceActionsSettings {
+    /// What a repository made from now on gets by default: `read` (the
+    /// default) or `write`.
+    pub default_permissions: String,
+    /// The most any repository's default may be: `write` (the default) or
+    /// `read`, which holds every repository to read-only.
+    pub max_permissions: String,
+    /// Whether its repositories may let jobs open and approve pull
+    /// requests. Off by default.
+    pub can_approve_pull_requests: bool,
+}
+
+/// `workspace_actions_settings`: members only. Returns
+/// `Outcome<WorkspaceActionsSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceActionsSettingsArgs {
+    pub viewer: Viewer,
+    pub workspace: String,
+}
+
+/// `set_workspace_actions_settings`: owners only. Fields left out stay as
+/// they are. Returns `Outcome<WorkspaceActionsSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWorkspaceActionsSettingsArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub default_permissions: Option<String>,
+    #[serde(default)]
+    pub max_permissions: Option<String>,
+    #[serde(default)]
+    pub can_approve_pull_requests: Option<bool>,
 }
 
 /// The approval policies, least strict first.
@@ -277,10 +335,14 @@ pub struct ActionsSettingsArgs {
 pub struct SetActionsSettingsArgs {
     pub actor: User,
     pub repo: RepoPath,
+    /// `read` or `write`; `inherit` goes back to the workspace's (or, for a
+    /// repository made before restricted tokens, `write`).
     #[serde(default)]
     pub default_permissions: Option<String>,
     #[serde(default)]
     pub approval_policy: Option<String>,
+    #[serde(default)]
+    pub can_approve_pull_requests: Option<bool>,
 }
 
 /// `environments`: every environment a repository's workflows, secrets,
@@ -722,11 +784,12 @@ pub struct CacheLookupArgs {
     pub key: String,
     #[serde(default)]
     pub restore: Vec<String>,
-    /// The hash of the entry's paths and compression, as the runner works it
-    /// out: an entry saved for other paths is not restored. Empty from
-    /// runners that do not send one.
+    /// The entry's version, a hash of its paths and compression, as the
+    /// toolkit's client and g1t's runner both send it: only an entry of the
+    /// same version is found. `None` from runners that send none, whose
+    /// entries have none.
     #[serde(default)]
-    pub version: String,
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -734,6 +797,13 @@ pub struct CacheHit {
     pub key: String,
     pub object: String,
     pub size: u64,
+    /// When it was saved, RFC 3339.
+    #[serde(default)]
+    pub created_at: String,
+    /// A signed token for downloading it through the toolkit's blob
+    /// endpoint, when the lookup came with a version.
+    #[serde(default)]
+    pub blob: Option<String>,
 }
 
 /// `cache_reserve`: a job about to save `size` bytes under `key`. Refused
@@ -744,10 +814,12 @@ pub struct CacheReserveArgs {
     pub job: String,
     pub token: String,
     pub key: String,
+    /// Its size, when known before it is sent (the toolkit's newer client
+    /// says only when it finishes: 0 then).
     pub size: u64,
     /// As in `CacheLookupArgs`.
     #[serde(default)]
-    pub version: String,
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -755,6 +827,31 @@ pub struct CacheReservation {
     pub id: String,
     /// Where the API puts it in R2.
     pub object: String,
+    /// The entry's number, which the toolkit's older protocol names it by.
+    #[serde(default)]
+    pub number: u64,
+    /// Its R2 upload, once one is started.
+    #[serde(default)]
+    pub upload: Option<String>,
+    /// A signed token for sending its parts through the toolkit's blob
+    /// endpoint, once its upload is started.
+    #[serde(default)]
+    pub blob: Option<String>,
+}
+
+/// `cache_upload`: an entry a job is still uploading, by its number or by
+/// key and version. Returns `Outcome<CacheReservation>`, with `upload` and
+/// `blob` set once its upload has been started.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheUploadArgs {
+    pub job: String,
+    pub token: String,
+    #[serde(default)]
+    pub number: Option<u64>,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 /// `cache_commit`: the upload of `id` is complete, at `size` bytes. Returns
@@ -780,6 +877,279 @@ pub struct CacheAbortArgs {
     pub job: String,
     pub token: String,
     pub id: String,
+}
+
+// ── Artifacts (actions/upload-artifact) ───────────────────────────────────
+//
+// Kept in R2 by the API (the ACTIONS_CACHE bucket, under `a/`) and listed
+// here, by the actions service, which decides names, sizes and how long
+// each is kept. A sandbox reaches them with its job's token
+// (`/actions/jobs/{job}/artifacts…`) or, through the toolkit's protocol,
+// with its runtime token (`ACTIONS_RUNTIME_TOKEN`); people through the
+// REST API and the run's page.
+
+/// The largest one artifact may be.
+pub const ARTIFACT_MAX_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+/// What one run's artifacts may hold together.
+pub const RUN_ARTIFACTS_MAX_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+/// How long artifacts are kept unless a repository says otherwise.
+pub const ARTIFACT_RETENTION_DEFAULT_DAYS: u32 = 14;
+/// The longest a repository may keep them.
+pub const ARTIFACT_RETENTION_MAX_DAYS: u32 = 90;
+/// A native upload is sent in parts of this size (the last may be smaller).
+pub const ARTIFACT_PART_BYTES: u64 = 32 * 1024 * 1024;
+
+/// An artifact, as the API and the site show it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Artifact {
+    pub id: u64,
+    pub name: String,
+    pub size: u64,
+    /// `sha256:<hex>`, when the uploader said.
+    pub digest: Option<String>,
+    /// `zip`, or `tgz` for one an older runner sent.
+    pub format: String,
+    pub run_id: String,
+    pub job_id: String,
+    pub repo_id: String,
+    /// Whether it has expired or been deleted (its bytes are gone).
+    pub expired: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub expires_at: String,
+    /// The run's branch and commit, for the REST shape.
+    #[serde(default)]
+    pub head_branch: Option<String>,
+    #[serde(default)]
+    pub head_sha: Option<String>,
+}
+
+/// An artifact with where its bytes are, and a signed token for them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactBlob {
+    pub artifact: Artifact,
+    pub object: String,
+    /// For the toolkit's blob endpoint (`/actions/toolkit/blobs/{blob}`).
+    pub blob: String,
+}
+
+/// A page of artifacts, in GitHub's shape.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactList {
+    pub total_count: u64,
+    pub artifacts: Vec<Artifact>,
+}
+
+/// `artifact_reserve`: a job about to upload an artifact. Refused when its
+/// run has one of that name and `overwrite` is not set (`conflict`), or it
+/// is too large. Returns `Outcome<ArtifactReservation>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ArtifactReserveArgs {
+    pub job: String,
+    /// The job's token, or its runtime token.
+    pub token: String,
+    pub name: String,
+    /// Its size, when known before it is sent (0 otherwise).
+    #[serde(default)]
+    pub size: u64,
+    /// Days to keep it: 0 for the repository's default; at most the
+    /// repository's setting.
+    #[serde(default)]
+    pub retention_days: u32,
+    /// When to expire it, RFC 3339, as the toolkit says it (in place of
+    /// `retention_days`).
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub overwrite: bool,
+    /// `zip` (the default) or `tgz`.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactReservation {
+    pub id: u64,
+    /// Where the API puts it in R2.
+    pub object: String,
+    /// The days it will be kept, and until when.
+    pub retention_days: u32,
+    pub expires_at: String,
+}
+
+/// `artifact_commit`: its upload is complete, at `size` bytes. The artifact
+/// is named by `id`, or by `name` in the job's run (the toolkit's way).
+/// Returns `Outcome<Artifact>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ArtifactCommitArgs {
+    pub job: String,
+    pub token: String,
+    #[serde(default)]
+    pub id: Option<u64>,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub size: u64,
+    #[serde(default)]
+    pub digest: Option<String>,
+}
+
+/// `job_artifacts`: a running job listing the artifacts of its own run, or
+/// of another run of its repository (`run_id`), narrowed by `name` or
+/// `id`: `Outcome<Vec<Artifact>>`. `job_artifact` gives the one named, with
+/// a token to download it: `Outcome<ArtifactBlob>`. `job_delete_artifact`
+/// deletes one of its own run's: `Outcome<Artifact>`. `artifact_abort`
+/// gives up an upload by `id`: `Outcome<bool>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct JobArtifactsArgs {
+    pub job: String,
+    pub token: String,
+    #[serde(default)]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub id: Option<u64>,
+}
+
+/// `artifacts`: a repository's artifacts, newest first, or one run's.
+/// Anyone who can see the repository. Returns `Outcome<ArtifactList>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArtifactsArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default)]
+    pub run: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub per_page: Option<u32>,
+}
+
+/// `artifact` (`Outcome<Artifact>`) and `artifact_download`
+/// (`Outcome<ArtifactBlob>`, with a token good for a few minutes): one
+/// artifact by `id`, or by `name` within `run`. Anyone who can see the
+/// repository.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArtifactArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default)]
+    pub id: Option<u64>,
+    #[serde(default)]
+    pub run: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// `delete_artifact`: needs the Write role. Returns `Outcome<Artifact>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteArtifactArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub id: u64,
+}
+
+/// `artifact_retention`: anyone who can see the repository. With `days`,
+/// sets it, which needs the Maintain role. Returns
+/// `Outcome<ArtifactRetention>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArtifactRetentionArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default)]
+    pub days: Option<u32>,
+}
+
+/// GitHub's shape: the days artifacts are kept by default, and the most a
+/// repository may choose.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArtifactRetention {
+    pub days: u32,
+    pub maximum_allowed_days: u32,
+}
+
+// ── The toolkit's protocols ───────────────────────────────────────────────
+//
+// Actions built on GitHub's toolkit (`@actions/cache`, `@actions/artifact`,
+// `@actions/core`'s `getIDToken`) reach g1t with the job's runtime token,
+// `ACTIONS_RUNTIME_TOKEN`: a JSON Web Token whose `scp` names the run and
+// job, signed with a key derived from the job's own token, so the actions
+// service checks it without keeping another secret. Cache and artifact
+// operations above take it in place of the job's token.
+
+/// `runtime_auth`: which job a runtime token is, while it runs:
+/// `Outcome<RuntimeJob>`. `oidc_claims` takes the same and returns
+/// `Outcome<Value>`: the claims of the job's OIDC token, less `iss`, `aud`,
+/// `jti` and the times, or `forbidden` when the job's `permissions` do not
+/// give it `id-token: write`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RuntimeAuthArgs {
+    pub job: String,
+    pub token: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeJob {
+    pub job: String,
+    pub run: String,
+    pub repo_id: String,
+    pub namespace: String,
+    /// `owner/name`.
+    pub repository: String,
+}
+
+/// What a signed blob token lets its holder do.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BlobGrant {
+    /// `cache` or `artifact`.
+    pub kind: String,
+    /// The entry's id: a cache entry's `cache_…`, an artifact's number.
+    pub id: String,
+    pub object: String,
+    /// The R2 upload it sends parts to; `None` for a download.
+    pub upload: Option<String>,
+    /// For a download: what to call the file, and its type.
+    #[serde(default)]
+    pub filename: Option<String>,
+    #[serde(default)]
+    pub content_type: Option<String>,
+}
+
+/// `blob_sign`: a token for uploading an entry the job reserved, to the R2
+/// upload the API started for it. Returns `Outcome<String>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BlobSignArgs {
+    pub job: String,
+    pub token: String,
+    /// `cache` or `artifact`.
+    pub kind: String,
+    pub id: String,
+    pub upload: String,
+}
+
+/// `blob_open`: what a signed token grants, while it is good and its entry
+/// is there: `Outcome<BlobGrant>`. `blob_part` records a part sent with an
+/// upload token (`part`, `etag`, `size`): `Outcome<bool>`. `blob_parts`
+/// gives the parts recorded, in order: `Outcome<Vec<BlobPart>>`, and
+/// `blob_done` forgets them: `Outcome<bool>`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct BlobArgs {
+    pub blob: String,
+    #[serde(default)]
+    pub part: u32,
+    #[serde(default)]
+    pub etag: String,
+    #[serde(default)]
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BlobPart {
+    pub part: u32,
+    pub etag: String,
+    pub size: u64,
 }
 
 #[cfg(test)]

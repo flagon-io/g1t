@@ -1,12 +1,13 @@
 import { Form, Link } from "react-router";
 
 import { APPROVAL_POLICIES } from "@g1t/contracts";
-import type { ActionsSettings, ApprovalPolicy } from "@g1t/contracts";
+import type { ActionsSettingsChange, ApprovalPolicy } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-actions";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { SettingsSection as Section } from "../../components/settings-section";
 import { ErrorText, SubmitButton } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { page } from "../../lib/meta";
 import { actions } from "../../lib/services.server";
@@ -29,9 +30,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   await requireCapability(context, params, "manage_integrations");
   const form = await request.formData();
-  const permissions = form.get("defaultPermissions") === "write" ? "write" : "read";
+  const chosen = String(form.get("defaultPermissions"));
+  const permissions = chosen === "write" || chosen === "inherit" ? chosen : "read";
   const policy = String(form.get("approvalPolicy"));
-  const change: Partial<ActionsSettings> = { defaultPermissions: permissions };
+  const change: ActionsSettingsChange = { defaultPermissions: permissions };
+  // Only where the workspace allows it is the box there to send.
+  if (form.has("pullRequestsShown")) change.canApprovePullRequests = form.get("canApprovePullRequests") === "on";
   if ((APPROVAL_POLICIES as readonly string[]).includes(policy)) change.approvalPolicy = policy as ApprovalPolicy;
   const saved = await actions.setActionsSettings(user, { namespace: params.owner, name: params.repo }, change);
   return saved.ok ? { saved: true, error: null } : { saved: false, error: saved.error.message };
@@ -69,27 +73,52 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
             </>
           }
         >
-          <RadioGroup name="defaultPermissions" defaultValue={settings.defaultPermissions} className="gap-3">
+          <RadioGroup
+            name="defaultPermissions"
+            defaultValue={settings.defaultChosen ? settings.defaultPermissions : "inherit"}
+            className="gap-3"
+          >
+            <RadioOption
+              value="inherit"
+              label="As the workspace says"
+              description={`Now ${settings.defaultPermissions === "write" ? "read and write" : "read-only"}: the workspace's default for new repositories, or read and write for a repository made before restricted tokens.`}
+            />
             <RadioOption
               value="read"
               label="Read repository contents and packages"
               description={
                 <>
                   <code className="font-mono">contents: read</code> and <code className="font-mono">packages: read</code>.
-                  The default.
                 </>
               }
             />
             <RadioOption
               value="write"
               label="Read and write"
-              description="Read and write to everything a job's token can reach in this repository."
+              disabled={settings.maxPermissions === "read"}
+              description={
+                settings.maxPermissions === "read"
+                  ? "The workspace holds its repositories to read-only."
+                  : "Read and write to everything a job's token can reach in this repository."
+              }
             />
           </RadioGroup>
           <p className="text-sm text-muted">
             Whatever a workflow asks for, a pull request from outside the repository's writers gets a token that can only
             read.
           </p>
+          <input type="hidden" name="pullRequestsShown" value={settings.workspaceAllowsPullRequests ? "1" : ""} disabled={!settings.workspaceAllowsPullRequests} />
+          <CheckboxOption
+            name="canApprovePullRequests"
+            defaultChecked={settings.canApprovePullRequests}
+            disabled={!settings.workspaceAllowsPullRequests}
+            label="Allow g1t Actions to create and approve pull requests"
+            description={
+              settings.workspaceAllowsPullRequests
+                ? "Jobs' tokens may open pull requests and approve them. Off unless you turn it on."
+                : "The workspace does not allow it: an owner can, in the workspace's Actions settings."
+            }
+          />
         </Section>
 
         <Section

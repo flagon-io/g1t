@@ -102,6 +102,28 @@ roadmap.
   to Stripe's hosted invoice page. An invoice also goes out on its own as
   each month closes: one Stripe invoice, a line per workspace for what it
   owes, net 30, emailed by Stripe.
+- **Agents & models** (`/agents`, under Platform): billing's model
+  catalogue, every model g1t can use (`admin_models`). **Check for new
+  models** lists each provider's models now, through the model proxy's
+  `Discovery` entrypoint (the `MODELS` binding), as the daily check does;
+  the result says what each provider listed, what is new or gone, or why a
+  provider could not be listed. **Defaults**: the model behind each of
+  Auto's tiers, the harness's background model and the AI Gateway's first
+  Claude (an available, priced Claude each, shown with what a typical run
+  costs on it), and each kind of job's starting tier and effort. A change
+  needs a reason and shows a review first, the current and new value side
+  by side with what a typical run would cost on each, before **Save**
+  (`admin_set_model_default`); runs pick it up within a minute. A default
+  that has fallen back (its model retired or no longer listed) says so.
+  **New models**: each model a check found, with its prices filled in
+  where known; confirm its name, tier and prices per million tokens (and
+  long-prompt prices) and **Approve**, or **Retire** it
+  (`admin_decide_model`). **Catalogue**: every other model with its status,
+  context, prices, typical run and when its provider last listed it, each
+  with **Retire** or **Restore**. **Checks**: the latest checks of each
+  provider. Every change names the staff member and why in the audit log
+  (account `models`). See docs/BILLING_OPERATIONS.md, "The model
+  catalogue".
 - **Stripe**: whether billing's key is in test or live mode (or off), the
   webhook Stripe calls (URL, endpoint id, events, who registered it and
   when), and the events Stripe sent lately with what billing did with
@@ -193,7 +215,7 @@ The same two checks still apply: the Access policy, and `STAFF_EMAILS`.
 
 ```sh
 npm run typecheck -w @g1t/sudo
-npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging, nav, charts, signals
+npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging, nav, charts, signals, models
 npm run build -w @g1t/sudo
 ```
 

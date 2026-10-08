@@ -75,8 +75,13 @@ jobs:
           docker push g1t.sh/${{ github.repository }}:${{ github.sha }}
 ```
 
-Runs that get no secrets (a pull request from someone without Write) get a
-token that only reads, and cannot push. See
+On g1t's own machines a job is already signed in to g1t.sh with that
+token when it starts, so the sign-in step can be left out there; it does
+no harm. Pushing needs `packages: write` in the job's
+[`permissions:`](/guides/actions/#the-jobs-token); pulling needs only the
+default `packages: read`. Runs that get no secrets (a pull request from
+someone without Write) get a token that only reads: they pull, and cannot
+push. See
 [secrets and variables](/guides/actions/#secrets-and-variables).
 
 ## The 100 MB limit

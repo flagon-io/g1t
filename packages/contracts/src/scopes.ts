@@ -391,6 +391,13 @@ export const OPERATION_SCOPES = [
   ["cancel_workflow_run", "workflows:write"],
   ["rerun_workflow_run", "workflows:write"],
   ["update_workflow", "workflows:write"],
+  ["list_artifacts", "workflows:read"],
+  ["list_workflow_run_artifacts", "workflows:read"],
+  ["get_artifact", "workflows:read"],
+  ["download_artifact", "workflows:read"],
+  ["get_artifact_retention", "workflows:read"],
+  ["delete_artifact", "workflows:write"],
+  ["set_artifact_retention", "workflows:write"],
   ["list_commit_statuses", "checks:read"],
   ["get_combined_status", "checks:read"],
   ["list_check_runs_for_ref", "checks:read"],
@@ -425,6 +432,9 @@ export const OPERATION_SCOPES = [
   ["set_fork_pr_approval", "repo:admin"],
   // Starting workflows from outside, as a push would.
   ["create_repository_dispatch", "code:write"],
+  // A workspace's policy for its repositories' tokens.
+  ["get_workspace_workflow_permissions", "workspace:read"],
+  ["set_workspace_workflow_permissions", "workspace:admin"],
   ["recall", "memory:read"],
   ["search_context", "memory:read"],
   ["get_entity", "memory:read"],

@@ -877,6 +877,9 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
         <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
           Secrets and variables
         </SidebarLink>
+        <SidebarLink to={`/${slug}/-/actions`} icon={<PlayCircle size={15} />}>
+          Actions
+        </SidebarLink>
         {owner && (
           <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
             Runners

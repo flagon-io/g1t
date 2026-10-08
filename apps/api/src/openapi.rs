@@ -8,6 +8,7 @@ use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
+use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
@@ -367,6 +368,13 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::CancelWorkflowRun,
             Op::RerunWorkflowRun,
             Op::UpdateWorkflow,
+            Op::Artifacts(ArtifactsOp::ListArtifacts),
+            Op::Artifacts(ArtifactsOp::ListRunArtifacts),
+            Op::Artifacts(ArtifactsOp::GetArtifact),
+            Op::Artifacts(ArtifactsOp::DownloadArtifact),
+            Op::Artifacts(ArtifactsOp::DeleteArtifact),
+            Op::Artifacts(ArtifactsOp::GetArtifactRetention),
+            Op::Artifacts(ArtifactsOp::SetArtifactRetention),
         ],
     ),
     (
@@ -396,6 +404,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Protection(ProtectionOp::GetForkPrApproval),
             Op::Protection(ProtectionOp::SetForkPrApproval),
             Op::Protection(ProtectionOp::CreateRepositoryDispatch),
+            Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
+            Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
         ],
     ),
     (
@@ -651,6 +661,7 @@ fn title(op: Op) -> &'static str {
         Op::About(op) => op.title(),
         Op::Deployments(op) => op.title(),
         Op::Protection(op) => op.title(),
+        Op::Artifacts(op) => op.title(),
     }
 }
 

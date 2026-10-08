@@ -487,6 +487,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
       call("token_usage", { workspace, viewer, person: options.person ?? null, days: options.days ?? null }),
     recordTokens: (usage) => call("record_tokens", usage),
     gatewayModels: () => call("gateway_models", {}),
+    modelDefaults: () => call("model_defaults", {}),
+    recordDiscovery: (provider, models, by, error = null) => call("record_discovery", { provider, models, by, error }),
     gatewayAdmit: (workspace) => call("gateway_admit", { workspace }),
     recordGateway: (record) => call("record_gateway", record),
     gatewayRequests: (workspace, viewer, options = {}) =>
@@ -619,6 +621,40 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
         by,
       }),
     runCosts: (by) => call("admin_run_costs", { by }),
+    models: () => call("admin_models", {}),
+    decideModel: (model, decision, details, reason, by) =>
+      call("admin_decide_model", {
+        model,
+        decision,
+        name: details.name ?? null,
+        tier_hint: details.tierHint ?? null,
+        prices: details.prices
+          ? {
+              input_micros: details.prices.inputMicros,
+              output_micros: details.prices.outputMicros,
+              cache_read_micros: details.prices.cacheReadMicros,
+              cache_write_micros: details.prices.cacheWriteMicros,
+              cache_write_1h_micros: details.prices.cacheWrite1hMicros,
+              threshold: details.prices.threshold,
+              over_input_micros: details.prices.overInputMicros,
+              over_output_micros: details.prices.overOutputMicros,
+              over_cache_read_micros: details.prices.overCacheReadMicros,
+              over_cache_write_micros: details.prices.overCacheWriteMicros,
+              over_cache_write_1h_micros: details.prices.overCacheWrite1hMicros,
+            }
+          : null,
+        reason,
+        by,
+      }),
+    setModelDefault: (purpose, value, reason, by) =>
+      call("admin_set_model_default", {
+        purpose,
+        model: value.model ?? null,
+        tier: value.tier ?? null,
+        effort: value.effort ?? null,
+        reason,
+        by,
+      }),
   };
 }
 
@@ -689,9 +725,16 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
       call("review_deployments", { actor, repo, id, state, environments, comment: comment ?? null }),
     actionsSettings: (repo, viewer) => call("actions_settings", { repo, viewer }),
     setActionsSettings: (actor, repo, change) => call("set_actions_settings", { actor, repo, ...change }),
+    workspaceActionsSettings: (workspace, viewer) => call("workspace_actions_settings", { workspace, viewer }),
+    setWorkspaceActionsSettings: (actor, workspace, change) =>
+      call("set_workspace_actions_settings", { actor, workspace, ...change }),
     environments: (repo, viewer) => call("environments", { repo, viewer }),
     setEnvironment: (actor, repo, name, change) => call("set_environment", { actor, repo, name, ...change }),
     deleteEnvironment: (actor, repo, name) => call("delete_environment", { actor, repo, name }),
+    artifacts: (repo, viewer, filter = {}) => call("artifacts", { repo, viewer, ...filter }),
+    artifactDownload: (repo, viewer, by) => call("artifact_download", { repo, viewer, ...by }),
+    deleteArtifact: (actor, repo, id) => call("delete_artifact", { actor, repo, id }),
+    artifactRetention: (repo, viewer, days) => call("artifact_retention", { repo, viewer, days }),
   };
 }
 
