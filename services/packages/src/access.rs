@@ -301,6 +301,7 @@ mod tests {
                 token_id: "tok_1".into(),
                 scopes: Some(scopes.iter().map(|s| s.as_str().to_owned()).collect()),
                 legacy: false,
+                name: None,
             }));
             user
         };

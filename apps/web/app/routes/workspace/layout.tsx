@@ -70,6 +70,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
     about: "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
   },
   usage: { title: "Usage", about: "What the workspace's agents cost, run by run, by repository, pull request and model." },
+  gateway: {
+    title: "AI Gateway",
+    about: "Your own code's model requests, sent with the workspace's access tokens: each one's model, tokens, cost and status.",
+  },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
   agents: {
     title: "Agent fleet",

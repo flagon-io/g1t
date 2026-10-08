@@ -86,7 +86,7 @@
     },
     {
       "name": "Billing",
-      "description": "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
+      "description": "A workspace's usage, its budget, its AI credit, its invoices and its AI Gateway requests. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
       "x-tools": [
         "get_usage",
         "get_budget",
@@ -94,7 +94,8 @@
         "get_ai_credit",
         "buy_ai_credit",
         "list_invoices",
-        "get_billing_details"
+        "get_billing_details",
+        "list_gateway_requests"
       ]
     },
     {
@@ -10596,6 +10597,156 @@
         },
         "x-example-params": {
           "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/gateway/requests": {
+      "get": {
+        "operationId": "list_gateway_requests",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "List a workspace's AI Gateway requests",
+        "description": "A workspace's recent AI Gateway requests, newest first: each with its `id`, `created_at`, `model`, the access token that sent it (`token_id`, `token_name`), its tokens by kind (`input`, `output`, `cache_read`, `cache_write`), what they cost at the model's price (`cost_micros`) and what the workspace was charged (`charged_micros`, before included usage and AI credit paid for it; 0 on the workspace's own provider key, `own_key`), the HTTP `status` it was answered with, whether it was `streamed`, `duration_ms`, and `error` for one that was refused or failed. Prompts and answers are never kept. `limit` is how many, 50 unless given and 200 at most; pass `next` from one page as `before` for the next. Requests are kept `retention_days` (30). Members of the workspace only.\n\nTo send requests, see the AI Gateway guide: POST https://models.g1t.sh/anthropic/v1/messages with a workspace access token that has `models:write`. `charged_micros` is what the request was charged before included usage and AI credit paid for it; the payment itself is on the statement as AI Gateway. Pass `next` as `before` for the next page; it is null on the last.",
+        "x-operation": "list_gateway_requests",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "gateway_requests",
+        "x-scope": "models:read",
+        "security": [
+          {
+            "token": [
+              "models:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "How many requests, newest first. 50 if not given."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only requests older than this one: the `next` of the page before."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "requests": [
+                    {
+                      "id": "gw_5f0c2a9e7b1d4c3a8e6f0b12",
+                      "created_at": "2026-10-07T14:02:11.000Z",
+                      "model": "claude-sonnet-5-5",
+                      "token_id": "tok_01kkr4w7d2c9e5f8h1j3m6n0p2",
+                      "token_name": "release-notes",
+                      "input": 1840,
+                      "output": 512,
+                      "cache_read": 12000,
+                      "cache_write": 0,
+                      "cost_micros": 11200,
+                      "charged_micros": 11200,
+                      "status": 200,
+                      "own_key": false,
+                      "streamed": true,
+                      "duration_ms": 4210,
+                      "error": null
+                    },
+                    {
+                      "id": "gw_1a7e3c5b9d2f4e6a8c0b2d41",
+                      "created_at": "2026-10-07T13:58:40.000Z",
+                      "model": "claude-opus-5-5",
+                      "token_id": "tok_01kkr4w7d2c9e5f8h1j3m6n0p2",
+                      "token_name": "release-notes",
+                      "input": 0,
+                      "output": 0,
+                      "cache_read": 0,
+                      "cache_write": 0,
+                      "cost_micros": 0,
+                      "charged_micros": 0,
+                      "status": 402,
+                      "own_key": false,
+                      "streamed": false,
+                      "duration_ms": 38,
+                      "error": "The flagon-io workspace is out of AI credit and has used this month's included usage, so the AI Gateway refuses requests to g1t's models. An owner can buy AI credit or turn on auto-reload at /flagon-io/-/billing#ai-credit."
+                    }
+                  ],
+                  "next": "gw_1a7e3c5b9d2f4e6a8c0b2d41",
+                  "retention_days": 30
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        },
+        "x-example-query": {
+          "limit": 2
         }
       }
     },

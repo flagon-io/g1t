@@ -48,6 +48,8 @@ export type User = {
     token_id: string;
     scopes?: string[] | null;
     legacy?: boolean;
+    /** The token's name, as its owner gave it. */
+    name?: string;
   };
 };
 

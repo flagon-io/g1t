@@ -38,6 +38,7 @@ mod sales;
 mod statement;
 mod webhooks;
 mod features;
+mod gateway;
 mod keeper;
 mod limits;
 mod rename;
@@ -1251,6 +1252,10 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         if let Err(error) = billing.sweep_reservations().await {
             worker::console_error!("clearing reservations failed: {error}");
         }
+        // The AI Gateway's log keeps 30 days (gateway.rs).
+        if let Err(error) = billing.forget_gateway_requests().await {
+            worker::console_error!("clearing old AI Gateway requests failed: {error}");
+        }
     }
 }
 
@@ -1301,6 +1306,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_billing_details" => reply(&billing.set_billing_details(args(body)?).await?),
         "record_tokens" => reply(&billing.record_tokens(args(body)?).await?),
         "token_usage" => reply(&billing.token_usage(args(body)?).await?),
+        "gateway_models" => reply(&billing.gateway_models().await?),
+        "gateway_admit" => reply(&billing.gateway_admit(args(body)?).await?),
+        "record_gateway" => reply(&billing.record_gateway(args(body)?).await?),
+        "gateway_requests" => reply(&billing.gateway_requests(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
         "can_start" => reply(&billing.can_start(args(body)?).await?),
@@ -1486,6 +1495,9 @@ mod tests {
         include_str!("../migrations/0040_ai_credit.sql"),
         include_str!("../migrations/0041_agent_rate_own_key.sql"),
         include_str!("../migrations/0042_agent_rate_weights.sql"),
+        include_str!("../migrations/0043_tax_and_card_fees.sql"),
+        include_str!("../migrations/0044_cache_reads_count_a_tenth.sql"),
+        include_str!("../migrations/0045_gateway.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

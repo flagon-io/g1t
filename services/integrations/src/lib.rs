@@ -1344,6 +1344,40 @@ impl Integrations {
         }))
     }
 
+    /// Where a workspace's AI Gateway requests go on its own key: its first
+    /// model provider that speaks Anthropic's API (an Anthropic key, or an
+    /// Anthropic-compatible endpoint). None sends them to g1t's models.
+    async fn gateway_upstream(&self, a: GatewayUpstreamArgs) -> Result<Option<ModelUpstream>> {
+        let workspace = a.workspace.to_lowercase();
+        let rows = self.rows(&workspace).await?;
+        let Some(row) = gateway_connection(&rows) else {
+            return Ok(None);
+        };
+        let provider = row.provider();
+        let config = row.config();
+        let secrets = self.secrets(row);
+        Ok(Some(ModelUpstream {
+            route: if provider == Provider::Anthropic { "anthropic" } else { "endpoint" }.to_owned(),
+            api: provider.api().to_owned(),
+            // The request names its model; a connection's own model is for
+            // agent runs.
+            model: None,
+            official: false,
+            provider: provider.name().to_owned(),
+            workspace,
+            repo: String::new(),
+            number: 0,
+            task: "gateway".to_owned(),
+            session: String::new(),
+            tier: None,
+            requested_by: None,
+            base_url: Some(models::base_url(provider, &config)),
+            api_key: secrets.secret.clone(),
+            auth_header: Some(models::auth_header(provider, &config)),
+            gateway_token: (provider == Provider::AnthropicEndpoint).then_some(secrets.signing_secret).flatten(),
+        }))
+    }
+
     /// Ends the model sessions of a run that has finished: their tokens are
     /// refused from now on, whatever time they had left.
     async fn close_model_sessions(&self, a: CloseModelSessionsArgs) -> Result<u32> {
@@ -1428,6 +1462,13 @@ impl Integrations {
     }
 }
 
+/// The connection AI Gateway requests use on the workspace's own key: the
+/// first model provider that speaks Anthropic's API, in the order the
+/// workspace connected them.
+fn gateway_connection(rows: &[Row]) -> Option<&Row> {
+    rows.iter().find(|row| row.provider().kind() == ProviderKind::Models && row.provider().api() == "anthropic")
+}
+
 fn clone_row(row: &Row) -> Row {
     Row {
         id: row.id.clone(),
@@ -1483,6 +1524,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "model_provider" => reply(&service.model_provider(args(body)?).await?),
         "open_model_session" => reply(&service.open_model_session(args(body)?).await?),
         "model_upstream" => reply(&service.model_upstream(args(body)?).await?),
+        "gateway_upstream" => reply(&service.gateway_upstream(args(body)?).await?),
         "close_model_sessions" => reply(&service.close_model_sessions(args(body)?).await?),
         "routes" => reply(&service.routes(args(body)?).await?),
         "set_routes" => reply(&service.set_routes(args(body)?).await?),

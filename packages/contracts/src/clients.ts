@@ -468,6 +468,11 @@ export function billingClient(service: ServiceBinding): BillingApi {
     tokenUsage: (workspace, viewer, options = {}) =>
       call("token_usage", { workspace, viewer, person: options.person ?? null, days: options.days ?? null }),
     recordTokens: (usage) => call("record_tokens", usage),
+    gatewayModels: () => call("gateway_models", {}),
+    gatewayAdmit: (workspace) => call("gateway_admit", { workspace }),
+    recordGateway: (record) => call("record_gateway", record),
+    gatewayRequests: (workspace, viewer, options = {}) =>
+      call("gateway_requests", { workspace, viewer, limit: options.limit ?? null, before: options.before ?? null }),
     checkout: (actor, workspace, amountCents, returnUrl, method = "card") =>
       call("checkout", { actor, workspace, amountCents, returnUrl, method }),
     confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),
@@ -623,6 +628,7 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     modelProvider: (workspace) => call("model_provider", { workspace }),
     openModelSession: (run) => call("open_model_session", run),
     modelUpstream: (token) => call("model_upstream", { token }),
+    gatewayUpstream: (workspace) => call("gateway_upstream", { workspace }),
     closeModelSessions: (tokenHashes) => call("close_model_sessions", { token_hashes: tokenHashes }),
     routes: (workspace, viewer) => call("routes", { workspace, viewer }),
     setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),

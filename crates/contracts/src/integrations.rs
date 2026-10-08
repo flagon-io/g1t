@@ -614,6 +614,15 @@ pub struct ModelUpstreamArgs {
     pub token: String,
 }
 
+/// `gateway_upstream`: where a workspace's AI Gateway requests go when it
+/// has its own Anthropic key: its first Anthropic or Anthropic-compatible
+/// model provider, with the credentials to forward them. Null sends them to
+/// g1t's models. Returns `Option<ModelUpstream>`, with `task` `gateway`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GatewayUpstreamArgs {
+    pub workspace: String,
+}
+
 /// `close_model_sessions`: ends the model sessions whose tokens hash to
 /// these (SHA-256, lowercase hex), so a run's model token stops working
 /// when its run does rather than when it would lapse. Returns how many

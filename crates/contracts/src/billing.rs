@@ -478,6 +478,130 @@ pub struct TokenUsage {
     pub by_day: Vec<DayTokens>,
 }
 
+// --- AI Gateway -------------------------------------------------------------
+//
+// A workspace's own model requests, sent with one of its access tokens to
+// the model proxy (`models.g1t.sh/anthropic`). On g1t's models each request
+// is charged to the workspace at the model's price, with the price book's
+// `gateway_models` markup, drawn from AI credit; on the workspace's own
+// provider key it is only counted.
+
+/// A model the AI Gateway offers on g1t's own key, with its price per
+/// million tokens of each kind. `gateway_models` takes nothing and returns
+/// these, in the order they are shown.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayModel {
+    /// The id a request names, such as `claude-sonnet-5-5`.
+    pub model: String,
+    /// For people: `Claude Sonnet 5.5`.
+    pub name: String,
+    /// `anthropic`.
+    pub provider: String,
+    pub input_micros: i64,
+    pub output_micros: i64,
+    pub cache_read_micros: i64,
+    pub cache_write_micros: i64,
+}
+
+/// `gateway_admit`: whether a workspace's next AI Gateway request may go to
+/// g1t's models. Fails with `payment_required` and what to do when it may
+/// not: over its spend limit, out of AI credit, or not on the plan. Returns
+/// `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GatewayAdmitArgs {
+    pub workspace: String,
+}
+
+/// `record_gateway`: one AI Gateway request, logged, and charged when it
+/// went to g1t's models and used tokens. The model proxy sends it after
+/// the answer. `id` makes it idempotent: a request recorded twice is
+/// logged and charged once. Returns `Outcome<bool>`: false when it was
+/// already recorded.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordGatewayArgs {
+    /// `gw_…`, chosen by the proxy.
+    pub id: String,
+    pub workspace: String,
+    /// The access token's id and name.
+    pub token_id: String,
+    #[serde(default)]
+    pub token_name: Option<String>,
+    pub model: String,
+    #[serde(default)]
+    pub input: u64,
+    #[serde(default)]
+    pub output: u64,
+    #[serde(default)]
+    pub cache_read: u64,
+    #[serde(default)]
+    pub cache_write: u64,
+    /// The HTTP status the caller was answered with.
+    pub status: u16,
+    /// On the workspace's own provider key: counted, never charged.
+    #[serde(default)]
+    pub own_key: bool,
+    #[serde(default)]
+    pub streamed: bool,
+    #[serde(default)]
+    pub duration_ms: u64,
+    /// What went wrong, for a request that was refused or failed.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// `gateway_requests`: a workspace's recent AI Gateway requests, newest
+/// first. Members only. Returns `Outcome<GatewayRequests>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GatewayRequestsArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// How many, 50 when absent, 200 at most.
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Only requests older than this one (a request's `id`), for the next page.
+    #[serde(default)]
+    pub before: Option<String>,
+}
+
+/// One AI Gateway request, as its log keeps it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayRequest {
+    pub id: String,
+    /// RFC 3339.
+    pub created_at: String,
+    pub model: String,
+    pub token_id: String,
+    pub token_name: Option<String>,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    /// What the tokens cost at the model's price.
+    pub cost_micros: i64,
+    /// What the workspace was charged for it, before included usage and
+    /// credit paid for it: 0 on its own key.
+    pub charged_micros: i64,
+    pub status: u16,
+    pub own_key: bool,
+    pub streamed: bool,
+    pub duration_ms: u64,
+    pub error: Option<String>,
+}
+
+/// A page of AI Gateway requests.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayRequests {
+    pub requests: Vec<GatewayRequest>,
+    /// The `before` for the next page, when there is one.
+    pub next: Option<String>,
+    /// How many days requests are kept.
+    pub retention_days: u32,
+}
+
 /// What a workspace pays a monthly price for. There is one plan, `plan`
 /// ("g1t"): a flat price per workspace, never per person, with included
 /// usage each month, more private storage, and deployments. Never free:

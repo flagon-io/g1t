@@ -18,6 +18,9 @@ Each workspace decides where its agents' model spend goes:
   kind of work, which provider and model it runs on. Each provider bills
   you for the model directly. Open to every workspace now.
 
+To call models from your own code with a workspace token, paid from the
+same AI credit, use the [AI Gateway](/guides/ai-gateway/).
+
 ## Auto
 
 On g1t's models you do not have to pick a model. **Auto**, the default,

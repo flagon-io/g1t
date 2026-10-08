@@ -115,6 +115,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Integrations', slug: 'guides/integrations' },
 						{ label: 'Model providers', slug: 'guides/models' },
+						{ label: 'AI Gateway', slug: 'guides/ai-gateway' },
 						{ label: 'Webhooks', slug: 'guides/webhooks' },
 						{ label: 'GitHub Actions', slug: 'guides/actions' },
 						{ label: 'Self-hosted runners', slug: 'guides/self-hosted-runners' },

@@ -25,7 +25,8 @@ export type ScopeResource =
   | "access"
   | "webhooks"
   | "secrets"
-  | "runners";
+  | "runners"
+  | "models";
 
 export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
 
@@ -66,6 +67,8 @@ export const SCOPES = [
   { scope: "secrets:admin", description: "Set and delete secrets and variables" },
   { scope: "runners:read", description: "See self-hosted runners, their groups and where agents run" },
   { scope: "runners:admin", description: "Register and remove self-hosted runners, change their groups and settings" },
+  { scope: "models:read", description: "See the workspace's AI Gateway requests: their models, tokens, cost and status" },
+  { scope: "models:write", description: "Send model requests through the AI Gateway, which uses the workspace's AI credit" },
 ] as const;
 
 export type Scope = (typeof SCOPES)[number]["scope"];
@@ -89,6 +92,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "webhooks", label: "Webhooks" },
   { resource: "secrets", label: "Secrets and variables" },
   { resource: "runners", label: "Self-hosted runners" },
+  { resource: "models", label: "AI Gateway" },
 ];
 
 const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
@@ -142,10 +146,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write",
@@ -395,6 +399,9 @@ export const OPERATION_SCOPES = [
   ["update_runner_group", "runners:admin"],
   ["delete_runner_group", "runners:admin"],
   ["update_runner_settings", "runners:admin"],
+  // The AI Gateway. Sending a request to a model needs `models:write`,
+  // checked by the model proxy at models.g1t.sh.
+  ["list_gateway_requests", "models:read"],
 ] as const;
 
 /**
@@ -425,6 +432,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
   { id: "billing", label: "Billing", scopes: ["billing:read", "billing:write"] },
   { id: "runners", label: "Runners", scopes: ["runners:read"] },
+  { id: "models", label: "AI Gateway", scopes: ["models:read", "models:write"] },
 ];
 
 /** The admin and delete scopes, shown under "Dangerous" behind a warning. */

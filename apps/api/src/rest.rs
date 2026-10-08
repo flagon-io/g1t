@@ -135,6 +135,8 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/workspaces/:workspace/ai_credit/checkout", Op::BuyAiCredit, &[]),
     route("GET", "/workspaces/:workspace/invoices", Op::ListInvoices, &[]),
     route("GET", "/workspaces/:workspace/billing_details", Op::GetBillingDetails, &[]),
+    // The AI Gateway's log of a workspace's requests.
+    route("GET", "/workspaces/:workspace/gateway/requests", Op::ListGatewayRequests, &[("limit", "limit"), ("before", "before")]),
     // Code owners: the CODEOWNERS file, checked.
     route("GET", "/repos/:owner/:name/codeowners/errors", Op::GetCodeownersErrors, &[("ref", "ref")]),
     // Security alerts: secrets and vulnerable dependencies.
@@ -1057,6 +1059,7 @@ mod tests {
         assert_eq!(op("POST", "/workspaces/acme/ai_credit/checkout"), Op::BuyAiCredit);
         assert_eq!(op("GET", "/workspaces/acme/invoices"), Op::ListInvoices);
         assert_eq!(op("GET", "/workspaces/acme/billing_details"), Op::GetBillingDetails);
+        assert_eq!(op("GET", "/workspaces/acme/gateway/requests"), Op::ListGatewayRequests);
     }
 
     #[test]

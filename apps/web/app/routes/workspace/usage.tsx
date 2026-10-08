@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Await, data } from "react-router";
+import { Await, Link, data } from "react-router";
 
 import { PRODUCTS, type UsageReport } from "@g1t/contracts";
 
@@ -113,6 +113,16 @@ export function UsageView({
       <p className="text-xs text-faint">
         Every amount is usage at price: what was charged, plus what included usage, credit or a discount paid for it. Storage, git
         operations, scans and search are metered through the month and charged when it closes.
+        {!fixedProject && (
+          <>
+            {" "}
+            Each request your own code sent through the AI Gateway is listed on{" "}
+            <Link to={`/${slug}/-/gateway`} className="hover:text-fg hover:underline">
+              AI Gateway
+            </Link>
+            .
+          </>
+        )}
       </p>
     </div>
   );

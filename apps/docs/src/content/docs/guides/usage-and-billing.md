@@ -123,7 +123,7 @@ The live figures are on [g1t.sh/pricing](https://g1t.sh/pricing).
 | Agent models | A run | What the provider charged | The provider's price, from [AI credit](#ai-credit) |
 | g1t agent rate | Million tokens a run uses (input, output and cached), [weighted by kind](#the-agent-rate) | — | $0.25, from Oct 22, 2026 |
 | g1t agent rate, your own model key | The same, on runs that use [your own provider](/guides/models/) | — | $0.25, from Oct 22, 2026 |
-| AI Gateway | A request | What the provider charged | The provider's price: free of markup during beta |
+| [AI Gateway](/guides/ai-gateway/) | A request | What the provider charged | The model's list price per token: free of markup during beta |
 | Sandbox time (agents, workflows, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
 | [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
 | Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |

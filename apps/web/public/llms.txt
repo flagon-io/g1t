@@ -311,7 +311,7 @@ as `repo`, written `owner/name`.
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
 `repo`, `code`, `issues`, `pull_requests`, `workflows`, `memory`,
-`account`, `notifications`, `access`, `webhooks`, `secrets`, `runners` (read, write or admin
+`account`, `notifications`, `access`, `webhooks`, `secrets`, `runners`, `models` (read, write or admin
 as each has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
 level includes the lower. A token may expire. It reaches every workspace
 and repository its owner can (a workspace's token, that workspace only);
@@ -321,11 +321,34 @@ A token sees only the MCP tools and actions its scopes allow. A missing scope an
 Pushing needs `code:write`; cloning a private repository `code:read`. For
 an agent, use the Agent preset (every read scope but `runners:read`, plus `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run`, `memory:write`,
-`notifications:write`).
+`notifications:write`). `models:write` (sending requests through the AI
+Gateway, which spends AI credit) is in no preset but full access.
 OAuth clients may send `scope`;
 the person can untick any; asking for none gives the Agent preset. Tokens
 from device sign-in (above) have full access. Guide:
 https://docs.g1t.sh/guides/authentication/#scopes
+
+## AI Gateway
+
+Your own code can call models through g1t: base URL
+`https://models.g1t.sh/anthropic`, API key a workspace access token with
+`models:write` (as `x-api-key` or `Authorization: Bearer`). It serves
+Anthropic's Messages API as it is: `POST /v1/messages` (streamed or not)
+and `POST /v1/messages/count_tokens`. Models: `claude-opus-5-5`,
+`claude-sonnet-5-5`, `claude-haiku-4-5`. Each request is charged at the
+model's list price (no markup in beta) from included usage and AI credit,
+never the agent rate; on the workspace's own Anthropic key under
+Integrations it is free and only counted. Refusals are Anthropic-shaped:
+`402 billing_error` when out of AI credit, over the spend limit or not on
+the plan; `403 permission_error` without `models:write` or with a personal
+token; `400 invalid_request_error` for a model not offered, or on g1t's
+models for fast mode (`speed`), `inference_geo`, `fallbacks`, `container`
+or server tools such as web search (all fine on the workspace's own key). For Claude
+Code: `ANTHROPIC_BASE_URL=https://models.g1t.sh/anthropic` and
+`ANTHROPIC_AUTH_TOKEN=g1t_…`. The log (30 days, no prompts):
+`GET /workspaces/{workspace}/gateway/requests` or the `billing` tool's
+`gateway_requests` action, with `models:read`. OpenAI's format and open
+models come later. Guide: https://docs.g1t.sh/guides/ai-gateway/
 
 ## Access and roles
 
@@ -644,6 +667,7 @@ https://docs.g1t.sh/guides/search/
 - [Managing a repository](https://docs.g1t.sh/guides/managing-repositories/)
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
 - [Model providers](https://docs.g1t.sh/guides/models/)
+- [AI Gateway](https://docs.g1t.sh/guides/ai-gateway/)
 - [Webhooks](https://docs.g1t.sh/guides/webhooks/)
 - [GitHub Actions](https://docs.g1t.sh/guides/actions/)
 - [Self-hosted runners](https://docs.g1t.sh/guides/self-hosted-runners/)

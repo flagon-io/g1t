@@ -565,8 +565,8 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 
 ## `billing`
 
-A workspace's billing: its usage, its budget, its AI credit and its
-invoices. `usage` is the default action. Amounts are whole millionths of a
+A workspace's billing: its usage, its budget, its AI credit, its
+invoices and its [AI Gateway](/guides/ai-gateway/) requests. `usage` is the default action. Amounts are whole millionths of a
 dollar (`_micros`), or cents where a field says `_cents`. Members of the
 workspace read it, a workspace's own token included. Changing the budget
 and buying AI credit are for its owners, as people: signed in or with a
@@ -583,6 +583,7 @@ billing, whatever their scopes, and no preset but full access includes
 | [`buy_ai_credit`](/reference/api/billing/buy-ai-credit/) | A payment page (`url`) to buy `amount_cents` of credit, in whole dollars from $10 to $1,000, for a person to open and pay; it returns to the workspace's billing page. Owners, as people. | `workspace`, `amount_cents` | `billing:write` |
 | [`invoices`](/reference/api/billing/list-invoices/) | Every invoice (`invoices`, in cents), g1t's itemised usage invoices (`usage_invoices`), and what the next one comes to so far (`upcoming`). | `workspace` | `billing:read` |
 | [`billing_details`](/reference/api/billing/get-billing-details/) | Who invoices are made out to, and the payment method on file as far as it is safe to show. | `workspace` | `billing:read` |
+| [`gateway_requests`](/reference/api/billing/list-gateway-requests/) | The workspace's recent [AI Gateway](/guides/ai-gateway/) requests, newest first: model, tokens by kind, `cost_micros`, `charged_micros`, `status`, `own_key` and the token that sent each. `limit` (50, at most 200) and `before` (the last page's `next`) page through them. Kept 30 days. | `workspace` | `models:read` |
 
 ## `notifications`
 

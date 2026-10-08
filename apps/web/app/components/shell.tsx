@@ -1568,6 +1568,7 @@ function commandsFor(user: User | null, shell: ShellData, here: string, signUpLa
       { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
       { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
+      { label: "AI Gateway", hint: `${membership.slug} Â· Usage`, to: `/${membership.slug}/-/gateway`, icon: <Network size={15} /> },
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
       { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },

@@ -213,6 +213,12 @@ export interface IntegrationsApi {
   setRoutes(actor: User, workspace: string, routes: ModelRoute[]): Promise<Result<ModelRoute[]>>;
   modelUpstream(token: string): Promise<ModelUpstream | null>;
   /**
+   * Where a workspace's AI Gateway requests go on its own key: its first
+   * Anthropic or Anthropic-compatible model provider, with task `gateway`.
+   * Null sends them to g1t's models.
+   */
+  gatewayUpstream(workspace: string): Promise<ModelUpstream | null>;
+  /**
    * Ends the model sessions whose tokens hash to these (SHA-256, lowercase
    * hex) when their run finishes, so the tokens stop working then. Returns
    * how many were open.

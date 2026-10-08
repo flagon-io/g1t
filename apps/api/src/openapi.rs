@@ -64,7 +64,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Billing",
-        "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
+        "A workspace's usage, its budget, its AI credit, its invoices and its AI Gateway requests. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
         &[
             Op::GetUsage,
             Op::GetBudget,
@@ -73,6 +73,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::BuyAiCredit,
             Op::ListInvoices,
             Op::GetBillingDetails,
+            Op::ListGatewayRequests,
         ],
     ),
     (
@@ -533,6 +534,7 @@ fn title(op: Op) -> &'static str {
         Op::BuyAiCredit => "Buy AI credit",
         Op::ListInvoices => "List a workspace's invoices",
         Op::GetBillingDetails => "Get a workspace's billing details",
+        Op::ListGatewayRequests => "List a workspace's AI Gateway requests",
         Op::PinProject => "Pin a project",
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",

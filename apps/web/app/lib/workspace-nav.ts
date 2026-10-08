@@ -73,6 +73,8 @@ const ROW_OF: Record<string, SidebarKey> = {
   people: "people",
   teams: "teams",
   usage: "usage",
+  // The AI Gateway's requests are usage.
+  gateway: "usage",
 };
 
 /**
