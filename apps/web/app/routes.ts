@@ -180,6 +180,7 @@ export default [
     route("actions/jobs/:job/log", "routes/repo/actions-log.ts"),
     route("actions/jobs/:job/log.txt", "routes/repo/actions-job-log-download.ts"),
     route("actions/runs/:id/logs.zip", "routes/repo/actions-logs-download.ts"),
+    route("actions/workflows/:file/badge.svg", "routes/repo/actions-badge.ts"),
     route("deployments", "routes/repo/deployments.tsx"),
     route("deployments/:id", "routes/repo/deployment.tsx"),
     // Security: an overview, then a page for each part. Old links to
