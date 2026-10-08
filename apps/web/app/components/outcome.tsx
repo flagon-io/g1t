@@ -39,33 +39,33 @@ const LOOK: Record<string, Look> = {
   working: {
     label: "Agent working",
     icon: <Sparkles size={13} />,
-    ring: "ring-merged/60",
-    text: "text-merged",
-    bar: "bg-merged",
+    ring: "ring-accent/60",
+    text: "text-accent",
+    bar: "bg-accent",
     live: true,
   },
   revising: {
     label: "Revising",
     icon: <Sparkles size={13} />,
-    ring: "ring-merged/60",
-    text: "text-merged",
-    bar: "bg-merged",
+    ring: "ring-accent/60",
+    text: "text-accent",
+    bar: "bg-accent",
     live: true,
   },
   answering: {
     label: "Answering an agent",
     icon: <Sparkles size={13} />,
-    ring: "ring-merged/60",
-    text: "text-merged",
-    bar: "bg-merged",
+    ring: "ring-accent/60",
+    text: "text-accent",
+    bar: "bg-accent",
     live: true,
   },
   catching_up: {
     label: "Catching up",
     icon: <Loader2 size={13} className="animate-spin" />,
-    ring: "ring-merged/60",
-    text: "text-merged",
-    bar: "bg-merged",
+    ring: "ring-accent/60",
+    text: "text-accent",
+    bar: "bg-accent",
     live: true,
   },
   checking: {
@@ -87,14 +87,14 @@ const LOOK: Record<string, Look> = {
   queued: {
     label: "In the merge queue",
     icon: <Layers size={13} />,
-    ring: "ring-accent/60",
-    text: "text-accent",
-    bar: "bg-accent/60",
+    ring: "ring-success/60",
+    text: "text-success",
+    bar: "bg-success/60",
     live: true,
   },
-  ready: { label: "Ready to merge", icon: <Check size={13} />, ring: "ring-accent/60", text: "text-accent", bar: "bg-accent/60" },
+  ready: { label: "Ready to merge", icon: <Check size={13} />, ring: "ring-success/60", text: "text-success", bar: "bg-success/60" },
   needs_you: { label: "Needs you", icon: <Hand size={13} />, ring: "ring-warn/70", text: "text-warn", bar: "bg-warn" },
-  landed: { label: "Landed", icon: <Check size={13} />, ring: "ring-accent/30", text: "text-accent", bar: "bg-accent" },
+  landed: { label: "Landed", icon: <Check size={13} />, ring: "ring-success/30", text: "text-success", bar: "bg-success" },
   closed: { label: "Closed", icon: <X size={13} />, ring: "ring-line", text: "text-faint", bar: "bg-line" },
 };
 
@@ -199,7 +199,7 @@ function Edges({ plan, container }: { plan: Plan; container: React.RefObject<HTM
           key={index}
           d={path.d}
           fill="none"
-          stroke={path.done ? "var(--color-accent)" : "var(--color-line-strong)"}
+          stroke={path.done ? "var(--color-success)" : "var(--color-line-strong)"}
           strokeOpacity={path.done ? 0.7 : 1}
           strokeWidth={1.5}
           strokeDasharray={path.done ? undefined : "4 5"}
@@ -229,8 +229,8 @@ export function Outcome({ plan, base, costMicros }: { plan: Plan; base: string; 
     <div>
       <div className="grid gap-4 sm:grid-cols-4">
         {[
-          ["Landed", `${landed} of ${total}`, "text-accent"],
-          ["Agents at work", String(live), "text-merged"],
+          ["Landed", `${landed} of ${total}`, "text-success"],
+          ["Agents at work", String(live), "text-accent"],
           ["Needs you", String(needsYou), needsYou > 0 ? "text-warn" : "text-muted"],
           [
             "Agents have cost",

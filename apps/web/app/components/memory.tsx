@@ -240,7 +240,7 @@ export function AddMemory({ scope, action, placeholder }: { scope: MemoryScope; 
       <input type="hidden" name="intent" value="add" />
       <input type="hidden" name="scope" value={scope} />
       <label className="flex items-center gap-2 text-sm font-medium">
-        <Brain size={15} className="text-merged" />
+        <Brain size={15} className="text-accent" />
         Add to {scope === "workspace" ? "the workspace's" : "this project's"} memory
       </label>
       <textarea name="text" required rows={2} maxLength={1000} placeholder={placeholder} className={`${TEXTAREA} mt-3`} />

@@ -47,7 +47,7 @@ const SCHEMA = {
 
 const ALERT: Record<AlertKind, { title: string; icon: ReactNode; tone: string }> = {
   note: { title: "Note", icon: <Info size={15} />, tone: "border-info/60 [&_.alert-title]:text-info" },
-  tip: { title: "Tip", icon: <Lightbulb size={15} />, tone: "border-accent/60 [&_.alert-title]:text-accent" },
+  tip: { title: "Tip", icon: <Lightbulb size={15} />, tone: "border-success/60 [&_.alert-title]:text-accent" },
   important: {
     title: "Important",
     icon: <MessageSquareWarning size={15} />,
@@ -136,7 +136,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
           }}
           className="rounded-md border border-line bg-raised p-1.5 text-muted hover:text-fg"
         >
-          {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
+          {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
         </button>
       </div>
     </div>

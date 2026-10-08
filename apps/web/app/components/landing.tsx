@@ -15,7 +15,7 @@ const DOCS = "https://docs.g1t.sh";
 
 /** A small label above a heading, in the mono face. */
 function Eyebrow({ children }: { children: ReactNode }) {
-  return <p className="font-mono text-xs tracking-[0.2em] text-merged uppercase">{children}</p>;
+  return <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">{children}</p>;
 }
 
 function Tags({ items }: { items: string[] }) {
@@ -36,7 +36,7 @@ function Tags({ items }: { items: string[] }) {
 /** A link in running copy that leads to the docs or another page. */
 function More({ to, children }: { to: string; children: ReactNode }) {
   return (
-    <Link to={to} className="group mt-7 inline-flex items-center gap-1.5 text-sm font-medium text-fg hover:text-merged">
+    <Link to={to} className="group mt-7 inline-flex items-center gap-1.5 text-sm font-medium text-fg hover:text-accent">
       {children}
       <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
     </Link>
@@ -86,7 +86,7 @@ function Pillar({
         <ul className="mt-6 grid gap-2.5 text-sm sm:grid-cols-2">
           {points.map((point) => (
             <li key={point} className="flex gap-2.5 text-fg-soft">
-              <Check size={15} className="mt-0.5 shrink-0 text-merged" />
+              <Check size={15} className="mt-0.5 shrink-0 text-accent" />
               <span>{point}</span>
             </li>
           ))}
@@ -227,13 +227,13 @@ export function Landing() {
             to={`${DOCS}/concepts/overview/`}
             className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-white/10 backdrop-blur transition-colors hover:bg-bg/70"
           >
-            <span className="size-1.5 rounded-full bg-merged" />
+            <span className="size-1.5 rounded-full bg-accent" />
             Open source · built on Cloudflare
             <ArrowRight size={12} />
           </Link>
           <h1 className="mx-auto mt-7 max-w-4xl animate-fade-up text-[2.75rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-7xl">
             Where people and agents{" "}
-            <span className="bg-gradient-to-r from-fg via-[#d9d1ff] to-merged bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-fg via-[#d9d1ff] to-accent bg-clip-text text-transparent">
               ship software together.
             </span>
           </h1>
@@ -402,17 +402,17 @@ export function Landing() {
                   column, so the line stops one column, less that, from the end. */}
               <span
                 aria-hidden="true"
-                className="absolute top-4 right-[calc((100%-6rem)/5-1rem)] left-4 hidden h-px bg-gradient-to-r from-merged/50 via-warn/50 to-accent/70 md:block"
+                className="absolute top-4 right-[calc((100%-6rem)/5-1rem)] left-4 hidden h-px bg-gradient-to-r from-accent/50 via-warn/50 to-success/70 md:block"
               >
                 <span className="flow-runner absolute inset-0">
-                  <span className="absolute -top-[3px] -left-[3.5px] size-[7px] rounded-full bg-merged shadow-[0_0_12px_2px_rgb(182_168_255/0.6)]" />
+                  <span className="absolute -top-[3px] -left-[3.5px] size-[7px] rounded-full bg-accent shadow-[0_0_12px_2px_rgb(182_168_255/0.6)]" />
                 </span>
               </span>
               {FLOW.map(([step, about], index) => (
                 <li key={step} className="relative">
                   <span
                     className={`flow-step relative flex size-8 items-center justify-center rounded-full font-mono text-xs ring-1 ${
-                      index === FLOW.length - 1 ? "bg-accent text-bg ring-accent" : "bg-bg text-fg-soft ring-line-strong"
+                      index === FLOW.length - 1 ? "bg-success text-bg ring-success" : "bg-bg text-fg-soft ring-line-strong"
                     }`}
                     style={{ "--delay": `${index * 2}s` } as CSSProperties}
                   >
@@ -462,7 +462,7 @@ export function Landing() {
               to={item.to}
               className="group rounded-2xl bg-surface p-6 ring-1 ring-line transition-colors hover:ring-line-strong"
             >
-              <span className="flex size-9 items-center justify-center rounded-lg bg-bg text-merged ring-1 ring-line">{item.icon}</span>
+              <span className="flex size-9 items-center justify-center rounded-lg bg-bg text-accent ring-1 ring-line">{item.icon}</span>
               <h3 className="mt-5 font-semibold">{item.title}</h3>
               <p className="mt-2 text-sm leading-6 text-muted">{item.about}</p>
             </Link>

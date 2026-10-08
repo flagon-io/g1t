@@ -74,6 +74,11 @@ pub struct Membership {
     /// whatever it says. See [`access`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_permission: Option<access::BasePermission>,
+    /// Who may create the workspace's teams. Set when a user is resolved
+    /// from credentials; absent means the default, any member. See
+    /// [`teams::TeamCreation`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_creation: Option<teams::TeamCreation>,
 }
 
 impl Membership {
@@ -85,6 +90,7 @@ impl Membership {
             name: None,
             avatar: None,
             base_permission: None,
+            team_creation: None,
         }
     }
 }

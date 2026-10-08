@@ -64,9 +64,9 @@ const CHIP_TONE: Record<Reason, string> = {
   outside_guardrails: "border-warn/35 bg-warn/10 text-warn",
   low_confidence: "border-warn/35 bg-warn/10 text-warn",
   stalled: "border-warn/35 bg-warn/10 text-warn",
-  asked_for_you: "border-merged/35 bg-merged/10 text-merged",
+  asked_for_you: "border-accent/35 bg-accent/10 text-accent",
   needs_review: "border-info/35 bg-info/10 text-info",
-  ready_to_merge: "border-accent/35 bg-accent/10 text-accent",
+  ready_to_merge: "border-success/35 bg-success/10 text-success",
 };
 
 function Chip({ children, tone }: { children: ReactNode; tone: string }) {
@@ -96,7 +96,7 @@ function Eyebrow({ children }: { children: ReactNode }) {
   return <p className="font-mono text-[0.625rem] font-medium tracking-[0.12em] text-faint uppercase">{children}</p>;
 }
 
-const FACT_TONE = { good: "text-accent", warn: "text-warn", bad: "text-danger" } as const;
+const FACT_TONE = { good: "text-success", warn: "text-warn", bad: "text-danger" } as const;
 
 function Facts({ facts }: { facts: Fact[] }) {
   if (facts.length === 0) return <p className="text-sm text-muted">Nothing more is known about it yet.</p>;
@@ -140,9 +140,9 @@ function QuickForm({ quick, variant = "quiet" }: { quick: QuickAction; variant?:
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-default",
           variant === "accent"
-            ? "bg-merged text-bg hover:bg-[#c9bfff]"
+            ? "bg-accent text-bg hover:bg-accent-hover"
             : "border border-line-strong text-fg/90 hover:bg-raised hover:text-fg",
-          done && "border-accent/40 text-accent",
+          done && "border-success/40 text-success",
         )}
       >
         {done ? <Check size={14} /> : null}
@@ -189,7 +189,7 @@ function Row({
               {by && (
                 <>
                   <span className="text-faint">·</span>
-                  <Person who={by} size={14} className={cn("shrink-0", by.agent ? "text-merged" : "")} />
+                  <Person who={by} size={14} className={cn("shrink-0", by.agent ? "text-accent" : "")} />
                 </>
               )}
               {sub && (
@@ -309,7 +309,7 @@ function WaitingCard({ row, first }: { row: WaitingRow; first: boolean }) {
       sub={row.detail}
       chip={
         <Chip tone="border-line-strong bg-raised text-muted">
-          {row.live && <span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-accent" />}
+          {row.live && <span className="mr-1.5 size-1.5 animate-pulse rounded-full bg-success" />}
           {row.chip}
         </Chip>
       }
@@ -360,7 +360,7 @@ function LandedCard({ row, first }: { row: LandedRow; first: boolean }) {
       sub={row.byAgents ? "landed without a person" : `merged by ${row.by?.name ?? "a person"}`}
       chip={
         row.byAgents ? (
-          <Chip tone="border-merged/35 bg-merged/10 text-merged">By agents</Chip>
+          <Chip tone="border-accent/35 bg-accent/10 text-accent">By agents</Chip>
         ) : (
           <Chip tone="border-warn/35 bg-warn/10 text-warn">Needed a person</Chip>
         )
@@ -445,7 +445,7 @@ function WeekChart({ week }: { week: Week }) {
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ring-1",
-              delta >= 0 ? "text-accent ring-accent/30" : "text-warn ring-warn/30",
+              delta >= 0 ? "text-success ring-success/30" : "text-warn ring-warn/30",
             )}
           >
             {signedPercent(delta)} vs last week
@@ -467,7 +467,7 @@ function WeekChart({ week }: { week: Week }) {
               const bar = (n: number) => Math.max(3, Math.round((n / max) * (height - 4)));
               // Top to bottom: agents alone, agents with a person, people.
               const segments = [
-                { n: day.agents, tone: "bg-merged" },
+                { n: day.agents, tone: "bg-accent" },
                 { n: day.assisted, tone: "bg-warn" },
                 { n: day.people, tone: "bg-info" },
               ].filter((segment) => segment.n > 0);
@@ -493,7 +493,7 @@ function WeekChart({ week }: { week: Week }) {
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg shadow-black/40 group-hover:block">
                     <p className="font-medium text-fg">{day.label}</p>
                     <p className="mt-0.5 flex items-center gap-1.5 text-muted">
-                      <span className="size-1.5 rounded-full bg-merged" /> {day.agents} by agents on their own
+                      <span className="size-1.5 rounded-full bg-accent" /> {day.agents} by agents on their own
                     </p>
                     <p className="flex items-center gap-1.5 text-muted">
                       <span className="size-1.5 rounded-full bg-warn" /> {day.assisted} by agents, merged by a person
@@ -523,7 +523,7 @@ function WeekChart({ week }: { week: Week }) {
       )}
       <div className={cn("mt-3 flex-wrap gap-x-4 gap-y-1 text-xs text-muted", week.total === 0 ? "hidden" : "flex")}>
         <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-merged" /> Agents, on their own
+          <span className="size-2 rounded-sm bg-accent" /> Agents, on their own
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2 rounded-sm bg-warn" /> Agents, merged by a person
@@ -594,7 +594,7 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
         <Avatar name={actor} size={22} />
       </span>
       <span className="min-w-0 grow text-[0.8125rem] leading-5 text-muted">
-        <span className={cn("font-medium", agent ? "text-merged" : "text-fg")}>{actor}</span> {VERB[part.verb]}{" "}
+        <span className={cn("font-medium", agent ? "text-accent" : "text-fg")}>{actor}</span> {VERB[part.verb]}{" "}
         {part.verb === "learned" ? (
           <Link to={part.to ?? `${base}/memory`} className="text-fg-soft hover:text-fg">
             “{part.texts[0]}”
@@ -642,7 +642,7 @@ function GetStarted({ steps }: { steps: Step[] }) {
             <span
               className={cn(
                 "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-medium",
-                step.done ? "bg-accent text-bg" : "text-muted ring-1 ring-line-strong",
+                step.done ? "bg-success text-bg" : "text-muted ring-1 ring-line-strong",
               )}
             >
               {step.done ? <Check size={12} /> : index + 1}
@@ -831,7 +831,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
           }
         >
           <span className="inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border border-line-strong bg-raised px-3 py-2 text-sm font-medium text-fg transition-colors hover:bg-line/60 group-open/composer:bg-line/60">
-            <Sparkles size={14} className="text-merged" /> Put an agent on it
+            <Sparkles size={14} className="text-accent" /> Put an agent on it
           </span>
         </AgentComposer>
       <DropdownMenu>
@@ -898,7 +898,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
           <Link
             to={`${link({ tab: "needs", all: null })}#work`}
             preventScrollReset
-            className="inline-flex items-center gap-1.5 rounded-md bg-merged px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-[#c9bfff]"
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-accent-hover"
           >
             Review {needs.length} that need{needs.length === 1 ? "s" : ""} you <ArrowRight size={14} />
           </Link>
@@ -925,7 +925,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
         <Stat
           label="Agents"
           value={loaded.runsLoaded || !workspace ? String(liveTotal) : "—"}
-          dot={liveTotal > 0 ? "bg-accent animate-pulse" : undefined}
+          dot={liveTotal > 0 ? "bg-success animate-pulse" : undefined}
           hint={
             liveTotal > 0
               ? `live now · ${stats.agentHours < 10 ? stats.agentHours.toFixed(1) : Math.round(stats.agentHours)}h this week`
@@ -943,7 +943,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
         />
         <Stat
           label="Landed without you"
-          dot="bg-merged"
+          dot="bg-accent"
           value={share == null ? "—" : `${Math.round(share * 100)}%`}
           hint={share == null ? "no agent changes yet" : `${week.byAgents} of ${week.agentChanges} agent changes`}
           title="Of the changes agents wrote, those g1t merged by auto-merge or the merge queue, with no person pressing merge. People's own changes are not counted."
@@ -970,7 +970,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
                   aria-current={tab === value ? "page" : undefined}
                   className={cn(
                     "flex shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-sm whitespace-nowrap transition-colors sm:px-2.5",
-                    tab === value ? "border-merged font-medium text-fg" : "border-transparent text-muted hover:text-fg",
+                    tab === value ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg",
                   )}
                 >
                   <span className="sm:hidden">{TAB_SHORT[value]}</span>

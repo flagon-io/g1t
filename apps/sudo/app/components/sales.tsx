@@ -169,7 +169,7 @@ function NotesList({ notes, me }: { notes: SalesRecord["notes"]; me: string }) {
   return (
     <ol className="mt-4 space-y-3">
       {sorted.map((note) => (
-        <li key={note.id} className="border-l-2 border-merged/40 pl-3">
+        <li key={note.id} className="border-l-2 border-accent/40 pl-3">
           <p className="text-sm break-words whitespace-pre-line text-fg-soft">{note.text}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-faint">
             <StaffName email={note.by} me={me} />
@@ -200,7 +200,7 @@ export function InvoiceStatus({ status }: { status: string }) {
 function StripeLink({ url, children }: { url: string | null; children: ReactNode }) {
   if (!url || !url.startsWith("https://")) return null;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-merged hover:underline">
+    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
       {children}
     </a>
   );

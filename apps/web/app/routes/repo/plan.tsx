@@ -220,7 +220,7 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
                     </div>
                     <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
                       {issue.dependsOn.length === 0 ? (
-                        <span className="text-accent">Starts at once</span>
+                        <span className="text-success">Starts at once</span>
                       ) : (
                         <span className="flex items-center gap-1">
                           <ArrowRight size={12} />

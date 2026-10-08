@@ -58,7 +58,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono tabular-nums text-muted">
                   <span className="sr-only">{drift(branch.drift, main)}</span>
                   <span className="inline-flex items-center gap-0.5" aria-hidden>
-                    <ArrowUp size={11} className={branch.drift.ahead > 0 ? "text-accent" : "text-faint"} />
+                    <ArrowUp size={11} className={branch.drift.ahead > 0 ? "text-success" : "text-faint"} />
                     {branch.drift.ahead}
                   </span>
                   <span className="inline-flex items-center gap-0.5" aria-hidden>
@@ -74,7 +74,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                   to={`${base}/pull/${branch.pull.number}`}
                   className="inline-flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 text-muted hover:border-line-strong hover:text-fg"
                 >
-                  <GitPullRequest size={12} className={branch.pull.draft ? "text-faint" : "text-accent"} />#{branch.pull.number}
+                  <GitPullRequest size={12} className={branch.pull.draft ? "text-faint" : "text-success"} />#{branch.pull.number}
                   <span className="sr-only">{branch.pull.title}</span>
                   <CheckBadge status={branch.pull.checkStatus} />
                 </Link>
@@ -98,7 +98,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                   href={branch.preview}
                   className="inline-flex max-w-48 items-center gap-1 truncate rounded-md border border-line px-1.5 py-0.5 text-muted hover:border-line-strong hover:text-fg"
                 >
-                  <Globe size={12} className="shrink-0 text-merged" />
+                  <Globe size={12} className="shrink-0 text-accent" />
                   Preview
                 </a>
               </Hint>

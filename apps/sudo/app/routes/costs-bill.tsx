@@ -211,7 +211,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           </Field>
           <div className="flex flex-col justify-end gap-2">
             <label className="flex items-center gap-2 text-sm text-muted">
-              <input type="checkbox" name="scaleToOwn" className="accent-[var(--g1t-merged)]" /> Scale to g1t's count
+              <input type="checkbox" name="scaleToOwn" className="accent-[var(--g1t-accent)]" /> Scale to g1t's count
             </label>
             <div className="flex gap-2">
               <Button type="submit">Save mapping</Button>
@@ -233,7 +233,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           <input type="hidden" name="intent" value="settings" />
           <Field label="Apply small moves on their own">
             <label className="flex h-[38px] items-center gap-2 text-sm text-fg-soft">
-              <input type="checkbox" name="autoApply" defaultChecked={report.settings.autoApply} className="accent-[var(--g1t-merged)]" /> On
+              <input type="checkbox" name="autoApply" defaultChecked={report.settings.autoApply} className="accent-[var(--g1t-accent)]" /> On
             </label>
           </Field>
           <Field label="Up to, either way, %">
@@ -259,7 +259,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           </Field>
           <Field label="Card fee on AI credit bought by card">
             <label className="flex h-[38px] items-center gap-2 text-sm text-fg-soft">
-              <input type="checkbox" name="cardFee" defaultChecked={report.settings.cardFee ?? true} className="accent-[var(--g1t-merged)]" /> Passed on as its own line
+              <input type="checkbox" name="cardFee" defaultChecked={report.settings.cardFee ?? true} className="accent-[var(--g1t-accent)]" /> Passed on as its own line
             </label>
           </Field>
           <div className="sm:col-span-2 lg:col-span-4">
@@ -291,7 +291,7 @@ function ProposalRow({ proposal: p, error }: { proposal: PriceProposal; error: s
         </div>
       </div>
       <p className="tabular mt-1.5 text-sm">
-        Cost {unitDollars(p.currentCostMicros)} → <span className={rise ? "text-warn" : "text-accent"}>{unitDollars(p.proposedCostMicros)}</span> per {p.unit || "unit"}{" "}
+        Cost {unitDollars(p.currentCostMicros)} → <span className={rise ? "text-warn" : "text-success"}>{unitDollars(p.proposedCostMicros)}</span> per {p.unit || "unit"}{" "}
         <span className="text-faint">({percentLabel(p.changePercent, { signed: true })})</span>
       </p>
       <p className="mt-1 text-xs text-muted">{p.reason}</p>

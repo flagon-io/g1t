@@ -291,13 +291,13 @@ function Overview({ profile, activity, failed }: Data) {
         <Stat
           label="Open pull requests"
           value={counts.pullsOpen}
-          icon={<GitPullRequest size={15} className="text-accent" />}
+          icon={<GitPullRequest size={15} className="text-success" />}
           to={`/u/${profile.username}?tab=pulls&state=open`}
         />
         <Stat
           label="Issues opened"
           value={counts.issues}
-          icon={<CircleDot size={15} className="text-accent" />}
+          icon={<CircleDot size={15} className="text-success" />}
           to={`/u/${profile.username}?tab=issues`}
         />
       </dl>

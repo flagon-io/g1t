@@ -77,7 +77,7 @@ export default function WorkspaceSecuritySettings({ loaderData, params }: Route.
             {fetcher.state !== "idle" ? "Saving…" : "Save"}
           </button>
           {!owner && <span className="text-sm text-muted">Only an owner can change these.</span>}
-          {fetcher.data?.ok && <span className="text-sm text-accent">Saved.</span>}
+          {fetcher.data?.ok && <span className="text-sm text-success">Saved.</span>}
           {fetcher.data?.error && <span className="text-sm text-danger">{fetcher.data.error}</span>}
         </div>
       </fetcher.Form>

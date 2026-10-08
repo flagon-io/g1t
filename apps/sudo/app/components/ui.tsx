@@ -34,7 +34,7 @@ export function Field({
 }
 
 const CONTROL =
-  "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-merged/60";
+  "w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent/60";
 
 /** Tells password managers that a field is not a login. */
 const NOT_A_CREDENTIAL = {
@@ -64,7 +64,7 @@ const BUTTON_BASE =
 
 const BUTTON_VARIANTS: Record<Variant, string> = {
   primary: "bg-fg text-bg hover:bg-white",
-  lavender: "bg-merged text-bg hover:bg-[#c8bdff]",
+  lavender: "bg-accent text-bg hover:bg-accent-hover",
   quiet: "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
   danger: "border border-danger/40 text-danger hover:border-danger/70 hover:bg-danger/10",
 };
@@ -117,10 +117,10 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
 }
 
 const NOTICE = {
-  ok: { icon: CheckCircle2, className: "border-accent/30 bg-accent/8 text-accent" },
+  ok: { icon: CheckCircle2, className: "border-success/30 bg-success/8 text-success" },
   error: { icon: AlertTriangle, className: "border-danger/30 bg-danger/8 text-danger" },
   warn: { icon: AlertTriangle, className: "border-warn/30 bg-warn/8 text-warn" },
-  info: { icon: Info, className: "border-merged/30 bg-merged/8 text-merged" },
+  info: { icon: Info, className: "border-accent/30 bg-accent/8 text-accent" },
 } as const;
 
 export function Notice({ tone, children }: { tone: keyof typeof NOTICE; children: ReactNode }) {
@@ -137,8 +137,8 @@ export function Notice({ tone, children }: { tone: keyof typeof NOTICE; children
 export function Badge({ tone = "plain", children }: { tone?: "plain" | "lavender" | "mint" | "warn" | "danger" | "info"; children: ReactNode }) {
   const tones = {
     plain: "border-line text-muted",
-    lavender: "border-merged/35 bg-merged/10 text-merged",
-    mint: "border-accent/30 bg-accent/8 text-accent",
+    lavender: "border-accent/35 bg-accent/10 text-accent",
+    mint: "border-success/30 bg-success/8 text-success",
     warn: "border-warn/35 bg-warn/10 text-warn",
     danger: "border-danger/35 bg-danger/10 text-danger",
     info: "border-info/35 bg-info/10 text-info",
@@ -197,7 +197,7 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
 }
 
 const STATE = {
-  ok: { label: "OK", fill: "var(--g1t-accent)", text: "text-accent" },
+  ok: { label: "OK", fill: "var(--g1t-success)", text: "text-success" },
   warning: { label: "Warning", fill: "var(--g1t-warn)", text: "text-warn" },
   stopped: { label: "Stopped", fill: "var(--g1t-danger)", text: "text-danger" },
 } as const;
@@ -236,7 +236,7 @@ export function ExposureBar({ limit, wide = false }: { limit: Limit; wide?: bool
 
 /** A label and a figure, for the strip of totals over a page. */
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "danger" | "warn" | "mint" }) {
-  const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : tone === "mint" ? "text-accent" : "text-fg";
+  const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : tone === "mint" ? "text-success" : "text-fg";
   return (
     <div className="rounded-lg border border-line bg-surface px-4 py-3">
       <p className="text-xs text-muted">{label}</p>

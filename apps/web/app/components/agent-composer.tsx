@@ -75,7 +75,7 @@ export function AgentComposer({
         >
           <input type="hidden" name="intent" value="delegate" />
           <p className="flex items-center gap-2 text-sm font-semibold">
-            <Sparkles size={15} className="text-merged" />
+            <Sparkles size={15} className="text-accent" />
             Put an agent on it
           </p>
           <p className="mt-1 text-xs leading-5 text-muted">
@@ -156,7 +156,7 @@ export function AgentComposer({
             <button
               type="submit"
               disabled={busy || repos.length === 0}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-merged px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-[#c9bfff] disabled:opacity-60"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-accent-hover disabled:opacity-60"
             >
               {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
               {busy ? "Starting…" : "Put an agent on it"}

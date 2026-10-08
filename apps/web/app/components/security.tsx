@@ -94,7 +94,7 @@ export function SeverityCountsInline({ counts }: { counts: SeverityCounts }) {
   const shown = SEVERITIES.filter((severity) => counts[severity] > 0);
   if (shown.length === 0) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-accent">
+      <span className="inline-flex items-center gap-1 text-xs text-success">
         <ShieldCheck size={13} />
         Nothing open
       </span>
@@ -308,7 +308,7 @@ function secretBadge(finding: SecretFinding): { label: string; tone: BadgeTone; 
       about: finding.status === "allowed" ? "Pushes carrying it go through." : "Dismissed.",
     };
   }
-  if (finding.state === "fixed") return { label: "Revoked", tone: "accent", about: "Revoked or rotated." };
+  if (finding.state === "fixed") return { label: "Revoked", tone: "success", about: "Revoked or rotated." };
   if (finding.status === "blocked") {
     return { label: "Push blocked", tone: finding.testValue ? "neutral" : "warn", about: "A push carrying it was refused, so it never landed." };
   }
@@ -427,7 +427,7 @@ function SecretItem({
 function Empty({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
-      <ShieldCheck size={22} className="mx-auto text-accent" />
+      <ShieldCheck size={22} className="mx-auto text-success" />
       <p className="mt-2 font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted">{children}</p>
     </div>
@@ -521,7 +521,7 @@ function FixLink({ issue, fix, base }: { issue: number; fix: UpgradeFix | undefi
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
       <span className="text-muted">Upgrade issue</span>
       <Link to={`${base}/issues/${issue}`} className="inline-flex items-center gap-1 text-fg-soft hover:text-fg">
-        {fix?.state === "closed" ? <CircleCheck size={12} className="text-merged" /> : <CircleDot size={12} className="text-accent" />}#{issue}
+        {fix?.state === "closed" ? <CircleCheck size={12} className="text-merged" /> : <CircleDot size={12} className="text-success" />}#{issue}
       </Link>
       {pull && (
         <Link to={`${base}/pull/${pull.number}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">
@@ -534,7 +534,7 @@ function FixLink({ issue, fix, base }: { issue: number; fix: UpgradeFix | undefi
 
 const PULL_ICON: Record<PullStatus, ReactNode> = {
   draft: <GitPullRequest size={13} className="text-muted" />,
-  open: <GitPullRequest size={13} className="text-accent" />,
+  open: <GitPullRequest size={13} className="text-success" />,
   merged: <GitMerge size={13} className="text-merged" />,
   closed: <GitPullRequestClosed size={13} className="text-danger" />,
 };

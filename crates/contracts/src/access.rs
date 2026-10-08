@@ -662,6 +662,7 @@ mod tests {
                     name: None,
                     avatar: None,
                     base_permission: *base,
+                    team_creation: None,
                 })
                 .collect(),
             grants: grants

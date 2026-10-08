@@ -103,7 +103,7 @@ export function ProfileSection({
           </SubmitButton>
           {saved && !busy && !error && (
             <span className="inline-flex items-center gap-1.5 text-sm text-muted">
-              <Check size={14} className="text-accent" />
+              <Check size={14} className="text-success" />
               Saved
             </span>
           )}

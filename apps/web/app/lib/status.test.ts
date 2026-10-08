@@ -14,7 +14,7 @@ test("the short line is the report's title, else words for its state", () => {
 });
 
 test("each state has its own dot", () => {
-  assert.equal(dotClass("up"), "bg-accent");
+  assert.equal(dotClass("up"), "bg-success");
   assert.equal(dotClass("degraded"), "bg-warn");
   assert.equal(dotClass("down"), "bg-danger");
   assert.equal(dotClass("unknown"), "bg-faint");

@@ -258,7 +258,7 @@ export const USAGE_TASKS: Record<string, { label: string; color: string }> = {
   implement: { label: "Making changes", color: "var(--color-merged)" },
   review: { label: "Reviews", color: "var(--color-info)" },
   revise: { label: "Revisions", color: "var(--color-warn)" },
-  update: { label: "Catching up", color: "var(--color-accent)" },
+  update: { label: "Catching up", color: "var(--color-success)" },
   plan: { label: "Planning", color: "#f0a6ca" },
   /** Time on the workspace's own runners: its minutes, at $0. */
   self_hosted: { label: "Self-hosted runners ($0)", color: "var(--color-line-strong)" },

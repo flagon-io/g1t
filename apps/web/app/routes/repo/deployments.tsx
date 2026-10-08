@@ -106,7 +106,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
       </header>
 
       <div className="mt-4 min-h-6">
-        {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
+        {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
         {!actionData && <ComputeNote note={loaderData.computeNote} />}
       </div>
@@ -235,7 +235,7 @@ function PlanNeeded({ plan, owner }: { plan: FeatureState | null; owner: string 
         <ul className="mt-3 grid gap-1.5 text-sm text-muted sm:grid-cols-2">
           {plan.plan.includes.map((line) => (
             <li key={line} className="flex gap-2">
-              <span className="text-accent">✓</span>
+              <span className="text-success">✓</span>
               {line}
             </li>
           ))}

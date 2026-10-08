@@ -174,7 +174,7 @@ function Bar({ used, of, tone = "accent" }: { used: number; of: number; tone?: "
   const part = of > 0 ? Math.min(1, used / of) : 0;
   return (
     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
-      <div className={cn("h-full rounded-full", tone === "warn" ? "bg-warn" : "bg-accent")} style={{ width: `${part > 0 ? Math.max(2, part * 100) : 0}%` }} />
+      <div className={cn("h-full rounded-full", tone === "warn" ? "bg-warn" : "bg-success")} style={{ width: `${part > 0 ? Math.max(2, part * 100) : 0}%` }} />
     </div>
   );
 }
@@ -455,7 +455,7 @@ export function AllowanceRing({ used, of }: { used: number; of: number }) {
   return (
     <svg viewBox="0 0 18 18" className="size-4 shrink-0 -rotate-90" aria-hidden="true">
       <circle cx="9" cy="9" r={r} fill="none" stroke="var(--g1t-line-strong)" strokeWidth="2.5" />
-      <circle cx="9" cy="9" r={r} fill="none" stroke={part >= 1 ? "var(--g1t-warn)" : "var(--g1t-accent)"} strokeWidth="2.5" strokeDasharray={`${part * c} ${c}`} strokeLinecap="round" />
+      <circle cx="9" cy="9" r={r} fill="none" stroke={part >= 1 ? "var(--g1t-warn)" : "var(--g1t-success)"} strokeWidth="2.5" strokeDasharray={`${part * c} ${c}`} strokeLinecap="round" />
     </svg>
   );
 }

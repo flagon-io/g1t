@@ -399,11 +399,11 @@ type Loaded = Awaited<ReturnType<typeof overviewData>>;
 type Card = Loaded["columns"]["working"][number];
 
 const STAGE_TONE: Record<PipelineStage, string> = {
-  working: "bg-merged",
+  working: "bg-accent",
   checking: "bg-info",
   reviewing: "bg-warn",
-  queue: "bg-accent-dim",
-  landed: "bg-accent",
+  queue: "bg-success-dim",
+  landed: "bg-success",
 };
 
 function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: PipelineStage }) {
@@ -413,7 +413,7 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
         to={`${base}/pull/${card.number}`}
         prefetch="intent"
         className={`block rounded-lg border bg-bg/60 p-2.5 transition-colors hover:border-line-strong hover:bg-raised ${
-          card.needsYou ? "border-warn/50" : card.step ? "border-merged/30" : "border-line"
+          card.needsYou ? "border-warn/50" : card.step ? "border-accent/30" : "border-line"
         }`}
       >
         <span className="line-clamp-2 text-[0.8125rem] leading-snug font-medium">{card.title}</span>
@@ -431,7 +431,7 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
           ) : stage === "landed" ? (
             <TimeAgo at={card.at} />
           ) : card.runStarted ? (
-            <span className="inline-flex items-center gap-1 text-merged">
+            <span className="inline-flex items-center gap-1 text-accent">
               <Loader2 size={11} className="animate-spin" />
               <Elapsed from={card.runStarted} />
             </span>
@@ -796,7 +796,7 @@ function Overview({
           </div>
         )}
         {actionData && (
-          <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-accent"}`}>
+          <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-success"}`}>
             {"error" in actionData ? actionData.error : actionData.notice}
           </p>
         )}
@@ -877,14 +877,14 @@ function Overview({
 
       <Panel
         title="Right now"
-        icon={<span className={`block size-2 rounded-full ${agentsLive.length > 0 ? "animate-pulse bg-merged" : "bg-line-strong"}`} />}
+        icon={<span className={`block size-2 rounded-full ${agentsLive.length > 0 ? "animate-pulse bg-accent" : "bg-line-strong"}`} />}
         count={agentsLive.length}
         all={{ to: `${base}/agents`, label: "Agents" }}
       >
         {agentsLive.length > 0 && (
           <ul className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {agentsLive.map((run) => (
-              <li key={run.id} className="min-w-0 rounded-xl border border-merged/30 bg-surface px-3.5 py-3">
+              <li key={run.id} className="min-w-0 rounded-xl border border-accent/30 bg-surface px-3.5 py-3">
                 <div className="flex items-center gap-2 text-sm">
                   <Avatar name={run.agent} size={18} />
                   <span className="font-medium">{run.agent}</span>
@@ -903,7 +903,7 @@ function Overview({
                 {run.step && (
                   <Hint label={run.step}>
                     <p className="mt-1 truncate font-mono text-[0.6875rem] text-fg/70">
-                      <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
+                      <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" />
                       {run.step}
                     </p>
                   </Hint>
@@ -1082,7 +1082,7 @@ function Overview({
             <section className="rounded-xl border border-line bg-surface p-5">
               <div className="flex items-center justify-between">
                 <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Brain size={14} className="text-merged" />
+                  <Brain size={14} className="text-accent" />
                   What agents know here
                 </h2>
                 <Link to={`${base}/memory`} className="text-xs text-muted hover:text-fg">
@@ -1132,7 +1132,7 @@ function Overview({
                   <span className="font-medium tabular-nums">{percent(health.passRate)}</span>
                 </div>
                 <div className="mt-1.5">
-                  <Meter value={health.passRate} tone={health.passRate != null && health.passRate < 0.7 ? "bg-warn" : "bg-accent"} />
+                  <Meter value={health.passRate} tone={health.passRate != null && health.passRate < 0.7 ? "bg-warn" : "bg-success"} />
                 </div>
                 <p className="mt-1 text-faint">
                   {health.checkRuns

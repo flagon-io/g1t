@@ -277,7 +277,7 @@ function Line({ label, value, tone, strong = false }: { label: string; value: st
   return (
     <div className={`flex justify-between gap-4 ${strong ? "border-t border-line pt-1 font-medium" : ""}`}>
       <dt className="text-muted">{label}</dt>
-      <dd className={`tabular ${tone === "mint" ? "text-accent" : tone === "warn" ? "text-warn" : "text-fg"}`}>{value}</dd>
+      <dd className={`tabular ${tone === "mint" ? "text-success" : tone === "warn" ? "text-warn" : "text-fg"}`}>{value}</dd>
     </div>
   );
 }

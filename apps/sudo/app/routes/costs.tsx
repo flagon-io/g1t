@@ -169,7 +169,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
 
 function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap: number; hint: ReactNode }) {
   const percent = capPercent(used, cap);
-  const tone = cap > 0 && used >= cap ? "bg-danger" : percent >= 75 ? "bg-warn" : "bg-merged";
+  const tone = cap > 0 && used >= cap ? "bg-danger" : percent >= 75 ? "bg-warn" : "bg-accent";
   return (
     <div className="rounded-md border border-line px-4 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -41,7 +41,7 @@ export function StageDots({ stage }: { stage: Stage }) {
           key={step}
           className={`size-1.5 rounded-full ${
             index < current || stage === "ready"
-              ? "bg-accent"
+              ? "bg-success"
               : index === current
                 ? "animate-pulse bg-accent"
                 : "bg-line-strong"
@@ -105,7 +105,7 @@ export function LifecyclePanel({ lifecycle }: { lifecycle: Lifecycle }) {
               <span
                 aria-hidden="true"
                 className={`block h-1 rounded-full ${
-                  done ? "bg-accent" : active ? "animate-pulse bg-accent/60 motion-reduce:animate-none" : "bg-line"
+                  done ? "bg-success" : active ? "animate-pulse bg-success/60 motion-reduce:animate-none" : "bg-line"
                 }`}
               />
               <span className={`mt-1.5 block truncate text-[0.6875rem] ${active ? "font-medium text-fg" : done ? "text-muted" : "text-faint"}`}>

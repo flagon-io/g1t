@@ -246,7 +246,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
         description={signalsError ? undefined : signalCount === 0 ? "Nobody needs a word right now." : `The most urgent of ${signalCount}.`}
         actions={
           signalCount > 0 && (
-            <Link to="/reach-out" className="inline-flex items-center gap-1 text-sm text-merged hover:underline hover:underline-offset-4">
+            <Link to="/reach-out" className="inline-flex items-center gap-1 text-sm text-accent hover:underline hover:underline-offset-4">
               All {signalCount}
               <ArrowRight size={14} />
             </Link>

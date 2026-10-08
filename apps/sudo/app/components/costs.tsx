@@ -8,7 +8,7 @@ import { axisDollars, barPath, niceCeiling, ticks } from "~/lib/chart";
 import { type DayFigures, marginPercent, percentLabel } from "~/lib/costs";
 import { usd } from "~/lib/money";
 
-const CHARGED = "var(--g1t-merged)";
+const CHARGED = "var(--g1t-accent)";
 const COST = "#7a7a84";
 const LOSS = "var(--g1t-danger)";
 

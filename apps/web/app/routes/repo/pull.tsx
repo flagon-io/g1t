@@ -757,7 +757,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               <span
                 key={reviewer}
                 className={`flex items-center gap-1.5 ${
-                  verdict === "approve" ? "text-accent" : "text-danger"
+                  verdict === "approve" ? "text-success" : "text-danger"
                 }`}
               >
                 {verdict === "approve" ? <CircleCheck size={15} /> : <CircleSlash size={15} />}
@@ -785,7 +785,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </TabLink>
           {pull.files.length > 0 && (
             <span className="ml-auto hidden pb-2.5 font-mono text-xs sm:inline">
-              <span className="text-accent">+{pull.files.reduce((sum, file) => sum + file.additions, 0).toLocaleString("en-US")}</span>{" "}
+              <span className="text-success">+{pull.files.reduce((sum, file) => sum + file.additions, 0).toLocaleString("en-US")}</span>{" "}
               <span className="text-danger">−{pull.files.reduce((sum, file) => sum + file.deletions, 0).toLocaleString("en-US")}</span>
             </span>
           )}
@@ -861,9 +861,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 pull.runtime === "hosted" &&
                 (working || ["working", "revising", "catching_up", "answering"].includes(lifecycle?.stage ?? "")) && (
                   // Keyed by the messages so the box empties once one shows below.
-                  <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-merged/30" key={messages.length}>
+                  <Form method="post" className="mt-4 rounded-2xl bg-surface p-4 ring-1 ring-accent/30" key={messages.length}>
                     <p className="flex items-center gap-2 text-sm font-medium">
-                      <Sparkles size={15} className="text-merged" />
+                      <Sparkles size={15} className="text-accent" />
                       Message the agent
                     </p>
                     <p className="mt-1 text-xs text-muted">
@@ -878,7 +878,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         autoComplete="off"
                         data-1p-ignore
                         placeholder="Keep the old flag working too…"
-                        className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-merged/60"
+                        className="h-9 min-w-0 grow rounded-md bg-bg px-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-accent/60"
                       />
                       <SubmitButton match={{ action: "message" }} pending="Sending…">
                         Send
@@ -906,13 +906,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         </span>{" "}
                         {message.body}
                         {message.answer && (
-                          <span className="mt-1 block border-l-2 border-merged/40 pl-2 text-muted">
+                          <span className="mt-1 block border-l-2 border-accent/40 pl-2 text-muted">
                             {message.declined ? "Declined: " : "Answer: "}
                             {message.answer}
                           </span>
                         )}
                       </span>
-                      <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-accent" : "text-faint"}`}>
+                      <span className={`shrink-0 text-xs ${message.deliveredAt ? "text-success" : "text-faint"}`}>
                         {message.deliveredAt ? "read by the agent" : "waiting for its next step"}
                       </span>
                     </li>
@@ -1068,7 +1068,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         reviews.some(({ verdict }) => verdict === "request_changes") ? (
                           <CircleSlash size={16} className="text-danger" />
                         ) : reviews.length > 0 ? (
-                          <CircleCheck size={16} className="text-accent" />
+                          <CircleCheck size={16} className="text-success" />
                         ) : (
                           <MessageSquare size={16} className="text-faint" />
                         )
@@ -1096,7 +1096,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           ownersMissing ? (
                             <CircleSlash size={16} className="text-warn" />
                           ) : (
-                            <CircleCheck size={16} className="text-accent" />
+                            <CircleCheck size={16} className="text-success" />
                           )
                         }
                         title={ownersMissing ? "Waiting for code owners" : "Code owners approved"}
@@ -1161,7 +1161,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     ) : (
                       (pull.headCommit || (catchUp && "error" in catchUp)) && (
                         <StatusRow
-                          icon={<CircleCheck size={16} className="text-accent" />}
+                          icon={<CircleCheck size={16} className="text-success" />}
                           title={
                             (caughtUp && !caughtUp.already) || agentCatchUp
                               ? `Brought up to date with ${defaultBranch}`
@@ -1304,7 +1304,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               )}
               {actionData?.action === "stack" &&
                 ("notice" in actionData ? (
-                  <p className="mt-2 text-xs text-accent">{String(actionData.notice)}</p>
+                  <p className="mt-2 text-xs text-success">{String(actionData.notice)}</p>
                 ) : (
                   <ErrorText>{actionData.error}</ErrorText>
                 ))}
@@ -1331,7 +1331,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         Reviewing
                       </span>
                     ) : verdict === "approve" ? (
-                      <span className="flex items-center gap-1 text-xs text-accent">
+                      <span className="flex items-center gap-1 text-xs text-success">
                         <CircleCheck size={13} /> Approved
                       </span>
                     ) : verdict === "request_changes" ? (
@@ -1535,7 +1535,7 @@ function DeploymentCard({
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <span
           className={`flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${
-            failed ? "text-danger ring-danger/40" : building ? "text-warn ring-warn/40" : "text-accent ring-accent/40"
+            failed ? "text-danger ring-danger/40" : building ? "text-warn ring-warn/40" : "text-success ring-success/40"
           }`}
         >
           {building ? <Loader size={15} className="animate-spin" /> : <Rocket size={15} />}

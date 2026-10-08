@@ -10,7 +10,7 @@ import { Switch } from "./ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 const STATUS: Record<Runner["status"], { dot: string; label: string }> = {
-  online: { dot: "bg-accent", label: "Idle" },
+  online: { dot: "bg-success", label: "Idle" },
   busy: { dot: "bg-info", label: "Busy" },
   offline: { dot: "bg-faint", label: "Offline" },
 };
@@ -411,7 +411,7 @@ export function RunnersPanel({
   return (
     <div className="max-w-5xl space-y-8">
       <div className="min-h-6">
-        {action?.notice && <p className="text-sm text-accent">{action.notice}</p>}
+        {action?.notice && <p className="text-sm text-success">{action.notice}</p>}
         <ErrorText>{action?.error ?? data.error ?? null}</ErrorText>
       </div>
       <Section

@@ -65,7 +65,7 @@ export default function Requests({ loaderData, actionData }: Route.ComponentProp
             to={requestsHref(value)}
             aria-current={value === status ? "page" : undefined}
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap transition-colors ${
-              value === status ? "border-merged/50 bg-merged/10 text-merged" : "border-line text-muted hover:border-line-strong hover:text-fg"
+              value === status ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:border-line-strong hover:text-fg"
             }`}
           >
             {STATUS_LABEL[value]}
@@ -201,7 +201,7 @@ function RequestCard({
               {overage ? (
                 <p className="text-sm text-muted">
                   Usually answered with a goodwill credit on{" "}
-                  <Link to={`/overages#${encodeURIComponent(request.workspace)}`} className="text-merged hover:underline">
+                  <Link to={`/overages#${encodeURIComponent(request.workspace)}`} className="text-accent hover:underline">
                     Overages
                   </Link>
                   , which also closes this request. Or answer it here.

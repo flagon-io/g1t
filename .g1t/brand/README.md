@@ -9,7 +9,7 @@ The logo is G1T in 5×7 pixel capitals, the 1 in lavender; the icon is the 1.
 - **Pixels:** each is its own square, 0.8 of its cell, centred, with square
   corners.
 - **Colour:** G and T are `#ededef` (`--g1t-fg`) and the 1 is lavender
-  `#b6a8ff` (`--g1t-merged`), on the very dark gray base `#0f0f11`
+  `#b6a8ff` (`--g1t-accent`, the brand accent), on the very dark gray base `#0f0f11`
   (`--g1t-bg`). On light backgrounds the letters are `#161618` and the 1 is
   `#6b56e8`. Printed in one ink, everything is that ink.
 - **Icon:** the 1 alone, centred in a square, for favicons, app icons and

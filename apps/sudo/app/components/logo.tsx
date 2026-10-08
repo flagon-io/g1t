@@ -29,7 +29,7 @@ function Pixels({ of }: { of: Pixel[] }) {
       y={p.y * 10 + 1}
       width="8"
       height="8"
-      fill={p.one ? "var(--g1t-merged)" : "currentColor"}
+      fill={p.one ? "var(--g1t-accent)" : "currentColor"}
     />
   ));
 }
@@ -55,7 +55,7 @@ export function Logo({ className = "text-[1.5rem]" }: { className?: string }) {
           <Pixels of={WORD} />
         </svg>
       </span>
-      <span className="rounded-full bg-merged/12 px-2 py-0.5 font-mono text-[0.7rem] font-semibold tracking-wide text-merged ring-1 ring-merged/35 ring-inset">
+      <span className="rounded-full bg-accent/12 px-2 py-0.5 font-mono text-[0.7rem] font-semibold tracking-wide text-accent ring-1 ring-accent/35 ring-inset">
         sudo
       </span>
     </span>

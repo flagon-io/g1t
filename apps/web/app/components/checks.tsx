@@ -19,7 +19,7 @@ const LABELS: Record<CheckStatus, string> = {
 };
 
 export function CheckIcon({ status, size = 15 }: { status: CheckStatus; size?: number }) {
-  if (status === "passed") return <CircleCheck size={size} className="shrink-0 text-accent" />;
+  if (status === "passed") return <CircleCheck size={size} className="shrink-0 text-success" />;
   if (status === "failed") return <CircleX size={size} className="shrink-0 text-danger" />;
   if (status === "errored") return <TriangleAlert size={size} className="shrink-0 text-muted" />;
   return <LoaderCircle size={size} className="shrink-0 animate-spin text-info" />;

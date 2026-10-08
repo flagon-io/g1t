@@ -94,7 +94,7 @@ function CopyHash({ hash }: { hash: string }) {
       aria-label="Copy the full hash"
     >
       {hash.slice(0, 12)}
-      {copied ? <Check size={12} className="text-accent" /> : <Copy size={12} />}
+      {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
     </button>
   );
 }
@@ -112,7 +112,7 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
               </Link>
             </span>
             {byAgent && (
-              <span className="flex items-center gap-1.5 rounded-full border border-merged/30 bg-merged/10 px-2 py-0.5 text-xs text-merged">
+              <span className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent">
                 <Sparkles size={12} />
                 written by {pull.agent}
               </span>

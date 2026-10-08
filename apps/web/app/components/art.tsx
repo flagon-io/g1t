@@ -17,8 +17,8 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { type Point, iso, isoPath, pts, stagger, timing } from "../lib/art";
 
 const LINE = "var(--color-fg)";
-const MINT = "var(--color-accent)";
-const LAVENDER = "var(--color-merged)";
+const MINT = "var(--color-success)";
+const LAVENDER = "var(--color-accent)";
 const PEACH = "var(--color-warn)";
 const DANGER = "var(--color-danger)";
 

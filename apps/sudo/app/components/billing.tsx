@@ -185,7 +185,7 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     );
   }
   return (
-    <section id="review" className={`scroll-mt-20 rounded-lg border p-4 sm:p-5 ${danger ? "border-warn/40 bg-warn/5" : "border-merged/40 bg-merged/5"}`}>
+    <section id="review" className={`scroll-mt-20 rounded-lg border p-4 sm:p-5 ${danger ? "border-warn/40 bg-warn/5" : "border-accent/40 bg-accent/5"}`}>
       <h2 className="font-semibold tracking-tight">{title}</h2>
       <div className="mt-3">{body}</div>
       <form method="post" action={`${pathname}#${RESULT_ANCHOR[review.intent] ?? "top"}`} className="mt-4 flex flex-wrap items-center gap-2">
@@ -462,7 +462,7 @@ export function PaymentForm({ workspace, pathname, error }: { workspace: string;
 /** A radio drawn as one button of a segmented row; still a plain radio without CSS. */
 function Segment({ name, value, checked, children }: { name: string; value: string; checked: boolean; children: ReactNode }) {
   return (
-    <label className="flex-1 cursor-pointer border-r border-line px-3 py-1.5 text-center text-sm whitespace-nowrap text-muted transition-colors last:border-r-0 hover:bg-raised hover:text-fg has-checked:bg-merged has-checked:font-medium has-checked:text-bg has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-merged">
+    <label className="flex-1 cursor-pointer border-r border-line px-3 py-1.5 text-center text-sm whitespace-nowrap text-muted transition-colors last:border-r-0 hover:bg-raised hover:text-fg has-checked:bg-accent has-checked:font-medium has-checked:text-bg has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-accent">
       <input type="radio" name={name} value={value} defaultChecked={checked} className="sr-only" />
       {children}
     </label>
@@ -534,7 +534,7 @@ export function CreditForm({ workspaces, pathname, error }: { workspaces: string
               {CREDIT_KINDS.map((option) => (
                 <label
                   key={option.value}
-                  className="flex cursor-pointer gap-2.5 rounded-md border border-line bg-bg px-3 py-2.5 transition-colors hover:border-line-strong has-checked:border-merged/60 has-checked:bg-merged/8"
+                  className="flex cursor-pointer gap-2.5 rounded-md border border-line bg-bg px-3 py-2.5 transition-colors hover:border-line-strong has-checked:border-accent/60 has-checked:bg-accent/8"
                 >
                   <input type="radio" name="kind" value={option.value} defaultChecked={kind === option.value} className="mt-0.5" required />
                   <span>
@@ -633,7 +633,7 @@ export function CreditList({
               <Badge tone="lavender">{kindLabel(grant.kind)}</Badge>
               <Badge tone={state.tone}>{state.label}</Badge>
               {showWorkspace && (
-                <Link to={`/workspaces/${encodeURIComponent(grant.workspace)}#credits`} className="font-mono text-xs text-merged hover:underline">
+                <Link to={`/workspaces/${encodeURIComponent(grant.workspace)}#credits`} className="font-mono text-xs text-accent hover:underline">
                   {grant.workspace}
                 </Link>
               )}
@@ -859,7 +859,7 @@ export function LedgerSection({
                         {entry.creditKind ? `Credit · ${kindLabel(entry.creditKind)}` : (ENTRY_KIND[entry.kind] ?? entry.kind)}
                       </Badge>
                       {showWorkspace && entry.workspace && (
-                        <Link to={`/workspaces/${encodeURIComponent(entry.workspace)}`} className="font-mono text-xs text-merged hover:underline">
+                        <Link to={`/workspaces/${encodeURIComponent(entry.workspace)}`} className="font-mono text-xs text-accent hover:underline">
                           {entry.workspace}
                         </Link>
                       )}
@@ -882,7 +882,7 @@ export function LedgerSection({
                         .join(" · ")}
                     </p>
                   </td>
-                  <td className={`tabular px-4 py-2.5 text-right whitespace-nowrap sm:pr-5 ${entry.amountMicros > 0 ? "text-accent" : "text-fg-soft"}`}>
+                  <td className={`tabular px-4 py-2.5 text-right whitespace-nowrap sm:pr-5 ${entry.amountMicros > 0 ? "text-success" : "text-fg-soft"}`}>
                     {usd(entry.amountMicros, { signed: true })}
                   </td>
                 </tr>
@@ -908,9 +908,9 @@ export function AuditSection({ audit, description = "Every change made in sudo, 
       ) : (
         <ol className="space-y-3">
           {audit.map((entry) => (
-            <li key={entry.id} className="border-l-2 border-merged/40 pl-3">
+            <li key={entry.id} className="border-l-2 border-accent/40 pl-3">
               <p className="flex flex-wrap items-center gap-x-2 text-sm">
-                <span className="font-medium text-merged">{actionLabel(entry.action)}</span>
+                <span className="font-medium text-accent">{actionLabel(entry.action)}</span>
                 <span className="text-xs text-faint">
                   <When at={entry.createdAt} time />
                 </span>

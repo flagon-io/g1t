@@ -19,6 +19,7 @@ export const COLOR = {
   lavenderDeep: "#6b56e8",
   /** Status colours, from the site's tokens. */
   mint: "#86efc4",
+  merged: "#a678f5",
   danger: "#ff8394",
 } as const;
 

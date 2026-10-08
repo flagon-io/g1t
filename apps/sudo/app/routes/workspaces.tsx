@@ -135,7 +135,7 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
             aria-label="Search workspaces"
             autoComplete="off"
             data-1p-ignore
-            className="w-full rounded-md border border-line bg-bg py-2 pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-merged/60"
+            className="w-full rounded-md border border-line bg-bg py-2 pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent/60"
           />
         </div>
         <fieldset className="flex flex-wrap items-center gap-2">
@@ -143,7 +143,7 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
           {(Object.keys(FILTERS) as Filter[]).map((key) => (
             <label
               key={key}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition-colors select-none hover:border-line-strong has-checked:border-merged/50 has-checked:bg-merged/10 has-checked:text-merged"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-muted transition-colors select-none hover:border-line-strong has-checked:border-accent/50 has-checked:bg-accent/10 has-checked:text-accent"
             >
               <input type="checkbox" name="show" value={key} defaultChecked={show.includes(key)} className="size-3.5" />
               {FILTERS[key].label}

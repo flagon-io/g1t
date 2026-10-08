@@ -12,7 +12,7 @@ export const RANGES = [7, 30, 90];
 
 export function chip(active: boolean) {
   return `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap transition-colors ${
-    active ? "border-merged/50 bg-merged/10 text-merged" : "border-line text-muted hover:border-line-strong hover:text-fg"
+    active ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:border-line-strong hover:text-fg"
   }`;
 }
 
@@ -62,7 +62,7 @@ export function CostsHeader({
             key={tab.page}
             to={costsHref(tab.page, range)}
             aria-current={tab.page === page ? "page" : undefined}
-            className={`-mb-px border-b-2 pb-2 text-sm ${tab.page === page ? "border-merged text-fg" : "border-transparent text-muted hover:text-fg"}`}
+            className={`-mb-px border-b-2 pb-2 text-sm ${tab.page === page ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`}
           >
             {tab.title}
           </Link>

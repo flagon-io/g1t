@@ -116,7 +116,7 @@ export default function PackagePage({ loaderData, actionData }: Route.ComponentP
       </header>
 
       {outcome?.error && <ErrorText>{outcome.error}</ErrorText>}
-      {outcome?.message && <p className="text-sm text-accent">{outcome.message}</p>}
+      {outcome?.message && <p className="text-sm text-success">{outcome.message}</p>}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">{npm ? "Install it" : "Pull it"}</h2>

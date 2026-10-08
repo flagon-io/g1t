@@ -859,6 +859,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_teams" => reply(&identity.list_teams(args(body)?).await?),
         "get_team" => reply(&identity.get_team(args(body)?).await?),
         "create_team" => reply(&identity.create_team(args(body)?).await?),
+        "set_team_creation" => reply(&identity.set_team_creation(args(body)?).await?),
         "update_team" => reply(&identity.update_team(args(body)?).await?),
         "delete_team" => reply(&identity.delete_team(args(body)?).await?),
         "team_members" => reply(&identity.team_members(args(body)?).await?),

@@ -92,7 +92,7 @@ export function BlameView({
   return (
     <div>
       <p className="flex items-center gap-2 border-b border-line px-4 py-2 text-xs text-muted">
-        <Sparkles size={13} className="text-merged" />
+        <Sparkles size={13} className="text-accent" />
         Pick any line to see why it is the way it is: the commit, the pull request and issue it
         came from, and what the agent was thinking.
       </p>
@@ -152,7 +152,7 @@ export function BlameView({
                   rows.push(
                     <tr key={`why-${line}`}>
                       <td colSpan={4} className="border-y border-line bg-bg/60 px-3 py-3 font-sans whitespace-normal md:pl-80">
-                        <div className="max-w-2xl overflow-hidden rounded-xl border border-merged/30 bg-surface shadow-xl shadow-black/40">
+                        <div className="max-w-2xl overflow-hidden rounded-xl border border-accent/30 bg-surface shadow-xl shadow-black/40">
                           <WhyPanel
                             base={base}
                             picked={picked}
@@ -199,7 +199,7 @@ function WhyPanel({
   return (
     <div>
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <Sparkles size={15} className="text-merged" />
+        <Sparkles size={15} className="text-accent" />
         <span className="grow text-sm font-medium">
           Why line{picked.start === picked.end ? ` ${picked.start}` : `s ${picked.start}–${picked.end}`}
         </span>
@@ -253,7 +253,7 @@ function WhyPanel({
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
                 {current.pull.runtime === "hosted" ? (
                   <>
-                    <span className="flex items-center gap-1 text-merged">
+                    <span className="flex items-center gap-1 text-accent">
                       <Sparkles size={11} />
                       written by {current.pull.agent}
                     </span>
@@ -303,7 +303,7 @@ function WhyPanel({
                 .map((step) => (
                   <blockquote
                     key={step.seq}
-                    className="mt-3 border-l-2 border-merged/50 pl-3 text-[0.8125rem] whitespace-pre-line text-fg/90"
+                    className="mt-3 border-l-2 border-accent/50 pl-3 text-[0.8125rem] whitespace-pre-line text-fg/90"
                   >
                     {step.text}
                   </blockquote>

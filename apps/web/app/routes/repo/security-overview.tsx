@@ -67,7 +67,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
       <div className="grid gap-3 sm:grid-cols-2">
         <Card to={`${base}/security/secret-scanning`} icon={<KeyRound size={15} />} title="Secret scanning" footer="Push protection is on for every push.">
           {secrets.open + secrets.blocked === 0 ? (
-            <span className="inline-flex items-center gap-1.5 text-accent">
+            <span className="inline-flex items-center gap-1.5 text-success">
               <ShieldCheck size={14} /> No open secrets
             </span>
           ) : (
@@ -81,7 +81,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
           {!code || (code.analyses.length === 0 && code.alerts.length === 0) ? (
             "Not set up. Add a workflow that uploads SARIF, and results show here and on pull requests."
           ) : total(codeOpen!) === 0 ? (
-            <span className="inline-flex items-center gap-1.5 text-accent">
+            <span className="inline-flex items-center gap-1.5 text-success">
               <ShieldCheck size={14} /> No open alerts
             </span>
           ) : (
@@ -92,7 +92,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
         </Card>
         <Card to={`${base}/security/vulnerabilities`} icon={<PackageSearch size={15} />} title="Vulnerabilities">
           {openVulns === 0 ? (
-            <span className="inline-flex items-center gap-1.5 text-accent">
+            <span className="inline-flex items-center gap-1.5 text-success">
               <ShieldCheck size={14} /> No vulnerable dependencies
             </span>
           ) : (

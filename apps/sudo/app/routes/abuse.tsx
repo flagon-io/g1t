@@ -72,7 +72,7 @@ export default function Abuse({ loaderData }: Route.ComponentProps) {
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
           <li>
             Disputes and declined cards are signals in{" "}
-            <Link to={reachOutHref({ kind: "declined" })} className="text-merged hover:underline">
+            <Link to={reachOutHref({ kind: "declined" })} className="text-accent hover:underline">
               Reach out
             </Link>
             . Stripe Radar's early fraud warnings are not in sudo yet.

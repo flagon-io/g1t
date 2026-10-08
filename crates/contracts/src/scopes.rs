@@ -314,7 +314,7 @@ impl Scope {
             Scope::AccountWrite => "Change your email addresses, make invites, answer invitations and pin projects",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
-            Scope::WorkspaceRead => "Read workspace invites, integrations, model routes and teams",
+            Scope::WorkspaceRead => "Read workspace settings, invites, integrations, model routes and teams",
             Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, and create, change and delete teams",
             Scope::BillingRead => "See a workspace's usage, budget, AI credit and invoices",
             Scope::BillingWrite => "Change a workspace's budget and buy AI credit",
@@ -522,6 +522,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Workspaces, their invites and integrations.
     ("create_workspace", Scope::WorkspaceAdmin),
     ("delete_workspace", Scope::WorkspaceAdmin),
+    ("get_workspace", Scope::WorkspaceRead),
     ("update_workspace", Scope::WorkspaceAdmin),
     ("list_workspace_invites", Scope::WorkspaceRead),
     ("invite_member", Scope::WorkspaceAdmin),

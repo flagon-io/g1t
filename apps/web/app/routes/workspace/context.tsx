@@ -123,7 +123,7 @@ export default function WorkspaceContext({ loaderData, params }: Route.Component
         <div className="space-y-6">
           <div className="rounded-xl border border-line bg-surface p-4 text-sm">
             <p className="flex items-center gap-2 font-medium">
-              <Brain size={15} className="text-merged" />
+              <Brain size={15} className="text-accent" />
               Memory fills itself
             </p>
             <p className="mt-1 text-muted">

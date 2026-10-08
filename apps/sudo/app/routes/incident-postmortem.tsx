@@ -109,7 +109,7 @@ export default function PostmortemEditor({ loaderData, actionData }: Route.Compo
           }
           actions={
             published ? (
-              <a href={`${incident.url}#postmortem`} className="inline-flex items-center gap-1.5 text-sm text-merged hover:underline">
+              <a href={`${incident.url}#postmortem`} className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
                 On the status page <ExternalLink size={13} aria-hidden="true" />
               </a>
             ) : undefined

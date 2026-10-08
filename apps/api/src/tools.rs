@@ -270,9 +270,10 @@ pub const TOOLS: &[Tool] = &[
         description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
+            a("get", Op::GetWorkspace, "A workspace's details and settings"),
             a("create", Op::CreateWorkspace, "Create a workspace"),
             a("delete", Op::DeleteWorkspace, "Delete a workspace and everything in it (support can restore it for 30 days)"),
-            a("update", Op::UpdateWorkspace, "Change its name, description or base permission"),
+            a("update", Op::UpdateWorkspace, "Change its name, description, base permission or who may create teams"),
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite an email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),

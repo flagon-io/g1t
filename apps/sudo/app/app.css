@@ -20,7 +20,11 @@
   --color-faint: var(--g1t-faint);
 
   --color-accent: var(--g1t-accent);
+  --color-accent-hover: var(--g1t-accent-hover);
   --color-accent-dim: var(--g1t-accent-dim);
+
+  --color-success: var(--g1t-success);
+  --color-success-dim: var(--g1t-success-dim);
 
   --color-info: var(--g1t-info);
   --color-merged: var(--g1t-merged);
@@ -37,12 +41,12 @@ body {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-merged) 35%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--color-merged);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
@@ -57,7 +61,7 @@ body {
   }
 
   :root {
-    accent-color: var(--color-merged);
+    accent-color: var(--color-accent);
   }
 
   /* Figures line up in columns of money. */

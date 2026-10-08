@@ -29,7 +29,7 @@ const MIX_COLOR: Record<MixPart["key"], string> = {
 };
 
 /** The daily grid's single hue, stronger with more tokens. */
-const HEAT_SHADE = ["var(--color-line)", ...Array.from({ length: HEAT_LEVELS }, (_, i) => `color-mix(in oklab, var(--color-merged) ${[28, 48, 72, 100][i]}%, var(--color-surface))`)];
+const HEAT_SHADE = ["var(--color-line)", ...Array.from({ length: HEAT_LEVELS }, (_, i) => `color-mix(in oklab, var(--color-accent) ${[28, 48, 72, 100][i]}%, var(--color-surface))`)];
 
 type Scope = "workspace" | "mine";
 

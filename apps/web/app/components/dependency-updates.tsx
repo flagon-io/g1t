@@ -153,7 +153,7 @@ function Entry({ entry, action, canCheck }: { entry: VersionUpdateEntry; action:
       ) : (
         entry.lastResult && (
           <p className="mt-2 flex items-start gap-1.5 text-xs text-muted">
-            <CircleCheck size={12} className="mt-0.5 shrink-0 text-accent" />
+            <CircleCheck size={12} className="mt-0.5 shrink-0 text-success" />
             <span className="wrap-anywhere">
               <Said text={entry.lastResult} />
             </span>
@@ -194,7 +194,7 @@ function PullRow({ pull, base }: { pull: UpdatePull; base: string }) {
     ) : pull.state === "requested" ? (
       <Loader size={13} className="text-info" />
     ) : (
-      <GitPullRequest size={13} className="text-accent" />
+      <GitPullRequest size={13} className="text-success" />
     );
   const count = pull.dependencies.length;
   return (

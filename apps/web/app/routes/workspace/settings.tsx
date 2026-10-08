@@ -5,6 +5,7 @@ import {
   type DataResidency,
   RENAME_COOLDOWN_HOURS,
   SLUG_HOLD_DAYS,
+  type TeamCreation,
   WORKSPACE_RESTORE_DAYS,
   type Workspace,
   type WorkspaceDeletion,
@@ -117,6 +118,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!result.ok) return { residencyError: result.error.message };
     return { saved: "residency" as const };
   }
+  // Who may create teams: identity checks the owner.
+  if (intent === "team-creation") {
+    const wanted: TeamCreation = form.get("teamCreation") === "owners" ? "owners" : "members";
+    const result = await identity.setTeamCreation(user, params.owner, wanted);
+    if (!result.ok) return { teamCreationError: result.error.message };
+    return { saved: "team-creation" as const };
+  }
   if (intent === "rename") {
     const newSlug = String(form.get("newSlug") ?? "").trim().toLowerCase();
     const result = await identity.renameWorkspace(user, params.owner, newSlug);
@@ -175,6 +183,14 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
       />
 
+      <TeamCreationSection
+        // Starts from the saved choice whenever it changes.
+        key={workspace.teamCreation ?? "members"}
+        setting={workspace.teamCreation ?? "members"}
+        saved={Boolean(actionData && "saved" in actionData && actionData.saved === "team-creation")}
+        error={actionData && "teamCreationError" in actionData ? actionData.teamCreationError : undefined}
+      />
+
       {(loaderData.euAvailable || loaderData.residency === "eu") && (
         <ResidencySection
           // Starts from the saved choice whenever it changes.
@@ -195,6 +211,46 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         />
       </DangerZone>
     </div>
+  );
+}
+
+/**
+ * Who may create the workspace's teams. Teams already made stay as they
+ * are, whoever made them.
+ */
+function TeamCreationSection({ setting, saved, error }: { setting: TeamCreation; saved: boolean; error?: string }) {
+  const [choice, setChoice] = useState<TeamCreation>(setting);
+  const navigation = useNavigation();
+  const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "team-creation";
+  return (
+    <section>
+      <h2 className="font-medium">Teams</h2>
+      <p className="mt-1.5 text-xs text-faint">
+        Who can create teams in the workspace. Whoever creates one becomes its first maintainer. Teams that already
+        exist stay as they are.
+      </p>
+      <Form method="post" className="mt-5 space-y-4">
+        <input type="hidden" name="intent" value="team-creation" />
+        <RadioGroup
+          name="teamCreation"
+          value={choice}
+          onValueChange={(value) => setChoice(value as TeamCreation)}
+          aria-label="Who can create teams"
+        >
+          <RadioOption value="members" label="Any member" description="Every member with a confirmed email address. The default." />
+          <RadioOption value="owners" label="Owners only" description="Members ask an owner to create a team; maintainers still manage their own." />
+        </RadioGroup>
+        <ErrorText>{error}</ErrorText>
+        {saved && !error && (
+          <p role="status" className="text-xs text-muted">
+            Saved.
+          </p>
+        )}
+        <Button type="submit" disabled={saving || choice === setting}>
+          Save
+        </Button>
+      </Form>
+    </section>
   );
 }
 
@@ -460,7 +516,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
               <span
                 role="status"
                 className={`mt-1 block ${
-                  status.tone === "ok" ? "text-accent" : status.tone === "bad" ? "text-danger" : ""
+                  status.tone === "ok" ? "text-success" : status.tone === "bad" ? "text-danger" : ""
                 }`}
               >
                 {status.text}

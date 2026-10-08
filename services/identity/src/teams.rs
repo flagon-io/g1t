@@ -12,7 +12,7 @@
 //! | --- | --- |
 //! | See a visible team | Every member of the workspace |
 //! | See a secret team | Its own people and the workspace's owners |
-//! | Create a team | Any member; they become its maintainer. Under a parent: an owner, or a maintainer of the parent |
+//! | Create a team | Any member, or owners only when the workspace says so (`TeamCreation`); they become its maintainer. Under a parent: an owner, or a maintainer of the parent |
 //! | Change a team, its people and settings, or delete it | Owners, and the team's maintainers |
 //! | Move a team under another | Owners, or maintainers of both |
 //! | Give a team a role on a repository | Admin on the repository |
@@ -44,6 +44,15 @@ use crate::access::Named;
 const PEOPLE_ONLY: &str = "Only a person can change a team, signed in as themselves; never an agent's or a workspace's token.";
 const CONFIRM_FIRST: &str = "Confirm your email address before changing a team.";
 const NOT_FOUND: &str = "Team not found.";
+const OWNERS_CREATE: &str = "Only owners can create teams in this workspace. Ask an owner to create one, or to let members create them in the workspace's settings.";
+
+/// A [`TeamCreation`] as the audit log says it.
+fn creation_words(setting: TeamCreation) -> &'static str {
+    match setting {
+        TeamCreation::Members => "any member",
+        TeamCreation::Owners => "owners only",
+    }
+}
 const NO_SUCH_USER: &str = "There is no account with that username.";
 const LIST_LIMIT: u32 = 500;
 
@@ -448,6 +457,71 @@ impl Identity {
         Ok(Outcome::Ok(parent))
     }
 
+    /// Who may create a workspace's teams; the default when there is no
+    /// such workspace.
+    pub(crate) async fn team_creation_of(&self, slug: &str) -> Result<TeamCreation> {
+        #[derive(Deserialize)]
+        struct Row {
+            #[serde(default)]
+            team_creation: Option<String>,
+        }
+        let row = self
+            .db
+            .prepare("SELECT team_creation FROM workspaces WHERE slug = ? AND deleted_at IS NULL")
+            .bind(&[slug.into()])?
+            .first::<Row>(None)
+            .await?;
+        Ok(row
+            .and_then(|row| row.team_creation)
+            .as_deref()
+            .and_then(TeamCreation::parse)
+            .unwrap_or_default())
+    }
+
+    /// `set_team_creation`: who may create the workspace's teams. Owners
+    /// only, as a person with a confirmed email address. Teams already made
+    /// stay as they are.
+    pub async fn set_team_creation(&self, a: SetTeamCreationArgs) -> Result<Outcome<TeamCreation>> {
+        let slug = a.slug.trim().to_lowercase();
+        if !crate::security::is_person(&a.actor) || a.actor.role_in(&slug) != Some(Role::Owner) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change who may create teams."));
+        }
+        if !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before changing the workspace's settings."));
+        }
+        let Some(workspace_id) = self.workspace_id_of(&slug).await? else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
+        };
+        let previous = self.team_creation_of(&slug).await?;
+        if previous == a.team_creation {
+            return Ok(Outcome::Ok(previous));
+        }
+        let stored = match a.team_creation {
+            TeamCreation::Members => JsValue::NULL,
+            other => other.as_str().into(),
+        };
+        self.db
+            .prepare("UPDATE workspaces SET team_creation = ? WHERE id = ?")
+            .bind(&[stored, workspace_id.as_str().into()])?
+            .run()
+            .await?;
+        self.audit_workspace(
+            &a.actor,
+            "workspace.team_creation_changed",
+            &slug,
+            a.surface.unwrap_or(Surface::Web),
+            format!(
+                "Changed who may create teams from {} to {}",
+                creation_words(previous),
+                creation_words(a.team_creation)
+            ),
+        )
+        .await;
+        // Members' resolved users carry the setting, for the site's menus.
+        self.announce_workspace(&workspace_id, &slug, Some(&a.actor.id)).await;
+        Ok(Outcome::Ok(a.team_creation))
+    }
+
     pub async fn create_team(&self, a: CreateTeamArgs) -> Result<Outcome<Team>> {
         let workspace = a.workspace.trim().to_lowercase();
         if !crate::security::is_person(&a.actor) {
@@ -458,6 +532,10 @@ impl Identity {
         };
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, CONFIRM_FIRST));
+        }
+        // A workspace can keep creating teams to its owners.
+        if !self.team_creation_of(&workspace).await?.allows(role) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, OWNERS_CREATE));
         }
         let owner = role == Role::Owner;
         let name: String = a.name.trim().chars().take(MAX_NAME_LENGTH).collect();

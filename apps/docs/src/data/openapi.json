@@ -66,6 +66,7 @@
       "name": "Workspaces",
       "description": "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
       "x-tools": [
+        "get_workspace",
         "create_workspace",
         "update_workspace",
         "delete_workspace"
@@ -623,7 +624,7 @@
           "Workspaces"
         ],
         "summary": "Create a workspace",
-        "description": "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to.\n\n`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/).",
+        "description": "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to.\n\n`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). `team_creation` is who may create its teams: `members` (any member) until an owner sets `owners` with `PATCH /workspaces/{workspace}`.",
         "x-operation": "create_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "create",
@@ -649,7 +650,8 @@
                   "description": null,
                   "created_at": "2026-10-04T16:02:51.337Z",
                   "member_count": 1,
-                  "base_permission": "write"
+                  "base_permission": "write",
+                  "team_creation": "members"
                 }
               }
             }
@@ -735,6 +737,99 @@
       }
     },
     "/workspaces/{workspace}": {
+      "get": {
+        "operationId": "get_workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "Get a workspace",
+        "description": "One workspace you belong to: its name, description and member count, what every member gets on each of its repositories (base_permission), and who may create its teams (team_creation: members or owners). Members only.\n\n`team_creation` is who may create its teams: `members` (any member, the default) or `owners`. Change it, and the rest, with [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/). `404` for anyone who is not a member. See [Workspaces](/guides/workspaces/).",
+        "x-operation": "get_workspace",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "get",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "wsp_01m43teqa9em6bje0bhvdj4jkb",
+                  "slug": "acme-labs",
+                  "name": "Acme Labs",
+                  "description": "Rockets, and the software that flies them.",
+                  "created_at": "2026-10-04T16:02:51.337Z",
+                  "member_count": 3,
+                  "base_permission": "write",
+                  "team_creation": "members"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme-labs"
+        }
+      },
       "delete": {
         "operationId": "delete_workspace",
         "tags": [
@@ -854,7 +949,7 @@
           "Workspaces"
         ],
         "summary": "Update a workspace",
-        "description": "Change a workspace's display name and description, and what every member gets on each of its repositories (base_permission: none, read, write or admin). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now.\n\nOnly the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/).",
+        "description": "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), and who may create its teams (team_creation: members or owners). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now.\n\nOnly the fields given change. `name` is the display name; the slug, the first part of the workspace's addresses, stays as it is. `base_permission` needs the `access:admin` scope as well as `workspace:admin`; [`set_base_permission`](/reference/api/access/set-base-permission/) sets it alone. `team_creation` is `members` (any member may create a team, the default) or `owners`; teams already made stay. Refused with `403` for anyone but an owner signed in as a person. Recorded in the [audit log](/guides/audit-log/). See [Workspaces](/guides/workspaces/).",
         "x-operation": "update_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "update",
@@ -890,7 +985,8 @@
                   "description": "Rockets, and the software that flies them.",
                   "created_at": "2026-10-04T16:02:51.337Z",
                   "member_count": 3,
-                  "base_permission": "write"
+                  "base_permission": "write",
+                  "team_creation": "owners"
                 }
               }
             }
@@ -970,12 +1066,21 @@
                       "admin"
                     ],
                     "description": "What every member gets on each repository: none, read, write or admin. Needs the access:admin scope as well."
+                  },
+                  "team_creation": {
+                    "type": "string",
+                    "enum": [
+                      "members",
+                      "owners"
+                    ],
+                    "description": "Who may create the workspace's teams: members (any member, the default) or owners (owners only)."
                   }
                 }
               },
               "example": {
                 "name": "Acme Labs",
-                "description": "Rockets, and the software that flies them."
+                "description": "Rockets, and the software that flies them.",
+                "team_creation": "owners"
               }
             }
           }
@@ -7516,7 +7621,7 @@
           "Teams"
         ],
         "summary": "Create a team",
-        "description": "Create a team in a workspace. Any member may create one, and becomes its first maintainer; `members` adds more people by username, each a member of the workspace. `slug` is made from the name unless you give one: lowercase letters, digits and single hyphens. `visibility` is `visible` (the default: every member sees it) or `secret` (only its people and the owners). A team under a `parent` inherits the parent's roles on repositories, and a mention or review request for the parent reaches it too; giving it a parent needs an owner, or a maintainer of the parent. Secret teams cannot be nested. People only, signed in or with a personal access token. Returns the team.\n\nYou become the team's maintainer. `slug` is made from `name` when left out (`Web & Mobile` becomes `web-mobile`), and `409` says one is taken. A workspace has at most 500 teams, nested at most 8 deep; `name` is at most 80 characters and `description` 280. A `secret` team cannot have a parent or child teams. Refused with `403` for an agent's or a workspace's token. See [Teams](/guides/teams/).",
+        "description": "Create a team in a workspace. Any member may create one, unless the workspace's `team_creation` is `owners` (then only owners may: see update_workspace), and becomes its first maintainer; `members` adds more people by username, each a member of the workspace. `slug` is made from the name unless you give one: lowercase letters, digits and single hyphens. `visibility` is `visible` (the default: every member sees it) or `secret` (only its people and the owners). A team under a `parent` inherits the parent's roles on repositories, and a mention or review request for the parent reaches it too; giving it a parent needs an owner, or a maintainer of the parent. Secret teams cannot be nested. People only, signed in or with a personal access token. Returns the team.\n\nYou become the team's maintainer. Refused with `403` for a member when the workspace's `team_creation` is `owners`. `slug` is made from `name` when left out (`Web & Mobile` becomes `web-mobile`), and `409` says one is taken. A workspace has at most 500 teams, nested at most 8 deep; `name` is at most 80 characters and `description` 280. A `secret` team cannot have a parent or child teams. Refused with `403` for an agent's or a workspace's token. See [Teams](/guides/teams/).",
         "x-operation": "create_team",
         "x-mcp-tool": "team",
         "x-mcp-action": "create",

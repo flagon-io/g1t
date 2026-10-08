@@ -8,6 +8,18 @@ import type { User } from "./identity";
 import type { Result } from "./result";
 
 export type TeamVisibility = "visible" | "secret";
+
+/**
+ * Who may create a workspace's teams: any member (the default) or its
+ * owners only. Owners change it in the workspace's settings.
+ */
+export type TeamCreation = "members" | "owners";
+
+/** Whether someone with `role` in a workspace may create its teams. */
+export function mayCreateTeams(setting: TeamCreation | null | undefined, role: "owner" | "member" | null | undefined): boolean {
+  if (!role) return false;
+  return (setting ?? "members") === "members" || role === "owner";
+}
 export type TeamRole = "member" | "maintainer";
 export type ReviewAlgorithm = "round_robin" | "load_balance";
 
@@ -149,6 +161,8 @@ export interface TeamsClient {
   listTeams(viewer: User | null, workspace: string, query?: string | null): Promise<Result<Team[]>>;
   getTeam(viewer: User | null, workspace: string, team: string): Promise<Result<Team>>;
   createTeam(actor: User, workspace: string, team: NewTeam): Promise<Result<Team>>;
+  /** Who may create the workspace's teams. Owners only. */
+  setTeamCreation(actor: User, slug: string, setting: TeamCreation): Promise<Result<TeamCreation>>;
   updateTeam(actor: User, workspace: string, team: string, changes: TeamChanges): Promise<Result<Team>>;
   deleteTeam(actor: User, workspace: string, team: string): Promise<Result<boolean>>;
   teamMembers(viewer: User | null, workspace: string, team: string, includeChildTeams?: boolean): Promise<Result<TeamMember[]>>;

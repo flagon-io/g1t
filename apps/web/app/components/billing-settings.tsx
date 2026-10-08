@@ -86,7 +86,7 @@ export function PlanSummary({
       title={
         <>
           {plan?.title ?? "g1t"}
-          <span className={`rounded-full px-2 py-0.5 text-xs ${on && status.kind !== "past_due" && status.kind !== "canceling" ? "bg-accent/15 text-accent" : status.kind === "free" || status.kind === "trial" ? "border border-line text-muted" : "bg-warn/15 text-warn"}`}>
+          <span className={`rounded-full px-2 py-0.5 text-xs ${on && status.kind !== "past_due" && status.kind !== "canceling" ? "bg-success/15 text-success" : status.kind === "free" || status.kind === "trial" ? "border border-line text-muted" : "bg-warn/15 text-warn"}`}>
             {status.label}
             {status.kind === "canceling" && subscription?.periodEnd ? `, ${new Date(subscription.periodEnd).toLocaleDateString()}` : ""}
           </span>
@@ -298,7 +298,7 @@ function AutoReload({ credit, owner }: { credit: AiCredit; owner: boolean }) {
     <div className="mt-5 rounded-lg border border-line bg-bg/40 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-sm font-medium">Auto-reload</p>
-        <span className={`rounded-full px-2 py-0.5 text-xs ${r.enabled ? "bg-accent/15 text-accent" : "border border-line text-muted"}`}>{r.enabled ? "On" : "Off"}</span>
+        <span className={`rounded-full px-2 py-0.5 text-xs ${r.enabled ? "bg-success/15 text-success" : "border border-line text-muted"}`}>{r.enabled ? "On" : "Off"}</span>
       </div>
       {r.failedAt && (
         <p className="mt-2 text-sm text-danger">
@@ -353,7 +353,7 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
             </span>
           </div>
           <div className="relative mt-1.5 h-1.5 rounded-full bg-line" role="presentation">
-            <div className={`h-full rounded-full ${spent >= of ? "bg-danger" : spent * 4 >= of * 3 ? "bg-warn" : "bg-accent"}`} style={{ width: `${Math.min(100, (spent / Math.max(1, of)) * 100)}%` }} />
+            <div className={`h-full rounded-full ${spent >= of ? "bg-danger" : spent * 4 >= of * 3 ? "bg-warn" : "bg-success"}`} style={{ width: `${Math.min(100, (spent / Math.max(1, of)) * 100)}%` }} />
             {levels.filter((l) => l < 100).map((l) => (
               <span key={l} className="absolute -top-0.5 h-2.5 w-px bg-fg/40" style={{ left: `${l}%` }} />
             ))}
@@ -498,7 +498,7 @@ export function AddOns({ plan, security, owner, enabled, error }: { plan: Featur
               <p className="text-xs text-muted">{row.about}</p>
             </div>
             <span className="tabular-nums text-muted">{row.price}</span>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${row.on ? "bg-accent/15 text-accent" : "border border-line text-muted"}`}>{row.label}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs ${row.on ? "bg-success/15 text-success" : "border border-line text-muted"}`}>{row.label}</span>
             {row.control}
           </li>
         ))}
@@ -635,7 +635,7 @@ export function InvoicesCard({ details }: { details: BillingDetails | null }) {
             <li key={invoice.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-sm">
               <span className="w-24 shrink-0 text-muted tabular-nums">{new Date(invoice.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" })}</span>
               <span className="min-w-0 flex-1 truncate">{invoice.description ?? invoice.number ?? invoice.id}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs ${invoice.status === "paid" ? "bg-accent/15 text-accent" : invoice.status === "open" ? "bg-warn/15 text-warn" : "border border-line text-muted"}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${invoice.status === "paid" ? "bg-success/15 text-success" : invoice.status === "open" ? "bg-warn/15 text-warn" : "border border-line text-muted"}`}>
                 {STATUS[invoice.status] ?? invoice.status}
               </span>
               <span className="w-20 text-right tabular-nums">{money(invoice.totalCents * 10_000)}</span>

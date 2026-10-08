@@ -16,7 +16,8 @@ use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspac
 use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
 use g1t_contracts::teams::{
     CreateTeamArgs, DeleteTeamArgs, ListTeamsArgs, RemoveTeamMemberArgs, RemoveTeamRepoArgs, ReviewAlgorithm,
-    ReviewAssignment, SetTeamMemberArgs, SetTeamRepoArgs, Team, TeamArgs, TeamRole, TeamVisibility, UpdateTeamArgs,
+    ReviewAssignment, SetTeamCreationArgs, SetTeamMemberArgs, SetTeamRepoArgs, Team, TeamArgs, TeamCreation, TeamRole,
+    TeamVisibility, UpdateTeamArgs,
     UserTeamsArgs,
 };
 use g1t_contracts::security::{
@@ -87,6 +88,7 @@ impl Services {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Whoami,
+    GetWorkspace,
     CreateWorkspace,
     DeleteWorkspace,
     UpdateWorkspace,
@@ -623,8 +625,9 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 204] = [
+    pub const ALL: [Op; 205] = [
         Op::Whoami,
+        Op::GetWorkspace,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
         Op::UpdateWorkspace,
@@ -838,6 +841,7 @@ impl Op {
     pub fn name(self) -> &'static str {
         match self {
             Op::Whoami => "whoami",
+            Op::GetWorkspace => "get_workspace",
             Op::CreateWorkspace => "create_workspace",
             Op::DeleteWorkspace => "delete_workspace",
             Op::UpdateWorkspace => "update_workspace",
@@ -1053,8 +1057,11 @@ impl Op {
             Op::DeleteWorkspace => {
                 "Delete a workspace and everything in it. Owners only, signed in as a person, and confirm must be the workspace's slug. Billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once and its plan ends. Its repositories, projects and apps go with it at once, nobody can reach it, and its access tokens stop working. It is kept for 30 days, when g1t's support can restore it as it was; then it is purged, with its webhooks, integrations and workspace secrets. Its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again once it is purged. Some workspaces, such as Flagon's, can never be deleted."
             }
+            Op::GetWorkspace => {
+                "One workspace you belong to: its name, description and member count, what every member gets on each of its repositories (base_permission), and who may create its teams (team_creation: members or owners). Members only."
+            }
             Op::UpdateWorkspace => {
-                "Change a workspace's display name and description, and what every member gets on each of its repositories (base_permission: none, read, write or admin). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now."
+                "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), and who may create its teams (team_creation: members or owners). Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now."
             }
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
@@ -1436,7 +1443,7 @@ impl Op {
                 "One team, by its slug, as list_teams describes it. A secret team is found only by its own people and the workspace's owners; anyone else is told it does not exist. Members of the workspace only."
             }
             Op::CreateTeam => {
-                "Create a team in a workspace. Any member may create one, and becomes its first maintainer; `members` adds more people by username, each a member of the workspace. `slug` is made from the name unless you give one: lowercase letters, digits and single hyphens. `visibility` is `visible` (the default: every member sees it) or `secret` (only its people and the owners). A team under a `parent` inherits the parent's roles on repositories, and a mention or review request for the parent reaches it too; giving it a parent needs an owner, or a maintainer of the parent. Secret teams cannot be nested. People only, signed in or with a personal access token. Returns the team."
+                "Create a team in a workspace. Any member may create one, unless the workspace's `team_creation` is `owners` (then only owners may: see update_workspace), and becomes its first maintainer; `members` adds more people by username, each a member of the workspace. `slug` is made from the name unless you give one: lowercase letters, digits and single hyphens. `visibility` is `visible` (the default: every member sees it) or `secret` (only its people and the owners). A team under a `parent` inherits the parent's roles on repositories, and a mention or review request for the parent reaches it too; giving it a parent needs an owner, or a maintainer of the parent. Secret teams cannot be nested. People only, signed in or with a personal access token. Returns the team."
             }
             Op::UpdateTeam => {
                 "Change a team's `name`, `slug`, `description`, `visibility`, `parent` (an empty string takes it out from under its parent), `notify` or `review_assignment`. Only the fields given change; give at least one. A new slug changes how it is mentioned, @workspace/slug. Owners of the workspace and the team's maintainers. People only. Returns the team as it is now."
@@ -1512,6 +1519,7 @@ impl Op {
         let states = json!({ "type": "string", "enum": ["open", "closed"] });
         match self {
             Op::Whoami => object(json!({}), &[]),
+            Op::GetWorkspace => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::CreateWorkspace => object(
                 json!({
                     "slug": {
@@ -1620,6 +1628,11 @@ impl Op {
                         "type": "string",
                         "enum": g1t_contracts::access::BasePermission::ALL.map(|base| base.as_str()),
                         "description": "What every member gets on each repository: none, read, write or admin. Needs the access:admin scope as well.",
+                    },
+                    "team_creation": {
+                        "type": "string",
+                        "enum": g1t_contracts::teams::TeamCreation::ALL.map(|setting| setting.as_str()),
+                        "description": "Who may create the workspace's teams: members (any member, the default) or owners (owners only).",
                     },
                 }),
                 &["workspace"],
@@ -2834,6 +2847,7 @@ impl Op {
         !matches!(
             self,
             Op::Whoami
+                | Op::GetWorkspace
                 | Op::CreateWorkspace
                 | Op::DeleteWorkspace
                 | Op::UpdateWorkspace
@@ -3080,6 +3094,16 @@ impl Op {
 
         match self {
             Op::Whoami => ok(&actor()),
+            Op::GetWorkspace => {
+                // Its settings are its members' business.
+                if actor().role_in(&workspace()).is_none() {
+                    return failed(FailureCode::NotFound, "Workspace not found.");
+                }
+                match g1t_kit::call::<_, Option<Workspace>>(identity, "get_workspace", &json!({ "slug": workspace() })).await? {
+                    Some(found) => ok(&found),
+                    None => failed(FailureCode::NotFound, "Workspace not found."),
+                }
+            }
             Op::CreateWorkspace => {
                 pass(
                     identity,
@@ -3189,9 +3213,16 @@ impl Op {
                         None => return failed(FailureCode::Invalid, "base_permission is none, read, write or admin."),
                     },
                 };
+                let creation = match input.get("team_creation").filter(|value| !value.is_null()) {
+                    None => None,
+                    Some(value) => match value.as_str().and_then(TeamCreation::parse) {
+                        Some(setting) => Some(setting),
+                        None => return failed(FailureCode::Invalid, "team_creation is members or owners."),
+                    },
+                };
                 let (name, description) = (optional_text(input, "name"), optional_text(input, "description"));
-                if base.is_none() && name.is_none() && description.is_none() {
-                    return failed(FailureCode::Invalid, "Give name, description or base_permission to change.");
+                if base.is_none() && creation.is_none() && name.is_none() && description.is_none() {
+                    return failed(FailureCode::Invalid, "Give name, description, base_permission or team_creation to change.");
                 }
                 let found = || async {
                     g1t_kit::call::<_, Option<Workspace>>(identity, "get_workspace", &json!({ "slug": workspace() })).await
@@ -3224,6 +3255,22 @@ impl Op {
                             actor: actor(),
                             slug: workspace(),
                             base_permission: base,
+                            surface: Some(services.audit.surface),
+                        },
+                    )
+                    .await?;
+                    if let Outcome::Fail(failure) = set {
+                        return Ok(Outcome::Fail(failure));
+                    }
+                }
+                if let Some(setting) = creation {
+                    let set: Outcome<TeamCreation> = call(
+                        identity,
+                        "set_team_creation",
+                        &SetTeamCreationArgs {
+                            actor: actor(),
+                            slug: workspace(),
+                            team_creation: setting,
                             surface: Some(services.audit.surface),
                         },
                     )

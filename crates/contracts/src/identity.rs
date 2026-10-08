@@ -302,6 +302,9 @@ pub struct Workspace {
     /// Admin. See [`crate::access`].
     #[serde(default)]
     pub base_permission: crate::access::BasePermission,
+    /// Who may create its teams. See [`crate::teams::TeamCreation`].
+    #[serde(default)]
+    pub team_creation: crate::teams::TeamCreation,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

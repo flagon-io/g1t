@@ -510,7 +510,7 @@ for people: an agent's or a workspace's token cannot make them.
 | --- | --- | --- | --- |
 | [`list`](/reference/api/teams/list-teams/) | The workspace's teams you can see, yours first; `query` narrows by name or slug. Members only. | `workspace` | `workspace:read` |
 | [`get`](/reference/api/teams/get-team/) | One team: its `visibility`, `parent`, `notify`, `review_assignment`, counts, your `viewer_role` and whether you may change it (`can_manage`). | `workspace`, `team` | `workspace:read` |
-| [`create`](/reference/api/teams/create-team/) | Create a team; you become its maintainer. `slug` is made from `name` unless given; `visibility`, `parent`, `notify`, and `members` to add by username. | `workspace`, `name` | `workspace:admin` |
+| [`create`](/reference/api/teams/create-team/) | Create a team; you become its maintainer. Members may, unless the workspace's `team_creation` is `owners`. `slug` is made from `name` unless given; `visibility`, `parent`, `notify`, and `members` to add by username. | `workspace`, `name` | `workspace:admin` |
 | [`update`](/reference/api/teams/update-team/) | Change its `name`, `slug`, `description`, `visibility`, `parent` (`""` for none), `notify` or `review_assignment`. Owners and its maintainers. | `workspace`, `team` | `workspace:admin` |
 | [`delete`](/reference/api/teams/delete-team/) | Delete it; its child teams move up to its parent, and the roles it gave go. Owners and its maintainers. | `workspace`, `team` | `workspace:admin` |
 | [`list_members`](/reference/api/teams/list-team-members/) | Its people and their `role` (`member` or `maintainer`); with `include_child_teams`, its child teams' people too, each with `via`. | `workspace`, `team` | `workspace:read` |
@@ -532,8 +532,9 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
+| [`get`](/reference/api/workspaces/get-workspace/) | One workspace you belong to: its name, description and member count, its `base_permission` and `team_creation`. Members only. | `workspace` | `workspace:read` |
 | [`create`](/reference/api/workspaces/create-workspace/) | Create a workspace. | `slug` | `workspace:admin` |
-| [`update`](/reference/api/workspaces/update-workspace/) | Change its display name and description, and with the `access:admin` scope too, its `base_permission`. Only the fields given change; the slug never does. Owners only. | `workspace` | `workspace:admin` |
+| [`update`](/reference/api/workspaces/update-workspace/) | Change its display name and description, who may create its teams (`team_creation`: `members` or `owners`), and with the `access:admin` scope too, its `base_permission`. Only the fields given change; the slug never does. Owners only. | `workspace` | `workspace:admin` |
 | [`delete`](/reference/api/workspaces/delete-workspace/) | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | `workspace`, `confirm` | `workspace:admin` |
 | [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
 | [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. | `workspace`, `email` | `workspace:admin` |

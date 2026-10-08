@@ -31,7 +31,7 @@ export function statusTitle(report: Pick<StatusReport, "overall"> | null | undef
 export function dotClass(state: string | null | undefined): string {
   switch (state) {
     case "up":
-      return "bg-accent";
+      return "bg-success";
     case "degraded":
       return "bg-warn";
     case "down":

@@ -28,7 +28,7 @@ export function Highlighted({ parts, className }: { parts: Segment[]; className?
 function stateIcon(hit: SiteHit): ReactNode {
   if (hit.kind === "issue") {
     return hit.state === "open" ? (
-      <CircleDot size={15} className="text-accent" aria-label="Open" />
+      <CircleDot size={15} className="text-success" aria-label="Open" />
     ) : (
       <CircleCheck size={15} className="text-merged" aria-label="Closed" />
     );
@@ -41,7 +41,7 @@ function stateIcon(hit: SiteHit): ReactNode {
     case "draft":
       return <GitPullRequestDraft size={15} className="text-faint" aria-label="Draft" />;
     default:
-      return <GitPullRequest size={15} className="text-accent" aria-label="Open" />;
+      return <GitPullRequest size={15} className="text-success" aria-label="Open" />;
   }
 }
 

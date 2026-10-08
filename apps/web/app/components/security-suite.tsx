@@ -289,7 +289,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
 
 function On({ on, children }: { on: boolean; children?: ReactNode }) {
   return on ? (
-    <span className="inline-flex items-center gap-1 text-accent">
+    <span className="inline-flex items-center gap-1 text-success">
       <CircleCheck size={13} aria-hidden="true" />
       {children ?? "On"}
     </span>
@@ -337,7 +337,7 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
                 </td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap">
                   {open === 0 ? (
-                    <span className="inline-flex items-center gap-1 text-accent">
+                    <span className="inline-flex items-center gap-1 text-success">
                       <ShieldCheck size={13} /> None
                     </span>
                   ) : (
@@ -356,7 +356,7 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
                 </td>
                 <td className="px-3 py-2.5 text-xs">
                   {repo.codeScanningAt ? (
-                    <span className="text-accent">
+                    <span className="text-success">
                       <TimeAgo at={repo.codeScanningAt} />
                     </span>
                   ) : (
@@ -413,7 +413,7 @@ export function BypassForm({ id, action, request }: { id: string; action: string
   const [reason, setReason] = useState("");
   if (fetcher.data?.ok) {
     return (
-      <p className="rounded-md border border-accent/30 bg-accent/5 px-3 py-2 text-sm text-accent">
+      <p className="rounded-md border border-success/30 bg-success/5 px-3 py-2 text-sm text-success">
         {fetcher.data.requested
           ? "Asked. The workspace's owners and the repository's admins were told; push again once one approves."
           : "Bypassed. Push again and it goes through."}
@@ -470,7 +470,7 @@ function TestResult({ text, found }: { text: string; found: [number, number] | n
   const chars = [...text];
   return (
     <li className="flex items-start gap-2 font-mono text-xs break-all">
-      <CircleCheck size={13} className="mt-0.5 shrink-0 text-accent" />
+      <CircleCheck size={13} className="mt-0.5 shrink-0 text-success" />
       <span>
         {chars.slice(0, found[0]).join("")}
         <mark className="rounded-sm bg-accent/25 text-fg">{chars.slice(found[0], found[1]).join("")}</mark>
@@ -586,7 +586,7 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
         )}
       </div>
       {save.data?.error && <p className="text-sm text-danger">{save.data.error}</p>}
-      {save.data?.ok && (saved ? <p className="text-sm text-accent">Saved{saved.pattern.state === "published" ? " and published: the history is scanned again for it" : " as a draft"}.</p> : <p className="text-sm text-accent">Deleted. The alerts it found stay.</p>)}
+      {save.data?.ok && (saved ? <p className="text-sm text-success">Saved{saved.pattern.state === "published" ? " and published: the history is scanned again for it" : " as a draft"}.</p> : <p className="text-sm text-success">Deleted. The alerts it found stay.</p>)}
       {dry.data?.error && <p className="text-sm text-danger">{dry.data.error}</p>}
       {dry.data?.dryRun && <DryRunResults dryRun={dry.data.dryRun} />}
     </div>

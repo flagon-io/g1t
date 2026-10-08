@@ -236,8 +236,8 @@ function InviteOnly({
       <section id="request" className="scroll-mt-24 border-t border-line pt-8">
         <h2 className="text-sm font-medium">Request access</h2>
         {requested ? (
-          <p className="mt-3 flex items-start gap-2 rounded-md border border-accent/40 bg-surface p-3 text-sm" role="status">
-            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent" />
+          <p className="mt-3 flex items-start gap-2 rounded-md border border-success/40 bg-surface p-3 text-sm" role="status">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
             <span>
               You are on the list, and your invite comes to that address when a place opens. The first time an address
               asks, we email it to confirm.

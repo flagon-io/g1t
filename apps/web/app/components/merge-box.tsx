@@ -44,7 +44,7 @@ type Segment = { text: string; className: string };
 const ANSI_COLOURS: Record<number, string> = {
   30: "text-faint",
   31: "text-danger",
-  32: "text-accent",
+  32: "text-success",
   33: "text-warn",
   34: "text-info",
   35: "text-merged",
@@ -52,7 +52,7 @@ const ANSI_COLOURS: Record<number, string> = {
   37: "text-fg",
   90: "text-faint",
   91: "text-danger",
-  92: "text-accent",
+  92: "text-success",
   93: "text-warn",
   94: "text-info",
   95: "text-merged",
@@ -140,7 +140,7 @@ export function LogViewer({ text }: { text: string }) {
             setTimeout(() => setCopied(false), 1500);
           }}
         >
-          {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
+          {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
         </button>
       </Hint>
       {cut && (
@@ -181,7 +181,7 @@ function seconds(ms: number): string {
 type Standing = "passed" | "failed" | "running" | "queued" | "skipped";
 
 function StandingIcon({ standing, size = 15 }: { standing: Standing; size?: number }) {
-  if (standing === "passed") return <CircleCheck size={size} className="shrink-0 text-accent" aria-label="Passed" />;
+  if (standing === "passed") return <CircleCheck size={size} className="shrink-0 text-success" aria-label="Passed" />;
   if (standing === "failed") return <CircleX size={size} className="shrink-0 text-danger" aria-label="Failed" />;
   if (standing === "running")
     return <LoaderCircle size={size} className="shrink-0 animate-spin text-warn" aria-label="Running" />;
@@ -397,7 +397,7 @@ export function ChecksSection({
           ) : standing === "running" ? (
             <LoaderCircle size={16} className="animate-spin text-warn" />
           ) : (
-            <CircleCheck size={16} className="text-accent" />
+            <CircleCheck size={16} className="text-success" />
           )}
         </span>
         <div className="min-w-0 grow">
@@ -762,7 +762,7 @@ export function MergeabilityRow({
   if (mergeable === "clean") {
     return (
       <div className="flex gap-3 px-4 py-3 text-sm">
-        <CircleCheck size={16} className="mt-0.5 shrink-0 text-accent" />
+        <CircleCheck size={16} className="mt-0.5 shrink-0 text-success" />
         <p className="font-medium">
           This branch has no conflicts with <span className="font-mono">{defaultBranch}</span>
         </p>
@@ -845,7 +845,7 @@ export function CatchUpProgress({
   }
   return (
     <div className="flex gap-3 px-4 py-3 text-sm">
-      <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-merged" />
+      <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-accent" />
       <div className="min-w-0 grow">
         <p className="font-medium">{catchUpTitle(update.reason, defaultBranch)}</p>
         <p className="mt-0.5 text-muted">
@@ -862,7 +862,7 @@ export function CatchUpProgress({
         )}
         <Hint label={run?.step}>
           <p className="mt-2 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line">
-            <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
+            <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" />
             {run?.step ?? (run ? "Starting a sandbox…" : "Waiting for a sandbox…")}
           </p>
         </Hint>

@@ -88,7 +88,7 @@ export function RolesTable() {
                 {REPO_ROLES.map((role) => (
                   <td key={role} className="px-1 py-2 text-center">
                     {allows(role, row.capability) ? (
-                      <Check size={15} aria-label="Yes" className={`inline ${owners ? "text-muted" : "text-accent"}`} />
+                      <Check size={15} aria-label="Yes" className={`inline ${owners ? "text-muted" : "text-success"}`} />
                     ) : (
                       <Minus size={13} aria-label="No" className="inline text-line-strong" />
                     )}

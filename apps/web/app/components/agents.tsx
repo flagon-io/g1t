@@ -84,10 +84,10 @@ const STATUS: Record<AgentRunStatus, { label: string; tone: string; icon: ReactN
   queued: { label: "Starting", tone: "text-muted border-line", icon: <Clock size={12} /> },
   running: {
     label: "Running",
-    tone: "text-merged border-merged/40 bg-merged/10",
+    tone: "text-accent border-accent/40 bg-accent/10",
     icon: <Loader2 size={12} className="animate-spin" />,
   },
-  succeeded: { label: "Done", tone: "text-accent border-accent/40 bg-accent/10", icon: <Bot size={12} /> },
+  succeeded: { label: "Done", tone: "text-success border-success/40 bg-success/10", icon: <Bot size={12} /> },
   failed: { label: "Failed", tone: "text-danger border-danger/40 bg-danger/10", icon: <TriangleAlert size={12} /> },
   stopped: { label: "Stopped", tone: "text-warn border-warn/40 bg-warn/10", icon: <OctagonX size={12} /> },
 };
@@ -195,7 +195,7 @@ export function MessageRun({ run }: { run: AgentRun }) {
             className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
           />
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
-          {fetcher.data?.ok && fetcher.data.notice && <p className="text-sm text-accent">{fetcher.data.notice}</p>}
+          {fetcher.data?.ok && fetcher.data.notice && <p className="text-sm text-success">{fetcher.data.notice}</p>}
           <div className="flex justify-end">
             <SubmitButton
               fetcher={fetcher}
@@ -247,7 +247,7 @@ export function RunCard({ run, member, showRepo }: { run: AgentRun; member: bool
   return (
     <li
       className={`rounded-xl border bg-surface p-4 transition-colors hover:border-line-strong ${
-        active ? "border-merged/30" : "border-line"
+        active ? "border-accent/30" : "border-line"
       }`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -262,7 +262,7 @@ export function RunCard({ run, member, showRepo }: { run: AgentRun; member: bool
       {run.step && (
         <Hint label={inlinePlain(shownStep(run.step))}>
           <p className={`mt-2.5 truncate font-mono text-xs ${active ? "text-fg/85" : "text-muted"}`}>
-            {active && <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
+            {active && <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" />}
             <InlineMarkdown text={shownStep(run.step)} />
           </p>
         </Hint>
@@ -356,7 +356,7 @@ export function useRuns(
 
 /** "Agent confidence: Low — tests not added, 3 revisions", and what the agent said it was unsure of. */
 export function ConfidenceLine({ confidence }: { confidence: Confidence }) {
-  const tone = confidence.level === "low" ? "text-danger" : confidence.level === "medium" ? "text-warn" : "text-accent";
+  const tone = confidence.level === "low" ? "text-danger" : confidence.level === "medium" ? "text-warn" : "text-success";
   const level = { low: "Low", medium: "Medium", high: "High" }[confidence.level];
   return (
     <div className="mt-3 text-xs leading-5">
@@ -409,7 +409,7 @@ export function AgentPanel({
   return (
     <section
       aria-label="Agent"
-      className={`mt-4 rounded-2xl bg-surface p-4 ring-1 ${active ? "ring-merged/40" : "ring-line"}`}
+      className={`mt-4 rounded-2xl bg-surface p-4 ring-1 ${active ? "ring-accent/40" : "ring-line"}`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Avatar name={current.agent} size={24} />
@@ -444,7 +444,7 @@ export function AgentPanel({
       {current.step && (
         <Hint label={inlinePlain(shownStep(current.step))}>
           <p className="mt-3 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line">
-            {active && <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
+            {active && <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-accent align-middle" />}
             <InlineMarkdown text={shownStep(current.step)} />
           </p>
         </Hint>
@@ -484,7 +484,7 @@ export function AgentBadge({ run }: { run: AgentRun | undefined }) {
   if (!run) return null;
   return (
     <Hint label={run.step ? inlinePlain(shownStep(run.step)) : undefined}>
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-merged/40 bg-merged/10 px-2 py-0.5 text-xs text-merged">
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-merged/40 bg-accent/10 px-2 py-0.5 text-xs text-merged">
         <Loader2 size={11} className="animate-spin" />
         {RUN_KIND_LABEL[run.kind]}
       </span>

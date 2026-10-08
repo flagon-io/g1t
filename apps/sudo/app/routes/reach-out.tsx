@@ -83,11 +83,11 @@ function Pill({ to, active, children, count }: { to: string; active: boolean; ch
       to={to}
       aria-current={active ? "page" : undefined}
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap transition-colors ${
-        active ? "border-merged/50 bg-merged/10 text-merged" : "border-line text-muted hover:border-line-strong hover:text-fg"
+        active ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:border-line-strong hover:text-fg"
       }`}
     >
       {children}
-      {count != null && <span className={`tabular ${active ? "text-merged/80" : "text-faint"}`}>{count}</span>}
+      {count != null && <span className={`tabular ${active ? "text-accent/80" : "text-faint"}`}>{count}</span>}
     </Link>
   );
 }

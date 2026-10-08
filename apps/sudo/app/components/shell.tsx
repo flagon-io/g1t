@@ -92,7 +92,7 @@ function CountPill({ count, label }: { count: number; label: string }) {
   return (
     <span
       title={label}
-      className="shrink-0 rounded-full bg-merged/15 px-1.5 py-px text-[0.6875rem] font-semibold text-merged tabular-nums ring-1 ring-merged/30"
+      className="shrink-0 rounded-full bg-accent/15 px-1.5 py-px text-[0.6875rem] font-semibold text-accent tabular-nums ring-1 ring-accent/30"
     >
       {count > 99 ? "99+" : count}
       <span className="sr-only"> {label}</span>
@@ -127,7 +127,7 @@ function TopLink({ item, pathname, counts }: { item: NavItem; pathname: string; 
         current ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
       }`}
     >
-      <NavGlyph icon={item.icon} className={`shrink-0 ${current ? "text-merged" : "text-faint group-hover:text-muted"}`} />
+      <NavGlyph icon={item.icon} className={`shrink-0 ${current ? "text-accent" : "text-faint group-hover:text-muted"}`} />
       <span className="min-w-0 grow truncate">{item.label}</span>
       <CountPill count={countFor([item], counts)} label={countLabel(item)} />
       {item.soon && <SoonPill />}
@@ -145,7 +145,7 @@ function SubLink({ item, pathname, counts }: { item: NavItem; pathname: string; 
       aria-current={current ? "page" : undefined}
       className={`relative flex h-8 items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] transition-colors ${
         current
-          ? "bg-raised font-medium text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-merged"
+          ? "bg-raised font-medium text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-accent"
           : item.soon
             ? "text-faint hover:bg-raised/60 hover:text-muted"
             : "text-muted hover:bg-raised/60 hover:text-fg"
@@ -240,7 +240,7 @@ function SignedIn({ email }: { email: string | null | undefined }) {
     <div className="border-t border-line bg-raised/40 px-4 py-3">
       {email && (
         <p title="Signed in through Cloudflare Access" className="flex items-center gap-2 text-[0.8125rem]">
-          <ShieldCheck size={15} className="shrink-0 text-merged" />
+          <ShieldCheck size={15} className="shrink-0 text-accent" />
           <span className="min-w-0 truncate font-mono text-xs text-fg-soft">{email}</span>
         </p>
       )}

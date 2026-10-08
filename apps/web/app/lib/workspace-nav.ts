@@ -1,64 +1,99 @@
 /**
- * A workspace's own page at `g1t.sh/<workspace>`: its header, and tabs for
- * what it has (Overview, Projects, Packages, Teams, People, Insights and,
- * for owners, Settings). The sidebar is always the current workspace's;
- * this page is where the workspace itself is shown, to members and to
- * everyone else.
+ * A workspace's pages and where the sidebar finds them. `g1t.sh/<workspace>`
+ * is the workspace's own page, its header and overview; Projects, Packages,
+ * Teams, People, Insights and Settings are pages of their own under `-/`,
+ * each reached from the sidebar and each with its own heading. The sidebar
+ * is always the current workspace's.
  */
 
-export type WorkspaceTabKey = "overview" | "projects" | "packages" | "teams" | "people" | "insights" | "settings";
+/** The workspace's pages a person moves between, and which the sidebar lists. */
+export type WorkspacePageKey = "overview" | "projects" | "packages" | "teams" | "people" | "insights";
 
-export type WorkspaceTab = {
-  key: WorkspaceTabKey;
-  label: string;
-  to: string;
-  /** Shown beside the label; left out when unknown. */
-  count?: number | null;
-  /** Not built yet: its tab opens what it will be. */
-  soon?: boolean;
-};
-
-/** The workspace's pages under `-/` that are drawn under its tabs. */
-export const TAB_PAGES = ["projects", "packages", "teams", "people", "insights"] as const;
-
-/** Tabs whose pages say what they will be, until they are built. */
-export const SOON_TABS = new Set<WorkspaceTabKey>(["insights"]);
+/** Those pages under `-/`: the overview is the workspace's own address. */
+export const WORKSPACE_PAGES = ["projects", "packages", "teams", "people", "insights"] as const;
 
 /**
- * The tabs, in order. People, Teams and Insights are for members, and
- * Settings for owners; everyone sees the rest.
+ * Which of those pages a path is, under `/<workspace>`: null for the
+ * workspace's other pages (settings, Agent fleet, Usage and the rest), for
+ * one package's or one team's page, and for anything else.
  */
-export function workspaceTabs(
-  slug: string,
-  options: { member: boolean; owner: boolean; projects?: number | null; people?: number | null },
-): WorkspaceTab[] {
-  const base = `/${slug}`;
-  const tabs: (WorkspaceTab | false)[] = [
-    { key: "overview", label: "Overview", to: base },
-    { key: "projects", label: "Projects", to: `${base}/-/projects`, count: options.projects ?? null },
-    { key: "packages", label: "Packages", to: `${base}/-/packages` },
-    options.member && { key: "teams", label: "Teams", to: `${base}/-/teams` },
-    options.member && { key: "people", label: "People", to: `${base}/-/people`, count: options.people ?? null },
-    options.member && { key: "insights", label: "Insights", to: `${base}/-/insights`, soon: true },
-    options.owner && { key: "settings", label: "Settings", to: `${base}/-/settings` },
-  ];
-  return tabs.filter((tab): tab is WorkspaceTab => tab !== false);
-}
-
-/**
- * Which tab a path is, under `/<workspace>`: null for the workspace's other
- * pages (its settings, Agent fleet, Usage and the rest), which have a page
- * heading of their own, and for one package's page.
- */
-export function workspaceTab(pathname: string, slug: string): WorkspaceTabKey | null {
-  const parts = pathname.split("/").filter(Boolean);
+export function workspacePage(pathname: string, slug: string): WorkspacePageKey | null {
+  const parts = pagePath(pathname).split("/").filter(Boolean);
   if (parts[0]?.toLowerCase() !== slug.toLowerCase()) return null;
   if (parts.length === 1) return "overview";
   if (parts[1] !== "-" || parts.length !== 3) return null;
-  return (TAB_PAGES as readonly string[]).includes(parts[2]!) ? (parts[2] as WorkspaceTabKey) : null;
+  return (WORKSPACE_PAGES as readonly string[]).includes(parts[2]!) ? (parts[2] as WorkspacePageKey) : null;
 }
 
-/** `?tab=` as people write it, from habit: the tab it means. */
+/**
+ * The sidebar's rows. The first two are the person's own, whichever
+ * workspace they are in; the rest are the workspace's.
+ */
+export type SidebarKey =
+  | "mission"
+  | "inbox"
+  | "overview"
+  | "projects"
+  | "agents"
+  | "context"
+  | "memory"
+  | "security"
+  | "packages"
+  | "insights"
+  | "people"
+  | "teams"
+  | "usage"
+  | "support"
+  | "settings";
+
+/** The workspace's pages that its Settings row drills into. */
+export const SETTINGS_PAGES = [
+  "settings",
+  "repositories",
+  "tokens",
+  "guardrails",
+  "secrets",
+  "runners",
+  "integrations",
+  "webhooks",
+  "billing",
+  "audit",
+] as const;
+
+/** Pages under `-/` whose sidebar row has another name. */
+const ROW_OF: Record<string, SidebarKey> = {
+  projects: "projects",
+  agents: "agents",
+  context: "context",
+  memory: "memory",
+  security: "security",
+  packages: "packages",
+  insights: "insights",
+  people: "people",
+  teams: "teams",
+  usage: "usage",
+};
+
+/**
+ * The sidebar row that is current on a path: one row at most, so the
+ * sidebar always says where you are. `slug` is the workspace the sidebar
+ * is about; another workspace's pages light nothing.
+ */
+export function sidebarCurrent(pathname: string, slug: string | null): SidebarKey | null {
+  const path = pagePath(pathname);
+  if (path === "/") return "mission";
+  if (path === "/inbox" || path.startsWith("/inbox/")) return "inbox";
+  if (path === "/support" || path.startsWith("/support/")) return "support";
+  const parts = path.split("/").filter(Boolean);
+  if (!slug || parts[0]?.toLowerCase() !== slug.toLowerCase()) return null;
+  if (parts.length === 1) return "overview";
+  if (parts[1] !== "-") return null;
+  const page = parts[2] ?? "";
+  if ((SETTINGS_PAGES as readonly string[]).includes(page)) return "settings";
+  return ROW_OF[page] ?? null;
+}
+
+/** `?tab=` as people write it, from the tabs the workspace page once had: the page it means. */
 const TAB_WORDS: Record<string, string> = {
   overview: "",
   projects: "-/projects",
@@ -69,6 +104,7 @@ const TAB_WORDS: Record<string, string> = {
   members: "-/people",
   teams: "-/teams",
   insights: "-/insights",
+  settings: "-/settings",
 };
 
 /** Workspace pages that moved, by their old name under `-/`. */
@@ -87,7 +123,7 @@ export function pagePath(pathname: string): string {
 /**
  * Where an old address of a workspace's pages is now, keeping its query;
  * null when it has not moved. `/<workspace>?tab=projects` and the like
- * open that tab.
+ * open that page.
  */
 export function workspaceRedirect(pathname: string, search = ""): string | null {
   // A click asks for the page's data at `<path>.data?_routes=…`; the page

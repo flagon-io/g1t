@@ -23,7 +23,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 function Verdict({ passed, text }: { passed: boolean; text: string }) {
   return (
-    <p className={`flex items-center gap-1.5 text-sm ${passed ? "text-accent" : "text-danger"}`}>
+    <p className={`flex items-center gap-1.5 text-sm ${passed ? "text-success" : "text-danger"}`}>
       {passed ? <CircleCheck size={15} /> : <CircleAlert size={15} />}
       {text}
     </p>

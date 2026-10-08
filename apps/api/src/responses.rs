@@ -105,7 +105,7 @@ fn sample(op: Op, example: &Value) -> Value {
         sent["codeOwners"] = code_owners.clone();
     }
     match op {
-        Op::CreateWorkspace | Op::UpdateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
+        Op::GetWorkspace | Op::CreateWorkspace | Op::UpdateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
         Op::ListRepos => through::<Vec<repos::Repo>>(op, sent),
         Op::Search => through::<search::SearchResults>(op, sent),
         Op::GetRepo

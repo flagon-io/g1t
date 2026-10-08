@@ -340,7 +340,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
             <Section id="terms" title="Terms" description={`Charged on ${billedTo.name}'s terms while it pays for this workspace.`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <TermsBadge terms={terms} />
-                <Link to={`/enterprises/${encodeURIComponent(billedTo.id)}#terms`} className="text-sm text-merged hover:underline hover:underline-offset-4">
+                <Link to={`/enterprises/${encodeURIComponent(billedTo.id)}#terms`} className="text-sm text-accent hover:underline hover:underline-offset-4">
                   Change them on {billedTo.name}
                 </Link>
               </div>
@@ -376,7 +376,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
                 billedTo ? (
                   <>
                     Changes about this workspace in {billedTo.name}'s log.{" "}
-                    <Link to={`/enterprises/${encodeURIComponent(billedTo.id)}`} className="text-merged hover:underline">
+                    <Link to={`/enterprises/${encodeURIComponent(billedTo.id)}`} className="text-accent hover:underline">
                       Full log
                     </Link>
                   </>
@@ -484,7 +484,7 @@ function BilledToSection({
       ) : enterprises.length === 0 ? (
         <p className="text-sm text-muted">
           Itself. There are no enterprises to move it onto yet;{" "}
-          <Link to="/enterprises/new" className="text-merged hover:underline hover:underline-offset-4">
+          <Link to="/enterprises/new" className="text-accent hover:underline hover:underline-offset-4">
             create one
           </Link>
           .
@@ -608,7 +608,7 @@ function GoodwillForm({ overage, cap, pathname, error }: { overage: Overage | nu
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted">g1t's margin, returned</dt>
-            <dd className="tabular text-accent">{usd(overage.goodwill.marginMicros)}</dd>
+            <dd className="tabular text-success">{usd(overage.goodwill.marginMicros)}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted">Real cost absorbed</dt>

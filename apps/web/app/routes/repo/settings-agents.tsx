@@ -52,7 +52,7 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
     <div className="max-w-4xl">
       <RepoSettingsHeading base={base} />
       <div className="min-h-6">
-        {actionData?.notice && <p className="text-sm text-accent">{actionData.notice}</p>}
+        {actionData?.notice && <p className="text-sm text-success">{actionData.notice}</p>}
         <ErrorText>{actionData?.error ?? null}</ErrorText>
       </div>
 

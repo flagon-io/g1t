@@ -102,7 +102,7 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
       {before && (
         <p className="mt-4 text-xs text-faint">
           Changes before <When at={before} time />.{" "}
-          <Link to={auditHref({ by, action })} className="text-merged hover:underline">
+          <Link to={auditHref({ by, action })} className="text-accent hover:underline">
             Back to the newest
           </Link>
         </p>
@@ -130,7 +130,7 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
                 </p>
                 <div className="min-w-0 grow">
                   <p className="flex flex-wrap items-center gap-x-2 text-sm">
-                    <span className={`font-medium ${stripe ? "text-info" : "text-merged"}`}>{actionLabel(entry.action)}</span>
+                    <span className={`font-medium ${stripe ? "text-info" : "text-accent"}`}>{actionLabel(entry.action)}</span>
                     {path && (
                       <Link to={path} className="inline-flex items-center gap-0.5 text-fg-soft hover:text-fg hover:underline hover:underline-offset-4">
                         <span className={entry.account.startsWith("ws_") ? "font-mono text-xs" : ""}>{accountName(entry.account, nameMap)}</span>

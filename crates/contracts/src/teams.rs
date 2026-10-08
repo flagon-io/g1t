@@ -33,7 +33,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::User;
+use crate::{Role, User};
 use crate::access::RepoRole;
 use crate::repos::RepoPath;
 
@@ -74,6 +74,57 @@ impl TeamVisibility {
             _ => None,
         }
     }
+}
+
+/// Who may create a workspace's teams: a workspace setting, changed by
+/// its owners (`set_team_creation`). Stored in `workspaces.team_creation`,
+/// NULL for the default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamCreation {
+    /// Any member with a confirmed email address.
+    #[default]
+    Members,
+    /// The workspace's owners only.
+    Owners,
+}
+
+impl TeamCreation {
+    pub const ALL: [TeamCreation; 2] = [TeamCreation::Members, TeamCreation::Owners];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeamCreation::Members => "members",
+            TeamCreation::Owners => "owners",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<TeamCreation> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "members" | "member" | "any" => Some(TeamCreation::Members),
+            "owners" | "owner" => Some(TeamCreation::Owners),
+            _ => None,
+        }
+    }
+
+    /// Whether someone with `role` in the workspace may create a team.
+    pub fn allows(self, role: Role) -> bool {
+        match self {
+            TeamCreation::Members => true,
+            TeamCreation::Owners => role == Role::Owner,
+        }
+    }
+}
+
+/// `set_team_creation`: who may create the workspace's teams. Owners
+/// only, as a person. Returns `Outcome<TeamCreation>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetTeamCreationArgs {
+    pub actor: User,
+    pub slug: String,
+    pub team_creation: TeamCreation,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
 }
 
 /// A person's place in a team.
@@ -367,9 +418,10 @@ pub struct TeamArgs {
     pub include_child_teams: bool,
 }
 
-/// `create_team`. Any member of the workspace may create a team, and
-/// becomes its maintainer; a team with a parent needs an owner, or a
-/// maintainer of the parent. Returns `Outcome<Team>`.
+/// `create_team`. Members may create a team, unless the workspace's
+/// [`TeamCreation`] says owners only, and become its maintainer; a team
+/// with a parent needs an owner, or a maintainer of the parent. Returns
+/// `Outcome<Team>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTeamArgs {
     pub actor: User,
@@ -556,6 +608,19 @@ pub struct ResolveOwnersArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn who_may_create_teams() {
+        assert_eq!(TeamCreation::default(), TeamCreation::Members);
+        assert!(TeamCreation::Members.allows(Role::Member) && TeamCreation::Members.allows(Role::Owner));
+        assert!(!TeamCreation::Owners.allows(Role::Member) && TeamCreation::Owners.allows(Role::Owner));
+        for setting in TeamCreation::ALL {
+            assert_eq!(TeamCreation::parse(setting.as_str()), Some(setting));
+            assert_eq!(serde_json::to_value(setting).unwrap(), setting.as_str());
+        }
+        assert_eq!(TeamCreation::parse(" Owners "), Some(TeamCreation::Owners));
+        assert_eq!(TeamCreation::parse("maintainers"), None);
+    }
 
     #[test]
     fn slugs_come_from_names() {

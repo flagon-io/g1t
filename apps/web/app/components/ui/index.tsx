@@ -118,7 +118,7 @@ const BUTTON_BASE =
 
 const BUTTON_VARIANTS: Record<Variant, string> = {
   primary: "bg-fg text-bg hover:bg-white",
-  accent: "bg-accent text-bg hover:bg-[#aaf5d6]",
+  accent: "bg-accent text-bg hover:bg-accent-hover",
   quiet:
     "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
   // For what cannot be undone: transferring, deleting.
@@ -397,7 +397,7 @@ export function CopyLine({
           setTimeout(() => setCopied(false), 1500);
         }}
       >
-        {copied ? <Check size={14} className="text-accent" /> : <Copy size={14} />}
+        {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
       </button>
     </div>
   );
