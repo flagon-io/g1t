@@ -74,13 +74,15 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "AI credit" => 8,
         "Credits from g1t" => 9,
         "Refunds" => 10,
+        "Tax" => 8,
+        "Card processing fees" => 8,
         _ => 11,
     }
 }
 
 /// Payments, credits and refunds: money in, which has no price.
 pub(crate) fn is_money_in(kind: &str) -> bool {
-    matches!(kind, "Payments" | "AI credit" | "Credits from g1t" | "Refunds")
+    matches!(kind, "Payments" | "AI credit" | "Credits from g1t" | "Refunds" | "Tax" | "Card processing fees")
 }
 
 /// A usage line at its price: what was charged, what paid for it first,
@@ -189,6 +191,34 @@ struct Month {
     month: String,
 }
 
+#[derive(Deserialize)]
+struct ExtraRow {
+    group_key: Option<String>,
+    kind: String,
+    count: u32,
+    amount: Option<i64>,
+}
+
+/// How the statement names a `tax_and_fees` kind.
+pub(crate) fn extra_kind(kind: &str) -> &'static str {
+    if kind == "tax" { "Tax" } else { "Card processing fees" }
+}
+
+/// Puts a line in its group, starting the group if it is new.
+fn add_line(groups: &mut Vec<StatementGroup>, key: String, line: StatementLine) {
+    match groups.iter_mut().find(|g| g.key == key) {
+        Some(group) => group.lines.push(line),
+        None => groups.push(StatementGroup {
+            label: if key.is_empty() { "Not one project".to_owned() } else { key.clone() },
+            key,
+            lines: vec![line],
+            charged_micros: 0,
+            price_micros: 0,
+            discount_micros: 0,
+        }),
+    }
+}
+
 impl Billing {
     pub(crate) async fn statement(&self, a: StatementArgs) -> Result<Outcome<Statement>> {
         let workspace = a.workspace.to_lowercase();
@@ -234,18 +264,42 @@ impl Billing {
                 discount_micros: discount,
                 kind: row.kind,
                 count: row.count,
+                passed_micros: 0,
             };
-            match groups.iter_mut().find(|g| g.key == key) {
-                Some(group) => group.lines.push(line),
-                None => groups.push(StatementGroup {
-                    label: if key.is_empty() { "Not one project".to_owned() } else { key.clone() },
-                    key,
-                    lines: vec![line],
-                    charged_micros: 0,
-                    price_micros: 0,
-                    discount_micros: 0,
-                }),
+            add_line(&mut groups, key, line);
+        }
+        // Tax and card fees paid with the month's payments: their own
+        // lines, beside the payment, never in what was charged or paid.
+        let extras = self
+            .db
+            .prepare(format!(
+                "SELECT {} AS group_key, kind, COUNT(*) AS count, SUM(amount_micros) AS amount
+                 FROM tax_and_fees WHERE workspace = ?1 AND created_at >= ?2 AND created_at < ?3 GROUP BY 1, 2",
+                if by_project { "''" } else { "substr(created_at, 1, 10)" }
+            ))
+            .bind(&[workspace.as_str().into(), from.as_str().into(), until.as_str().into()])?
+            .all()
+            .await?
+            .results::<ExtraRow>()?;
+        let (mut tax_micros, mut card_fee_micros) = (0, 0);
+        for extra in extras {
+            let amount = extra.amount.unwrap_or(0);
+            if extra.kind == "tax" {
+                tax_micros += amount;
+            } else {
+                card_fee_micros += amount;
             }
+            let line = StatementLine {
+                kind: extra_kind(&extra.kind).to_owned(),
+                count: extra.count,
+                charged_micros: 0,
+                cost_micros: 0,
+                covered_micros: 0,
+                price_micros: 0,
+                discount_micros: 0,
+                passed_micros: amount,
+            };
+            add_line(&mut groups, extra.group_key.unwrap_or_default(), line);
         }
         for group in &mut groups {
             group.lines.sort_by_key(|line| kind_order(&line.kind));
@@ -269,6 +323,8 @@ impl Billing {
             entries: lines.map(|l| l.count).sum(),
             covered: covered_lines(covered),
             carried_micros: self.carried(&workspace, &month).await?,
+            tax_micros,
+            card_fee_micros,
         };
         let months = self
             .db
@@ -435,6 +491,32 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tax_and_card_fees_are_their_own_lines_beside_payments_never_charges() {
+        assert_eq!(extra_kind("tax"), "Tax");
+        assert_eq!(extra_kind("card_fee"), "Card processing fees");
+        for kind in ["Tax", "Card processing fees"] {
+            // Money that came in with a payment: no price, no usage.
+            assert!(is_money_in(kind));
+            assert_eq!(kind_order(kind), kind_order("Payments"));
+        }
+        let mut groups = vec![];
+        let line = |kind: &str, passed: i64| StatementLine {
+            kind: kind.to_owned(),
+            count: 1,
+            charged_micros: 0,
+            cost_micros: 0,
+            covered_micros: 0,
+            price_micros: 0,
+            discount_micros: 0,
+            passed_micros: passed,
+        };
+        add_line(&mut groups, "2026-10-08".into(), line("Tax", 1_640_000));
+        add_line(&mut groups, "2026-10-08".into(), line("Card processing fees", 920_000));
+        assert_eq!(groups.len(), 1);
+        assert!(groups[0].lines.iter().all(|l| l.charged_micros == 0));
+    }
 
     #[test]
     fn a_month_runs_to_the_first_of_the_next() {

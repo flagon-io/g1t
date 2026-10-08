@@ -470,6 +470,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
     cancelSubscription: (actor, workspace, feature, resume = false) =>
       call("cancel_subscription", { actor, workspace, feature, resume }),
     hasFeature: (workspace, feature) => call("has_feature", { workspace, feature }),
+    freeWorkspaces: (workspaces) => call("free_workspaces", { workspaces }),
     chargeFeature: (charge) => call("charge_feature", charge),
     billingPortal: (actor, workspace, returnUrl) => call("billing_portal", { actor, workspace, return_url: returnUrl }),
     recordSandbox: (usage) => call("record_sandbox", usage),
@@ -534,6 +535,7 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     billingLink: (workspace, by) => call("admin_billing_link", { workspace, by }),
     stripe: (fix = false, by) => call("admin_stripe", { fix, by: by ?? null }),
     enterpriseBilling: (id, email, by) => call("admin_enterprise_billing", { id, email, by }),
+    enterpriseAddress: (id, address, taxIdType, taxId, by) => call("admin_enterprise_address", { id, address, taxIdType, taxId, by }),
     invoiceEnterprise: (id, by) => call("admin_invoice_enterprise", { id, by }),
     accountsFor: (workspaces) => call("admin_accounts", { query: null, workspaces }),
     signals: () => call("admin_signals", {}),

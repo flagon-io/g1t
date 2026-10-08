@@ -457,6 +457,9 @@ export type WorkspaceInvoice = {
   pdfUrl: string | null;
   lines: { description: string; amountMicros: number }[];
   createdAt: string;
+  /** The card processing fee on top of `amountMicros` when charged to a card, and the tax Stripe added once known. */
+  feeMicros?: number;
+  taxMicros?: number;
 };
 
 /** A month of the ledger, grouped by day or project, a line per kind of charge. */
@@ -476,6 +479,8 @@ export type Statement = {
       coveredMicros?: number;
       priceMicros?: number;
       discountMicros?: number;
+      /** On `Tax` and `Card processing fees` lines: what was paid with payments on top of what reached the balance. Never charged. */
+      passedMicros?: number;
     }[];
     chargedMicros: number;
     priceMicros?: number;
@@ -495,6 +500,9 @@ export type Statement = {
     covered?: { source: "included" | "trial" | "oss_pool" | "given" | string; label: string; micros: number }[];
     /** Owed when the month closed but under the minimum charge: on the next invoice. */
     carriedMicros?: number;
+    /** Tax and card processing fees paid with the month's payments, on top of `paidMicros`. */
+    taxMicros?: number;
+    cardFeeMicros?: number;
   };
 };
 
@@ -627,6 +635,8 @@ export interface BillingAdminApi {
   stripe(fix?: boolean, by?: string): Promise<StripeStatus>;
   /** Where an enterprise's invoices go; makes its Stripe customer. */
   enterpriseBilling(id: string, email: string, by: string): Promise<Result<PayingAccount>>;
+  /** The enterprise's billing address and tax ID, on its Stripe customer: Stripe Tax works its invoices out from them. */
+  enterpriseAddress(id: string, address: PostalAddress, taxIdType: string | null, taxId: string | null, by: string): Promise<Result<boolean>>;
   /** Sends an enterprise its invoice now, for what its workspaces owe. */
   invoiceEnterprise(id: string, by: string): Promise<Result<EnterpriseInvoice>>;
   /** Exactly these workspaces' accounts, such as one page of the list. */
@@ -851,8 +861,10 @@ export const DEPLOYMENT_COSTS = {
 export type FeaturePlan = {
   feature: Feature;
   title: string;
-  /** Charged every month while the plan is on, in cents. */
+  /** Charged every month while the plan is on, in cents, excluding tax. */
   monthlyCents: number;
+  /** The card processing fee on top each month, in cents (0 when off), excluding tax. */
+  cardFeeCents?: number;
   /** What the price includes, one line each. */
   includes: string[];
   /** How usage past the allowance is charged. */
@@ -963,6 +975,8 @@ export interface BillingApi {
   confirmSubscription(workspace: string, viewer: Viewer, session: string): Promise<Result<FeatureState>>;
   /** Ends a plan at the end of its period, or (`resume`) takes that back. Owners only. */
   cancelSubscription(actor: User, workspace: string, feature: Feature, resume?: boolean): Promise<Result<FeatureState>>;
+  /** Which of the workspaces are free (on no paid plan); none where payments are not set up. */
+  freeWorkspaces(workspaces: string[]): Promise<string[]>;
   /** Whether a feature works for a workspace now; a failure with the reason when not. */
   hasFeature(workspace: string, feature: Feature): Promise<Result<boolean>>;
   /**
@@ -1233,6 +1247,10 @@ export type OverallMargin = {
   includedMicros?: number;
   cloudflareCostMicros?: number;
   modelsCostMicros?: number;
+  /** Tax collected with payments over the range, net of refunds: owed to tax authorities, never cash or revenue. */
+  taxCollectedMicros?: number;
+  /** Card processing fees passed on with card payments, net of refunds: they pay Stripe's fee, not revenue. */
+  cardFeesMicros?: number;
 };
 
 /** A count, cost or leak that does not add up. */
@@ -1562,6 +1580,14 @@ export type BillingDetails = {
   invoices: StripeInvoice[];
   upcoming: UpcomingInvoice;
   unavailable?: string | null;
+  /** Whether Stripe Tax can place the customer from the address; without it nothing is charged. */
+  taxLocation?: boolean;
+  /** Set when g1t did not charge for want of a billing address. */
+  taxAddressNeededAt?: string | null;
+  /** Stripe's check of the tax ID: pending, verified, unverified or unavailable. */
+  taxIdStatus?: string | null;
+  /** none, exempt or reverse, as set at Stripe. */
+  taxExempt?: string | null;
 };
 
 export type BillingDetailsInput = {

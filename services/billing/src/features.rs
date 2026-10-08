@@ -129,6 +129,7 @@ pub(crate) fn security_plan_at(book: &std::collections::BTreeMap<&str, f64>) -> 
         feature: Feature::Security,
         title: Feature::Security.title().to_owned(),
         monthly_cents: (micros / 10_000.0).round().max(0.0) as u32,
+        card_fee_cents: 0,
         includes: vec![
             "For every private repository in the workspace; public repositories have it free".to_owned(),
             "Custom secret patterns, validity checks with issuers, and delegated push protection bypass".to_owned(),
@@ -155,20 +156,24 @@ impl SubscriptionRow {
 impl Billing {
     /// What the g1t plan costs and includes, as it is sold now, at the
     /// price book's prices (the same figures as the pricing page's table).
+    /// With the card fee on top of its monthly price, as it is charged.
     pub(crate) async fn plan(&self, feature: Feature) -> Result<Plan> {
         let mut book = std::collections::BTreeMap::new();
-        if feature == Feature::Security {
+        let mut plan = if feature == Feature::Security {
             if let Some((_, price)) = self.price(SECURITY_METER).await? {
                 book.insert(SECURITY_METER, price);
             }
-            return Ok(security_plan_at(&book));
-        }
-        for meter in ["build_second", "app_requests", "app_cpu", "custom_domain_month", "private_storage", "git_operations"] {
-            if let Some((_, price)) = self.price(meter).await? {
-                book.insert(meter, price);
+            security_plan_at(&book)
+        } else {
+            for meter in ["build_second", "app_requests", "app_cpu", "custom_domain_month", "private_storage", "git_operations"] {
+                if let Some((_, price)) = self.price(meter).await? {
+                    book.insert(meter, price);
+                }
             }
-        }
-        Ok(self.plan_at(&book))
+            self.plan_at(&book)
+        };
+        plan.card_fee_cents = self.card_fee_on(i64::from(plan.monthly_cents)).await? as u32;
+        Ok(plan)
     }
 
     /// The plan at the given prices per unit (micros, after the markup);
@@ -182,6 +187,7 @@ impl Billing {
             feature: Feature::Plan,
             title: Feature::Plan.title().to_owned(),
             monthly_cents: p.plan_monthly_cents,
+            card_fee_cents: 0,
             includes: vec![
                 format!(
                     "{} of usage each month at cost plus {}%, used first",
@@ -470,7 +476,7 @@ impl Billing {
         };
         if let (Some(customer), Some(method)) = (customer.as_deref(), saved) {
             match stripe
-                .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer, &method)
+                .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, plan.card_fee_cents, customer, &method)
                 .await
             {
                 Ok(subscription) if matches!(subscription.status.as_str(), "active" | "trialing") => {
@@ -504,6 +510,7 @@ impl Billing {
                         feature.as_str(),
                         &plan.title,
                         plan.monthly_cents,
+                        plan.card_fee_cents,
                         customer.as_deref(),
                         return_url,
                     )
@@ -533,7 +540,7 @@ impl Billing {
                 id: &session.id,
                 workspace: &workspace,
                 amount_cents: plan.monthly_cents,
-                fee_cents: 0,
+                fee_cents: plan.card_fee_cents,
                 created_by: &a.actor.username,
                 feature: Some(feature.as_str()),
             })

@@ -487,11 +487,17 @@ impl Billing {
             .iter()
             .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
             .collect();
+        // With the card fee on top of each monthly price, as it is charged.
+        let card_fee = self.card_fee().await?;
         let plans: Vec<_> = g1t_contracts::billing::Feature::ALL
             .iter()
-            .map(|feature| match feature {
-                g1t_contracts::billing::Feature::Security => crate::features::security_plan_at(&book),
-                _ => self.plan_at(&book),
+            .map(|feature| {
+                let mut plan = match feature {
+                    g1t_contracts::billing::Feature::Security => crate::features::security_plan_at(&book),
+                    _ => self.plan_at(&book),
+                };
+                plan.card_fee_cents = crate::tax::fee_for(i64::from(plan.monthly_cents), &card_fee) as u32;
+                plan
             })
             .collect();
         Ok(PriceBook {

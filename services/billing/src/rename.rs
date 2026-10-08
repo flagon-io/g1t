@@ -118,6 +118,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE spikes SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE limit_requests SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE plan_payments SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE tax_and_fees SET workspace = ?1 WHERE workspace = ?2",
     // One card check per workspace; alerts sent, one per level a month.
     "UPDATE OR IGNORE card_checks SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM card_checks WHERE workspace = ?2",
@@ -314,7 +315,7 @@ mod tests {
             "allowance_use", "trial_grants", "credit_grants", "storage_days",
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
             "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
-            "workspace_costs", "own_counts", "ai_reload", "ai_reloads",
+            "workspace_costs", "own_counts", "ai_reload", "ai_reloads", "tax_and_fees",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

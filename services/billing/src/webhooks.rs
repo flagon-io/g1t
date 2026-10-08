@@ -22,7 +22,7 @@
 //! overdue, their work stops until it is paid.
 
 use g1t_contracts::billing::{
-    AdminEnterpriseBillingArgs, AdminInvoiceEnterpriseArgs, AdminStripeArgs, BillingAccount, EnterpriseInvoice,
+    AdminEnterpriseAddressArgs, AdminEnterpriseBillingArgs, AdminInvoiceEnterpriseArgs, AdminStripeArgs, BillingAccount, EnterpriseInvoice,
     EntryKind, InvoiceLine, StripeEventSummary, StripeStatus, StripeWebhook, StripeWebhookArgs,
 };
 use g1t_contracts::time::rfc3339;
@@ -296,12 +296,12 @@ impl Billing {
             }
             "invoice.paid" => {
                 if let Some(subscription) = invoice_subscription(object) {
-                    self.plan_paid(subscription, &text("id"), object["amount_paid"].as_i64().unwrap_or(0)).await?;
+                    self.plan_paid(subscription, object).await?;
                     self.settle_subscription(subscription).await?
                 } else if let Some(done) = self.workspace_invoice_paid(&text("id")).await? {
                     done
                 } else {
-                    self.enterprise_invoice_paid(&text("id")).await?
+                    self.enterprise_invoice_paid(object).await?
                 }
             }
             "invoice.payment_failed" => match (invoice_subscription(object), object["metadata"]["g1t_workspace"].as_str()) {
@@ -341,10 +341,12 @@ impl Billing {
             workspace: String,
             created_by: String,
             feature: Option<String>,
+            #[serde(default)]
+            fee_cents: Option<u32>,
         }
         let Some(open) = self
             .db
-            .prepare("SELECT workspace, created_by, feature FROM checkouts WHERE id = ? AND status = 'open'")
+            .prepare("SELECT workspace, created_by, feature, fee_cents FROM checkouts WHERE id = ? AND status = 'open'")
             .bind(&[session_id.into()])?
             .first::<Open>(None)
             .await?
@@ -382,19 +384,7 @@ impl Billing {
         }
         match open.feature.as_deref() {
             None => {
-                let cents = i64::from(session.amount_total.unwrap_or(0));
-                self.enter(
-                    &open.workspace,
-                    EntryKind::TopUp,
-                    cents * 10_000,
-                    "Paid in advance",
-                    &session.id,
-                    None,
-                    None,
-                    Some(&open.created_by),
-                    session.customer.as_deref(),
-                )
-                .await?;
+                let cents = self.credit_prepayment(&open.workspace, &session, open.fee_cents.unwrap_or(0), &open.created_by).await?;
                 Ok(format!("credited {} to {}", crate::features::dollars(cents * 10_000), open.workspace))
             }
             Some(feature) => {
@@ -420,9 +410,28 @@ impl Billing {
 
     /// The plan's monthly price, paid: revenue that never goes through the
     /// ledger, recorded once per invoice for sudo's figures and for trust.
-    async fn plan_paid(&self, subscription_id: &str, invoice_id: &str, amount_cents: i64) -> Result<()> {
+    /// Only the plan's own price is revenue: the invoice's tax and card fee
+    /// are kept apart (`tax_and_fees`).
+    async fn plan_paid(&self, subscription_id: &str, invoice: &Value) -> Result<()> {
+        let invoice_id = invoice["id"].as_str().unwrap_or_default();
+        let split = crate::stripe::invoice_split(invoice, invoice["amount_paid"].as_i64().unwrap_or(0));
+        let amount_cents = split.net_cents;
         if amount_cents <= 0 || invoice_id.is_empty() {
             return Ok(());
+        }
+        #[derive(Deserialize)]
+        struct Owner {
+            workspace: String,
+        }
+        if let Some(owner) = self
+            .db
+            .prepare("SELECT workspace FROM subscriptions WHERE subscription_id = ?")
+            .bind(&[subscription_id.into()])?
+            .first::<Owner>(None)
+            .await?
+        {
+            let extras = crate::tax::Extras { tax_cents: split.tax_cents, fee_cents: split.fee_cents };
+            self.record_extras(&owner.workspace, invoice_id, invoice["payment_intent"].as_str(), extras, None).await?;
         }
         self.db
             .prepare(
@@ -520,23 +529,53 @@ impl Billing {
             .await?
             .and_then(|s| s.micros)
             .unwrap_or(0);
-        let new = refunded * 10_000 - already;
-        if new <= 0 {
+        // A refund gives back the payment's tax and card fee in proportion:
+        // only the rest comes off the balance, which never held them.
+        let (extras, transaction) = self.extras_of(charge["payment_intent"].as_str(), charge["invoice"].as_str()).await?;
+        let paid = charge["amount"].as_i64().unwrap_or(refunded);
+        let (balance_cents, tax_cents, fee_cents) = crate::tax::refund_split(refunded, paid, extras.tax_cents, extras.fee_cents);
+        let (given_tax, given_fee) = self.refunded_extras(charge_id).await?;
+        let new = balance_cents * 10_000 - already;
+        let new_extras = crate::tax::Extras { tax_cents: -(tax_cents - given_tax), fee_cents: -(fee_cents - given_fee) };
+        if new <= 0 && new_extras == crate::tax::Extras::default() {
             return Ok("ignored: refund already recorded".to_owned());
         }
-        self.enter(
-            &workspace,
-            EntryKind::TopUp,
-            -new,
-            "Refunded to the card",
-            &format!("refund/{charge_id}/{refunded}"),
-            None,
-            None,
-            None,
-            None,
-        )
-        .await?;
-        Ok(format!("refund of {} recorded for {workspace}", crate::features::dollars(new)))
+        let reference = format!("refund/{charge_id}/{refunded}");
+        if new > 0 {
+            self.enter(&workspace, EntryKind::TopUp, -new, "Refunded to the card", &reference, None, None, None, None).await?;
+        }
+        self.record_extras(&workspace, &reference, charge["payment_intent"].as_str(), new_extras, None).await?;
+        // An off-session charge's tax was recorded by g1t (auto-reload):
+        // reverse what this refund gave back. Checkout's and invoices' tax
+        // Stripe Tax keeps itself.
+        if let (Some(stripe), Some(transaction)) = (&self.stripe, transaction.as_deref()) {
+            let given_back = new.max(0) / 10_000 - new_extras.tax_cents - new_extras.fee_cents;
+            if given_back > 0
+                && let Err(error) = stripe.reverse_tax(transaction, &reference, given_back).await
+            {
+                worker::console_error!("{workspace}: the tax on refund {reference} was not reversed: {error}");
+            }
+        }
+        Ok(format!("refund of {} recorded for {workspace}", crate::features::dollars(new.max(0))))
+    }
+
+    /// What earlier refunds of a charge gave back of its tax and card fee,
+    /// in cents, as positive amounts.
+    async fn refunded_extras(&self, charge_id: &str) -> Result<(i64, i64)> {
+        #[derive(Deserialize)]
+        struct Row {
+            kind: String,
+            micros: Option<i64>,
+        }
+        let rows = self
+            .db
+            .prepare("SELECT kind, SUM(amount_micros) AS micros FROM tax_and_fees WHERE reference LIKE ? GROUP BY kind")
+            .bind(&[format!("refund/{charge_id}/%").into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        let of = |kind: &str| rows.iter().filter(|r| r.kind == kind).map(|r| -r.micros.unwrap_or(0) / 10_000).sum::<i64>();
+        Ok((of("tax"), of("card_fee")))
     }
 
     /// A disputed payment stops the workspace's work until it is resolved;
@@ -633,6 +672,60 @@ impl Billing {
         })
     }
 
+    /// `admin_enterprise_address`: the address Stripe Tax works the
+    /// enterprise's invoices out from, and its tax ID, on its customer.
+    pub(crate) async fn admin_enterprise_address(&self, a: AdminEnterpriseAddressArgs) -> Result<Outcome<bool>> {
+        if a.by.trim().is_empty() {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Say who is changing it."));
+        }
+        if let Some(why) = crate::details::address_invalid(&a.address).or_else(|| crate::details::tax_id_invalid(a.tax_id_type.as_deref(), a.tax_id.as_deref())) {
+            return Ok(Outcome::fail(FailureCode::Invalid, why));
+        }
+        let place = serde_json::json!({ "country": a.address.country.trim(), "postal_code": a.address.postal_code.trim(), "state": a.address.state.trim() });
+        if !crate::stripe::address_places_customer(&place) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Give at least the country, and in the US the ZIP code: Stripe Tax needs them."));
+        }
+        let Some(stripe) = &self.stripe else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t."));
+        };
+        #[derive(Deserialize)]
+        struct Row {
+            kind: String,
+            customer_id: Option<String>,
+        }
+        let Some(row) = self
+            .db
+            .prepare("SELECT kind, customer_id FROM billing_accounts WHERE id = ?")
+            .bind(&[a.id.as_str().into()])?
+            .first::<Row>(None)
+            .await?
+            .filter(|row| row.kind == "enterprise")
+        else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such enterprise."));
+        };
+        let Some(customer) = row.customer_id else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Set where its invoices go first: that makes its Stripe customer."));
+        };
+        let fields: Vec<(&str, String)> = vec![
+            ("address[line1]", a.address.line1.trim().to_owned()),
+            ("address[line2]", a.address.line2.trim().to_owned()),
+            ("address[city]", a.address.city.trim().to_owned()),
+            ("address[state]", a.address.state.trim().to_owned()),
+            ("address[postal_code]", a.address.postal_code.trim().to_owned()),
+            ("address[country]", a.address.country.trim().to_uppercase()),
+        ];
+        if let Err(error) = stripe.post::<Value>(&format!("/customers/{customer}"), &fields).await {
+            return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
+        }
+        if let (Some(kind), Some(value)) = (a.tax_id_type.as_deref(), a.tax_id.as_deref())
+            && let Err(why) = crate::details::replace_tax_id(stripe, &customer, &a.id, kind, value).await
+        {
+            return Ok(Outcome::fail(FailureCode::Invalid, why));
+        }
+        self.audit(&a.id, "billing_address", &format!("Billing address set ({})", a.address.country.trim().to_uppercase()), &a.by).await?;
+        Ok(Outcome::Ok(true))
+    }
+
     pub(crate) async fn admin_invoice_enterprise(&self, a: AdminInvoiceEnterpriseArgs) -> Result<Outcome<EnterpriseInvoice>> {
         if a.by.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say who is sending it."));
@@ -721,7 +814,20 @@ impl Billing {
         if lines.is_empty() {
             return Ok(Err("Its workspaces owe nothing to invoice.".into()));
         }
-        let fields = [
+        // Stripe Tax places the customer by its address; without one the
+        // invoice could not be finalized, so it is not started.
+        match stripe.customer_placed(&customer).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return Ok(Err(format!(
+                    "Add {}'s billing address first (Invoices → Billing address): Stripe needs it to work out tax.",
+                    account.name
+                )));
+            }
+            Err(error) => return Ok(Err(crate::stripe::friendly(&error))),
+        }
+        // Invoiced, never by card: no card fee. Tax on top, by Stripe Tax.
+        let mut fields = vec![
             ("customer", customer.clone()),
             ("collection_method", "send_invoice".to_owned()),
             ("days_until_due", "30".to_owned()),
@@ -730,6 +836,7 @@ impl Billing {
             ("metadata[g1t_enterprise]", id.to_owned()),
             ("metadata[period]", period.to_owned()),
         ];
+        fields.extend(crate::stripe::invoice_tax_fields());
         #[derive(Deserialize)]
         struct Invoice {
             id: String,
@@ -737,6 +844,9 @@ impl Billing {
             hosted_invoice_url: Option<String>,
             #[serde(default)]
             amount_due: i64,
+            /// The tax Stripe added, in cents (`tax`, in this API version).
+            #[serde(default)]
+            tax: Option<i64>,
         }
         // The draft first, keyed on what it bills, and its lines put on it:
         // an attempt that failed half way is found again, never billed again
@@ -746,7 +856,7 @@ impl Billing {
         let key = enterprise_invoice_key(id, period, &keyed);
         let draft: Invoice = stripe.post_idempotent("/invoices", &fields, &key).await?;
         for (line, cents) in lines.iter().zip(&cents) {
-            let fields = [
+            let mut fields = vec![
                 ("customer", customer.clone()),
                 ("invoice", draft.id.clone()),
                 ("amount", cents.to_string()),
@@ -754,13 +864,23 @@ impl Billing {
                 ("description", format!("{}: g1t usage", line.workspace)),
                 ("metadata[workspace]", line.workspace.clone()),
             ];
+            fields.extend(crate::stripe::item_tax_fields());
             let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{}", line.workspace)).await?;
         }
         // A retry finds it finalized already; that is fine.
         let _ = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
-        let sent: Invoice = stripe.post(&format!("/invoices/{}/send", draft.id), &[]).await?;
+        let sent: Invoice = match stripe.post(&format!("/invoices/{}/send", draft.id), &[]).await {
+            Ok(sent) => sent,
+            Err(error) if crate::stripe::is_tax_location_error(&error) => {
+                return Ok(Err(format!("Stripe could not work out tax for {}: add its billing address, then send it again.", account.name)));
+            }
+            Err(error) => return Err(error),
+        };
         let now = rfc3339(now_ms());
-        let total = lines.iter().map(|l| l.amount_micros).sum::<i64>().max(sent.amount_due * 10_000);
+        // What the workspaces owe, before tax: the tax is the enterprise's
+        // to pay on top, never their usage, and is kept apart.
+        let tax_cents = sent.tax.unwrap_or(0).max(0);
+        let total = lines.iter().map(|l| l.amount_micros).sum::<i64>().max((sent.amount_due - tax_cents) * 10_000);
         let mut writes = vec![self
             .db
             .prepare(
@@ -799,7 +919,8 @@ impl Billing {
 
     /// An enterprise invoice paid: each workspace is credited its line, and
     /// any stop for the invoice is lifted.
-    async fn enterprise_invoice_paid(&self, invoice_id: &str) -> Result<String> {
+    async fn enterprise_invoice_paid(&self, invoice: &Value) -> Result<String> {
+        let invoice_id = invoice["id"].as_str().unwrap_or_default();
         let claimed = self
             .db
             .prepare(
@@ -826,6 +947,22 @@ impl Billing {
                 None,
             )
             .await?;
+        }
+        // Its tax is the enterprise's, paid on top of what its workspaces
+        // owed, and never credited to them.
+        #[derive(Deserialize)]
+        struct Account {
+            account_id: String,
+        }
+        if let Some(account) = self
+            .db
+            .prepare("SELECT account_id FROM enterprise_invoices WHERE invoice_id = ?")
+            .bind(&[invoice_id.into()])?
+            .first::<Account>(None)
+            .await?
+        {
+            let extras = crate::tax::Extras { tax_cents: invoice["tax"].as_i64().unwrap_or(0).max(0), fee_cents: 0 };
+            self.record_extras(&account.account_id, invoice_id, invoice["payment_intent"].as_str(), extras, None).await?;
         }
         Ok(format!("invoice {invoice_id} paid; {} workspaces credited", lines.len()))
     }
