@@ -36,6 +36,15 @@ export function g1tRemote(urls) {
   return null;
 }
 
+/** The branch checked out, or null when detached. */
+function currentBranch() {
+  try {
+    return execFileSync("git", ["branch", "--show-current"], { cwd: ROOT, encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function remoteUrls() {
   try {
     const names = execFileSync("git", ["remote"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
@@ -61,7 +70,7 @@ export async function reportDeployment({ head, subject, units, log, fetchImpl = 
       method: "POST",
       headers,
       body: JSON.stringify({
-        ref: head,
+        ref: currentBranch() ?? head,
         sha: head,
         environment: "production",
         production_environment: true,
