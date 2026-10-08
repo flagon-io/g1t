@@ -884,9 +884,11 @@ pub fn resolve(
     if let (Some(owner), Some(name)) = (param("owner"), param("name")) {
         input.insert("repo".to_owned(), Value::String(format!("{owner}/{name}")));
     }
-    for key in ["plan", "id", "workspace", "delivery", "workflow", "job", "setting", "username", "team", "basehead"] {
-        if let Some(value) = param(key) {
-            input.insert(key.to_owned(), Value::String(value.to_owned()));
+    // Every other name the path gives, under that name; the ones below that
+    // need more (a repository, a number, an encoded name) are set after.
+    for (key, value) in &params {
+        if !matches!(*key, "owner" | "name") {
+            input.insert((*key).to_owned(), Value::String(percent_decoded(value)));
         }
     }
     // A repository of a team's workspace, named by itself.
@@ -938,6 +940,51 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// Every name a route's path gives reaches the operation: a name left
+    /// off the lists above is dropped, and the operation answers that it
+    /// was not given (the project routes were, until this test).
+    #[test]
+    fn every_path_parameter_reaches_the_input() {
+        for route in ROUTES.iter() {
+            let names: Vec<&str> = route.path.split('/').filter_map(|part| part.strip_prefix(':')).collect();
+            if names.is_empty() {
+                continue;
+            }
+            let path: String = route
+                .path
+                .split('/')
+                .map(|part| match part.strip_prefix(':') {
+                    Some("number" | "milestone") => "7".to_owned(),
+                    Some(name) => format!("{name}-x"),
+                    None => part.to_owned(),
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+            let (found, input) = resolve(route.method, &path, &[], json!({})).unwrap();
+            // A path two routes could take is checked under the first.
+            if found.path != route.path {
+                continue;
+            }
+            for name in names {
+                let key = match name {
+                    "owner" | "name" => "repo",
+                    "repo" if names_has_workspace(route.path) => "repo",
+                    other => other,
+                };
+                assert!(
+                    input.get(key).is_some_and(|value| !value.is_null()),
+                    "{} {}: :{name} does not reach the input",
+                    route.method,
+                    route.path
+                );
+            }
+        }
+    }
+
+    fn names_has_workspace(path: &str) -> bool {
+        path.split('/').any(|part| part == ":workspace")
+    }
 
     #[test]
     fn a_path_resolves_to_its_operation_and_input() {
