@@ -566,3 +566,13 @@ test("resolveStack works on a manifest with no workspace crates or packages", ()
   const bare = resolveStack(loadStack(), { cargo: new Map(), npm: new Map() });
   assert.deepEqual(bare.units.find((u) => u.id === "events").dependsOn, []);
 });
+
+test("decide: a commit older than what runs is never deployed by accident, even forced; --rollback means it", () => {
+  const newer = { has: () => true, changed: () => ["services/events/src/lib.rs"], show: () => "", isAncestor: (older, newer) => older === HEAD && newer === OLD };
+  const refused = decide([unit("events")], { live: { events: { sha: OLD } }, head: HEAD, force: true, gitApi: newer });
+  assert.equal(refused[0].deploy, false);
+  assert.match(refused[0].reason, /newer than this commit/);
+  const meant = decide([unit("events")], { live: { events: { sha: OLD } }, head: HEAD, rollback: true, gitApi: newer });
+  assert.equal(meant[0].deploy, true);
+  assert.match(meant[0].reason, /rolling back/);
+});

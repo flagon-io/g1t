@@ -538,10 +538,13 @@ that does not exist yet may be refused; deploy that service first with
   undone. The next plan sees the older commit and deploys what changed since,
   so revert the commit on `main` too, or the next push brings it back.
 - **To a commit:** check it out and `node scripts/deploy.mjs deploy --only
-  <units> --force`. Migrations never run backwards: a migration that needs
+  <units> --rollback`. Without `--rollback` the tool refuses any unit whose
+  live commit is newer than the one checked out, even with `--force`, so a
+  re-run of an old workflow run (or an old checkout) never rolls production
+  back by accident. Migrations never run backwards: a migration that needs
   undoing is a new migration.
 - **The runner's image:** a rollback of the Worker does not roll back the
-  container image. Redeploy the older commit (`--only runner --force`): its
+  container image. Redeploy the older commit (`--only runner --rollback`): its
   image's tag is the hash of that commit's source, which is still in the
   registry, so nothing is built. A bad base is undone by reverting the
   commit that changed `services/runner/base.json`.

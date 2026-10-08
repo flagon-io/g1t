@@ -61,7 +61,7 @@ import {
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack } from "./deploy/stack.mjs";
 
-const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--concurrency N] [--stage S] [--json]";
+const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
 
 function parseArgs(argv) {
   const opts = { command: argv[0], only: [], skip: [], concurrency: 4, force: false, all: false, json: false };
@@ -75,6 +75,7 @@ function parseArgs(argv) {
     else if (flag === "--stage") opts.stage = value();
     else if (flag === "--all") opts.all = true;
     else if (flag === "--force") opts.force = true;
+    else if (flag === "--rollback") opts.rollback = true;
     else if (flag === "--json") opts.json = true;
     else if (flag === "--check") opts.check = true;
     else if (flag === "--no-migrations") opts.noMigrations = true;
@@ -167,7 +168,7 @@ async function plan(stack, opts) {
       if (found && !found.sha && !found.missing && !found.error) live[unit.id] = { ...found, sha: since, assumed: true };
     }
   }
-  const decisions = decide(units, { live, head, force: opts.force || opts.all });
+  const decisions = decide(units, { live, head, force: opts.force || opts.all, rollback: opts.rollback });
   return { head, units, live, migrations, decisions };
 }
 

@@ -31,6 +31,16 @@ export const git = {
     }
   },
   changed: (from, to) => run(["diff", "--name-only", "--no-renames", from, to]).split("\n").filter(Boolean),
+  /** Whether `older` is in `newer`'s history (and not the same commit). */
+  isAncestor: (older, newer) => {
+    if (older === newer) return false;
+    try {
+      run(["merge-base", "--is-ancestor", older, newer]);
+      return true;
+    } catch {
+      return false;
+    }
+  },
   /** Uncommitted and untracked files (not ignored ones). */
   dirty: () =>
     run(["status", "--porcelain", "--untracked-files=all"])
@@ -55,7 +65,7 @@ function run(args) {
  * changed files that touch it; `image` says whether its Containers image
  * must be built.
  */
-export function decide(units, { live, head, force = false, gitApi = git }) {
+export function decide(units, { live, head, force = false, rollback = false, gitApi = git }) {
   const diffs = new Map();
   const changedSince = (sha) => {
     if (!diffs.has(sha)) diffs.set(sha, gitApi.changed(sha, head));
@@ -91,6 +101,17 @@ export function decide(units, { live, head, force = false, gitApi = git }) {
     if (found.sha === head) {
       decision.deploy = force;
       decision.reason = force ? "forced; already at this commit" : "up to date";
+      return decision;
+    }
+    // What runs is newer than this commit: deploying would roll it back
+    // (a re-run of an old workflow run, say). Never by accident: only with
+    // --rollback, whatever --force says.
+    if (gitApi.has(found.sha) && gitApi.isAncestor?.(head, found.sha)) {
+      decision.deploy = rollback;
+      decision.reason = rollback
+        ? `rolling back from ${found.sha.slice(0, 12)}`
+        : `runs ${found.sha.slice(0, 12)}, which is newer than this commit; deploying would roll it back (pass --rollback to mean it)`;
+      decision.image = rollback && Boolean(unit.image);
       return decision;
     }
     if (!gitApi.has(found.sha)) {
