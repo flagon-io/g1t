@@ -172,7 +172,8 @@ export function ticks(max: number, count = 4): number[] {
 export function money(micros: number): string {
   const sign = micros < 0 ? "−" : "";
   const d = Math.abs(micros) / MICROS_PER_DOLLAR;
-  const digits = d === 0 || d >= 0.01 ? 2 : d >= 0.001 ? 3 : 4;
+  // Under a hundredth of a cent there is nothing worth saying: "$0.00".
+  const digits = d < 0.0001 || d >= 0.01 ? 2 : d >= 0.001 ? 3 : 4;
   return `${sign}$${d.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 

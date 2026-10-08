@@ -175,7 +175,10 @@ function SidebarSoonLink({
 }) {
   const { pathname } = useLocation();
   return (
+    // The hint wraps a plain box: Radix's asChild merges className as a
+    // string, which would break NavLink's className function.
     <Hint label={about} side="right">
+    <div>
     <NavLink
       to={to}
       prefetch="intent"
@@ -190,6 +193,7 @@ function SidebarSoonLink({
       <span className="min-w-0 grow truncate">{children}</span>
       <SoonPill />
     </NavLink>
+    </div>
     </Hint>
   );
 }
@@ -945,6 +949,7 @@ function RepoMenu({
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
       <BackRow to={back.to} label={back.label} />
       <Hint label="Overview" side="right">
+      <div>
       <NavLink
         to={base}
         end
@@ -961,6 +966,7 @@ function RepoMenu({
           <span className="font-semibold text-fg">{repo.name}</span>
         </span>
       </NavLink>
+      </div>
       </Hint>
       {/* A project's pages, in the order people use them. A page with more
           than one view shows them as tabs across its top. */}

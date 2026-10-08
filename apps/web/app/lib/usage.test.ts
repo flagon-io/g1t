@@ -92,3 +92,10 @@ test("test-mode hints are for g1t's own people", () => {
   assert.ok(!isStaff({ workspaces: [{ slug: "acme" }] }));
   assert.ok(!isStaff(null));
 });
+
+test("money under a hundredth of a cent reads $0.00, never $0.0000", () => {
+  assert.equal(money(3), "$0.00");
+  assert.equal(money(0), "$0.00");
+  assert.equal(money(4_000), "$0.004");
+  assert.equal(money(250), "$0.0003");
+});

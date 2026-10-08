@@ -37,10 +37,15 @@ export function Hint({
   const [open, setOpen] = useState(false);
   const touch = useRef(false);
   if (label == null || label === false || label === "") return children;
+  // asChild merges className as a string, so a child whose className is a
+  // function (NavLink's) would lose its classes: it gets a plain box instead.
+  const functionClass = typeof (children.props as { className?: unknown }).className === "function";
   const trigger = disabled ? (
     <span tabIndex={0} className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent *:pointer-events-none">
       {children}
     </span>
+  ) : functionClass ? (
+    <div>{children}</div>
   ) : (
     children
   );
