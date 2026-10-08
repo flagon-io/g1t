@@ -7,6 +7,7 @@ import type { Route } from "./+types/session";
 import { page } from "../../lib/meta";
 import { RunCard, formatCost, useLiveRefresh } from "../../components/agents";
 import { Avatar, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { agents } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { accessTo } from "../../lib/access.server";
@@ -57,9 +58,9 @@ function Entry({ entry }: { entry: SessionEntry }) {
       <li className="flex gap-2.5 px-4 py-2 text-xs">
         <Wrench size={13} className="mt-0.5 shrink-0 text-faint" />
         <span className="shrink-0 font-medium text-muted">{entry.tool}</span>
-        <code className="min-w-0 grow truncate font-mono text-fg/85" title={entry.text}>
-          {entry.text}
-        </code>
+        <Hint label={entry.text}>
+          <code className="min-w-0 grow truncate font-mono text-fg/85">{entry.text}</code>
+        </Hint>
       </li>
     );
   }

@@ -33,6 +33,7 @@ import type { DeployStatus } from "@g1t/contracts";
 import { cn } from "../lib/cn";
 import { type ActivityGroup, type Need, type NeedKind, type Verb, isAgent, sparkPoints } from "../lib/mission";
 import { Avatar, TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 // --- Panels -------------------------------------------------------------------
@@ -127,9 +128,12 @@ export function NeedsList({ needs, limit = 8 }: { needs: Need[]; limit?: number 
           const look = NEED[need.kind];
           return (
             <li key={need.key} className="flex items-start gap-3 px-4 py-3">
-              <span className={cn("mt-0.5 shrink-0", look.tone)} title={look.label}>
-                {look.icon}
-              </span>
+              <Hint label={look.label}>
+                <span className={cn("mt-0.5 shrink-0", look.tone)}>
+                  {look.icon}
+                  <span className="sr-only">{look.label}</span>
+                </span>
+              </Hint>
               <span className="min-w-0 grow">
                 <Link to={need.to} prefetch="intent" className="block truncate text-sm font-medium hover:text-accent">
                   {need.title}
@@ -447,9 +451,9 @@ export function PulseTile({
           </span>
         )}
       </div>
-      <p className="mt-1.5 truncate text-[0.6875rem] text-faint" title={hint}>
-        {hint}
-      </p>
+      <Hint label={hint}>
+        <p className="mt-1.5 truncate text-[0.6875rem] text-faint">{hint}</p>
+      </Hint>
     </>
   );
   const box = "block rounded-xl border border-line bg-surface p-4 transition-colors";
@@ -491,14 +495,18 @@ export function DeployStrip({
       {Array.from({ length: slots - shown.length }, (_, i) => (
         <span key={`empty-${i}`} className="h-2 flex-1 rounded-sm bg-line/60" />
       ))}
-      {shown.map((build) => (
-        <Link
-          key={build.id}
-          to={`${base}/deployments/${build.id}`}
-          title={`${build.kind === "production" ? "Production" : "Preview"} · ${build.commit.slice(0, 7)} · ${build.status} · ${new Date(build.createdAt).toLocaleString("en-US")}`}
-          className={cn("flex-1 rounded-sm transition-opacity hover:opacity-80", STRIP_TONE[build.status], build.kind === "production" ? "h-8" : "h-5")}
-        />
-      ))}
+      {shown.map((build) => {
+        const about = `${build.kind === "production" ? "Production" : "Preview"} · ${build.commit.slice(0, 7)} · ${build.status} · ${new Date(build.createdAt).toLocaleString("en-US")}`;
+        return (
+          <Hint key={build.id} label={about}>
+            <Link
+              to={`${base}/deployments/${build.id}`}
+              aria-label={about}
+              className={cn("flex-1 rounded-sm transition-opacity hover:opacity-80", STRIP_TONE[build.status], build.kind === "production" ? "h-8" : "h-5")}
+            />
+          </Hint>
+        );
+      })}
     </div>
   );
 }

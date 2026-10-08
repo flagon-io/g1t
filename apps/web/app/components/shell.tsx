@@ -8,6 +8,7 @@ import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } f
 import { AgentButton, InboxBell } from "./inbox";
 import { PinButton } from "./pin-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Hint } from "./ui/hint";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, Mark } from "./logo";
@@ -136,15 +137,14 @@ function SidebarLink({
  */
 function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: ReactNode; about: string }) {
   return (
-    <div
-      title={about}
-      aria-disabled="true"
-      className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[0.8125rem] text-faint"
-    >
-      <span className="shrink-0 opacity-70">{icon}</span>
-      <span className="grow truncate">{children}</span>
-      <SoonPill />
-    </div>
+    <Hint label={about} side="right">
+      <div aria-disabled="true" className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[0.8125rem] text-faint">
+        <span className="shrink-0 opacity-70">{icon}</span>
+        <span className="grow truncate">{children}</span>
+        <span className="sr-only">{about}</span>
+        <SoonPill />
+      </div>
+    </Hint>
   );
 }
 
@@ -167,9 +167,9 @@ function SidebarSoonLink({
 }) {
   const { pathname } = useLocation();
   return (
+    <Hint label={about} side="right">
     <NavLink
       to={to}
-      title={about}
       prefetch="intent"
       className={({ isActive }) => {
         const current = isActive || (also ?? []).some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
@@ -182,6 +182,7 @@ function SidebarSoonLink({
       <span className="min-w-0 grow truncate">{children}</span>
       <SoonPill />
     </NavLink>
+    </Hint>
   );
 }
 
@@ -234,10 +235,10 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
     <DropdownMenu>
       {/* The name goes to the workspace; only the arrows switch it. The
           name gets all the room there is, and the whole of it on hover. */}
+      <Hint label={workspace ? `${label} · g1t.sh/${workspace.slug}` : undefined}>
       <Link
         to={current ? `/${current}` : "/workspaces/new"}
         prefetch="intent"
-        title={workspace ? `${label} · g1t.sh/${workspace.slug}` : undefined}
         className="flex h-9 min-w-0 grow items-center gap-2 rounded-md px-2 transition-colors hover:bg-raised"
       >
         {workspace ? (
@@ -247,6 +248,7 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
         )}
         <span className="min-w-0 truncate text-[0.8125rem] font-medium">{label}</span>
       </Link>
+      </Hint>
       <DropdownMenuTrigger
         aria-label="Switch workspace"
         className="flex h-9 w-7 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised data-[state=open]:text-fg"
@@ -274,8 +276,9 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
         )}
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
         {(user.workspaces ?? []).map((membership) => (
-          <DropdownMenuItem asChild key={membership.slug}>
-            <Link to={`/${membership.slug}`} title={displayName(membership)}>
+          <Hint key={membership.slug} label={displayName(membership)} side="right">
+          <DropdownMenuItem asChild>
+            <Link to={`/${membership.slug}`}>
               <Avatar name={membership.slug} image={membership.avatar} size={24} square />
               <span className="flex min-w-0 grow flex-col leading-tight">
                 <span className="truncate">{displayName(membership)}</span>
@@ -289,6 +292,7 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
               )}
             </Link>
           </DropdownMenuItem>
+          </Hint>
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
@@ -655,16 +659,15 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
                 event.preventDefault();
                 move(index, event.key === "ArrowUp" ? -1 : 1);
               }}
-              title={pinned.length > 1 ? "Drag, or Alt and an arrow key, to reorder" : undefined}
               className={`group/pin relative ${dragging === index ? "opacity-50" : ""}`}
             >
               {row(project, true)}
               {pinned.length > 1 && (
-                <GripVertical
-                  size={12}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-1/2 -left-1.5 -translate-y-1/2 text-faint opacity-0 transition-opacity group-hover/pin:opacity-100"
-                />
+                <Hint label="Drag, or Alt and an arrow key, to reorder" side="right">
+                  <span className="absolute top-1/2 -left-1.5 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
+                    <GripVertical size={12} aria-hidden="true" />
+                  </span>
+                </Hint>
               )}
             </li>
           ))}
@@ -903,11 +906,11 @@ function RepoMenu({
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
       <BackRow to={back.to} label={back.label} />
+      <Hint label="Overview" side="right">
       <NavLink
         to={base}
         end
         prefetch="intent"
-        title="Overview"
         className={({ isActive }) =>
           `mt-2 flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? "bg-raised" : "hover:bg-raised/60"}`
         }
@@ -920,6 +923,7 @@ function RepoMenu({
           <span className="font-semibold text-fg">{repo.name}</span>
         </span>
       </NavLink>
+      </Hint>
       {/* A project's pages, in the order people use them. A page with more
           than one view shows them as tabs across its top. */}
       <Rule />

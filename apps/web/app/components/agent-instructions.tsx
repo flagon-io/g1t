@@ -5,6 +5,7 @@ import type { RepoInstructions } from "@g1t/contracts";
 
 import { Idle } from "./agents";
 import { TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 
 const ROLE: Record<RepoInstructions["files"][number]["role"], string> = {
   root: "Every run",
@@ -62,13 +63,11 @@ export function AgentInstructions({ instructions, base }: { instructions: RepoIn
                   <span className="ml-auto flex items-center gap-2 text-xs text-faint">
                     {file.lastChanged && (
                       <>
-                        <Link
-                          to={`${base}/commit/${file.lastChanged.commit}`}
-                          className="font-mono hover:text-fg"
-                          title={file.lastChanged.message}
-                        >
-                          {file.lastChanged.commit.slice(0, 7)}
-                        </Link>
+                        <Hint label={file.lastChanged.message}>
+                          <Link to={`${base}/commit/${file.lastChanged.commit}`} className="font-mono hover:text-fg">
+                            {file.lastChanged.commit.slice(0, 7)}
+                          </Link>
+                        </Hint>
                         <span>by {file.lastChanged.author}</span>
                         <TimeAgo at={file.lastChanged.at} />
                       </>

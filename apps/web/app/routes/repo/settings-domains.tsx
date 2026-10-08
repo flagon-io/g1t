@@ -20,6 +20,7 @@ import {
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
 import { CheckboxOption } from "../../components/ui/checkbox";
+import { Hint } from "../../components/ui/hint";
 import { deployments } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
@@ -238,15 +239,12 @@ function DomainRow({ domain }: { domain: Domain }) {
             <Form method="post">
               <input type="hidden" name="intent" value="refresh" />
               <input type="hidden" name="id" value={domain.id} />
-              <SubmitButton
-                variant="quiet"
-                match={{ intent: "refresh", id: domain.id }}
-                pending="Checking…"
-                title="Ask Cloudflare to check the records again now"
-              >
-                <RotateCw size={14} />
-                Check now
-              </SubmitButton>
+              <Hint label="Ask Cloudflare to check the records again now">
+                <SubmitButton variant="quiet" match={{ intent: "refresh", id: domain.id }} pending="Checking…">
+                  <RotateCw size={14} />
+                  Check now
+                </SubmitButton>
+              </Hint>
             </Form>
           )}
           <RemoveDomain domain={domain} />

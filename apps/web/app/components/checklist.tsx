@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { type ChecklistItem, dismiss, isDismissed, progress } from "../lib/checklist";
 import { cn } from "../lib/cn";
+import { Hint } from "./ui/hint";
 
 const storage = () => (typeof window === "undefined" ? null : window.localStorage);
 const listeners = new Set<() => void>();
@@ -48,18 +49,19 @@ export function ProductionChecklist({
         <span className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-line sm:block" aria-hidden>
           <span className="block h-full rounded-full bg-accent" style={{ width: `${(done / total) * 100}%` }} />
         </span>
-        <button
-          type="button"
-          onClick={() => {
-            dismiss(storage, base);
-            for (const listener of listeners) listener();
-          }}
-          className="ml-auto rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
-          aria-label="Dismiss the checklist for this project"
-          title="Dismiss for this project"
-        >
-          <X size={14} />
-        </button>
+        <Hint label="Dismiss for this project">
+          <button
+            type="button"
+            onClick={() => {
+              dismiss(storage, base);
+              for (const listener of listeners) listener();
+            }}
+            className="ml-auto rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
+            aria-label="Dismiss the checklist for this project"
+          >
+            <X size={14} />
+          </button>
+        </Hint>
       </div>
       <ol className="grid border-t border-line sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (

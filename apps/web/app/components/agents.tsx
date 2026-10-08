@@ -24,6 +24,7 @@ import {
 import { RunAudit } from "./audit";
 import { STAGE_LABEL, StageDots } from "./lifecycle";
 import { Avatar, SubmitButton, TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -259,10 +260,12 @@ export function RunCard({ run, member, showRepo }: { run: AgentRun; member: bool
         <RunStatusBadge status={run.status} />
       </div>
       {run.step && (
-        <p className={`mt-2.5 truncate font-mono text-xs ${active ? "text-fg/85" : "text-muted"}`} title={inlinePlain(shownStep(run.step))}>
-          {active && <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
-          <InlineMarkdown text={shownStep(run.step)} />
-        </p>
+        <Hint label={inlinePlain(shownStep(run.step))}>
+          <p className={`mt-2.5 truncate font-mono text-xs ${active ? "text-fg/85" : "text-muted"}`}>
+            {active && <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
+            <InlineMarkdown text={shownStep(run.step)} />
+          </p>
+        </Hint>
       )}
       {run.status === "failed" && run.error && <p className="mt-1.5 text-xs text-danger">{run.error}</p>}
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
@@ -271,11 +274,13 @@ export function RunCard({ run, member, showRepo }: { run: AgentRun; member: bool
           {run.startedAt || active ? <Elapsed from={run.startedAt ?? run.createdAt} to={run.finishedAt} /> : "—"}
         </span>
         {cost && (
-          <span className="flex items-center gap-1" title={active ? "So far, as the harness reports it" : "As the harness reported it"}>
-            <Coins size={12} />
-            {cost}
-            {active && " so far"}
-          </span>
+          <Hint label={active ? "So far, as the harness reports it" : "As the harness reported it"}>
+            <span className="flex items-center gap-1">
+              <Coins size={12} />
+              {cost}
+              {active && " so far"}
+            </span>
+          </Hint>
         )}
         {run.model && <span className="font-mono">{run.model}</span>}
         {run.startedBy && <span>started by {run.startedBy}</span>}
@@ -437,10 +442,12 @@ export function AgentPanel({
         <RunStatusBadge status={current.status} />
       </div>
       {current.step && (
-        <p className="mt-3 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line" title={inlinePlain(shownStep(current.step))}>
-          {active && <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
-          <InlineMarkdown text={shownStep(current.step)} />
-        </p>
+        <Hint label={inlinePlain(shownStep(current.step))}>
+          <p className="mt-3 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line">
+            {active && <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
+            <InlineMarkdown text={shownStep(current.step)} />
+          </p>
+        </Hint>
       )}
       {confidence && <ConfidenceLine confidence={confidence} />}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
@@ -476,13 +483,12 @@ export function AgentPanel({
 export function AgentBadge({ run }: { run: AgentRun | undefined }) {
   if (!run) return null;
   return (
-    <span
-      title={run.step ? inlinePlain(shownStep(run.step)) : undefined}
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-merged/40 bg-merged/10 px-2 py-0.5 text-xs text-merged"
-    >
-      <Loader2 size={11} className="animate-spin" />
-      {RUN_KIND_LABEL[run.kind]}
-    </span>
+    <Hint label={run.step ? inlinePlain(shownStep(run.step)) : undefined}>
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-merged/40 bg-merged/10 px-2 py-0.5 text-xs text-merged">
+        <Loader2 size={11} className="animate-spin" />
+        {RUN_KIND_LABEL[run.kind]}
+      </span>
+    </Hint>
   );
 }
 
@@ -529,8 +535,10 @@ export function AgentStepLine({
   const run = data?.runs.find((run) => run.number === number && isActiveRun(run.status));
   if (!run?.step) return null;
   return (
-    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-faint" title={inlinePlain(shownStep(run.step))}>
-      {RUN_KIND_LABEL[run.kind]}: <InlineMarkdown text={shownStep(run.step)} />
-    </span>
+    <Hint label={inlinePlain(shownStep(run.step))}>
+      <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-faint">
+        {RUN_KIND_LABEL[run.kind]}: <InlineMarkdown text={shownStep(run.step)} />
+      </span>
+    </Hint>
   );
 }

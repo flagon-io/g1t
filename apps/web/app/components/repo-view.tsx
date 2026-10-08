@@ -15,6 +15,7 @@ import { Topics } from "./topics";
 import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Hint } from "./ui/hint";
 import { SkeletonLine } from "./ui/skeleton";
 
 function encodePath(path: string): string {
@@ -256,13 +257,11 @@ function FileRows({
             </Link>
             <span className="hidden min-w-0 sm:block">
               {commit ? (
-                <Link
-                  to={`${base}/commit/${commit.hash}`}
-                  className="block animate-fade-in truncate text-muted hover:text-fg hover:underline"
-                  title={commit.message.split("\n")[0]}
-                >
-                  {commit.message.split("\n")[0]}
-                </Link>
+                <Hint label={commit.message.split("\n")[0]}>
+                  <Link to={`${base}/commit/${commit.hash}`} className="block animate-fade-in truncate text-muted hover:text-fg hover:underline">
+                    {commit.message.split("\n")[0]}
+                  </Link>
+                </Hint>
               ) : last === undefined ? (
                 <SkeletonLine width="10rem" barClassName="max-w-full" />
               ) : null}

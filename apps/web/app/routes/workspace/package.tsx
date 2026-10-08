@@ -9,6 +9,7 @@ import { PackageIcon } from "../../components/package-icon";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
 import { Button, CopyLine, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { Hint } from "../../components/ui/hint";
 import { page } from "../../lib/meta";
 import { ECOSYSTEM_LABEL, formatBytes, installCommands, shortDigest } from "../../lib/packages";
 import { packages } from "../../lib/services.server";
@@ -221,19 +222,19 @@ function VersionRow({
             <span className="text-xs text-faint">Untagged</span>
           )}
           {!npm && (
-            <code className="font-mono text-xs text-muted" title={version.digest}>
-              {shortDigest(version.digest)}
-            </code>
+            <Hint label={version.digest}>
+              <code className="font-mono text-xs text-muted">{shortDigest(version.digest)}</code>
+            </Hint>
           )}
           {version.deprecated && (
-            <Badge tone="neutral" title={version.deprecated}>
-              Deprecated
-            </Badge>
+            <Hint label={version.deprecated}>
+              <Badge tone="neutral">Deprecated</Badge>
+            </Hint>
           )}
           {version.symbols && (
-            <Badge tone="neutral" title="A symbol package (.snupkg) was pushed: debuggers load its PDBs from the feed's symbol server.">
-              Symbols
-            </Badge>
+            <Hint label="A symbol package (.snupkg) was pushed: debuggers load its PDBs from the feed's symbol server.">
+              <Badge tone="neutral">Symbols</Badge>
+            </Hint>
           )}
         </div>
         {version.deprecated && <p className="text-xs text-muted">{version.deprecated}</p>}
@@ -246,9 +247,11 @@ function VersionRow({
           )}
           {version.platforms.length > 0 && <span>{version.platforms.join(", ")}</span>}
           {attached.length > 0 && (
-            <span title={attached.map((a) => a.artifact_type ?? a.media_type ?? "artifact").join(", ")}>
-              {attached.length} attached ({attached.map((a) => artifactWord(a)).join(", ")})
-            </span>
+            <Hint label={attached.map((a) => a.artifact_type ?? a.media_type ?? "artifact").join(", ")}>
+              <span>
+                {attached.length} attached ({attached.map((a) => artifactWord(a)).join(", ")})
+              </span>
+            </Hint>
           )}
           <span>
             {version.published_by ? `${version.published_by} · ` : ""}

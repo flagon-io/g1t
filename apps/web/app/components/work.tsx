@@ -11,6 +11,7 @@ import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
 import { Avatar, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
+import { Hint } from "./ui/hint";
 
 export { IssueIcon, PullIcon };
 
@@ -57,32 +58,34 @@ export function AssigneeStack({ people }: { people: string[] }) {
   if (people.length === 0) return null;
   const shown = people.slice(0, 3);
   return (
-    <span
-      className="flex shrink-0 items-center"
-      title={`Assigned to ${people.join(", ")}`}
-    >
-      {shown.map((name, index) => (
-        <span key={name} className={`rounded-full ring-2 ring-bg ${index > 0 ? "-ml-1.5" : ""}`}>
-          <Avatar name={name} size={18} />
-        </span>
-      ))}
-      {people.length > shown.length && (
-        <span className="ml-1 text-xs text-faint">+{people.length - shown.length}</span>
-      )}
-    </span>
+    <Hint label={`Assigned to ${people.join(", ")}`}>
+      <span className="flex shrink-0 items-center">
+        <span className="sr-only">Assigned to {people.join(", ")}</span>
+        {shown.map((name, index) => (
+          <span key={name} className={`rounded-full ring-2 ring-bg ${index > 0 ? "-ml-1.5" : ""}`} aria-hidden>
+            <Avatar name={name} size={18} />
+          </span>
+        ))}
+        {people.length > shown.length && (
+          <span className="ml-1 text-xs text-faint" aria-hidden>
+            +{people.length - shown.length}
+          </span>
+        )}
+      </span>
+    </Hint>
   );
 }
 
 /** The agent working on an issue now. */
 export function Assignee({ agent }: { agent: string }) {
   return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/35 bg-accent/10 px-2 py-px text-xs font-medium text-accent"
-      title={`Assigned to ${agent}`}
-    >
-      <Bot size={12} />
-      {agent}
-    </span>
+    <Hint label={`Assigned to ${agent}`}>
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/35 bg-accent/10 px-2 py-px text-xs font-medium text-accent">
+        <Bot size={12} />
+        <span className="sr-only">Assigned to </span>
+        {agent}
+      </span>
+    </Hint>
   );
 }
 

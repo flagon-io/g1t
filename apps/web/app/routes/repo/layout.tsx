@@ -10,6 +10,7 @@ import { Topics } from "../../components/topics";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill, SoonPill } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
 import { WatchMenu } from "../../components/notifications";
 import { PinButton } from "../../components/pin-button";
@@ -144,26 +145,26 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   return (
     <TabStrip label="Views" className="-mb-px gap-1">
       {tabs.map((tab) => (
-        <Link
-          key={tab.path}
-          to={`${base}/${tab.path}`}
-          title={tab.about}
-          prefetch="intent"
-          // Current by the tab's own rule: a link's address alone would also
-          // mark Overview current on every page under it.
-          aria-current={current(tab) ? "page" : undefined}
-          data-active={current(tab) || undefined}
-          className={`flex items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
-            current(tab)
-              ? "border-accent font-medium text-fg"
-              : tab.soon
-                ? "border-transparent text-faint hover:text-muted"
-                : "border-transparent text-muted hover:text-fg"
-          }`}
-        >
-          {tab.label}
-          {tab.soon && <SoonPill />}
-        </Link>
+        <Hint key={tab.path} label={tab.about}>
+          <Link
+            to={`${base}/${tab.path}`}
+            prefetch="intent"
+            // Current by the tab's own rule: a link's address alone would also
+            // mark Overview current on every page under it.
+            aria-current={current(tab) ? "page" : undefined}
+            data-active={current(tab) || undefined}
+            className={`flex items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
+              current(tab)
+                ? "border-accent font-medium text-fg"
+                : tab.soon
+                  ? "border-transparent text-faint hover:text-muted"
+                  : "border-transparent text-muted hover:text-fg"
+            }`}
+          >
+            {tab.label}
+            {tab.soon && <SoonPill />}
+          </Link>
+        </Hint>
       ))}
     </TabStrip>
   );

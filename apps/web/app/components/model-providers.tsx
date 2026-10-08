@@ -10,6 +10,7 @@ import { Form, Link } from "react-router";
 import { type Connection, MODEL_TASKS, MODEL_TIERS, type ModelRoute, type ModelTask, type ModelTier, type Provider, PROVIDERS } from "@g1t/contracts";
 
 import { Field, Input, SubmitButton } from "./ui";
+import { Hint } from "./ui/hint";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 
 type Group = "labs" | "platforms" | "any";
@@ -216,9 +217,9 @@ export function ProviderTiles({
           <ProviderMark provider={provider} size={28} />
           <span className="min-w-0 grow">
             <span className="block truncate text-sm font-medium">{PROVIDERS[provider].label}</span>
-            <span className="block truncate text-xs text-muted" title={blurb(provider)}>
-              {blurb(provider)}
-            </span>
+            <Hint label={blurb(provider)}>
+              <span className="block truncate text-xs text-muted">{blurb(provider)}</span>
+            </Hint>
           </span>
           <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
         </Link>

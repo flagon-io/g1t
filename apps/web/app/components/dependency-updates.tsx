@@ -39,6 +39,7 @@ import {
 } from "../lib/dependency-updates";
 import { TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Hint } from "./ui/hint";
 
 type Done = { ok: boolean; error?: string } | undefined;
 
@@ -110,7 +111,9 @@ function Entry({ entry, action, canCheck }: { entry: VersionUpdateEntry; action:
               </span>
             )}
             {entry.nextRunAt && (
-              <span title={utc(entry.nextRunAt)}>Next check {timeUntil(entry.nextRunAt)}</span>
+              <Hint label={utc(entry.nextRunAt)}>
+                <span>Next check {timeUntil(entry.nextRunAt)}</span>
+              </Hint>
             )}
             <span>
               {entry.lastCheckedAt ? (

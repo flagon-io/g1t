@@ -7,6 +7,7 @@ import type { Route } from "./+types/settings-dependencies";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { Avatar, EmptyState, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -53,10 +54,13 @@ function Row({ link, base, removable }: { link: DependencyLink; base: string; re
         <span className="text-xs text-faint">no variable</span>
       )}
       {link.source === "file" && (
-        <span className="inline-flex items-center gap-1 text-xs text-faint" title="Declared in .g1t/project.yml">
-          <FileCode2 size={12} />
-          project.yml
-        </span>
+        <Hint label="Declared in .g1t/project.yml">
+          <span className="inline-flex items-center gap-1 text-xs text-faint">
+            <FileCode2 size={12} />
+            <span className="sr-only">Declared in .g1t/</span>
+            project.yml
+          </span>
+        </Hint>
       )}
       {removable && link.source === "ui" && (
         <Form method="post" className="ml-auto">

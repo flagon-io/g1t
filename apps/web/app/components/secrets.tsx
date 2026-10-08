@@ -14,6 +14,7 @@ import type { Setting } from "@g1t/contracts";
 import type { SecretsAction, SecretsData } from "../lib/secrets.server";
 import { ButtonLink, EmptyState, ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
+import { Hint } from "./ui/hint";
 import { RadioCard, RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -183,9 +184,12 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
         ) : (
           <>
             {row.projects.length > 0 && (
-              <span className="mr-1 text-xs text-faint" title={row.projects.join(", ")}>
-                {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
-              </span>
+              <Hint label={row.projects.join(", ")}>
+                <span className="mr-1 text-xs text-faint">
+                  {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
+                  <span className="sr-only">: {row.projects.join(", ")}</span>
+                </span>
+              </Hint>
             )}
             {manage && (
               <>

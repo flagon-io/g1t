@@ -13,6 +13,7 @@ import {
   type UpgradeFix,
   VulnerabilityList,
 } from "../../components/security";
+import { Hint } from "../../components/ui/hint";
 import { Switch } from "../../components/ui/switch";
 import { security, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -205,13 +206,14 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
               </span>
               {upkeep.data?.error && <span className="mt-1 block text-xs text-danger">{upkeep.data.error}</span>}
             </span>
-            <Switch
-              className="mt-0.5"
-              checked={upkeepOn}
-              disabled={upkeep.state !== "idle" || !can.manage_settings}
-              title={whyNot(can, "manage_settings")}
-              onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post", action })}
-            />
+            <Hint label={whyNot(can, "manage_settings")} disabled={!can.manage_settings}>
+              <Switch
+                className="mt-0.5"
+                checked={upkeepOn}
+                disabled={upkeep.state !== "idle" || !can.manage_settings}
+                onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post", action })}
+              />
+            </Hint>
           </label>
         </div>
       </section>

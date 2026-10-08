@@ -6,6 +6,7 @@ import type { InboxCounts, InboxItem, InboxSeverity } from "@g1t/contracts";
 
 import { SubmitButton } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Skeleton } from "./ui/skeleton";
@@ -124,16 +125,20 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
         {item.doneAt ? (
           <fetcher.Form method="post" action={ACTION}>
             <Fields intent="undone" id={item.id} />
-            <SubmitButton fetcher={fetcher} icon aria-label="Move back to the inbox" title="Move back to the inbox" className={ICON_BUTTON}>
-              <Undo2 size={14} />
-            </SubmitButton>
+            <Hint label="Move back to the inbox">
+              <SubmitButton fetcher={fetcher} icon aria-label="Move back to the inbox" className={ICON_BUTTON}>
+                <Undo2 size={14} />
+              </SubmitButton>
+            </Hint>
           </fetcher.Form>
         ) : (
           <fetcher.Form method="post" action={ACTION}>
             <Fields intent="done" id={item.id} />
-            <SubmitButton fetcher={fetcher} icon aria-label="Done" title="Done" className={ICON_BUTTON}>
-              <Check size={14} />
-            </SubmitButton>
+            <Hint label="Done">
+              <SubmitButton fetcher={fetcher} icon aria-label="Done" className={ICON_BUTTON}>
+                <Check size={14} />
+              </SubmitButton>
+            </Hint>
           </fetcher.Form>
         )}
         <DropdownMenu>

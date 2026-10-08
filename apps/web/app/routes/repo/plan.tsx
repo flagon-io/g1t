@@ -12,6 +12,7 @@ import { Activity, Exchanges } from "../../components/activity";
 import { Outcome } from "../../components/outcome";
 import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { Checkbox } from "../../components/ui/checkbox";
+import { Hint } from "../../components/ui/hint";
 import { Label } from "../../components/work";
 import { billing, events, identity, work } from "../../lib/services.server";
 import {
@@ -263,13 +264,17 @@ export default function PlanPage({ loaderData, actionData, params }: Route.Compo
 
           {plan.status === "ready" && (
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <SubmitButton variant="accent" name="action" value="assign" pending="Opening issues…" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
-                <Sparkles size={15} />
-                Open these and assign g1t
-              </SubmitButton>
-              <SubmitButton variant="quiet" name="action" value="open" pending="Opening issues…" disabled={applying || !loaderData.can.run} title={whyNot(loaderData.can, "run")}>
-                Only open the issues
-              </SubmitButton>
+              <Hint label={whyNot(loaderData.can, "run")} disabled={!loaderData.can.run}>
+                <SubmitButton variant="accent" name="action" value="assign" pending="Opening issues…" disabled={applying || !loaderData.can.run}>
+                  <Sparkles size={15} />
+                  Open these and assign g1t
+                </SubmitButton>
+              </Hint>
+              <Hint label={whyNot(loaderData.can, "run")} disabled={!loaderData.can.run}>
+                <SubmitButton variant="quiet" name="action" value="open" pending="Opening issues…" disabled={applying || !loaderData.can.run}>
+                  Only open the issues
+                </SubmitButton>
+              </Hint>
               <span className="text-xs text-muted">
                 Untick any you do not want. Agents work on the independent ones at once
                 and the rest follow as what they depend on merges.

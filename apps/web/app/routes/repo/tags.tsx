@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import type { Route } from "./+types/tags";
 import { Avatar, EmptyState, TimeAgo } from "../../components/ui";
+import { Hint } from "../../components/ui/hint";
 import { page } from "../../lib/meta";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -44,9 +45,11 @@ export default function Tags({ loaderData, params }: Route.ComponentProps) {
                     <Avatar name={tag.commit.author.name} size={13} />
                     <span className="shrink-0">{tag.commit.author.name}</span>
                     <span className="text-faint">·</span>
-                    <Link to={`${base}/commit/${tag.commit.hash}`} className="min-w-0 truncate hover:text-fg" title={tag.commit.message}>
-                      {tag.commit.message.split("\n")[0]}
-                    </Link>
+                    <Hint label={tag.commit.message}>
+                      <Link to={`${base}/commit/${tag.commit.hash}`} className="min-w-0 truncate hover:text-fg">
+                        {tag.commit.message.split("\n")[0]}
+                      </Link>
+                    </Hint>
                     <span className="shrink-0 text-faint">
                       · <TimeAgo at={tag.commit.authoredAt} />
                     </span>
