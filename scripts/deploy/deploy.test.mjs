@@ -455,13 +455,13 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
   const data = planJson(stack, decisions, { events: { pending: ["0003_x.sql"] }, repos: { pending: [] } }, HEAD);
   assert.deepEqual(data.migrations, [{ unit: "events", database: "g1t-events", pending: ["0003_x.sql"] }]);
   assert.deepEqual(data.stages.core.jobs, [
-    { group: "rust", units: "events,repos", rust: true },
-    { group: "ts", units: "projects", rust: false },
+    { group: "rust", units: "events,repos", rust: true, image: false },
+    { group: "ts", units: "projects", rust: false, image: false },
   ]);
-  assert.deepEqual(data.stages.edge.jobs, [{ group: "rust", units: "api", rust: true }]);
+  assert.deepEqual(data.stages.edge.jobs, [{ group: "rust", units: "api", rust: true, image: false }]);
   assert.deepEqual(data.stages.front.jobs, [
-    { group: "web", units: "web", rust: false },
-    { group: "docs", units: "docs", rust: false },
+    { group: "web", units: "web", rust: false, image: false },
+    { group: "docs", units: "docs", rust: false, image: false },
   ]);
   assert.deepEqual(data.stage_order, ["core", "edge", "front"]);
   assert.deepEqual(buildGroups([]), []);
@@ -469,7 +469,7 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
   const core = stack.units.filter((u) => u.stage === "core");
   const jobs = buildGroups(core, ["runner"]);
   assert.deepEqual(jobs.filter((j) => j.rust).map((j) => j.units.split(",").length), [4, 4, 3]);
-  assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner"));
+  assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner" && j.image && !j.rust));
   assert.ok(!jobs.find((j) => j.group === "ts").units.includes("runner"));
 });
 

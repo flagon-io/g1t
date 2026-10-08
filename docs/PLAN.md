@@ -479,6 +479,107 @@ issue and resolves it.
 commands declared in `.g1t/checks.yaml`, run in sandboxes on every pull request
 and on every combined state in the landing queue.
 
+### Docker in workflow jobs (built 2026-10-08)
+
+> **2026-10-08:** "Why didn't we give CI docker then? We need GitHub
+> Actions functionality maxxed baby but with all the good good security
+> etc." The trigger: `deploy.yml`'s runner-image job needs `docker build`
+> and `docker push`, and failed on hosted runners.
+
+**What Cloudflare Containers allow** (their FAQ, updated 2026-10-05, and
+the Docker-in-Docker guide and example it links):
+
+- Docker runs inside a container: `docker:dind`, with `dockerd` as
+  **root**. A rootless Engine does not start there.
+- **No iptables**: `--iptables=false --ip6tables=false`, or the Engine
+  fails setting up its rules. Containers with the `durable_object`
+  scheduling policy (ours: each sandbox is a Durable Object's) cannot turn
+  IP forwarding on either: `--ip-forward=false`, or the Engine exits.
+- So **a bridge network has no way out**: the guide's answer is
+  `--network=host` for `docker run` and `docker build`, which gives
+  containers the outer container's network.
+- Built images and containers are lost when the sandbox stops.
+
+**What was found by trying** (Docker Engine 29.8.2 in a privileged
+container standing in for a sandbox, with the same flags):
+
+- `--bridge=none` makes BuildKit's `RUN` steps fail outright ("network
+  bridge not found"); with the default bridge they run with no route out.
+  Containers default to the bridge too. The default bridge is created
+  fine without iptables, as the FAQ's own example relies on.
+- The overlay snapshotter does not work on an overlay root filesystem, and
+  the containerd image store does not fall back by itself: the Engine
+  starts, then every container fails to mount. Whether a sandbox's disk
+  takes overlays is not documented, so the runner tries a mount first and
+  uses `native` (plain copies) when it fails. `vfs` is not a name the
+  containerd store accepts.
+- `--cpus` and `--memory` need cgroup v2 controllers handed down from a
+  cgroup with no processes, which `docker:dind`'s entrypoint does and a
+  plain `dockerd` does not.
+- A `runc` earlier on the Engine's `PATH` is used both for containers (via
+  containerd's shim) and by BuildKit's executor, with the bundle's
+  `config.json` written before it runs. BuildKit's bridged steps carry
+  libnetwork's `libnetwork-setkey` prestart hook; `RUN --network=none`
+  does not.
+- Buildx skips `type=gha` caches when the job has no GitHub cache service,
+  and the build succeeds without one.
+- Registries' layer hosts: Docker Hub sends layers from
+  `production.cloudfront.docker.com` (and `production.cloudflare.docker.com`),
+  Quay from `cdn0N.quay.io`, Microsoft's from regional
+  `*.data.mcr.microsoft.com`, public ECR from a CloudFront host;
+  `mirror.gcr.io` serves its own.
+
+**What was built** (`crates/runner/src/docker`, `actions/containers.rs`):
+
+- **One Engine per job, started lazily.** The runner listens on
+  `/var/run/docker.sock` itself and starts `dockerd` (root, the flags
+  above, containerd image store, `mirror.gcr.io` first for Docker Hub) on
+  the first connection, or when the job has `services:` or `container:`.
+  A log line says it started and how long it took.
+- **Containers on the job's network.** The socket is an API proxy: a
+  container that asks for a bridge or user network gets `host`; its names
+  (container name, aliases, Compose service, links) resolve to 127.0.0.1
+  in later containers (`ExtraHosts`) and in the job's steps
+  (`/etc/hosts`); `-p 8080:80` is forwarded; `docker inspect` reports the
+  ports as published; `network connect` adds aliases. Sharing the job's
+  network is also what keeps the guardrails on every container: the
+  egress Worker sees their traffic as the job's.
+- **A `runc` shim.** The runner binary, as `runc`: BuildKit steps bound for
+  a bridge lose the network namespace and the libnetwork hook (so they use
+  the job's network); in a guarded job every container (run, exec, build
+  step) gets the egress certificate at `/dev/g1t-egress` and the
+  variables that point tools at it. `/dev` is the container's own tmpfs,
+  so none of it lands in a layer; checked by saving a built image.
+- **Job features:** `services:` (pull, credentials, health waits, logs at
+  the end, `job.services.*`), `container:` (steps and JavaScript actions
+  through `docker exec`, Node mounted from the runner, Alpine falls back to
+  running actions beside it), `docker://` steps and Dockerfile actions in
+  GitHub's `/github/*` layout, `docker/setup-buildx-action` answered
+  natively (the job's Engine is the builder), sign-in to g1t's registry
+  with the run's token.
+- **Kill switch:** the runner Worker's `DOCKER` var (`off`).
+
+**Rejected:** rootless Docker or BuildKit (does not start in Containers);
+Podman or buildah with `vfs` (no better networking, less compatible, slow);
+a standalone `buildkitd --oci-worker-net=host` as the default builder
+(images not in the Engine's store, so `FROM` a just-built image and
+`docker run` of a build fail without `--load` round trips); a `docker` CLI
+wrapper adding `--network=host` (misses Compose, SDKs and testcontainers,
+which speak the API).
+
+**Not yet:**
+
+- Seen on Cloudflare itself: whether a sandbox's disk takes overlays,
+  `--privileged`, and the first deploy's pull of the base from
+  `registry.cloudflare.com` (its layer host may need a workflow-only line).
+- `type=gha` build caches backed by g1t's Actions cache.
+- Multi-platform builds (QEMU's `binfmt_misc` in a sandbox).
+- Docker for agents and checks, not just workflow jobs.
+- `runner-base.yml` on g1t's machines: the base's apt step needs
+  `Acquire::https::CAInfo` pointed at the egress certificate first.
+- A deploy that appends the runner binary as a layer through the registry
+  API, with no Docker and no 3 GB pull.
+
 Agents can also reach integrations directly: an agent definition lists MCP
 servers (Sentry, Linear and so on) it may use while working.
 

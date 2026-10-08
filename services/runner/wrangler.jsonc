@@ -108,6 +108,11 @@
 		// (crates/runner abuse.rs). "off" turns the CPU watch off; miners
 		// named in commands are refused either way.
 		"ABUSE_WATCH": "on",
+		// Each workflow job gets a Docker Engine of its own, inside its
+		// sandbox, started the first time a step uses Docker or the job has
+		// `services:` or `container:` (crates/runner docker/). "off" gives
+		// jobs none.
+		"DOCKER": "on",
 		// Nightly backups (src/backup.ts): each sweep starts this many of the
 		// backups the repos service queued, with at most BACKUPS_RUNNING at
 		// once. "0" starts none.

@@ -174,18 +174,21 @@ fn deploy_builds_rust_on_the_larger_machine_with_its_target_cached() {
     let deploy = read("deploy.yml");
     for stage in ["core", "edge", "front"] {
         let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
-        let on = |rust: bool| {
+        let on = |rust: bool, image: bool| {
             let mut contexts = Map::new();
-            contexts.insert("matrix".into(), json!({ "group": "g", "units": "u", "rust": rust }));
+            contexts.insert("matrix".into(), json!({ "group": "g", "units": "u", "rust": rust, "image": image }));
             let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
             expr::interpolate_value(&job.runs_on, &scope).unwrap()
         };
-        assert_eq!(on(true), json!("g1t-4core"), "{stage}");
-        assert_eq!(on(false), json!("ubuntu-latest"), "{stage}");
+        assert_eq!(on(true, false), json!("g1t-4core"), "{stage}");
+        // The runner's image is built with the job's own Docker Engine.
+        assert_eq!(on(false, true), json!("g1t-4core"), "{stage}");
+        assert_eq!(on(false, false), json!("ubuntu-latest"), "{stage}");
     }
     let source = std::fs::read_to_string(workflows_dir().join("deploy.yml")).unwrap();
     assert!(source.contains("target/wasm32-unknown-unknown/release"));
     assert!(source.contains("!target/**/incremental"));
+    assert!(source.contains("target/x86_64-unknown-linux-musl/release"));
 }
 
 #[test]

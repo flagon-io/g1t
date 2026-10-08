@@ -32,6 +32,7 @@ export {
   ABUSE_HOST,
   ABUSE_MESSAGE,
   SANDBOX_BINDINGS,
+  dockerFor,
   harnessEnv,
   jobHosts,
   newlyBlocked,

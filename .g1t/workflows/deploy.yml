@@ -16,11 +16,13 @@
 # with `deployment: false`, so a dry run or a change that deploys nothing
 # makes no deployment.
 #
-# Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row), the
-# variable CLOUDFLARE_ACCOUNT_ID, and api.cloudflare.com among the project's
-# workflow-only domains for deploy.yml in production (Settings, Guardrails),
-# and registry.cloudflare.com there too, to find the runner's image. See
-# docs/DEPLOYING.md.
+# Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row, with
+# Containers write), the variable CLOUDFLARE_ACCOUNT_ID, and
+# api.cloudflare.com among the project's workflow-only domains for
+# deploy.yml in production (Settings, Guardrails), and
+# registry.cloudflare.com there too, to find, pull and push the runner's
+# image. A job that must build that image (the `runner-image` group) does
+# so with its own Docker Engine, on a larger machine. See docs/DEPLOYING.md.
 name: Deploy
 
 on:
@@ -126,8 +128,9 @@ jobs:
     # Runs when nothing before it failed: a migrate job skipped for having
     # nothing to apply is not a failure.
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
-    # Rust builds get 4 vCPUs; everything else the standard machine.
-    runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
+    # Rust builds and the runner's image get 4 vCPUs; everything else the
+    # standard machine.
+    runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
     environment:
       name: production
       url: https://g1t.sh
@@ -185,6 +188,23 @@ jobs:
           restore-keys: |
             cargo-target-${{ runner.os }}-${{ matrix.group }}-
             cargo-target-${{ runner.os }}-
+      # The runner's image: its binary, built natively for musl (the base
+      # has musl-gcc; the target is added here), with its Cargo target kept
+      # between runs. The image itself is built and pushed with the job's
+      # own Docker Engine (scripts/deploy/image.mjs).
+      - name: Rust for the runner
+        if: ${{ matrix.image }}
+        run: rustup target add x86_64-unknown-linux-musl
+      - name: Cache the runner's build
+        if: ${{ matrix.image }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            target/x86_64-unknown-linux-musl/release
+            !target/**/incremental
+          key: runner-musl-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
+          restore-keys: runner-musl-${{ runner.os }}-
       - name: Install
         run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
       - name: Deploy ${{ matrix.units }}
@@ -196,7 +216,7 @@ jobs:
     name: edge (${{ matrix.group }})
     needs: [plan, migrate, core]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
-    runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
     environment:
       name: production
       url: https://g1t.sh
@@ -211,7 +231,7 @@ jobs:
     name: front (${{ matrix.group }})
     needs: [plan, migrate, core, edge]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
-    runs-on: ${{ matrix.rust && 'g1t-4core' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
     environment:
       name: production
       url: https://g1t.sh

@@ -184,24 +184,41 @@ You can't resolve a merge conflict on the pull request's page.
 
 ## Actions and runners
 
-### No Docker in g1t's sandboxes
+### Docker shares the job's network
 
-On g1t's own machines, a job's `container:` image is not used (its steps
-run on g1t's runner image instead), and a step cannot run `docker build`.
-Docker container actions (`uses: docker://…`, or an action that runs as a
-Docker image) and `services:` containers, such as a database, do not run
-on any runner yet, self-hosted ones included.
+A job's Docker Engine runs its containers on the job's own network, not on
+networks of their own. A service is reached at `localhost` and by its
+name, as on GitHub, but two containers cannot listen on the same port, and
+`docker network create` gives no separation between containers.
 
-- **Why.** Jobs run in Cloudflare Containers, which offer no supported way
-  to run Docker or another image builder inside a container.
-- **Instead.** Run `container:` jobs and image builds on a
-  [self-hosted runner](/guides/self-hosted-runners/). A runner in Docker
-  mode runs each job in its `container:` image. To build images, register a
-  runner with `--no-docker` on a machine that has Docker, and its steps can
-  call `docker build` and `docker push`. Self-hosted time costs nothing. For
-  a database, start it from a `run:` step on a self-hosted runner.
-- **Status.** Docker container actions and `services:` are planned. Image
-  builds on g1t's machines depend on Cloudflare.
+- **Why.** Jobs run in Cloudflare Containers, which let a container run
+  Docker but not route a container network of its own out, or change its
+  packet filter. Sharing the job's network is also what keeps the job's
+  guardrails on every container.
+- **Instead.** Give containers that would clash different ports.
+- **Status.** Not scheduled.
+
+### No `type=gha` build cache
+
+Buildx's GitHub Actions cache backend (`cache-to: type=gha`) is skipped on
+g1t, and the build runs without a cache.
+
+- **Why.** It talks to GitHub's cache service, which g1t's cache does not
+  speak yet.
+- **Instead.** Use a registry cache in g1t's container registry
+  (`type=registry`), or `type=local` with `actions/cache`. See
+  [caching image builds](/guides/actions/#caching-image-builds).
+- **Status.** Planned.
+
+### No multi-platform image builds on g1t's machines
+
+Building an image for another platform, such as `linux/arm64`, needs QEMU's
+emulators, which g1t's machines do not have set up.
+
+- **Instead.** Build other platforms on a
+  [self-hosted runner](/guides/self-hosted-runners/) of that architecture,
+  or one with QEMU set up.
+- **Status.** Planned.
 
 ### Linux only on g1t's machines
 

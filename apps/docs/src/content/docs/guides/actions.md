@@ -45,6 +45,11 @@ gives their values out, so they cannot be copied across.
 | `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. |
 | `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
 | `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
+| `docker build`, `push`, `run`, `login`, `compose`, Buildx | The same, with a Docker Engine of the job's own. See [Docker](#docker). |
+| `services:` | The same: each service starts before the steps, health checks are waited for, and it is reached at `localhost` on its port and by its name. |
+| `container:` | The same: every step runs inside the image. |
+| `uses: docker://image`, Docker actions (`runs.using: docker`) | The same: built from the action's Dockerfile or pulled, and run with GitHub's `/github/workspace` layout. |
+| `docker/setup-buildx-action`, `docker/build-push-action`, `docker/login-action` | The same. `setup-buildx-action` picks the job's own Engine as the builder. |
 
 The **Actions** page of a workflow says, under *How this runs on g1t*,
 anything in it that runs differently.
@@ -55,10 +60,9 @@ anything in it that runs differently.
   job with `runs-on: windows-latest` or `macos-latest` fails, and says so.
   [Self-hosted runners](/guides/self-hosted-runners/) of any OS run them:
   `runs-on: [self-hosted, windows]`.
-- **Docker** container actions, `services:` containers and `container:` on
-  g1t's machines. A job's `container:` is ignored there and its steps run on
-  g1t's image; a [self-hosted runner](/guides/self-hosted-runners/#what-a-job-gets)
-  that runs jobs in Docker uses it.
+- **Docker's `type=gha` build cache.** Buildx skips it on g1t, and the
+  build runs without a cache. Use a registry cache instead; see
+  [caching image builds](#caching-image-builds).
 - **Reusable workflows from other repositories** (`uses: owner/repo/.github/workflows/x.yml@v1`); ones in the same repository work.
 - **The toolkit's own cache.** Actions that cache through GitHub's service
   themselves, such as `actions/setup-node` with `cache: npm`, run without
@@ -76,8 +80,9 @@ Why each of these is missing, and what to use instead, is on
 ## The runner
 
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
-`build-essential`, `git`, `curl`, `jq` and passwordless `sudo`, in GitHub's
-layout (`/home/runner/work`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
+`build-essential`, `git`, `curl`, `jq`, Docker (with Buildx and Compose)
+and passwordless `sudo`, in GitHub's layout (`/home/runner/work`,
+`RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
 `runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04` and other Linux
 labels all run here. A job whose `runs-on` names `self-hosted` waits for one
 of your [self-hosted runners](/guides/self-hosted-runners/) instead. Setup actions such as
@@ -120,8 +125,10 @@ guardrails allow, g1t itself, and what builds need, and nothing else.
 What builds need is the package registries (npm, PyPI, crates.io, the Go
 proxy, RubyGems, Packagist, NuGet, Maven and Gradle, Debian's mirrors),
 GitHub, where `uses:` actions and the setup actions' downloads come from,
-and the toolchains' download sites (`nodejs.org`, `go.dev`,
-`static.rust-lang.org`). A request anywhere else gets `403` with
+the toolchains' download sites (`nodejs.org`, `go.dev`,
+`static.rust-lang.org`), and the public container registries (Docker Hub,
+GitHub's, Quay, and `mirror.gcr.io`, the mirror of Docker Hub that a job's
+Engine asks first). A request anywhere else gets `403` with
 the reason. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
 higher adds it to the project's
 allowed domains under **Settings → Guardrails**; a project whose guardrails
@@ -138,6 +145,163 @@ g1t does not run cryptocurrency miners: a step that names one (`xmrig`,
 a `stratum+tcp://` pool, `--donate-level`) is not run, and a job that
 looks like it is mining is stopped. See
 [abuse and mining](/guides/guardrails/#abuse-and-mining).
+
+## Docker
+
+Each job on g1t's machines has a Docker Engine of its own, inside the
+job's sandbox. Nothing runs until the job uses it: the first `docker`
+command, or a job's `services:` or `container:`, starts it, in a second
+or two, and the log says so. It ends with the job, with every image,
+container and build cache in it. No other job, repository or workspace
+ever shares it.
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker compose up -d --wait
+      - run: npm test
+        env:
+          DATABASE_URL: postgres://postgres:${{ secrets.DB_PASSWORD }}@localhost:5432/postgres
+```
+
+### What works
+
+| | On g1t's machines |
+| --- | --- |
+| `docker build`, `buildx build`, `run`, `exec`, `pull`, `push`, `login`, `compose` | Work as they do on GitHub's runners. The Engine, Buildx and Compose are current releases. |
+| `services:` | Pulled and started before the first step, with `env`, `ports`, `volumes`, `options` and `credentials`. Services with a health check are waited for; one that turns unhealthy fails the job with its log. Each service's log is printed when the job ends. `job.services.<id>.id`, `.network` and `.ports` are set. |
+| `container:` | Every `run` step and JavaScript action runs inside the image, with its `env`, `options`, `volumes` and `credentials`. The workspace, `RUNNER_TEMP` and the tool cache are mounted at the same paths as on g1t's runner. |
+| `uses: docker://image` | Pulled and run, with `with.args` and `with.entrypoint`. |
+| Docker actions | Built from the action's Dockerfile (or pulled, for `image: docker://…`), and run with its `args`, `env` and `entrypoint`, its inputs as `INPUT_*` variables, and `pre-entrypoint` and `post-entrypoint`. |
+| `docker/setup-buildx-action` | Selects the job's own Engine as the builder (BuildKit). Its `name`, `driver`, `platforms` and `nodes` outputs are set. `driver`, `driver-opts` and `buildkitd-*` are not used, and the log says so. |
+| `docker/build-push-action` | Works, with `push`, `load`, `tags`, `labels`, `build-args`, `secrets`, `target`, `provenance` and `sbom`. |
+| `docker/login-action` | Works, for g1t's registry, Docker Hub, GitHub's registry, Cloudflare's (`registry.cloudflare.com`) and any registry the job can reach. |
+
+### Services and the network
+
+Every container a job starts shares the job's own network, the one its
+[guardrails](/guides/guardrails/) apply to. So:
+
+- **A service is at `localhost`** on its port, from steps and from other
+  containers. `ports: ["5432:5432"]` and `ports: ["5432"]` both mean
+  `localhost:5432`.
+- **A port mapped to another number** (`ports: ["6543:5432"]`, or
+  `docker run -p 8080:80`) is forwarded: `localhost:6543` reaches the
+  service's 5432. `job.services.<id>.ports` says which port to use, and
+  `docker inspect` and `docker port` report it.
+- **A service is also reached by its name**, as it is from a job
+  container on GitHub: `postgres:5432` works from steps, from the job's
+  container and from any container started later. So do the names of
+  containers and Compose services, and their network aliases.
+- **Two containers cannot listen on the same port.** A job with a
+  `redis` service and a Compose file that starts another Redis on 6379
+  gets an error from the second; give one of them another port.
+
+A container that asks for `--network none` gets none, and
+`--network container:<name>` shares that container's.
+
+### Job containers
+
+With `container:`, the steps run inside the image as its default user,
+usually `root`. A few things differ from GitHub's runner:
+
+- The workspace is at the same path as on g1t's runner
+  (`/home/runner/work/…`), not `/__w`. `github.workspace` is correct
+  either way.
+- JavaScript actions run inside the container with g1t's Node 24, which
+  needs an image with glibc and `libstdc++` (Debian, Ubuntu and most
+  language images have both). In an image without them, such as Alpine,
+  they run beside the container, on g1t's runner, with the same files,
+  and the log says so.
+- `actions/checkout`, `actions/cache` and the artifact actions run on
+  g1t's runner, with the same files.
+
+### Building and pushing images
+
+On g1t's machines, a job is signed in to g1t's container registry from
+the start, with its own `G1T_TOKEN`, so it can push to and pull from its
+workspace's images without a login step. A run that gets no secrets is
+not signed in. See [container registry](/guides/containers/#in-workflows).
+
+```yaml
+jobs:
+  image:
+    runs-on: g1t-4core
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: g1t.sh/${{ github.repository }}:${{ github.sha }}
+          cache-from: type=registry,ref=g1t.sh/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=g1t.sh/${{ github.repository }}:buildcache,mode=max
+```
+
+For other registries, sign in with `docker/login-action` or
+`docker login`, as on GitHub. Docker Hub's images are pulled through its
+public mirror first, so jobs are rarely held up by Docker Hub's limits on
+anonymous pulls.
+
+#### Caching image builds
+
+The Engine starts empty in every job, so a build's layers are rebuilt
+unless the job brings a cache:
+
+- **A registry cache** (`cache-to: type=registry,ref=…,mode=max`), in g1t's
+  registry or any other, is the simplest and is shared by every branch.
+- **A local cache** (`cache-to: type=local,dest=/tmp/buildx-cache`) saved
+  and restored with `actions/cache`, within [the cache's limits](#the-cache).
+- **`type=gha`** is not used on g1t yet: Buildx skips it, and the build
+  runs without a cache.
+
+### Limits
+
+- **Machine.** Containers share the job's machine: its vCPUs, memory and
+  disk ([machine sizes](#machine-sizes)). Image builds and databases want
+  `g1t-2core` or `g1t-4core`. `--cpus` and `--memory` limit a container
+  within that.
+- **Disk.** Images take room on the job's disk. On a machine whose disk
+  cannot hold layered images, the Engine stores plain copies, which take
+  more room; the log says when it does.
+- **Linux, amd64.** Images for other platforms need QEMU's emulators,
+  which g1t's machines do not have set up; `docker/setup-qemu-action` is
+  not supported there yet.
+- **Privileged containers** (`--privileged`) run, with no more reach than
+  the job itself has: the job's sandbox is the boundary.
+
+### How Docker is kept safe
+
+- **One Engine per job.** It runs inside the job's own sandbox, a virtual
+  machine of its own, and is gone with it. No Docker socket of g1t's, or of
+  any machine, is shared with a job.
+- **The job's guardrails hold.** Containers use the job's network, so a
+  container, a build step or an image pull reaches only what the job may
+  reach. A host off the list gets `403` with the reason, as any step does.
+- **HTTPS keeps working.** In a job whose network is restricted, every
+  container and build step is given the certificate the job's HTTPS is
+  checked with, in `/dev/g1t-egress`, and `SSL_CERT_FILE`,
+  `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `PIP_CERT`,
+  `GIT_SSL_CAINFO` and `CARGO_HTTP_CAINFO` pointing at it, unless the
+  container sets them itself. None of it is written into an image's layers.
+  Tools that keep their own list of certificates, such as Java's, need it
+  added in the build that uses them.
+- **Short-lived credentials.** The registry sign-in uses the run's own
+  token, which ends with the run; `credentials:` for a service or a job
+  container are used for that pull only.
+- **No miners.** A container whose image or command names a miner is not
+  created, as a step's script is not run.
 
 ## The cache
 

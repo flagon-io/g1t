@@ -408,10 +408,18 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             }
         }
         if spec.contains_key("services") {
-            note(Severity::Unsupported, Some(id), "`services` containers (such as a database) are not started on g1t yet.".to_owned());
+            note(
+                Severity::Info,
+                Some(id),
+                "`services`: each service runs in Docker beside the steps and is reached at `localhost:<port>`. On g1t's machines it is the job's own Docker Engine, the service is also reached by its name, and two services cannot listen on the same port.".to_owned(),
+            );
         }
         if spec.contains_key("container") {
-            note(Severity::Warning, Some(id), "`container`: steps run on g1t's runner image instead of that container.".to_owned());
+            note(
+                Severity::Info,
+                Some(id),
+                "`container`: the steps run inside that image, in Docker (on g1t's machines, the job's own Engine), with the workspace at the same path as on the runner (`/home/runner/work`), not `/__w`.".to_owned(),
+            );
         }
         if spec.contains_key("environment") {
             note(Severity::Info, Some(id), "`environment`: the job gets the values its secrets and variables give this environment; protection rules (approvals, wait timers, branch limits) are not enforced on g1t yet. Unless it says `deployment: false`, the run records a deployment to it.".to_owned());
@@ -472,7 +480,7 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
 /// `caches`: the step sets a `cache` input.
 fn action_note(uses: &str, caches: bool) -> Option<(Severity, String)> {
     if uses.starts_with("docker://") {
-        return Some((Severity::Unsupported, format!("`{uses}`: Docker actions do not run on g1t yet.")));
+        return Some((Severity::Info, format!("`{uses}` runs in Docker (on g1t's machines, the job's own Engine).")));
     }
     let name = uses.split('@').next().unwrap_or(uses).to_ascii_lowercase();
     match name.as_str() {
@@ -586,8 +594,10 @@ jobs:
             workflow.notes.iter().filter(|n| n.severity == Severity::Unsupported).map(|n| n.message.as_str()).collect();
         assert!(unsupported.iter().any(|m| m.contains("`release`")));
         assert!(unsupported.iter().any(|m| m.contains("windows-latest")));
-        assert!(unsupported.iter().any(|m| m.contains("services")));
-        assert!(unsupported.iter().any(|m| m.contains("docker://alpine")));
+        assert!(!unsupported.iter().any(|m| m.contains("services")));
+        assert!(!unsupported.iter().any(|m| m.contains("docker://alpine")));
+        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("own Docker Engine") && n.message.contains("localhost")));
+        assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.starts_with("`docker://alpine`")));
         assert!(unsupported.iter().any(|m| m.contains("pwsh")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Info && n.message.contains("actions/cache")));
         assert!(workflow.notes.iter().any(|n| n.severity == Severity::Warning && n.message.contains("actions/setup-node")));

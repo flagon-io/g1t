@@ -103,6 +103,7 @@ import {
   type RunGuard,
   abuse,
   buildGuardFor,
+  dockerFor,
   egress,
   egressHosts,
   guardFor,
@@ -197,6 +198,12 @@ export interface RunnerEnv {
    * either way.
    */
   ABUSE_WATCH?: string;
+  /**
+   * `off` leaves workflow jobs without a Docker Engine of their own
+   * (crates/runner docker/): a switch for the operator. Anything else
+   * gives each job one, started the first time it is used.
+   */
+  DOCKER?: string;
   /**
    * Nightly backups (backup.ts): how many queued backups one sweep starts
    * (`0`: none, backups off here), and how many may run at once.
@@ -1694,6 +1701,8 @@ export default class RunnerService
           G1T_API: "https://api.g1t.sh",
           ACTIONS_JOB: args.job,
           ACTIONS_TOKEN: args.token,
+          // Docker of the job's own, inside its sandbox (crates/runner docker/).
+          G1T_DOCKER: dockerFor(this.env.DOCKER),
         },
       });
     } catch (error) {

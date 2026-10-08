@@ -27,7 +27,7 @@ import {
   slotFree,
   waitingMessage,
 } from "../../../packages/contracts/src/compute.ts";
-import { BUILD_HOSTS, buildHosts, withPlanLimits } from "./egress.ts";
+import { BUILD_HOSTS, buildHosts, dockerFor, withPlanLimits } from "./egress.ts";
 import { WAITING, handleMention } from "./mentions.ts";
 
 const repo = { namespace: "acme", name: "web" };
@@ -306,11 +306,21 @@ test("builds reach registries and git hosts, and no mining pool", () => {
   for (const host of ["registry.npmjs.org", "codeload.github.com", "nodejs.org", "crates.io"]) {
     assert.ok(BUILD_HOSTS.includes(host), host);
   }
+  // A job's Docker Engine pulls from Docker Hub (through its mirror) and Quay.
+  for (const host of ["registry-1.docker.io", "auth.docker.io", "production.cloudflare.docker.com", "mirror.gcr.io", "ghcr.io", "quay.io"]) {
+    assert.ok(BUILD_HOSTS.includes(host), host);
+  }
   assert.ok(buildHosts("deploy").includes("api.cloudflare.com"));
   assert.ok(!buildHosts("actions").includes("api.cloudflare.com"));
   for (const host of buildHosts("deploy")) {
     assert.doesNotMatch(host, /pool|xmr|monero|nicehash|^\*/, host);
   }
+});
+
+test("workflow jobs get Docker unless the operator turns it off", () => {
+  assert.equal(dockerFor(undefined), "on");
+  assert.equal(dockerFor("on"), "on");
+  assert.equal(dockerFor(" OFF "), "off");
 });
 
 // ---- Mentions --------------------------------------------------------------------------------
