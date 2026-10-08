@@ -2,13 +2,14 @@
  * The changes staff make to how a workspace or an enterprise pays: terms,
  * moving workspaces on and off enterprises, credits, and Stripe billing
  * links. What is acted on comes from the billing service and identity, not
- * from the form; each change shows a confirmation first, and a credit
- * needs the workspace's slug typed out.
+ * from the form; each change shows a confirmation first, and a credit over
+ * $100 needs the workspace's slug typed out.
  */
 import type { Terms } from "@g1t/contracts";
 import { data, redirect } from "react-router";
 
-import { fields, parseAllowances, parseCredit, parseEmail, parseGoodwill, parseNote, parsePayment, parseSlug, parseTerms, text } from "./forms";
+import { parseCreditForm } from "./credits";
+import { fields, parseAllowances, parseEmail, parseGoodwill, parseNote, parsePayment, parseSlug, parseTerms, text } from "./forms";
 import { FORGIVE_COST_MICROS, goodwillWarning } from "./pricing";
 import type { ActionData } from "./review";
 import { admin, identity, priceBook } from "./services.server";
@@ -33,7 +34,7 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
   const isEnterprise = subject.kind === "enterprise";
 
   if (intent === "terms") {
-    const values = fields(form, "kind", "discount", "ceiling", "note", "until");
+    const values = fields(form, "preset", "discount", "ceiling", "note", "until");
     if (subject.kind === "workspace" && subject.billedTo) {
       return failed("terms", `This workspace is charged on ${subject.billedTo.name}'s terms. Change them on the enterprise.`, values);
     }
@@ -105,21 +106,31 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
   }
 
   if (intent === "credit") {
-    const values = fields(form, "workspace", "amount", "note", "confirmation");
+    const values = fields(form, "workspace", "preset", "amount", "kind", "expires", "expiresOn", "refundFor", "refundDay", "note");
     const workspace = subject.kind === "enterprise" ? values.workspace : subject.slug;
     if (subject.kind === "enterprise" && !subject.workspaces.includes(workspace)) {
       return failed("credit", "Choose one of this enterprise's workspaces.", values);
     }
-    const amount = parseCredit(values.amount);
-    if (!amount.ok) return failed("credit", amount.error, values);
-    const note = parseNote(values.note);
-    if (!note.ok) return failed("credit", note.error, values);
-    if (values.confirmation !== workspace) {
-      return failed("credit", `Type the workspace's slug, ${workspace}, exactly, to issue the credit.`, { ...values, confirmation: "" });
-    }
-    const result = await admin.credit(workspace, amount.value, note.value, staff.email);
+    const credit = parseCreditForm(form, workspace);
+    if (!credit.ok) return failed("credit", credit.error, values);
+    const { amountMicros, note, ...options } = credit.value;
+    const result = await admin.credit(workspace, amountMicros, note, staff.email, options);
     if (!result.ok) return failed("credit", result.error.message, values);
     return back("credit");
+  }
+
+  if (intent === "revoke-credit") {
+    // What is left of a grant, taken back. The grant must be one of the page's.
+    const values = fields(form, "id", "reason");
+    const workspaces = subject.kind === "enterprise" ? subject.workspaces : [subject.slug];
+    const reason = parseNote(values.reason);
+    if (!reason.ok) return failed("credits", reason.error, values);
+    const { grants } = await admin.credits(subject.kind === "workspace" ? { workspace: subject.slug } : {});
+    const grant = grants.find((row) => row.id === values.id && workspaces.includes(row.workspace));
+    if (!grant) return failed("credits", "That credit is not this page's, or is gone.", values);
+    const result = await admin.revokeCredit(grant.id, reason.value, staff.email);
+    if (!result.ok) return failed("credits", result.error.message, values);
+    return back("revoked");
   }
 
   if (intent === "reset") {

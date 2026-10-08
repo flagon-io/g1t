@@ -130,9 +130,9 @@ If a renewal payment fails, the card says **Payment failed**, with
 **Update payment on Stripe**, and the plan's features stop until it is
 paid.
 
-A card that says **Comped by g1t** or **Included by g1t** is on under terms
-g1t set with the workspace, such as
-[comped](#enterprises-and-custom-terms) terms, with nothing to pay or end.
+A card that says **100% discount from g1t** or **Included by g1t** is on
+under terms g1t set with the workspace, such as a
+[100% discount](#enterprises-and-custom-terms), with nothing to pay or end.
 
 ## No card, no compute
 
@@ -529,6 +529,34 @@ to $50. Larger credits, or a second one within 12 months, are reviewed by a
 person. The credit appears on the statement with the day it happened,
 such as *Credit from g1t: accidental usage on 2026-11-12*.
 
+## Credits from g1t
+
+g1t sometimes adds credit to a workspace: a welcome or referral credit, an
+apology, or a refund for something that went wrong. The workspace's owners
+get an email when it does, and **Billing** shows a **Credits from g1t**
+card with each credit in a line, such as *$25.00 credit, $12.40 left,
+expires Jan 5*.
+
+| Kind | What it is | Expires |
+| --- | --- | --- |
+| Promotional | A welcome, a referral or an event. | Sometimes: the date is on the card and in the email. |
+| Goodwill | An apology, or usage past what you meant forgiven. | Sometimes, as above. |
+| Refund | Money back for something that went wrong, with what it is for. | Never. |
+
+How credit is used:
+
+1. It is added to your balance at once, so it lowers what you owe and
+   raises what you can use before work stops.
+2. Usage is paid from credit before anything you prepaid, and from the
+   credit that expires soonest first.
+3. Given while the workspace owes for this month, it pays that first.
+4. Credit left when it expires stops counting, and the statement shows a
+   line for what expired. g1t can also withdraw credit given by mistake;
+   only what is left is withdrawn, never what was already used.
+
+Credit is never paid out as money, and is never charged to a card. On the
+statement, credits, expiries and withdrawals are under **Credits from g1t**.
+
 ## Invoices
 
 Every charge is a real invoice from g1t, kept on Stripe's billing page
@@ -618,20 +646,24 @@ is public; custom terms change how you pay, not what things cost.
   the enterprise's billing address, with a line for each workspace, due in
   30 days and paid by card or bank transfer. If it goes overdue, the
   workspaces' work stops until it is paid.
-- **Comped**: g1t covers the account's usage. The plan is on without being
-  charged, and usage is still recorded at what it cost, so the Usage page
-  stays accurate.
-- **Custom**: a discount on usage, a limit of its own, or a larger share
-  of the pools, sometimes until a date. A discount comes off each usage
-  charge, and the statement line says how much off (*(20% off)*); prices
-  themselves stay the public ones.
+- **A discount**: a percentage off every usage charge, from a few percent
+  to 100%, with a reason, sometimes until a date. Prices themselves stay
+  the public ones. The statement shows every line at its price and the
+  discount beside it: the totals read **Usage at price**, **Discount
+  (30%)** and **Charged**, each day or project has a **Discount** line, and
+  the CSV has `price (USD)` and `discount (USD)` columns. The Usage page
+  shows usage at price too, with the discount and what was charged.
+- **A 100% discount**: nothing is charged, and the plan is on without
+  being charged. The statement and the Usage page still show everything at
+  its price, so you can see what the workspace would pay.
+- **A limit of its own**, or a larger share of the pools.
 - **A longer audit log**: up to 400 days for every workspace the account
   pays for, in place of the plan's 7 or 90. See
   [how long it is kept](/guides/audit-log/#how-long-it-is-kept).
 
 g1t's own workspaces and those of Flagon, Inc., the company that makes g1t,
-run comped. Their usage is recorded at cost, apart from what customers
-pay.
+have a 100% discount. Their usage is shown at price and kept apart from
+what customers pay.
 
 Each change is made by g1t staff and recorded with who made it and why. To
 ask for one, write to [hey@flagon.io](mailto:hey@flagon.io).
@@ -694,7 +726,7 @@ time. Every member can see it.
   | Search embeddings | Private text put in the search index, once a month. |
   | Security scans | History scans and dependency checks, once a month. |
   | Payments | Card payments and invoices paid. |
-  | Credits from g1t | Credit g1t added, such as a goodwill credit. |
+  | Credits from g1t | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
   | Refunds | Money given back to your card. |
 
 - **Covered.** Below the totals, what paid for usage before it was

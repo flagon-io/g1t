@@ -128,7 +128,12 @@ For each day and bucket:
   - **discount**: what a discount on an account's custom terms took below
     cost plus the margin (`ledger.discount_micros`, see
     [Margin floor](#margin-floor)). The usage is valued at its price, so a
-    discounted sale never reads as margin lost.
+    discounted sale never reads as margin lost;
+  - **promotional credit** and **goodwill credit**: what credit staff gave
+    paid for, when it is spent (`given_credit_promotional_micros`,
+    `given_credit_goodwill_micros`, migration 0038). That usage's charge is
+    taken out of cash, so it is never money in. A refund is not here: see
+    [Credits from g1t](#credits-from-g1t).
 
   Otherwise a workspace's day is split by those shares of its value at
   price, and the same shares of each of its buckets' cost are given, its
@@ -301,7 +306,8 @@ A sold charge is cost × (1 + `MARGIN_PERCENT`), rounded up (`margin_on`;
 follows (`Terms::discounted`, `Billing::charged`):
 
 - **Standard**: charged in full.
-- **Comped**, `FREE_WHILE_BUILDING`, the plan's included usage, the trial,
+- **A 100% discount** (what was "comped"; see [Discounts](#discounts)),
+  `FREE_WHILE_BUILDING`, the plan's included usage, the trial,
   the open-source pool, and overruns g1t covers: given, and counted by why
   (above).
 - **Custom, with a discount**: the discount comes off, and what it took
@@ -315,6 +321,142 @@ follows (`Terms::discounted`, `Billing::charged`):
 
 Every usage path goes through this: `finish_run`, settling, sandbox time,
 features and builds (`charge_feature`), and the month-end meters.
+
+## Discounts
+
+An account's terms are standard, or custom: a **discount** from 1 to 100%,
+a limit of its own, or both, with a reason (the terms' note) and an
+optional end date. What used to be "comped" is a **100% discount**
+(`Terms::full_discount`; migration `0039_discounts_not_comped.sql` moved
+every `comped` row to `custom` at 100%, and code reads a leftover `comped`
+row as 100%). In SQL, `sales::FULL_DISCOUNT_SQL`.
+
+- **Charging.** Every charge records what the discount took off it
+  (`ledger.discount_micros`), 100% included: the entry is charged nothing
+  and the discount is its whole price. Migration 0039 backfilled the
+  discount on a 100%-discounted workspace's earlier entries that were
+  charged nothing and paid by nothing, at cost plus 20%.
+- **What a 100% discount still does as "comped" did.** The plan is on
+  without its price (`PlanKind::Internal`), trust is `internal` (no limit
+  on unpaid usage), nothing is invoiced or closed, and g1t's own spend on
+  it is held to the monthly budget (the terms' limit, at cost; see
+  [Spend caps](#spend-caps)).
+- **The statement and Usage.** The customer sees every usage line at its
+  price (`StatementLine.price_micros`: charged, plus what paid for it, plus
+  the discount), the discount per day or project and in the totals
+  (`StatementTotals.price_micros`, `discount_micros`, `discount_percent`),
+  and the CSV has price and discount columns. The Usage page measures at
+  price for a discounted account (`Usage.discount_micros`,
+  `discount_percent`).
+- **Margin.** A 100% discount's usage is given away as before, in the
+  bucket still named `comped` (`given_comped_micros`); sudo calls it
+  **100% discounts**. A partial discount's part below cost plus the margin
+  is `given_discount_micros` (**partial discounts**). Both are kept apart
+  from margin on what was sold.
+- **sudo.** The workspace's **Terms** form takes a discount (None, 25%,
+  50%, 100%, or Custom, a whole percent; the custom field shows by CSS
+  alone), a limit, an end date and the reason. Badges and filters say
+  *100% discount* or *N% off*. Each change is audited (`terms`), such as
+  `standard → 100% discount, monthly budget $150.00: g1t's own`.
+
+## Credits from g1t
+
+Staff give a workspace credit from sudo; the code is
+`services/billing/src/grants.rs`, the tables `credit_grants` and
+`ledger.credit_kind` (migration `0038_staff_credits.sql`).
+
+### Giving credit
+
+sudo → the workspace (or an enterprise, choosing one of its workspaces) →
+**Give credit**:
+
+1. **Amount**: $10, $20, $25, $50, $100, or **Custom** (up to $10,000).
+   Up to $100 it is one step; over $100, type the workspace's slug as well.
+2. **Kind**: promotional (a welcome, a referral, an event), goodwill (an
+   apology), or refund (money back for something that went wrong: say what
+   it refunds and, optionally, the day).
+3. **Expires**: never, 30, 90 or 365 days, or the end of a chosen day
+   (UTC). A refund never expires.
+4. **Note**: required. It is on the statement and in the owners' email.
+
+The form needs no JavaScript: the fields for one choice (the custom amount,
+a refund's details, the expiry date) show by CSS alone, and all show where
+`:has()` is not supported. `admin_credit` checks everything again.
+
+A grant is a `crd_…` ledger line (kind `top_up`, so never a payment) with
+`credit_kind`, and a `credit_grants` row. The balance rises at once. The
+owners are emailed through identity's `notify_owners` (the same path as
+limit notices). It is audited as `credit`. The Overages queue's one-click
+goodwill credit is a grant too, of kind goodwill.
+
+The inbox is not told: its items are threads on a repository, built from
+events, and a credit is a workspace's. That needs a workspace-level inbox
+thread first.
+
+### How it is spent
+
+Credit is spent before anything prepaid, the soonest-expiring grant first
+(never-expiring last, then the oldest). Given while the workspace owes, it
+pays what is owed first, the most recent usage first. What each grant paid
+for is never stored: `grants::replay` works it out from the ledger in order,
+so the charge paths do not know about credit and the answer is always what
+the ledger says. A charge that comes down (a settled run) gives back to
+the grant that paid last, while it can still be spent.
+
+### Expiry and revoking
+
+- **Expiry.** The daily run (`expire_credits`, before the reconciliation)
+  closes grants past `expires_at` and enters what was left as a negative
+  `crd…_expired` line; audited as `credit_expired`. A grant past its expiry
+  pays for nothing even before the run.
+- **Revoke.** sudo → the workspace's **Credits** (or **Credits & refunds**)
+  → **Revoke unused**, with why (`admin_revoke_credit`): what is left, as a
+  `crd…_revoked` line, audited as `credit_revoked`. What was spent stays
+  spent.
+
+Neither takes the balance below zero: at most the balance, if a refunded
+payment left less there than the credit.
+
+### How margin treats them
+
+| Kind | When spent | On the day it was given |
+| --- | --- | --- |
+| Promotional | The usage is valued at its price, its charge comes out of cash and is given (`given_credit_promotional_micros`) | Nothing |
+| Goodwill | The same, as `given_credit_goodwill_micros` | Nothing |
+| Refund | Paid for: cash, as any usage | Its amount (less what was revoked) comes off cash on the day it refunds, shared over that day's paid usage |
+
+A refund gives back money already collected, so counting it as given would
+make it look like a budget g1t chose to spend. Taking it off cash for the
+day it refunds says that day's sale was worth less, and counting what it
+later pays for as cash keeps money in equal to what was collected. The
+refund's day is clamped to the last 30 days, the days the reconciliation
+recomputes; an older one lands on the oldest. Refunds never expire, so
+cash taken back is never stranded.
+
+What credit paid of a month-end meter (storage, git, scans) is its own
+row on the day it was charged, since those meters are reconciled from
+snapshots. Sudo's Costs & margin lists promotional and goodwill credit
+under **Given away**, and below the statement the range's credits given,
+spent, and refunded. **Credits & refunds** (`/credits`, `admin_credits`)
+lists every grant (by kind, month, staff and workspace) and the last 12
+months by kind: given, spent, expired, revoked.
+
+### Purchased and scoped credit (for prepaid AI)
+
+`credit_grants` also has `scope` (`all`, or `models`: an agent run's model
+usage only, `grants::is_model_usage`) and `source` (`staff`, `purchase`,
+`promo_code`), and `CreditKind::Purchased`. Spending takes credit scoped
+to models first, then the soonest-expiring. Purchased credit is money paid
+in: its ledger line is a payment (not `crd…`), and the usage it pays for
+stays money in (revenue as it is spent, a liability until then), never
+given. Staff cannot give it (`admin_credit` refuses the kind).
+Nothing writes purchased grants yet: prepaying for AI builds on this.
+
+### Earlier credits
+
+Migration 0038 makes every earlier `Credit from g1t:` line a goodwill
+grant with no expiry: the old form asked for "a refund or goodwill" with
+no way to tell them apart, and goodwill never reads as money in.
 
 ## Token usage
 
@@ -346,7 +488,10 @@ Every create is `IF NOT EXISTS` and every seed `INSERT OR IGNORE`; the one
 `0023_one_operation_mapping.sql` drops `billable_units` (see above).
 Migration `0036_model_costs_in_full.sql` adds `ledger.discount_micros`,
 `margin_days.given_discount_micros`, `runs.gateway_note` and the
-`ai_gateway_requests` → `models` mapping.
+`ai_gateway_requests` → `models` mapping. Migration
+`0038_staff_credits.sql` adds `credit_grants`, `ledger.credit_kind` and
+`margin_days.given_credit_{promotional,goodwill}_micros`, and backfills
+earlier credits (see [Credits from g1t](#credits-from-g1t)).
 
 ## Spend caps
 

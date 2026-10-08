@@ -24,6 +24,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       "pull request",
       "model",
       "by",
+      "price (USD)",
+      "discount (USD)",
       "amount (USD)",
       "paid by included usage (USD)",
       "paid by trial credit (USD)",
@@ -64,6 +66,9 @@ function row(kind: string, entry: LedgerEntry): string[] {
     entry.number ? String(entry.number) : "",
     entry.model ?? "",
     entry.createdBy ?? "",
+    // Usage at its price (empty for money in), then the discount off it.
+    entry.kind === "usage" ? (usagePrice(entry) / MICROS_PER_DOLLAR).toFixed(6) : "",
+    ((entry.discountMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
     // Charges positive, as on the statement.
     (-entry.amountMicros / MICROS_PER_DOLLAR).toFixed(6),
     ((entry.creditMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
@@ -71,6 +76,18 @@ function row(kind: string, entry: LedgerEntry): string[] {
     ((entry.ossMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
     ((entry.givenMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6),
   ];
+}
+
+/** A usage entry at its price: charged, what paid for it first, and the discount. */
+function usagePrice(entry: LedgerEntry): number {
+  return (
+    -entry.amountMicros +
+    (entry.creditMicros ?? 0) +
+    (entry.trialMicros ?? 0) +
+    (entry.ossMicros ?? 0) +
+    (entry.givenMicros ?? 0) +
+    (entry.discountMicros ?? 0)
+  );
 }
 
 /** A CSV cell, quoted when it must be, and never read as a formula. */

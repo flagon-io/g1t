@@ -134,3 +134,28 @@ form button[type="submit"]:not(.run-button):focus:not(:focus-visible) > svg {
     animation: none;
   }
 }
+
+/*
+ * The credit and terms forms (components/billing.tsx) show a field only for the
+ * choice it belongs to, with CSS alone: the custom amount and the slug for
+ * Custom, a refund's details for Refund, the expiry for anything else, and
+ * the date for "On a date". Where `:has()` is not supported (or without
+ * CSS) every field shows, and the server ignores the ones that do not apply.
+ */
+@supports selector(:has(*)) {
+  .credit-form .when-custom,
+  .credit-form .when-refund,
+  .credit-form .when-date,
+  .terms-form .when-custom {
+    display: none;
+  }
+  .credit-form:has(input[name="preset"][value="custom"]:checked) .when-custom,
+  .terms-form:has(input[name="preset"][value="custom"]:checked) .when-custom,
+  .credit-form:has(input[name="kind"][value="refund"]:checked) .when-refund,
+  .credit-form:has(input[name="expires"][value="date"]:checked) .when-date {
+    display: block;
+  }
+  .credit-form:has(input[name="kind"][value="refund"]:checked) .when-not-refund {
+    display: none;
+  }
+}

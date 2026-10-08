@@ -191,10 +191,14 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
   const days = Math.max(1, Math.ceil((Date.now() - new Date(since).getTime()) / 86_400_000));
   // While g1t is free nothing is charged, so usage is measured at cost
   // and credit is not drawn down.
-  // Free or comped, nothing is charged: what the runs used, at cost, is
-  // what there is to show.
-  const atCost = usage.free || comped;
-  const total = atCost ? usage.usedMicros : usage.spentMicros;
+  // With a discount (100% for g1t's own), usage is shown at its price, with
+  // the discount beside it, so a workspace that pays nothing still sees
+  // what it would pay.
+  const atCost = usage.free;
+  const discount = usage.discountMicros ?? 0;
+  const atPrice = !atCost && (usage.discountPercent ?? 0) > 0;
+  const price = usage.spentMicros + (usage.coveredMicros ?? 0) + discount;
+  const total = atCost ? usage.usedMicros : atPrice ? price : usage.spentMicros;
   const perDay = atCost ? 0 : total / days;
   const runway = perDay > 0 ? Math.floor(account.balanceMicros / perDay) : null;
   return (
@@ -218,10 +222,12 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {atCost ? (
+          <Stat label="Used" value={dollars(total)} note="At cost. Nothing is charged while g1t is being built out." />
+        ) : atPrice ? (
           <Stat
-            label="Used"
-            value={dollars(total)}
-            note={comped ? "At cost. The workspace is comped: nothing is charged." : "At cost. Nothing is charged while g1t is being built out."}
+            label="Usage at price"
+            value={dollars(price)}
+            note={`Discount (${usage.discountPercent}%) −${dollars(discount)}; charged ${dollars(usage.spentMicros)}`}
           />
         ) : (
           <Stat
@@ -243,11 +249,11 @@ export default function UsagePage({ loaderData, params }: Route.ComponentProps) 
           note="Making a change, reviewing, revising…"
         />
         {comped ? (
-          // Nothing is charged to a comped workspace: no credit to run down.
+          // A 100% discount charges nothing: no credit to run down.
           <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
-            <p className="text-sm text-muted">Credit</p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight text-accent">Comped</p>
-            <p className="mt-1 text-xs text-faint">Recorded at what it costs; nothing is charged to this workspace.</p>
+            <p className="text-sm text-muted">Discount</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight text-accent">100%</p>
+            <p className="mt-1 text-xs text-faint">Usage is shown at its price; g1t takes all of it off, so nothing is charged.</p>
           </div>
         ) : (
           <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">

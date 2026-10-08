@@ -7,6 +7,7 @@ import type { Route } from "./+types/billing";
 import {
   Alerts,
   CapsCard,
+  CreditsCard,
   OverageCard,
   PlanCard,
   PrepayCard,
@@ -87,7 +88,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (plans.includes("started")) throw redirect(`${here}?done=${plans.includes("security") ? "security_on" : "subscribed"}`);
 
   const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
-  const [account, statement, features, meters, limit, invoices, entitlements, requests, book] = await Promise.all([
+  const [account, statement, features, meters, limit, invoices, entitlements, requests, book, credits] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
@@ -97,6 +98,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     billing.entitlements(slug).catch(() => null),
     billing.limitRequests(slug, viewer).catch(() => null),
     billing.prices().catch(() => null),
+    billing.credits(slug, viewer).catch(() => null),
   ]);
   const featureStates = unwrap(features);
   const trialMicros = book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS;
@@ -114,6 +116,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     invoices: invoices?.ok ? invoices.value : [],
     entitlements,
     requests: requests?.ok ? requests.value : [],
+    credits: credits?.ok && credits.value.grants.length > 0 ? credits.value : null,
     trialMicros,
     notice:
       url.searchParams.has("checked") && entitlements
@@ -216,7 +219,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, statement, group, plan, securityPlan, meters, limit, invoices, entitlements, requests, trialMicros, notice, problem } =
+  const { slug, role, account, statement, group, plan, securityPlan, meters, limit, invoices, entitlements, requests, credits, trialMicros, notice, problem } =
     loaderData;
   const { status } = account;
   const owner = role === "owner";
@@ -271,6 +274,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           </>
         )}
 
+        {credits && <CreditsCard credits={credits} />}
+
         {entitlements && (paying || standing.kind === "trial" || standing.kind === "comped" || standing.kind === "enterprise") && (
           <CapsCard entitlements={entitlements} owner={owner} error={err("caps")} />
         )}
@@ -324,6 +329,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               costs g1t plus {account.marginPercent}%, from the first second, after what is included.
             </li>
             <li>What paid first is on each statement line: the plan's included usage, the trial, the open-source pool, or g1t.</li>
+            <li>Credit from g1t comes off what you owe, before anything prepaid, the soonest-expiring first.</li>
             <li>
               With your own model provider, connected under{" "}
               <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">

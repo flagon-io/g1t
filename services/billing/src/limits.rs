@@ -39,7 +39,7 @@
 
 use futures_util::future::{try_join, try_join5, try_join_all};
 use g1t_contracts::billing::{
-    BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetSpendLimitArgs, TermsKind, Trust,
+    BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetSpendLimitArgs, Trust,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
@@ -344,7 +344,7 @@ impl Billing {
         // first month is asked for beside it, since neither needs the other.
         let trust = async {
             Ok::<_, worker::Error>(match account.terms.kind {
-                TermsKind::Comped => (Trust::Internal, None, false),
+                _ if account.terms.full_discount() => (Trust::Internal, None, false),
                 _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros, false),
                 _ => {
                     let standing = async {
@@ -762,7 +762,7 @@ impl Billing {
                     ])
             };
             let payer = self.account_of(&account.workspace).await?;
-            if payer.terms.kind == TermsKind::Comped || payer.id.starts_with("ent_") {
+            if payer.terms.full_discount() || payer.id.starts_with("ent_") {
                 record("skipped", 0, None, None)?.run().await?;
                 continue;
             }
@@ -964,13 +964,27 @@ pub(crate) fn worth_charging(owed: i64, min_charge: i64) -> bool {
 
 /// Emails the workspace's owners through identity. False if nothing was sent.
 pub(crate) async fn notify(identity: &worker::Fetcher, workspace: &str, subject: &str, intro: &str, action: &str, link: &str) -> bool {
+    let footer = "You get this because you own this workspace on g1t. Limits and alerts are explained at https://docs.g1t.sh/guides/usage-and-billing/#limits";
+    notify_with(identity, workspace, subject, intro, action, link, footer).await
+}
+
+/// `notify`, with a footer of its own.
+pub(crate) async fn notify_with(
+    identity: &worker::Fetcher,
+    workspace: &str,
+    subject: &str,
+    intro: &str,
+    action: &str,
+    link: &str,
+    footer: &str,
+) -> bool {
     let args = g1t_contracts::identity::NotifyOwnersArgs {
         workspace: workspace.to_owned(),
         subject: subject.to_owned(),
         intro: intro.to_owned(),
         action: action.to_owned(),
         link: link.to_owned(),
-        footer: "You get this because you own this workspace on g1t. Limits and alerts are explained at https://docs.g1t.sh/guides/usage-and-billing/#limits".to_owned(),
+        footer: footer.to_owned(),
     };
     match g1t_kit::call::<_, u32>(identity, "notify_owners", &args).await {
         Ok(sent) => sent > 0,

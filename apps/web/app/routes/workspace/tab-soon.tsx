@@ -4,10 +4,11 @@ import type { Route } from "./+types/tab-soon";
 import { page } from "../../lib/meta";
 import { roadmapItem } from "../../lib/roadmap";
 import { getViewer, roleIn } from "../../lib/session.server";
+import { pagePath } from "../../lib/workspace-nav";
 import { SoonView } from "../repo/soon";
 
 /** The tab is the last part of the address: `-/insights`. */
-const tabOf = (pathname: string) => pathname.replace(/\/+$/, "").split("/").pop() ?? "";
+const tabOf = (pathname: string) => pagePath(pathname).split("/").pop() ?? "";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const item = roadmapItem(tabOf(args.location.pathname));

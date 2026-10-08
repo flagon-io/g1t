@@ -179,20 +179,7 @@ export const NAV: NavGroup[] = [
         label: "Credits & refunds",
         to: "/credits",
         icon: "credits",
-        about: "Every credit and refund staff have issued, and why.",
-        soon: {
-          summary: [
-            "Every credit and refund staff have given, across all customers: how much, to whom, by whom and why. Goodwill is a cost, and finance needs to see what it adds up to each month.",
-            "It is also where refunds to a card will live. Today a credit goes to a workspace's balance; giving money back to the card it came from goes through Stripe, and should be done from here, recorded, with the same typed confirmation as a credit.",
-          ],
-          plans: [
-            "Every credit, filterable by staff member, workspace and month, with totals",
-            "Refund a payment to the card it came from, in full or in part",
-            "Per-role limits: support can credit up to a set amount; more needs finance",
-            "Reasons as a short list (outage, billing error, goodwill, trial) so they can be counted",
-          ],
-          meanwhile: { text: "Issue a credit from the workspace's page, under Billing.", to: "/workspaces", link: "Workspaces" },
-        },
+        about: "Every credit staff have given (promotional, goodwill, refunds), what was used, and each month by kind.",
       },
       {
         label: "Usage explorer",

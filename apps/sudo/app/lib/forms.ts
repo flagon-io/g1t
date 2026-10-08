@@ -59,37 +59,37 @@ export function parseNote(raw: string): Parsed<string> {
 }
 
 /**
- * Terms from the terms form. Standard clears everything else; a ceiling
- * applies to comped and custom; a discount to custom only. An end date is
- * a day, and the terms last to its end, UTC.
+ * Terms from the terms form: a discount (a preset, 0, 25, 50 or 100%, or
+ * a custom whole percent), a limit, an end date and why. No discount and no
+ * limit is standard, and clears everything else; anything else is custom
+ * terms. A 100% discount charges nothing (what was "comped"), and its limit
+ * is g1t's monthly budget for it, at cost. An end date is a day, and the
+ * terms last to its end, UTC.
  */
 export function parseTerms(form: FormData, by: string, now = new Date()): Parsed<Terms> {
-  const kind = text(form, "kind");
-  if (kind !== "standard" && kind !== "comped" && kind !== "custom") return { ok: false, error: "Choose standard, comped or custom terms." };
-  const note = parseNote(text(form, "note"));
-  if (!note.ok) return note;
-
-  let discountPercent = 0;
-  if (kind === "custom") {
+  // A form from before discounts said `kind=comped`.
+  const preset = text(form, "kind") === "comped" ? "100" : text(form, "preset") || "0";
+  let discountPercent: number;
+  if (preset === "custom") {
     const raw = text(form, "discount");
-    if (raw !== "") {
-      if (!/^\d{1,3}$/.test(raw) || Number(raw) > 100) return { ok: false, error: "The discount is a whole percent from 0 to 100." };
-      discountPercent = Number(raw);
-    }
+    if (!/^\d{1,3}$/.test(raw) || Number(raw) > 100) return { ok: false, error: "The discount is a whole percent from 0 to 100." };
+    discountPercent = Number(raw);
+  } else if (/^\d{1,3}$/.test(preset) && Number(preset) <= 100) {
+    discountPercent = Number(preset);
+  } else {
+    return { ok: false, error: "Choose a discount: 0, 25, 50 or 100%, or Custom." };
   }
 
   let ceilingMicros: number | null = null;
-  if (kind !== "standard") {
-    const raw = text(form, "ceiling");
-    if (raw !== "") {
-      const micros = parseDollars(raw);
-      if (micros == null) return { ok: false, error: "The ceiling is a dollar amount, such as 250 or 1,000.00." };
-      ceilingMicros = micros;
-    }
+  const rawCeiling = text(form, "ceiling");
+  if (rawCeiling !== "") {
+    const micros = parseDollars(rawCeiling);
+    if (micros == null) return { ok: false, error: "The limit is a dollar amount, such as 250 or 1,000.00." };
+    ceilingMicros = micros;
   }
-  if (kind === "custom" && discountPercent === 0 && ceilingMicros == null) {
-    return { ok: false, error: "Custom terms need a discount, a ceiling, or both." };
-  }
+  const kind: Terms["kind"] = discountPercent > 0 || ceilingMicros != null ? "custom" : "standard";
+  const note = parseNote(text(form, "note"));
+  if (!note.ok) return note;
 
   let until: string | null = null;
   if (kind !== "standard") {

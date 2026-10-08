@@ -7,9 +7,11 @@ import { CreditCard, Gift, Landmark, RotateCcw, ScrollText, UserRound } from "lu
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { AdminAction, AdminOwner, Allowances, BillingLink, LedgerEntry, Terms } from "@g1t/contracts";
+import type { AdminAction, AdminOwner, Allowances, BillingLink, CreditGrant, Credits, LedgerEntry, Terms } from "@g1t/contracts";
 
 import { Avatar, Badge, Button, EmptyState, Field, Input, Notice, Section, Select, Textarea, When } from "~/components/ui";
+import { CREDIT_KINDS, CREDIT_PRESETS, EXPIRIES, kindLabel } from "~/lib/credits";
+import { DISCOUNT_PRESETS, fullDiscount, percentOff, termsLabel } from "~/lib/terms";
 import { actionLabel } from "~/lib/ledgers";
 import { dollarsField, usd } from "~/lib/money";
 import { givenParts } from "~/lib/pricing";
@@ -67,11 +69,11 @@ export function Owners({ owners, compact = false }: { owners: AdminOwner[]; comp
 
 function describeTerms(terms: Terms): [string, string][] {
   return [
-    ["Terms", terms.kind === "custom" ? "Custom" : terms.kind === "comped" ? "Comped" : "Standard"],
-    ["Discount", terms.kind === "custom" ? `${terms.discountPercent}%` : "—"],
+    ["Terms", termsLabel(terms)],
+    ["Discount", `${percentOff(terms)}%`],
     [
       "Limit",
-      terms.kind === "comped"
+      fullDiscount(terms)
         ? terms.ceilingMicros == null
           ? "The default monthly budget, at cost"
           : `${usd(terms.ceilingMicros)} a month, at cost`
@@ -96,7 +98,7 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     const before = describeTerms(review.before);
     const after = describeTerms(review.after);
     title = "Confirm the new terms";
-    danger = review.after.kind === "comped";
+    danger = fullDiscount(review.after);
     body = (
       <>
         <div className="overflow-x-auto">
@@ -119,10 +121,10 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
             </tbody>
           </table>
         </div>
-        {review.after.kind === "comped" && (
+        {fullDiscount(review.after) && (
           <p className="mt-3 text-sm text-warn">
-            Comped: nothing will be charged{review.after.until ? ` until ${review.after.until.slice(0, 10)}` : ""}. Usage is still recorded
-            at cost.
+            A 100% discount: nothing will be charged{review.after.until ? ` until ${review.after.until.slice(0, 10)}` : ""}. The workspace's
+            statement still shows its usage at price, with the discount beside it.
           </p>
         )}
       </>
@@ -203,15 +205,16 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
 
 // --- Terms -------------------------------------------------------------------
 
-const KINDS: { value: Terms["kind"]; title: string; text: string }[] = [
-  { value: "standard", title: "Standard", text: "Published prices; the limit comes from trust." },
-  { value: "comped", title: "Comped", text: "Nothing charged. Usage still recorded at cost." },
-  { value: "custom", title: "Custom", text: "A discount, a custom limit, or both." },
-];
-
+/**
+ * The account's terms: a discount (0, 25, 50, 100% or a custom percent),
+ * a limit, an end date and why. A 100% discount charges nothing; the
+ * workspace's statement still shows its usage at price. The custom percent
+ * shows only for Custom, by CSS alone (`.terms-form` in app.css).
+ */
 export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: string; error: SectionError }) {
   const values = error?.values;
-  const kind = values?.kind ?? terms.kind;
+  const current = percentOff(terms);
+  const preset = values?.preset ?? ((DISCOUNT_PRESETS as readonly number[]).includes(current) ? String(current) : "custom");
   return (
     <Section
       id="terms"
@@ -227,39 +230,38 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
         )
       }
     >
-      <form method="post" action={`${pathname}#review`} className="space-y-4">
+      <form method="post" action={`${pathname}#review`} className="terms-form space-y-4">
         <input type="hidden" name="intent" value="terms" />
         {error && <Notice tone="error">{error.error}</Notice>}
         <fieldset>
-          <legend className="mb-1.5 text-sm font-medium text-muted">Kind</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {KINDS.map((option) => (
-              <label
-                key={option.value}
-                className="flex cursor-pointer gap-2.5 rounded-md border border-line bg-bg p-3 transition-colors hover:border-line-strong has-checked:border-merged/60 has-checked:bg-merged/8"
-              >
-                <input type="radio" name="kind" value={option.value} defaultChecked={kind === option.value} className="mt-0.5" required />
-                <span>
-                  <span className="block text-sm font-medium">{option.title}</span>
-                  <span className="mt-0.5 block text-xs text-muted">{option.text}</span>
-                </span>
-              </label>
+          <legend className="mb-1.5 text-sm font-medium text-muted">Discount</legend>
+          <div className="flex flex-wrap overflow-hidden rounded-md border border-line bg-bg">
+            {DISCOUNT_PRESETS.map((percent) => (
+              <Segment key={percent} name="preset" value={String(percent)} checked={preset === String(percent)}>
+                {percent === 0 ? "None" : `${percent}%`}
+              </Segment>
             ))}
+            <Segment name="preset" value="custom" checked={preset === "custom"}>
+              Custom
+            </Segment>
           </div>
+          <p className="mt-1.5 text-xs text-faint">Off every usage charge. 100%: nothing is charged, and the statement shows usage at price with the discount beside it.</p>
         </fieldset>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Discount %" hint="Custom only.">
-            <Input name="discount" inputMode="numeric" pattern="\d{1,3}" placeholder="0" defaultValue={values?.discount ?? (terms.discountPercent ? String(terms.discountPercent) : "")} />
+        <div className="when-custom">
+          <Field label="Custom discount %" hint="A whole percent, 1 to 100.">
+            <Input name="discount" inputMode="numeric" pattern="\d{1,3}" placeholder="30" defaultValue={values?.discount ?? (preset === "custom" ? String(current) : "")} />
           </Field>
-          <Field label="Limit $" hint="Unpaid usage allowed; blank: trust decides. Comped: the monthly budget at cost; blank: the default ($150).">
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Limit $" hint="Unpaid usage allowed; blank: trust decides. At 100%: g1t's monthly budget for it, at cost; blank: the default ($150).">
             <Input name="ceiling" inputMode="decimal" placeholder="By trust" defaultValue={values?.ceiling ?? dollarsField(terms.ceilingMicros)} />
           </Field>
           <Field label="Until" hint="Blank: no end. UTC.">
             <Input type="date" name="until" defaultValue={values?.until ?? (terms.until ? terms.until.slice(0, 10) : "")} />
           </Field>
         </div>
-        <Field label="Note" hint="Required. Why, for whoever looks next.">
-          <Textarea name="note" rows={2} required maxLength={500} defaultValue={values?.note ?? ""} placeholder="e.g. Design partner through launch" />
+        <Field label="Reason" hint="Required. Why, for whoever looks next; at 100%, shown as the reason for the discount.">
+          <Textarea name="note" rows={2} required maxLength={500} defaultValue={values?.note ?? ""} placeholder="e.g. g1t's own workspace" />
         </Field>
         <div className="flex justify-end">
           <Button type="submit">Review terms</Button>
@@ -274,7 +276,7 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
 /** What staff have set beyond the terms, one line each; defaults left out. */
 export function allowanceLines(allowances: Allowances | undefined, comped: boolean): string[] {
   const lines: string[] = [];
-  if (comped) lines.push("The g1t plan, without its price (comped)");
+  if (comped) lines.push("The g1t plan, without its price (100% discount)");
   else if (allowances?.plan) lines.push("The g1t plan, without its price");
   if (!allowances) return lines;
   if (allowances.ossRepoMicros != null) lines.push(`Open-source pool: ${usd(allowances.ossRepoMicros)} a month for each public repository`);
@@ -293,7 +295,7 @@ export function allowanceLines(allowances: Allowances | undefined, comped: boole
  * The g1t plan without its price, the account's share of g1t's pools, and
  * staff's overrides of what owners set: agents at once, the run and issue
  * caps, the days of audit log kept (such as for an organization that pays
- * for longer), and a hold on new compute. Comped accounts have the plan
+ * for longer), and a hold on new compute. Accounts on a 100% discount have the plan
  * anyway.
  */
 export function AllowancesForm({
@@ -316,7 +318,7 @@ export function AllowancesForm({
       title="Plan, pools and caps"
       description={
         comped
-          ? "Comped: the g1t plan is on without its price whatever is set here. The pools and caps still apply."
+          ? "A 100% discount: the g1t plan is on without its price whatever is set here. The pools and caps still apply."
           : "The g1t plan without its price, this account's share of g1t's pools, and overrides of what owners set."
       }
     >
@@ -457,15 +459,39 @@ export function PaymentForm({ workspace, pathname, error }: { workspace: string;
 
 // --- Credit -------------------------------------------------------------------
 
+/** A radio drawn as one button of a segmented row; still a plain radio without CSS. */
+function Segment({ name, value, checked, children }: { name: string; value: string; checked: boolean; children: ReactNode }) {
+  return (
+    <label className="flex-1 cursor-pointer border-r border-line px-3 py-1.5 text-center text-sm whitespace-nowrap text-muted transition-colors last:border-r-0 hover:bg-raised hover:text-fg has-checked:bg-merged has-checked:font-medium has-checked:text-bg has-focus-visible:outline-2 has-focus-visible:-outline-offset-2 has-focus-visible:outline-merged">
+      <input type="radio" name={name} value={value} defaultChecked={checked} className="sr-only" />
+      {children}
+    </label>
+  );
+}
+
+/**
+ * Credit for a workspace: a preset amount or a custom one, a kind, an
+ * expiry, and a note. Fields that belong to one choice (the custom amount,
+ * a refund's details, an expiry date) show only for it, by CSS alone
+ * (`.credit-form` in app.css); without `:has()` every field shows and the
+ * ones that do not apply are ignored. Over $100 the slug is typed out too.
+ */
 export function CreditForm({ workspaces, pathname, error }: { workspaces: string[]; pathname: string; error: SectionError }) {
   const values = error?.values;
   const single = workspaces.length === 1 ? workspaces[0] : null;
+  const preset = values?.preset ?? "25";
+  const kind = values?.kind ?? "promotional";
+  const expires = values?.expires ?? "none";
   return (
-    <Section id="credit" title="Issue credit" description="A refund or goodwill. Added to the workspace's balance at once.">
+    <Section
+      id="credit"
+      title="Give credit"
+      description="Added to the balance at once and spent before anything paid in advance. The owners are emailed."
+    >
       {workspaces.length === 0 ? (
         <p className="text-sm text-muted">Add a workspace first: credit goes to a workspace.</p>
       ) : (
-        <form method="post" action={`${pathname}#credit`} className="space-y-4">
+        <form method="post" action={`${pathname}#credit`} className="credit-form space-y-4">
           <input type="hidden" name="intent" value="credit" />
           {error && <Notice tone="error">{error.error}</Notice>}
           {single ? (
@@ -484,26 +510,86 @@ export function CreditForm({ workspaces, pathname, error }: { workspaces: string
               </Select>
             </Field>
           )}
-          <Field label="Amount $" hint="Up to $10,000 at a time.">
-            <Input name="amount" inputMode="decimal" required placeholder="25.00" defaultValue={values?.amount ?? ""} />
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-medium text-muted">Amount</legend>
+            <div className="flex flex-wrap overflow-hidden rounded-md border border-line bg-bg">
+              {CREDIT_PRESETS.map((dollars) => (
+                <Segment key={dollars} name="preset" value={String(dollars)} checked={preset === String(dollars)}>
+                  ${dollars}
+                </Segment>
+              ))}
+              <Segment name="preset" value="custom" checked={preset === "custom"}>
+                Custom
+              </Segment>
+            </div>
+          </fieldset>
+          <div className="when-custom space-y-4">
+            <Field label="Custom amount $" hint="Up to $10,000 at a time.">
+              <Input name="amount" inputMode="decimal" placeholder="15.00" defaultValue={values?.amount ?? ""} />
+            </Field>
+          </div>
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-medium text-muted">Kind</legend>
+            <div className="grid gap-2">
+              {CREDIT_KINDS.map((option) => (
+                <label
+                  key={option.value}
+                  className="flex cursor-pointer gap-2.5 rounded-md border border-line bg-bg px-3 py-2.5 transition-colors hover:border-line-strong has-checked:border-merged/60 has-checked:bg-merged/8"
+                >
+                  <input type="radio" name="kind" value={option.value} defaultChecked={kind === option.value} className="mt-0.5" required />
+                  <span>
+                    <span className="block text-sm font-medium">{option.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted">{option.text}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="when-refund">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+              <Field label="Refund for" hint="Refunds only. On the statement and in the email.">
+                <Input name="refundFor" maxLength={200} placeholder="the failed runs on Oct 2" defaultValue={values?.refundFor ?? ""} />
+              </Field>
+              <Field label="Day refunded" hint="Comes off what was paid that day. Blank: today.">
+                <Input type="date" name="refundDay" defaultValue={values?.refundDay ?? ""} />
+              </Field>
+            </div>
+          </div>
+          <fieldset className="when-not-refund">
+            <legend className="mb-1.5 text-sm font-medium text-muted">Expires</legend>
+            <div className="flex flex-wrap overflow-hidden rounded-md border border-line bg-bg">
+              {EXPIRIES.map((option) => (
+                <Segment key={option.value} name="expires" value={option.value} checked={expires === option.value}>
+                  {option.label}
+                </Segment>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-faint">Unused credit stops counting then. A refund never expires.</p>
+          </fieldset>
+          <div className="when-date when-not-refund">
+            <Field label="Expires on" hint="At the end of the day, UTC.">
+              <Input type="date" name="expiresOn" defaultValue={values?.expiresOn ?? ""} />
+            </Field>
+          </div>
+          <Field label="Note" hint="Required. On the workspace's statement and in the owners' email.">
+            <Textarea name="note" rows={2} required maxLength={500} placeholder="e.g. Welcome to g1t" defaultValue={values?.note ?? ""} />
           </Field>
-          <Field label="Note" hint="Required. Shown on the workspace's statement.">
-            <Textarea name="note" rows={2} required maxLength={500} placeholder="e.g. Refund for the failed runs on Oct 2" defaultValue={values?.note ?? ""} />
-          </Field>
-          <Field
-            label="Confirm"
-            hint={
-              <>
-                Type the workspace's slug{single && <> (<span className="font-mono text-muted">{single}</span>)</>} to issue it.
-              </>
-            }
-          >
-            <Input name="confirmation" required placeholder={single ?? "workspace-slug"} className="font-mono" />
-          </Field>
+          <div className="when-custom">
+            <Field
+              label="Confirm"
+              hint={
+                <>
+                  Over $100 only: type the workspace's slug{single && <> (<span className="font-mono text-muted">{single}</span>)</>}.
+                </>
+              }
+            >
+              <Input name="confirmation" placeholder={single ?? "workspace-slug"} className="font-mono" />
+            </Field>
+          </div>
           <div className="flex justify-end">
             <Button type="submit" variant="lavender">
               <Gift size={14} />
-              Issue credit
+              Give credit
             </Button>
           </div>
         </form>
@@ -512,11 +598,136 @@ export function CreditForm({ workspaces, pathname, error }: { workspaces: string
   );
 }
 
+const GRANT_STATE: Record<CreditGrant["state"], { label: string; tone: "mint" | "plain" | "warn" | "danger" }> = {
+  open: { label: "Open", tone: "mint" },
+  used: { label: "Used", tone: "plain" },
+  expired: { label: "Expired", tone: "warn" },
+  revoked: { label: "Revoked", tone: "danger" },
+};
+
+/**
+ * Credits g1t gave, newest first: amount, kind, note, who, when, used,
+ * left and expiry, and on an open one a form to take back what is left.
+ */
+export function CreditList({
+  grants,
+  pathname,
+  error,
+  showWorkspace = false,
+}: {
+  grants: CreditGrant[];
+  pathname: string;
+  error?: SectionError;
+  showWorkspace?: boolean;
+}) {
+  if (grants.length === 0) return <EmptyState title="No credits given">Credit given from sudo shows here, with what is left of it.</EmptyState>;
+  return (
+    <ul className="-my-1 divide-y divide-line">
+      {grants.map((grant) => {
+        const state = GRANT_STATE[grant.state];
+        const failed = error && error.values?.id === grant.id ? error.error : null;
+        return (
+          <li key={grant.id} id={`grant-${grant.id}`} className="scroll-mt-20 py-3">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="tabular font-semibold">{usd(grant.amountMicros, { cents: true })}</span>
+              <Badge tone="lavender">{kindLabel(grant.kind)}</Badge>
+              <Badge tone={state.tone}>{state.label}</Badge>
+              {showWorkspace && (
+                <Link to={`/workspaces/${encodeURIComponent(grant.workspace)}#credits`} className="font-mono text-xs text-merged hover:underline">
+                  {grant.workspace}
+                </Link>
+              )}
+            </div>
+            <p className="tabular mt-1 text-sm text-fg-soft">
+              Used {usd(grant.usedMicros, { cents: true })} · left {usd(grant.leftMicros, { cents: true })}
+              {grant.expiresAt ? (
+                <>
+                  {" "}
+                  · {grant.state === "expired" ? "expired" : "expires"} <When at={grant.expiresAt} />
+                </>
+              ) : grant.kind === "refund" ? (
+                " · never expires"
+              ) : (
+                " · no expiry"
+              )}
+            </p>
+            <p className="mt-0.5 text-sm break-words">
+              {grant.kind === "refund" && grant.refundFor && <span className="text-muted">For {grant.refundFor}{grant.refundDay ? ` (${grant.refundDay})` : ""}: </span>}
+              {grant.note}
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-1 font-mono text-xs text-faint">
+              <UserRound size={11} />
+              {grant.createdBy} · <When at={grant.createdAt} time />
+            </p>
+            {grant.closedAt && grant.state === "revoked" && (
+              <p className="mt-1 text-xs text-muted">
+                {usd(grant.closedMicros ?? 0, { cents: true })} taken back by {grant.closedBy} on <When at={grant.closedAt} />
+                {grant.closedNote ? `: “${grant.closedNote}”` : ""}
+              </p>
+            )}
+            {grant.closedAt && grant.state === "expired" && (grant.closedMicros ?? 0) > 0 && (
+              <p className="mt-1 text-xs text-muted">{usd(grant.closedMicros ?? 0, { cents: true })} unused when it expired.</p>
+            )}
+            {grant.state === "open" && (
+              <details className="mt-2" open={failed != null}>
+                <summary className="cursor-pointer text-xs text-danger hover:underline">Revoke unused</summary>
+                <form method="post" action={`${pathname}#grant-${grant.id}`} className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <input type="hidden" name="intent" value="revoke-credit" />
+                  <input type="hidden" name="id" value={grant.id} />
+                  {showWorkspace && <input type="hidden" name="workspace" value={grant.workspace} />}
+                  <Field label="Why" hint={`Takes ${usd(grant.leftMicros, { cents: true })} off the balance. Kept in the audit log.`} className="flex-1">
+                    <Input name="reason" required maxLength={500} placeholder="e.g. Given to the wrong workspace" defaultValue={failed ? (error?.values?.reason ?? "") : ""} />
+                  </Field>
+                  <Button type="submit" variant="danger" className="shrink-0">
+                    Revoke {usd(grant.leftMicros, { cents: true })}
+                  </Button>
+                </form>
+                {failed && (
+                  <div className="mt-2">
+                    <Notice tone="error">{failed}</Notice>
+                  </div>
+                )}
+              </details>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** A workspace's credits from g1t: what is left to spend, and each grant. */
+export function CreditsSection({
+  credits,
+  unavailable,
+  pathname,
+  error,
+}: {
+  credits: Credits | null;
+  unavailable: string | null;
+  pathname: string;
+  error: SectionError;
+}) {
+  return (
+    <Section
+      id="credits"
+      title="Credits"
+      description={
+        credits
+          ? `${usd(credits.leftMicros, { cents: true })} left to spend. Spent before anything paid in advance, the soonest-expiring first.`
+          : "Credits from g1t, with what is left of each."
+      }
+    >
+      {unavailable ? <Notice tone="warn">Billing did not answer for credits: {unavailable}</Notice> : <CreditList grants={credits?.grants ?? []} pathname={pathname} error={error} />}
+    </Section>
+  );
+}
+
 // --- Reset (testing) -----------------------------------------------------------
 
 /**
  * Wipes a test workspace's billing so it starts again as a new customer.
- * Only while billing runs on Stripe's test key; billing refuses comped and
+ * Only while billing runs on Stripe's test key; billing refuses 100% discounts and
  * enterprise workspaces. The workspace, its members and repositories stay.
  */
 export function ResetBillingForm({ workspace, pathname, error }: { workspace: string; pathname: string; error: SectionError }) {
@@ -644,7 +855,9 @@ export function LedgerSection({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge tone={entry.amountMicros > 0 ? "mint" : "plain"}>{ENTRY_KIND[entry.kind] ?? entry.kind}</Badge>
+                      <Badge tone={entry.creditKind ? "lavender" : entry.amountMicros > 0 ? "mint" : "plain"}>
+                        {entry.creditKind ? `Credit · ${kindLabel(entry.creditKind)}` : (ENTRY_KIND[entry.kind] ?? entry.kind)}
+                      </Badge>
                       {showWorkspace && entry.workspace && (
                         <Link to={`/workspaces/${encodeURIComponent(entry.workspace)}`} className="font-mono text-xs text-merged hover:underline">
                           {entry.workspace}

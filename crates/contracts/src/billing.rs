@@ -190,6 +190,14 @@ pub struct LedgerEntry {
     /// workspace's last trial run that went past its trial credit.
     #[serde(default)]
     pub given_micros: i64,
+    /// For usage: what the account's discount took off its price. The
+    /// price is `-amount_micros` plus this and what paid for it.
+    #[serde(default)]
+    pub discount_micros: i64,
+    /// For a credit from g1t, and for what of one expired or was revoked:
+    /// its kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credit_kind: Option<CreditKind>,
 }
 
 fn g1t() -> String {
@@ -329,6 +337,14 @@ pub struct Usage {
     /// price is `spent_micros` plus this.
     #[serde(default)]
     pub covered_micros: i64,
+    /// What the account's discount took off the price. Usage at price is
+    /// `spent_micros` plus `covered_micros` plus this.
+    #[serde(default)]
+    pub discount_micros: i64,
+    /// The account's discount now, in percent; absent without one. With
+    /// one, the slices measure usage at price.
+    #[serde(default)]
+    pub discount_percent: Option<u32>,
     /// What g1t's model provider charged, before the margin.
     pub cost_micros: i64,
     /// What runs on the workspace's own provider cost there, as the harness
@@ -1532,26 +1548,45 @@ impl Terms {
         }
     }
 
-    /// What a charge becomes under these terms.
-    pub fn apply(&self, charge_micros: i64) -> i64 {
+    /// The discount in percent, 0 to 100. Terms from before discounts
+    /// replaced "comped" read as 100%.
+    pub fn percent_off(&self) -> u32 {
         match self.kind {
-            TermsKind::Comped => 0,
-            TermsKind::Custom => charge_micros * i64::from(100 - self.discount_percent.min(100)) / 100,
-            TermsKind::Standard => charge_micros,
+            TermsKind::Comped => 100,
+            TermsKind::Custom => self.discount_percent.min(100),
+            TermsKind::Standard => 0,
         }
     }
 
+    /// A 100% discount: nothing is charged, usage is recorded at its price
+    /// and discounted in full. g1t's own workspaces and partners. Paid
+    /// features are on without a plan, and g1t's own spend on it is held to
+    /// a monthly budget (the terms' ceiling, at cost).
+    pub fn full_discount(&self) -> bool {
+        self.percent_off() >= 100
+    }
+
+    /// What a charge becomes under these terms.
+    pub fn apply(&self, charge_micros: i64) -> i64 {
+        charge_micros * i64::from(100 - self.percent_off()) / 100
+    }
+
     /// What a charge at cost plus the margin becomes under these terms, and
-    /// how much of it g1t gives away by a discount: a sold charge is never
-    /// below its cost plus the margin unless the difference is counted as
-    /// given (`ledger.discount_micros`), never lost. Comped terms give it
-    /// all, and are counted as comped elsewhere, so their given part is 0
-    /// here.
+    /// what the discount took off it (`ledger.discount_micros`), so the
+    /// statement shows the usage at its price and the discount beside it,
+    /// and a discount below cost plus the margin is counted as given, never
+    /// lost. A 100% discount takes it all.
     pub fn discounted(&self, charge_micros: i64) -> (i64, i64) {
         let charged = self.apply(charge_micros);
-        match self.kind {
-            TermsKind::Custom => (charged, (charge_micros - charged).max(0)),
-            TermsKind::Comped | TermsKind::Standard => (charged, 0),
+        (charged, (charge_micros - charged).max(0))
+    }
+
+    /// How the statement and sudo name the terms: `100% discount`, `30% off`.
+    pub fn discount_label(&self) -> Option<String> {
+        match self.percent_off() {
+            0 => None,
+            100 => Some("100% discount".to_owned()),
+            percent => Some(format!("{percent}% off")),
         }
     }
 }
@@ -1561,11 +1596,10 @@ impl Terms {
 pub enum TermsKind {
     /// Prices as published, limits by trust.
     Standard,
-    /// Nothing charged; usage still recorded with its cost. Paid features
-    /// are on without a plan. For g1t's own workspaces, partners, and the
-    /// like.
+    /// Before discounts: what a 100% discount is now. Read as one
+    /// (`Terms::percent_off`); billing never writes it (migration 0039).
     Comped,
-    /// A discount, a ceiling, or both.
+    /// A discount (up to 100%), a ceiling, or both.
     Custom,
 }
 
@@ -1743,6 +1777,11 @@ pub struct StatementGroup {
     pub lines: Vec<StatementLine>,
     /// What the group's charges come to.
     pub charged_micros: i64,
+    /// Its usage at price, and what the discount took off it.
+    #[serde(default)]
+    pub price_micros: i64,
+    #[serde(default)]
+    pub discount_micros: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1760,6 +1799,13 @@ pub struct StatementLine {
     /// pool, or g1t itself. Not in `charged_micros`.
     #[serde(default)]
     pub covered_micros: i64,
+    /// Usage at its price: charged, plus what paid for it and what the
+    /// discount took off. Zero for money in.
+    #[serde(default)]
+    pub price_micros: i64,
+    /// What the account's discount took off the line's price.
+    #[serde(default)]
+    pub discount_micros: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1769,6 +1815,15 @@ pub struct StatementTotals {
     pub paid_micros: i64,
     pub cost_micros: i64,
     pub entries: u32,
+    /// Usage at price, and what the discount took off it: charged is the
+    /// price less the discount and what paid for it.
+    #[serde(default)]
+    pub price_micros: i64,
+    #[serde(default)]
+    pub discount_micros: i64,
+    /// The account's discount now, in percent; absent without one.
+    #[serde(default)]
+    pub discount_percent: Option<u32>,
     /// What paid for usage before it was charged, one line per source,
     /// such as "Paid by g1t's open-source pool".
     #[serde(default)]
@@ -2166,12 +2221,176 @@ pub struct AdminAttachArgs {
     pub by: String,
 }
 
-/// `admin_credit`: money g1t gives a workspace, such as a refund or a
-/// goodwill credit. Returns `Outcome<LedgerEntry>`.
+/// Why g1t gave a workspace credit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CreditKind {
+    /// Marketing: a welcome, a referral, an event. Given away when spent.
+    Promotional,
+    /// An apology, or accidental usage forgiven. Given away when spent.
+    #[default]
+    Goodwill,
+    /// Money back for something that went wrong. Not given away: it gives
+    /// back money already paid, so it comes off what was paid on the day
+    /// it refunds, and what it pays for later is paid for.
+    Refund,
+    /// Bought by the workspace (prepaid AI): money paid in up front, owed
+    /// as usage until spent. What it pays for is paid for, never given.
+    /// Staff never give it; its ledger line is a payment, not `crd…`.
+    Purchased,
+}
+
+impl CreditKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CreditKind::Promotional => "promotional",
+            CreditKind::Goodwill => "goodwill",
+            CreditKind::Refund => "refund",
+            CreditKind::Purchased => "purchased",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<CreditKind> {
+        match text {
+            "promotional" => Some(CreditKind::Promotional),
+            "goodwill" => Some(CreditKind::Goodwill),
+            "refund" => Some(CreditKind::Refund),
+            "purchased" => Some(CreditKind::Purchased),
+            _ => None,
+        }
+    }
+
+    /// As people read it: `Promotional`.
+    pub fn label(self) -> &'static str {
+        match self {
+            CreditKind::Promotional => "Promotional",
+            CreditKind::Goodwill => "Goodwill",
+            CreditKind::Refund => "Refund",
+            CreditKind::Purchased => "Purchased",
+        }
+    }
+}
+
+/// `admin_credit`: credit g1t gives a workspace: promotional, goodwill or a
+/// refund, with a note, and optionally an expiry. It is spent before
+/// anything paid in advance, the soonest-expiring first. The workspace's
+/// owners are emailed. Returns `Outcome<LedgerEntry>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminCreditArgs {
     pub workspace: String,
     pub amount_micros: i64,
+    pub note: String,
+    pub by: String,
+    #[serde(default)]
+    pub kind: CreditKind,
+    /// RFC 3339; unused credit stops counting then. Never for a refund.
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    /// A refund: what it refunds, in a line, and the day of it
+    /// (`YYYY-MM-DD`; today if absent).
+    #[serde(default)]
+    pub refund_for: Option<String>,
+    #[serde(default)]
+    pub refund_day: Option<String>,
+}
+
+/// One credit g1t gave, with what of it was used: spent on usage, the
+/// soonest-expiring grant first, before anything paid in advance.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditGrant {
+    /// `crd_…`, the grant's ledger reference.
+    pub id: String,
+    pub workspace: String,
+    pub kind: CreditKind,
+    pub amount_micros: i64,
+    pub used_micros: i64,
+    /// What can still be spent: nothing once it expired or was revoked.
+    pub left_micros: i64,
+    pub note: String,
+    #[serde(default)]
+    pub refund_for: Option<String>,
+    #[serde(default)]
+    pub refund_day: Option<String>,
+    pub expires_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+    /// `open`, `used`, `expired` or `revoked`.
+    pub state: String,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+    #[serde(default)]
+    pub closed_note: Option<String>,
+    #[serde(default)]
+    pub closed_by: Option<String>,
+    /// What expiring or revoking took off the balance.
+    #[serde(default)]
+    pub closed_micros: i64,
+    /// What it pays for: `all` usage, or `models` only (agent runs' model
+    /// cost), which is spent first.
+    #[serde(default)]
+    pub scope: String,
+    /// Where it came from: `staff`, `purchase` or `promo_code`.
+    #[serde(default)]
+    pub source: String,
+}
+
+/// `credits` (`Outcome<Credits>`, `AccountArgs`): a workspace's credits from
+/// g1t, newest first, for its members.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Credits {
+    pub grants: Vec<CreditGrant>,
+    /// What is left to spend, in all.
+    pub left_micros: i64,
+}
+
+/// `admin_credits`: every credit g1t gave, newest first, filtered. Returns
+/// `AdminCredits`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminCreditsArgs {
+    #[serde(default)]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub kind: Option<CreditKind>,
+    /// `YYYY-MM`: given that month.
+    #[serde(default)]
+    pub month: Option<String>,
+    /// Given by this member of staff.
+    #[serde(default)]
+    pub by: Option<String>,
+}
+
+/// One month's credits of one kind: given, used on usage that month, and
+/// taken back unused (expired or revoked).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditMonth {
+    pub month: String,
+    pub kind: CreditKind,
+    pub given_micros: i64,
+    pub grants: u32,
+    pub used_micros: i64,
+    pub expired_micros: i64,
+    pub revoked_micros: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminCredits {
+    /// At most 200.
+    pub grants: Vec<CreditGrant>,
+    /// The last 12 months, newest first, whatever the month filter.
+    pub months: Vec<CreditMonth>,
+    /// Who has given credit, for the filter.
+    pub staff: Vec<String>,
+}
+
+/// `admin_revoke_credit`: what is left of a grant, taken off the balance,
+/// with why. Returns `Outcome<CreditGrant>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRevokeCreditArgs {
+    pub id: String,
     pub note: String,
     pub by: String,
 }
@@ -2479,6 +2698,21 @@ pub struct OverallMargin {
     /// margin: given, so a discounted sale is not margin lost.
     #[serde(default)]
     pub given_discount_micros: i64,
+    /// Credits from g1t spent on usage, by kind: given, so usage paid for
+    /// with them is never money in. Refunds are not here: they come off
+    /// money in on the day they refund.
+    #[serde(default)]
+    pub given_credit_promotional_micros: i64,
+    #[serde(default)]
+    pub given_credit_goodwill_micros: i64,
+    /// Credits over the range: given (every kind), spent on usage, and
+    /// refunds' money given back.
+    #[serde(default)]
+    pub credits_given_micros: i64,
+    #[serde(default)]
+    pub credits_used_micros: i64,
+    #[serde(default)]
+    pub credits_refunded_micros: i64,
     /// `cost_micros` by who g1t pays: Cloudflare's bill (billed amounts,
     /// after the included allowances), and model providers (the ledger's
     /// cost of the tokens, which Cloudflare's bill does not show).

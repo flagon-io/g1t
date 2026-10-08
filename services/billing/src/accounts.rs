@@ -10,14 +10,14 @@
 //! - **Enterprises.** One account paying for several workspaces, as GitHub
 //!   Enterprise does: their usage and payments count together against one
 //!   limit, on one set of terms.
-//! - **Credits**, such as refunds.
+//! - **Credits**: promotional, goodwill or refunds (see `grants`).
 //!
 //! Every change names who made it and is kept in `admin_actions`.
 
 use g1t_contracts::billing::{
     AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction, AdminAttachArgs,
-    AdminCreateEnterpriseArgs, AdminCreditArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances, BillingAccount,
-    EntryKind, LedgerEntry, Terms, TermsKind, WorkspaceFigures,
+    AdminCreateEnterpriseArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances, BillingAccount, LedgerEntry, Terms,
+    TermsKind, WorkspaceFigures,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -130,16 +130,16 @@ fn kind_text(kind: TermsKind) -> &'static str {
 fn describe(terms: &Terms) -> String {
     let mut text = match terms.kind {
         TermsKind::Standard => "standard".to_owned(),
-        TermsKind::Comped => "comped".to_owned(),
-        TermsKind::Custom => {
+        TermsKind::Comped | TermsKind::Custom => {
             let mut parts = vec![];
-            if terms.discount_percent > 0 {
-                parts.push(format!("{}% off", terms.discount_percent));
+            if let Some(label) = terms.discount_label() {
+                parts.push(label);
             }
             if let Some(ceiling) = terms.ceiling_micros {
-                parts.push(format!("ceiling {}", crate::features::dollars(ceiling)));
+                let what = if terms.full_discount() { "monthly budget" } else { "ceiling" };
+                parts.push(format!("{what} {}", crate::features::dollars(ceiling)));
             }
-            format!("custom ({})", if parts.is_empty() { "no changes".to_owned() } else { parts.join(", ") })
+            if parts.is_empty() { "custom (no changes)".to_owned() } else { parts.join(", ") }
         }
     };
     if let Some(until) = &terms.until {
@@ -453,7 +453,8 @@ impl Billing {
         Ok(Outcome::Ok(AccountDetail { summary: self.summary(account).await?, workspaces, ledger, audit }))
     }
 
-    pub(crate) async fn admin_set_terms(&self, a: AdminSetTermsArgs) -> Result<Outcome<BillingAccount>> {
+    pub(crate) async fn admin_set_terms(&self, mut a: AdminSetTermsArgs) -> Result<Outcome<BillingAccount>> {
+        a.terms = normalized(a.terms);
         if a.by.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say who is making the change."));
         }
@@ -675,33 +676,23 @@ impl Billing {
             Err(error) => Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe's billing page could not be opened: {error}"))),
         }
     }
+}
 
-    pub(crate) async fn admin_credit(&self, a: AdminCreditArgs) -> Result<Outcome<LedgerEntry>> {
-        let workspace = a.workspace.trim().to_lowercase();
-        if workspace.is_empty() || a.note.trim().is_empty() || a.by.trim().is_empty() {
-            return Ok(Outcome::fail(FailureCode::Invalid, "A credit needs a workspace, a note and who gave it."));
-        }
-        if a.amount_micros <= 0 || a.amount_micros > 10_000 * g1t_contracts::billing::MICROS_PER_DOLLAR {
-            return Ok(Outcome::fail(FailureCode::Invalid, "A credit is more than $0 and at most $10,000."));
-        }
-        let reference = new_id("crd", now_ms());
-        let description = format!("Credit from g1t: {}", a.note.trim());
-        self.enter(&workspace, EntryKind::TopUp, a.amount_micros, &description, &reference, None, None, Some(&a.by), None)
-            .await?;
-        let account = self.account_of(&workspace).await?;
-        self.audit(&account.id, "credit", &format!("{} to {workspace}: {}", crate::features::dollars(a.amount_micros), a.note.trim()), &a.by)
-            .await?;
-        let row = self
-            .db
-            .prepare("SELECT * FROM ledger WHERE reference = ?")
-            .bind(&[reference.as_str().into()])?
-            .first::<LedgerRow>(None)
-            .await?;
-        Ok(match row {
-            Some(row) => Outcome::Ok(LedgerEntry::from(row)),
-            None => Outcome::fail(FailureCode::NotFound, "The credit was not saved."),
-        })
+/// Terms as billing keeps them: "comped" is a 100% discount, and custom
+/// terms with nothing in them are standard.
+fn normalized(mut terms: Terms) -> Terms {
+    if terms.kind == TermsKind::Comped {
+        terms.kind = TermsKind::Custom;
+        terms.discount_percent = 100;
     }
+    if terms.kind == TermsKind::Custom && terms.discount_percent == 0 && terms.ceiling_micros.is_none() {
+        terms.kind = TermsKind::Standard;
+    }
+    if terms.kind == TermsKind::Standard {
+        terms.discount_percent = 0;
+        terms.ceiling_micros = None;
+    }
+    terms
 }
 
 /// Allowances as the audit log reads them.
@@ -773,8 +764,13 @@ mod tests {
         assert_eq!(charged + given, base);
         // Over 100% is everything given, never a negative charge.
         assert_eq!(terms(TermsKind::Custom, 250).discounted(base), (0, base));
-        // Comped is counted as comped by the reconciliation, not here.
-        assert_eq!(terms(TermsKind::Comped, 0).discounted(base), (0, 0));
+        // A 100% discount (and "comped", from before discounts) charges
+        // nothing and records the whole price as the discount, so the
+        // statement shows what the workspace would pay.
+        assert_eq!(terms(TermsKind::Custom, 100).discounted(base), (0, base));
+        assert_eq!(terms(TermsKind::Comped, 0).discounted(base), (0, base));
+        assert!(terms(TermsKind::Comped, 0).full_discount() && terms(TermsKind::Custom, 100).full_discount());
+        assert!(!terms(TermsKind::Custom, 99).full_discount() && !Terms::standard().full_discount());
         // Every discount: charged plus given is the whole charge.
         for percent in 0..=100 {
             let (charged, given) = terms(TermsKind::Custom, percent).discounted(base);
@@ -785,8 +781,20 @@ mod tests {
     #[test]
     fn terms_read_plainly_in_the_audit_log() {
         let custom = Terms { ceiling_micros: Some(50_000_000), note: "Design partner".into(), ..terms(TermsKind::Custom, 20) };
-        assert_eq!(describe(&custom), "custom (20% off, ceiling $50.00): Design partner");
+        assert_eq!(describe(&custom), "20% off, ceiling $50.00: Design partner");
         assert_eq!(describe(&Terms::standard()), "standard");
+        let flagon = Terms { ceiling_micros: Some(150_000_000), note: "g1t's own".into(), ..terms(TermsKind::Custom, 100) };
+        assert_eq!(describe(&flagon), "100% discount, monthly budget $150.00: g1t's own");
+    }
+
+    #[test]
+    fn comped_terms_are_kept_as_a_100_percent_discount() {
+        let comped = normalized(Terms { note: "Partner".into(), ..terms(TermsKind::Comped, 0) });
+        assert_eq!((comped.kind, comped.discount_percent), (TermsKind::Custom, 100));
+        // Nothing in custom terms is standard, and standard keeps nothing.
+        assert_eq!(normalized(terms(TermsKind::Custom, 0)).kind, TermsKind::Standard);
+        let standard = normalized(Terms { ceiling_micros: Some(1), ..terms(TermsKind::Standard, 30) });
+        assert_eq!((standard.discount_percent, standard.ceiling_micros), (0, None));
     }
 
     #[test]

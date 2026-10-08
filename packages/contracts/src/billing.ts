@@ -68,6 +68,74 @@ export type LedgerEntry = {
   ossMicros?: number;
   /** For usage: what g1t covered itself, such as a trial's last run past its credit. */
   givenMicros?: number;
+  /** For usage: what the account's discount took off its price. */
+  discountMicros?: number;
+  /** For a credit from g1t, and for what of one expired or was revoked: its kind. */
+  creditKind?: CreditKind;
+};
+
+/**
+ * Why g1t gave a workspace credit. Promotional (a welcome, a referral) and
+ * goodwill (an apology) are given away when spent; a refund gives back
+ * money already paid, and never expires.
+ */
+export type CreditKind = "promotional" | "goodwill" | "refund" | "purchased";
+
+/** One credit g1t gave, with what of it was used: spent before anything paid in advance, the soonest-expiring first. */
+export type CreditGrant = {
+  /** `crd_…`, the grant's ledger reference. */
+  id: string;
+  workspace: string;
+  kind: CreditKind;
+  amountMicros: number;
+  usedMicros: number;
+  /** What can still be spent: nothing once it expired or was revoked. */
+  leftMicros: number;
+  note: string;
+  /** A refund: what it refunds, and the day of it. */
+  refundFor?: string | null;
+  refundDay?: string | null;
+  /** RFC 3339; null never expires. */
+  expiresAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  state: "open" | "used" | "expired" | "revoked";
+  closedAt?: string | null;
+  closedNote?: string | null;
+  closedBy?: string | null;
+  /** What expiring or revoking took off the balance. */
+  closedMicros?: number;
+  /** What it pays for: all usage, or models only (spent first). */
+  scope?: "all" | "models";
+  /** Where it came from. */
+  source?: "staff" | "purchase" | "promo_code";
+};
+
+/** A workspace's credits from g1t, newest first. */
+export type Credits = { grants: CreditGrant[]; leftMicros: number };
+
+/** One month's credits of one kind: given, spent that month, and taken back unused. */
+export type CreditMonth = {
+  month: string;
+  kind: CreditKind;
+  givenMicros: number;
+  grants: number;
+  usedMicros: number;
+  expiredMicros: number;
+  revokedMicros: number;
+};
+
+/** Every credit g1t gave (at most 200, filtered), the last 12 months by kind, and who gave them. */
+export type AdminCredits = { grants: CreditGrant[]; months: CreditMonth[]; staff: string[] };
+
+/** What a credit from sudo is, past its amount and note. */
+export type CreditOptions = {
+  kind: CreditKind;
+  /** RFC 3339; never for a refund. */
+  expiresAt?: string | null;
+  /** A refund: what it is for, and the day refunded (`YYYY-MM-DD`). */
+  refundFor?: string | null;
+  refundDay?: string | null;
 };
 
 /** What lets a sandbox, and nothing else, report what its run cost. */
@@ -83,7 +151,12 @@ export type RunTicket = { runId: string; token: string };
  * open to them: a few dollars of model cost each, out of one pool, until a
  * date. Mirrors `Trial` in `crates/contracts/src/billing.rs`.
  */
-/** How an account is charged. Standard unless g1t set otherwise in sudo. */
+/**
+ * How an account is charged. Standard unless g1t set otherwise in sudo:
+ * custom terms are a discount (0 to 100%), a ceiling, or both. A 100%
+ * discount charges nothing and shows the usage at its price. `comped` is
+ * from before discounts and reads as 100%; billing no longer writes it.
+ */
 export type Terms = {
   kind: "standard" | "comped" | "custom";
   discountPercent: number;
@@ -394,14 +467,30 @@ export type Statement = {
     key: string;
     label: string;
     /** `coveredMicros`: what the plan's included usage, the trial, the open-source pool or g1t paid, not in `chargedMicros`. */
-    lines: { kind: string; count: number; chargedMicros: number; costMicros: number; coveredMicros?: number }[];
+    /** `priceMicros`: usage at its price; `discountMicros`: what the account's discount took off it. */
+    lines: {
+      kind: string;
+      count: number;
+      chargedMicros: number;
+      costMicros: number;
+      coveredMicros?: number;
+      priceMicros?: number;
+      discountMicros?: number;
+    }[];
     chargedMicros: number;
+    priceMicros?: number;
+    discountMicros?: number;
   }[];
   totals: {
     chargedMicros: number;
     paidMicros: number;
     costMicros: number;
     entries: number;
+    /** Usage at price, and what the discount took off: charged is the price less the discount and what paid for it. */
+    priceMicros?: number;
+    discountMicros?: number;
+    /** The account's discount now, in percent; absent without one. */
+    discountPercent?: number | null;
     /** What paid for usage before it was charged, such as "Paid by g1t's open-source pool". */
     covered?: { source: "included" | "trial" | "oss_pool" | "given" | string; label: string; micros: number }[];
     /** Owed when the month closed but under the minimum charge: on the next invoice. */
@@ -523,7 +612,12 @@ export interface BillingAdminApi {
   setAllowances(id: string, allowances: Allowances, note: string, by: string): Promise<Result<PayingAccount>>;
   createEnterprise(name: string, workspaces: string[], by: string): Promise<Result<PayingAccount>>;
   attach(workspace: string, account: string | null, by: string): Promise<Result<PayingAccount>>;
-  credit(workspace: string, amountMicros: number, note: string, by: string): Promise<Result<LedgerEntry>>;
+  /** Credit for a workspace: promotional, goodwill or a refund; the owners are emailed. */
+  credit(workspace: string, amountMicros: number, note: string, by: string, options?: CreditOptions): Promise<Result<LedgerEntry>>;
+  /** Every credit g1t gave, filtered, with each month's totals by kind. */
+  credits(filter?: { workspace?: string | null; kind?: CreditKind | null; month?: string | null; by?: string | null }): Promise<AdminCredits>;
+  /** What is left of a credit, taken back, with why. */
+  revokeCredit(id: string, note: string, by: string): Promise<Result<CreditGrant>>;
   /** A test workspace's billing wiped, to start again as a new customer. Only on Stripe's test key; never comped or enterprise. Logged. */
   resetBilling(workspace: string, confirm: string, note: string, by: string): Promise<Result<BillingReset>>;
   /** The workspace's Stripe billing page, to send to the customer. Logged. */
@@ -786,6 +880,8 @@ export interface BillingApi {
   account(workspace: string, viewer: Viewer): Promise<Result<BillingAccount>>;
   /** Newest first. Members of the workspace only. */
   ledger(workspace: string, viewer: Viewer): Promise<Result<LedgerEntry[]>>;
+  /** Credits from g1t, newest first, with what is left of each. Members only. */
+  credits(workspace: string, viewer: Viewer): Promise<Result<Credits>>;
   /** A month of the ledger, grouped by `day` (default) or `project`. Members only. */
   statement(workspace: string, viewer: Viewer, month?: string | null, group?: "day" | "project"): Promise<Result<Statement>>;
   /** One statement line's entries, 50 at a time; `before` is the last id seen. */
@@ -1019,6 +1115,10 @@ export type Usage = {
   spentMicros: number;
   /** What g1t's usage came to at price, less what was charged: the plan's included usage, the trial, a pool or a free period paid it. Usage at price is `spentMicros` plus this. */
   coveredMicros?: number;
+  /** What the account's discount took off the price; usage at price is spent + covered + this. */
+  discountMicros?: number;
+  /** The account's discount now, in percent; with one, the slices are at price. */
+  discountPercent?: number | null;
   /** What g1t's model provider charged, before the margin. */
   costMicros: number;
   /** What runs on the workspace's own provider cost there, estimated. Not charged by g1t. */
@@ -1085,6 +1185,13 @@ export type OverallMargin = {
   givenPoolMicros?: number;
   /** What discounts on an account's terms took below cost plus the margin: given, not margin lost. */
   givenDiscountMicros?: number;
+  /** Credits from g1t spent on usage, by kind: given, never money in. Refunds come off money in instead. */
+  givenCreditPromotionalMicros?: number;
+  givenCreditGoodwillMicros?: number;
+  /** Credits over the range: given (every kind), spent on usage, and refunds' money given back. */
+  creditsGivenMicros?: number;
+  creditsUsedMicros?: number;
+  creditsRefundedMicros?: number;
   /** costMicros by who g1t pays: Cloudflare's bill (billed, after included allowances) and model providers (tokens, not on Cloudflare's bill). */
   /** What the plan's included usage paid for, at price: money in for usage, paid out of plansMicros. */
   includedMicros?: number;

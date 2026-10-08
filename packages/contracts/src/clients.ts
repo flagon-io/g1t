@@ -440,6 +440,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
     status: () => call("status", {}),
     account: (workspace, viewer) => call("account", { workspace, viewer }),
     ledger: (workspace, viewer) => call("ledger", { workspace, viewer }),
+    credits: (workspace, viewer) => call("credits", { workspace, viewer }),
     statement: (workspace, viewer, month = null, group = "day") => call("statement", { workspace, viewer, month, group }),
     statementEntries: (workspace, viewer, filter) =>
       call("statement_entries", {
@@ -501,7 +502,25 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     setAllowances: (id, allowances, note, by) => call("admin_set_allowances", { id, allowances, note, by }),
     createEnterprise: (name, workspaces, by) => call("admin_create_enterprise", { name, workspaces, by }),
     attach: (workspace, account, by) => call("admin_attach", { workspace, account, by }),
-    credit: (workspace, amountMicros, note, by) => call("admin_credit", { workspace, amount_micros: amountMicros, note, by }),
+    credit: (workspace, amountMicros, note, by, options = { kind: "goodwill" }) =>
+      call("admin_credit", {
+        workspace,
+        amount_micros: amountMicros,
+        note,
+        by,
+        kind: options.kind,
+        expires_at: options.expiresAt ?? null,
+        refund_for: options.refundFor ?? null,
+        refund_day: options.refundDay ?? null,
+      }),
+    credits: (filter = {}) =>
+      call("admin_credits", {
+        workspace: filter.workspace ?? null,
+        kind: filter.kind ?? null,
+        month: filter.month ?? null,
+        by: filter.by ?? null,
+      }),
+    revokeCredit: (id, note, by) => call("admin_revoke_credit", { id, note, by }),
     resetBilling: (workspace, confirm, note, by) => call("admin_reset_billing", { workspace, confirm, note, by }),
     billingLink: (workspace, by) => call("admin_billing_link", { workspace, by }),
     stripe: (fix = false, by) => call("admin_stripe", { fix, by: by ?? null }),

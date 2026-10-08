@@ -33,6 +33,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM limits WHERE workspace = ?1",
     "DELETE FROM limit_requests WHERE workspace = ?1",
     "DELETE FROM trial_grants WHERE workspace = ?1",
+    "DELETE FROM credit_grants WHERE workspace = ?1",
     "DELETE FROM card_checks WHERE workspace = ?1",
     "DELETE FROM alerts_sent WHERE workspace = ?1",
     "DELETE FROM price_notices WHERE workspace = ?1",
@@ -132,7 +133,7 @@ mod tests {
         for table in [
             "ledger", "runs", "checkouts", "workspace_invoices", "workspace_invoice_lines", "sales_notes", "accounts",
             "pending_usage", "pending_days", "limits", "subscriptions", "month_closes", "sales_records",
-            "billing_accounts", "allowance_use", "trial_grants", "storage_days", "package_storage_days",
+            "billing_accounts", "allowance_use", "trial_grants", "credit_grants", "storage_days", "package_storage_days",
             "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
             "card_checks", "alerts_sent", "price_notices", "closed_workspaces", "workspace_costs",
             "margin_alerts", "budget_alerts",

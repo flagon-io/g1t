@@ -1,25 +1,28 @@
 /**
  * The billing page's sections: the spend-spike banner (also in the app
  * shell), alerts, the g1t plan, the trial, the spend limit and its range,
- * Raise my limit, Prepay, the run and issue caps, and "Spent more than you
+ * Raise my limit, credits from g1t, Prepay, the run and issue caps, and "Spent more than you
  * meant to?". Each posts to the billing route's action with an `intent`.
  */
-import { ArrowUpRight, CreditCard, Gauge, Landmark, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowUpRight, CreditCard, Gauge, Gift, Landmark, ShieldCheck, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form } from "react-router";
 
-import type { Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, UsageAlert } from "@g1t/contracts";
+import type { Credits, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, UsageAlert } from "@g1t/contracts";
 
 import {
   CAPS,
+  CREDIT_KIND,
   PREPAY,
   type PlanStatus,
   alertText,
   alertTone,
+  creditLine,
   dollars,
   gigabytes,
   requestStatus,
   share,
+  shortDay,
   shownMeters,
   spendRange,
   wholeDollars,
@@ -258,7 +261,7 @@ export function PlanCard({
       {status.kind === "comped" || status.kind === "enterprise" ? (
         <p className="mt-4 text-sm text-muted">
           {status.kind === "comped"
-            ? "g1t covers this workspace's plan. Its usage is still recorded at what it costs, and shown as given."
+            ? "This workspace has a 100% discount from g1t: the plan and its usage are shown at their price, and nothing is charged."
             : "An enterprise pays for this workspace, on its own invoice."}
         </p>
       ) : !enabled ? (
@@ -351,10 +354,10 @@ function MonthUsage({
       </div>
       <p className="mt-2 text-xs text-faint">
         {comped
-          ? "What this workspace's usage would cost. g1t covers it."
+          ? "What this workspace's usage comes to at price. Its 100% discount takes all of it off."
           : on
             ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes.`
-            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial or the open-source pool, which pay part of this total: Usage shows what was charged.`}
+            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Agents run from the trial, and checks, workflows and the merge queue on public repositories from the open-source pool; together they pay part of this total: Usage shows what was charged.`}
       </p>
     </div>
   );
@@ -602,6 +605,44 @@ export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]
 }
 
 // --- Prepay -----------------------------------------------------------------------
+
+/**
+ * Credit g1t gave the workspace: what is left, each grant in a line with
+ * its expiry, and what each was for. Spent before anything prepaid.
+ */
+export function CreditsCard({ credits }: { credits: Credits }) {
+  const open = credits.grants.filter((grant) => grant.state === "open");
+  const past = credits.grants.filter((grant) => grant.state !== "open");
+  return (
+    <Card
+      id="credits"
+      icon={<Gift size={16} />}
+      title="Credits from g1t"
+      about="Credit g1t gave this workspace. It pays for usage before anything prepaid, the soonest-expiring first. Unused credit stops counting when it expires."
+      aside={
+        <p className="shrink-0 sm:text-right">
+          <span className="block text-xs text-muted">Credit left</span>
+          <span className="text-xl font-semibold tabular-nums">{dollars(credits.leftMicros)}</span>
+        </p>
+      }
+    >
+      <ul className="mt-4 divide-y divide-line rounded-lg border border-line">
+        {[...open, ...past].map((grant) => (
+          <li key={grant.id} className={`px-3.5 py-2.5 text-sm ${grant.state === "open" ? "" : "text-muted"}`}>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className={`tabular-nums ${grant.state === "open" ? "font-medium" : ""}`}>{creditLine(grant)}</span>
+              <span className="rounded-full border border-line px-2 py-px text-xs text-muted">{CREDIT_KIND[grant.kind]}</span>
+            </p>
+            <p className="mt-0.5 text-xs text-faint">
+              {grant.kind === "refund" && grant.refundFor ? `For ${grant.refundFor}. ` : ""}
+              {grant.note} · given {shortDay(grant.createdAt)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 export function PrepayCard({ prepaidMicros, owner, live, error }: { prepaidMicros: number; owner: boolean; live: boolean; error?: string }) {
   return (

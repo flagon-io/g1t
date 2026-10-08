@@ -989,6 +989,31 @@ raises the limit, so paying users are never stopped. A declined card
 stops work until paid. The owner's own spend limit always means stop.
 Test-mode payments never lower exposure or raise trust.
 
+### Promo codes (planned)
+
+Staff credits (promotional, goodwill, refund; `services/billing/src/grants.rs`,
+docs/BILLING_OPERATIONS.md) are given one workspace at a time. Promo codes
+give promotional credit in bulk, on redemption, through the same grants:
+
+- **Codes.** sudo → Credits & refunds → **New code**: the code (or one
+  made up), the credit ($ amount), max redemptions, when the code stops
+  working, how long each redeemed credit lasts (an expiry, as any grant),
+  and a note. Table `promo_codes` (code, amount, max, redeemed, ends_at,
+  credit_days, note, created_by, disabled_at) and `promo_redemptions`
+  (code, workspace, grant id, by, at), unique on (code, workspace).
+- **Redeeming.** An owner types it on the workspace's Billing page
+  (`redeem_code`, owners only). One D1 batch checks the code is open, under
+  its max and not redeemed by the workspace, counts the redemption and
+  makes the grant (`grant_credit`, kind promotional, the code as its note),
+  so two redemptions at once never pass the max. Wrong or used-up codes say
+  so without telling which codes exist; redemptions are rate-limited per
+  owner.
+- **Seeing them.** Each code's redemptions, credit given and spent come
+  from the grants it made, so margin needs nothing new: spent promo credit
+  is already given away, by kind.
+- **Not yet built** because it adds an owner-facing form, abuse limits and
+  a second sudo form; giving credit by workspace covers launch.
+
 ## Agents and models
 
 ### Defining an agent

@@ -22,13 +22,13 @@ function form(entries: Record<string, string>): FormData {
   return data;
 }
 
-test("comped terms keep a ceiling and an end date, and name who set them", () => {
-  const result = parseTerms(form({ kind: "comped", note: "g1t's own", ceiling: "500", until: "2026-12-31", discount: "40" }), "owner@g1t.sh", NOW);
+test("a 100% discount keeps its budget and an end date, and names who set it", () => {
+  const result = parseTerms(form({ preset: "100", note: "g1t's own", ceiling: "500", until: "2026-12-31", discount: "40" }), "owner@g1t.sh", NOW);
   assert.deepEqual(result, {
     ok: true,
     value: {
-      kind: "comped",
-      discountPercent: 0,
+      kind: "custom",
+      discountPercent: 100,
       ceilingMicros: 500_000_000,
       note: "g1t's own",
       until: "2026-12-31T23:59:59Z",
@@ -36,22 +36,37 @@ test("comped terms keep a ceiling and an end date, and name who set them", () =>
       setAt: NOW.toISOString(),
     },
   });
+  // A form from before discounts, saying comped, is a 100% discount.
+  const old = parseTerms(form({ kind: "comped", note: "g1t's own" }), "a", NOW);
+  assert.ok(old.ok && old.value.kind === "custom" && old.value.discountPercent === 100);
 });
 
-test("standard terms clear everything but the note", () => {
-  const result = parseTerms(form({ kind: "standard", note: "back to normal", ceiling: "5", until: "2027-01-01" }), "a@g1t.sh", NOW);
+test("a discount is a preset or a custom whole percent", () => {
+  const custom = parseTerms(form({ preset: "custom", discount: "30", note: "Design partner" }), "a", NOW);
+  assert.ok(custom.ok && custom.value.discountPercent === 30 && custom.value.kind === "custom");
+  const half = parseTerms(form({ preset: "50", discount: "30", note: "x" }), "a", NOW);
+  assert.ok(half.ok && half.value.discountPercent === 50);
+  // A limit alone is custom terms too.
+  const limit = parseTerms(form({ preset: "0", ceiling: "250", note: "x" }), "a", NOW);
+  assert.ok(limit.ok && limit.value.kind === "custom" && limit.value.discountPercent === 0);
+});
+
+test("no discount and no limit is standard, which clears the end date", () => {
+  const result = parseTerms(form({ preset: "0", note: "back to normal", until: "2027-01-01" }), "a@g1t.sh", NOW);
   assert.ok(result.ok);
+  assert.equal(result.value.kind, "standard");
   assert.equal(result.value.ceilingMicros, null);
   assert.equal(result.value.until, null);
 });
 
 test("terms are refused without a note, with a bad discount, or ending in the past", () => {
-  assert.equal(parseTerms(form({ kind: "comped", note: "" }), "a", NOW).ok, false);
-  assert.equal(parseTerms(form({ kind: "custom", note: "x", discount: "101" }), "a", NOW).ok, false);
-  assert.equal(parseTerms(form({ kind: "custom", note: "x" }), "a", NOW).ok, false);
-  assert.equal(parseTerms(form({ kind: "custom", note: "x", discount: "20", until: "2026-10-01" }), "a", NOW).ok, false);
-  assert.equal(parseTerms(form({ kind: "custom", note: "x", discount: "20", until: "2026-02-30" }), "a", NOW).ok, false);
-  assert.equal(parseTerms(form({ kind: "free", note: "x" }), "a", NOW).ok, false);
+  assert.equal(parseTerms(form({ preset: "100", note: "" }), "a", NOW).ok, false);
+  assert.equal(parseTerms(form({ preset: "custom", note: "x", discount: "101" }), "a", NOW).ok, false);
+  assert.equal(parseTerms(form({ preset: "custom", note: "x" }), "a", NOW).ok, false);
+  assert.equal(parseTerms(form({ preset: "custom", note: "x", discount: "20", until: "2026-10-01" }), "a", NOW).ok, false);
+  assert.equal(parseTerms(form({ preset: "custom", note: "x", discount: "20", until: "2026-02-30" }), "a", NOW).ok, false);
+  assert.equal(parseTerms(form({ preset: "75", note: "x" }), "a", NOW).ok, true);
+  assert.equal(parseTerms(form({ preset: "free", note: "x" }), "a", NOW).ok, false);
 });
 
 test("workspace lists take commas, spaces and lines, once each", () => {

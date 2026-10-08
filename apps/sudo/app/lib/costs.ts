@@ -168,7 +168,7 @@ export function parseMapping(form: FormData): Parsed<CostMappingInput> {
 // --- g1t's own spend (billing's budget) ---------------------------------------
 
 /**
- * The red bar on every sudo page: the daily breaker open, or a comped
+ * The red bar on every sudo page: the daily breaker open, or a 100%-discount
  * account's monthly budget used up. Null when neither.
  */
 export function spendBanner(caps: SpendCaps): string | null {
@@ -191,7 +191,7 @@ export function spendBanner(caps: SpendCaps): string | null {
 /** What g1t paid this month, by bucket, with the free tier and Cloudflare's subscriptions; and the total. */
 export function spendRows(caps: SpendCaps): { rows: { key: string; title: string; micros: number; note: string }[]; totalMicros: number } {
   const notes: Record<string, string> = {
-    comped: "Work on comped accounts, at cost",
+    comped: "Work on accounts with a 100% discount, at cost",
     trial: "Trial credit, at cost",
     oss: "Checks and workflows on public repositories, at cost",
     given: "Free workspaces' overruns past their trial",

@@ -8,6 +8,7 @@ import {
   alertText,
   alertTone,
   cardCheckResult,
+  creditLine,
   dollars,
   needsAttention,
   usageGlance,
@@ -23,6 +24,16 @@ import {
   spendRange,
   wholeDollars,
 } from "./billing.ts";
+
+test("a credit from g1t reads in a line, with what is left and when it expires", () => {
+  const now = new Date("2026-10-07T12:00:00Z");
+  const grant = { amountMicros: 25_000_000, leftMicros: 12_400_000, expiresAt: "2027-01-05T23:59:59Z", state: "open" as const };
+  assert.equal(creditLine(grant, now), "$25.00 credit, $12.40 left, expires Jan 5, 2027");
+  assert.equal(creditLine({ ...grant, expiresAt: "2026-12-05T23:59:59Z" }, now), "$25.00 credit, $12.40 left, expires Dec 5");
+  assert.equal(creditLine({ ...grant, expiresAt: null }, now), "$25.00 credit, $12.40 left");
+  assert.equal(creditLine({ ...grant, state: "used", leftMicros: 0 }, now), "$25.00 credit, all used");
+  assert.equal(creditLine({ ...grant, state: "revoked", leftMicros: 0 }, now), "$25.00 credit, withdrawn");
+});
 
 test("money reads as dollars", () => {
   assert.equal(dollars(9_500_000), "$9.50");

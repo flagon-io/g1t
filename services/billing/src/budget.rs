@@ -31,7 +31,7 @@
 //! docs/BILLING_OPERATIONS.md.
 
 use g1t_contracts::billing::{
-    AdminLiftBreakerArgs, BillingAccount, CompedBudget, ComputeKind, PlanKind, SpendBucket, SpendCaps, TermsKind,
+    AdminLiftBreakerArgs, BillingAccount, CompedBudget, ComputeKind, PlanKind, SpendBucket, SpendCaps,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
@@ -219,7 +219,7 @@ impl Billing {
             return Ok(());
         }
         let account = self.account_of(workspace).await?;
-        let paid = share(cost, charged, drawn, account.terms.kind == TermsKind::Comped, self.live());
+        let paid = share(cost, charged, drawn, account.terms.full_discount(), self.live());
         if paid.total() == 0 {
             return Ok(());
         }
@@ -324,7 +324,7 @@ impl Billing {
         if self.caps.daily <= 0 || !breaker_applies(kind, hosted_model) {
             return Ok(None);
         }
-        let comped = account.terms.kind == TermsKind::Comped;
+        let comped = account.terms.full_discount();
         if covered_by_revenue(plan, comped, account.allowances.plan, self.live()) {
             return Ok(None);
         }
@@ -362,7 +362,7 @@ impl Billing {
     /// Why new work on a comped account is refused, if its budget is used
     /// up. None for every other account.
     pub(crate) async fn comped_stop(&self, account: &BillingAccount) -> Result<Option<String>> {
-        if account.terms.kind != TermsKind::Comped {
+        if !account.terms.full_discount() {
             return Ok(None);
         }
         let budget = self.comped_budget(account).await?;
@@ -382,7 +382,7 @@ impl Billing {
         }
         let comped = self
             .db
-            .prepare("SELECT id FROM billing_accounts WHERE terms_kind = 'comped'")
+            .prepare(format!("SELECT id FROM billing_accounts WHERE {}", crate::sales::FULL_DISCOUNT_SQL))
             .all()
             .await?
             .results::<Id>()?;
@@ -469,7 +469,7 @@ impl Billing {
         }
         let ids = self
             .db
-            .prepare("SELECT id FROM billing_accounts WHERE terms_kind = 'comped' ORDER BY id")
+            .prepare(format!("SELECT id FROM billing_accounts WHERE {} ORDER BY id", crate::sales::FULL_DISCOUNT_SQL))
             .all()
             .await?
             .results::<Id>()?;
@@ -553,7 +553,7 @@ impl Billing {
 /// How sudo names a bucket of g1t's own spend.
 pub(crate) fn bucket_title(bucket: &str) -> &'static str {
     match bucket {
-        "comped" => "Comped (g1t's own)",
+        "comped" => "100% discount (g1t's own)",
         "trial" => "Trial pool",
         "oss" => "Open-source pool",
         "given" => "Free overruns g1t covered",

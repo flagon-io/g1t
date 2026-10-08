@@ -128,6 +128,8 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   maintenance_started: "Maintenance started",
   maintenance_completed: "Maintenance completed",
   maintenance_cancelled: "Maintenance cancelled",
+  credit_revoked: "Credit revoked",
+  credit_expired: "Credit expired",
 };
 
 /**

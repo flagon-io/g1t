@@ -3,7 +3,7 @@
  * workspace's alerts. Pure, so it can be tested.
  */
 
-import type { Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, Usage, UsageAlert } from "@g1t/contracts";
+import type { CreditGrant, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, Usage, UsageAlert } from "@g1t/contracts";
 
 /** Millionths of a dollar in one dollar, as `MICROS_PER_DOLLAR`; here so the tests need no build of the contracts. */
 const MICROS_PER_DOLLAR = 1_000_000;
@@ -171,7 +171,7 @@ export function planStatus(
   plan: Pick<FeatureState, "on" | "included" | "subscription"> | null | undefined,
   entitlements: Pick<Entitlements, "plan" | "trialMicrosLeft" | "trialVerified" | "firstMonth"> | null | undefined,
 ): PlanStatus {
-  if (entitlements?.plan === "internal") return { kind: "comped", label: "Comped by g1t" };
+  if (entitlements?.plan === "internal") return { kind: "comped", label: "100% discount from g1t" };
   if (entitlements?.plan === "enterprise") return { kind: "enterprise", label: "Paid by an enterprise" };
   if (plan?.included) return { kind: "comped", label: "Included by g1t" };
   const subscription = plan?.subscription;
@@ -336,4 +336,34 @@ export function usageGlance(input: {
       limitMicros: limit?.spendLimitMicros ?? null,
     },
   };
+}
+
+/** What a credit from g1t is for, as the Billing page names it. */
+export const CREDIT_KIND: Record<CreditGrant["kind"], string> = {
+  promotional: "Promotional",
+  goodwill: "Goodwill",
+  refund: "Refund",
+  purchased: "Purchased",
+};
+
+/** `Jan 5`, or `Jan 5, 2028` outside this year (UTC). */
+export function shortDay(at: string, now = new Date()): string {
+  const date = new Date(at);
+  const sameYear = date.getUTCFullYear() === now.getUTCFullYear();
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), timeZone: "UTC" });
+}
+
+/**
+ * A credit from g1t in a line: `$25.00 credit, $12.40 left, expires Jan 5`;
+ * once it is spent, expired or withdrawn, says so.
+ */
+export function creditLine(grant: Pick<CreditGrant, "amountMicros" | "leftMicros" | "expiresAt" | "state">, now = new Date()): string {
+  const parts = [`${dollars(grant.amountMicros)} credit`];
+  if (grant.state === "open") {
+    parts.push(`${dollars(grant.leftMicros)} left`);
+    if (grant.expiresAt) parts.push(`expires ${shortDay(grant.expiresAt, now)}`);
+  } else {
+    parts.push(grant.state === "used" ? "all used" : grant.state === "expired" ? "expired" : "withdrawn");
+  }
+  return parts.join(", ");
 }

@@ -138,6 +138,19 @@ struct LineRow {
     amount_micros: i64,
 }
 
+/// The idempotency key of an enterprise's invoice: the same enterprise,
+/// period and amounts are the same invoice however often it is attempted.
+pub(crate) fn enterprise_invoice_key(id: &str, period: &str, lines: &[(&str, i64)]) -> String {
+    // FNV-1a over every line, so the key stays short however many there are.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for (workspace, cents) in lines {
+        for byte in format!("{workspace}={cents};").bytes() {
+            hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    format!("ent-invoice/{id}/{period}/{hash:016x}")
+}
+
 impl Billing {
     pub(crate) fn mode(&self) -> &'static str {
         match &self.stripe {
@@ -628,11 +641,12 @@ impl Billing {
         }
         let due = self
             .db
-            .prepare(
+            .prepare(format!(
                 "SELECT id FROM billing_accounts WHERE kind = 'enterprise' AND customer_id IS NOT NULL
-                   AND terms_kind <> 'comped'
+                   AND NOT {full}
                    AND NOT EXISTS (SELECT 1 FROM enterprise_invoices i WHERE i.account_id = billing_accounts.id AND i.period = ?)",
-            )
+                full = crate::sales::FULL_DISCOUNT_SQL
+            ))
             .bind(&[closing.as_str().into()])?
             .all()
             .await?
@@ -692,22 +706,11 @@ impl Billing {
         if lines.is_empty() {
             return Ok(Err("Its workspaces owe nothing to invoice.".into()));
         }
-        for line in &lines {
-            let cents = (line.amount_micros + 9_999) / 10_000;
-            let fields = [
-                ("customer", customer.clone()),
-                ("amount", cents.to_string()),
-                ("currency", "usd".to_owned()),
-                ("description", format!("{}: g1t usage", line.workspace)),
-                ("metadata[workspace]", line.workspace.clone()),
-            ];
-            let _: Value = stripe.post("/invoiceitems", &fields).await?;
-        }
         let fields = [
             ("customer", customer.clone()),
             ("collection_method", "send_invoice".to_owned()),
             ("days_until_due", "30".to_owned()),
-            ("pending_invoice_items_behavior", "include".to_owned()),
+            ("pending_invoice_items_behavior", "exclude".to_owned()),
             ("description", format!("g1t usage for the {} enterprise", account.name)),
             ("metadata[g1t_enterprise]", id.to_owned()),
             ("metadata[period]", period.to_owned()),
@@ -720,8 +723,26 @@ impl Billing {
             #[serde(default)]
             amount_due: i64,
         }
-        let draft: Invoice = stripe.post("/invoices", &fields).await?;
-        let _: Value = stripe.post(&format!("/invoices/{}/finalize", draft.id), &[]).await?;
+        // The draft first, keyed on what it bills, and its lines put on it:
+        // an attempt that failed half way is found again, never billed again
+        // by an invoice sweeping its pending lines in.
+        let cents: Vec<i64> = lines.iter().map(|line| (line.amount_micros + 9_999) / 10_000).collect();
+        let keyed: Vec<(&str, i64)> = lines.iter().zip(&cents).map(|(line, cents)| (line.workspace.as_str(), *cents)).collect();
+        let key = enterprise_invoice_key(id, period, &keyed);
+        let draft: Invoice = stripe.post_idempotent("/invoices", &fields, &key).await?;
+        for (line, cents) in lines.iter().zip(&cents) {
+            let fields = [
+                ("customer", customer.clone()),
+                ("invoice", draft.id.clone()),
+                ("amount", cents.to_string()),
+                ("currency", "usd".to_owned()),
+                ("description", format!("{}: g1t usage", line.workspace)),
+                ("metadata[workspace]", line.workspace.clone()),
+            ];
+            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{}", line.workspace)).await?;
+        }
+        // A retry finds it finalized already; that is fine.
+        let _ = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
         let sent: Invoice = stripe.post(&format!("/invoices/{}/send", draft.id), &[]).await?;
         let now = rfc3339(now_ms());
         let total = lines.iter().map(|l| l.amount_micros).sum::<i64>().max(sent.amount_due * 10_000);
@@ -863,6 +884,17 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_enterprise_invoice_attempted_again_is_the_same_invoice() {
+        let lines = [("acme", 1_250), ("acme-labs", 99)];
+        let key = enterprise_invoice_key("ent_1", "2026-09", &lines);
+        assert_eq!(key, enterprise_invoice_key("ent_1", "2026-09", &lines));
+        assert!(key.len() < 255 && key.starts_with("ent-invoice/ent_1/2026-09/"));
+        // Different amounts, even with the same total, are a different invoice.
+        assert_ne!(key, enterprise_invoice_key("ent_1", "2026-09", &[("acme", 1_300), ("acme-labs", 49)]));
+        assert_ne!(key, enterprise_invoice_key("ent_1", "2026-10", &lines));
+    }
 
     fn sign(payload: &str, secret: &str, t: i64) -> String {
         let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();

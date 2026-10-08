@@ -70,11 +70,17 @@ fn days_in(month: &str) -> u32 {
     }
 }
 
-/// The workspaces g1t does not charge (comped terms): its own and
-/// Flagon's, and any enterprise on comped terms. Their usage is recorded at
-/// what it cost and shown as given, apart from margin.
-pub(crate) const INTERNAL_SQL: &str = "SELECT substr(id, 4) FROM billing_accounts WHERE kind = 'workspace' AND terms_kind = 'comped'
-     UNION SELECT m.workspace FROM account_members m JOIN billing_accounts b ON b.id = m.account_id WHERE b.terms_kind = 'comped'";
+/// An account row on a 100% discount (`Terms::full_discount`), as SQL:
+/// `custom` terms at 100%, or `comped` from before discounts.
+pub(crate) const FULL_DISCOUNT_SQL: &str = "(terms_kind = 'comped' OR (terms_kind = 'custom' AND discount_percent >= 100))";
+
+/// The workspaces g1t does not charge (a 100% discount): its own and
+/// Flagon's, and any enterprise on one. Their usage is recorded at its
+/// price, discounted in full, and shown as given, apart from margin.
+pub(crate) const INTERNAL_SQL: &str = "SELECT substr(id, 4) FROM billing_accounts
+       WHERE kind = 'workspace' AND (terms_kind = 'comped' OR (terms_kind = 'custom' AND discount_percent >= 100))
+     UNION SELECT m.workspace FROM account_members m JOIN billing_accounts b ON b.id = m.account_id
+       WHERE b.terms_kind = 'comped' OR (b.terms_kind = 'custom' AND b.discount_percent >= 100)";
 
 /// One group of ledger rows in a month, as sudo's figures add them up.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -84,8 +90,9 @@ pub(crate) struct LedgerGroup {
     pub kind: String,
     /// `g1t`, or `workspace` for a run on the workspace's own provider.
     pub billed_to: Option<String>,
-    /// A credit from g1t rather than a payment (`crd…`), and of those, a
-    /// goodwill credit.
+    /// A credit from g1t rather than a payment (`crd…`), and of those, one
+    /// given away (promotional or goodwill, not a refund), less what of it
+    /// expired or was revoked.
     pub credit: i64,
     pub goodwill: i64,
     /// One of g1t's own workspaces (comped).
@@ -102,7 +109,8 @@ pub(crate) struct LedgerGroup {
 ///   provider was paid for there, so its cost is never g1t's.
 /// - **Given** is what g1t gave at price, apart from its margin: internal
 ///   use (its cost plus the margin, since nothing was charged), what the
-///   trial, the open-source pool and g1t itself paid, and goodwill credits.
+///   trial, the open-source pool and g1t itself paid, and promotional and
+///   goodwill credits as they are given (a refund gives money back).
 /// - **Paid** is money in: payments, never credits from g1t.
 pub(crate) fn fold_month(month: &str, groups: &[LedgerGroup], plans: i64, margin_percent: u32) -> MonthFigures {
     let mut figures = MonthFigures { month: month.to_owned(), plans_micros: plans, ..MonthFigures::default() };
@@ -163,12 +171,11 @@ impl Billing {
             .prepare(format!(
                 "SELECT substr(created_at, 1, 7) AS month, kind, COALESCE(billed_to, 'g1t') AS billed_to,
                         CASE WHEN reference LIKE 'crd%' THEN 1 ELSE 0 END AS credit,
-                        CASE WHEN reference LIKE '{goodwill}%' THEN 1 ELSE 0 END AS goodwill,
+                        CASE WHEN credit_kind IN ('promotional', 'goodwill') THEN 1 ELSE 0 END AS goodwill,
                         CASE WHEN workspace IN ({INTERNAL_SQL}) THEN 1 ELSE 0 END AS internal,
                         SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
                         SUM(trial_micros + oss_micros + given_micros) AS pools
                  FROM ledger WHERE created_at >= '{since}' {filter} GROUP BY 1, 2, 3, 4, 5, 6",
-                goodwill = crate::overages::GOODWILL_PREFIX
             ))
             .bind(&values)?
             .all()
@@ -630,9 +637,8 @@ impl Billing {
                    SUM(CASE WHEN kind = 'usage' THEN trial_micros END) AS trial,
                    SUM(CASE WHEN kind = 'usage' THEN oss_micros END) AS oss,
                    SUM(CASE WHEN kind = 'usage' THEN given_micros END) AS covered,
-                   SUM(CASE WHEN kind = 'top_up' AND reference LIKE '{goodwill}%' THEN amount_micros END) AS goodwill
+                   SUM(CASE WHEN kind = 'top_up' AND credit_kind IN ('promotional', 'goodwill') THEN amount_micros END) AS goodwill
                  FROM ledger WHERE created_at >= ?",
-                goodwill = crate::overages::GOODWILL_PREFIX
             ))
             .bind(&[format!("{month}-01").into()])?
             .first::<Row>(None)
@@ -645,7 +651,7 @@ impl Billing {
             ("trial", "Trials", row.trial.unwrap_or(0), at_cost(row.trial.unwrap_or(0))),
             ("oss_pool", "Open-source pool", row.oss.unwrap_or(0), at_cost(row.oss.unwrap_or(0))),
             ("covered", "Covered past a trial's end", row.covered.unwrap_or(0), at_cost(row.covered.unwrap_or(0))),
-            ("goodwill", "Goodwill credits", row.goodwill.unwrap_or(0), row.goodwill.unwrap_or(0)),
+            ("goodwill", "Credits from g1t, promotional and goodwill", row.goodwill.unwrap_or(0), row.goodwill.unwrap_or(0)),
         ]
         .into_iter()
         .map(|(source, label, micros, cost)| GivenFigures { source: source.to_owned(), label: label.to_owned(), micros, cost_micros: cost })
@@ -675,7 +681,7 @@ impl Billing {
         for row in rows {
             let terms = self.terms_of(&row.workspace).await?;
             list.push(InternalUse {
-                reason: if terms.note.is_empty() { "Comped".to_owned() } else { terms.note },
+                reason: if terms.note.is_empty() { "100% discount".to_owned() } else { terms.note },
                 cost_micros: row.cost.unwrap_or(0),
                 entries: row.entries.unwrap_or(0),
                 workspace: row.workspace,

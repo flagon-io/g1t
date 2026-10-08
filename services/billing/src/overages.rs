@@ -15,7 +15,7 @@
 //! as "Credit from g1t: accidental usage on <date>".
 
 use g1t_contracts::billing::{
-    AdminGoodwillArgs, AdminOveragesArgs, AdminVelocityArgs, EntryKind, Goodwill, LedgerEntry, Overage, PlanKind, Velocity,
+    AdminGoodwillArgs, AdminOveragesArgs, AdminVelocityArgs, CreditKind, Goodwill, LedgerEntry, Overage, PlanKind, Velocity,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -255,7 +255,8 @@ impl Billing {
             .unwrap_or_else(|| rfc3339(now_ms())[..10].to_owned());
         let reference = format!("{GOODWILL_PREFIX}{}", new_id("gw", now_ms()));
         let description = format!("Credit from g1t: accidental usage on {day}");
-        self.enter(&workspace, EntryKind::TopUp, amount, &description, &reference, None, None, Some(a.by.trim()), None)
+        let note = if reason.is_empty() { format!("Accidental usage on {day}") } else { format!("Accidental usage on {day}: {reason}") };
+        self.grant_credit(&workspace, CreditKind::Goodwill, amount, &note, a.by.trim(), None, None, None, Some(reference.clone()), Some(description))
             .await?;
         let absorbed = absorbed_by(amount, &quote);
         let account = self.account_of(&workspace).await?;
@@ -273,6 +274,8 @@ impl Billing {
             a.by.trim(),
         )
         .await?;
+        self.tell_owners_of_credit(&workspace, CreditKind::Goodwill, amount, &format!("It is for the accidental usage on {day}."), None, None)
+            .await;
         // An open overage request is answered by the credit.
         if let Some(request) = &overage.request {
             self.db

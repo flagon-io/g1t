@@ -4,7 +4,7 @@
 
 use g1t_contracts::billing::{
     Covered, LedgerEntry, MeterUsage, Statement, StatementArgs, StatementEntriesArgs, StatementGroup, StatementLine, StatementTotals,
-    TermsKind, UsageMetersArgs,
+    UsageMetersArgs,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::Outcome;
@@ -55,6 +55,17 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "Refunds" => 10,
         _ => 11,
     }
+}
+
+/// Payments, credits and refunds: money in, which has no price.
+pub(crate) fn is_money_in(kind: &str) -> bool {
+    matches!(kind, "Payments" | "Credits from g1t" | "Refunds")
+}
+
+/// A usage line at its price: what was charged, what paid for it first,
+/// and what the account's discount took off.
+pub(crate) fn line_price(charged: i64, covered: i64, discount: i64) -> i64 {
+    charged + covered + discount
 }
 
 /// The Billing page's meters, in order: key and label.
@@ -149,6 +160,7 @@ struct Row {
     trial: Option<i64>,
     oss: Option<i64>,
     given: Option<i64>,
+    discount: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -173,7 +185,7 @@ impl Billing {
                 "SELECT {group_sql} AS group_key, {KIND_SQL} AS kind, COUNT(*) AS count,
                         SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
                         SUM(credit_micros) AS credit, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss,
-                        SUM(given_micros) AS given
+                        SUM(given_micros) AS given, SUM(discount_micros) AS discount
                  FROM ledger WHERE workspace = ?1 AND created_at >= ?2 AND created_at < ?3
                  GROUP BY 1, 2"
             ))
@@ -191,13 +203,16 @@ impl Billing {
             for (total, micros) in covered.iter_mut().zip(paid_for) {
                 *total += micros;
             }
+            let discount = row.discount.unwrap_or(0);
             let line = StatementLine {
-                kind: row.kind.clone(),
-                count: row.count,
                 // Charges positive, money in negative, as a statement reads.
                 charged_micros: -amount,
                 cost_micros: row.cost.unwrap_or(0),
                 covered_micros: paid_for.iter().sum(),
+                price_micros: if is_money_in(&row.kind) { 0 } else { line_price(-amount, paid_for.iter().sum(), discount) },
+                discount_micros: discount,
+                kind: row.kind,
+                count: row.count,
             };
             match groups.iter_mut().find(|g| g.key == key) {
                 Some(group) => group.lines.push(line),
@@ -206,12 +221,16 @@ impl Billing {
                     key,
                     lines: vec![line],
                     charged_micros: 0,
+                    price_micros: 0,
+                    discount_micros: 0,
                 }),
             }
         }
         for group in &mut groups {
             group.lines.sort_by_key(|line| kind_order(&line.kind));
             group.charged_micros = group.lines.iter().filter(|l| l.charged_micros > 0).map(|l| l.charged_micros).sum();
+            group.price_micros = group.lines.iter().map(|l| l.price_micros).sum();
+            group.discount_micros = group.lines.iter().map(|l| l.discount_micros).sum();
         }
         if by_project {
             groups.sort_by_key(|a| std::cmp::Reverse(a.charged_micros));
@@ -223,6 +242,9 @@ impl Billing {
             charged_micros: lines.clone().filter(|l| l.charged_micros > 0).map(|l| l.charged_micros).sum(),
             paid_micros: lines.clone().filter(|l| l.charged_micros < 0).map(|l| -l.charged_micros).sum(),
             cost_micros: lines.clone().map(|l| l.cost_micros).sum(),
+            price_micros: lines.clone().map(|l| l.price_micros).sum(),
+            discount_micros: lines.clone().map(|l| l.discount_micros).sum(),
+            discount_percent: Some(self.terms_of(&workspace).await?.percent_off()).filter(|p| *p > 0),
             entries: lines.map(|l| l.count).sum(),
             covered: covered_lines(covered),
             carried_micros: self.carried(&workspace, &month).await?,
@@ -293,7 +315,7 @@ impl Billing {
         let terms = self.terms_of(&workspace).await?;
         let price = |cost: i64| {
             let charge = crate::credits::with_margin(cost, self.margin_percent);
-            if terms.kind == TermsKind::Custom { terms.apply(charge) } else { charge }
+            if terms.full_discount() { charge } else { terms.apply(charge) }
         };
         let mut meters: Vec<MeterUsage> = METERS
             .iter()
@@ -400,6 +422,16 @@ mod tests {
         assert_eq!(month_range("2026-12"), Some(("2026-12-01".into(), "2027-01-01".into())));
         assert_eq!(month_range("2026-13"), None);
         assert_eq!(month_range("oops"), None);
+    }
+
+    #[test]
+    fn a_discounted_line_shows_its_price_and_the_discount() {
+        // $1.20 of usage on a 100% discount: charged nothing, all of it off.
+        assert_eq!(line_price(0, 0, 1_200_000), 1_200_000);
+        // 30% off, $0.20 of it paid by included usage first.
+        assert_eq!(line_price(700_000, 140_000, 360_000), 1_200_000);
+        assert!(is_money_in("Payments") && is_money_in("Credits from g1t") && is_money_in("Refunds"));
+        assert!(!is_money_in("Agent runs"));
     }
 
     #[test]

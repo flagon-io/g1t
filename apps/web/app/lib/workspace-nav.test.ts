@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { workspaceRedirect, workspaceTab, workspaceTabs } from "./workspace-nav.ts";
+import { pagePath, workspaceRedirect, workspaceTab, workspaceTabs } from "./workspace-nav.ts";
 
 test("everyone sees Overview, Projects and Packages; members and owners see more", () => {
   const keys = (member: boolean, owner: boolean) => workspaceTabs("acme", { member, owner }).map((tab) => tab.key);
@@ -51,4 +51,11 @@ test("?tab= opens that tab, keeping the rest of the query", () => {
   assert.equal(workspaceRedirect("/acme", "?tab=overview"), "/acme");
   assert.equal(workspaceRedirect("/acme", "?tab=nonsense"), null);
   assert.equal(workspaceRedirect("/acme", ""), null);
+});
+
+test("a click's data request is for the same page as a full load", () => {
+  assert.equal(pagePath("/acme/-/insights.data"), "/acme/-/insights");
+  assert.equal(pagePath("/acme/-/insights/"), "/acme/-/insights");
+  assert.equal(workspaceRedirect("/acme/-/members.data", "?_routes=routes%2Fworkspace%2Fmoved-members"), "/acme/-/people");
+  assert.equal(workspaceRedirect("/acme/-/members.data", "?_routes=x&q=ada"), "/acme/-/people?q=ada");
 });

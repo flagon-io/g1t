@@ -330,7 +330,7 @@ impl Billing {
     /// enterprise's workspaces, or given by g1t staff.
     async fn included(&self, workspace: &str) -> Result<bool> {
         let account = self.account_of(workspace).await?;
-        Ok(account.terms.kind == g1t_contracts::billing::TermsKind::Comped
+        Ok(account.terms.full_discount()
             || account.kind == g1t_contracts::billing::AccountKind::Enterprise
             || account.allowances.plan)
     }
@@ -671,12 +671,11 @@ impl Billing {
             }
             None => a.cost_micros,
         };
-        let cost = cost_micros as f64 / MICROS_PER_DOLLAR as f64;
         // Never free: the margin applies whatever FREE_WHILE_BUILDING says,
         // and only the account's terms change it. The plan's included usage
         // pays what it can; the trial and the open-source pool never pay for
         // deployments.
-        let (charge, discount) = self.terms_of(&workspace).await?.discounted(crate::charge_micros(cost, self.margin_percent));
+        let (charge, discount) = self.terms_of(&workspace).await?.discounted(crate::margin_on(cost_micros, self.margin_percent));
         let drawn = self.draw(&workspace, charge, &month, &crate::credits::Eligible::default()).await?;
         description.push_str(&drawn.note());
         self.post_usage(crate::storage::UsageLine {

@@ -10,6 +10,7 @@ import { Link, type LinkProps, useRouteLoaderData } from "react-router";
 import type { Limit, Terms, Trust } from "@g1t/contracts";
 
 import { usd } from "~/lib/money";
+import { fullDiscount, termsLabel } from "~/lib/terms";
 import { when } from "~/lib/time";
 
 export function Field({
@@ -150,11 +151,9 @@ export function Badge({ tone = "plain", children }: { tone?: "plain" | "lavender
 }
 
 export function TermsBadge({ terms }: { terms: Terms }) {
-  if (terms.kind === "comped") return <Badge tone="mint">Comped</Badge>;
-  if (terms.kind === "custom") {
-    return <Badge tone="info">Custom{terms.discountPercent > 0 ? ` −${terms.discountPercent}%` : ""}</Badge>;
-  }
-  return <Badge>Standard</Badge>;
+  if (fullDiscount(terms)) return <Badge tone="mint">100% discount</Badge>;
+  if (terms.kind === "standard") return <Badge>Standard</Badge>;
+  return <Badge tone="info">{termsLabel(terms)}</Badge>;
 }
 
 const TRUST: Record<Trust, { label: string; tone: "plain" | "lavender" | "mint" | "info"; about: string }> = {
@@ -166,8 +165,8 @@ const TRUST: Record<Trust, { label: string; tone: "plain" | "lavender" | "mint" 
     about: "Established: the limit follows their monthly spend, up to $10,000.",
   },
   reviewed: { label: "Reviewed", tone: "mint", about: "Reviewed: g1t set the limit by hand, after talking to them." },
-  // Comped accounts: g1t covers their usage, with no ceiling.
-  internal: { label: "Comped", tone: "lavender", about: "Comped: g1t covers their usage, with no limit." },
+  // A 100% discount: nothing is charged, so no limit on unpaid usage.
+  internal: { label: "100% discount", tone: "lavender", about: "A 100% discount: nothing is charged, so there is no limit on unpaid usage." },
 };
 
 export function TrustBadge({ trust }: { trust: Trust }) {

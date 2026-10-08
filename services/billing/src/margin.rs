@@ -112,8 +112,10 @@ pub(crate) struct OwnRow {
 /// What g1t gave away, by why: its own comped workspaces, free use (a
 /// free period, free allowances, overruns g1t covered), the trial, and the
 /// open-source pool, and discounts on an account's terms (what they took
-/// below cost plus the margin, `ledger.discount_micros`). The Team plan's
-/// included usage is paid for by the plan's price, so it is sold, not given.
+/// below cost plus the margin, `ledger.discount_micros`), and credits g1t
+/// staff gave, promotional and goodwill, when spent (`grants`). The Team
+/// plan's included usage is paid for by the plan's price, so it is sold,
+/// not given; so is what a refund pays for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Given {
     pub comped: i64,
@@ -121,11 +123,18 @@ pub(crate) struct Given {
     pub trial: i64,
     pub pool: i64,
     pub discount: i64,
+    pub credit_promotional: i64,
+    pub credit_goodwill: i64,
 }
 
 impl Given {
     pub fn total(&self) -> i64 {
-        self.comped + self.free + self.trial + self.pool + self.discount
+        self.comped + self.free + self.trial + self.pool + self.discount + self.credit()
+    }
+
+    /// Credits from g1t, both kinds.
+    pub fn credit(&self) -> i64 {
+        self.credit_promotional + self.credit_goodwill
     }
 
     fn add(&mut self, other: &Given) {
@@ -134,6 +143,8 @@ impl Given {
         self.trial += other.trial;
         self.pool += other.pool;
         self.discount += other.discount;
+        self.credit_promotional += other.credit_promotional;
+        self.credit_goodwill += other.credit_goodwill;
     }
 
     /// The same shares of `cost` as these are of `value`, at most all of it.
@@ -150,6 +161,63 @@ impl Given {
             trial: part(self.trial),
             pool: part(self.pool),
             discount: part(self.discount),
+            credit_promotional: part(self.credit_promotional),
+            credit_goodwill: part(self.credit_goodwill),
+        }
+    }
+}
+
+/// Credits from g1t in the reconciliation (`grants`): usage paid for with
+/// promotional or goodwill credit is given, not money in; a refund comes
+/// off money in on the day it refunds, shared over that day's paid usage.
+/// What credit paid for that is not among `rows` (month-end meters, or
+/// what was owed from before) is a row of its own on its day.
+pub(crate) fn apply_credits(rows: &mut Vec<UsageRow>, draws: &[(String, crate::grants::Draw)], refunds: &[crate::grants::Refunded]) {
+    let mut paid: BTreeMap<(String, String, String), Given> = BTreeMap::new();
+    for (workspace, draw) in draws {
+        let given = paid
+            .entry((draw.at[..10].to_owned(), workspace.clone(), crate::grants::usage_key(draw.task.as_deref(), &draw.reference)))
+            .or_default();
+        match draw.kind {
+            CreditKind::Promotional => given.credit_promotional += draw.micros,
+            CreditKind::Goodwill => given.credit_goodwill += draw.micros,
+            // Money already paid: what it pays for is paid for.
+            CreditKind::Refund | CreditKind::Purchased => {}
+        }
+    }
+    for ((day, workspace, key), given) in paid {
+        if given.credit() == 0 {
+            continue;
+        }
+        match rows.iter_mut().find(|r| r.day == day && r.workspace == workspace && r.key == key) {
+            Some(row) => {
+                row.cash -= given.credit();
+                row.given.add(&given);
+            }
+            None => rows.push(UsageRow { day, workspace, key, value: 0, cash: -given.credit(), cost: 0, given }),
+        }
+    }
+    for refund in refunds {
+        let weights: Vec<(String, f64)> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.day == refund.day && r.workspace == refund.workspace && r.cash > 0)
+            .map(|(i, r)| (format!("{i:08}"), r.cash as f64))
+            .collect();
+        let shares = attribute(refund.micros, &weights);
+        if shares.is_empty() {
+            rows.push(UsageRow {
+                day: refund.day.clone(),
+                workspace: refund.workspace.clone(),
+                key: "other".into(),
+                cash: -refund.micros,
+                ..UsageRow::default()
+            });
+        }
+        for (index, micros) in shares {
+            if let Ok(i) = index.parse::<usize>() {
+                rows[i].cash -= micros;
+            }
         }
     }
 }
@@ -759,6 +827,10 @@ struct MarginRow {
     given_pool_micros: Option<i64>,
     #[serde(default)]
     given_discount_micros: Option<i64>,
+    #[serde(default)]
+    given_credit_promotional_micros: Option<i64>,
+    #[serde(default)]
+    given_credit_goodwill_micros: Option<i64>,
 }
 
 impl From<MarginRow> for ProductDay {
@@ -778,6 +850,8 @@ impl From<MarginRow> for ProductDay {
                 trial: r.given_trial_micros.unwrap_or(0),
                 pool: r.given_pool_micros.unwrap_or(0),
                 discount: r.given_discount_micros.unwrap_or(0),
+                credit_promotional: r.given_credit_promotional_micros.unwrap_or(0),
+                credit_goodwill: r.given_credit_goodwill_micros.unwrap_or(0),
             },
         }
     }
@@ -911,7 +985,7 @@ impl Billing {
                 } else if paid == 0 && cost > 0 {
                     Given { free: value, ..Given::default() }
                 } else {
-                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), comped: 0, discount }
+                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), discount, ..Given::default() }
                 };
                 if r.internal == 1 {
                     internal.insert(r.workspace.clone());
@@ -919,6 +993,10 @@ impl Billing {
                 UsageRow { day: r.day, workspace: r.workspace, key: r.key, value, cash, cost, given }
             })
             .collect();
+        // Credits from g1t: what promotional and goodwill credit paid for
+        // is given, not money in; a refund gives money back on its day.
+        let (draws, refunds) = self.credit_effects(since, until).await?;
+        apply_credits(&mut out, &draws, &refunds);
         // Month-end sources, from their daily snapshots.
         #[derive(Deserialize)]
         struct Snap {
@@ -1032,8 +1110,8 @@ impl Billing {
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, computed_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, given_credit_promotional_micros, given_credit_goodwill_micros, computed_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&[
                             d.day.as_str().into(),
@@ -1050,6 +1128,8 @@ impl Billing {
                             (d.given.trial as f64).into(),
                             (d.given.pool as f64).into(),
                             (d.given.discount as f64).into(),
+                            (d.given.credit_promotional as f64).into(),
+                            (d.given.credit_goodwill as f64).into(),
                             now.as_str().into(),
                         ])?,
                 );
@@ -1599,6 +1679,8 @@ impl Billing {
             overall.given_trial_micros += d.given.trial;
             overall.given_pool_micros += d.given.pool;
             overall.given_discount_micros += d.given.discount;
+            overall.given_credit_promotional_micros += d.given.credit_promotional;
+            overall.given_credit_goodwill_micros += d.given.credit_goodwill;
             let sold = (d.cost() - d.given.total()).max(0);
             if OVERHEAD.contains(&d.bucket.as_str()) {
                 overall.plans_micros += d.cash_micros;
@@ -1643,6 +1725,19 @@ impl Billing {
         let usage_in = overall.usage_micros + overall.included_micros;
         overall.usage_margin_micros = usage_in - overall.usage_cost_micros;
         overall.usage_margin_percent = margin_percent(usage_in, overall.usage_cost_micros);
+        // Credits from g1t over the range: given, spent, and refunds' money
+        // given back.
+        overall.credits_given_micros = self
+            .db
+            .prepare("SELECT SUM(amount_micros) AS micros FROM credit_grants WHERE created_at >= ?1 AND created_at <= ?2")
+            .bind(&[since.as_str().into(), format!("{until}T23:59:59.999Z").into()])?
+            .first::<Included>(None)
+            .await?
+            .and_then(|r| r.micros)
+            .unwrap_or(0);
+        let (draws, refunds) = self.credit_effects(&since, &until).await?;
+        overall.credits_used_micros = draws.iter().map(|(_, d)| d.micros).sum();
+        overall.credits_refunded_micros = refunds.iter().map(|r| r.micros).sum();
         let mut products: Vec<ProductMargin> = products.into_values().collect();
         products.sort_by_key(|p| std::cmp::Reverse(p.cost_micros.max(p.value_micros)));
 
@@ -2028,7 +2123,7 @@ mod tests {
         let (days, workspaces) = fold(&[], &map, &[], &[], &[comped, trial, paying, free], &internal);
         let models = days.iter().find(|d| d.bucket == "models").unwrap();
         assert_eq!(models.cost(), 4_000_000);
-        assert_eq!(models.given, Given { comped: 1_000_000, free: 1_000_000, trial: 500_000, pool: 0, discount: 0 });
+        assert_eq!(models.given, Given { comped: 1_000_000, free: 1_000_000, trial: 500_000, ..Given::default() });
         let given = |w: &str| workspaces.iter().find(|x| x.workspace == w).unwrap().given.total();
         assert_eq!((given("flagon"), given("acme"), given("beta"), given("gamma")), (1_000_000, 500_000, 0, 1_000_000));
     }
@@ -2047,6 +2142,72 @@ mod tests {
         // What was sold (cost less given) still makes the margin.
         let sold = models.cost() - models.given.total();
         assert_eq!(margin_percent(models.cash_micros, sold).map(|m| m.round()), Some(17.0));
+    }
+
+    fn draw(kind: CreditKind, reference: &str, task: Option<&str>, at: &str, micros: i64) -> (String, crate::grants::Draw) {
+        let draw = crate::grants::Draw { grant: "crd_a".into(), kind, reference: reference.into(), task: task.map(Into::into), at: at.into(), micros };
+        ("acme".to_owned(), draw)
+    }
+
+    #[test]
+    fn usage_paid_for_with_credit_is_given_not_money_in() {
+        // $1.20 of usage on $1 of cost, all of it paid with promotional credit.
+        let mut rows = vec![usage("2026-10-15", "acme", "implement", 1_200_000, 1_200_000, 1_000_000)];
+        apply_credits(&mut rows, &[draw(CreditKind::Promotional, "run_1", Some("implement"), "2026-10-15T10:00:00Z", 1_200_000)], &[]);
+        assert_eq!(rows[0].cash, 0);
+        assert_eq!(rows[0].given, Given { credit_promotional: 1_200_000, ..Given::default() });
+        let (days, workspaces) = fold(&[], &BTreeMap::new(), &[], &[], &rows, &BTreeSet::new());
+        let models = days.iter().find(|d| d.bucket == "models").unwrap();
+        // Valued at its price, none of it money in, all of its cost given:
+        // the margin on what was sold is untouched by it.
+        assert_eq!((models.value_micros, models.cash_micros), (1_200_000, 0));
+        assert_eq!(models.given, Given { credit_promotional: 1_000_000, ..Given::default() });
+        assert_eq!(models.cost() - models.given.total(), 0);
+        assert_eq!(workspaces[0].given.total(), 1_000_000);
+        // Half paid with goodwill credit: half the cost given, half sold.
+        let mut rows = vec![usage("2026-10-15", "acme", "implement", 1_200_000, 1_200_000, 1_000_000)];
+        apply_credits(&mut rows, &[draw(CreditKind::Goodwill, "run_1", Some("implement"), "2026-10-15T10:00:00Z", 600_000)], &[]);
+        let (days, _) = fold(&[], &BTreeMap::new(), &[], &[], &rows, &BTreeSet::new());
+        let models = days.iter().find(|d| d.bucket == "models").unwrap();
+        assert_eq!(models.cash_micros, 600_000);
+        assert_eq!(models.given, Given { credit_goodwill: 500_000, ..Given::default() });
+        let sold = models.cost() - models.given.total();
+        assert_eq!(margin_percent(models.cash_micros, sold).map(|m| m.round()), Some(17.0));
+    }
+
+    #[test]
+    fn what_a_refund_pays_for_is_paid_for_and_the_refund_comes_off_its_day() {
+        // A refund's credit pays for usage: still money in, nothing given.
+        let mut rows = vec![usage("2026-10-15", "acme", "implement", 1_200_000, 1_200_000, 1_000_000)];
+        apply_credits(&mut rows, &[draw(CreditKind::Refund, "run_9", Some("implement"), "2026-10-15T10:00:00Z", 1_200_000)], &[]);
+        assert_eq!((rows[0].cash, rows[0].given), (1_200_000, Given::default()));
+        // The $3 refunded for Oct 2 comes off that day's money in, shared
+        // over what was paid that day.
+        let mut rows = vec![
+            usage("2026-10-02", "acme", "implement", 4_000_000, 4_000_000, 3_000_000),
+            usage("2026-10-02", "acme", "sandbox", 2_000_000, 2_000_000, 1_500_000),
+            usage("2026-10-02", "beta", "implement", 9_000_000, 9_000_000, 7_000_000),
+        ];
+        let refund = crate::grants::Refunded { workspace: "acme".into(), day: "2026-10-02".into(), micros: 3_000_000 };
+        apply_credits(&mut rows, &[], std::slice::from_ref(&refund));
+        assert_eq!((rows[0].cash, rows[1].cash, rows[2].cash), (2_000_000, 1_000_000, 9_000_000));
+        assert!(rows.iter().all(|r| r.given == Given::default()));
+        // Nothing paid that day: a line of its own, money in less than nothing.
+        let mut rows = vec![];
+        apply_credits(&mut rows, &[], &[refund]);
+        assert_eq!((rows[0].key.as_str(), rows[0].cash, rows[0].value), ("other", -3_000_000, 0));
+    }
+
+    #[test]
+    fn credit_spent_on_month_end_meters_is_a_line_of_its_own() {
+        // Storage is reconciled from snapshots, not its ledger line: what
+        // credit paid of it is its own row on the day it was charged.
+        let mut rows = vec![usage("2026-10-01", "acme", "implement", 1_000, 1_000, 800)];
+        apply_credits(&mut rows, &[draw(CreditKind::Goodwill, "storage/2026-09", Some("storage"), "2026-10-01T00:05:00Z", 2_000_000)], &[]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!((rows[1].key.as_str(), rows[1].cash, rows[1].value), ("storage", -2_000_000, 0));
+        assert_eq!(rows[1].given.credit_goodwill, 2_000_000);
+        assert_eq!(rows[0].cash, 1_000);
     }
 
     #[test]

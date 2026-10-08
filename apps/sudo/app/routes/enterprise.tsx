@@ -4,13 +4,15 @@ import { data, Link, redirect, useLocation } from "react-router";
 import { type AdminOwner, type EnterpriseInvoice, type Limit, httpStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/enterprise";
-import { AllowancesForm, AuditSection, CreditForm, Figure, LedgerSection, ReviewPanel, TermsForm } from "~/components/billing";
+import { AllowancesForm, AuditSection, CreditForm, CreditList, Figure, LedgerSection, ReviewPanel, TermsForm } from "~/components/billing";
 import { Avatar, Badge, Button, EmptyState, ExposureBar, Field, Input, Notice, Section, StateBadge, TermsBadge, TrustBadge, When } from "~/components/ui";
 import { type Subject, billingAction } from "~/lib/billing-actions.server";
 import { usd } from "~/lib/money";
 import { type ActionData, type SectionError, doneMessage } from "~/lib/review";
 import { admin, identity } from "~/lib/services.server";
+import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
+import { fullDiscount } from "~/lib/terms";
 import { legacyAccountPath } from "~/lib/workspaces";
 
 export const meta: Route.MetaFunction = ({ loaderData }) => [
@@ -69,7 +71,14 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     limit: limits.get(slug) ?? null,
     chargedMicros: shares.get(slug)?.chargedMicros ?? 0,
   }));
-  return { detail, members, done: doneMessage(request.url) };
+  const credits = await settle(admin.credits());
+  return {
+    detail,
+    members,
+    credits: credits.ok ? credits.value.grants.filter((grant) => slugs.includes(grant.workspace)) : [],
+    creditsError: credits.ok ? null : credits.error,
+    done: doneMessage(request.url),
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -82,7 +91,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 type Member = Route.ComponentProps["loaderData"]["members"][number];
 
 export default function Enterprise({ loaderData, actionData }: Route.ComponentProps) {
-  const { detail, members, done } = loaderData;
+  const { detail, members, credits, creditsError, done } = loaderData;
   const { summary } = detail;
   const { account, limit } = summary;
   const { pathname } = useLocation();
@@ -109,7 +118,7 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Badge tone="lavender">Enterprise</Badge>
               <TermsBadge terms={account.terms} />
-              {account.terms.kind !== "comped" && <TrustBadge trust={limit.trust} />}
+              {!fullDiscount(account.terms) && <TrustBadge trust={limit.trust} />}
               <StateBadge state={limit.state} />
             </div>
           </div>
@@ -152,7 +161,7 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
           <TermsForm terms={account.terms} pathname={pathname} error={error("terms")} />
           <AllowancesForm
             allowances={account.allowances}
-            comped={account.terms.kind === "comped"}
+            comped={fullDiscount(account.terms)}
             pathname={pathname}
             error={error("allowances")}
           />
@@ -160,6 +169,17 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
         </div>
         <div className="space-y-6">
           <CreditForm workspaces={account.workspaces} pathname={pathname} error={error("credit")} />
+          <Section
+            id="credits"
+            title="Credits"
+            description={`${usd(credits.reduce((sum, grant) => sum + grant.leftMicros, 0), { cents: true })} left to spend across its workspaces.`}
+          >
+            {creditsError ? (
+              <Notice tone="warn">Billing did not answer for credits: {creditsError}</Notice>
+            ) : (
+              <CreditList grants={credits} pathname={pathname} error={error("credits")} showWorkspace />
+            )}
+          </Section>
           <AuditSection audit={detail.audit} />
         </div>
       </div>

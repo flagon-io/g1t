@@ -9,13 +9,14 @@ import { Avatar, Badge, Button, EmptyState, ExposureBar, Stat, TermsBadge, Trust
 import { usd } from "~/lib/money";
 import { admin, identity } from "~/lib/services.server";
 import { requireStaff } from "~/lib/staff";
+import { fullDiscount } from "~/lib/terms";
 import { PAGE_SIZE, type WorkspaceRow, joinWorkspaces, paginate } from "~/lib/workspaces";
 
 export const meta: Route.MetaFunction = () => [{ title: "Workspaces · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
 const FILTERS = {
   attention: { label: "Stopped or warning", test: (row: WorkspaceRow) => row.billing.limit != null && row.billing.limit.state !== "ok" },
-  terms: { label: "Comped or custom", test: (row: WorkspaceRow) => row.billing.terms.kind !== "standard" },
+  terms: { label: "A discount or custom terms", test: (row: WorkspaceRow) => row.billing.terms.kind !== "standard" },
   enterprise: { label: "On an enterprise", test: (row: WorkspaceRow) => row.billing.billedTo != null },
 } as const;
 
@@ -294,7 +295,7 @@ function WorkspaceName({ row }: { row: WorkspaceRow }) {
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {billing.billedTo && <Badge tone="lavender">Billed to {billing.billedTo.name}</Badge>}
           <TermsBadge terms={billing.terms} />
-          {billing.limit && billing.terms.kind !== "comped" && <TrustBadge trust={billing.limit.trust} />}
+          {billing.limit && !fullDiscount(billing.terms) && <TrustBadge trust={billing.limit.trust} />}
         </div>
       </div>
     </div>

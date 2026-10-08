@@ -20,6 +20,17 @@ function charge(micros: number): string {
   return micros !== 0 && Math.abs(micros) < 10_000 ? dollars(micros, 4) : dollars(micros);
 }
 
+/** A usage entry at its price: what was charged, what paid for it first, and what the discount took off. */
+export function entryPrice(entry: Pick<LedgerEntry, "amountMicros" | "creditMicros" | "trialMicros" | "ossMicros" | "givenMicros" | "discountMicros">): number {
+  if ((entry.discountMicros ?? 0) === 0) return -entry.amountMicros;
+  return -entry.amountMicros + (entry.creditMicros ?? 0) + (entry.trialMicros ?? 0) + (entry.ossMicros ?? 0) + (entry.givenMicros ?? 0) + (entry.discountMicros ?? 0);
+}
+
+/** `Discount (100%)`, or `Discount` when the percentage is not known (a discount since ended). */
+export function discountName(percent: number | null | undefined): string {
+  return percent ? `Discount (${percent}%)` : "Discount";
+}
+
 function monthLabel(month: string): string {
   const [year, number] = month.split("-").map(Number);
   return new Date(Date.UTC(year, number - 1, 1)).toLocaleDateString("en-US", {
@@ -57,6 +68,9 @@ export function StatementView({
     navigate(`/${slug}/-/billing?month=${month}&group=${by}#statement`, { preventScrollReset: true });
   const months = statement.months.includes(statement.month) ? statement.months : [statement.month, ...statement.months];
   const { totals } = statement;
+  // With a discount, every line at its price, and the discount beside it.
+  const atPrice = (totals.discountMicros ?? 0) > 0;
+  const discountLabel = discountName(totals.discountPercent);
 
   return (
     <section id="statement" className="mt-10 scroll-mt-20">
@@ -91,20 +105,41 @@ export function StatementView({
         )}
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-surface text-sm">
-        <div className="px-4 py-3">
-          <dt className="text-xs text-faint">Charged</dt>
-          <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
-        </div>
-        <div className="px-4 py-3">
-          <dt className="text-xs text-faint">Paid and credited</dt>
-          <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
-        </div>
-        <div className="px-4 py-3">
-          <dt className="text-xs text-faint">Entries</dt>
-          <dd className="mt-0.5 font-mono tabular-nums">{totals.entries.toLocaleString("en-US")}</dd>
-        </div>
-      </dl>
+      {atPrice ? (
+        <dl className="mt-3 grid grid-cols-2 divide-line rounded-xl border border-line bg-surface text-sm sm:grid-cols-4 sm:divide-x">
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">Usage at price</dt>
+            <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.priceMicros ?? 0)}</dd>
+          </div>
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">{discountLabel}</dt>
+            <dd className="mt-0.5 font-mono tabular-nums text-accent">{charge(-(totals.discountMicros ?? 0))}</dd>
+          </div>
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">Charged</dt>
+            <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
+          </div>
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">Paid and credited</dt>
+            <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
+          </div>
+        </dl>
+      ) : (
+        <dl className="mt-3 grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-surface text-sm">
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">Charged</dt>
+            <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>
+          </div>
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">Paid and credited</dt>
+            <dd className="mt-0.5 font-mono tabular-nums">{dollars(totals.paidMicros)}</dd>
+          </div>
+          <div className="px-4 py-3">
+            <dt className="text-xs text-faint">Entries</dt>
+            <dd className="mt-0.5 font-mono tabular-nums">{totals.entries.toLocaleString("en-US")}</dd>
+          </div>
+        </dl>
+      )}
 
       {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (
         <ul className="mt-2 space-y-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
@@ -146,12 +181,19 @@ export function StatementView({
                       month={statement.month}
                       kind={line.kind}
                       count={line.count}
-                      chargedMicros={line.chargedMicros}
+                      chargedMicros={atPrice && line.chargedMicros >= 0 ? (line.priceMicros ?? line.chargedMicros) : line.chargedMicros}
                       coveredMicros={line.coveredMicros ?? 0}
                       day={group === "day" ? g.key : null}
                       project={group === "project" ? g.key : null}
                     />
                   ))}
+                  {(g.discountMicros ?? 0) > 0 && (
+                    <li className="flex items-center gap-3 px-4 py-3 text-sm">
+                      <span className="w-3.5 shrink-0" />
+                      <span className="grow truncate text-muted">{discountLabel}</span>
+                      <span className="w-24 shrink-0 text-right font-mono tabular-nums text-accent">{charge(-(g.discountMicros ?? 0))}</span>
+                    </li>
+                  )}
                 </ul>
               </div>
             ))}
@@ -254,8 +296,11 @@ function StatementLineRow({
                     {entry.createdBy && ` · ${entry.createdBy}`}
                   </p>
                 </div>
-                <span className="shrink-0 font-mono text-xs tabular-nums text-muted">
-                  {entry.amountMicros > 0 ? `+${dollars(entry.amountMicros)}` : charge(-entry.amountMicros)}
+                <span className="shrink-0 text-right font-mono text-xs tabular-nums text-muted">
+                  {entry.amountMicros > 0 ? `+${dollars(entry.amountMicros)}` : charge(entryPrice(entry))}
+                  {(entry.discountMicros ?? 0) > 0 && (
+                    <span className="block text-[0.6875rem] text-accent">{charge(-(entry.discountMicros ?? 0))} discount</span>
+                  )}
                 </span>
               </li>
             ))}

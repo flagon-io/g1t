@@ -20,6 +20,7 @@ export default [
   route("costs/bill", "routes/costs-bill.tsx"),
   route("abuse", "routes/abuse.tsx"),
   route("invoices", "routes/invoices.tsx"),
+  route("credits", "routes/credits.tsx"),
   route("stripe", "routes/stripe.tsx"),
   route("audit", "routes/audit.tsx"),
   route("timezone", "routes/timezone.tsx"),

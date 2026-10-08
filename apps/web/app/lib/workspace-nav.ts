@@ -79,16 +79,25 @@ const MOVED: Record<string, string> = {
   "soon/insights": "-/insights",
 };
 
+/** The page a request is for: a click's data request ends in `.data`. */
+export function pagePath(pathname: string): string {
+  return pathname.replace(/\.data$/, "").replace(/\/+$/, "") || "/";
+}
+
 /**
  * Where an old address of a workspace's pages is now, keeping its query;
  * null when it has not moved. `/<workspace>?tab=projects` and the like
  * open that tab.
  */
 export function workspaceRedirect(pathname: string, search = ""): string | null {
-  const parts = pathname.split("/").filter(Boolean);
+  // A click asks for the page's data at `<path>.data?_routes=…`; the page
+  // is the same one a full load asks for.
+  const params = new URLSearchParams(search);
+  params.delete("_routes");
+  search = params.toString();
+  const parts = pagePath(pathname).split("/").filter(Boolean);
   const slug = parts[0];
   if (!slug) return null;
-  const params = new URLSearchParams(search);
   if (parts.length === 1 && params.has("tab")) {
     const to = TAB_WORDS[(params.get("tab") ?? "").toLowerCase()];
     if (to === undefined) return null;

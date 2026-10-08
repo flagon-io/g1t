@@ -18,7 +18,7 @@
 //! like any other), and records it. The ledger, invoices and statements
 //! stay, under the slug, for accounting.
 
-use g1t_contracts::billing::{CloseWorkspaceArgs, TermsKind};
+use g1t_contracts::billing::CloseWorkspaceArgs;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
 use g1t_kit::now_ms;
@@ -141,7 +141,7 @@ impl Billing {
         Ok(Facts {
             workspace: workspace.to_owned(),
             enterprise: account.id.starts_with("ent_").then(|| account.name.clone()),
-            comped: account.terms.kind == TermsKind::Comped,
+            comped: account.terms.full_discount(),
             failed_invoices: failed,
             balance_micros: row.as_ref().map_or(0, |r| r.balance_micros),
             has_card: row.as_ref().is_some_and(|r| r.customer_id.is_some()) && self.stripe.is_some(),

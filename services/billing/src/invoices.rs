@@ -35,6 +35,64 @@ pub(crate) fn invoice_lines(used: &[(String, i64)], owed: i64) -> Vec<InvoiceIte
     lines
 }
 
+/// Each line in whole cents, for the card processor. Their sum is what is
+/// owed rounded up to the next cent, never down: cutting each line to a
+/// cent on its own would charge up to a cent less per line than is owed (and
+/// a credit line a cent less of a credit), and leave the rest stranded under
+/// the minimum charge. The cent each needs is given to the lines with the
+/// largest fractions first.
+pub(crate) fn line_cents(lines: &[InvoiceItem]) -> Vec<i64> {
+    const MICROS_PER_CENT: i64 = 10_000;
+    let total: i64 = lines.iter().map(|l| l.amount_micros).sum();
+    let total_cents = total.div_euclid(MICROS_PER_CENT) + i64::from(total.rem_euclid(MICROS_PER_CENT) > 0);
+    let mut cents: Vec<i64> = lines.iter().map(|l| l.amount_micros.div_euclid(MICROS_PER_CENT)).collect();
+    let mut short = total_cents - cents.iter().sum::<i64>();
+    let mut by_fraction: Vec<usize> = (0..lines.len()).collect();
+    by_fraction.sort_by_key(|&i| std::cmp::Reverse(lines[i].amount_micros.rem_euclid(MICROS_PER_CENT)));
+    for i in by_fraction {
+        if short <= 0 || lines[i].amount_micros.rem_euclid(MICROS_PER_CENT) == 0 {
+            break;
+        }
+        cents[i] += 1;
+        short -= 1;
+    }
+    cents
+}
+
+/// Whether paying an invoice failed because the card said no (Stripe's
+/// 402, a `card_error`), rather than because Stripe could not be reached,
+/// was busy or failed itself. Only a decline stops a workspace's work.
+pub(crate) fn is_decline(error: &str) -> bool {
+    error.contains("answered 402") || error.contains("\"card_error\"")
+}
+
+/// A workspace invoice's draft: charged to the card, and holding only the
+/// lines put on it, never whatever is pending on the customer.
+fn draft_fields(customer: &str, workspace: &str, reason: &str, period: &str, description: String) -> Vec<(&'static str, String)> {
+    vec![
+        ("customer", customer.to_owned()),
+        ("collection_method", "charge_automatically".to_owned()),
+        ("auto_advance", "false".to_owned()),
+        ("pending_invoice_items_behavior", "exclude".to_owned()),
+        ("description", description),
+        ("metadata[g1t_workspace]", workspace.to_owned()),
+        ("metadata[reason]", reason.to_owned()),
+        ("metadata[period]", period.to_owned()),
+    ]
+}
+
+/// One line, on the draft `invoice`.
+fn item_fields(customer: &str, invoice: &str, workspace: &str, description: &str, cents: i64) -> Vec<(&'static str, String)> {
+    vec![
+        ("customer", customer.to_owned()),
+        ("invoice", invoice.to_owned()),
+        ("amount", cents.to_string()),
+        ("currency", "usd".to_owned()),
+        ("description", description.to_owned()),
+        ("metadata[workspace]", workspace.to_owned()),
+    ]
+}
+
 #[derive(Deserialize)]
 struct InvoiceRow {
     invoice_id: String,
@@ -140,31 +198,21 @@ impl Billing {
             .collect();
         let lines = invoice_lines(&used, owed);
         let key = format!("ws-invoice/{workspace}/{reason}/{period}/{}", owed / 10_000);
-        for (position, line) in lines.iter().enumerate() {
-            let fields = [
-                ("customer", customer.clone()),
-                ("amount", (line.amount_micros / 10_000).to_string()),
-                ("currency", "usd".to_owned()),
-                ("description", line.description.clone()),
-                ("metadata[workspace]", workspace.to_owned()),
-            ];
-            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{position}")).await?;
-        }
         let description = match reason {
             "month" => format!("g1t usage for {workspace}, {period}"),
             _ => format!("g1t usage for {workspace}, charged as it neared its limit"),
         };
-        let fields = [
-            ("customer", customer.clone()),
-            ("collection_method", "charge_automatically".to_owned()),
-            ("auto_advance", "false".to_owned()),
-            ("pending_invoice_items_behavior", "include".to_owned()),
-            ("description", description),
-            ("metadata[g1t_workspace]", workspace.to_owned()),
-            ("metadata[reason]", reason.to_owned()),
-            ("metadata[period]", period.to_owned()),
-        ];
-        let draft: StripeInvoice = stripe.post_idempotent("/invoices", &fields, &key).await?;
+        // The draft first, then its lines on it: lines left pending on the
+        // customer by an attempt that failed half way would otherwise be
+        // swept into the next invoice (this one's retry with a different
+        // total, or the plan's renewal) on top of their own new lines.
+        let draft: StripeInvoice =
+            stripe.post_idempotent("/invoices", &draft_fields(&customer, workspace, reason, period, description), &key).await?;
+        let cents = line_cents(&lines);
+        for (position, (line, cents)) in lines.iter().zip(&cents).enumerate() {
+            let fields = item_fields(&customer, &draft.id, workspace, &line.description, *cents);
+            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{position}")).await?;
+        }
         // A retry finds it finalized already; that is fine.
         let _ = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
         // Charge the card now; a decline comes back as an error.
@@ -172,6 +220,13 @@ impl Billing {
         let invoice: StripeInvoice = stripe.get(&format!("/invoices/{}", draft.id)).await?;
         let total = lines.iter().map(|l| l.amount_micros).sum::<i64>();
         let status = if invoice.status.as_deref() == Some("paid") { "paid" } else { "failed" };
+        // Only the card saying no is a decline, which stops work until it
+        // is paid. Stripe failing to answer, or answering busy, is g1t's
+        // problem and never stops a payer: the invoice stays as it is, and
+        // the next attempt (the same total finds the same invoice) pays it.
+        if status == "failed" && !paid.as_ref().err().is_some_and(|error| is_decline(&error.to_string())) {
+            return Ok(Err("The card processor did not finish the payment; it is tried again.".into()));
+        }
         let mut writes = vec![self
             .db
             .prepare(
@@ -356,5 +411,53 @@ mod tests {
         assert_eq!(lines.iter().map(|l| l.amount_micros).sum::<i64>(), 55_000_000);
         // Exactly what was used.
         assert_eq!(invoice_lines(&used, 50_000_000).len(), 2);
+    }
+
+    #[test]
+    fn an_invoice_holds_only_its_own_lines() {
+        let draft = draft_fields("cus_1", "acme", "month", "2026-09", "g1t usage".to_owned());
+        assert!(draft.contains(&("pending_invoice_items_behavior", "exclude".to_owned())));
+        let item = item_fields("cus_1", "in_1", "acme", "Sandbox time", 1_234);
+        assert!(item.contains(&("invoice", "in_1".to_owned())));
+        assert!(item.contains(&("amount", "1234".to_owned())));
+    }
+
+    #[test]
+    fn only_the_card_saying_no_is_a_decline() {
+        let declined = r#"the card processor answered 402: {"error": {"code": "card_declined", "type": "card_error"}}"#;
+        assert!(is_decline(declined));
+        assert!(is_decline(r#"the card processor answered 400: {"error": {"type": "card_error"}}"#));
+        // Stripe down, busy or failing, or the network: tried again, nobody stopped.
+        assert!(!is_decline(r#"the card processor answered 500: {"error": {"type": "api_error"}}"#));
+        assert!(!is_decline(r#"the card processor answered 429: {"error": {"type": "rate_limit_error"}}"#));
+        assert!(!is_decline("Network connection lost."));
+    }
+
+    fn items(micros: &[i64]) -> Vec<InvoiceItem> {
+        micros.iter().map(|&amount_micros| InvoiceItem { description: String::new(), amount_micros }).collect()
+    }
+
+    #[test]
+    fn the_card_is_charged_what_is_owed_rounded_up_to_the_cent_never_down() {
+        // $1.234567 + $2.345678 = $3.580245 owed: 359 cents, where cutting
+        // each line would have charged 357.
+        let cents = line_cents(&items(&[1_234_567, 2_345_678]));
+        assert_eq!(cents.iter().sum::<i64>(), 359);
+        assert_eq!(cents, vec![124, 235]);
+        // Whole cents stay as they are.
+        assert_eq!(line_cents(&items(&[40_000_000, 10_000_000])), vec![4_000, 1_000]);
+        // A credit line keeps its full credit; the total still rounds up.
+        // $50.004 used, $10.0025 paid in advance: $40.0015 owed, 4,001 cents.
+        let cents = line_cents(&items(&[50_004_000, -10_002_500]));
+        assert_eq!(cents.iter().sum::<i64>(), 4_001);
+        // Lines under a cent each add up to the cents they make together.
+        let cents = line_cents(&items(&[4_000, 4_000, 4_000]));
+        assert_eq!(cents.iter().sum::<i64>(), 2);
+        // Every invoice the close makes: never less than owed, never a cent more.
+        for (used, owed) in [(vec![("a".to_owned(), 7_777_777), ("b".to_owned(), 3)], 6_000_001), (vec![("a".to_owned(), 5_000_001)], 5_000_001)] {
+            let lines = invoice_lines(&used, owed);
+            let charged = line_cents(&lines).iter().sum::<i64>() * 10_000;
+            assert!(charged >= owed && charged - owed < 10_000, "{charged} for {owed}");
+        }
     }
 }

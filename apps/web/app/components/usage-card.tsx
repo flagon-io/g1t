@@ -11,7 +11,7 @@ const FIRST_LINES = 3;
 /** What the card says the workspace is on, beside its spend. */
 const STANDING: Record<UsageGlance["kind"], string> = {
   beta: "Free for now",
-  comped: "Comped",
+  comped: "100% discount",
   plan: "g1t plan",
   trial: "Trial",
   forge: "Free",
@@ -65,7 +65,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
           {glance.kind === "beta"
             ? "At cost. Nothing is charged while g1t is being built out."
             : glance.kind === "comped"
-              ? "Recorded at what it costs. Nothing is charged to this workspace."
+              ? "At price, with a 100% discount: nothing is charged to this workspace."
               : glance.kind === "forge"
                 ? "The forge is free. Agents, workflows and deployments need the plan or the trial."
                 : "Charged so far, from the 1st."}

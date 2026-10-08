@@ -10,6 +10,7 @@ import {
   AuditSection,
   BillingLinkSection,
   CreditForm,
+  CreditsSection,
   Figure,
   LedgerSection,
   Owners,
@@ -47,6 +48,7 @@ import { goodwillWarning, spikeLabel } from "~/lib/pricing";
 import { admin, entitlements as entitlementsOf, identity, priceBook } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
+import { fullDiscount } from "~/lib/terms";
 import type { Enterprise } from "~/lib/workspaces";
 
 export const meta: Route.MetaFunction = ({ loaderData }) => [
@@ -89,7 +91,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const figures = billedTo
     ? { charged: share?.chargedMicros ?? 0, cost: share?.costMicros ?? 0, paid: share?.paidMicros ?? 0 }
     : { charged: summary.chargedMicros, cost: summary.costMicros, paid: summary.paidMicros };
-  const [enterprises, sales, invoices, plan, overages, book] = await Promise.all([
+  const [enterprises, sales, invoices, plan, overages, book, credits] = await Promise.all([
     billedTo
       ? Promise.resolve([])
       : admin
@@ -104,6 +106,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     settle(entitlementsOf(slug)),
     settle(admin.overages()),
     settle(priceBook()),
+    settle(admin.credits({ workspace: slug })),
   ]);
   const done = doneKey(request.url);
   return {
@@ -126,6 +129,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     entitlementsError: plan.ok ? null : plan.error,
     overage: overages.ok ? (overages.value.find((row) => row.workspace === slug) ?? null) : null,
     forgiveCap: (book.ok && book.value.free?.overageForgiveCostMicros) || 50_000_000,
+    credits: credits.ok
+      ? { grants: credits.value.grants, leftMicros: credits.value.grants.reduce((sum, grant) => sum + grant.leftMicros, 0) }
+      : null,
+    creditsError: credits.ok ? null : credits.error,
     ledger: billedTo ? detail.ledger.filter((entry) => !entry.workspace || entry.workspace === slug) : detail.ledger,
     audit: billedTo ? detail.audit.filter((entry) => mentions(entry, slug)) : detail.audit,
     done: done && !SALES_DONE.has(done) ? DONE[done] : null,
@@ -148,6 +155,7 @@ const SECTIONS = [
   { id: "sales", label: "Sales" },
   { id: "plan", label: "Plan" },
   { id: "billing", label: "Billing" },
+  { id: "credits", label: "Credits" },
   { id: "invoices", label: "Invoices" },
   { id: "ledger", label: "Ledger" },
   { id: "audit", label: "Audit log" },
@@ -174,6 +182,8 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
     entitlementsError,
     overage,
     forgiveCap,
+    credits,
+    creditsError,
     ledger,
     audit,
     done,
@@ -212,7 +222,8 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
               {person?.protected && <Badge tone="info">Protected: can never be deleted</Badge>}
               {billedTo && <Badge tone="lavender">Billed to {billedTo.name}</Badge>}
               <TermsBadge terms={terms} />
-              {terms.kind !== "comped" && <TrustBadge trust={limit.trust} />}
+              {terms.kind !== "standard" && terms.note && <span className="self-center text-xs text-muted">({terms.note})</span>}
+              {!fullDiscount(terms) && <TrustBadge trust={limit.trust} />}
               <StateBadge state={limit.state} />
               {sales && sales.stage !== "none" && <StageBadge stage={sales.stage} />}
             </div>
@@ -337,9 +348,10 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
           ) : (
             <>
               <TermsForm terms={terms} pathname={pathname} error={error("terms")} />
-              <AllowancesForm allowances={allowances} comped={terms.kind === "comped"} pathname={pathname} error={error("allowances")} />
+              <AllowancesForm allowances={allowances} comped={fullDiscount(terms)} pathname={pathname} error={error("allowances")} />
             </>
           )}
+          <CreditsSection credits={credits} unavailable={creditsError} pathname={pathname} error={error("credits")} />
           <WorkspaceInvoicesSection invoices={invoices} unavailable={invoicesError} />
           <div id="ledger" className="scroll-mt-20">
             <LedgerSection
@@ -351,12 +363,12 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
 
         <div className="space-y-6">
           <BillingLinkSection link={link} pathname={pathname} error={error("billing-link")} />
-          {!billedTo && terms.kind !== "comped" && (
+          {!billedTo && !fullDiscount(terms) && (
             <GoodwillForm overage={overage} cap={forgiveCap} pathname={pathname} error={error("goodwill")} />
           )}
           <PaymentForm workspace={slug} pathname={pathname} error={error("payment")} />
           <CreditForm workspaces={[slug]} pathname={pathname} error={error("credit")} />
-          {!billedTo && terms.kind !== "comped" && <ResetBillingForm workspace={slug} pathname={pathname} error={error("reset")} />}
+          {!billedTo && !fullDiscount(terms) && <ResetBillingForm workspace={slug} pathname={pathname} error={error("reset")} />}
           <div id="audit" className="scroll-mt-20">
             <AuditSection
               audit={audit}
@@ -386,11 +398,11 @@ function LimitCard({ limit, terms, billedTo }: { limit: Limit; terms: Terms; bil
   const lines: { label: string; value: ReactNode }[] = [];
   if (billedTo) {
     lines.push({ label: "Limit", value: <>{billedTo.name}'s, shared by every workspace it pays for</> });
-  } else if (terms.kind !== "comped") {
+  } else if (!fullDiscount(terms)) {
     lines.push({ label: "From trust", value: <>{usd(limit.trustCeilingMicros)}. {trustAbout(limit.trust)}</> });
   }
   if (terms.ceilingMicros != null) lines.push({ label: "Custom limit", value: usd(terms.ceilingMicros) });
-  if (!billedTo && terms.kind !== "comped") {
+  if (!billedTo && !fullDiscount(terms)) {
     lines.push({
       label: "Owners' limit",
       value: limit.defaultSpendLimit ? (
@@ -502,7 +514,7 @@ function BilledToSection({
   );
 }
 
-const PLAN_LABEL: Record<string, string> = { free: "Free", paid: "The g1t plan", internal: "Internal (comped)", enterprise: "Enterprise" };
+const PLAN_LABEL: Record<string, string> = { free: "Free", paid: "The g1t plan", internal: "Internal (100% discount)", enterprise: "Enterprise" };
 
 function gigabytes(bytes: number): string {
   return `${Math.round((bytes / 1e9) * 100) / 100} GB`;

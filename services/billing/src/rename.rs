@@ -34,6 +34,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     // Plain rows: many per workspace, keyed by their own id.
     "UPDATE ledger SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE runs SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE credit_grants SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE checkouts SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE workspace_invoices SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE sales_notes SET workspace = ?1 WHERE workspace = ?2",
@@ -305,7 +306,7 @@ mod tests {
             "ledger", "runs", "checkouts", "workspace_invoices", "sales_notes", "accounts",
             "pending_usage", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
             "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
-            "allowance_use", "trial_grants", "storage_days",
+            "allowance_use", "trial_grants", "credit_grants", "storage_days",
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
             "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
             "workspace_costs", "own_counts",

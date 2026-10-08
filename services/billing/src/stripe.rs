@@ -132,6 +132,15 @@ pub(crate) fn form(fields: &[(&str, String)]) -> String {
         .join("&")
 }
 
+/// The idempotency key for starting a plan on a saved card: the same
+/// workspace, plan and card within the same ten minutes is one subscription,
+/// however many times it is asked for (a double click, two tabs), so a
+/// workspace is never billed twice for one plan. A different card is a new
+/// attempt, as Stripe refuses a key reused with other fields.
+pub(crate) fn plan_key(workspace: &str, feature: &str, payment_method: &str, now_ms: u64) -> String {
+    format!("plan/{workspace}/{feature}/{payment_method}/{}", now_ms / 600_000)
+}
+
 impl Stripe {
     pub fn new(key: String) -> Self {
         Stripe { key }
@@ -514,7 +523,8 @@ impl Stripe {
             ("metadata[feature]", feature.to_owned()),
             ("description", format!("{title} plan for {workspace}")),
         ];
-        self.call(Method::Post, "/subscriptions", Some(form(&fields))).await
+        let key = plan_key(workspace, feature, payment_method, g1t_kit::now_ms());
+        self.send(Method::Post, "/subscriptions", Some(form(&fields)), Some(&key)).await
     }
 
     /// Ends a subscription now: one that never started properly.
@@ -561,6 +571,14 @@ pub(crate) fn is_live(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asking_twice_for_a_plan_starts_one() {
+        let at = 1_791_000_000_000;
+        assert_eq!(plan_key("acme", "plan", "pm_1", at), plan_key("acme", "plan", "pm_1", at + 1_000));
+        assert_ne!(plan_key("acme", "plan", "pm_1", at), plan_key("acme", "plan", "pm_2", at));
+        assert_ne!(plan_key("acme", "plan", "pm_1", at), plan_key("other", "plan", "pm_1", at));
+    }
 
     #[test]
     fn form_values_are_percent_encoded() {

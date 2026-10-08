@@ -210,11 +210,13 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   const spent = o.costMicros + subscriptions;
   const net = moneyIn - spent;
   const givenParts = [
-    ["comped", o.givenCompedMicros ?? 0],
+    ["100% discounts", o.givenCompedMicros ?? 0],
     ["free use", o.givenFreeMicros ?? 0],
     ["trial", o.givenTrialMicros ?? 0],
     ["open-source pool", o.givenPoolMicros ?? 0],
-    ["discounts", o.givenDiscountMicros ?? 0],
+    ["partial discounts", o.givenDiscountMicros ?? 0],
+    ["promotional credit", o.givenCreditPromotionalMicros ?? 0],
+    ["goodwill credit", o.givenCreditGoodwillMicros ?? 0],
   ].filter(([, micros]) => (micros as number) > 0) as [string, number][];
   const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
     {
@@ -343,6 +345,14 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
           </tbody>
         </table>
       </div>
+      <p className="mt-2 text-xs text-faint">
+        Credits from g1t, {report.since} to {report.until}: {usd(o.creditsGivenMicros ?? 0, { cents: true })} given, {usd(o.creditsUsedMicros ?? 0, { cents: true })}{" "}
+        spent on usage. What promotional and goodwill credit paid for is given away above, never money in; refunds took{" "}
+        {usd(o.creditsRefundedMicros ?? 0, { cents: true })} off money in on the days they refund.{" "}
+        <Link to="/credits" className="underline underline-offset-2">
+          Every credit
+        </Link>
+      </p>
     </>
   );
 }
@@ -355,7 +365,7 @@ function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: strin
       className="mt-6"
       id="spend"
       title="g1t's own spend"
-      description="What g1t pays for itself, at cost: comped accounts, the trial and open-source pools, free workspaces' overruns, and anything charged without real money behind it. Two caps hold it: each comped account's monthly budget, and a daily breaker on all of it that pauses new hosted-model agent runs g1t would pay for."
+      description="What g1t pays for itself, at cost: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and anything charged without real money behind it. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new hosted-model agent runs g1t would pay for."
     >
       <div className="grid gap-3 lg:grid-cols-2">
         <CapMeter
@@ -380,7 +390,7 @@ function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: strin
         {caps.comped.map((b) => (
           <CapMeter
             key={b.account}
-            label={`${b.name}, ${caps.month} (comped)`}
+            label={`${b.name}, ${caps.month} (100% discount)`}
             used={b.usedMicros}
             cap={b.ceilingMicros}
             hint={

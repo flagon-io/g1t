@@ -26,6 +26,7 @@ mod costs;
 mod margin;
 mod pricing;
 mod credits;
+mod grants;
 mod overages;
 mod requests;
 mod storage;
@@ -47,7 +48,6 @@ mod tokens;
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role, new_id};
-use g1t_contracts::billing::TermsKind;
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -123,6 +123,10 @@ struct LedgerRow {
     oss_micros: Option<i64>,
     #[serde(default)]
     given_micros: Option<i64>,
+    #[serde(default)]
+    credit_kind: Option<String>,
+    #[serde(default)]
+    discount_micros: Option<i64>,
 }
 
 impl From<LedgerRow> for LedgerEntry {
@@ -144,6 +148,8 @@ impl From<LedgerRow> for LedgerEntry {
             trial_micros: row.trial_micros.unwrap_or(0),
             oss_micros: row.oss_micros.unwrap_or(0),
             given_micros: row.given_micros.unwrap_or(0),
+            credit_kind: row.credit_kind.as_deref().and_then(CreditKind::parse),
+            discount_micros: row.discount_micros.unwrap_or(0),
         }
     }
 }
@@ -348,8 +354,10 @@ impl Billing {
                     ])?,
             ])
             .await?;
-        // Money in clears a card declined at the limit.
-        if kind == "top_up" {
+        // Money in clears a card declined at the limit. A refund or a lost
+        // dispute is a top-up of less than nothing: money out, which never
+        // clears it.
+        if kind == "top_up" && amount_micros > 0 {
             self.db
                 .prepare("UPDATE limits SET autopay_failed_at = NULL, autopay_error = NULL WHERE workspace = ?")
                 .bind(&[workspace.into()])?
@@ -395,20 +403,18 @@ impl Billing {
             micros: Option<i64>,
             runs: Option<u32>,
         }
-        // While nothing is charged (g1t is free, or the workspace is
-        // comped), what was used is what there is to show.
-        #[derive(serde::Deserialize)]
-        struct Comped {
-            n: i64,
-        }
-        let comped = self
-            .db
-            .prepare("SELECT COUNT(*) AS n FROM billing_accounts WHERE kind = 'workspace' AND terms_kind = 'comped' AND substr(id, 4) = ?1")
-            .bind(&[workspace.as_str().into()])?
-            .first::<Comped>(None)
-            .await?
-            .is_some_and(|row| row.n > 0);
-        let measure = if self.free || comped { "COALESCE(cost_micros, 0)" } else { "-amount_micros" };
+        // While g1t is free, what was used at cost is what there is to show.
+        // With a discount, usage at its price, so a 100% discount still
+        // shows what the workspace would pay.
+        let discount_percent = self.terms_of(&workspace).await?.percent_off();
+        let measure = if self.free {
+            "COALESCE(cost_micros, 0)"
+        } else if discount_percent > 0 {
+            "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
+              + COALESCE(given_micros, 0) + COALESCE(discount_micros, 0))"
+        } else {
+            "-amount_micros"
+        };
         let slices = |key: &str, limit: u32| {
             format!(
                 "SELECT {key} AS key, SUM({measure}) AS micros, COUNT(*) AS runs FROM ledger
@@ -446,6 +452,7 @@ impl Billing {
             provider: Option<i64>,
             runs: Option<u32>,
             added: Option<i64>,
+            discount: Option<i64>,
         }
         let totals = async {
             self.db
@@ -456,7 +463,8 @@ impl Billing {
                        SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
                        SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
                        SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
-                       SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added
+                       SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added,
+                       SUM(CASE WHEN kind = 'usage' THEN discount_micros END) AS discount
                      FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
                 )
                 .bind(&[workspace.as_str().into(), a.since.as_str().into()])?
@@ -483,18 +491,22 @@ impl Billing {
             provider: None,
             runs: None,
             added: None,
+            discount: None,
         });
         Ok(Outcome::Ok(Usage {
             spent_micros: totals.spent.unwrap_or_default(),
             // At price, what g1t's usage came to, less what was charged: the
             // part the included usage, the trial, a pool, or a free period paid.
             covered_micros: (crate::credits::with_margin(totals.g1t_cost.unwrap_or_default(), self.margin_percent)
-                - totals.spent.unwrap_or_default())
+                - totals.spent.unwrap_or_default()
+                - totals.discount.unwrap_or_default())
             .max(0),
             cost_micros: totals.cost.unwrap_or_default(),
             provider_micros: totals.provider.unwrap_or_default(),
             used_micros: totals.cost.unwrap_or_default() + totals.provider.unwrap_or_default(),
             free: self.free,
+            discount_micros: totals.discount.unwrap_or_default(),
+            discount_percent: (discount_percent > 0).then_some(discount_percent),
             runs: totals.runs.unwrap_or_default(),
             added_micros: totals.added.unwrap_or_default(),
             by_day,
@@ -581,8 +593,11 @@ impl Billing {
             &self.stripe,
             self.db
                 .prepare(
+                    // A prepayment only: a plan's or a card check's page is
+                    // settled where it was started, never credited as money
+                    // paid in advance.
                     "SELECT workspace, created_by FROM checkouts
-                     WHERE id = ? AND workspace = ? AND status = 'open'",
+                     WHERE id = ? AND workspace = ? AND status = 'open' AND feature IS NULL",
                 )
                 .bind(&[a.session.as_str().into(), workspace.as_str().into()])?
                 .first::<CheckoutRow>(None)
@@ -980,9 +995,8 @@ impl Billing {
         }
         let terms = self.terms_of(workspace).await?;
         let (charge, discount) = terms.discounted(base);
-        let note = match terms.kind {
-            TermsKind::Comped => " (comped)".to_owned(),
-            TermsKind::Custom if terms.discount_percent > 0 && base > 0 => format!(" ({}% off)", terms.discount_percent),
+        let note = match terms.discount_label() {
+            Some(label) if base > 0 => format!(" ({label})"),
             _ => String::new(),
         };
         Ok((charge, note, discount))
@@ -1101,6 +1115,14 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         && let Err(error) = billing.reconcile(&keeper).await {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }
+    // Once a day: credit from g1t past its expiry stops counting
+    // (grants.rs), before the day is reconciled.
+    if event.cron() == keeper::DAILY {
+        match billing.expire_credits().await {
+            Ok(closed) => worker::console_log!("credits expired: {closed}"),
+            Err(error) => worker::console_error!("expiring credits failed: {error}"),
+        }
+    }
     // Once a day: what Cloudflare charged, reconciled against what g1t
     // counted and charged; prices whose day has come; margin alerts
     // (margin.rs). After the keeper, so its proposals are in.
@@ -1167,6 +1189,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "status" => reply(&billing.status()),
         "account" => reply(&billing.account(args(body)?).await?),
         "ledger" => reply(&billing.ledger(args(body)?).await?),
+        "credits" => reply(&billing.credits(args(body)?).await?),
         "usage" => reply(&billing.usage(args(body)?).await?),
         "record_tokens" => reply(&billing.record_tokens(args(body)?).await?),
         "token_usage" => reply(&billing.token_usage(args(body)?).await?),
@@ -1225,6 +1248,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_create_enterprise" => reply(&billing.admin_create_enterprise(args(body)?).await?),
         "admin_attach" => reply(&billing.admin_attach(args(body)?).await?),
         "admin_credit" => reply(&billing.admin_credit(args(body)?).await?),
+        "admin_credits" => reply(&billing.admin_credits(args(body)?).await?),
+        "admin_revoke_credit" => reply(&billing.admin_revoke_credit(args(body)?).await?),
         "admin_reset_billing" => reply(&billing.admin_reset_billing(&env, args(body)?).await?),
         "admin_set_allowances" => reply(&billing.admin_set_allowances(args(body)?).await?),
         "entitlements" => reply(&billing.entitlements(args(body)?).await?),
