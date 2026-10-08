@@ -421,11 +421,30 @@ impl Registry {
             })
             .map(|membership| membership.slug.as_str())
             .collect();
-        let granted: Vec<&str> = viewer
+        let mut granted: Vec<&str> = viewer
             .iter()
-            .flat_map(|user| &user.grants)
+            .flat_map(|user| {
+                let token = user.token.as_deref();
+                user.grants
+                    .iter()
+                    .filter(move |grant| token.is_none_or(|token| token.covers_repo(&grant.repo_id, &grant.workspace)))
+            })
             .map(|grant| grant.repo_id.as_str())
             .collect();
+        // A fine-grained token's selected repositories, where its owner's
+        // membership reaches them.
+        if let Some(user) = viewer.as_ref()
+            && let Some(reach) = user.token.as_deref().and_then(|token| token.fine_grained.as_ref())
+            && let Some(workspace) = reach.workspace.as_deref()
+        {
+            granted.extend(
+                reach
+                    .repo_ids
+                    .iter()
+                    .filter(|id| access::granted(user, access::RepoRef { id, namespace: workspace, private: true }).is_some())
+                    .map(String::as_str),
+            );
+        }
         let mut params: Vec<JsValue> = vec![
             serde_json::to_string(&reading)?.into(),
             serde_json::to_string(&granted)?.into(),

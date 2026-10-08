@@ -259,6 +259,12 @@ mod tests {
         // What g1t has nothing behind grants nothing.
         let (oidc, _) = parse(&json!({ "id-token": "write", "discussions": "write" })).unwrap();
         assert_eq!(oidc.scopes(), ["repo:read"]);
+        // A job's token never changes workflow files, whatever it asks for:
+        // `workflows` is no permission a job's token has.
+        assert!(!scopes.contains(&"workflow_files:write"));
+        let (files, unknown) = parse(&json!({ "workflows": "write", "contents": "write" })).unwrap();
+        assert_eq!(unknown, ["workflows"]);
+        assert!(!files.scopes().contains(&"workflow_files:write"));
     }
 
     #[test]
