@@ -5778,6 +5778,15 @@
 				"flagon-io/g1t",
 				"flagon-io/hello"
 			],
+			"models": [
+				{
+					"model": "claude-sonnet-5-5",
+					"input": 310000,
+					"output": 420000,
+					"cache_read": 7800000,
+					"cache_write": 590000
+				}
+			],
 			"included": {
 				"used": 20,
 				"of": 20,

@@ -43,7 +43,28 @@ function count(n: number): string {
 }
 
 /** Price-book rows the table shows in rows of their own, or not at all. */
-const SHOWN_APART = new Set(["app_month", "agent_models", "agent_tokens", "agent_tokens_own", "gateway_models", "card_fee_percent", "card_fee_fixed"]);
+const SHOWN_APART = new Set([
+  "app_month",
+  "agent_models",
+  "agent_tokens",
+  "agent_tokens_own",
+  "agent_token_weight_input",
+  "agent_token_weight_output",
+  "agent_token_weight_cache_read",
+  "agent_token_weight_cache_write",
+  "gateway_models",
+  "card_fee_percent",
+  "card_fee_fixed",
+]);
+
+/** How each kind of token counts toward the agent rate, from the price book: `input ×1, …`. */
+function tokenWeights(prices: { meter: string; costMicros: number }[]): string {
+  const weight = (kind: string) => {
+    const row = prices.find((p) => p.meter === `agent_token_weight_${kind}`);
+    return row ? Number((row.costMicros / 1_000_000).toFixed(3)) : 1;
+  };
+  return `input ×${weight("input")}, output ×${weight("output")}, cache reads ×${weight("cache_read")}, cache writes ×${weight("cache_write")}`;
+}
 
 /** What the page says when billing cannot be reached: the published defaults. */
 const DEFAULT_FREE: Required<FreeTier> = {
@@ -470,6 +491,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                     <td className="px-4 py-3">
                       <p className="font-medium">g1t agent rate</p>
                       <p className="text-xs text-faint">Context, memory, routing and orchestration, on every token an agent run uses</p>
+                      <p className="text-xs text-faint">Tokens count by kind: {tokenWeights(book?.prices ?? [])}</p>
                     </td>
                     <td className="px-4 py-3 text-muted">A flat rate</td>
                     <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>

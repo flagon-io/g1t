@@ -483,7 +483,10 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
     <>
       <span className="flex min-w-0 items-center gap-2">
         <span className="size-2 shrink-0 rounded-sm" style={{ background: color }} />
-        <span className="truncate">{meter.label}</span>
+        <span className="min-w-0">
+          <span className="block truncate">{meter.label}</span>
+          {meter.note && <span className="block truncate text-[0.6875rem] text-faint" title={meter.note}>{meter.note}</span>}
+        </span>
         {parts.length > 0 && <ChevronDown size={13} className="shrink-0 text-faint transition-transform group-open:rotate-180" />}
       </span>
       <span className="hidden sm:block">

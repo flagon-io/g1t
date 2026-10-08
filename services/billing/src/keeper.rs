@@ -658,7 +658,7 @@ impl Billing {
                 token_hash: run.token_hash,
                 billed_to: run.billed_to,
             };
-            self.charge_agent_rate(&run.id, &row, 0).await?;
+            self.charge_agent_rate(&run.id, &row, None).await?;
         }
         Ok(())
     }
@@ -715,7 +715,7 @@ impl Billing {
         }
         // Tokens counted after the run reported are charged their agent
         // rate now (ai.rs).
-        self.charge_agent_rate(&run.id, &row, 0).await?;
+        self.charge_agent_rate(&run.id, &row, None).await?;
         if let Some(why) = &short {
             worker::console_warn!("run {} settled at no less than reported: {why}", run.id);
         }

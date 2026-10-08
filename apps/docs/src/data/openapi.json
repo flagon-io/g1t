@@ -9371,7 +9371,7 @@
           "Billing"
         ],
         "summary": "Get a workspace's usage",
-        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance` and the split `by_project`), `projects` (every repository with usage in the range), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
+        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, the split `by_project`, and a `note` where the quantity needs one: the agent rate's meters, `agent_rate` and `agent_rate_own` (on the workspace's own model key), count weighted tokens and name the weights), `projects` (every repository with usage in the range), `models` (the agent's input, output, cache-read and cache-write tokens by model, most first), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
         "x-operation": "get_usage",
         "x-mcp-tool": "billing",
         "x-mcp-action": "usage",
@@ -9592,6 +9592,15 @@
                   "projects": [
                     "flagon-io/g1t",
                     "flagon-io/hello"
+                  ],
+                  "models": [
+                    {
+                      "model": "claude-sonnet-5-5",
+                      "input": 310000,
+                      "output": 420000,
+                      "cache_read": 7800000,
+                      "cache_write": 590000
+                    }
                   ],
                   "included": {
                     "used": 20,

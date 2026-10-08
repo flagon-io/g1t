@@ -1468,6 +1468,8 @@ export type MeterLine = {
   daily: number[];
   allowance?: UsageAllowance | null;
   byProject: ProjectUsage[];
+  /** How the quantity is counted, when that needs saying (the agent rate's token weights). */
+  note?: string | null;
 };
 
 export type FeatureUsage = { key: string; label: string; micros: number; count: number };

@@ -817,14 +817,11 @@ impl Billing {
         if claimed.is_none() {
             return Ok(Outcome::Ok(false));
         }
-        // What the harness counted, the floor of what the agent rate is
-        // charged on when the proxy counted fewer (or none).
-        let reported = a.tokens.map_or(0, |tokens| tokens.total());
         // On the workspace's own provider, the model was paid for there and
         // the run's sandbox time is recorded on its own: only the agent rate
         // is charged, on its own meter.
         if run.own_provider() {
-            self.charge_agent_rate(&a.run_id, &run, reported).await?;
+            self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
             return Ok(Outcome::Ok(true));
         }
         // Its cost plus the margin, on the account's terms; then the plan's
@@ -862,7 +859,7 @@ impl Billing {
         self.record_drawn(&a.run_id, &drawn).await?;
         self.record_discount(&a.run_id, discount).await?;
         self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
-        self.charge_agent_rate(&a.run_id, &run, reported).await?;
+        self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
         Ok(Outcome::Ok(true))
     }
 }
@@ -1462,6 +1459,7 @@ mod tests {
         include_str!("../migrations/0039_discounts_not_comped.sql"),
         include_str!("../migrations/0040_ai_credit.sql"),
         include_str!("../migrations/0041_agent_rate_own_key.sql"),
+        include_str!("../migrations/0042_agent_rate_weights.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an
@@ -1527,6 +1525,19 @@ mod tests {
         assert!(row("('pv_agent_tokens_own_2'").contains("250000, 0, '2026-10-22"));
         assert!(row("('agent_tokens_own',").contains("'million tokens', 0, 0, 'list'"));
         assert_eq!(ai::agent_rate_meter(true), "agent_tokens_own");
+    }
+
+    #[test]
+    fn the_agent_rate_counts_every_token_once_until_a_weight_is_decided() {
+        let sql = include_str!("../migrations/0042_agent_rate_weights.sql");
+        for kind in ["input", "output", "cache_read", "cache_write"] {
+            let meter = format!("('agent_token_weight_{kind}', 'Agent rate weight");
+            let row = sql.lines().find(|l| l.contains(&meter)).unwrap_or_else(|| panic!("no {kind} weight"));
+            assert!(row.contains("'weight', 1000000, 0, 'list'"), "{kind}: {row}");
+            let version = format!("('pv_agent_token_weight_{kind}_1', 'agent_token_weight_{kind}', 1, 1000000,");
+            assert!(sql.contains(&version), "{kind} has no applied version");
+        }
+        assert_eq!(ai::weight_of(1_000_000.0), 1.0);
     }
     #[test]
     fn every_checkout_insert_fills_the_table() {

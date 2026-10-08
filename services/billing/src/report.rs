@@ -179,6 +179,7 @@ pub(crate) fn shape(
             daily: vec![0; days.len()],
             allowance: None,
             by_project: vec![],
+            note: None,
         })
         .collect();
     let mut by_day: BTreeMap<(String, String), i64> = BTreeMap::new();
@@ -426,6 +427,15 @@ impl Billing {
                 trial = Some(crate::credits::left(grant.granted_micros, grant.used_micros));
             }
         }
+        // The agent rate's tokens are weighted by kind: say how.
+        let weights = self.token_weights().await?;
+        for product in &mut products {
+            for meter in &mut product.meters {
+                if meter.key == "agent_rate" || meter.key == "agent_rate_own" {
+                    meter.note = Some(agent_rate_note(&weights));
+                }
+            }
+        }
         let ai: i64 = credits.grants.iter().filter(|g| g.scope == "models").map(|g| g.left_micros).sum();
         let models = self.tokens_by_model(&workspace, &from, &until).await?;
         Ok(Outcome::Ok(UsageReport {
@@ -444,6 +454,15 @@ impl Billing {
             plan,
             free: self.free,
         }))
+    }
+}
+
+/// What the agent rate's meters say of their tokens.
+pub(crate) fn agent_rate_note(weights: &crate::ai::TokenWeights) -> String {
+    if weights.is_flat() {
+        "Weighted tokens: every token counts once (input ×1, output ×1, cache reads ×1, cache writes ×1)".to_owned()
+    } else {
+        format!("Weighted tokens: {}", weights.describe())
     }
 }
 

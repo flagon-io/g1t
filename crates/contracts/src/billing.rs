@@ -3237,6 +3237,10 @@ pub struct MeterLine {
     #[serde(default)]
     pub allowance: Option<Allowance>,
     pub by_project: Vec<ProjectUsage>,
+    /// How the quantity is counted, when that needs saying: for the agent
+    /// rate, its tokens are weighted by kind, and this names the weights.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// A part of a product, such as the agent's runs, reviews and plans.
