@@ -8,6 +8,7 @@ import { Pin } from "lucide-react";
 import { useFetcher } from "react-router";
 
 import { cn } from "../lib/cn";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export function PinButton({
   workspace,
@@ -38,25 +39,29 @@ export function PinButton({
     <fetcher.Form method="post" action={`/${workspace}/-/pins`} className={cn("relative flex", className)}>
       <input type="hidden" name="intent" value={shown ? "unpin" : "pin"} />
       <input type="hidden" name="slug" value={slug} />
-      <button
-        type="submit"
-        aria-label={label}
-        aria-pressed={shown}
-        title={error ?? (shown ? "Unpin from the sidebar" : "Pin to the sidebar")}
-        className={cn(
-          "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-[0.8125rem] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent",
-          small
-            ? "relative z-10 size-6 hover:bg-raised"
-            : compact
-            ? "relative z-10 size-8 hover:bg-raised"
-            : "h-8 border border-line px-2.5 text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
-          shown ? "text-accent" : compact || small ? "text-faint hover:text-fg" : "",
-          error && "text-danger",
-        )}
-      >
-        <Pin size={small ? 12 : 14} className={shown ? "fill-current" : undefined} />
-        {!compact && !small && <span className="hidden sm:inline">{shown ? "Unpin" : "Pin"}</span>}
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="submit"
+            aria-label={label}
+            aria-pressed={shown}
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-[0.8125rem] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent",
+              small
+                ? "relative z-10 size-6 hover:bg-raised"
+                : compact
+                  ? "relative z-10 size-8 hover:bg-raised"
+                  : "h-8 border border-line px-2.5 text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
+              shown ? "text-accent" : compact || small ? "text-faint hover:text-fg" : "",
+              error && "text-danger",
+            )}
+          >
+            <Pin size={small ? 12 : 14} className={shown ? "fill-current" : undefined} />
+            {!compact && !small && <span className="hidden sm:inline">{shown ? "Unpin" : "Pin"}</span>}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{error ?? (shown ? "Unpin from the sidebar" : "Pin to the sidebar")}</TooltipContent>
+      </Tooltip>
     </fetcher.Form>
   );
 }
