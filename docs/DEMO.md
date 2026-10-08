@@ -19,11 +19,21 @@ sections 2 and 9 the third.
 - Write the three issues for section 3 in a scratch file so they can be
   pasted (titles below). Agents take one to three minutes each: start them,
   talk over sections 4 and 5, and come back.
-- In `flagon-io/hello` Settings → Branches and merging, check **Merge through
-  a queue** and **Merge automatically when ready** are on, so section 7's pull
-  requests enter the queue by themselves. (`automation-lab` is set to wait
-  for a person, so do not record there.)
+- In `flagon-io/hello` **Settings → Rules**, check the ruleset for `main`
+  has **Require the merge queue**, and in Settings check **Merge
+  automatically when ready** is on, so section 7's pull requests enter the
+  queue by themselves. (`automation-lab` is set to wait for a person, so do
+  not record there.)
+- In the same settings, **Ask a person before merging low-confidence
+  changes** is on for `hello`. Decide before recording: leave it on and
+  say so if a low-confidence change waits for you in section 7, or turn it
+  off for the take so every green, reviewed pull request lands by itself.
+  Turn it back on afterwards.
 - Write the brief for section 4 in the scratch file too.
+- Mark the inbox's error notifications read, and check the latest
+  **Deploy** run on `flagon-io/g1t` is green, since section 9 ends there.
+- Load every page the script visits once before recording. Cold loads take
+  1.4 to 2.7 seconds; warm ones 0.4 to 0.9.
 - Do not deploy the runner while agents work.
 
 ## 1. The problem (30 seconds)
@@ -56,16 +66,22 @@ On `flagon-io/hello`, Code tab.
 > `pull_request` and `merge_group` events. Storage is Cloudflare Artifacts;
 > every job runs in its own Cloudflare Container.
 
-- Actions tab: the runs, by event. Open one and show the steps and the log.
+- **Workflows** tab: the runs, by event. Open one and show the steps and the log.
 
 ## 3. Many issues, an agent on each (1 minute 30 seconds)
 
 Issues tab.
 
 - Create three issues quickly, pasting them in:
+  - **Add a --repeat-sep flag**: `--repeat-sep <s>` prints the greetings
+    `--times` repeats on one line, separated by `<s>`, documented in the
+    README options table.
   - **Add a --sparkle flag** that ends the greeting with a sparkle emoji.
-  - **Greet in German** with `--lang de`.
-  - **Explain in the README what happens with no name.**
+  - **Greet in German** with `--lang de` (`Hallo, NAME!`). Today `--lang de`
+    is refused with an error, and a test says so; that test changes too.
+- All three change `src/lib.rs`, `src/main.rs` and `README.md`, so once
+  the agents have pushed, each pull request shows the others under **Other
+  work is changing the same files**.
 - Tick all three and press **Assign to g1t**. Say there is nothing
   else to choose: no number of agents, no model. Each issue gets an agent of
   its own and g1t routes the work; every session opens by naming the model
@@ -86,9 +102,11 @@ While they run, go on.
 
 Issues tab, then **Outcomes**.
 
-- Paste a brief, such as: *The greeter should support `--shout`, which
-  upper-cases the greeting, documented in the README and covered by tests.*
-  Press **Plan it**. In about twenty seconds an agent has read the
+- Paste a brief, such as: *The greeter should greet in Italian with
+  `--lang it` (`Ciao, NAME!`) and in Portuguese with `--lang pt`
+  (`Olá, NAME!`). Each language should be documented in the README and
+  covered by tests.* (`hello` speaks `en`, `es` and `fr` today.) Press
+  **Plan it**. In about twenty seconds an agent has read the
   repository and proposed issues: what each must make true, the files each
   will touch, and which has to land before which.
 - Press **Open these and assign g1t**. The first issue starts at once. Come
@@ -104,7 +122,7 @@ Issues tab, then **Outcomes**.
 Open issue **#80, CI: fail when a flag is missing from the README**, and its
 pull request **#81**.
 
-- An agent wrote this CI step. Changes tab: the shell step it added to
+- An agent wrote this CI step. **Files changed**: the shell step it added to
   `ci.yml`. It went through review and the merge queue like any change.
 
 Open issue **#84, Add a --reverse flag**, and its pull request **#85**.
@@ -126,21 +144,26 @@ Open issue **#84, Add a --reverse flag**, and its pull request **#85**.
 Open **Say goodbye too** (#4) and its pull request **Add a farewell** (#9).
 
 - This one was pushed as a branch by a person, the way you already work.
-- **Checks failed.** Expand `cargo test` and show the output. Changes tab:
-  the reviewer's comment sits on the faulty line. The agent's pull request
-  for the same issue, #10, passed and was merged; #9 was closed.
+- **Checks failed.** A closed pull request keeps its checks: open
+  `cargo test`'s **Details** and show the log. The agent's pull request for
+  the same issue, #10, passed and was merged; #9 says "#10 was merged
+  instead".
 
-Open **Greet in Spanish and French** (#2).
+Open **Greet in Spanish and French** (#2), then either of its pull requests.
 
-- Two pull requests for one issue, side by side: checks, size of the change,
-  who reviewed. Open one and show **Other work is changing the same files**.
+- **Other attempts at #2**: two agents' pull requests for one issue, side
+  by side, each with its state, its checks, where its review stands and the
+  size of the change. Reviews come from @g1t, the one name all of g1t's own
+  work carries.
+- Then, on one of section 3's pull requests: **Other work is changing the
+  same files**, naming the other two and the files they share.
 
 > This is the overlap radar. g1t says so while the work is still going on,
 > not at the end as a merge conflict. Agents see the same thing through the
 > API, which is how the agents in sections 3 and 4 were told about each other.
 
 Open **A blank name greets nobody** (#1): closed, saying which pull request
-resolved it; the other is marked superseded.
+resolved it; the other says which one was merged instead.
 
 Open **Add a --both flag** (#88) and its pull request **#89**, then **Rename
 hail() and part() to greet() and farewell()** (#86, pull request **#87**).
@@ -165,8 +188,8 @@ hail() and part() to greet() and farewell()** (#86, pull request **#87**).
 
 ## 7. The merge queue (1 minute 15 seconds)
 
-Back to the pull requests from section 3. Their checks have passed and a g1t
-agent has reviewed them.
+Back to the pull requests from section 3. Their checks have passed and
+@g1t has reviewed them.
 
 - With auto-merge on, they enter the **Merge queue** on their own. Open it.
 
