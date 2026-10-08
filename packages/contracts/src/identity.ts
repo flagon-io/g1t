@@ -2,7 +2,7 @@ import type { AccessClient, BasePermission, RepoGrant } from "./access";
 import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
-import type { TeamsClient } from "./teams";
+import type { TeamCreation, TeamsClient } from "./teams";
 
 export type User = {
   id: string;
@@ -64,6 +64,8 @@ export type Membership = {
   avatar?: string;
   /** The workspace's base permission: what members get on every repository. Absent means `write`. */
   base_permission?: BasePermission;
+  /** Who may create its teams. Absent means any member. */
+  team_creation?: TeamCreation;
 };
 
 /** How long an old workspace slug redirects, and stays reserved for it, after a rename. */
@@ -102,6 +104,8 @@ export type Workspace = {
   avatar: string | null;
   /** What every member gets on each repository; owners have Admin. */
   basePermission?: BasePermission;
+  /** Who may create its teams. Absent means any member. */
+  teamCreation?: TeamCreation;
 };
 
 export type Member = {

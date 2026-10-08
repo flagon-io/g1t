@@ -6,6 +6,7 @@
 
 use g1t_contracts::access::BasePermission;
 use g1t_contracts::identity::*;
+use g1t_contracts::teams::TeamCreation;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{
     FailureCode, Membership, Outcome, PrincipalKind, Role, User, claimable_namespace, new_id,
@@ -24,7 +25,7 @@ const MAX_NAME_LENGTH: usize = 80;
 const MAX_DESCRIPTION_LENGTH: usize = 160;
 
 const WORKSPACE_COLUMNS: &str = "workspaces.id, workspaces.slug, workspaces.name,
-  workspaces.description, workspaces.avatar, workspaces.created_at, workspaces.base_permission,
+  workspaces.description, workspaces.avatar, workspaces.created_at, workspaces.base_permission, workspaces.team_creation,
   (SELECT count(*) FROM workspace_members
    WHERE workspace_members.workspace_id = workspaces.id) AS member_count";
 
@@ -39,6 +40,8 @@ struct WorkspaceRow {
     member_count: u32,
     #[serde(default)]
     base_permission: Option<String>,
+    #[serde(default)]
+    team_creation: Option<String>,
 }
 
 impl From<WorkspaceRow> for Workspace {
@@ -55,6 +58,11 @@ impl From<WorkspaceRow> for Workspace {
                 .base_permission
                 .as_deref()
                 .and_then(BasePermission::parse)
+                .unwrap_or_default(),
+            team_creation: row
+                .team_creation
+                .as_deref()
+                .and_then(TeamCreation::parse)
                 .unwrap_or_default(),
         }
     }
@@ -78,7 +86,7 @@ impl Identity {
         self.db
             .prepare(
                 "SELECT workspaces.slug, workspace_members.role, workspaces.name,
-                   workspaces.avatar, workspaces.base_permission
+                   workspaces.avatar, workspaces.base_permission, workspaces.team_creation
                  FROM workspace_members
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
                  WHERE workspace_members.user_id = ? AND workspaces.deleted_at IS NULL
@@ -152,6 +160,7 @@ impl Identity {
             member_count: 1,
             avatar: None,
             base_permission: BasePermission::default(),
+            team_creation: TeamCreation::default(),
         };
         self.db
             .batch(vec![

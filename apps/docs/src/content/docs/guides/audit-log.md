@@ -29,6 +29,7 @@ Every workspace keeps an audit log. It records:
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had it changed, or lost it. See [access and roles](/guides/access-and-roles/). |
 | `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
+| `workspace.team_creation_changed` | An owner changed who can create teams. See [who can create teams](/guides/teams/#who-can-create-teams). |
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. |
 | `team.member_added`, `team.member_role_changed`, `team.member_removed` | Someone was added to a team, made its maintainer or a member, or taken out of it. |
 | `team.repo_added`, `team.repo_role_changed`, `team.repo_removed` | A team was given a role on a repository, had it changed, or lost it. |

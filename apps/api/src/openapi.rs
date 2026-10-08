@@ -47,7 +47,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
-        &[Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
+        &[Op::GetWorkspace, Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
     ),
     (
         "Invites",
@@ -360,6 +360,7 @@ fn tag(op: Op) -> &'static str {
 fn title(op: Op) -> &'static str {
     match op {
         Op::Whoami => "Get the current user",
+        Op::GetWorkspace => "Get a workspace",
         Op::CreateWorkspace => "Create a workspace",
         Op::DeleteWorkspace => "Delete a workspace",
         Op::UpdateWorkspace => "Update a workspace",

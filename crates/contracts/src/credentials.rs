@@ -1065,6 +1065,7 @@ mod tests {
                 name: None,
                 avatar: None,
                 base_permission: Some(BasePermission::None),
+                team_creation: None,
             },
             Membership::member("elsewhere"),
         ];

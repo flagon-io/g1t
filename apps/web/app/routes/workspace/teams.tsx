@@ -1,7 +1,7 @@
-import { Plus, Search } from "lucide-react";
+import { Lock, Plus, Search } from "lucide-react";
 import { data, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
-import type { Team } from "@g1t/contracts";
+import { type Team, mayCreateTeams } from "@g1t/contracts";
 
 import type { Route } from "./+types/teams";
 import { page } from "../../lib/meta";
@@ -18,9 +18,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // A workspace's teams are its members' business.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const teams = unwrap(await identity.listTeams(viewer, params.owner));
-  return { teams, slug: params.owner.toLowerCase() };
+  const role = roleIn(viewer, params.owner);
+  if (!role) throw data(null, { status: 404 });
+  const [teams, workspace] = await Promise.all([
+    identity.listTeams(viewer, params.owner).then(unwrap),
+    identity.getWorkspace(params.owner).catch(() => null),
+  ]);
+  // Who may create one is the workspace's to say (its settings).
+  return { teams, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };
 }
 
 /** Searching changes only the address: the list is already here. */
@@ -30,7 +35,7 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShoul
 }
 
 export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
-  const { teams, slug } = loaderData;
+  const { teams, slug, canCreate } = loaderData;
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const { mine, others } = splitTeams(filterTeams(teams, query));
@@ -60,10 +65,17 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
             className="w-full rounded-md border border-line bg-bg py-1.5 pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
           />
         </label>
-        <ButtonLink to={`/${slug}/-/teams/new`}>
-          <Plus size={15} />
-          New team
-        </ButtonLink>
+        {canCreate ? (
+          <ButtonLink to={`/${slug}/-/teams/new`}>
+            <Plus size={15} />
+            New team
+          </ButtonLink>
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-muted">
+            <Lock size={13} className="shrink-0 text-faint" />
+            Only owners can create teams in this workspace.
+          </p>
+        )}
       </div>
 
       {teams.length === 0 ? (

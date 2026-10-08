@@ -380,7 +380,7 @@ the row at the top, **‹ Settings**, slides back:
 
 | Settings | Who | |
 | --- | --- | --- |
-| **General** | Owners | The icon, the display name, a one-line description and the address (the slug). |
+| **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [who can create teams](/guides/teams/#who-can-create-teams), and [data residency](#data-residency). |
 | **Repositories** | Members | The workspace's repositories. Owners also see **Recently deleted**, where a [deleted repository](/guides/managing-repositories/#restore-a-repository) can be restored, or purged, for 30 days. |
 | **Access tokens** | Members | The workspace's own tokens. Owners create and delete them. |
 | **Guardrails** | Members | What agents may do and spend across the workspace. Owners change them. |

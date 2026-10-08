@@ -121,3 +121,13 @@ test("counts leave out what is none", () => {
   assert.equal(teamCounts({ members_count: 1, repos_count: 0, child_teams_count: 2 }), "1 member · 2 child teams");
   assert.equal(teamCounts({ members_count: 0, repos_count: 0, child_teams_count: 0 }), "No members yet");
 });
+
+test("who may create teams follows the workspace's setting", async () => {
+  // From the contracts' source: the Teams page and the + menu decide with it.
+  const { mayCreateTeams } = await import("../../../../packages/contracts/src/teams.ts");
+  assert.equal(mayCreateTeams(undefined, "member"), true);
+  assert.equal(mayCreateTeams("members", "member"), true);
+  assert.equal(mayCreateTeams("owners", "member"), false);
+  assert.equal(mayCreateTeams("owners", "owner"), true);
+  assert.equal(mayCreateTeams("members", null), false);
+});

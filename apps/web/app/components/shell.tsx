@@ -2,7 +2,7 @@ import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import type { Abilities, InboxCounts, Membership, Spike, User } from "@g1t/contracts";
+import { type Abilities, type InboxCounts, type Membership, type Spike, type User, mayCreateTeams } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { AgentButton, InboxBell } from "./inbox";
@@ -1837,15 +1837,22 @@ export function AppShell({
                     New workspace
                   </Link>
                 </DropdownMenuItem>
-                {/* A team in the workspace the sidebar is about. */}
-                {shell.workspace && (
-                  <DropdownMenuItem asChild>
-                    <Link to={`/${shell.workspace.slug}/-/teams/new`}>
+                {/* A team in the workspace the sidebar is about, for whoever it lets create one. */}
+                {shell.workspace &&
+                  (mayCreateTeams(shell.workspace.team_creation, shell.workspace.role) ? (
+                    <DropdownMenuItem asChild>
+                      <Link to={`/${shell.workspace.slug}/-/teams/new`}>
+                        <UsersRound />
+                        New team
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled title="Only owners can create teams in this workspace.">
                       <UsersRound />
                       New team
-                    </Link>
-                  </DropdownMenuItem>
-                )}
+                      <span className="ml-auto pl-3 text-xs text-faint">Owners only</span>
+                    </DropdownMenuItem>
+                  ))}
               </DropdownMenuContent>
             </DropdownMenu>
             </>

@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, data, redirect } from "react-router";
 
-import { TEAM_VISIBILITY_SUMMARIES, teamSlug } from "@g1t/contracts";
+import { TEAM_VISIBILITY_SUMMARIES, mayCreateTeams, teamSlug } from "@g1t/contracts";
 
 import type { Route } from "./+types/team-new";
 import { page } from "../../lib/meta";
@@ -23,8 +23,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const teams = unwrap(await identity.listTeams(viewer, params.owner));
+  const role = roleIn(viewer, params.owner);
+  if (!role) throw data(null, { status: 404 });
+  const [teams, workspace] = await Promise.all([
+    identity.listTeams(viewer, params.owner).then(unwrap),
+    identity.getWorkspace(params.owner).catch(() => null),
+  ]);
+  // Owners only, when the workspace says so: the Teams page says why.
+  if (!mayCreateTeams(workspace?.teamCreation, role)) throw redirect(`/${params.owner}/-/teams`);
   // A new team goes under a team its creator may manage.
   const parents = parentChoices(teams, null).filter((team) => team.can_manage);
   const wanted = new URL(request.url).searchParams.get("parent");

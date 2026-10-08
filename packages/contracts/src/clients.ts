@@ -162,6 +162,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     listTeams: (viewer, workspace, query) => call("list_teams", { viewer, workspace, query: query ?? null }),
     getTeam: (viewer, workspace, team) => call("get_team", { viewer, workspace, team }),
     createTeam: (actor, workspace, team) => call("create_team", { actor, workspace, ...team }),
+    setTeamCreation: (actor, slug, setting) => call("set_team_creation", { actor, slug, team_creation: setting }),
     updateTeam: (actor, workspace, team, changes) => call("update_team", { actor, workspace, team, ...changes }),
     deleteTeam: (actor, workspace, team) => call("delete_team", { actor, workspace, team }),
     teamMembers: (viewer, workspace, team, includeChildTeams) =>

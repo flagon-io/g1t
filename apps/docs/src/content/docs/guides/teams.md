@@ -15,7 +15,8 @@ workspace leaves all of its teams with it.
 ## Create a team
 
 Any member of the workspace with a confirmed email address can create a
-team, and becomes its first maintainer.
+team, and becomes its first maintainer, unless an owner has set
+[who can create teams](#who-can-create-teams) to owners only.
 
 1. Open **Teams** in the sidebar: `g1t.sh/<workspace>/-/teams`.
 2. Choose **New team**, or go to `g1t.sh/<workspace>/-/teams/new`. The
@@ -41,6 +42,26 @@ mentioned as `@<workspace>/<team>`.
 The **Teams** page lists the teams you can see, yours first, then by
 name, with a search box that matches names and slugs. A person's teams
 also show beside them on the workspace's **People** page.
+
+### Who can create teams
+
+An owner chooses who can create the workspace's teams, under **Settings**,
+**General**, **Teams**:
+
+| Who can create teams | |
+| --- | --- |
+| **Any member** | Every member with a confirmed email address. The default. |
+| **Owners only** | Only the workspace's owners. Members see **Only owners can create teams in this workspace.** on the Teams page instead of **New team**, and **New team** in the **+** menu is greyed out. |
+
+Teams that already exist stay as they are, and their maintainers still
+manage them. The change is recorded in the [audit log](/guides/audit-log/)
+as `workspace.team_creation_changed`.
+
+Through the API, set `team_creation` to `members` or `owners` with
+[`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/)
+(the `workspace` tool's `update` action over MCP); the workspace you get
+back, and [`GET /workspaces/{workspace}`](/reference/api/workspaces/get-workspace/),
+include it. Creating a team when you may not is refused with `403`.
 
 ## Visibility
 

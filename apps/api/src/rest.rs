@@ -31,6 +31,7 @@ const fn route(
 pub const ROUTES: &[Route] = &[
     route("GET", "/user", Op::Whoami, &[]),
     route("POST", "/workspaces", Op::CreateWorkspace, &[]),
+    route("GET", "/workspaces/:workspace", Op::GetWorkspace, &[]),
     route("DELETE", "/workspaces/:workspace", Op::DeleteWorkspace, &[]),
     route("GET", "/user/emails", Op::ListEmails, &[]),
     route("POST", "/user/emails", Op::AddEmail, &[]),

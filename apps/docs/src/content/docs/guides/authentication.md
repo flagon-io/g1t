@@ -359,7 +359,7 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `account:write` | Change your email addresses, make invites, answer invitations and pin projects |
 | `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
-| `workspace:read` | Read workspace invites, integrations, model routes and [teams](/guides/teams/) |
+| `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |
 | `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
 | `billing:read` | See a workspace's [usage, budget, AI credit and invoices](/guides/usage-and-billing/) |
 | `billing:write` | Change a workspace's budget and buy AI credit. Only owners, as people: a workspace's own token and g1t's agents never change billing, whatever their scopes. Not in any preset but full access. |

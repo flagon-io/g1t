@@ -44,7 +44,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
-  settings: { title: "General", about: "The workspace's name, icon, address and description, and deleting it." },
+  settings: { title: "General", about: "The workspace's name, icon, address and description, who can create teams, and deleting it." },
   people: {
     title: "People",
     about: "Members create repositories and have the base permission on each one. Owners are Admins on every repository, and also manage members, tokens, billing and integrations.",
