@@ -179,13 +179,13 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
           </Field>
         )}
         {loaderData.canAssign && (
-          <div className="rounded-xl border border-merged/25 bg-merged/[0.04] px-3.5 py-3">
+          <div className="rounded-xl border border-accent/25 bg-accent/[0.04] px-3.5 py-3">
             <CheckboxOption
               name="agent"
               defaultChecked={params.get("agent") === "1"}
               label={
                 <span className="flex items-center gap-1.5 font-medium">
-                  <Sparkles size={14} className="text-merged" />
+                  <Sparkles size={14} className="text-accent" />
                   Assign g1t now
                 </span>
               }

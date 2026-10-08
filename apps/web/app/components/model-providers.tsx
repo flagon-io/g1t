@@ -478,7 +478,7 @@ export function Routing({
           <SubmitButton variant="quiet" match={{ intent: "routes" }} pending="Saving…">
             Save routing
           </SubmitButton>
-          {saved && <span className="text-sm text-accent">Saved. The next runs use it.</span>}
+          {saved && <span className="text-sm text-success">Saved. The next runs use it.</span>}
         </div>
       )}
     </Form>

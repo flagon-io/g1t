@@ -293,7 +293,7 @@ function InvoiceStatus({ status }: { status: string }) {
 function StripeLink({ url }: { url: string | null }) {
   if (!url || !url.startsWith("https://")) return <span className="text-faint">—</span>;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-merged hover:underline">
+    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
       Stripe
       <ExternalLink size={12} />
     </a>

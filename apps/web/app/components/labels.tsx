@@ -51,7 +51,7 @@ export function MilestoneBar({ milestone, className }: { milestone: Milestone; c
       aria-label={`${percent}% complete`}
       className={cn("block h-2 overflow-hidden rounded-full bg-line", className)}
     >
-      <span className="block h-full rounded-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+      <span className="block h-full rounded-full bg-success transition-[width]" style={{ width: `${percent}%` }} />
     </span>
   );
 }

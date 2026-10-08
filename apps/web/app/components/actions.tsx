@@ -19,7 +19,7 @@ export function StatusIcon({ status, conclusion, size = 16 }: Standing & { size?
   switch (conclusion) {
     case "success":
       return (
-        <span className="inline-flex shrink-0 rounded-full bg-accent/15 p-0.5 text-accent" aria-label="Succeeded">
+        <span className="inline-flex shrink-0 rounded-full bg-success/15 p-0.5 text-success" aria-label="Succeeded">
           <Check size={size - 4} strokeWidth={3} />
         </span>
       );

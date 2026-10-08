@@ -120,7 +120,7 @@ type Tone = { color: string; bg: string; border: string };
 
 const TONE = {
   open: { color: COLOR.mint, bg: "rgba(134, 239, 196, 0.10)", border: "rgba(134, 239, 196, 0.38)" },
-  merged: { color: COLOR.lavender, bg: "rgba(182, 168, 255, 0.12)", border: "rgba(182, 168, 255, 0.42)" },
+  merged: { color: COLOR.merged, bg: "rgba(166, 120, 245, 0.12)", border: "rgba(166, 120, 245, 0.42)" },
   closed: { color: COLOR.danger, bg: "rgba(255, 131, 148, 0.10)", border: "rgba(255, 131, 148, 0.38)" },
   quiet: { color: COLOR.muted, bg: "rgba(160, 160, 168, 0.08)", border: "rgba(160, 160, 168, 0.30)" },
 } satisfies Record<string, Tone>;

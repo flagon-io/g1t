@@ -101,7 +101,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
     <div className="max-w-4xl">
       <RepoSettingsHeading base={base} />
       <div className="min-h-6">
-        {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
+        {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       </div>
 

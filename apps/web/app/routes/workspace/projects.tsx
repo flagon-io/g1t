@@ -88,7 +88,7 @@ function Facts({ project }: { project: Item }) {
       {language && <span>{language}</span>}
       {project.kind === "library" && <span>Library</span>}
       {project.deploying && (
-        <span className="inline-flex items-center gap-1 text-accent">
+        <span className="inline-flex items-center gap-1 text-success">
           <Rocket size={11} />
           Deploys
         </span>

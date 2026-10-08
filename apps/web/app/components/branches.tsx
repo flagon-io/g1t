@@ -56,7 +56,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                 title={`${branch.drift.ahead} ${branch.drift.ahead === 1 ? "commit" : "commits"} ahead of ${main}, ${branch.drift.behind} behind`}
               >
                 <span className="inline-flex items-center gap-0.5">
-                  <ArrowUp size={11} className={branch.drift.ahead > 0 ? "text-accent" : "text-faint"} />
+                  <ArrowUp size={11} className={branch.drift.ahead > 0 ? "text-success" : "text-faint"} />
                   {branch.drift.ahead}
                 </span>
                 <span className="inline-flex items-center gap-0.5">
@@ -71,7 +71,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                 className="inline-flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 text-muted hover:border-line-strong hover:text-fg"
                 title={branch.pull.title}
               >
-                <GitPullRequest size={12} className={branch.pull.draft ? "text-faint" : "text-accent"} />#{branch.pull.number}
+                <GitPullRequest size={12} className={branch.pull.draft ? "text-faint" : "text-success"} />#{branch.pull.number}
                 <CheckBadge status={branch.pull.checkStatus} />
               </Link>
             ) : branch.drift?.ahead === 0 ? (
@@ -93,7 +93,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                 className="inline-flex max-w-48 items-center gap-1 truncate rounded-md border border-line px-1.5 py-0.5 text-muted hover:border-line-strong hover:text-fg"
                 title={host(branch.preview)}
               >
-                <Globe size={12} className="shrink-0 text-merged" />
+                <Globe size={12} className="shrink-0 text-accent" />
                 Preview
               </a>
             )}

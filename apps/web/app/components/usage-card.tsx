@@ -23,7 +23,7 @@ const STANDING: Record<UsageGlance["kind"], string> = {
  */
 function Bar({ used, of, warns }: { used: number; of: number; warns: boolean }) {
   const part = share(used, of);
-  const tone = !warns ? "bg-accent" : part >= 1 ? "bg-danger" : part >= 0.75 ? "bg-warn" : "bg-accent";
+  const tone = !warns ? "bg-success" : part >= 1 ? "bg-danger" : part >= 0.75 ? "bg-warn" : "bg-success";
   return (
     <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-line" role="presentation">
       <span className={`block h-full rounded-full ${tone}`} style={{ width: `${Math.max(part * 100, part > 0 ? 2 : 0)}%` }} />

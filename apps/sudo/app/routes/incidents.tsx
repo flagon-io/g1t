@@ -180,11 +180,11 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
               to={incidentsHref({ ...filters, tab: tab.value })}
               aria-current={current ? "page" : undefined}
               className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm whitespace-nowrap ${
-                current ? "border-merged font-medium text-fg" : "border-transparent text-muted hover:text-fg"
+                current ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg"
               }`}
             >
               {tab.label}
-              <span className={`tabular rounded-full px-1.5 text-xs ${counts[tab.value] && tab.value !== "resolved" ? "bg-merged/15 text-merged" : "text-faint"}`}>
+              <span className={`tabular rounded-full px-1.5 text-xs ${counts[tab.value] && tab.value !== "resolved" ? "bg-accent/15 text-accent" : "text-faint"}`}>
                 {counts[tab.value]}
               </span>
             </Link>
@@ -229,7 +229,7 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
         {filters.tab === "maintenance" ? (
           shownMaintenance.length === 0 ? (
             <EmptyState title="No maintenance scheduled">
-              <Link to="/incidents/maintenance/new" className="text-merged hover:underline">
+              <Link to="/incidents/maintenance/new" className="text-accent hover:underline">
                 Schedule maintenance
               </Link>{" "}
               to tell people ahead of planned work.

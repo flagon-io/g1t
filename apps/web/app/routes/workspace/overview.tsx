@@ -263,7 +263,7 @@ function ProjectCard({
             {open?.pulls ?? 0}
           </span>
           {member && deploys?.enabled && (deploys.previews ?? 0) > 0 && (
-            <span className="ml-auto flex items-center gap-1 text-accent">
+            <span className="ml-auto flex items-center gap-1 text-success">
               <Rocket size={12} />
               {deploys.previews} {deploys.previews === 1 ? "preview" : "previews"}
             </span>

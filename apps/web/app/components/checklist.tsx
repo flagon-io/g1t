@@ -46,7 +46,7 @@ export function ProductionChecklist({
           {done}/{total}
         </span>
         <span className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-line sm:block" aria-hidden>
-          <span className="block h-full rounded-full bg-accent" style={{ width: `${(done / total) * 100}%` }} />
+          <span className="block h-full rounded-full bg-success" style={{ width: `${(done / total) * 100}%` }} />
         </span>
         <button
           type="button"
@@ -74,7 +74,7 @@ export function ProductionChecklist({
               <span
                 className={cn(
                   "mt-px flex size-4.5 shrink-0 items-center justify-center rounded-full border",
-                  item.done ? "border-accent bg-accent text-bg" : item.key === next ? "border-accent" : "border-line-strong",
+                  item.done ? "border-success bg-success text-bg" : item.key === next ? "border-success" : "border-line-strong",
                 )}
                 aria-hidden
               >

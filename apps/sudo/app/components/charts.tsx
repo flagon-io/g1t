@@ -9,7 +9,7 @@ import { axisDollars, barPath, marginOf, monthBars, monthLong, shares } from "~/
 import { usd } from "~/lib/money";
 
 /** The two series: what was charged (lavender) beside what it cost g1t (gray). */
-const CHARGED = "var(--g1t-merged)";
+const CHARGED = "var(--g1t-accent)";
 const COST = "#7a7a84";
 
 function Legend() {
@@ -131,7 +131,7 @@ export function MonthsChart({
                     <td className="py-1.5 pr-3 text-right">{usd(month.chargedMicros)}</td>
                     <td className="py-1.5 pr-3 text-right">{usd(month.plansMicros ?? 0)}</td>
                     <td className="py-1.5 pr-3 text-right text-muted">{usd(month.costMicros)}</td>
-                    <td className="py-1.5 pr-3 text-right text-merged">{usd(month.givenMicros ?? 0)}</td>
+                    <td className="py-1.5 pr-3 text-right text-accent">{usd(month.givenMicros ?? 0)}</td>
                     <td className={`py-1.5 pr-3 text-right ${margin.micros < 0 ? "text-danger" : "text-fg-soft"}`}>
                       {usd(margin.micros)}
                       {margin.percent != null && <span className="text-faint"> {margin.percent}%</span>}

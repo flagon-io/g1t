@@ -88,9 +88,9 @@ export default function ScheduleMaintenance({ loaderData, actionData }: Route.Co
             {components.map((c) => (
               <label
                 key={c.key}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-sm has-checked:border-merged/60 has-checked:bg-merged/10"
+                className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-sm has-checked:border-accent/60 has-checked:bg-accent/10"
               >
-                <input type="checkbox" name="components" value={c.key} defaultChecked={failed?.chosen.includes(c.key)} className="accent-[#b6a8ff]" />
+                <input type="checkbox" name="components" value={c.key} defaultChecked={failed?.chosen.includes(c.key)} className="accent-[var(--g1t-accent)]" />
                 {c.name}
               </label>
             ))}
@@ -99,7 +99,7 @@ export default function ScheduleMaintenance({ loaderData, actionData }: Route.Co
         <Section title="Message" description="What will happen and what people will notice. Shown publicly.">
           <Textarea name="message" rows={4} required maxLength={4000} aria-label="Message" defaultValue={v.message} placeholder="We are upgrading the database behind git. Pushes may pause for up to five minutes; clones and the website keep working." />
           <label className="mt-3 flex items-center gap-2 text-sm">
-            <input type="checkbox" name="notify" defaultChecked className="accent-[#b6a8ff]" />
+            <input type="checkbox" name="notify" defaultChecked className="accent-[var(--g1t-accent)]" />
             Email subscribers now, when it starts, and when it ends
           </label>
         </Section>

@@ -115,7 +115,7 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
                         plan.status === "failed"
                           ? "text-danger"
                           : plan.status === "ready"
-                            ? "text-accent"
+                            ? "text-success"
                             : "text-muted"
                       }`}
                     >

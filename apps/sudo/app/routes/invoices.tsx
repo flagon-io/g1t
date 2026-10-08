@@ -194,7 +194,7 @@ function Dates({ invoice }: { invoice: InvoiceSummary }) {
     <span>
       <When at={invoice.createdAt} />
       {invoice.paidAt ? (
-        <span className="text-accent">
+        <span className="text-success">
           {" · "}paid <When at={invoice.paidAt} />
         </span>
       ) : null}
@@ -206,7 +206,7 @@ function StripeLink({ url }: { url: string | null }) {
   const safe = safeUrl(url);
   if (!safe) return <span className="text-faint">—</span>;
   return (
-    <a href={safe} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-merged hover:underline">
+    <a href={safe} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
       Stripe
       <ExternalLink size={12} />
     </a>

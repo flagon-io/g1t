@@ -113,7 +113,7 @@ const NEED: Record<NeedKind, { icon: ReactNode; tone: string; label: string }> =
   runner: { icon: <TimerOff size={15} />, tone: "text-warn", label: "No runner" },
   review: { icon: <Eye size={15} />, tone: "text-info", label: "Review" },
   checks: { icon: <Terminal size={15} />, tone: "text-danger", label: "Checks" },
-  ready: { icon: <GitMerge size={15} />, tone: "text-accent", label: "Ready" },
+  ready: { icon: <GitMerge size={15} />, tone: "text-success", label: "Ready" },
 };
 
 /** What is waiting on the viewer, most urgent first, each with its next step. */
@@ -166,19 +166,19 @@ export function NeedsList({ needs, limit = 8 }: { needs: Need[]; limit?: number 
 
 const VERB: Record<Verb, { icon: ReactNode; tone: string; text: (n: string) => string }> = {
   landed: { icon: <GitMerge size={14} />, tone: "text-merged", text: (n) => `landed ${n}` },
-  opened_issue: { icon: <CircleDot size={14} />, tone: "text-accent", text: (n) => `opened ${n}` },
+  opened_issue: { icon: <CircleDot size={14} />, tone: "text-success", text: (n) => `opened ${n}` },
   closed_issue: { icon: <CircleSlash size={14} />, tone: "text-faint", text: (n) => `closed ${n}` },
-  started: { icon: <Play size={14} />, tone: "text-merged", text: (n) => `started on ${n}` },
+  started: { icon: <Play size={14} />, tone: "text-accent", text: (n) => `started on ${n}` },
   ready: { icon: <GitPullRequest size={14} />, tone: "text-info", text: (n) => `marked ${n} ready for review` },
-  checks_passed: { icon: <Terminal size={14} />, tone: "text-accent", text: (n) => `checks passed on ${n}` },
+  checks_passed: { icon: <Terminal size={14} />, tone: "text-success", text: (n) => `checks passed on ${n}` },
   checks_failed: { icon: <Terminal size={14} />, tone: "text-danger", text: (n) => `checks failed on ${n}` },
-  approved: { icon: <CircleCheck size={14} />, tone: "text-accent", text: (n) => `approved ${n}` },
+  approved: { icon: <CircleCheck size={14} />, tone: "text-success", text: (n) => `approved ${n}` },
   changes_requested: { icon: <CircleSlash size={14} />, tone: "text-warn", text: (n) => `asked for changes on ${n}` },
   commented: { icon: <MessageSquare size={14} />, tone: "text-muted", text: (n) => `commented on ${n}` },
-  asked: { icon: <MessageCircleQuestion size={14} />, tone: "text-merged", text: (n) => `asked the agent on ${n}` },
-  deployed: { icon: <Rocket size={14} />, tone: "text-accent", text: () => "deployed production" },
+  asked: { icon: <MessageCircleQuestion size={14} />, tone: "text-accent", text: (n) => `asked the agent on ${n}` },
+  deployed: { icon: <Rocket size={14} />, tone: "text-success", text: () => "deployed production" },
   deploy_failed: { icon: <Rocket size={14} />, tone: "text-danger", text: () => "production build failed" },
-  learned: { icon: <Brain size={14} />, tone: "text-merged", text: () => "learned" },
+  learned: { icon: <Brain size={14} />, tone: "text-accent", text: () => "learned" },
 };
 
 function Refs({ numbers, base }: { numbers: number[]; base: string }) {
@@ -343,7 +343,7 @@ export function ActivityFeed({
                 </span>
                 <span className="min-w-0 grow leading-6 text-muted">
                   {group.actor ? (
-                    <span className={cn("mr-1.5 inline-flex items-center gap-1.5 align-middle font-medium", agent ? "text-merged" : "text-fg")}>
+                    <span className={cn("mr-1.5 inline-flex items-center gap-1.5 align-middle font-medium", agent ? "text-accent" : "text-fg")}>
                       <Avatar name={group.actor} size={16} />
                       {group.actor}
                     </span>
@@ -465,9 +465,9 @@ export function PulseTile({
 // --- Deploys ------------------------------------------------------------------
 
 const STRIP_TONE: Record<DeployStatus, string> = {
-  ready: "bg-accent",
+  ready: "bg-success",
   // Served once, until a newer build or a take-down: it worked.
-  replaced: "bg-accent/45",
+  replaced: "bg-success/45",
   down: "bg-line-strong",
   failed: "bg-danger",
   building: "bg-warn animate-pulse",
@@ -504,7 +504,7 @@ export function DeployStrip({
 }
 
 /** A small meter for a share, 0 to 1. */
-export function Meter({ value, tone = "bg-accent" }: { value: number | null; tone?: string }) {
+export function Meter({ value, tone = "bg-success" }: { value: number | null; tone?: string }) {
   return (
     <span className="block h-1.5 w-full overflow-hidden rounded-full bg-line">
       {value != null && <span className={cn("block h-full rounded-full", tone)} style={{ width: `${Math.round(value * 100)}%` }} />}

@@ -84,9 +84,9 @@ export default function DeclareIncident({ loaderData, actionData }: Route.Compon
                 {INCIDENT_SEVERITIES.map((s) => (
                   <label
                     key={s.value}
-                    className="flex cursor-pointer gap-2.5 rounded-md border border-line px-3 py-2 has-checked:border-merged/60 has-checked:bg-merged/8"
+                    className="flex cursor-pointer gap-2.5 rounded-md border border-line px-3 py-2 has-checked:border-accent/60 has-checked:bg-accent/8"
                   >
-                    <input type="radio" name="severity" value={s.value} required defaultChecked={(v.severity || "sev3") === s.value} className="mt-1 accent-[#b6a8ff]" />
+                    <input type="radio" name="severity" value={s.value} required defaultChecked={(v.severity || "sev3") === s.value} className="mt-1 accent-[var(--g1t-accent)]" />
                     <span>
                       <span className="block text-sm font-semibold">{s.label}</span>
                       <span className="block text-xs text-muted">{s.about}</span>

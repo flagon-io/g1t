@@ -460,7 +460,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
               <span
                 role="status"
                 className={`mt-1 block ${
-                  status.tone === "ok" ? "text-accent" : status.tone === "bad" ? "text-danger" : ""
+                  status.tone === "ok" ? "text-success" : status.tone === "bad" ? "text-danger" : ""
                 }`}
               >
                 {status.text}

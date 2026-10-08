@@ -221,7 +221,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
             ))}
           </ul>
           {notice && (
-            <p className="text-sm text-accent" role="status">
+            <p className="text-sm text-success" role="status">
               {notice}
             </p>
           )}
@@ -647,7 +647,7 @@ function AddTeamForm({ teams, result, workspace }: { teams: Team[]; result: Outc
       <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: everyone on the team {roleLine(role).replace(/^they /, "")}</p>
       {result &&
         (result.ok ? (
-          <p className="text-sm text-accent" role="status">
+          <p className="text-sm text-success" role="status">
             {result.message}
           </p>
         ) : (

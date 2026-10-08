@@ -23,7 +23,11 @@
   --color-faint: var(--g1t-faint);
 
   --color-accent: var(--g1t-accent);
+  --color-accent-hover: var(--g1t-accent-hover);
   --color-accent-dim: var(--g1t-accent-dim);
+
+  --color-success: var(--g1t-success);
+  --color-success-dim: var(--g1t-success-dim);
 
   --color-info: var(--g1t-info);
   --color-merged: var(--g1t-merged);
@@ -526,7 +530,7 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-merged) 18%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-accent) 18%, transparent);
   opacity: 0;
   pointer-events: none;
   animation: flow-step 10s ease-in-out infinite both;

@@ -26,13 +26,13 @@ import { Checkbox } from "./ui/checkbox";
 
 const ROW_STYLES: Record<DiffLine["kind"], string> = {
   context: "",
-  add: "bg-accent/[0.09]",
+  add: "bg-success/[0.09]",
   delete: "bg-danger/[0.09]",
 };
 
 const GUTTER_STYLES: Record<DiffLine["kind"], string> = {
   context: "text-faint",
-  add: "bg-accent/[0.14] text-accent/70",
+  add: "bg-success/[0.14] text-success/70",
   delete: "bg-danger/[0.14] text-danger/70",
 };
 
@@ -71,14 +71,14 @@ export function Stat({ additions, deletions }: { additions: number; deletions: n
   const green = total === 0 ? 0 : Math.round((additions / total) * 5);
   return (
     <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
-      <span className="text-accent">+{additions}</span>
+      <span className="text-success">+{additions}</span>
       <span className="text-danger">−{deletions}</span>
       <span className="flex gap-px" aria-hidden="true">
         {Array.from({ length: 5 }, (_, i) => (
           <span
             key={i}
             className={`size-2 rounded-xs ${
-              total === 0 ? "bg-line" : i < green ? "bg-accent" : "bg-danger"
+              total === 0 ? "bg-line" : i < green ? "bg-success" : "bg-danger"
             }`}
           />
         ))}
@@ -92,7 +92,7 @@ function fileIcon(status: HighlightedFile["status"]) {
 }
 
 function fileTone(status: HighlightedFile["status"]) {
-  return status === "added" ? "text-accent" : status === "deleted" ? "text-danger" : "text-faint";
+  return status === "added" ? "text-success" : status === "deleted" ? "text-danger" : "text-faint";
 }
 
 /** One comment made on a line, shown under that line. */
@@ -239,7 +239,7 @@ function UnifiedRows({ file, comments, canComment }: FileProps) {
 }
 
 function fileToneFor(kind: DiffLine["kind"]) {
-  return kind === "add" ? "text-accent" : kind === "delete" ? "text-danger" : "text-faint";
+  return kind === "add" ? "text-success" : kind === "delete" ? "text-danger" : "text-faint";
 }
 
 /** Lines side by side: a run of deletions beside the additions that replaced it. */
@@ -563,7 +563,7 @@ function Tree({
               <Icon size={13} className={`shrink-0 ${fileTone(file.status)}`} />
               <span className="min-w-0 grow truncate">{node.name}</span>
               <span className="shrink-0 text-[0.625rem] tabular-nums">
-                {file.additions > 0 && <span className="text-accent">+{file.additions}</span>}
+                {file.additions > 0 && <span className="text-success">+{file.additions}</span>}
                 {file.deletions > 0 && <span className="ml-1 text-danger">−{file.deletions}</span>}
               </span>
             </button>

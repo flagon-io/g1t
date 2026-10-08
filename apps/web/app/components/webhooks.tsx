@@ -45,7 +45,7 @@ const GROUPS: { title: string; events: string[] }[] = [
 
 function StatusDot({ status }: { status: string | null }) {
   const color =
-    status === "delivered" ? "bg-accent" : status === "failed" ? "bg-danger" : status === "pending" ? "bg-warn" : "bg-faint";
+    status === "delivered" ? "bg-success" : status === "failed" ? "bg-danger" : status === "pending" ? "bg-warn" : "bg-faint";
   return <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${color}`} />;
 }
 
@@ -262,7 +262,7 @@ export function WebhooksPanel({
   return (
     <div className="max-w-4xl space-y-6">
       {created && (
-        <div className="space-y-3 rounded-xl border border-accent-dim/60 bg-accent/5 p-5 text-sm">
+        <div className="space-y-3 rounded-xl border border-success-dim/60 bg-success/5 p-5 text-sm">
           <p className="font-medium">Added. g1t sent it a ping.</p>
           {created.secret ? (
             <>
@@ -280,7 +280,7 @@ export function WebhooksPanel({
         <p className="text-sm text-muted">
           Sent {action.sent.event}:{" "}
           {action.sent.status === "delivered" ? (
-            <span className="text-accent">delivered, {action.sent.responseStatus}</span>
+            <span className="text-success">delivered, {action.sent.responseStatus}</span>
           ) : (
             <span className="text-danger">{action.sent.error ?? `answered ${action.sent.responseStatus}`}</span>
           )}

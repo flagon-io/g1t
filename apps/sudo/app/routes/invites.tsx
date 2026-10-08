@@ -256,11 +256,11 @@ function Waitlist({
               <span className="font-medium">{waiting.length} waiting</span>
               <span className="text-muted"> · tick some, or </span>
               {selectAll ? (
-                <a href={clearHref} className="text-merged hover:underline">
+                <a href={clearHref} className="text-accent hover:underline">
                   clear
                 </a>
               ) : (
-                <a href={selectHref} className="text-merged hover:underline">
+                <a href={selectHref} className="text-accent hover:underline">
                   tick all {Math.min(waiting.length, MAX_BULK)}
                 </a>
               )}
@@ -300,7 +300,7 @@ function Waitlist({
                       value={entry.id}
                       defaultChecked={selectAll && index < MAX_BULK}
                       aria-label={`Tick ${entry.email}`}
-                      className="mt-1 size-4 shrink-0 accent-[var(--color-merged)]"
+                      className="mt-1 size-4 shrink-0 accent-[var(--color-accent)]"
                     />
                   )}
                   <div className="min-w-0 grow space-y-2">
@@ -594,7 +594,7 @@ export default function Invites({ loaderData, actionData }: Route.ComponentProps
             to={invitesHref(value)}
             aria-current={value === tab ? "page" : undefined}
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs whitespace-nowrap transition-colors ${
-              value === tab ? "border-merged/50 bg-merged/10 text-merged" : "border-line text-muted hover:border-line-strong hover:text-fg"
+              value === tab ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:border-line-strong hover:text-fg"
             }`}
           >
             {TAB_LABEL[value]}

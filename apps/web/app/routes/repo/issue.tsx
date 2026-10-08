@@ -475,7 +475,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                   to={`${base}/pull/${resolver.number}`}
                   className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-2 transition-colors hover:border-line-strong"
                 >
-                  <Sparkles size={15} className="shrink-0 text-merged" />
+                  <Sparkles size={15} className="shrink-0 text-accent" />
                   <span className="min-w-0 grow">
                     <span className="block font-mono text-xs font-medium">g1t</span>
                     <span className="block truncate text-xs text-muted">

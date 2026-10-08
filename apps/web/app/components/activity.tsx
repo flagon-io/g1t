@@ -33,7 +33,7 @@ function line(event: G1tEvent, base: string): Line | null {
     case "issue.opened":
       return {
         icon: <CircleDot size={14} />,
-        tone: isG1t(actor) ? "text-merged" : "text-muted",
+        tone: isG1t(actor) ? "text-accent" : "text-muted",
         actor,
         text: isG1t(actor) ? <>filed {ref(event.data.number)} for something it found</> : <>opened {ref(event.data.number)}</>,
         coordination: isG1t(actor),
@@ -41,7 +41,7 @@ function line(event: G1tEvent, base: string): Line | null {
     case "pull.opened":
       return {
         icon: <Play size={14} />,
-        tone: "text-merged",
+        tone: "text-accent",
         actor: event.data.agent,
         text: (
           <>
@@ -54,7 +54,7 @@ function line(event: G1tEvent, base: string): Line | null {
     case "checks.completed":
       return {
         icon: <Terminal size={14} />,
-        tone: event.data.status === "passed" ? "text-accent" : "text-danger",
+        tone: event.data.status === "passed" ? "text-success" : "text-danger",
         actor: null,
         text: (
           <>
@@ -65,7 +65,7 @@ function line(event: G1tEvent, base: string): Line | null {
     case "review.completed":
       return {
         icon: event.data.verdict === "approve" ? <CircleCheck size={14} /> : <CircleSlash size={14} />,
-        tone: event.data.verdict === "approve" ? "text-accent" : "text-warn",
+        tone: event.data.verdict === "approve" ? "text-success" : "text-warn",
         actor: "g1t",
         text: (
           <>
@@ -77,7 +77,7 @@ function line(event: G1tEvent, base: string): Line | null {
       if (event.data.verdict) {
         return {
           icon: event.data.verdict === "approve" ? <CircleCheck size={14} /> : <CircleSlash size={14} />,
-          tone: event.data.verdict === "approve" ? "text-accent" : "text-warn",
+          tone: event.data.verdict === "approve" ? "text-success" : "text-warn",
           actor,
           text: (
             <>
@@ -88,7 +88,7 @@ function line(event: G1tEvent, base: string): Line | null {
       }
       return {
         icon: <MessageSquare size={14} />,
-        tone: isG1t(actor) ? "text-merged" : "text-muted",
+        tone: isG1t(actor) ? "text-accent" : "text-muted",
         actor,
         text: <>commented on {ref(event.data.number)}</>,
         coordination: isG1t(actor),
@@ -96,7 +96,7 @@ function line(event: G1tEvent, base: string): Line | null {
     case "pull.merged":
       return { icon: <GitMerge size={14} />, tone: "text-accent", actor, text: <>landed {ref(event.data.number)} on main</> };
     case "agent.asked":
-      return { icon: <MessageCircleQuestion size={14} />, tone: "text-merged", actor, text: <>asked the agent on {ref(event.data.number)}, and g1t woke it to answer</> };
+      return { icon: <MessageCircleQuestion size={14} />, tone: "text-accent", actor, text: <>asked the agent on {ref(event.data.number)}, and g1t woke it to answer</> };
     case "pull.merge_requested":
       return { icon: <GitMerge size={14} />, tone: "text-muted", actor, text: <>is bringing {ref(event.data.number)} up to date</> };
     default:
@@ -117,7 +117,7 @@ export function Activity({ events, base }: { events: G1tEvent[]; base: string })
         <li
           key={event.id}
           className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm ${
-            line!.coordination ? "bg-merged/[0.07] ring-1 ring-merged/25" : ""
+            line!.coordination ? "bg-accent/[0.07] ring-1 ring-accent/25" : ""
           }`}
         >
           <span className={`shrink-0 ${line!.tone}`}>{line!.icon}</span>
@@ -154,12 +154,12 @@ export function Exchanges({ exchanges, base }: { exchanges: AgentMessage[]; base
         const state = exchange.answer
           ? exchange.declined
             ? { label: "Declined", tone: "text-warn ring-warn/40" }
-            : { label: exchange.kind === "handoff" ? "Taken on" : "Answered", tone: "text-accent ring-accent/40" }
+            : { label: exchange.kind === "handoff" ? "Taken on" : "Answered", tone: "text-success ring-success/40" }
           : exchange.deliveredAt
             ? { label: "Read", tone: "text-info ring-info/40" }
             : { label: "Waiting to be read", tone: "text-faint ring-line" };
         return (
-          <li key={exchange.id} className="rounded-2xl bg-merged/[0.05] p-4 ring-1 ring-merged/25">
+          <li key={exchange.id} className="rounded-2xl bg-accent/[0.05] p-4 ring-1 ring-accent/25">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
               <Avatar name="g1t" size={14} />
               <span>
@@ -170,7 +170,7 @@ export function Exchanges({ exchanges, base }: { exchanges: AgentMessage[]; base
             </p>
             <p className="mt-2 text-sm">{exchange.body}</p>
             {exchange.answer && (
-              <p className="mt-2 border-l-2 border-merged/40 pl-3 text-sm text-fg-soft">{exchange.answer}</p>
+              <p className="mt-2 border-l-2 border-accent/40 pl-3 text-sm text-fg-soft">{exchange.answer}</p>
             )}
           </li>
         );

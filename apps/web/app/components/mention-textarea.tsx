@@ -101,7 +101,7 @@ export function MentionTextarea({ handles, ...props }: ComponentProps<"textarea"
               }`}
             >
               {handle === AGENT_HANDLE ? (
-                <Bot size={12} className="shrink-0 text-merged" />
+                <Bot size={12} className="shrink-0 text-accent" />
               ) : (
                 <Users size={12} className="shrink-0 text-faint" />
               )}

@@ -46,7 +46,7 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
   return (
     <div className="max-w-4xl">
       <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-        <History size={19} className="text-merged" />
+        <History size={19} className="text-accent" />
         Sessions
       </h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
@@ -130,7 +130,7 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
                   {session.title} <span className="font-normal text-faint">#{session.number}</span>
                 </Link>
                 {session.active && (
-                  <span className="inline-flex items-center gap-1 text-xs text-merged">
+                  <span className="inline-flex items-center gap-1 text-xs text-accent">
                     <Loader2 size={11} className="animate-spin" />
                     at work
                   </span>

@@ -128,10 +128,10 @@ function EntryLine({ entry }: { entry: TimelineEntry }) {
   );
   if (entry.kind === "update") {
     return (
-      <li className="rounded-md border border-merged/30 bg-merged/6 px-3.5 py-3">
+      <li className="rounded-md border border-accent/30 bg-accent/6 px-3.5 py-3">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Globe size={14} aria-hidden="true" className="text-merged" />
-          <span className="text-xs font-semibold text-merged">Public update</span>
+          <Globe size={14} aria-hidden="true" className="text-accent" />
+          <span className="text-xs font-semibold text-accent">Public update</span>
           {entry.status && <Badge tone="lavender">{statusLabel(entry.status)}</Badge>}
           {meta}
           {entry.notified != null && <span className="text-xs text-faint">· emailed {entry.notified}</span>}
@@ -214,12 +214,12 @@ function UpdateForm({ incident, components, error }: { incident: AdminIncidentDe
         {error && <Notice tone="error">{error}</Notice>}
         {!draft && (
           <fieldset className="flex flex-wrap gap-2" aria-label="Who sees it">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm has-checked:border-merged/60 has-checked:bg-merged/10">
-              <input type="radio" name="visibility" value="public" defaultChecked className="accent-[#b6a8ff]" />
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm has-checked:border-accent/60 has-checked:bg-accent/10">
+              <input type="radio" name="visibility" value="public" defaultChecked className="accent-[var(--g1t-accent)]" />
               <Globe size={14} aria-hidden="true" /> Public update
             </label>
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm has-checked:border-line-strong has-checked:bg-raised">
-              <input type="radio" name="visibility" value="internal" className="accent-[#b6a8ff]" />
+              <input type="radio" name="visibility" value="internal" className="accent-[var(--g1t-accent)]" />
               <Lock size={14} aria-hidden="true" /> Internal note
             </label>
           </fieldset>
@@ -259,7 +259,7 @@ function UpdateForm({ incident, components, error }: { incident: AdminIncidentDe
         <div className="flex flex-wrap items-center justify-between gap-3">
           {!draft ? (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[#b6a8ff]" />
+              <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[var(--g1t-accent)]" />
               Email subscribers (public updates only)
             </label>
           ) : (
@@ -324,7 +324,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
               </Field>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[#b6a8ff]" />
+                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[var(--g1t-accent)]" />
                   Email subscribers
                 </label>
                 <Button type="submit" variant="lavender">
@@ -366,7 +366,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
                 {errorFor("resolve") && <Notice tone="error">{errorFor("resolve")}</Notice>}
                 <Textarea name="message" rows={3} required maxLength={4000} aria-label="Resolution update" placeholder="Pushes work again. A bad deploy was rolled back; nothing was lost." />
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[#b6a8ff]" />
+                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[var(--g1t-accent)]" />
                   Email subscribers
                 </label>
                 <Button type="submit" variant="lavender" className="w-full">
@@ -379,7 +379,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
           {!open && isPublic && (
             <Section title="Postmortem" description={incident.postmortem_published_at ? "Published on the incident's page." : incident.postmortem ? "Drafted, not published." : "Not started."}>
               <div className="flex flex-wrap items-center gap-2">
-                <Link to={`/incidents/${incident.id}/postmortem`} className="inline-flex items-center gap-1.5 text-sm font-medium text-merged hover:underline">
+                <Link to={`/incidents/${incident.id}/postmortem`} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
                   <FileText size={14} aria-hidden="true" />
                   {incident.postmortem ? "Edit the postmortem" : "Write the postmortem"}
                 </Link>
@@ -436,9 +436,9 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
                       <button
                         type="submit"
                         aria-label={f.done_at ? `Mark “${f.title}” not done` : `Mark “${f.title}” done`}
-                        className="mt-0.5 shrink-0 rounded text-faint hover:text-merged"
+                        className="mt-0.5 shrink-0 rounded text-faint hover:text-accent"
                       >
-                        {f.done_at ? <CheckCircle2 size={16} className="text-accent" /> : <Circle size={16} />}
+                        {f.done_at ? <CheckCircle2 size={16} className="text-success" /> : <Circle size={16} />}
                       </button>
                       <span className="min-w-0 text-sm">
                         <span className={f.done_at ? "text-faint line-through" : ""}>{f.title}</span>
@@ -466,7 +466,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
             <ul className="space-y-1.5 text-sm">
               {isPublic ? (
                 <li>
-                  <a href={incident.url} className="inline-flex items-center gap-1.5 text-merged hover:underline">
+                  <a href={incident.url} className="inline-flex items-center gap-1.5 text-accent hover:underline">
                     Status page permalink <ExternalLink size={13} aria-hidden="true" />
                   </a>
                   <span className="block truncate font-mono text-xs text-faint">{incident.url}</span>

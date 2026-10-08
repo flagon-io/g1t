@@ -117,7 +117,7 @@ export function Meter({
   calm?: boolean;
 }) {
   const part = share(used, of);
-  const bar = calm ? "bg-accent" : of != null && used >= of ? "bg-danger" : part >= 0.75 ? "bg-warn" : "bg-accent";
+  const bar = calm ? "bg-success" : of != null && used >= of ? "bg-danger" : part >= 0.75 ? "bg-warn" : "bg-success";
   return (
     <div className="mt-4">
       <div className="flex flex-wrap justify-between gap-x-4 text-sm">
@@ -213,7 +213,7 @@ export function PlanCard({
               status.kind === "past_due" || status.kind === "canceling"
                 ? "bg-warn/15 text-warn"
                 : on
-                  ? "bg-accent/15 text-accent"
+                  ? "bg-success/15 text-success"
                   : "border border-line text-muted"
             }`}
           >
@@ -239,7 +239,7 @@ export function PlanCard({
         <ul className="mt-4 grid gap-1.5 text-sm text-muted sm:grid-cols-2">
           {plan.includes.map((line) => (
             <li key={line} className="flex gap-2">
-              <span className="text-accent">✓</span>
+              <span className="text-success">✓</span>
               {line}
             </li>
           ))}
@@ -542,7 +542,7 @@ function RequestList({ requests }: { requests: LimitRequest[] }) {
             <span
               className={`rounded-full px-2 py-0.5 text-xs ${
                 request.status === "approved"
-                  ? "bg-accent/15 text-accent"
+                  ? "bg-success/15 text-success"
                   : request.status === "declined"
                     ? "bg-danger/15 text-danger"
                     : "border border-line text-muted"

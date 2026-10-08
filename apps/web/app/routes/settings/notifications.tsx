@@ -100,7 +100,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
             <SubmitButton variant="quiet" match={{ intent: "email" }} pending="Saving…">
               Save email settings
             </SubmitButton>
-            {said("email")?.saved && <p className="text-xs text-accent">{said("email")?.saved}</p>}
+            {said("email")?.saved && <p className="text-xs text-success">{said("email")?.saved}</p>}
           </div>
           <ErrorText>{said("email")?.error}</ErrorText>
         </Form>
@@ -123,7 +123,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
             <SubmitButton variant="quiet" match={{ intent: "default_watch" }} pending="Saving…">
               Save
             </SubmitButton>
-            {said("default_watch")?.saved && <p className="text-xs text-accent">{said("default_watch")?.saved}</p>}
+            {said("default_watch")?.saved && <p className="text-xs text-success">{said("default_watch")?.saved}</p>}
           </div>
           <ErrorText>{said("default_watch")?.error}</ErrorText>
         </Form>

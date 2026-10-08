@@ -37,7 +37,7 @@ export default function AgentsAtWork({ loaderData, params }: Route.ComponentProp
   return (
     <div className="max-w-4xl">
       <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-        <Bot size={19} className="text-merged" />
+        <Bot size={19} className="text-accent" />
         At work
       </h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">

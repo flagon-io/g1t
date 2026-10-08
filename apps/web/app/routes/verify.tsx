@@ -35,7 +35,7 @@ export default function Verify({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto max-w-md px-4 py-32 text-center">
       {loaderData.ok ? (
         <>
-          <CircleCheck size={40} className="mx-auto text-accent" />
+          <CircleCheck size={40} className="mx-auto text-success" />
           <h1 className="mt-6 text-2xl font-semibold tracking-tight">
             Email confirmed
           </h1>

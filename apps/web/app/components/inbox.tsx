@@ -31,7 +31,7 @@ const TONE: Record<InboxSeverity, BadgeTone> = {
 const ICON: Record<InboxSeverity, { icon: ReactNode; ring: string }> = {
   error: { icon: <CircleX size={15} />, ring: "bg-danger/10 text-danger ring-danger/30" },
   warning: { icon: <Hand size={15} />, ring: "bg-warn/10 text-warn ring-warn/30" },
-  success: { icon: <CircleCheck size={15} />, ring: "bg-accent/10 text-accent ring-accent/30" },
+  success: { icon: <CircleCheck size={15} />, ring: "bg-success/10 text-success ring-success/30" },
   info: { icon: <Info size={15} />, ring: "bg-info/10 text-info ring-info/30" },
 };
 
@@ -363,7 +363,7 @@ export function AgentButton() {
             aria-label="Agent"
             className="pointer-events-none flex h-9 items-center gap-1.5 rounded-md border border-line px-2.5 text-sm text-muted opacity-60 sm:px-3"
           >
-            <Sparkles size={15} className="text-merged" />
+            <Sparkles size={15} className="text-accent" />
             <span className="hidden sm:inline">Agent</span>
           </button>
         </span>

@@ -215,7 +215,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         <Connections list={modelConnections} owner={owner} tested={tested} updated={updated} deliveries={deliveries} />
         {modelConnections.length === 0 && hostedOpen && (
           <p className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
-            <CheckCircle2 size={15} className="shrink-0 text-merged" />
+            <CheckCircle2 size={15} className="shrink-0 text-accent" />
             {trial?.open
               ? trial.granted
                 ? `All work runs on g1t's models, paid by ${slug}'s trial credit first: ${dollars(Math.max(0, trial.limitMicros - trial.usedMicros))} of ${dollars(trial.limitMicros)} left. Connect a provider of your own for more, or to choose models.`
@@ -410,7 +410,7 @@ function ConnectionRow({
         )}
       </div>
       {tested?.id === connection.id && (
-        <p className={`mt-3 text-sm ${tested.ok ? "text-accent" : "text-danger"}`}>{tested.message}</p>
+        <p className={`mt-3 text-sm ${tested.ok ? "text-success" : "text-danger"}`}>{tested.message}</p>
       )}
       {connection.lastError && (
         <p className="mt-3 flex items-start gap-2 text-xs text-warn">
@@ -449,7 +449,7 @@ function ConnectionRow({
                     ? "bg-danger"
                     : delivery.outcome === "ignored"
                       ? "bg-faint"
-                      : "bg-accent"
+                      : "bg-success"
                 }`}
               />
               <span className="font-mono text-faint">{delivery.event}</span>
@@ -621,9 +621,9 @@ function Connected({ connected }: { connected: { connection: Connection; signing
   const { connection, signingSecret } = connected;
   const url = connection.webhookUrl;
   return (
-    <div className="mt-6 rounded-xl border border-accent-dim/60 bg-accent/5 p-5">
+    <div className="mt-6 rounded-xl border border-success-dim/60 bg-success/5 p-5">
       <p className="flex items-center gap-2 font-medium">
-        <CheckCircle2 size={16} className="text-accent" />
+        <CheckCircle2 size={16} className="text-success" />
         {connection.name} is connected.
       </p>
       {connection.provider === "sentry" && url && (

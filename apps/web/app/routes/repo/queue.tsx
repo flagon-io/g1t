@@ -44,7 +44,7 @@ const STATE: Record<QueueState, { label: string; tone: string; icon: React.React
     tone: "text-accent border-accent/40 bg-accent/10",
     icon: <Loader2 size={13} className="animate-spin" />,
   },
-  passed: { label: "Passed", tone: "text-accent border-accent/40 bg-accent/10", icon: <Check size={13} /> },
+  passed: { label: "Passed", tone: "text-success border-success/40 bg-success/10", icon: <Check size={13} /> },
   failed: { label: "Failed", tone: "text-danger border-danger/40 bg-danger/10", icon: <X size={13} /> },
   landed: { label: "Landed", tone: "text-merged border-merged/40 bg-merged/10", icon: <GitMerge size={13} /> },
   removed: { label: "Removed", tone: "text-faint border-line", icon: <Minus size={13} /> },
@@ -92,7 +92,7 @@ function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: str
           entry.state === "testing"
             ? "animate-pulse border-accent bg-accent/30"
             : entry.state === "passed" || entry.state === "landed"
-              ? "border-accent bg-accent"
+              ? "border-success bg-success"
               : entry.state === "failed"
                 ? "border-danger bg-danger"
                 : "border-line-strong bg-bg"
@@ -111,7 +111,7 @@ function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: str
             <TestedAs entry={entry} branch={branch} />
           )}
           {ran > 0 && (
-            <span className={passed === ran ? "text-accent" : "text-danger"}>
+            <span className={passed === ran ? "text-success" : "text-danger"}>
               {passed}/{ran} checks passed
             </span>
           )}

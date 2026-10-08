@@ -100,7 +100,7 @@ export default function DependencySettings({ loaderData, actionData, params }: R
       </header>
 
       <div className="mt-4 min-h-6">
-        {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
+        {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       </div>
 

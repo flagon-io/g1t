@@ -189,7 +189,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           <SubmitButton name="intent" value="save" pending="Saving…" disabled={blocked}>
             Save
           </SubmitButton>
-          {actionData && "saved" in actionData && <span className="text-sm text-accent">Saved.</span>}
+          {actionData && "saved" in actionData && <span className="text-sm text-success">Saved.</span>}
           <span className="ml-auto text-xs text-faint">
             Created{" "}
             {mine ? (

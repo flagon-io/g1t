@@ -105,7 +105,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
             onClick={copy}
             className="absolute top-1.5 right-1.5 rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
           >
-            {copied ? <Check size={14} className="text-accent" /> : <Copy size={14} />}
+            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
           </button>
         </div>
       </div>

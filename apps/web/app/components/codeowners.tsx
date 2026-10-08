@@ -136,7 +136,7 @@ export function CodeownersReportPanel({ report, base, branch }: { report: Codeow
         {errors > 0 ? (
           <FileWarning size={16} className="shrink-0 text-danger" />
         ) : (
-          <ShieldCheck size={16} className="shrink-0 text-accent" />
+          <ShieldCheck size={16} className="shrink-0 text-success" />
         )}
         <Link to={blobHref(base, branch, path)} className="font-mono text-sm hover:text-accent hover:underline">
           {path}
@@ -194,7 +194,7 @@ export function CodeownersFileErrors({ report, path, base }: { report: Codeowner
   if (errors === 0) {
     return (
       <p className="mb-4 flex items-center gap-2 text-sm text-muted" role="status">
-        <CircleCheck size={15} className="shrink-0 text-accent" />
+        <CircleCheck size={15} className="shrink-0 text-success" />
         No errors in this CODEOWNERS file.
       </p>
     );
@@ -225,7 +225,7 @@ function ReviewStatus({ review }: { review: OwnerReview }) {
   }
   if (review.satisfied && review.approved_by.length > 0) {
     return (
-      <span className="flex items-center gap-1 text-xs text-accent">
+      <span className="flex items-center gap-1 text-xs text-success">
         <CircleCheck size={13} className="shrink-0" /> Approved by {names(review.approved_by)}
       </span>
     );
@@ -235,7 +235,7 @@ function ReviewStatus({ review }: { review: OwnerReview }) {
   }
   if (review.satisfied) {
     return (
-      <span className="flex items-center gap-1 text-xs text-accent">
+      <span className="flex items-center gap-1 text-xs text-success">
         <CircleCheck size={13} className="shrink-0" /> Approved
       </span>
     );

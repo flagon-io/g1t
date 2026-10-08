@@ -23,14 +23,28 @@
 	--g1t-muted: #a0a0a8;
 	--g1t-faint: #86868e;
 
-	/* Mint: what is live, what passed, what was added. */
-	--g1t-accent: #86efc4;
-	--g1t-accent-dim: #4fb38e;
-	--g1t-accent-low: #10302a;
+	/*
+	 * Lavender, the colour of the logo's 1: the brand accent. Primary
+	 * actions, links, focus rings, the current tab, selection, and g1t's
+	 * own work. Text on it is --g1t-bg (9.2:1); as text on --g1t-bg it is
+	 * 9.2:1, on --g1t-raised 8.0:1.
+	 */
+	--g1t-accent: #b6a8ff;
+	--g1t-accent-hover: #c9bfff;
+	--g1t-accent-dim: #8577e0;
+	--g1t-accent-low: #221e38;
 
-	/* Accents: lavender and peach, for art and for status. */
+	/* Mint: what is live, what passed, what is ready, what was added (13.8:1). */
+	--g1t-success: #86efc4;
+	--g1t-success-dim: #4fb38e;
+	--g1t-success-low: #10302a;
+
+	/*
+	 * Status. Merged is a deeper, more saturated violet than the accent
+	 * (6.0:1 on --g1t-bg), and always comes with the merge icon.
+	 */
 	--g1t-info: #8ab4ff;
-	--g1t-merged: #b6a8ff;
+	--g1t-merged: #a678f5;
 	--g1t-warn: #ffbd8c;
 	--g1t-danger: #ff8394;
 }

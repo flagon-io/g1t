@@ -34,7 +34,7 @@ function Entry({ entry }: { entry: SessionEntry }) {
       <li className="px-4 py-3">
         <details>
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-            <Terminal size={14} className="text-merged" />
+            <Terminal size={14} className="text-accent" />
             <span className="grow">Prompt</span>
             {at}
           </summary>

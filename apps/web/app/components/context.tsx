@@ -483,14 +483,14 @@ export function SearchView({ result, query, base }: { result: SearchResult | nul
 function Rule({ rule, project, action }: { rule: RuleResult; project: string; action: string }) {
   const fetcher = useFetcher<Done>();
   const icon =
-    rule.status === "pass" ? <Check size={14} className="text-accent" /> : rule.status === "fail" ? <XCircle size={14} className="text-danger" /> : <CircleDashed size={14} className="text-faint" />;
+    rule.status === "pass" ? <Check size={14} className="text-success" /> : rule.status === "fail" ? <XCircle size={14} className="text-danger" /> : <CircleDashed size={14} className="text-faint" />;
   return (
     <li className="flex items-start gap-2.5 py-1.5">
       <span className="mt-0.5">{icon}</span>
       <div className="min-w-0 grow text-sm">
         <span className={rule.status === "na" ? "text-muted" : ""}>{rule.title}</span>
         <p className="text-xs text-muted">{rule.detail}</p>
-        {fetcher.data?.message && <p className="mt-1 text-xs text-accent">{fetcher.data.message}</p>}
+        {fetcher.data?.message && <p className="mt-1 text-xs text-success">{fetcher.data.message}</p>}
         {fetcher.data?.error && <p className="mt-1 text-xs text-danger">{fetcher.data.error}</p>}
       </div>
       {rule.fix && !fetcher.data?.ok && (
@@ -524,7 +524,7 @@ export function ScorecardsView({ cards, action }: { cards: Scorecard[]; action: 
             <Link to={`/${card.repo.namespace}/${card.repo.name}`} className="font-medium hover:text-accent">
               {card.name}
             </Link>
-            <span className={`text-xs ${card.passed === card.total ? "text-accent" : "text-muted"}`}>
+            <span className={`text-xs ${card.passed === card.total ? "text-success" : "text-muted"}`}>
               {card.passed} of {card.total}
             </span>
           </div>

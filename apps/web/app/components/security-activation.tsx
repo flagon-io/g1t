@@ -34,7 +34,7 @@ export function SecurityActivationCard({
           <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
             <ShieldCheck size={16} className="text-accent" />
             {plan.title}
-            <span className={`rounded-full px-2 py-0.5 text-xs ${on ? "bg-accent/15 text-accent" : "border border-line text-muted"}`}>{label}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs ${on ? "bg-success/15 text-success" : "border border-line text-muted"}`}>{label}</span>
           </h2>
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
             The security suite's paid features for the workspace's private repositories. Public repositories have them free, and
@@ -50,7 +50,7 @@ export function SecurityActivationCard({
       <ul className="mt-4 grid gap-1.5 text-sm text-muted sm:grid-cols-2">
         {plan.includes.map((line) => (
           <li key={line} className="flex gap-2">
-            <span className="text-accent">✓</span>
+            <span className="text-success">✓</span>
             {line}
           </li>
         ))}

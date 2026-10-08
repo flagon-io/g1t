@@ -133,7 +133,7 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
           <Link to={`${base}/settings/branches`} className="text-sm text-muted underline underline-offset-2 hover:text-fg">
             Require the checks in branch protection
           </Link>
-          {fetcher.data?.ok && <span className="text-sm text-accent">Saved.</span>}
+          {fetcher.data?.ok && <span className="text-sm text-success">Saved.</span>}
           {fetcher.data?.error && <span className="text-sm text-danger">{fetcher.data.error}</span>}
         </div>
       </fetcher.Form>

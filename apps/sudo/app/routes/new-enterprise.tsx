@@ -63,7 +63,7 @@ export default function NewEnterprise({ actionData }: Route.ComponentProps) {
       </p>
 
       {review && (
-        <section id="review" className="mt-6 scroll-mt-20 rounded-lg border border-merged/40 bg-merged/5 p-4 sm:p-5">
+        <section id="review" className="mt-6 scroll-mt-20 rounded-lg border border-accent/40 bg-accent/5 p-4 sm:p-5">
           <h2 className="font-semibold tracking-tight">Create {review.name}?</h2>
           <p className="mt-1 text-sm text-muted">
             These workspaces will be billed to it from now on, under its limit and terms instead of their own:

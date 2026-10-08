@@ -9,8 +9,8 @@
 	--sl-font-mono: var(--g1t-font-mono);
 
 	/* Lavender is the docs' accent: links, the current page, highlights. */
-	--sl-color-accent-low: color-mix(in srgb, var(--g1t-merged) 14%, var(--g1t-bg));
-	--sl-color-accent: var(--g1t-merged);
+	--sl-color-accent-low: color-mix(in srgb, var(--g1t-accent) 14%, var(--g1t-bg));
+	--sl-color-accent: var(--g1t-accent);
 	--sl-color-accent-high: #d9d1ff;
 
 	--sl-color-white: var(--g1t-fg);
@@ -130,7 +130,7 @@ site-search button[data-open-modal]:hover {
 	background: var(--g1t-surface);
 	color: var(--g1t-fg);
 	font-weight: 500;
-	box-shadow: inset 2px 0 0 var(--g1t-merged);
+	box-shadow: inset 2px 0 0 var(--g1t-accent);
 }
 
 /* --- Content -------------------------------------------------------------- */
@@ -178,11 +178,11 @@ site-search button[data-open-modal]:hover {
 }
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card) {
 	color: #cfc6ff;
-	text-decoration-color: color-mix(in srgb, var(--g1t-merged) 45%, transparent);
+	text-decoration-color: color-mix(in srgb, var(--g1t-accent) 45%, transparent);
 	text-underline-offset: 0.2em;
 }
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card):hover {
-	text-decoration-color: var(--g1t-merged);
+	text-decoration-color: var(--g1t-accent);
 }
 .sl-markdown-content :not(pre) > code {
 	border-radius: 0.3rem;
@@ -251,8 +251,8 @@ site-search button[data-open-modal]:hover {
 	background: color-mix(in srgb, var(--g1t-info) 7%, var(--g1t-bg));
 }
 .starlight-aside--tip {
-	border-color: var(--g1t-accent);
-	background: color-mix(in srgb, var(--g1t-accent) 6%, var(--g1t-bg));
+	border-color: var(--g1t-success);
+	background: color-mix(in srgb, var(--g1t-success) 6%, var(--g1t-bg));
 }
 .starlight-aside--caution {
 	border-color: var(--g1t-warn);
@@ -346,8 +346,8 @@ site-search button[data-open-modal]:hover {
 	color: var(--g1t-fg);
 }
 .sl-markdown-content .card .icon {
-	color: var(--g1t-merged);
-	background: color-mix(in srgb, var(--g1t-merged) 12%, transparent);
+	color: var(--g1t-accent);
+	background: color-mix(in srgb, var(--g1t-accent) 12%, transparent);
 	border: 0;
 	border-radius: 0.5rem;
 	padding: 0.3rem;
@@ -413,7 +413,7 @@ site-search button[data-open-modal]:hover {
 }
 .g1t-method-get,
 .g1t-method[data-method='get'] {
-	--method: var(--g1t-accent);
+	--method: var(--g1t-success);
 }
 .g1t-method-post,
 .g1t-method[data-method='post'] {

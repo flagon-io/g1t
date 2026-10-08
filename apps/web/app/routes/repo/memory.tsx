@@ -49,7 +49,7 @@ export default function ProjectMemory({ loaderData, params }: Route.ComponentPro
   return (
     <div className="max-w-4xl">
       <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-        <Brain size={19} className="text-merged" />
+        <Brain size={19} className="text-accent" />
         Memory
       </h2>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">

@@ -113,7 +113,7 @@ export function StatementView({
           </div>
           <div className="px-4 py-3">
             <dt className="text-xs text-faint">{discountLabel}</dt>
-            <dd className="mt-0.5 font-mono tabular-nums text-accent">{charge(-(totals.discountMicros ?? 0))}</dd>
+            <dd className="mt-0.5 font-mono tabular-nums text-success">{charge(-(totals.discountMicros ?? 0))}</dd>
           </div>
           <div className="px-4 py-3">
             <dt className="text-xs text-faint">Charged</dt>
@@ -146,7 +146,7 @@ export function StatementView({
           {totals.covered?.map((paid) => (
             <li key={paid.source} className="flex justify-between gap-4">
               <span className="text-muted">{paid.label}</span>
-              <span className="font-mono tabular-nums text-accent">{charge(paid.micros)}</span>
+              <span className="font-mono tabular-nums text-success">{charge(paid.micros)}</span>
             </li>
           ))}
           {(totals.carriedMicros ?? 0) > 0 && (
@@ -191,7 +191,7 @@ export function StatementView({
                     <li className="flex items-center gap-3 px-4 py-3 text-sm">
                       <span className="w-3.5 shrink-0" />
                       <span className="grow truncate text-muted">{discountLabel}</span>
-                      <span className="w-24 shrink-0 text-right font-mono tabular-nums text-accent">{charge(-(g.discountMicros ?? 0))}</span>
+                      <span className="w-24 shrink-0 text-right font-mono tabular-nums text-success">{charge(-(g.discountMicros ?? 0))}</span>
                     </li>
                   )}
                 </ul>
@@ -272,7 +272,7 @@ function StatementLineRow({
           {coveredMicros > 0 && ` · ${charge(coveredMicros)} paid for`}
         </span>
         <span
-          className={`w-24 shrink-0 text-right font-mono tabular-nums ${moneyIn ? "text-accent" : "text-fg"}`}
+          className={`w-24 shrink-0 text-right font-mono tabular-nums ${moneyIn ? "text-success" : "text-fg"}`}
         >
           {moneyIn ? `+${dollars(-chargedMicros)}` : charge(chargedMicros)}
         </span>
@@ -299,7 +299,7 @@ function StatementLineRow({
                 <span className="shrink-0 text-right font-mono text-xs tabular-nums text-muted">
                   {entry.amountMicros > 0 ? `+${dollars(entry.amountMicros)}` : charge(entryPrice(entry))}
                   {(entry.discountMicros ?? 0) > 0 && (
-                    <span className="block text-[0.6875rem] text-accent">{charge(-(entry.discountMicros ?? 0))} discount</span>
+                    <span className="block text-[0.6875rem] text-success">{charge(-(entry.discountMicros ?? 0))} discount</span>
                   )}
                 </span>
               </li>

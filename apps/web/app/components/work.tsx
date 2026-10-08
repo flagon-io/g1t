@@ -92,7 +92,7 @@ const PILL = "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2
 export function IssueState({ issue }: { issue: Pick<Issue, "state" | "reason"> }) {
   const style =
     issue.state === "open"
-      ? "border-accent/30 bg-accent/10 text-accent"
+      ? "border-success/30 bg-success/10 text-success"
       : issue.reason === "not_planned"
         ? "border-line bg-surface text-muted"
         : "border-merged/30 bg-merged/10 text-merged";
@@ -110,7 +110,7 @@ export function IssueState({ issue }: { issue: Pick<Issue, "state" | "reason"> }
 
 const PULL_STYLES: Record<Pull["status"], string> = {
   draft: "border-line bg-surface text-muted",
-  open: "border-accent/30 bg-accent/10 text-accent",
+  open: "border-success/30 bg-success/10 text-success",
   merged: "border-merged/30 bg-merged/10 text-merged",
   closed: "border-danger/30 bg-danger/10 text-danger",
 };
@@ -169,7 +169,7 @@ export function StateTabs({
 }
 
 const VERDICTS = {
-  approve: { label: "approved these changes", style: "text-accent" },
+  approve: { label: "approved these changes", style: "text-success" },
   request_changes: { label: "requested changes", style: "text-danger" },
 } as const;
 
@@ -429,7 +429,7 @@ export function CommentForm({
           {review?.canJudge && (
             <>
               <SubmitButton variant="quiet" name="verdict" value="approve" match={{ action: "comment" }} pending="Approving…">
-                <CircleCheck size={14} className="text-accent" />
+                <CircleCheck size={14} className="text-success" />
                 Approve
               </SubmitButton>
               <SubmitButton
@@ -519,7 +519,7 @@ export function ChangeSize({ files }: { files: Pull["files"] }) {
       <span>
         {files.length} {files.length === 1 ? "file" : "files"}
       </span>
-      <span className="text-accent">+{additions}</span>
+      <span className="text-success">+{additions}</span>
       <span className="text-danger">−{deletions}</span>
     </span>
   );

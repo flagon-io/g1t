@@ -47,7 +47,7 @@ export default function Soon({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:py-14">
       <div className="flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-lg bg-merged/10 text-merged ring-1 ring-merged/30 ring-inset">
+        <span className="flex size-10 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/30 ring-inset">
           <NavGlyph icon={icon} size={18} />
         </span>
         <Badge tone="lavender">Soon</Badge>
@@ -66,7 +66,7 @@ export default function Soon({ loaderData }: Route.ComponentProps) {
         <ul className="mt-3 space-y-2.5">
           {soon.plans.map((plan) => (
             <li key={plan} className="flex gap-2.5 text-sm text-fg-soft">
-              <Check size={15} className="mt-0.5 shrink-0 text-merged" />
+              <Check size={15} className="mt-0.5 shrink-0 text-accent" />
               <span>{plan}</span>
             </li>
           ))}
@@ -81,7 +81,7 @@ export default function Soon({ loaderData }: Route.ComponentProps) {
               {soon.meanwhile.to && (
                 <>
                   {" "}
-                  <Link to={soon.meanwhile.to} className="inline-flex items-center gap-1 text-merged hover:underline hover:underline-offset-4">
+                  <Link to={soon.meanwhile.to} className="inline-flex items-center gap-1 text-accent hover:underline hover:underline-offset-4">
                     {soon.meanwhile.link ?? "Open"}
                     <ArrowRight size={13} />
                   </Link>

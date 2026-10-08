@@ -49,7 +49,7 @@ export function BackLink({ to, children }: { to: string; children: ReactNode }) 
 
 /** One timer: a label, a figure, and a line under it. */
 export function Timer({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "danger" | "warn" | "mint" }) {
-  const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : tone === "mint" ? "text-accent" : "text-fg";
+  const color = tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : tone === "mint" ? "text-success" : "text-fg";
   return (
     <div className="min-w-0 px-4 py-3">
       <p className="text-xs text-muted">{label}</p>

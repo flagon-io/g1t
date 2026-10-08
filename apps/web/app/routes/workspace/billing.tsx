@@ -429,7 +429,7 @@ function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
               </span>
               <span
                 className={`rounded-full border px-2 py-0.5 text-xs ${
-                  invoice.status === "paid" ? "border-accent/40 text-accent" : "border-danger/40 text-danger"
+                  invoice.status === "paid" ? "border-success/40 text-success" : "border-danger/40 text-danger"
                 }`}
               >
                 {invoice.status === "paid" ? "Paid" : invoice.status === "failed" ? "Payment failed" : invoice.status}

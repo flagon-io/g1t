@@ -388,7 +388,7 @@ export function RunCaps({ run, member }: { run: AgentRun; member: boolean }) {
               </span>
               of {cap}m
             </p>
-            <Meter share={timeShare} tone={timeShare != null && timeShare > 0.85 ? "bg-warn" : "bg-accent"} />
+            <Meter share={timeShare} tone={timeShare != null && timeShare > 0.85 ? "bg-warn" : "bg-success"} />
           </div>
         )}
         {member && (
@@ -398,7 +398,7 @@ export function RunCaps({ run, member }: { run: AgentRun; member: boolean }) {
               {spent ? <span className="tabular-nums text-fg">{spent}</span> : <span>Spend</span>}
               of {formatCap(budget)}
             </p>
-            <Meter share={costShare} tone={costShare != null && costShare > 0.85 ? "bg-warn" : "bg-accent"} />
+            <Meter share={costShare} tone={costShare != null && costShare > 0.85 ? "bg-warn" : "bg-success"} />
             {active && !spent && budget != null && (
               <p className="mt-1.5 text-xs text-faint">
                 The agent stops itself at the cap. What it spent is reported when the run ends.

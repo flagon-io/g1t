@@ -374,7 +374,7 @@ function AccountMenu({ user }: { user: User }) {
         aria-label={`Account menu for ${user.username}`}
         onPointerEnter={prefetch}
         onFocus={prefetch}
-        className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-merged/60 data-[state=open]:bg-raised"
+        className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent/60 data-[state=open]:bg-raised"
       >
         <Avatar name={user.username} image={user.avatar} size={22} />
         <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
@@ -1102,7 +1102,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
 /** Help, status and the fine print under a visitor's sign-in buttons. */
 function VisitorLinks() {
   const status = useSiteStatus();
-  const quiet = `${LEGAL_LINK} hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-merged/60`;
+  const quiet = `${LEGAL_LINK} hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60`;
   const dot = (
     <span aria-hidden="true" className="text-[0.625rem] text-line-strong">
       ·

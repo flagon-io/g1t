@@ -14,7 +14,7 @@ export function AskComposer({ children }: { children?: ReactNode }) {
     <section aria-label="Agent" className="space-y-3">
       <div aria-disabled="true" className="rounded-xl border border-line bg-surface opacity-80">
         <p className="flex items-center gap-2 px-4 pt-3 text-sm font-medium text-fg">
-          <Sparkles size={14} className="text-merged" aria-hidden="true" />
+          <Sparkles size={14} className="text-accent" aria-hidden="true" />
           Agent
           <span className="rounded-full border border-line px-1.5 text-[0.6875rem] font-normal text-muted">Coming later</span>
         </p>

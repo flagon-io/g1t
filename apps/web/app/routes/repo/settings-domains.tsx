@@ -67,7 +67,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 const STATUS: Record<DomainStatus, { label: string; tone: string; live?: boolean }> = {
   pending: { label: "Waiting for DNS", tone: "text-warn border-warn/30 bg-warn/5", live: true },
   verifying: { label: "Issuing certificate", tone: "text-warn border-warn/30 bg-warn/5", live: true },
-  active: { label: "Active", tone: "text-accent border-accent/30 bg-accent/5" },
+  active: { label: "Active", tone: "text-success border-success/30 bg-success/5" },
   failed: { label: "Failed", tone: "text-danger border-danger/30 bg-danger/5" },
   removing: { label: "Removing", tone: "text-faint border-line" },
 };
@@ -116,7 +116,7 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
     <div className="max-w-4xl">
       <RepoSettingsHeading base={base} />
       <div className="min-h-6">
-        {actionData && "notice" in actionData && <p className="text-sm text-accent">{actionData.notice}</p>}
+        {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       </div>
 
@@ -255,7 +255,7 @@ function DomainRow({ domain }: { domain: Domain }) {
       {domain.error && !active && <p className="mt-2 text-sm text-muted">{domain.error}</p>}
       {active ? (
         <p className="mt-2 flex items-center gap-1.5 text-sm text-muted">
-          <CheckCircle2 size={14} className="text-accent" />
+          <CheckCircle2 size={14} className="text-success" />
           {domain.redirectTo ? "Redirecting, with its certificate." : "Serving production, with its certificate."}
           {domain.verifiedAt && <span className="text-faint">Since {new Date(domain.verifiedAt).toLocaleDateString()}.</span>}
         </p>

@@ -14,7 +14,7 @@ export function IssueIcon({
   issue: Pick<Issue, "state" | "reason">;
   size?: number;
 }) {
-  if (issue.state === "open") return <CircleDot size={size} className="shrink-0 text-accent" />;
+  if (issue.state === "open") return <CircleDot size={size} className="shrink-0 text-success" />;
   if (issue.reason === "not_planned") {
     return <CircleSlash size={size} className="shrink-0 text-faint" />;
   }
@@ -29,5 +29,5 @@ export function PullIcon({ status, size = 16 }: { status: Pull["status"]; size?:
   if (status === "draft") {
     return <GitPullRequestDraft size={size} className="shrink-0 text-faint" />;
   }
-  return <GitPullRequest size={size} className="shrink-0 text-accent" />;
+  return <GitPullRequest size={size} className="shrink-0 text-success" />;
 }
