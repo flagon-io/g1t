@@ -124,7 +124,7 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     let concurrency = deploy.concurrency.as_ref().unwrap();
     assert_eq!(concurrency.group, "deploy-production");
     assert_eq!(concurrency.cancel_in_progress, json!(false));
-    assert_eq!(deploy.job_order(), ["check", "plan", "migrate", "core", "edge", "front"]);
+    assert_eq!(deploy.job_order(), ["check", "plan", "migrate", "core", "edge", "front", "smoke"]);
     // The stages share their steps (a YAML alias), and read the token only
     // where they deploy.
     let steps = |id: &str| deploy.jobs.iter().find(|j| j.id == id).unwrap().steps.len();
@@ -168,10 +168,19 @@ fn deploy_stages_follow_one_another() {
     assert!(!starts_after(&deploy, "core", &skipped, &all, push.clone(), false, true));
     assert!(!starts_after(&deploy, "front", &skipped, &all, push.clone(), false, true));
 
+    // Smoke follows the last stage that ran, and not a failed one.
+    assert!(starts(&deploy, "smoke", &[("core", "success"), ("edge", "success"), ("front", "success")], &all, push.clone(), false));
+    assert!(starts(&deploy, "smoke", &[("core", "success"), ("edge", "skipped"), ("front", "success")], &none, push.clone(), false));
+    assert!(!starts(&deploy, "smoke", &[("core", "success"), ("edge", "failure"), ("front", "skipped")], &all, push.clone(), false));
+    // Nothing deployed: nothing to smoke-test.
+    let nothing = plan_outputs(false, &[], &[], &[]);
+    assert!(!starts(&deploy, "smoke", &[("core", "skipped"), ("edge", "skipped"), ("front", "skipped")], &nothing, push.clone(), false));
+
     // A dry run plans and stops.
     let dry = json!({ "dry_run": true, "units": "", "all": false });
     assert!(!starts(&deploy, "migrate", &[], &all, dry.clone(), false));
-    assert!(!starts(&deploy, "core", &[("migrate", "skipped")], &all, dry, false));
+    assert!(!starts(&deploy, "core", &[("migrate", "skipped")], &all, dry.clone(), false));
+    assert!(!starts(&deploy, "smoke", &[("core", "skipped"), ("edge", "skipped"), ("front", "skipped")], &all, dry, false));
 }
 
 #[test]

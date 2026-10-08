@@ -7,6 +7,7 @@
 #   migrate  pending D1 migrations, before any code
 #   core, edge, front   the units of each stage, in jobs that share a build;
 #            a stage starts only when the one before it succeeded
+#   smoke    sign-in, sign-up and the waitlist still work on g1t.sh
 #
 # Each run that deploys is one production deployment of g1t.sh, made by the
 # jobs that name `environment: production` (one per run, however many jobs):
@@ -252,3 +253,18 @@ jobs:
       max-parallel: 4
       matrix: ${{ fromJSON(needs.plan.outputs.front) }}
     steps: *deploy
+
+  # Once everything has deployed: the ways in for someone new still work.
+  # The pages a visitor lands on load, and the waitlist form reaches
+  # identity, sent an address it refuses before keeping anything, so the
+  # real waitlist is never touched. scripts/ops/smoke.mjs.
+  smoke:
+    name: Smoke
+    needs: [plan, core, edge, front]
+    if: ${{ !failure() && !cancelled() && inputs.dry_run != true && (needs.plan.outputs.has_core == 'true' || needs.plan.outputs.has_edge == 'true' || needs.plan.outputs.has_front == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Sign-in, sign-up and the waitlist work
+        run: node scripts/ops/smoke.mjs

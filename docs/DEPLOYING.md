@@ -429,6 +429,7 @@ not), `all` and `dry_run` (plan only).
 | `plan` | `plan --github-output`: outputs per stage, the plan in the run's summary | `check` |
 | `migrate` | `migrate --only <units with pending migrations>` | `plan`; skipped when none are pending |
 | `core`, `edge`, `front` | `deploy --only <units> --force --no-migrations`, one job per build group | the stages before; skipped when empty |
+| `smoke` | `node scripts/ops/smoke.mjs`: the landing page, sign-in, sign-up and pricing load, and the waitlist form reaches identity (sent an address identity refuses before keeping or counting anything, so the real waitlist is never touched) | every stage; skipped when nothing deployed |
 
 - **One at a time:** `concurrency: deploy-production`, never cancelled in
   progress; a second push waits.
