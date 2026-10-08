@@ -13,6 +13,7 @@ import {
   serviceDuration,
   databaseTime,
   sessionFor,
+  setsBookmark,
   writeBookmarks,
 } from "./perf.ts";
 
@@ -63,7 +64,7 @@ test("what each call asks for", () => {
 });
 
 test("only known reads are taken not to write", () => {
-  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage", "get", "list", "queue", "pulls_for_repos"]) {
+  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage", "get", "list", "queue", "pulls_for_repos", "stars", "about", "public_links"]) {
     assert.equal(mayWrite(method), false, method);
   }
   for (const method of ["merge_pull", "verify_email", "github_finish", "sign_in", "something_new"]) {
@@ -71,6 +72,16 @@ test("only known reads are taken not to write", () => {
   }
   assert.equal(rpcMethodOf("https://service/rpc/get_pull"), "get_pull");
   assert.equal(rpcMethodOf("https://service/other"), "");
+});
+
+test("a signed-out GET never sets the bookmark cookie, so public pages stay cacheable", () => {
+  const read = { writing: false, signedIn: false };
+  assert.equal(setsBookmark({ ...read, wrote: true, hasSession: false }), false);
+  assert.equal(setsBookmark({ ...read, wrote: true, hasSession: true }), true);
+  assert.equal(setsBookmark({ ...read, wrote: false, hasSession: true }), false);
+  // A form post, or signing in on a GET, always does.
+  assert.equal(setsBookmark({ writing: true, signedIn: false, wrote: false, hasSession: false }), true);
+  assert.equal(setsBookmark({ writing: false, signedIn: true, wrote: false, hasSession: false }), true);
 });
 
 test("timings", () => {

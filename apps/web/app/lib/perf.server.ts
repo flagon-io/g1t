@@ -9,6 +9,7 @@ import {
   bookmarkCookie,
   coveredMs,
   mayWrite,
+  setsBookmark,
   readBookmarks,
   rpcMethodOf,
   serverTiming,
@@ -142,8 +143,8 @@ export function finishResponse(request: Request, response: Response): Response {
   );
   // Signing in with GitHub writes on a GET; the session it starts says so.
   const signedIn = answered.headers.getSetCookie().some((cookie) => cookie.startsWith("g1t_session="));
-  const wrote = perf.writing || perf.wrote || signedIn;
-  if (wrote) {
+  const hasSession = /(?:^|;\s*)g1t_session=/.test(request.headers.get("cookie") ?? "");
+  if (setsBookmark({ writing: perf.writing, wrote: perf.wrote, hasSession, signedIn })) {
     const next: Bookmarks = {
       at: Math.floor(Date.now() / 1000),
       services: { ...perf.bookmarks.services, ...perf.returned },

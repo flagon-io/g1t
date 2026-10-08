@@ -99,7 +99,8 @@ export function sessionFor(service: string, bookmarks: Bookmarks, writing: boole
  * `get`, `list`, `queue` and `pulls_for_repos` were missing: every project
  * page called `get` (repos, projects), so every one set the cookie, was
  * never kept in the public cache, and sent the next 30 s of the person's
- * reads to the primary.
+ * reads to the primary. `stars`, `about` and `public_links` (2026-10-08)
+ * did the same to every project page and Explore for 13 hours.
  */
 const READS = new Set(
   (
@@ -111,9 +112,21 @@ const READS = new Set(
     "readable ready_issues references registration repo_access resolve resolve_branch resolve_path resolve_slug " +
     "routes run run_context run_cost runner_groups runner_settings runners runs scorecards search search_memories " +
     "settings statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
-    "user_for_session usernames waiting_workspaces workflows workspace workspace_invites github_enabled"
+    "user_for_session usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
+    "stars about public_links"
   ).split(" "),
 );
+
+/**
+ * Whether a response sets the `g1t_d1` cookie. A signed-out GET never
+ * does, whatever it called: nobody signed out can write anything their
+ * next page must read, and a cookie keeps the page out of the public
+ * cache. Signing in on a GET (GitHub) starts a session, so it does.
+ */
+export function setsBookmark(request: { writing: boolean; wrote: boolean; hasSession: boolean; signedIn: boolean }): boolean {
+  if (request.writing || request.signedIn) return true;
+  return request.wrote && request.hasSession;
+}
 
 /** Whether an RPC to `method` may write. */
 export function mayWrite(method: string): boolean {
