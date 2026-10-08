@@ -114,10 +114,25 @@ impl Job {
             return (false, BTreeMap::new());
         }
         let target = sha.clone().unwrap_or_else(|| "FETCH_HEAD".into());
-        // The commit may be further back than a shallow fetch reaches.
-        let present = Command::new("git").current_dir(&path).args(["cat-file", "-e", &format!("{target}^{{commit}}")]).status().is_ok_and(|s| s.success());
-        if !present && !self.fetch_retrying(&path, &["fetch", "--no-tags", "--quiet", "origin"], auth.as_deref()) {
-            return (false, BTreeMap::new());
+        // The commit may be further back than a shallow fetch reaches: the
+        // branch moved on after the run began, say. Ask for the commit
+        // itself, and failing that the whole history; a plain fetch never
+        // reaches past a shallow boundary.
+        let has = |target: &str| Command::new("git").current_dir(&path).args(["cat-file", "-e", &format!("{target}^{{commit}}")]).status().is_ok_and(|s| s.success());
+        if !has(&target) {
+            let by_sha = sha.as_deref().is_some_and(|sha| {
+                let mut args = vec!["fetch", "--no-tags", "--quiet"];
+                if depth > 0 {
+                    args.push(&depth_arg);
+                }
+                args.extend(["origin", sha]);
+                self.git(&path, &args, auth.as_deref()) && has(sha)
+            });
+            let shallow = path.join(".git").join("shallow").exists();
+            let deepen: &[&str] = if shallow { &["fetch", "--no-tags", "--quiet", "--unshallow", "origin"] } else { &["fetch", "--no-tags", "--quiet", "origin"] };
+            if !by_sha && !self.fetch_retrying(&path, deepen, auth.as_deref()) {
+                return (false, BTreeMap::new());
+            }
         }
         let checked_out = match &branch {
             Some(branch) => self.git(&path, &["checkout", "--quiet", "--force", "-B", branch, &target], None),
