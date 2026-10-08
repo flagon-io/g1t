@@ -15,6 +15,7 @@ mod emails;
 mod github;
 mod invites;
 mod oauth;
+mod paid;
 mod profiles;
 mod rename;
 mod run_credentials;

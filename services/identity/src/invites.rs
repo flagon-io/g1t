@@ -730,7 +730,13 @@ impl Identity {
     /// Joins the invite's workspace, and tells the event log and audit log.
     async fn after_redeemed(&self, row: &InviteRow, user: &User, created_account: bool) -> Result<()> {
         let mut joined = None;
-        if let (Some(workspace_id), Some(slug)) = (&row.workspace_id, &row.workspace) {
+        // A free workspace adds no one (paid.rs): a sign-up with an invite
+        // from one sent before still makes the account, without joining.
+        let free = match &row.workspace {
+            Some(slug) => self.is_free_workspace(slug).await,
+            None => false,
+        };
+        if let (Some(workspace_id), Some(slug), false) = (&row.workspace_id, &row.workspace, free) {
             self.db
                 .prepare(
                     "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
@@ -1200,6 +1206,16 @@ impl Identity {
         {
             return Ok(Outcome::fail(FailureCode::Forbidden, why));
         }
+        // An invite sent before the workspace was free waits until it
+        // starts the plan (paid.rs); the code is not used up.
+        let joins_slug = row.workspace.clone().or_else(|| {
+            repository.as_ref().and_then(|r| r.name.split_once('/').map(|(workspace, _)| workspace.to_owned()))
+        });
+        if let Some(slug) = joins_slug.as_deref()
+            && let Some(refused) = self.free_workspace_refusal(slug).await?
+        {
+            return Ok(refused);
+        }
         let claimed = self
             .db
             .prepare(format!(
@@ -1238,6 +1254,10 @@ impl Identity {
         let Some(workspace_id) = self.workspace_id(&slug).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
         };
+        // A free workspace invites no one until it starts the plan (paid.rs).
+        if let Some(refused) = self.free_workspace_refusal(&slug).await? {
+            return Ok(refused);
+        }
         if !self.hit(&format!("invite.create:{}", a.actor.id), CREATES_PER_HOUR).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
         }
