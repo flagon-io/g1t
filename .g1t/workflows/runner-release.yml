@@ -74,7 +74,8 @@ jobs:
   image:
     name: Container image
     needs: binaries
-    # Needs Docker, which g1t's own sandboxes do not have.
+    # Builds for arm64 as well as amd64, which needs QEMU's emulators
+    # registered on the machine: a self-hosted runner's, for now.
     runs-on: [self-hosted, docker]
     environment: production
     timeout-minutes: 30

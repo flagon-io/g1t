@@ -139,12 +139,16 @@ and `runner.arch` are the machine's, and `RUNNER_ENVIRONMENT` is
 
 - **In Docker** (the default), each job gets a fresh container from its
   `container:` image or the runner's `--image`, removed when it ends. The
-  runner needs Docker, and its user needs to be allowed to use it.
+  runner needs Docker, and its user needs to be allowed to use it. Its
+  `services:` are not started, since the job's container has no Docker of
+  its own; the log says so.
 - **With `--no-docker`**, each job gets a fresh folder under the work
   folder, removed when it ends, and runs with whatever the machine has
   installed. A step's default shell is `bash` on Linux and macOS and
   PowerShell on Windows; `shell: pwsh`, `powershell`, `cmd`, `bash` and
-  `python` work where installed.
+  `python` work where installed. On a machine with Docker, the job's
+  `services:`, `container:`, `docker://` steps and Docker actions use
+  the machine's Docker, as on GitHub's runners.
 
 A self-hosted job stops at 60 minutes unless its `timeout-minutes` says
 more, up to 24 hours (1440). Jobs on g1t's own machines stop at 60 minutes.

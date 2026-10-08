@@ -1,6 +1,7 @@
 //! `uses:` steps: `actions/checkout` done natively against g1t, actions
-//! fetched from GitHub and run as they are (JavaScript and composite), and
-//! a few of GitHub's own whose services g1t does not have yet.
+//! fetched from GitHub and run as they are (JavaScript, composite and
+//! Docker), `docker://` images, and a few of GitHub's own whose services
+//! g1t does not have yet.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use g1t_actions::expr;
 use g1t_actions::workflow::yaml_to_json;
 use serde_json::{Map, Value, json};
 
+use super::containers::{self, DockerRun};
 use super::files::StepFiles;
 use super::process::{self, Commands, Ended};
 use super::{Frame, Job, Post, PostRun};
@@ -201,8 +203,22 @@ impl Job {
     pub(crate) fn run_node(&mut self, action_dir: &Path, script: &str, env: &BTreeMap<String, String>) -> bool {
         let id = format!("node{}", super::rand_id());
         let Ok(files) = StepFiles::new(&self.temp, &id) else { return false };
-        let mut command = Command::new("node");
-        command.arg(action_dir.join(script)).current_dir(&self.workspace).env_clear().envs(self.process_env(env, &files));
+        let full = self.process_env(env, &files);
+        let script_path = action_dir.join(script);
+        // In a job container whose image runs the runner's Node, the action
+        // runs there, as on GitHub.
+        let in_container = self.container.as_ref().filter(|c| c.node).map(|c| c.path.clone()).and_then(|image_path| {
+            let inside = self.container_env(env, full.clone(), &image_path);
+            self.in_container(containers::CONTAINER_NODE, &[script_path.display().to_string()], &self.workspace, inside)
+        });
+        let command = match in_container {
+            Some(command) => command,
+            None => {
+                let mut command = Command::new("node");
+                command.arg(&script_path).current_dir(&self.workspace).env_clear().envs(full);
+                command
+            }
+        };
         let mut commands = Commands {
             debug: false,
             ..Commands::default()
@@ -237,12 +253,27 @@ impl Job {
         _timeout: Duration,
     ) -> (bool, BTreeMap<String, String>) {
         let uses = uses.trim();
-        if uses.starts_with("docker://") {
-            self.log.line(&format!("##[error]`{uses}`: Docker actions do not run on g1t yet."));
-            return (false, BTreeMap::new());
+        if let Some(image) = uses.strip_prefix("docker://") {
+            // `with.args` and `with.entrypoint` are the container's; every
+            // input is also an `INPUT_` variable, as on GitHub.
+            let mut step_env = env.clone();
+            for (input, value) in with {
+                step_env.insert(format!("INPUT_{}", input.replace(' ', "_").to_ascii_uppercase()), value.clone());
+            }
+            let run = DockerRun {
+                image: image.to_owned(),
+                entrypoint: with.get("entrypoint").filter(|e| !e.is_empty()).cloned(),
+                args: with.get("args").map(|a| containers::split_words(a)).unwrap_or_default(),
+                env: step_env,
+            };
+            let (ok, outputs, _) = self.run_docker(&run);
+            return (ok, outputs);
         }
         let (name, git_ref) = uses.split_once('@').unwrap_or((uses, ""));
         let lower = name.to_ascii_lowercase();
+        if lower == "docker/setup-buildx-action" && self.docker_hosted {
+            return self.setup_buildx(with);
+        }
         match lower.as_str() {
             "actions/checkout" => return self.checkout(with),
             "actions/upload-artifact" => return self.upload_artifact(with),
@@ -396,10 +427,84 @@ impl Job {
             return (ok, outputs);
         }
         if using == "docker" {
-            self.log.line(&format!("##[error]`{uses}` is a Docker action, which does not run on g1t yet."));
-            return (false, BTreeMap::new());
+            return self.docker_action(uses, &dir, &runs, &inputs, &step_env, frame, title);
         }
         self.log.line(&format!("##[error]`{uses}` runs with `{using}`, which g1t does not know."));
         (false, BTreeMap::new())
+    }
+
+    /// A Docker action: its image built from its Dockerfile (or pulled,
+    /// for `docker://`), then run with its `args`, `entrypoint` and `env`,
+    /// its inputs as `INPUT_` variables, and `pre-entrypoint` and
+    /// `post-entrypoint` around it.
+    #[allow(clippy::too_many_arguments)]
+    fn docker_action(
+        &mut self,
+        uses: &str,
+        dir: &Path,
+        runs: &Value,
+        inputs: &BTreeMap<String, String>,
+        step_env: &BTreeMap<String, String>,
+        frame: &Frame,
+        title: &str,
+    ) -> (bool, BTreeMap<String, String>) {
+        let image = runs.get("image").map(expr::to_text).unwrap_or_default();
+        let image = if let Some(pulled) = image.strip_prefix("docker://") {
+            pulled.to_owned()
+        } else if image.is_empty() {
+            self.log.line(&format!("##[error]`{uses}` has no `runs.image`."));
+            return (false, BTreeMap::new());
+        } else {
+            match self.build_action_image(dir, &image, uses) {
+                Some(tag) => tag,
+                None => return (false, BTreeMap::new()),
+            }
+        };
+        // `args` and `env` read with the action's own inputs.
+        let mut env = step_env.clone();
+        for (input, value) in inputs {
+            env.insert(format!("INPUT_{}", input.replace(' ', "_").to_ascii_uppercase()), value.clone());
+        }
+        let mut scope_frame = frame.clone();
+        scope_frame.inputs = Some(Value::Object(inputs.iter().map(|(k, v)| (k.clone(), json!(v))).collect()));
+        let contexts = self.contexts_for(&scope_frame, &env);
+        if let Some(Value::Object(own)) = runs.get("env") {
+            for (name, value) in own {
+                let value = self.with_scope(&contexts, |scope| expr::interpolate_value(value, scope)).unwrap_or(Value::Null);
+                env.insert(name.clone(), expr::to_text(&value));
+            }
+        }
+        let args: Vec<String> = match runs.get("args") {
+            Some(Value::Array(items)) => items
+                .iter()
+                .map(|item| {
+                    let value = self.with_scope(&contexts, |scope| expr::interpolate_value(item, scope)).unwrap_or(Value::Null);
+                    expr::to_text(&value)
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let entry = |key: &str| runs.get(key).map(expr::to_text).filter(|e| !e.is_empty());
+        if let Some(pre) = entry("pre-entrypoint") {
+            let run = DockerRun { image: image.clone(), entrypoint: Some(pre), args: Vec::new(), env: env.clone() };
+            if !self.run_docker(&run).0 {
+                return (false, BTreeMap::new());
+            }
+        }
+        let run = DockerRun { image: image.clone(), entrypoint: entry("entrypoint"), args, env: env.clone() };
+        let (ok, outputs, state) = self.run_docker(&run);
+        if let Some(post) = entry("post-entrypoint") {
+            let mut post_env = env;
+            for (name, value) in state {
+                post_env.insert(format!("STATE_{name}"), value);
+            }
+            self.posts.push(Post {
+                name: format!("Post {title}"),
+                condition: runs.get("post-if").map(expr::to_text).unwrap_or_else(|| "always()".into()),
+                env: BTreeMap::new(),
+                run: PostRun::Docker(DockerRun { image, entrypoint: Some(post), args: Vec::new(), env: post_env }),
+            });
+        }
+        (ok, outputs)
     }
 }

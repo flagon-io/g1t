@@ -265,7 +265,7 @@ async function runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, 
   }
   if (!docker) {
     throw new Error(
-      `its image ${tag} is not in the registry, and Docker is not available here. Build and push it from a machine with Docker (node scripts/deploy.mjs image), then run this again.`,
+      `its image ${tag} is not in the registry, and Docker does not answer here. Build and push it where Docker runs (a g1t Actions job, or a machine with Docker: node scripts/deploy.mjs image), then run this again.`,
     );
   }
   const started = Date.now();

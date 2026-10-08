@@ -3,8 +3,8 @@
 # g1t-runner-base: everything a g1t sandbox has apart from the g1t runner
 # itself. Agents, checks, the merge queue, workflow jobs and g1t.page
 # builds all run in it: git, Node, Python, Go, Rust (with the formatter,
-# the linter and the wasm32 target), the usual build tools, and the
-# Claude Code CLI.
+# the linter, and the wasm32 and musl targets), the usual build tools,
+# Docker (Engine, Buildx, Compose), and the Claude Code CLI.
 #
 # Built and pushed by `node scripts/deploy.mjs build-base` (by hand, or by
 # .g1t/workflows/runner-base.yml), which records what it pushed in
@@ -13,8 +13,8 @@
 # runner builds in seconds. docs/DEPLOYING.md explains the two.
 #
 # Layers go from what changes least to what changes most: the system's
-# packages, then Go, then Rust, then the Claude Code CLI on top, so a new
-# CLI version rebuilds and pushes one layer.
+# packages, Docker, then Go, then Rust, then the Claude Code CLI on top, so
+# a new CLI version rebuilds and pushes one layer.
 #
 # Build context: this folder (nothing is copied from it).
 
@@ -41,6 +41,9 @@ RUN printf '%s\n' \
 # BuildKit's cache, not the image (run `sudo apt-get update` before
 # installing more). dpkg skips its fsync after every file, which an image
 # build has no use for and which made this step several times slower.
+# musl-tools is musl-gcc, with which (and `rustup target add
+# x86_64-unknown-linux-musl`) the static g1t runner builds in a workflow
+# job (scripts/build-runner.mjs).
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update \
@@ -48,7 +51,28 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       git ca-certificates curl build-essential pkg-config libssl-dev \
       python3 python3-pip python3-venv ripgrep jq zstd \
       sudo unzip zip xz-utils wget file gnupg lsb-release openssh-client \
+      musl-tools \
  && rm -rf /var/log/apt /var/log/dpkg.log /var/cache/debconf/*-old
+
+# Docker, for workflow jobs: the CLI with Buildx and Compose, and the
+# Engine (dockerd, containerd, runc), which the runner starts as a job's
+# own the first time the job uses it (crates/runner/src/docker). From
+# Docker's own repository, its signing key checked against the fingerprint
+# Docker publishes. Nothing here runs until a job asks for it.
+ARG DOCKER_KEY_FINGERPRINT=9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    install -m 0755 -d /etc/apt/keyrings \
+ && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+ && GNUPGHOME="$(mktemp -d)" gpg --show-keys --with-colons /etc/apt/keyrings/docker.asc \
+      | grep -q "^fpr:::::::::${DOCKER_KEY_FINGERPRINT}:" \
+ && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+      > /etc/apt/sources.list.d/docker.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-unsafe-io \
+      docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
+ && rm -rf /var/log/apt /var/log/dpkg.log /var/cache/debconf/*-old \
+ && docker --version && dockerd --version && docker buildx version && docker compose version
 
 # Workflows expect GitHub's runner layout under /home/runner, and sudo
 # without a password. The agent works in /work.

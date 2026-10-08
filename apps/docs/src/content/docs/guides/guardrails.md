@@ -103,11 +103,20 @@ real builds need, which no setting removes:
 - every package registry above, whatever the project turned on for its
   agents, and RubyGems, Packagist, NuGet, Maven Central, Gradle and
   Debian's mirrors;
+- container registries, for a job's own Docker Engine: Docker Hub
+  (`registry-1.docker.io`, `auth.docker.io` and the CDNs its layers come
+  from), `mirror.gcr.io`, Quay (`quay.io` and its CDNs), and Docker's
+  package repository, `download.docker.com`;
 - for deploy builds, Cloudflare's API, which the build uploads its app to.
 
 The repository itself is cloned from g1t, which is always reachable. A
 project whose guardrails set **Only allowed hosts** to Open runs its jobs
 and builds with an open network too.
+
+The containers a job starts with [Docker](/guides/actions/#docker), its
+services and its build steps share the job's network, so this list is
+theirs too: an image from another registry, or a build step that
+downloads from another host, needs that host allowed, as a step would.
 
 ### Workflow-only domains
 
@@ -279,10 +288,10 @@ second:
 - **No pool to reach.** No mining pool is on any allowed list, so a
   restricted sandbox's miner has nowhere to send its work.
 - **Miners by name.** A shell command an agent runs, a check, a build
-  command or a workflow step that names a known miner (`xmrig`,
-  `cpuminer`, `t-rex` and others), a pool address (`stratum+tcp://`) or a
-  miner's flags (`--donate-level`, `--algo=rx/0`) is refused, whatever the
-  project's rules. A running process whose command line names one stops
+  command, a workflow step or a container a job starts whose image or
+  command names a known miner (`xmrig`, `cpuminer`, `t-rex` and others), a
+  pool address (`stratum+tcp://`) or a miner's flags (`--donate-level`,
+  `--algo=rx/0`) is refused, whatever the project's rules. A running process whose command line names one stops
   the sandbox at once.
 - **The CPU signature.** Every sandbox samples itself every 30 seconds:
   CPU use, file and disk I/O, network bytes, new processes, and whether the

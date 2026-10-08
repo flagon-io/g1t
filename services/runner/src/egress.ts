@@ -163,8 +163,10 @@ export const ABUSE_MESSAGE = "Stopped: unusual CPU use; contact support if this 
  * What workflow jobs and deploy builds may reach on top of the project's
  * allowed domains and registries: where `actions/checkout`, `uses:`
  * actions and the `setup-*` actions fetch from, the package registries
- * builds install from, and (for deploys) Cloudflare's API, which a build
- * uploads its app to. No mining pool is on it, and no general host.
+ * builds install from, the public container registries a job's Docker
+ * Engine pulls images from (crates/runner docker/), and (for deploys)
+ * Cloudflare's API, which a build uploads its app to. No mining pool is on
+ * it, and no general host.
  */
 export const BUILD_HOSTS: readonly string[] = [
   // Actions by `uses:`, and releases the setup actions download.
@@ -203,7 +205,31 @@ export const BUILD_HOSTS: readonly string[] = [
   "plugins.gradle.org",
   "deb.debian.org",
   "security.debian.org",
+  // Container images, for a job's own Docker Engine: Docker Hub (and the
+  // CDN its layers come from), Google's public mirror of it, which the
+  // Engine asks first, and Quay. GitHub's registry is above.
+  "registry-1.docker.io",
+  "auth.docker.io",
+  "index.docker.io",
+  "production.cloudflare.docker.com",
+  "production.cloudfront.docker.com",
+  "mirror.gcr.io",
+  "quay.io",
+  "cdn01.quay.io",
+  "cdn02.quay.io",
+  "cdn03.quay.io",
+  // Docker's own packages (apt), for images that install the CLI.
+  "download.docker.com",
 ];
+
+/**
+ * Whether a workflow job gets a Docker Engine of its own, from the
+ * Worker's `DOCKER` setting: on unless it says `off`. Its containers share
+ * the job's network, so the hosts above, and its guardrails, are theirs too.
+ */
+export function dockerFor(setting: string | undefined): "on" | "off" {
+  return setting?.trim().toLowerCase() === "off" ? "off" : "on";
+}
 
 /**
  * A workflow job, for the guardrails' workflow-only domains: its workflow
