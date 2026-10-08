@@ -31,6 +31,7 @@ import {
 } from "../lib/usage";
 import { cn } from "../lib/cn";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Hint } from "./ui/hint";
 import { Skeleton } from "./ui/skeleton";
 
 const SELECT =
@@ -485,7 +486,11 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
         <span className="size-2 shrink-0 rounded-sm" style={{ background: color }} />
         <span className="min-w-0">
           <span className="block truncate">{meter.label}</span>
-          {meter.note && <span className="block truncate text-[0.6875rem] text-faint" title={meter.note}>{meter.note}</span>}
+          {meter.note && (
+            <Hint label={meter.note}>
+              <span className="block truncate text-[0.6875rem] text-faint">{meter.note}</span>
+            </Hint>
+          )}
         </span>
         {parts.length > 0 && <ChevronDown size={13} className="shrink-0 text-faint transition-transform group-open:rotate-180" />}
       </span>
