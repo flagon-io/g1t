@@ -163,6 +163,13 @@ An invite code to someone without an account uses one of the workspace's
 granted invites, or else one of yours (see
 [invites](/guides/authentication/#invites)), and works for 30 days.
 
+On a free workspace, only the first row works: its members can be given a
+role, but nobody else can be invited until the workspace starts the g1t
+plan. **Add people** says **Start the plan to invite people** above the
+form, and an invitation is refused with `402` (`payment_required`). An
+invitation sent before cannot be accepted until then. See
+[who a free workspace can add](/guides/usage-and-billing/#who-a-free-workspace-can-add).
+
 To change someone's role, pick another beside their name. To take it away,
 choose **Remove**. Removing takes away only the role given on this
 repository: an owner's Admin, a member's base permission and what their

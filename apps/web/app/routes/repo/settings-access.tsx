@@ -17,6 +17,7 @@ import {
 import type { Route } from "./+types/settings-access";
 import { RoleSelect, RolesTable } from "../../components/access";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
+import { StartPlanToInvite } from "../../components/start-plan";
 import { SettingsSection as Section } from "../../components/settings-section";
 import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
@@ -32,7 +33,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import { page } from "../../lib/meta";
 import { refusal, requireInsider } from "../../lib/access.server";
-import { identity } from "../../lib/services.server";
+import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -46,14 +47,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const manage = access.can.manage_access;
   // The workspace's teams, for Add team: only Admins add one, and a
   // failure there leaves the rest of the page as it is.
-  const [found, teams] = await Promise.all([
+  const [found, teams, free] = await Promise.all([
     identity.repoAccess(params.owner, params.repo, viewer),
     manage ? identity.listTeams(viewer, params.owner).catch(() => null) : Promise.resolve(null),
+    // A free workspace invites no one from outside; identity refuses it
+    // either way, so a failure here only hides the note.
+    manage ? billing.freeWorkspaces([params.owner]).catch(() => [] as string[]) : Promise.resolve([] as string[]),
   ]);
   return {
     access: unwrap(found),
     teams: teams?.ok ? teams.value : ([] as Team[]),
     manage,
+    free: free.includes(params.owner.toLowerCase()),
     // Owners change the base permission, on the workspace's People page.
     owner: roleIn(viewer, params.owner) === "owner",
   };
@@ -143,7 +148,7 @@ const SOURCE: Record<Collaborator["source"], string> = {
 };
 
 export default function RepoAccessSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { access, manage, owner, teams } = loaderData;
+  const { access, manage, owner, teams, free } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const full = `${params.owner}/${params.repo}`;
   const pending = access.invitations.filter((invitation) => invitation.status === "pending");
@@ -195,6 +200,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
             title="Add people"
             about="A member of the workspace gets the role at once. Anyone else gets an invitation, by email, and has the role once they accept it."
           >
+            {free && <StartPlanToInvite workspace={params.owner} owner={owner} outside />}
             <AddForm result={result} />
           </Section>
         )}

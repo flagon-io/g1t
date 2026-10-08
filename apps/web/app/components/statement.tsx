@@ -141,6 +141,12 @@ export function StatementView({
         </dl>
       )}
 
+      {((totals.taxMicros ?? 0) !== 0 || (totals.cardFeeMicros ?? 0) !== 0) && (
+        <p className="mt-2 text-xs text-faint">
+          Paid with this month's payments on top of what they credited: tax {dollars(totals.taxMicros ?? 0)}, card processing fees{" "}
+          {dollars(totals.cardFeeMicros ?? 0)}. Prices exclude tax; neither comes from your balance.
+        </p>
+      )}
       {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (
         <ul className="mt-2 space-y-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
           {totals.covered?.map((paid) => (
@@ -174,7 +180,17 @@ export function StatementView({
                   <span className="font-mono tabular-nums text-faint">{charge(g.chargedMicros)}</span>
                 </div>
                 <ul className="divide-y divide-line">
-                  {g.lines.map((line) => (
+                  {g.lines.map((line) =>
+                    line.kind === "Tax" || line.kind === "Card processing fees" ? (
+                      // Paid with the day's payments, on top of what reached the balance: never charged.
+                      <li key={line.kind} className="flex items-center gap-3 px-4 py-3 text-sm">
+                        <span className="w-3.5 shrink-0" />
+                        <span className="grow truncate text-muted">
+                          {line.kind} <span className="text-xs text-faint">· paid with the payment, not from the balance</span>
+                        </span>
+                        <span className="w-24 shrink-0 text-right font-mono tabular-nums text-muted">{dollars(line.passedMicros ?? 0)}</span>
+                      </li>
+                    ) : (
                     <StatementLineRow
                       key={line.kind}
                       slug={slug}
@@ -186,7 +202,8 @@ export function StatementView({
                       day={group === "day" ? g.key : null}
                       project={group === "project" ? g.key : null}
                     />
-                  ))}
+                    ),
+                  )}
                   {(g.discountMicros ?? 0) > 0 && (
                     <li className="flex items-center gap-3 px-4 py-3 text-sm">
                       <span className="w-3.5 shrink-0" />

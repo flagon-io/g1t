@@ -623,7 +623,7 @@
           "Workspaces"
         ],
         "summary": "Create a workspace",
-        "description": "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to.\n\n`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/).",
+        "description": "Create a workspace. A workspace owns repositories and is the first part of their address: g1t.sh/{workspace}/{repo}. The whoami tool lists the ones you already belong to. A new workspace is free, and each person can own one free workspace: if you already own one (or several, from before), this is refused with `payment_required` (402) until each workspace you own is on the g1t plan or deleted. Workspaces with the plan, an enterprise's terms or a full discount do not count.\n\n`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). A new workspace is free, and each person owns at most one free workspace: while you own one, this answers `402` with `payment_required` and says which, until it is on the plan or deleted. See [One free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person).",
         "x-operation": "create_workspace",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "create",
@@ -2001,7 +2001,7 @@
           "Invites"
         ],
         "summary": "Invite someone to a workspace",
-        "description": "Invite an email address into a workspace. It always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, accepting makes the account and joins the workspace in one step, and uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing, and they join when they accept. To add someone by username at once, use the workspace's People page. Owners only.\n\n`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way.",
+        "description": "Invite an email address into a workspace. It always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, accepting makes the account and joins the workspace in one step, and uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing, and they join when they accept. To add someone by username at once, use the workspace's People page. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then.\n\n`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan.",
         "x-operation": "invite_member",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "invite_member",
@@ -2409,7 +2409,7 @@
           "Access"
         ],
         "summary": "Add a collaborator",
-        "description": "Give someone a role on a repository, by username or email address. A member of its workspace gets the role at once (`result` is `granted`, with the `collaborator`). Anyone else becomes an outside collaborator once they accept an invitation, which is emailed to them and waits 7 days (`result` is `invited`, with the `invitation`); an address with no g1t account is sent an invite that makes the account and accepts in one step. The role is read, triage, write, maintain or admin. Needs the Admin role on the repository, signed in as a person with a confirmed email address; agents' and workspaces' tokens are refused.\n\n`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. The `repo.collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/).",
+        "description": "Give someone a role on a repository, by username or email address. A member of its workspace gets the role at once (`result` is `granted`, with the `collaborator`). Anyone else becomes an outside collaborator once they accept an invitation, which is emailed to them and waits 7 days (`result` is `invited`, with the `invitation`); an address with no g1t account is sent an invite that makes the account and accepts in one step. The role is read, triage, write, maintain or admin. Needs the Admin role on the repository, signed in as a person with a confirmed email address; agents' and workspaces' tokens are refused. A free workspace can give its members a role, but cannot invite anyone from outside it: that is refused with `payment_required` (402) until the workspace starts the g1t plan.\n\n`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. On a free workspace, inviting anyone who is not a member answers `402` with `payment_required` until it starts the g1t plan. The `repo.collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/).",
         "x-operation": "add_collaborator",
         "x-mcp-tool": "access",
         "x-mcp-action": "add_collaborator",
@@ -6946,7 +6946,7 @@
           "Access"
         ],
         "summary": "Accept a repository invitation",
-        "description": "Accept an invitation to a repository sent to you. You get its role on that repository at once, as an outside collaborator unless you belong to its workspace. Refused when the workspace asks something of everyone with access that your account does not meet, such as two-factor authentication. People only.\n\nThe role is yours at once. `404` when you have no pending invitation with that id (it may have expired or been revoked), and `403` when your account does not meet what the workspace asks of everyone with access, such as two-factor authentication, with a message that says what to turn on. See [Access and roles](/guides/access-and-roles/).",
+        "description": "Accept an invitation to a repository sent to you. You get its role on that repository at once, as an outside collaborator unless you belong to its workspace. Refused when the workspace asks something of everyone with access that your account does not meet, such as two-factor authentication, and with `payment_required` (402) while the workspace is free: it can add no one until it starts the g1t plan, and the invitation waits until then. People only.\n\nThe role is yours at once. `404` when you have no pending invitation with that id (it may have expired or been revoked), and `403` when your account does not meet what the workspace asks of everyone with access, such as two-factor authentication, with a message that says what to turn on. See [Access and roles](/guides/access-and-roles/).",
         "x-operation": "accept_repo_invitation",
         "x-mcp-tool": "account",
         "x-mcp-action": "accept_repository_invitation",
@@ -10207,7 +10207,7 @@
           "Billing"
         ],
         "summary": "List a workspace's invoices",
-        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, activations, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
+        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, activations, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
         "x-operation": "list_invoices",
         "x-mcp-tool": "billing",
         "x-mcp-action": "invoices",
@@ -10270,7 +10270,9 @@
                           "amount_micros": 6200000
                         }
                       ],
-                      "created_at": "2026-10-01T00:05:00.000Z"
+                      "created_at": "2026-10-01T00:05:00.000Z",
+                      "fee_micros": 1600000,
+                      "tax_micros": 3510000
                     }
                   ],
                   "upcoming": {
@@ -10337,7 +10339,7 @@
           "Billing"
         ],
         "summary": "Get a workspace's billing details",
-        "description": "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Members of the workspace only.\n\nOwners change these on the workspace's billing page. `payment_method` is null until a card or other way to pay is saved.",
+        "description": "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Tax is worked out from the address: `tax_location` says whether it is enough for that (a country, and in the US a ZIP code), `tax_address_needed_at` is set while g1t is holding a charge for want of one, `tax_id_status` is Stripe's check of the tax ID (`pending`, `verified`, `unverified` or `unavailable`), and `tax_exempt` is `none`, `exempt` or `reverse`. Members of the workspace only.\n\nOwners change these on the workspace's billing page. `payment_method` is null until a card or other way to pay is saved. Tax is worked out from the address: `tax_location` is false until it has at least a country (and in the US a ZIP code), and `tax_address_needed_at` is set while a charge waits for one.",
         "x-operation": "get_billing_details",
         "x-mcp-tool": "billing",
         "x-mcp-action": "billing_details",
@@ -10388,7 +10390,11 @@
                     "last4": "4242",
                     "exp_month": 12,
                     "exp_year": 2028
-                  }
+                  },
+                  "tax_location": true,
+                  "tax_address_needed_at": null,
+                  "tax_id_status": "unavailable",
+                  "tax_exempt": "none"
                 }
               }
             }

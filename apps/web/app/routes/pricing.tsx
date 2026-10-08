@@ -92,7 +92,15 @@ const HOW = [
   },
   {
     title: "No seats, ever",
-    body: "Add as many people and agents as you like. A workspace pays one flat price for the plan, and for what it uses past what the plan includes.",
+    body: "Once a workspace is on the plan, add as many people and agents as you like. It pays one flat price for the plan, and for what it uses past what the plan includes.",
+  },
+  {
+    title: "Prices exclude tax",
+    body: "Every price here is before tax. Stripe adds sales tax, VAT or GST where it applies, worked out from the billing address, and shows it as its own line before you pay and on every receipt and invoice. A valid business tax ID is applied where the law says so.",
+  },
+  {
+    title: "Card fees are passed on, nothing more",
+    body: "Paying by card adds Stripe's card processing fee as its own line, shown before you pay, so the 20% is never spent on fees. A bank transfer or invoiced billing has no card fee.",
   },
 ];
 
@@ -157,7 +165,12 @@ function rows(tier: Required<FreeTier>): Row[] {
       note: "Custom patterns, validity checks, code scanning, dependency review and the security overview on private repositories are the Security and quality activation. On public repositories they are free.",
     },
     { what: "Single sign-on", free: "On every plan, once it is built", plan: "On every plan, once it is built" },
-    { what: "Members", free: "Unlimited", plan: "Unlimited" },
+    {
+      what: "Members",
+      free: "Only the people already in it: a free workspace cannot add members, invite people or invite outside collaborators",
+      plan: "Unlimited, never per seat",
+      note: "Each person can own one free workspace. More workspaces need the plan.",
+    },
     {
       what: "Usage past what is included",
       free: "Not possible: a free workspace never runs up a bill",
@@ -182,7 +195,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">One plan, and usage at cost plus 20%</h1>
       <p className="mt-3 max-w-2xl text-muted">
         The forge is free for everyone. Work that runs on g1t's machines is metered at what it costs g1t, plus 20%. The
-        numbers on this page are the live price book g1t charges from.
+        numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added where it applies.
       </p>
       {free && (
         <div className="mt-5 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
@@ -197,6 +210,9 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <p>
             <span className="text-3xl font-semibold tabular-nums">${price}</span>{" "}
             <span className="text-sm text-muted">a month per workspace</span>
+            <span className="block text-right text-xs text-faint">
+              {plan.cardFeeCents ? `+ $${(plan.cardFeeCents / 100).toFixed(2)} card processing fee, plus tax where it applies` : "Plus tax where it applies"}
+            </span>
           </p>
         </div>
         <ul className="mt-4 space-y-1.5 text-sm text-muted">
@@ -237,6 +253,11 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <p>
               <span className="text-3xl font-semibold tabular-nums">${(securityPlan.monthlyCents / 100).toFixed(securityPlan.monthlyCents % 100 ? 2 : 0)}</span>{" "}
               <span className="text-sm text-muted">a month per workspace</span>
+              <span className="block text-right text-xs text-faint">
+                {securityPlan.cardFeeCents
+                  ? `+ $${(securityPlan.cardFeeCents / 100).toFixed(2)} card processing fee, plus tax where it applies`
+                  : "Plus tax where it applies"}
+              </span>
             </p>
           </div>
           <p className="mt-2 text-sm text-muted">
@@ -490,7 +511,9 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                     <tr>
                       <td className="px-4 py-3">
                         <p className="font-medium">Card processing fee</p>
-                        <p className="text-xs text-faint">On AI credit bought by card, as its own line at checkout; never on invoices</p>
+                        <p className="text-xs text-faint">
+                          On every card payment, as its own line shown before you pay; never on bank transfers or invoiced billing
+                        </p>
                       </td>
                       <td className="px-4 py-3 text-muted">Stripe's fee</td>
                       <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>

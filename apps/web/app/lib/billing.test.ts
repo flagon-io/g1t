@@ -8,6 +8,8 @@ import {
   alertText,
   alertTone,
   cardCheckResult,
+  cardFeeCents,
+  feeAndTax,
   creditLine,
   dollars,
   needsAttention,
@@ -33,6 +35,18 @@ test("a credit from g1t reads in a line, with what is left and when it expires",
   assert.equal(creditLine({ ...grant, expiresAt: null }, now), "$25.00 credit, $12.40 left");
   assert.equal(creditLine({ ...grant, state: "used", leftMicros: 0 }, now), "$25.00 credit, all used");
   assert.equal(creditLine({ ...grant, state: "revoked", leftMicros: 0 }, now), "$25.00 credit, withdrawn");
+});
+
+test("the card fee shown before paying is the one billing charges, and prices exclude tax", () => {
+  const fee = { on: true, percentMicros: 29_000, fixedCents: 30 };
+  // The same figures as billing's own tests (ai.rs, tax.rs).
+  assert.equal(cardFeeCents(2_500, fee), 106);
+  assert.equal(cardFeeCents(2_000, fee), 91);
+  assert.equal(cardFeeCents(2_000, { ...fee, on: false }), 0);
+  assert.equal(cardFeeCents(0, fee), 0);
+  assert.equal(cardFeeCents(2_000, null), 0);
+  assert.equal(feeAndTax(59), "Card processing fee $0.59, plus tax where it applies");
+  assert.equal(feeAndTax(0), "Plus tax where it applies");
 });
 
 test("money reads as dollars", () => {
@@ -305,4 +319,10 @@ test("invoice details read from the form, with the country in capitals", async (
   assert.equal(parsed.value.address.country, "DE");
   form.set("taxId", "");
   assert.equal(parseInvoiceDetails(form).ok, false);
+  // Tax is worked out from the address: in the US, the ZIP code is needed.
+  form.set("taxIdType", "");
+  form.set("country", "us");
+  assert.equal(parseInvoiceDetails(form).ok, false);
+  form.set("postalCode", "94107");
+  assert.ok(parseInvoiceDetails(form).ok);
 });

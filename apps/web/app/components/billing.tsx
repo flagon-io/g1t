@@ -13,10 +13,12 @@ import type { Credits, Entitlements, FeatureState, Limit, LimitRequest, MeterUsa
 import {
   CAPS,
   CREDIT_KIND,
+  PLUS_TAX,
   PREPAY,
   type PlanStatus,
   alertText,
   alertTone,
+  cardFeeCents,
   creditLine,
   dollars,
   gigabytes,
@@ -232,6 +234,9 @@ export function PlanCard({
           <span className="text-2xl font-semibold tabular-nums tracking-tight">${((plan?.monthlyCents ?? 2000) / 100).toFixed(0)}</span>
           <span className="text-sm text-muted"> / month</span>
           <span className="block text-xs text-faint">per workspace, never per seat</span>
+          <span className="block text-xs text-faint">
+            {plan?.cardFeeCents ? `+ ${dollars(plan.cardFeeCents * 10_000)} card processing fee, ${PLUS_TAX}` : "Plus tax where it applies"}
+          </span>
         </p>
       }
     >
@@ -644,7 +649,21 @@ export function CreditsCard({ credits }: { credits: Credits }) {
   );
 }
 
-export function PrepayCard({ prepaidMicros, owner, live, error }: { prepaidMicros: number; owner: boolean; live: boolean; error?: string }) {
+export function PrepayCard({
+  prepaidMicros,
+  owner,
+  live,
+  cardFee,
+  error,
+}: {
+  prepaidMicros: number;
+  owner: boolean;
+  live: boolean;
+  /** The card fee as billing charges it, to show it before paying. */
+  cardFee?: { on: boolean; percentMicros: number; fixedCents: number } | null;
+  error?: string;
+}) {
+  const fees = PREPAY.presets.map((amount) => `${dollars(cardFeeCents(amount * 100, cardFee) * 10_000)} on ${wholeDollars(amount * 1_000_000)}`);
   return (
     <Card
       id="prepay"
@@ -685,6 +704,10 @@ export function PrepayCard({ prepaidMicros, owner, live, error }: { prepaidMicro
               By bank transfer (from {wholeDollars(PREPAY.bankFrom * 1_000_000)}; counted when it arrives)
             </label>
           </RadioGroup>
+          <p className="text-xs text-faint">
+            {cardFee?.on ? `By card, a card processing fee is its own line (${fees.join(", ")}); a bank transfer has none. ` : ""}
+            Tax is added where it applies, from your billing address; what you prepay is credited in full.
+          </p>
           {!live && <p className="text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>}
           <ErrorText>{error}</ErrorText>
         </Form>

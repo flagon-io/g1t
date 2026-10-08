@@ -117,6 +117,8 @@ For each day and bucket:
   what the plan's included usage, a trial, the open-source pool or g1t paid.
   g1t's own (comped) workspaces are valued at cost plus the margin.
 - **Cash** = what workspaces paid: `-amount_micros`, and the plan's price.
+  Never tax or card fees: a payment credits the balance, and
+  `plan_payments`, without them (see [Tax and the card fee](#tax-and-the-card-fee)).
 - **Given away** = the part of the cost that went on usage g1t paid for
   itself on purpose, by why:
   - **comped**: all of a comped workspace's cost, every bucket;
@@ -499,7 +501,9 @@ last charged (`runs.agent_tokens`, claimed with a compare-and-set), on a
 line `<run>/agent` (later `<run>/agent/<tokens>`), with `quantity` the
 tokens. Runs on a workspace's own provider have no session here and are not
 charged the rate. **Card fee switch:** sudo → Costs → Guardrails → *Card fee
-on AI credit bought by card* (`cost_settings.card_fee`, `on`/`off`).
+on card payments* (`cost_settings.card_fee`, `on`/`off`, on by default). It
+covers every card payment now, not only AI credit: see
+[Tax and the card fee](#tax-and-the-card-fee).
 
 ### Budgets
 
@@ -710,6 +714,131 @@ again.
 or a card check; opening the billing portal; settling a page the person
 came back from; renaming a workspace (the customer's name). Nothing a page
 view reads.
+
+## Tax and the card fee
+
+Owner decision 2026-10-08. Code: `services/billing/src/tax.rs` (what is
+kept, the address hold), `stripe.rs` (every request's tax fields),
+`invoices.rs`, `webhooks.rs`, `ai.rs`; migration
+`0041_tax_and_card_fees.sql`.
+
+### What Stripe is asked
+
+Every price excludes tax (`tax_behavior=exclusive`) and carries tax code
+`txcd_10103001` (software as a service, business use; the card fee too,
+since a fee for paying for a sale follows the sale). Fields are valid for
+`2025-02-24.acacia`.
+
+| Request | Tax | Card fee |
+| --- | --- | --- |
+| Checkout, plan or Security (`subscription_fields`) | `automatic_tax[enabled]`, `billing_address_collection=required`, `tax_id_collection[enabled]`, with a customer `customer_update[address]=auto` and `[name]=auto`; the subscription keeps automatic tax for every renewal | A second recurring line, *Card processing fee* |
+| Subscription on a saved card (`saved_subscription_fields`) | `automatic_tax[enabled]`; a customer Stripe Tax cannot place fails, and the person is sent to Checkout, which asks for the address | `items[1]`, the `card_fee` product |
+| Checkout, prepay (`prepay_fields`) | As above | By card only; none by bank transfer |
+| Checkout, AI credit (`credit_fields`) | As above | Its own line |
+| Checkout, card check (`card_check_fields`) | Setup mode: nothing charged, nothing taxed. `billing_address_collection=required`, and the card's address is copied onto a customer with none (`fill_address`) | — |
+| Auto-reload (`charge_saved`) | `POST /tax/calculations` first (credit and fee as lines), the PaymentIntent for the total, then `POST /tax/transactions/create_from_calculation` with the PaymentIntent as reference; a refund reverses its share (`create_reversal`, `mode=partial`) | In the calculation and the amount |
+| Workspace invoice, month close and threshold (`invoice_workspace`) | `automatic_tax[enabled]` on the draft; each item `tax_behavior`, `tax_code` | An item *Card processing fee*, when the default payment method is a card |
+| Enterprise invoice (`invoice_enterprise`) | The same | Never |
+| Products (`Stripe::product`) | Made with `tax_code`; one found without it is given it | The `card_fee` product, `metadata[g1t]=card_fee` |
+
+### What is kept
+
+A payment credits the balance with what it paid for, never its tax or fee:
+prepay credits the page's `amount_subtotal` less the fee line
+(`credit_prepayment`), a workspace invoice `amount_paid − tax − fee`
+(`credit_invoice`), AI credit its credit amount, and `plan_payments` the
+plan's invoice less its tax and *Card processing fee* lines
+(`stripe::invoice_split`). Each payment's tax and fee are rows in
+`tax_and_fees` (`<reference>/tax`, `<reference>/card_fee`; the enterprise's
+account id in `workspace` for its invoices), with the PaymentIntent, so a
+refund (`charge.refunded`) gives back the balance, tax and fee in
+proportion (`tax::refund_split`, negative rows under `refund/<charge>/…`).
+`workspace_invoices.fee_micros` and `tax_micros` sit beside each usage
+invoice.
+
+- **Statement.** *Tax* and *Card processing fees* are their own lines per
+  day (`StatementLine.passed_micros`), never in `charged_micros`; totals
+  `tax_micros`, `card_fee_micros`. The CSV has a row a day for each.
+- **Margin.** Cash never holds them, so margin is untouched. sudo → Costs
+  shows **Tax collected** and **Card fees passed on** for the range
+  (`OverallMargin.tax_collected_micros`, `card_fees_micros`). Tax is owed to
+  the authorities: file it from Stripe Tax's reports, never from g1t's.
+
+### No address
+
+Stripe Tax needs a country (in the US a ZIP code, in Canada a postal code
+or province: `stripe::address_places_customer`). Before a workspace
+invoice is drafted, g1t checks the customer; without an address, or when
+Stripe leaves the draft at `requires_location_inputs` or refuses with
+`customer_tax_location_invalid`, nothing is charged:
+`accounts.tax_address_needed_at` is set, the owners are emailed once
+(`notify_owners`), and Billing shows **Add a billing address**. Saving
+Invoice details with an address Stripe Tax can use clears it, as does a
+charge that goes through. Work is not stopped for it; the limits still
+apply. Auto-reload without an address fails like a declined card (turned
+off, owners told). An enterprise's invoice is not sent without an address:
+sudo → the enterprise → Invoices → **Billing address** (`admin_enterprise_address`,
+with its tax ID; audited `billing_address`).
+
+### The card fee
+
+`card_fee_cents` grosses Stripe's fee up so the amount paid for is left
+after it: `(amount + 30¢) / (1 − 2.9%)`, rounded up; $0.91 on $20, $1.06
+on $25. It is worked out on the amount before tax, so Stripe's fee on the
+tax itself (a few cents) is g1t's. It is shown before paying: the plan card
+and pricing page (`Plan.card_fee_cents`), AI credit (*Card processing fee
+$1.06, plus tax where it applies*), Prepay. Never on a bank transfer or an
+enterprise's (`send_invoice`) invoice. Meters stay at cost + 20% and models
+at the provider's price plus the agent rate (price versions in migration
+0040); the fee is passed through, not margin.
+
+### Tax-exempt customers and tax IDs
+
+g1t never sets `tax_exempt`. For a customer who sends an exemption
+certificate, set it in Stripe's dashboard (Customers → the customer → Tax
+status: Exempt, or Reverse charge); Billing then says so. Tax IDs come
+from Checkout (`tax_id_collection`) or Invoice details (`set_billing_details`,
+validated against Stripe's types in `details::TAX_ID_TYPES`); Stripe checks
+EU VAT numbers and Stripe Tax applies a reverse charge where it should.
+Billing shows Stripe's `verification.status`.
+
+### In Stripe's dashboard (not done by g1t)
+
+1. **Settings → Tax → Get started**: turn on Stripe Tax in live and test
+   mode.
+2. **Origin address**: Flagon, Inc.'s head office address.
+3. **Default tax code**: Software as a service, business use
+   (`txcd_10103001`); **default tax behavior**: exclusive.
+4. **Registrations**: add each jurisdiction where Flagon is registered to
+   collect (its home state at least; then states as thresholds are
+   crossed, which Stripe Tax's monitoring flags; the EU's OSS and the UK
+   if selling there). Stripe collects only where a registration exists.
+5. **Customer portal**: tax ID and address updates are already allowed
+   (`portal_configuration`).
+6. Refund an invoice through a **credit note**, so its tax is reversed in
+   Stripe Tax.
+
+## Free workspaces
+
+Owner decision 2026-10-08: one free workspace per person, and a free
+workspace adds no one. Billing answers one question, `free_workspaces`
+(`credits.rs`): which of the given workspaces are on no paid plan
+(`plan_kind_for` is `Free`). The plan, an enterprise's terms and a 100%
+discount (flagon-io) count as paid; with payments off nothing is free.
+Identity asks it (`services/identity/src/paid.rs`) and refuses with
+`payment_required`:
+
+| Where | Refused when |
+| --- | --- |
+| `create_workspace` | The person owns any free workspace. Several from before are kept (grandfathered); none can be added until each is paid for or deleted. |
+| `add_member`, `invite_member` | The workspace is free. |
+| `add_collaborator` | Someone outside a free workspace (a username who is not a member, or an address). Members' roles are fine. |
+| `accept_invite`, `respond_repo_invitation` | The invite's workspace (or repository's) is free now: it waits. A sign-up with such an invite makes the account without joining. |
+
+`@g1t` is never counted as someone added. If billing cannot be asked, the
+change is refused for now ("try again"), never let through. The site says
+so first (New workspace, People, a repository's Access, from the same RPC);
+the API and MCP pass identity's refusal on as `402`.
 
 ## The Security and quality activation
 

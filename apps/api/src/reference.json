@@ -68,7 +68,7 @@
 			"member_count": 1,
 			"base_permission": "write"
 		},
-		"notes": "`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/)."
+		"notes": "`base_permission` is what every member gets on each of its repositories: `write` until an owner changes it with `PATCH /workspaces/{workspace}` or `PUT /workspaces/{workspace}/base_permission`. See [Access and roles](/guides/access-and-roles/). A new workspace is free, and each person owns at most one free workspace: while you own one, this answers `402` with `payment_required` and says which, until it is on the plan or deleted. See [One free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person)."
 	},
 	"update_workspace": {
 		"params": {
@@ -402,7 +402,7 @@
 			"redeemed_at": null,
 			"revoked_at": null
 		},
-		"notes": "`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way."
+		"notes": "`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan."
 	},
 	"revoke_workspace_invite": {
 		"response": {
@@ -4164,7 +4164,7 @@
 				"expires_at": "2026-10-12T17:00:00.000Z"
 			}
 		},
-		"notes": "`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. The `repo.collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/)."
+		"notes": "`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. On a free workspace, inviting anyone who is not a member answers `402` with `payment_required` until it starts the g1t plan. The `repo.collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/)."
 	},
 	"update_collaborator": {
 		"params": {
@@ -5961,7 +5961,9 @@
 							"amount_micros": 6200000
 						}
 					],
-					"created_at": "2026-10-01T00:05:00.000Z"
+					"created_at": "2026-10-01T00:05:00.000Z",
+					"fee_micros": 1600000,
+					"tax_micros": 3510000
 				}
 			],
 			"upcoming": {
@@ -6000,9 +6002,13 @@
 				"last4": "4242",
 				"exp_month": 12,
 				"exp_year": 2028
-			}
+			},
+			"tax_location": true,
+			"tax_address_needed_at": null,
+			"tax_id_status": "unavailable",
+			"tax_exempt": "none"
 		},
-		"notes": "Owners change these on the workspace's billing page. `payment_method` is null until a card or other way to pay is saved."
+		"notes": "Owners change these on the workspace's billing page. `payment_method` is null until a card or other way to pay is saved. Tax is worked out from the address: `tax_location` is false until it has at least a country (and in the US a ZIP code), and `tax_address_needed_at` is set while a charge waits for one."
 	},
 	"list_pinned_projects": {
 		"params": {

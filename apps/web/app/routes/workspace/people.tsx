@@ -17,7 +17,8 @@ import { Badge } from "../../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { inviteLink, inviteState, moreInvitesMailto } from "../../lib/invites";
-import { identity } from "../../lib/services.server";
+import { billing, identity } from "../../lib/services.server";
+import { StartPlanToInvite } from "../../components/start-plan";
 import {
   assertSameOrigin,
   getViewer,
@@ -37,16 +38,20 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // someone a repository is shared with, gets nothing here.
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
-  const [members, invites, workspace, outside, teams] = await Promise.all([
+  const [members, invites, workspace, outside, teams, free] = await Promise.all([
     identity.listMembers(params.owner, viewer),
     owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
     identity.getWorkspace(params.owner),
     owner ? identity.outsideCollaborators(viewer, params.owner).catch(() => null) : null,
     // Each member's teams, as the viewer may see them.
     identity.teamMemberships(viewer, params.owner).catch(() => null),
+    // A free workspace adds no one until it starts the plan; identity
+    // refuses it either way, so a failure here only hides the note.
+    billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
   ]);
   return {
     role,
+    free: free.includes(params.owner.toLowerCase()),
     members: unwrap(members),
     invites: invites?.ok ? invites.value : [],
     base: workspace?.basePermission ?? DEFAULT_BASE_PERMISSION,
@@ -93,7 +98,7 @@ const BASE_MEANS: Record<BasePermission, string> = {
 };
 
 export default function WorkspacePeople({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, invites, origin, base, outside, teams } = loaderData;
+  const { role, members, invites, origin, base, outside, teams, free } = loaderData;
   const owner = role === "owner";
   const pending = invites.filter((invite) => invite.status === "pending");
   const [search, setSearch] = useSearchParams();
@@ -144,7 +149,12 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
           </li>
         ))}
       </ul>
-      {owner && (
+      {owner && free && (
+        <div className="mt-6">
+          <StartPlanToInvite workspace={params.owner} owner={owner} />
+        </div>
+      )}
+      {owner && !free && (
         // Empty again once the person is on the list; kept as typed when it failed.
         <Form
           method="post"
@@ -248,6 +258,7 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
             <OutsideCollaborators
               people={outside}
               slug={params.owner}
+              free={free}
               error={actionData && "converting" in actionData && actionData.converting ? actionData.error : null}
             />
           </TabsContent>
@@ -322,10 +333,12 @@ function BasePermissionSection({
 function OutsideCollaborators({
   people,
   slug,
+  free,
   error,
 }: {
   people: Route.ComponentProps["loaderData"]["outside"];
   slug: string;
+  free: boolean;
   error: string | null | undefined;
 }) {
   return (
@@ -334,6 +347,11 @@ function OutsideCollaborators({
         People given a role on one or more of {slug}'s repositories without being members. They see only those
         repositories. Change or take away a role on the repository's Access settings.
       </p>
+      {free && (
+        <div className="mb-4">
+          <StartPlanToInvite workspace={slug} owner />
+        </div>
+      )}
       {people.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line px-6 py-10 text-center">
           <Users size={18} className="mx-auto text-faint" />
@@ -352,13 +370,15 @@ function OutsideCollaborators({
                   </Link>
                   {person.name && <span className="ml-2 text-sm text-muted">{person.name}</span>}
                 </div>
-                <Form method="post">
-                  <input type="hidden" name="action" value="convert" />
-                  <input type="hidden" name="member" value={person.username} />
-                  <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Converting…">
-                    Convert to member
-                  </SubmitButton>
-                </Form>
+                {!free && (
+                  <Form method="post">
+                    <input type="hidden" name="action" value="convert" />
+                    <input type="hidden" name="member" value={person.username} />
+                    <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Converting…">
+                      Convert to member
+                    </SubmitButton>
+                  </Form>
+                )}
               </div>
               <ul className="mt-2 flex flex-wrap gap-1.5 pl-10">
                 {person.repos.map((grant) => (

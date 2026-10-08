@@ -257,9 +257,9 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           <Field label="And at least, $">
             <Input name="anomalyFloor" inputMode="decimal" defaultValue={dollarsField(report.settings.anomalyFloorMicros)} />
           </Field>
-          <Field label="Card fee on AI credit bought by card">
+          <Field label="Card fee on card payments">
             <label className="flex h-[38px] items-center gap-2 text-sm text-fg-soft">
-              <input type="checkbox" name="cardFee" defaultChecked={report.settings.cardFee ?? true} className="accent-[var(--g1t-merged)]" /> Passed on as its own line
+              <input type="checkbox" name="cardFee" defaultChecked={report.settings.cardFee ?? true} className="accent-[var(--g1t-merged)]" /> Its own line; never on invoiced billing or bank transfers
             </label>
           </Field>
           <div className="sm:col-span-2 lg:col-span-4">

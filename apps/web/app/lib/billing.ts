@@ -23,6 +23,27 @@ export function wholeDollars(micros: number): string {
   return `${sign}$${abs.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
+/** Prices on g1t exclude tax; Stripe adds it at checkout from the billing address. */
+export const PLUS_TAX = "plus tax where it applies";
+
+/**
+ * The card processing fee on a card payment of `cents`, as billing works it
+ * out (`ai::card_fee_cents`): Stripe's percent and fixed fee grossed up, so
+ * what is left after Stripe's fee is the amount, rounded up to the cent.
+ * 0 when the fee is off.
+ */
+export function cardFeeCents(cents: number, fee: { on: boolean; percentMicros: number; fixedCents: number } | null | undefined): number {
+  if (!fee?.on || !(cents > 0)) return 0;
+  const rate = fee.percentMicros / MICROS_PER_DOLLAR;
+  if (!(rate >= 0 && rate < 0.5)) return 0;
+  return Math.max(0, Math.ceil((cents + fee.fixedCents) / (1 - rate)) - cents);
+}
+
+/** "Card processing fee $1.06, plus tax where it applies", as shown before paying. */
+export function feeAndTax(feeCents: number): string {
+  return feeCents > 0 ? `Card processing fee ${dollars(feeCents * 10_000)}, ${PLUS_TAX}` : `Plus tax where it applies`;
+}
+
 /** A form's dollar amount as micros, or null when it is empty or not a number. */
 export function readDollars(value: FormDataEntryValue | null | undefined): number | null {
   const text = String(value ?? "").replace(/[$,\s]/g, "");
@@ -428,6 +449,8 @@ export function parseInvoiceDetails(form: FormData): Parsed<{
   if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) return { ok: false, error: "That is not an email address." };
   const country = text("country").toUpperCase();
   if (country && !/^[A-Z]{2}$/.test(country)) return { ok: false, error: "The country is two letters, such as US or DE." };
+  // Stripe Tax places a US customer by ZIP code: without it, tax cannot be worked out.
+  if (country === "US" && !text("postalCode")) return { ok: false, error: "Add the ZIP code: in the US, tax is worked out from it." };
   const taxIdType = text("taxIdType");
   const taxId = text("taxId");
   if (Boolean(taxIdType) !== Boolean(taxId)) return { ok: false, error: "Give the tax ID's kind and its number together." };

@@ -37,6 +37,43 @@ Compute is not free. Agents, workflows, the merge queue,
 deployments and semantic search need [the g1t plan](#the-g1t-plan), or a
 [card check](#no-card-no-compute) for the trial and the open-source pool.
 
+### One free workspace per person
+
+Each person can own **one free workspace**: a workspace that is not on the
+g1t plan, an enterprise's terms or a full discount. A new workspace starts
+free, so while you own a free workspace, creating another is refused with
+the way forward:
+
+1. Start the plan on the free workspace you have
+   ([Start or end the plan](#start-or-end-the-plan)), or
+2. delete it, if you no longer use it
+   ([Delete a workspace](/guides/workspaces/)).
+
+Then create the new one. If you owned several free workspaces before this
+rule, you keep them all, but you cannot create another until each of them
+is on the plan or deleted. Workspaces you belong to without owning them do
+not count. The site's **New workspace** page says so before you start;
+`POST /workspaces` and the MCP `workspace` tool's `create` action answer
+`402` (`payment_required`) with the same message.
+
+### Who a free workspace can add
+
+A free workspace keeps the people already in it, but **cannot add anyone**
+until it starts the plan:
+
+- no new members, by username or by email invite;
+- no outside collaborators on its repositories, and no invitations to them;
+- an invite or invitation sent before cannot be accepted until then (it
+  waits, and works once the plan is on).
+
+Its members can still be given a role on its repositories, and put on its
+[teams](/guides/teams/). On the **People** page and a repository's
+**Settings → Access**, an owner sees **Start the plan to invite people**
+with a button to the plan. Through the API and MCP, adding a member,
+inviting, adding an outside collaborator and accepting are refused with
+`402` (`payment_required`). g1t's own agent, `@g1t`, works in every
+workspace and never counts as someone added.
+
 Your own machines are. Workflow jobs on
 [self-hosted runners](/guides/self-hosted-runners/) cost nothing, on every
 plan, the free one included, and need no card; their minutes show on usage
@@ -46,7 +83,10 @@ still needs its model paid for, unless it uses your own model provider.
 ## The g1t plan
 
 One plan, **$20 a month per workspace**, however many people and agents
-are in it. It is never priced per person.
+are in it. It is never priced per person. Like every price on g1t, it
+excludes tax ([Tax](#tax)), and paid by card it carries Stripe's
+[card processing fee](#card-processing-fee) as its own line, $0.91 a month
+on $20.
 
 - **$10 of usage each month** at cost plus 20%, used first.
 - **Everyone in the workspace** at one price, never per person.
@@ -514,6 +554,11 @@ at once. It is never needed to start work. Only an owner can prepay.
    asks. A bank transfer page gives the account details, and the amount
    counts when the money arrives.
 
+By card, the [card processing fee](#card-processing-fee) is its own line
+(the card shows it for $100, $500 and $1,000); a bank transfer has none.
+[Tax](#tax) is added where it applies. What you prepay is credited in full:
+neither the fee nor the tax comes from it.
+
 **Prepaid balance** shows what is paid in advance and not used yet.
 
 ### Caps
@@ -585,11 +630,13 @@ Only an owner can buy it.
    amount from $10 to $1,000.
 3. Choose **Buy AI credit**, and pay on Stripe's page.
 
-Stripe's card fee (2.9% + $0.30) is its own line on that page, **Card
-processing fee**, so the credit you get is the amount you chose. Invoiced
-billing never carries it. The credit is added once Stripe says the payment
-was made, whether or not you come back to g1t, and **expires 1 year after
-purchase**. The card is kept for auto-reload.
+The [card processing fee](#card-processing-fee) is its own line on that
+page, and shown on Billing before you go there (on $25, *Card processing
+fee $1.06, plus tax where it applies*), so the credit you get is the amount
+you chose. [Tax](#tax) is added on top where it applies. The credit is
+added once Stripe says the payment was made, whether or not you come back
+to g1t, and **expires 1 year after purchase**. The card is kept for
+auto-reload, which charges the credit, its card fee and its tax together.
 
 ### Auto-reload
 
@@ -658,8 +705,60 @@ with its PDF and emailed as a receipt:
   charged at once with no minimum. See
   [deleting a workspace](/guides/workspaces/#what-billing-needs).
 
-Each is charged to the card on file. The Billing page lists them, with
-links to view each on Stripe and download its PDF.
+Each is charged to the card on file, with the
+[card processing fee](#card-processing-fee) and [tax](#tax) as lines of
+their own. The Billing page lists them, with links to view each on Stripe
+and download its PDF; each one's amount is the usage, with the fee and
+tax under it.
+
+## Tax
+
+Every price on g1t excludes tax. Stripe adds sales tax, VAT or GST where it
+applies (Stripe Tax), worked out from the workspace's billing address, and
+shows it as its own line before you pay and on every receipt and invoice.
+The plan, add-ons, prepaying, AI credit, auto-reload and invoices are all
+taxed the same way, as software as a service for business use.
+
+- **The address.** Stripe's payment pages always ask for a billing
+  address, and save it as the workspace's **Invoice details**. A card check
+  saves the card's billing address there too, if there is none yet. You
+  can change it under [Your card and billing
+  details](#your-card-and-billing-details).
+- **A business tax ID.** Add it on Stripe's page or under **Invoice
+  details** (the kind, such as EU VAT, and the number). Stripe checks it
+  (**Verified by Stripe**, or **Stripe is checking it**) and applies it
+  where the law says so, such as a reverse charge.
+- **No address, no charge.** Where Stripe has nothing to work tax out
+  from, g1t does not charge the card. Billing shows **Add a billing
+  address**, the owners are emailed once, and the charge goes through once
+  the address is saved. Nothing is lost, and work is not stopped for it.
+  In the United States the ZIP code is needed; elsewhere the country.
+- **Tax exempt.** If your organisation is exempt, write to
+  support@g1t.sh with the certificate; Billing then says **Tax exempt**.
+- **Refunds** give the tax back in proportion.
+
+Tax is never part of your balance or usage: the statement shows it as its
+own line, beside the payment it came with.
+
+## Card processing fee
+
+Paying by card adds Stripe's fee, **2.9% + $0.30**, as its own line,
+**Card processing fee**, worked out so that what is left after Stripe's
+fee is exactly what you paid for: $0.91 on the $20 plan, $1.06 on $25 of
+AI credit. It is shown before you pay, on every card payment:
+
+| Payment | Card fee |
+| --- | --- |
+| The plan and add-ons, each month | Yes, a monthly line |
+| Prepaying by card, and AI credit | Yes |
+| Auto-reload, and invoices charged to the card | Yes |
+| Prepaying by bank transfer | No |
+| An enterprise's invoices | No |
+
+Tax applies to the fee as to what it is paid with. The fee pays Stripe, not
+g1t: usage is still charged at cost plus 20%, and models at the provider's
+price plus the agent rate. The statement shows card fees as their own line,
+never from your balance.
 
 ### The minimum charge
 
@@ -691,6 +790,10 @@ stores card numbers. On **Settings → Billing and plans**:
   printed on every invoice: the invoice email, company name, billing
   address, tax ID (its kind and number), a purchase order, and the invoice
   language. An owner edits them here and chooses **Save invoice details**.
+  [Tax](#tax) is worked out from the address, so the card says when there
+  is none yet (in the US it needs the ZIP code), shows Stripe's check of
+  the tax ID, and says **Tax exempt** or **Reverse charge** when that
+  applies.
 - **Invoices** lists every invoice Stripe sent (the plan, add-ons, AI
   credit and month-end usage), each with **View** and **PDF**.
 - **Add-ons** lists what can be turned on beside the plan, such as the
@@ -746,7 +849,9 @@ is public; custom terms change how you pay, not what things cost.
   enterprise is **invoiced**: when each month closes, one invoice goes to
   the enterprise's billing address, with a line for each workspace, due in
   30 days and paid by card or bank transfer. If it goes overdue, the
-  workspaces' work stops until it is paid.
+  workspaces' work stops until it is paid. [Tax](#tax) is added from the
+  enterprise's billing address, which g1t keeps on its Stripe customer, and
+  an invoice never carries the card processing fee.
 - **A discount**: a percentage off every usage charge, from a few percent
   to 100%, with a reason, sometimes until a date. Prices themselves stay
   the public ones. The statement shows every line at its price and the
@@ -844,6 +949,11 @@ time. Every member can see it.
   | Payments | Card payments and invoices paid. |
   | Credits from g1t | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
   | Refunds | Money given back to your card. |
+  | Tax | Tax paid with that day's payments. Not a charge, and not from your balance. |
+  | Card processing fees | Card fees paid with that day's payments. Not a charge, and not from your balance. |
+
+  Payments are what reached your balance; the tax and card fee paid with
+  them are the two lines below them, and the totals say what they came to.
 
 - **Covered.** Below the totals, what paid for usage before it was
   charged, each with its amount:
