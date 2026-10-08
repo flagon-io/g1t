@@ -135,8 +135,28 @@ impl Job {
         &self.path_prepend
     }
 
+    /// How the job is going, for `success()`, `failure()`, `cancelled()`
+    /// and `always()`: once the run is cancelled, only steps that ask for
+    /// `always()` or `cancelled()` run.
     fn status(&self) -> Status {
-        if self.failed { Status::Failure } else { Status::Success }
+        if report::cancelled() {
+            Status::Cancelled
+        } else if self.failed {
+            Status::Failure
+        } else {
+            Status::Success
+        }
+    }
+
+    /// `job.status`.
+    fn status_word(&self) -> &'static str {
+        if report::cancelled() {
+            "cancelled"
+        } else if self.failed {
+            "failure"
+        } else {
+            "success"
+        }
     }
 
     /// The contexts an expression in a step can use.
@@ -144,7 +164,7 @@ impl Job {
         let mut contexts = self.contexts.clone();
         contexts.insert("env".into(), Value::Object(env.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect()));
         contexts.insert("steps".into(), Value::Object(frame.steps.clone()));
-        contexts.insert("job".into(), containers::job_context(if self.failed { "failure" } else { "success" }, &self.job_context));
+        contexts.insert("job".into(), containers::job_context(self.status_word(), &self.job_context));
         if let Some(inputs) = &frame.inputs {
             contexts.insert("inputs".into(), inputs.clone());
         }
@@ -219,14 +239,8 @@ impl Job {
         if let Ok(values) = files::key_values(&StepFiles::read(&files.state)) {
             state.extend(values);
         }
-        let summary = StepFiles::read(&files.summary);
-        if !summary.trim().is_empty() {
-            self.log.line("##[group]Step summary");
-            for line in summary.lines() {
-                self.log.line(line);
-            }
-            self.log.line("##[endgroup]");
-        }
+        // The step's job summary, for the run's page (report.rs).
+        self.log.summary(&StepFiles::read(&files.summary));
         (outputs, state)
     }
 
@@ -342,6 +356,7 @@ impl Job {
                 self.log.line("##[error]The step ran past its time limit and was stopped.");
                 false
             }
+            Ok(Ended::Cancelled) => false,
             Err(error) => {
                 self.log.line(&format!("##[error]{program} could not be started: {error}"));
                 false
@@ -354,6 +369,12 @@ impl Job {
     /// Runs one step of a frame. Returns whether it succeeded (its
     /// conclusion). `number` is the step the log belongs to.
     pub(crate) fn step(&mut self, frame: &mut Frame, step: &Map<String, Value>, number: u32, report: bool, defaults: &Map<String, Value>) -> bool {
+        // A cancellation heard during an earlier step (which it stopped) or
+        // since: from here on, only cleanup steps run, and none is stopped
+        // for it again.
+        if report::cancelled() {
+            report::take_cancel();
+        }
         let env_before = self.env_context(frame);
         let contexts = self.contexts_for(frame, &env_before);
         let title = match step.get("name").map(expr::to_text) {
@@ -361,7 +382,18 @@ impl Job {
             None => default_title(step),
         };
         let condition = step.get("if").map(expr::to_text).unwrap_or_default();
-        let run_it = match self.with_scope(&contexts, |scope| expr::condition(&condition, scope)) {
+        let read = self.with_scope(&contexts, |scope| expr::condition(&condition, scope));
+        // Debug logging: how the step's `if` read, as GitHub's runner says.
+        if self.debug {
+            let shown = if condition.trim().is_empty() { "success()" } else { condition.trim() };
+            self.log.line(&format!("##[debug]Evaluating condition for step: '{title}'"));
+            self.log.line(&format!("##[debug]Evaluating: {shown}"));
+            match &read {
+                Ok(result) => self.log.line(&format!("##[debug]Result: {result}")),
+                Err(problem) => self.log.line(&format!("##[debug]Failed: {problem}")),
+            }
+        }
+        let run_it = match read {
             Ok(run_it) => run_it,
             Err(problem) => {
                 self.log.line(&format!("##[error]The step's `if` does not read: {problem}"));
@@ -469,9 +501,21 @@ impl Job {
             ok
         };
 
-        let outcome = if ok { "success" } else { "failure" };
-        let conclusion = if ok || continue_on_error { "success" } else { "failure" };
-        if !ok && continue_on_error {
+        // A step the cancellation stopped ends cancelled, not failed.
+        let stopped = !ok && report::cancelled();
+        let outcome = if ok {
+            "success"
+        } else if stopped {
+            "cancelled"
+        } else {
+            "failure"
+        };
+        let conclusion = if ok || continue_on_error {
+            "success"
+        } else {
+            outcome
+        };
+        if !ok && continue_on_error && !stopped {
             self.log.line("##[warning]The step failed, and `continue-on-error` lets the job go on.");
         }
         if let Some(id) = &id {
@@ -553,6 +597,22 @@ fn interpolated_map(job: &Job, value: Option<&Value>, contexts: &Map<String, Val
     out
 }
 
+/// Whether `::debug::` lines are shown and steps' conditions explained:
+/// `ACTIONS_STEP_DEBUG` as a secret or a variable set to `true`, or a
+/// re-run with debug logging, which sets it and `RUNNER_DEBUG=1` among the
+/// job's variables.
+fn step_debug(contexts: &Map<String, Value>, variables: &Value) -> bool {
+    let named = |name: &str| {
+        contexts
+            .get("secrets")
+            .and_then(|s| s.get(name))
+            .or_else(|| contexts.get("vars").and_then(|v| v.get(name)))
+            .or_else(|| variables.get(name))
+            .is_some_and(|v| expr::to_text(v).eq_ignore_ascii_case("true"))
+    };
+    named("ACTIONS_STEP_DEBUG") || variables.get("RUNNER_DEBUG").is_some_and(|v| expr::to_text(v) == "1")
+}
+
 fn setup(mut spec: Value, api: Api) -> Result<Job> {
     let masks: Vec<String> = spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
     let log = Log::new(api, masks);
@@ -582,11 +642,7 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
 
     let mut contexts: Map<String, Value> = spec["contexts"].as_object().cloned().unwrap_or_default();
     contexts.insert("github".into(), spec["github"].clone());
-    let debug = contexts
-        .get("secrets")
-        .and_then(|s| s.get("ACTIONS_STEP_DEBUG"))
-        .or_else(|| contexts.get("vars").and_then(|v| v.get("ACTIONS_STEP_DEBUG")))
-        .is_some_and(|v| expr::to_text(v) == "true");
+    let debug = step_debug(&contexts, &spec["variables"]);
 
     // `timeoutMinutes` is how the API spelled it before its bodies were
     // `snake_case`.
@@ -760,7 +816,15 @@ fn run_job(job: &mut Job) {
             outputs.insert(name.clone(), Value::String(expr::to_text(&value)));
         }
     }
-    let conclusion = if job.failed { "failure" } else { "success" };
+    // Cancelled, the job ends so however its cleanup went (and g1t holds
+    // to that whatever it is told).
+    let conclusion = if report::cancelled() {
+        "cancelled"
+    } else if job.failed {
+        "failure"
+    } else {
+        "success"
+    };
     job.log.done(conclusion, &outputs, None);
 }
 
@@ -793,7 +857,28 @@ pub(crate) fn main() -> i32 {
         }
     };
     run_job(&mut job);
-    if job.failed { 1 } else { 0 }
+    if job.failed || report::cancelled() { 1 } else { 0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Map, Value, json};
+
+    use super::step_debug;
+
+    #[test]
+    fn debug_logging_comes_from_a_secret_a_variable_or_a_debug_rerun() {
+        let contexts = |value: Value| -> Map<String, Value> { serde_json::from_value(value).unwrap() };
+        let none = json!({});
+        assert!(!step_debug(&contexts(json!({ "secrets": {}, "vars": {} })), &none));
+        assert!(step_debug(&contexts(json!({ "secrets": { "ACTIONS_STEP_DEBUG": "true" } })), &none));
+        assert!(step_debug(&contexts(json!({ "vars": { "ACTIONS_STEP_DEBUG": "TRUE" } })), &none));
+        assert!(!step_debug(&contexts(json!({ "vars": { "ACTIONS_STEP_DEBUG": "false" } })), &none));
+        // A re-run with debug logging sets these among the job's variables.
+        assert!(step_debug(&contexts(json!({})), &json!({ "RUNNER_DEBUG": "1" })));
+        assert!(step_debug(&contexts(json!({})), &json!({ "ACTIONS_STEP_DEBUG": "true" })));
+        assert!(!step_debug(&contexts(json!({})), &json!({ "RUNNER_DEBUG": "0" })));
+    }
 }
 
 #[cfg(test)]

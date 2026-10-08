@@ -680,8 +680,20 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
+        "GET",
+        "/repos/:owner/:name/actions/runs/:id/attempts/:attempt",
+        Op::GetWorkflowRun,
+        &[],
+    ),
+    route(
         "POST",
         "/repos/:owner/:name/actions/runs/:id/cancel",
+        Op::CancelWorkflowRun,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/runs/:id/force-cancel",
         Op::CancelWorkflowRun,
         &[],
     ),
@@ -694,6 +706,12 @@ pub const ROUTES: &[Route] = &[
     route(
         "POST",
         "/repos/:owner/:name/actions/runs/:id/rerun-failed-jobs",
+        Op::RerunWorkflowRun,
+        &[],
+    ),
+    route(
+        "POST",
+        "/repos/:owner/:name/actions/jobs/:job/rerun",
         Op::RerunWorkflowRun,
         &[],
     ),
@@ -1053,6 +1071,9 @@ pub fn resolve(
     }
     if route.path.ends_with("/rerun-failed-jobs") {
         input.insert("failed_only".to_owned(), Value::Bool(true));
+    }
+    if route.path.ends_with("/force-cancel") {
+        input.insert("force".to_owned(), Value::Bool(true));
     }
     // Unsaving and waking a thread are a DELETE of what PUT made.
     if route.method == "DELETE" && route.path.ends_with("/saved") {

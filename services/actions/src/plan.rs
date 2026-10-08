@@ -29,6 +29,23 @@ const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// The most a single log report may add.
 const MAX_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_ANNOTATIONS: usize = 50;
+/// The most one step's job summary keeps, in bytes, and how many steps of a
+/// job may have one, as on GitHub.
+pub(crate) const MAX_SUMMARY_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_SUMMARIES: u32 = 20;
+
+/// Whether a step's summary of `adding` bytes is kept: a job keeps up to
+/// 20 steps' summaries (`steps` it has, `mine` this step's bytes so far)
+/// of up to 1 MiB each.
+pub(crate) fn summary_fits(steps: u32, mine: Option<usize>, adding: usize) -> bool {
+    if adding == 0 {
+        return false;
+    }
+    match mine {
+        Some(used) => used + adding <= MAX_SUMMARY_BYTES,
+        None => steps < MAX_SUMMARIES && adding <= MAX_SUMMARY_BYTES,
+    }
+}
 
 /// The repository whose unfinished runs `event` stops, by id: one deleted,
 /// or archived (not unarchived).
@@ -98,6 +115,12 @@ pub struct RunRow {
     /// Whether its concurrency group cancels what it replaces.
     #[serde(default)]
     pub cancel_in_progress: u32,
+    /// Who started the current attempt, once it is re-run (migration 0009).
+    #[serde(default)]
+    pub triggering_actor: Option<String>,
+    /// The current attempt runs with debug logging.
+    #[serde(default)]
+    pub debug: u32,
 }
 
 impl RunRow {
@@ -192,6 +215,59 @@ pub struct JobRow {
     pub concurrency_group: Option<String>,
     #[serde(default)]
     pub cancel_in_progress: u32,
+    /// When it was told to stop, while it runs its cleanup steps
+    /// (migration 0009).
+    #[serde(default)]
+    pub cancel_requested_at: Option<String>,
+}
+
+/// How long a cancelled job has to run its `if: always()` and `cancelled()`
+/// steps and its post steps before it is stopped outright, as on GitHub.
+pub const CANCEL_GRACE_MS: u64 = 5 * 60 * 1000;
+
+/// Which jobs a re-run runs again.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rerun<'a> {
+    All,
+    /// Those that did not succeed.
+    Failed,
+    /// One job's key.
+    Job(&'a str),
+}
+
+/// The keys a re-run runs again, in `order`: those `which` names and,
+/// transitively, every key that needs one of them. `needs` gives a key's
+/// needs; `succeeded` whether every job of a key succeeded.
+pub fn rerun_keys(order: &[&str], needs: impl Fn(&str) -> Vec<String>, succeeded: impl Fn(&str) -> bool, which: Rerun) -> Vec<String> {
+    let mut again: Vec<String> = Vec::new();
+    for key in order {
+        let named = match which {
+            Rerun::All => true,
+            Rerun::Failed => !succeeded(key),
+            Rerun::Job(job) => *key == job,
+        };
+        if named || needs(key).iter().any(|need| again.contains(need)) {
+            again.push((*key).to_owned());
+        }
+    }
+    again
+}
+
+/// The key under `jobs:` a job belongs to: a called workflow's jobs
+/// (`build/test`) run again with the job that calls it (`build`).
+pub fn top_key(key: &str) -> &str {
+    key.split('/').next().unwrap_or(key)
+}
+
+/// Debug logging for a job, as a re-run with it turned on gives GitHub's:
+/// `RUNNER_DEBUG=1` and `runner.debug`, and `ACTIONS_STEP_DEBUG` and
+/// `ACTIONS_RUNNER_DEBUG` set, which the runner reads as the secrets of
+/// those names (`::debug::` lines shown, and how each step's `if` read).
+pub fn debug_logging(variables: &mut Map<String, Value>, runner: &mut Value) {
+    variables.insert("RUNNER_DEBUG".into(), json!("1"));
+    variables.insert("ACTIONS_STEP_DEBUG".into(), json!("true"));
+    variables.insert("ACTIONS_RUNNER_DEBUG".into(), json!("true"));
+    runner["debug"] = json!("1");
 }
 
 impl JobRow {
@@ -572,7 +648,7 @@ impl Actions {
             for other in &others {
                 if cancel_in_progress || other.status == "pending" {
                     // A newer run replaces a waiting one, as on GitHub.
-                    self.cancel_run(other, "A newer run in the same concurrency group replaced it.").await?;
+                    self.cancel_run(other, "A newer run in the same concurrency group replaced it.", false).await?;
                 }
             }
             if !cancel_in_progress && others.iter().any(|other| other.status != "pending") {
@@ -1354,8 +1430,24 @@ impl Actions {
         Box::pin(self.advance(&job.run_id)).await
     }
 
-    /// Cancels a job, stopping its sandbox if it has one.
+    /// Cancels a job. One that is running is told to stop (the answer to
+    /// its next report), and runs its `if: always()` and `cancelled()`
+    /// steps and its post steps before it ends `cancelled`; one that has
+    /// not started is cancelled at once.
     async fn stop_job(&self, job: &JobRow, reason: &str) -> Result<()> {
+        if job.status == "in_progress" && job.started_at.is_some() {
+            self.db
+                .prepare("UPDATE jobs SET cancel_requested_at = COALESCE(cancel_requested_at, ?), reason = ? WHERE id = ? AND status = 'in_progress'")
+                .bind(&[now().into(), reason.into(), job.id.as_str().into()])?
+                .run()
+                .await?;
+            return Ok(());
+        }
+        self.hard_stop(job, reason).await
+    }
+
+    /// Cancels a job outright, stopping its sandbox if it has one.
+    async fn hard_stop(&self, job: &JobRow, reason: &str) -> Result<()> {
         // A self-hosted runner hears it was cancelled on its next poll.
         if job.status == "in_progress" && job.runner_id.is_none() {
             let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
@@ -1591,15 +1683,20 @@ impl Actions {
         Ok(())
     }
 
-    /// Cancels a run: its waiting and queued jobs, and stops its running ones.
-    pub async fn cancel_run(&self, run: &RunRow, reason: &str) -> Result<()> {
+    /// Cancels a run: its waiting and queued jobs at once, and its running
+    /// ones gracefully (`stop_job`), or outright when `force`.
+    pub async fn cancel_run(&self, run: &RunRow, reason: &str, force: bool) -> Result<()> {
         self.db
             .prepare("UPDATE runs SET conclusion = 'cancelled' WHERE id = ? AND status != 'completed'")
             .bind(&[run.id.as_str().into()])?
             .run()
             .await?;
         for job in self.job_rows(&run.id).await?.iter().filter(|job| job.status != "completed") {
-            self.stop_job(job, reason).await?;
+            if force {
+                self.hard_stop(job, reason).await?;
+            } else {
+                self.stop_job(job, reason).await?;
+            }
         }
         if run.status == "pending" || run.status == "action_required" {
             self.db.prepare("UPDATE runs SET status = 'queued' WHERE id = ?").bind(&[run.id.as_str().into()])?.run().await?;
@@ -1618,7 +1715,7 @@ impl Actions {
             .await?
             .results::<RunRow>()?;
         for run in runs {
-            self.cancel_run(&run, "The repository was archived or deleted.").await?;
+            self.cancel_run(&run, "The repository was archived or deleted.", true).await?;
         }
         Ok(())
     }
@@ -1631,17 +1728,42 @@ impl Actions {
         if run.status == "completed" {
             return Ok(fail(FailureCode::Conflict, "The run has already finished."));
         }
-        self.cancel_run(&run, &format!("{} cancelled the run.", a.actor.username)).await?;
+        // Cancelling a run that is already cancelling stops its jobs
+        // outright, without waiting for their cleanup steps.
+        let force = a.force || run.conclusion.as_deref() == Some("cancelled");
+        let reason = if force {
+            format!("{} stopped the run without waiting for its cleanup steps.", a.actor.username)
+        } else {
+            format!("{} cancelled the run.", a.actor.username)
+        };
+        self.cancel_run(&run, &reason, force).await?;
         self.run_summary(&run.id).await
     }
 
-    /// Runs again: every job, or with `failed_only` those that did not
-    /// succeed and the jobs that need them.
+    /// Runs again, as a new attempt: every job, with `failed_only` those
+    /// that did not succeed, or with `job` that one; each with the jobs that
+    /// need them. The attempt that ends is kept, its jobs and their logs and
+    /// summaries with it (`job_attempts`, `run_attempts`).
     pub async fn rerun(&self, a: RunActionArgs) -> Result<Outcome<WorkflowRun>> {
         if let Outcome::Fail(refused) = self.may(&a.actor, &a.repo, Capability::Run).await? {
             return Ok(Outcome::Fail(refused));
         }
-        let run = check!(self.run_in(&a.repo, &a.id).await?);
+        // A job alone (`POST …/jobs/{job}/rerun`) names its run.
+        let run_id = match (&a.job, a.id.is_empty()) {
+            (Some(job), true) => {
+                #[derive(Deserialize)]
+                struct Of {
+                    run_id: String,
+                }
+                let of = self.db.prepare("SELECT run_id FROM jobs WHERE id = ?").bind(&[job.as_str().into()])?.first::<Of>(None).await?;
+                match of {
+                    Some(of) => of.run_id,
+                    None => return Ok(fail(FailureCode::NotFound, "No such job.")),
+                }
+            }
+            _ => a.id.clone(),
+        };
+        let run = check!(self.run_in(&a.repo, &run_id).await?);
         if run.status != "completed" {
             return Ok(fail(FailureCode::Conflict, "The run is still going: cancel it first."));
         }
@@ -1658,29 +1780,68 @@ impl Actions {
         }
         let jobs = self.job_rows(&run.id).await?;
         let workflow = workflow::parse(&run.source).ok();
-        // Which keys run again: failed ones and, transitively, those needing them.
-        let mut again: Vec<String> = Vec::new();
-        for key in workflow.as_ref().map(|w| w.job_order()).unwrap_or_default() {
-            let rows: Vec<&JobRow> = jobs.iter().filter(|j| j.key == key).collect();
-            let failed = rows.iter().any(|row| row.conclusion.as_deref() != Some("success"));
-            let needs_again = rows.first().is_some_and(|row| row.needs().iter().any(|need| again.contains(need)));
-            if !a.failed_only || failed || needs_again {
-                again.push(key.to_owned());
-            }
-        }
+        let target = match &a.job {
+            Some(id) => match jobs.iter().find(|job| &job.id == id) {
+                Some(job) => Some(top_key(&job.key).to_owned()),
+                None => return Ok(fail(FailureCode::NotFound, "That job is not in the run's latest attempt.")),
+            },
+            None => None,
+        };
+        let which = match (&target, a.failed_only) {
+            (Some(key), _) => Rerun::Job(key),
+            (None, true) => Rerun::Failed,
+            (None, false) => Rerun::All,
+        };
+        let order = workflow.as_ref().map(|w| w.job_order()).unwrap_or_default();
+        let again = rerun_keys(
+            &order,
+            |key| jobs.iter().find(|j| j.key == key).map(JobRow::needs).unwrap_or_default(),
+            |key| jobs.iter().filter(|j| j.key == key).all(|j| j.conclusion.as_deref() == Some("success")),
+            which,
+        );
         if again.is_empty() {
             return Ok(fail(FailureCode::Conflict, "Every job succeeded: there is nothing to run again."));
         }
-        let mut statements = Vec::new();
+        // The jobs that run again, a called workflow's with the job calling it.
+        let rerun_ids: Vec<&str> = jobs.iter().filter(|job| again.iter().any(|key| key == top_key(&job.key))).map(|job| job.id.as_str()).collect();
+        let ids = serde_json::to_string(&rerun_ids)?;
+        let ended = run.attempt.to_string();
+        let ended = ended.as_str();
+        let mut statements = vec![
+            // The attempt that ends, as it ended.
+            self.db
+                .prepare(
+                    "INSERT OR REPLACE INTO run_attempts (run_id, attempt, repo_id, conclusion, actor, debug, started_at, finished_at)
+                     SELECT id, attempt, repo_id, conclusion, COALESCE(triggering_actor, actor), debug, started_at, finished_at FROM runs WHERE id = ?",
+                )
+                .bind(&[run.id.as_str().into()])?,
+            // Earlier attempts that showed a job's logs from where it ran
+            // then now find them where they move to.
+            self.db
+                .prepare("UPDATE job_attempts SET log_id = log_id || '.' || ?1 WHERE run_id = ?2 AND log_id IN (SELECT value FROM json_each(?3))")
+                .bind(&[ended.into(), run.id.as_str().into(), ids.as_str().into()])?,
+            // Each of its jobs: one that runs again keeps its logs under
+            // `{id}.{attempt}`; one left alone is still the live job's.
+            self.db
+                .prepare(
+                    "INSERT OR REPLACE INTO job_attempts (id, run_id, repo_id, attempt, job_id, log_id, key, ordinal, name, needs, status, conclusion,
+                       steps, annotations, reason, environment, labels, runner_name, started_at, finished_at)
+                     SELECT id || '.' || ?1, run_id, repo_id, ?1, id,
+                       CASE WHEN id IN (SELECT value FROM json_each(?3)) THEN id || '.' || ?1 ELSE id END,
+                       key, ordinal, name, needs, status, conclusion, steps, annotations, reason, environment, labels, runner_name, started_at, finished_at
+                     FROM jobs WHERE run_id = ?2 ORDER BY rowid",
+                )
+                .bind(&[ended.into(), run.id.as_str().into(), ids.as_str().into()])?,
+            self.db
+                .prepare("UPDATE logs SET job_id = job_id || '.' || ?1 WHERE job_id IN (SELECT value FROM json_each(?2))")
+                .bind(&[ended.into(), ids.as_str().into()])?,
+            self.db
+                .prepare("UPDATE job_summaries SET job_id = job_id || '.' || ?1 WHERE job_id IN (SELECT value FROM json_each(?2))")
+                .bind(&[ended.into(), ids.as_str().into()])?,
+        ];
         for key in &again {
-            statements.push(self.db.prepare("DELETE FROM logs WHERE job_id IN (SELECT id FROM jobs WHERE run_id = ? AND key = ?)").bind(&[run.id.as_str().into(), key.as_str().into()])?);
             statements.push(self.db.prepare("DELETE FROM jobs WHERE run_id = ? AND key = ? AND ordinal > 0").bind(&[run.id.as_str().into(), key.as_str().into()])?);
             // The jobs of a workflow it called are made again when it calls it again.
-            statements.push(
-                self.db
-                    .prepare("DELETE FROM logs WHERE job_id IN (SELECT id FROM jobs WHERE run_id = ? AND key LIKE ?)")
-                    .bind(&[run.id.as_str().into(), format!("{key}/%").into()])?,
-            );
             statements.push(
                 self.db
                     .prepare("DELETE FROM jobs WHERE run_id = ? AND key LIKE ?")
@@ -1692,15 +1853,18 @@ impl Actions {
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
                            matrix = NULL, call = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
                            labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL,
-                           concurrency_group = NULL, cancel_in_progress = 0 WHERE run_id = ? AND key = ?",
+                           concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL WHERE run_id = ? AND key = ?",
                     )
                     .bind(&[run.id.as_str().into(), key.as_str().into()])?,
             );
         }
         statements.push(
             self.db
-                .prepare("UPDATE runs SET status = 'queued', conclusion = NULL, attempt = attempt + 1, started_at = NULL, finished_at = NULL WHERE id = ?")
-                .bind(&[run.id.as_str().into()])?,
+                .prepare(
+                    "UPDATE runs SET status = 'queued', conclusion = NULL, attempt = attempt + 1, started_at = NULL, finished_at = NULL,
+                       triggering_actor = ?, debug = ? WHERE id = ?",
+                )
+                .bind(&[a.actor.username.as_str().into(), u32::from(a.debug).into(), run.id.as_str().into()])?,
         );
         self.db.batch(statements).await?;
         if let Some(run) = self.run_row(&run.id).await? {
@@ -1875,10 +2039,14 @@ impl Actions {
         // machine rather than g1t's sandbox.
         let mut variables = info.variables(&job.key);
         variables.insert("GITHUB_RETENTION_DAYS".into(), json!(retention_days.to_string()));
-        let runner = match &job.runner_id {
+        let mut runner = match &job.runner_id {
             Some(id) => self.runner_context_for(id, &mut variables).await?,
             None => runner_context(),
         };
+        // A re-run with debug logging: what GitHub sets for one.
+        if run.debug != 0 {
+            debug_logging(&mut variables, &mut runner);
+        }
 
         // Where to check out: a pull request's fork, or the repository.
         let clone_url = match run.pull {
@@ -2038,6 +2206,35 @@ impl Actions {
                 }
                 self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[at.into(), job.id.as_str().into()])?.run().await?;
             }
+            "summary" => {
+                // `$GITHUB_STEP_SUMMARY`, masked by the runner: added to the
+                // step's summary, up to 1 MiB a step and 20 steps a job.
+                let step = report["step"].as_u64().unwrap_or(0) as u32;
+                let markdown = report["markdown"].as_str().unwrap_or_default();
+                #[derive(Deserialize)]
+                struct Held {
+                    steps: u32,
+                    mine: Option<f64>,
+                }
+                let held = self
+                    .db
+                    .prepare("SELECT COUNT(*) AS steps, MAX(CASE WHEN step = ? THEN LENGTH(markdown) END) AS mine FROM job_summaries WHERE job_id = ?")
+                    .bind(&[step.into(), job.id.as_str().into()])?
+                    .first::<Held>(None)
+                    .await?;
+                let (steps, mine) = held.map_or((0, None), |held| (held.steps, held.mine.map(|n| n as usize)));
+                if summary_fits(steps, mine, markdown.len()) {
+                    self.db
+                        .prepare(
+                            "INSERT INTO job_summaries (job_id, step, markdown) VALUES (?, ?, ?)
+                               ON CONFLICT (job_id, step) DO UPDATE SET markdown = job_summaries.markdown || excluded.markdown",
+                        )
+                        .bind(&[job.id.as_str().into(), step.into(), markdown.into()])?
+                        .run()
+                        .await?;
+                }
+                self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[at.into(), job.id.as_str().into()])?.run().await?;
+            }
             "annotation" => {
                 let mut annotations: Vec<Value> = serde_json::from_str(&job.annotations).unwrap_or_default();
                 if annotations.len() < MAX_ANNOTATIONS {
@@ -2055,17 +2252,28 @@ impl Actions {
                         .await?;
                 }
             }
+            // Nothing to tell; the answer says whether to stop.
+            "ping" => {
+                self.db.prepare("UPDATE jobs SET seen_at = ? WHERE id = ?").bind(&[at.into(), job.id.as_str().into()])?.run().await?;
+            }
             "done" => {
-                let conclusion = report["conclusion"]
-                    .as_str()
-                    .filter(|c| matches!(*c, "success" | "failure" | "cancelled"))
-                    .unwrap_or("failure");
+                // A job told to stop ends cancelled, however its cleanup went.
+                let conclusion = if job.cancel_requested_at.is_some() {
+                    "cancelled"
+                } else {
+                    report["conclusion"]
+                        .as_str()
+                        .filter(|c| matches!(*c, "success" | "failure" | "cancelled"))
+                        .unwrap_or("failure")
+                };
                 let outputs = report["outputs"].as_object().cloned();
                 Box::pin(self.finish_job(&job.id, conclusion, report["reason"].as_str(), outputs.as_ref())).await?;
             }
             other => return Ok(fail(FailureCode::Invalid, format!("There is no report called `{other}`."))),
         }
-        Ok(Outcome::Ok(json!({ "ok": true })))
+        // `cancelled`: the run was cancelled, and the runner should stop
+        // the step it is on and run only its cleanup steps.
+        Ok(Outcome::Ok(json!({ "ok": true, "cancelled": job.cancel_requested_at.is_some() })))
     }
 
     // --- Every minute ---------------------------------------------------------------
@@ -2083,7 +2291,12 @@ impl Actions {
             let silent = job.seen_at.as_deref().is_some_and(|seen| seen < before(SILENT_MS).as_str());
             let limit = (u64::from(job.timeout_minutes) * 60 + 120) * 1000;
             let over = job.started_at.as_deref().is_some_and(|started| started < before(limit).as_str());
-            if over {
+            let cancel_overdue = job.cancel_requested_at.as_deref().is_some_and(|at| at < before(CANCEL_GRACE_MS).as_str());
+            if cancel_overdue {
+                // Cancelled, and still going after its grace period.
+                self.hard_stop(&job, "It was cancelled, and did not finish its cleanup steps within 5 minutes.").await?;
+                self.advance(&job.run_id).await?;
+            } else if over {
                 let reason = format!("It ran longer than its time limit of {} minutes.", job.timeout_minutes);
                 // A self-hosted runner is told to stop on its next poll.
                 if job.runner_id.is_none() {
@@ -2237,5 +2450,68 @@ mod deployments {
         assert_eq!(of(&["success", "cancelled"]), Some("error"));
         assert_eq!(of(&["skipped"]), None);
         assert_eq!(deployment_outcome(&[None]), None);
+    }
+}
+
+#[cfg(test)]
+mod reruns {
+    use serde_json::{Map, Value, json};
+
+    use super::{MAX_SUMMARIES, MAX_SUMMARY_BYTES, Rerun, debug_logging, rerun_keys, summary_fits, top_key};
+
+    /// build ← test ← deploy, and lint on its own.
+    fn keys(which: Rerun, failed: &[&str]) -> Vec<String> {
+        let order = ["build", "lint", "test", "deploy"];
+        let needs = |key: &str| -> Vec<String> {
+            match key {
+                "test" => vec!["build".into()],
+                "deploy" => vec!["test".into()],
+                _ => Vec::new(),
+            }
+        };
+        rerun_keys(&order, needs, |key| !failed.contains(&key), which)
+    }
+
+    #[test]
+    fn a_rerun_takes_the_jobs_it_names_and_those_that_need_them() {
+        assert_eq!(keys(Rerun::All, &[]), ["build", "lint", "test", "deploy"]);
+        assert_eq!(keys(Rerun::Failed, &["test"]), ["test", "deploy"]);
+        assert_eq!(keys(Rerun::Failed, &["lint"]), ["lint"]);
+        assert!(keys(Rerun::Failed, &[]).is_empty());
+        // One job, whatever it came to, and what depends on it.
+        assert_eq!(keys(Rerun::Job("build"), &[]), ["build", "test", "deploy"]);
+        assert_eq!(keys(Rerun::Job("lint"), &["test"]), ["lint"]);
+        assert_eq!(keys(Rerun::Job("deploy"), &[]), ["deploy"]);
+        assert!(keys(Rerun::Job("missing"), &[]).is_empty());
+    }
+
+    #[test]
+    fn a_called_workflows_jobs_run_again_with_the_job_that_calls_it() {
+        assert_eq!(top_key("build/test"), "build");
+        assert_eq!(top_key("build/inner/test"), "build");
+        assert_eq!(top_key("lint"), "lint");
+    }
+
+    #[test]
+    fn a_job_keeps_twenty_steps_summaries_of_a_mebibyte_each() {
+        assert!(summary_fits(0, None, 10));
+        assert!(!summary_fits(0, None, 0), "nothing to keep");
+        assert!(!summary_fits(MAX_SUMMARIES, None, 10), "a twenty-first step's summary is dropped");
+        assert!(summary_fits(MAX_SUMMARIES, Some(10), 10), "a step that has one may add to it");
+        assert!(summary_fits(1, Some(MAX_SUMMARY_BYTES - 10), 10));
+        assert!(!summary_fits(1, Some(MAX_SUMMARY_BYTES - 10), 11));
+        assert!(!summary_fits(0, None, MAX_SUMMARY_BYTES + 1));
+    }
+
+    #[test]
+    fn a_debug_rerun_sets_what_github_sets() {
+        let mut variables = Map::new();
+        let mut runner = json!({ "name": "g1t", "debug": "" });
+        debug_logging(&mut variables, &mut runner);
+        assert_eq!(variables["RUNNER_DEBUG"], "1");
+        assert_eq!(variables["ACTIONS_STEP_DEBUG"], "true");
+        assert_eq!(variables["ACTIONS_RUNNER_DEBUG"], "true");
+        assert_eq!(runner["debug"], Value::String("1".into()));
+        assert_eq!(runner["name"], "g1t");
     }
 }

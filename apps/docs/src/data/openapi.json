@@ -41830,7 +41830,7 @@
           "Actions"
         ],
         "summary": "Get a workflow run",
-        "description": "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs.",
+        "description": "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs. `attempts` lists every attempt (each re-run is one) with who started it and how it ended; give `attempt` to read an earlier one, whose jobs keep their own ids and logs.\n\nEach re-run is a new attempt. Read an earlier one with `attempt`, or at `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}`; its jobs have ids of their own, so `get_job_logs` reads the log each had then. A job that is `cancelling` was cancelled and is running its cleanup steps.",
         "x-operation": "get_workflow_run",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_run",
@@ -41961,6 +41961,226 @@
                       "job": "test",
                       "message": "`services` containers (such as a database) are not started on g1t yet."
                     }
+                  ],
+                  "attempts": [
+                    {
+                      "attempt": 1,
+                      "status": "completed",
+                      "conclusion": "failure",
+                      "actor": "syntaqx",
+                      "debug": false,
+                      "started_at": "2026-10-04T15:42:09.020Z",
+                      "finished_at": "2026-10-04T15:44:31.877Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/runs/{id}/attempts/{attempt}": {
+      "get": {
+        "operationId": "get_workflow_run_attempt",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Get a workflow run attempt",
+        "description": "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs. `attempts` lists every attempt (each re-run is one) with who started it and how it ended; give `attempt` to read an earlier one, whose jobs keep their own ids and logs.\n\nEach re-run is a new attempt. Read an earlier one with `attempt`, or at `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}`; its jobs have ids of their own, so `get_job_logs` reads the log each had then. A job that is `cancelling` was cancelled and is running its cleanup steps.",
+        "x-operation": "get_workflow_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_run",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The run's id."
+          },
+          {
+            "name": "attempt",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "An earlier attempt, from 1. The latest if not given."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "run": {
+                    "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                    "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                    "path": ".g1t/workflows/ci.yml",
+                    "name": "CI",
+                    "title": "Greeting should name the caller",
+                    "number": 12,
+                    "attempt": 1,
+                    "event": "push",
+                    "ref": "refs/heads/main",
+                    "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "pull": null,
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "error": null,
+                    "actor": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "started_at": "2026-10-04T15:42:09.020Z",
+                    "finished_at": "2026-10-04T15:44:31.877Z"
+                  },
+                  "jobs": [
+                    {
+                      "id": "job_01kpx7b3d0e4f8g2h6j0k4m8ns",
+                      "run_id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                      "key": "test",
+                      "name": "test",
+                      "needs": [],
+                      "status": "completed",
+                      "conclusion": "failure",
+                      "steps": [
+                        {
+                          "number": 1,
+                          "name": "Run actions/checkout@v4",
+                          "status": "completed",
+                          "conclusion": "success",
+                          "started_at": "2026-10-04T15:42:10.101Z",
+                          "finished_at": "2026-10-04T15:42:12.433Z"
+                        },
+                        {
+                          "number": 2,
+                          "name": "Run cargo test",
+                          "status": "completed",
+                          "conclusion": "failure",
+                          "started_at": "2026-10-04T15:42:12.440Z",
+                          "finished_at": "2026-10-04T15:44:30.902Z"
+                        }
+                      ],
+                      "annotations": [
+                        {
+                          "level": "error",
+                          "message": "assertion failed: greeting names the caller",
+                          "title": "greet",
+                          "file": "src/main.rs",
+                          "line": 41
+                        }
+                      ],
+                      "reason": null,
+                      "started_at": "2026-10-04T15:42:09.020Z",
+                      "finished_at": "2026-10-04T15:44:31.002Z"
+                    },
+                    {
+                      "id": "job_01kpx7b3d0e4f8g2h6j0k4m8nt",
+                      "run_id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                      "key": "deploy",
+                      "name": "deploy",
+                      "needs": [
+                        "test"
+                      ],
+                      "status": "completed",
+                      "conclusion": "skipped",
+                      "steps": [],
+                      "annotations": [],
+                      "reason": "A job it needs did not succeed.",
+                      "started_at": null,
+                      "finished_at": "2026-10-04T15:44:31.877Z"
+                    }
+                  ],
+                  "notes": [
+                    {
+                      "severity": "unsupported",
+                      "job": "test",
+                      "message": "`services` containers (such as a database) are not started on g1t yet."
+                    }
+                  ],
+                  "attempts": [
+                    {
+                      "attempt": 1,
+                      "status": "completed",
+                      "conclusion": "failure",
+                      "actor": "syntaqx",
+                      "debug": false,
+                      "started_at": "2026-10-04T15:42:09.020Z",
+                      "finished_at": "2026-10-04T15:44:31.877Z"
+                    }
                   ]
                 }
               }
@@ -42019,7 +42239,7 @@
           "Actions"
         ],
         "summary": "Cancel a workflow run",
-        "description": "Cancel a run that is still going: its waiting jobs are cancelled and its running ones stopped. Needs the Write role or higher.",
+        "description": "Cancel a run that is still going: its waiting jobs are cancelled at once, and its running ones stop the step they are on, run their `if: always()` and `cancelled()` steps and post steps, and end cancelled (stopped outright after 5 minutes). Cancelling a run that is already cancelling, or `force`, stops its jobs outright. Needs the Write role or higher.",
         "x-operation": "cancel_workflow_run",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "cancel",
@@ -42140,6 +42360,171 @@
             }
           }
         },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "force": {
+                    "type": "boolean",
+                    "description": "Stop running jobs outright, without their cleanup steps."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/runs/{id}/force-cancel": {
+      "post": {
+        "operationId": "force_cancel_workflow_run",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Force-cancel a workflow run",
+        "description": "Cancel a run that is still going: its waiting jobs are cancelled at once, and its running ones stop the step they are on, run their `if: always()` and `cancelled()` steps and post steps, and end cancelled (stopped outright after 5 minutes). Cancelling a run that is already cancelling, or `force`, stops its jobs outright. Needs the Write role or higher.\n\nStops running jobs at once, without their `if: always()`, `cancelled()` or post steps. Use it when a job's cleanup hangs.",
+        "x-operation": "cancel_workflow_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "cancel",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The run's id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "path": ".g1t/workflows/ci.yml",
+                  "name": "CI",
+                  "title": "Greeting should name the caller",
+                  "number": 12,
+                  "attempt": 1,
+                  "event": "push",
+                  "ref": "refs/heads/main",
+                  "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "pull": null,
+                  "status": "completed",
+                  "conclusion": "cancelled",
+                  "error": null,
+                  "actor": "syntaqx",
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "started_at": "2026-10-04T15:42:09.020Z",
+                  "finished_at": "2026-10-04T15:43:02.411Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "force": {
+                    "type": "boolean",
+                    "description": "Stop running jobs outright, without their cleanup steps."
+                  }
+                }
+              }
+            }
+          }
+        },
         "x-example-params": {
           "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
         }
@@ -42152,7 +42537,7 @@
           "Actions"
         ],
         "summary": "Re-run a workflow run",
-        "description": "Run a finished workflow run again: every job, or with failed_only the jobs that did not succeed and the jobs that need them. Needs the Write role or higher.\n\nThe run keeps its id; `attempt` goes up by one.",
+        "description": "Run a finished workflow run again, as a new attempt: every job, with failed_only the jobs that did not succeed, or with `job` one job (by its id in the latest attempt); each with the jobs that need them. `debug` (or GitHub's `enable_debug_logging`) runs the attempt with debug logging. The attempt before is kept, with its jobs' logs. Needs the Write role or higher.\n\nThe run keeps its id; `attempt` goes up by one.",
         "x-operation": "rerun_workflow_run",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "rerun",
@@ -42190,7 +42575,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The run's id."
+            "description": "The run's id. Not needed with `job`."
           }
         ],
         "responses": {
@@ -42283,6 +42668,18 @@
                   "failed_only": {
                     "type": "boolean",
                     "description": "Only the jobs that did not succeed, and those that need them."
+                  },
+                  "job": {
+                    "type": "string",
+                    "description": "One job to run again, by its id in the latest attempt, with the jobs that need it."
+                  },
+                  "debug": {
+                    "type": "boolean",
+                    "description": "Run the new attempt with debug logging: RUNNER_DEBUG=1, and ACTIONS_STEP_DEBUG and ACTIONS_RUNNER_DEBUG set to true."
+                  },
+                  "enable_debug_logging": {
+                    "type": "boolean",
+                    "description": "The same as `debug`, by GitHub's name for it."
                   }
                 }
               },
@@ -42304,7 +42701,7 @@
           "Actions"
         ],
         "summary": "Re-run failed jobs",
-        "description": "Run a finished workflow run again: every job, or with failed_only the jobs that did not succeed and the jobs that need them. Needs the Write role or higher.",
+        "description": "Run a finished workflow run again, as a new attempt: every job, with failed_only the jobs that did not succeed, or with `job` one job (by its id in the latest attempt); each with the jobs that need them. `debug` (or GitHub's `enable_debug_logging`) runs the attempt with debug logging. The attempt before is kept, with its jobs' logs. Needs the Write role or higher.",
         "x-operation": "rerun_workflow_run",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "rerun",
@@ -42342,7 +42739,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The run's id."
+            "description": "The run's id. Not needed with `job`."
           }
         ],
         "responses": {
@@ -42435,6 +42832,18 @@
                   "failed_only": {
                     "type": "boolean",
                     "description": "Only the jobs that did not succeed, and those that need them."
+                  },
+                  "job": {
+                    "type": "string",
+                    "description": "One job to run again, by its id in the latest attempt, with the jobs that need it."
+                  },
+                  "debug": {
+                    "type": "boolean",
+                    "description": "Run the new attempt with debug logging: RUNNER_DEBUG=1, and ACTIONS_STEP_DEBUG and ACTIONS_RUNNER_DEBUG set to true."
+                  },
+                  "enable_debug_logging": {
+                    "type": "boolean",
+                    "description": "The same as `debug`, by GitHub's name for it."
                   }
                 }
               }
@@ -42443,6 +42852,170 @@
         },
         "x-example-params": {
           "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/jobs/{job}/rerun": {
+      "post": {
+        "operationId": "rerun_job",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Re-run a job",
+        "description": "Run a finished workflow run again, as a new attempt: every job, with failed_only the jobs that did not succeed, or with `job` one job (by its id in the latest attempt); each with the jobs that need them. `debug` (or GitHub's `enable_debug_logging`) runs the attempt with debug logging. The attempt before is kept, with its jobs' logs. Needs the Write role or higher.\n\nRuns the job again with every job that needs it, as a new attempt; the rest keep how they ended. A job of a matrix runs again with the rest of its matrix, and a job of a called workflow with the job that calls it. The run must have finished.",
+        "x-operation": "rerun_workflow_run",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "rerun",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One job to run again, by its id in the latest attempt, with the jobs that need it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+                  "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+                  "path": ".g1t/workflows/ci.yml",
+                  "name": "CI",
+                  "title": "Greeting should name the caller",
+                  "number": 12,
+                  "attempt": 2,
+                  "event": "push",
+                  "ref": "refs/heads/main",
+                  "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "pull": null,
+                  "status": "queued",
+                  "conclusion": null,
+                  "error": null,
+                  "actor": "syntaqx",
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "started_at": null,
+                  "finished_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "The run's id. Not needed with `job`."
+                  },
+                  "failed_only": {
+                    "type": "boolean",
+                    "description": "Only the jobs that did not succeed, and those that need them."
+                  },
+                  "debug": {
+                    "type": "boolean",
+                    "description": "Run the new attempt with debug logging: RUNNER_DEBUG=1, and ACTIONS_STEP_DEBUG and ACTIONS_RUNNER_DEBUG set to true."
+                  },
+                  "enable_debug_logging": {
+                    "type": "boolean",
+                    "description": "The same as `debug`, by GitHub's name for it."
+                  }
+                }
+              },
+              "example": {
+                "enable_debug_logging": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "job": "job_01kpx7b3d0e4f8g2h6j0k4m8ns"
         }
       }
     },

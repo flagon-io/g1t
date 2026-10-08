@@ -778,6 +778,41 @@ servers (Sentry, Linear and so on) it may use while working.
 - **Not yet:** a deployment's `ref` that is neither a branch nor a commit
   is read as a tag; `on: delete`.
 
+### Runs: summaries, attempts, cancelling, logs and badges (built 2026-10-08)
+
+GitHub Actions parity on the run itself:
+
+- [x] **Job summaries.** The runner sends each step's
+  `$GITHUB_STEP_SUMMARY`, masked, as a `summary` report (1 MiB a step,
+  20 steps a job, kept in `job_summaries`, actions/0009); the run's page
+  renders them as sanitised Markdown, a card per job.
+- [x] **Attempts and re-runs.** A re-run is a new attempt that keeps the
+  one before (`run_attempts`, `job_attempts`; a re-run job's logs and
+  summary move to `{job}.{attempt}`, which is its id when that attempt is
+  viewed). Re-run all, failed, or one job (`POST …/jobs/{job}/rerun`) with
+  the jobs that need it; a matrix or a called workflow runs again whole.
+  Debug re-runs set `RUNNER_DEBUG=1`, `ACTIONS_STEP_DEBUG`,
+  `ACTIONS_RUNNER_DEBUG` and `runner.debug`; the runner then shows
+  `::debug::` lines and how each step's `if:` read. An attempt picker on
+  the run's page, `attempt` on `get_workflow_run` and
+  `…/runs/{id}/attempts/{n}`.
+- [x] **Graceful cancel.** A running job gets `cancel_requested_at`,
+  told in the answer to its next report (a quiet step pings every 10 s):
+  the step's process group gets SIGINT, SIGTERM at 7.5 s, SIGKILL at 10 s;
+  then only `always()`/`cancelled()` steps and post steps run, and the job
+  ends `cancelled`. Hard-stopped after 5 minutes; cancelling again or
+  `…/force-cancel` stops at once.
+- [x] **Logs.** Search on the run's page (matching lines, groups opened);
+  one job's log as text (`…/jobs/{job}/log.txt`, API
+  `…/jobs/{job}/logs?format=text`) and an attempt's as a zip laid out as
+  GitHub's (`…/runs/{id}/logs.zip`, API `…/runs/{id}/logs`), up to 24 MiB.
+- [x] **Status badges** at `/{ws}/{repo}/actions/workflows/{file}/badge.svg`
+  with `branch` and `event`; public repositories' for anyone (cached a
+  minute), private ones' only for viewers who can see them. "Create status
+  badge" on the workflow's page gives the Markdown.
+- Not yet: re-running one combination of a matrix alone; signals into a
+  job container's processes on cancel (they reach `docker exec` only).
+
 ## A repository that maintains itself
 
 > **2026-10-04:** the user asked for Dependabot, GitHub Advanced Security and

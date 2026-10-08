@@ -1,14 +1,44 @@
-import { AlertTriangle, Check, ChevronRight, Cloud, Download, GitBranch, GitCommitHorizontal, Hourglass, Info, Package, Play, RotateCw, ServerCog, ShieldAlert, Square, Trash2, Users, X, XCircle } from "lucide-react";
-import { type ReactNode } from "react";
+import {
+  AlertTriangle,
+  Bug,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Cloud,
+  Download,
+  FileText,
+  GitBranch,
+  GitCommitHorizontal,
+  History,
+  Hourglass,
+  Info,
+  Package,
+  Play,
+  RotateCw,
+  Search,
+  ServerCog,
+  ShieldAlert,
+  Square,
+  Trash2,
+  Users,
+  X,
+  XCircle,
+} from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
-import type { Annotation, EnvironmentReviewer, Job, PendingDeployment, RunApproval, StepState } from "@g1t/contracts";
+import type { Annotation, EnvironmentReviewer, Job, JobSummary, PendingDeployment, RunApproval, RunAttempt, StepState } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
 import { LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog } from "../../components/actions";
-import { ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Markdown } from "../../components/markdown";
+import { Button, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { CheckboxOption } from "../../components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
+import { searchLog } from "../../lib/log-lines";
 import { listArtifacts } from "../../lib/artifacts.server";
 import { expiresIn, formatBytes } from "../../lib/artifacts";
 import { actions } from "../../lib/services.server";
@@ -21,17 +51,25 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${run ? `${run.title || run.name} #${run.number}` : "Run"} · ${params.owner}/${params.repo} · g1t` });
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const repo = { namespace: params.owner, name: params.repo };
-  const [detail, artifacts] = await Promise.all([
-    actions.run(repo, viewer, params.id).then(unwrap),
+  // An earlier attempt, when one is asked for.
+  const asked = Number(new URL(request.url).searchParams.get("attempt") ?? "");
+  const attempt = Number.isInteger(asked) && asked > 0 ? asked : undefined;
+  const [detail, artifacts, summaries] = await Promise.all([
+    actions.run(repo, viewer, params.id, attempt).then(unwrap),
     listArtifacts(repo, viewer, params.id).catch(() => []),
+    actions
+      .summaries(repo, viewer, params.id, attempt)
+      .then((found) => (found.ok ? found.value : []))
+      .catch((): JobSummary[] => []),
   ]);
   // Cancelling and re-running need Write.
   return {
     detail,
     artifacts,
+    summaries,
     member: (await accessTo(context, params)).can.run,
     // The runners page is the workspace owners'.
     runnersPage: roleIn(viewer, params.owner) === "owner",
@@ -66,12 +104,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const deleted = await actions.deleteArtifact(user, repo, Number(form.get("artifact")));
     return deleted.ok ? {} : { error: deleted.error.message };
   }
+  // Debug logging, for a re-run that asks for it.
+  const debug = form.get("debug") === "on";
+  const job = String(form.get("job") ?? "") || undefined;
   const done =
     intent === "approve-run"
       ? await actions.approveRun(user, repo, params.id)
-      : intent === "cancel"
-        ? await actions.cancel(user, repo, params.id)
-        : await actions.rerun(user, repo, params.id, intent === "rerun-failed");
+      : intent === "cancel" || intent === "force-cancel"
+        ? await actions.cancel(user, repo, params.id, intent === "force-cancel")
+        : await actions.rerun(user, repo, params.id, intent === "rerun-failed", { job: intent === "rerun-job" ? job : undefined, debug });
   return done.ok ? {} : { error: done.error.message };
 }
 
@@ -81,23 +122,163 @@ const ANNOTATION_ICON: Record<Annotation["level"], ReactNode> = {
   notice: <Info size={14} className="mt-0.5 shrink-0 text-muted" />,
 };
 
-function StepRow({ step, text, defaultOpen }: { step: StepState; text: string | undefined; defaultOpen: boolean }) {
+function StepRow({
+  step,
+  text,
+  defaultOpen,
+  query = "",
+  matches = 0,
+}: {
+  step: StepState;
+  text: string | undefined;
+  defaultOpen: boolean;
+  /** A search of the job's log: only its matching lines are shown. */
+  query?: string;
+  matches?: number;
+}) {
   return (
     <details className="group border-t border-line first:border-t-0" open={defaultOpen}>
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2 text-sm hover:bg-raised/40">
         <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
         <StatusIcon status={step.status} conclusion={step.conclusion} size={14} />
         <span className={`min-w-0 truncate ${step.conclusion === "skipped" ? "text-faint" : ""}`}>{step.name}</span>
+        {query && (
+          <span className="shrink-0 rounded-full bg-accent/15 px-1.5 text-xs text-accent">
+            {matches} {matches === 1 ? "line" : "lines"}
+          </span>
+        )}
         <span className="ml-auto shrink-0 font-mono text-xs text-faint">{duration(step.startedAt, step.finishedAt)}</span>
       </summary>
       <div className="border-t border-line bg-bg/60">
         {text === undefined ? (
           <p className="px-4 py-2 text-xs text-faint">{step.status === "queued" ? "Not started." : step.conclusion === "skipped" ? "Skipped." : "No output yet."}</p>
         ) : (
-          <LogText text={text} />
+          <LogText text={text} query={query} />
         )}
       </div>
     </details>
+  );
+}
+
+/**
+ * Runs again, after asking whether with debug logging: the whole run, its
+ * failed jobs, or one job (with the jobs that need it).
+ */
+function RerunDialog({
+  intent,
+  job,
+  title,
+  description,
+  children,
+  busy,
+}: {
+  intent: "rerun" | "rerun-failed" | "rerun-job";
+  job?: string;
+  title: string;
+  description: string;
+  /** What opens it. */
+  children: (open: () => void) => ReactNode;
+  busy: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  // Open, saying it is starting, until the new attempt shows or the error does.
+  const running = usePending({ intent });
+  const was = useRef(false);
+  useEffect(() => {
+    if (was.current && !running) setOpen(false);
+    was.current = running;
+  }, [running]);
+  return (
+    <>
+      {children(() => setOpen(true))}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <Form method="post" preventScrollReset className="grid gap-4">
+            <DialogHeader>
+              <DialogTitle>{title}</DialogTitle>
+              <DialogDescription>{description}</DialogDescription>
+            </DialogHeader>
+            {job && <input type="hidden" name="job" value={job} />}
+            <CheckboxOption
+              name="debug"
+              label="Enable debug logging"
+              description="Sets RUNNER_DEBUG=1 and ACTIONS_STEP_DEBUG: ::debug:: lines are shown, and how each step's if: read."
+            />
+            <DialogFooter>
+              <Button type="button" variant="quiet" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <SubmitButton name="intent" value={intent} variant="accent" disabled={busy} pending="Re-running…">
+                <RotateCw size={13} />
+                {title}
+              </SubmitButton>
+            </DialogFooter>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** A link or menu button that sits beside the run's quiet buttons, at their size. */
+const QUIET_LINK =
+  "inline-flex items-center gap-2 rounded-md border border-line px-3.5 py-2 text-sm font-medium text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg";
+
+/** The run's attempts, newest first, each a link to how it went. */
+function AttemptPicker({ attempts, shown }: { attempts: RunAttempt[]; shown: number }) {
+  const latest = attempts[attempts.length - 1]?.attempt ?? shown;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={QUIET_LINK}>
+          <History size={13} />
+          Attempt #{shown}
+          <ChevronDown size={13} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-64">
+        {[...attempts].reverse().map((attempt) => (
+          <DropdownMenuItem key={attempt.attempt} asChild>
+            <Link
+              to={attempt.attempt === latest ? "?" : `?attempt=${attempt.attempt}`}
+              preventScrollReset
+              className={`flex items-center gap-2 ${attempt.attempt === shown ? "text-fg" : ""}`}
+            >
+              <StatusIcon status={attempt.status} conclusion={attempt.conclusion} size={14} />
+              <span className="font-medium">Attempt #{attempt.attempt}</span>
+              {attempt.debug && <Bug size={12} className="text-faint" aria-label="Debug logging" />}
+              <span className="ml-auto truncate text-xs text-faint">
+                {attempt.actor && `${attempt.actor} · `}
+                {attempt.startedAt ? <TimeAgo at={attempt.startedAt} /> : "not started"}
+              </span>
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** What the jobs' steps wrote to $GITHUB_STEP_SUMMARY, a card per job. */
+function Summaries({ summaries, repo }: { summaries: JobSummary[]; repo: { namespace: string; name: string } }) {
+  if (summaries.length === 0) return null;
+  return (
+    <section aria-label="Job summaries" className="space-y-4">
+      {summaries.map((summary) => (
+        <article key={summary.jobId} className="overflow-hidden rounded-xl border border-line bg-surface">
+          <header className="flex items-center gap-2 border-b border-line px-4 py-2.5 text-sm">
+            <FileText size={14} className="text-muted" />
+            <span className="font-medium">{summary.name}</span>
+            <span className="text-faint">summary</span>
+          </header>
+          <div className="space-y-4 px-5 py-4">
+            {summary.steps.map((step) => (
+              <Markdown key={step.step} source={step.markdown} repo={repo} />
+            ))}
+          </div>
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -154,21 +335,50 @@ function RanOn({ job, workspace }: { job: Job; workspace: string }) {
   );
 }
 
-function JobView({ job, base }: { job: Job; base: string }) {
+function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNode }) {
   const live = job.status !== "completed";
   const log = useJobLog(`${base}/actions/jobs/${job.id}/log`, live);
+  const [query, setQuery] = useState("");
   const failed = job.steps.find((s) => s.conclusion === "failure");
   const running = job.steps.find((s) => s.status === "in_progress");
+  const searching = query.trim().length > 0;
+  const setUp: StepState = {
+    number: 0,
+    name: "Set up job",
+    status: job.startedAt ? "completed" : "queued",
+    conclusion: job.startedAt ? "success" : null,
+    startedAt: job.startedAt,
+    finishedAt: job.startedAt,
+  };
+  // While searching, the steps with a match, each with how many.
+  const steps = [setUp, ...job.steps]
+    .map((step) => ({ step, matches: searching ? searchLog(log.get(step.number) ?? "", query).length : 0 }))
+    .filter(({ matches }) => !searching || matches > 0);
+  const total = steps.reduce((sum, { matches }) => sum + matches, 0);
   return (
     <section className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={18} />
         <h3 className="text-base font-semibold">{job.name}</h3>
         <span className="text-sm text-muted">
-          {standingWord({ ...job, of: "job" })}
+          {job.cancelling ? "Cancelling: running its cleanup steps" : standingWord({ ...job, of: "job" })}
           {job.startedAt && ` · ${duration(job.startedAt, job.finishedAt)}`}
         </span>
-        <RanOn job={job} workspace={base.split("/")[1]!} />
+        <span className="ml-auto flex items-center gap-2">
+          {rerun}
+          {job.startedAt && (
+            <Hint label="Download this job's log">
+              <a
+                href={`${base}/actions/jobs/${job.id}/log.txt`}
+                aria-label={`Download the log of ${job.name}`}
+                className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-fg"
+              >
+                <Download size={13} />
+              </a>
+            </Hint>
+          )}
+          <RanOn job={job} workspace={base.split("/")[1]!} />
+        </span>
       </div>
       {job.reason && <Reason text={job.reason} workspace={base.split("/")[1]} />}
       {job.annotations.length > 0 && (
@@ -190,18 +400,35 @@ function JobView({ job, base }: { job: Job; base: string }) {
           ))}
         </ul>
       )}
+      {job.startedAt && (
+        <label className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm focus-within:border-accent-dim">
+          <Search size={14} className="shrink-0 text-faint" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search logs"
+            aria-label={`Search the log of ${job.name}`}
+            className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+          />
+          {searching && (
+            <span className="shrink-0 text-xs text-muted" aria-live="polite">
+              {total} {total === 1 ? "line" : "lines"}
+            </span>
+          )}
+        </label>
+      )}
       <div className="overflow-hidden rounded-xl border border-line bg-surface">
-        <StepRow
-          step={{ number: 0, name: "Set up job", status: job.startedAt ? "completed" : "queued", conclusion: job.startedAt ? "success" : null, startedAt: job.startedAt, finishedAt: job.startedAt }}
-          text={log.get(0)}
-          defaultOpen={false}
-        />
-        {job.steps.map((step) => (
+        {searching && steps.length === 0 && <p className="px-4 py-3 text-sm text-muted">No line of this job's log holds “{query.trim()}”.</p>}
+        {steps.map(({ step, matches }) => (
           <StepRow
-            key={step.number}
+            // Searching opens every step with a match; clearing it puts them back.
+            key={`${step.number}:${searching}`}
             step={step}
             text={log.get(step.number)}
-            defaultOpen={step.number === (failed ?? running)?.number}
+            defaultOpen={searching || (step.number !== 0 && step.number === (failed ?? running)?.number)}
+            query={searching ? query : ""}
+            matches={matches}
           />
         ))}
       </div>
@@ -430,14 +657,21 @@ function DeploymentsPanel({ deployments, busy }: { deployments: PendingDeploymen
 }
 
 export default function ActionsRun({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { detail, artifacts, member } = loaderData;
+  const { detail, artifacts, member, summaries } = loaderData;
   const { run, jobs, notes } = detail;
   const deployments = detail.pendingDeployments ?? [];
+  const attempts = detail.attempts ?? [];
+  const latest = attempts.length === 0 || run.attempt === attempts[attempts.length - 1]!.attempt;
   const base = `/${params.owner}/${params.repo}`;
   const [search] = useSearchParams();
   // One of the run's buttons is working: the others wait for it.
   const busy = usePending();
   const live = run.status !== "completed";
+  // Cancelled, while its jobs run their cleanup steps.
+  const cancelling = live && run.conclusion === "cancelled";
+  // Re-running is for the latest attempt of a finished run.
+  const canRerun = member && !run.error && !live && latest;
+  const logsUrl = `${base}/actions/runs/${run.id}/logs.zip${latest ? "" : `?attempt=${run.attempt}`}`;
   // Waiting on a person needs no quick refresh; a running job does.
   useRefreshWhile(live, run.status === "action_required" || run.status === "waiting" ? 8000 : 2500);
 
@@ -461,32 +695,67 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             <span className="min-w-0 truncate">{run.title || run.name}</span>
             <span className="font-normal text-muted">#{run.number}</span>
           </h2>
-          {member && !run.error && (
-            <Form method="post" className="flex gap-2">
-              {live ? (
-                <SubmitButton name="intent" value="cancel" variant="quiet" disabled={busy} pending="Cancelling…">
-                  <Square size={13} />
-                  Cancel run
-                </SubmitButton>
-              ) : (
-                <>
-                  {anyFailed && (
-                    <SubmitButton name="intent" value="rerun-failed" variant="quiet" disabled={busy} pending="Re-running…">
-                      <RotateCw size={13} />
-                      Re-run failed jobs
+          <div className="flex flex-wrap items-center gap-2">
+            {attempts.length > 1 && <AttemptPicker attempts={attempts} shown={run.attempt} />}
+            {jobs.some((job) => job.startedAt) && (
+              <Hint label={latest ? "Every job's log, as a zip" : `Attempt #${run.attempt}'s logs, as a zip`}>
+                <a href={logsUrl} className={QUIET_LINK}>
+                  <Download size={13} />
+                  Download logs
+                </a>
+              </Hint>
+            )}
+            {member && !run.error && live && (
+              <Form method="post" className="flex gap-2">
+                {cancelling ? (
+                  <Hint label="Stop its jobs now, without waiting for their cleanup steps">
+                    <SubmitButton name="intent" value="force-cancel" variant="danger" disabled={busy} pending="Stopping…">
+                      <Square size={13} />
+                      Force cancel
                     </SubmitButton>
-                  )}
-                  <SubmitButton name="intent" value="rerun" variant="quiet" disabled={busy} pending="Re-running…">
+                  </Hint>
+                ) : (
+                  <SubmitButton name="intent" value="cancel" variant="quiet" disabled={busy} pending="Cancelling…">
+                    <Square size={13} />
+                    Cancel run
+                  </SubmitButton>
+                )}
+              </Form>
+            )}
+            {canRerun && anyFailed && (
+              <RerunDialog
+                intent="rerun-failed"
+                title="Re-run failed jobs"
+                description="The jobs that did not succeed run again as a new attempt, with every job that needs them. The others keep how they ended."
+                busy={busy}
+              >
+                {(open) => (
+                  <Button type="button" variant="quiet" disabled={busy} onClick={open}>
+                    <RotateCw size={13} />
+                    Re-run failed jobs
+                  </Button>
+                )}
+              </RerunDialog>
+            )}
+            {canRerun && (
+              <RerunDialog
+                intent="rerun"
+                title="Re-run all jobs"
+                description="Every job runs again as a new attempt. This attempt stays here, with its logs."
+                busy={busy}
+              >
+                {(open) => (
+                  <Button type="button" variant="quiet" disabled={busy} onClick={open}>
                     <RotateCw size={13} />
                     Re-run all jobs
-                  </SubmitButton>
-                </>
-              )}
-            </Form>
-          )}
+                  </Button>
+                )}
+              </RerunDialog>
+            )}
+          </div>
         </div>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-          <span>{runWord(run.status, deployments) ?? standingWord(run)}</span>
+          <span>{runWord(run.status, deployments) ?? (cancelling ? "Cancelling" : standingWord(run))}</span>
           <span className="inline-flex items-center gap-1 font-mono text-xs">
             <GitBranch size={12} />
             {shortRef(run.ref)}
@@ -505,12 +774,24 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             {run.actor && ` by ${run.actor}`} · <TimeAgo at={run.createdAt} />
           </span>
           {run.startedAt && <span className="font-mono text-xs">{duration(run.startedAt, run.finishedAt)}</span>}
-          {run.attempt > 1 && <span>Attempt {run.attempt}</span>}
+          {run.attempt > 1 && attempts.length <= 1 && <span>Attempt {run.attempt}</span>}
+          {cancelling && <span className="text-warn">Its jobs are running their cleanup steps</span>}
           {detail.approval?.state === "approved" && detail.approval.approvedBy && <span>Approved by {detail.approval.approvedBy}</span>}
         </p>
       </header>
 
       <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
+      {!latest && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
+          <History size={15} className="shrink-0" />
+          <span>
+            This is attempt #{run.attempt} of {attempts.length}, as it ended.
+          </span>
+          <Link to="?" className="text-accent hover:underline">
+            See the latest attempt
+          </Link>
+        </p>
+      )}
       {detail.approval?.state === "required" && <ApprovalPanel approval={detail.approval} member={member} busy={busy} />}
       {live && held(deployments) && <DeploymentsPanel deployments={deployments} busy={busy} />}
       {run.error && (
@@ -520,6 +801,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
         </div>
       )}
       <Notes notes={notes} />
+      <Summaries summaries={summaries} repo={{ namespace: params.owner, name: params.repo }} />
       {artifacts.length > 0 && (
         <section className="rounded-xl border border-line bg-surface p-4">
           <h3 className="flex items-center gap-2 text-sm font-medium">
@@ -575,7 +857,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             {jobs.map((job) => (
               <Link
                 key={job.id}
-                to={`?job=${job.id}`}
+                to={latest ? `?job=${job.id}` : `?attempt=${run.attempt}&job=${job.id}`}
                 preventScrollReset
                 className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${
                   job.id === selected?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
@@ -588,7 +870,38 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             ))}
           </nav>
           {/* Run again, a job keeps its id but its log starts afresh. */}
-          {selected && <JobView key={`${selected.id}:${run.attempt}`} job={selected} base={base} />}
+          {selected && (
+            <JobView
+              key={`${selected.id}:${run.attempt}`}
+              job={selected}
+              base={base}
+              rerun={
+                canRerun && selected.status === "completed" ? (
+                  <RerunDialog
+                    intent="rerun-job"
+                    job={selected.id}
+                    title="Re-run this job"
+                    description={`${selected.name} runs again as a new attempt, with every job that needs it. A job of a matrix runs again with the rest of its matrix.`}
+                    busy={busy}
+                  >
+                    {(open) => (
+                      <Hint label="Re-run this job">
+                        <button
+                          type="button"
+                          aria-label={`Re-run ${selected.name}`}
+                          disabled={busy}
+                          onClick={open}
+                          className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-fg disabled:opacity-50"
+                        >
+                          <RotateCw size={13} />
+                        </button>
+                      </Hint>
+                    )}
+                  </RerunDialog>
+                ) : null
+              }
+            />
+          )}
         </div>
       )}
     </div>

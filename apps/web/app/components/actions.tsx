@@ -10,6 +10,7 @@ import { Link } from "react-router";
 import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/contracts";
 
 import { Hint } from "./ui/hint";
+import { type Line, blocks, highlight, searchLog } from "../lib/log-lines";
 
 /**
  * Where a run, job or step stands. `of` says which: a run's `pending` waits
@@ -89,43 +90,6 @@ export function shortRef(ref: string): string {
   return ref.replace(/^refs\/(heads|tags)\//, "");
 }
 
-type Line = { kind: "text" | "error" | "warning" | "notice" | "debug" | "command"; text: string };
-type Block = { kind: "line"; line: Line; number: number } | { kind: "group"; title: string; lines: { line: Line; number: number }[] };
-
-function classify(raw: string): Line | "group-end" | { group: string } {
-  if (raw.startsWith("##[group]")) return { group: raw.slice(9) };
-  if (raw.startsWith("##[endgroup]")) return "group-end";
-  for (const kind of ["error", "warning", "notice", "debug"] as const) {
-    if (raw.startsWith(`##[${kind}]`)) return { kind, text: raw.slice(kind.length + 4) };
-  }
-  if (raw.startsWith("[command]")) return { kind: "command", text: raw.slice(9) };
-  return { kind: "text", text: raw };
-}
-
-/** Lines into blocks: plain lines, and groups that fold. */
-function blocks(text: string): Block[] {
-  const out: Block[] = [];
-  let group: Extract<Block, { kind: "group" }> | null = null;
-  let number = 0;
-  for (const raw of text.split("\n")) {
-    if (raw === "" && number === 0) continue;
-    const line = classify(raw);
-    if (line === "group-end") {
-      group = null;
-      continue;
-    }
-    if ("group" in line) {
-      group = { kind: "group", title: line.group, lines: [] };
-      out.push(group);
-      continue;
-    }
-    number += 1;
-    if (group) group.lines.push({ line, number });
-    else out.push({ kind: "line", line, number });
-  }
-  return out;
-}
-
 const LINE_STYLE: Record<Line["kind"], string> = {
   text: "text-fg/85",
   error: "text-danger",
@@ -135,22 +99,47 @@ const LINE_STYLE: Record<Line["kind"], string> = {
   command: "text-muted",
 };
 
-function LogLine({ line, number }: { line: Line; number: number }) {
+function LogLine({ line, number, query = "" }: { line: Line; number: number; query?: string }) {
+  const text = line.text.replace(/^(Error|Warning|Notice): /, "");
   return (
     <div className={`flex gap-4 px-4 hover:bg-raised/40 ${line.kind === "error" ? "bg-danger/5" : ""}`}>
       <span className="w-8 shrink-0 select-none text-right text-faint/70">{number}</span>
       <span className={`min-w-0 whitespace-pre-wrap break-all ${LINE_STYLE[line.kind]}`}>
         {line.kind === "error" && <span className="font-semibold">Error: </span>}
         {line.kind === "warning" && <span className="font-semibold">Warning: </span>}
-        {line.text.replace(/^(Error|Warning|Notice): /, "")}
+        {query
+          ? highlight(text, query).map((piece, index) =>
+              piece.match ? (
+                <mark key={index} className="rounded-sm bg-accent/30 text-fg">
+                  {piece.text}
+                </mark>
+              ) : (
+                piece.text
+              ),
+            )
+          : text}
       </span>
     </div>
   );
 }
 
-export function LogText({ text }: { text: string }) {
+/**
+ * A step's log. With `query`, only the lines holding it (any case), groups
+ * opened, each match marked.
+ */
+export function LogText({ text, query = "" }: { text: string; query?: string }) {
   const parsed = useMemo(() => blocks(text), [text]);
+  const found = useMemo(() => searchLog(text, query), [text, query]);
   if (!text.trim()) return <p className="px-4 py-2 text-xs text-faint">No output.</p>;
+  if (query.trim()) {
+    return (
+      <div className="py-1 font-mono text-xs leading-5">
+        {found.map(({ line, number }) => (
+          <LogLine key={number} line={line} number={number} query={query} />
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="py-1 font-mono text-xs leading-5">
       {parsed.map((block, index) =>

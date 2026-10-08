@@ -119,13 +119,46 @@ impl Commands {
 pub(crate) enum Ended {
     Exited(i32),
     TimedOut,
+    /// The run was cancelled: it was interrupted, then stopped.
+    Cancelled,
+}
+
+/// After a cancellation, how long a step has after SIGINT before SIGTERM,
+/// and after SIGTERM before it is killed, as GitHub's runner waits.
+const INTERRUPT_GRACE: Duration = Duration::from_millis(7500);
+const TERMINATE_GRACE: Duration = Duration::from_millis(2500);
+
+/// Sends `signal` to the process's group (it leads its own), so what the
+/// step started hears it too. Windows has no signals: it is left to `kill`.
+fn signal(child: &std::process::Child, signal: &str) {
+    if cfg!(unix) {
+        let _ = Command::new("kill")
+            .args([format!("-{signal}"), "--".into(), format!("-{}", child.id())])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
 }
 
 /// Runs the command, sending its output (stdout and stderr together, a
 /// line at a time) through `commands` to the log, until it ends or
 /// `timeout` passes.
-pub(crate) fn run(mut command: Command, timeout: Duration, log: &mut Log, commands: &mut Commands) -> std::io::Result<Ended> {
+pub(crate) fn run(command: Command, timeout: Duration, log: &mut Log, commands: &mut Commands) -> std::io::Result<Ended> {
+    run_until(command, timeout, log, commands, &super::report::interrupt)
+}
+
+/// `run`, stopping the process gracefully once `interrupt` says so.
+fn run_until(
+    mut command: Command,
+    timeout: Duration,
+    log: &mut Log,
+    commands: &mut Commands,
+    interrupt: &dyn Fn() -> bool,
+) -> std::io::Result<Ended> {
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // A group of its own, so a cancellation reaches what the step started.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
     let mut child = command.spawn()?;
     let (sender, lines) = mpsc::channel::<String>();
     let mut readers = Vec::new();
@@ -158,6 +191,8 @@ pub(crate) fn run(mut command: Command, timeout: Duration, log: &mut Log, comman
     drop(sender);
     let deadline = Instant::now() + timeout;
     let mut timed_out = false;
+    // When the cancellation reached it, and which signal it has had.
+    let mut interrupted: Option<(Instant, u8)> = None;
     loop {
         match lines.recv_timeout(Duration::from_millis(250)) {
             Ok(line) => {
@@ -176,7 +211,31 @@ pub(crate) fn run(mut command: Command, timeout: Duration, log: &mut Log, comman
         }
         if Instant::now() >= deadline {
             timed_out = true;
+            signal(&child, "KILL");
             let _ = child.kill();
+            break;
+        }
+        // Cancelled: SIGINT, then SIGTERM, then killed, as on GitHub.
+        match interrupted {
+            None if interrupt() => {
+                log.line("##[error]The operation was canceled.");
+                signal(&child, "INT");
+                interrupted = Some((Instant::now(), 1));
+            }
+            Some((at, 1)) if at.elapsed() >= INTERRUPT_GRACE => {
+                signal(&child, "TERM");
+                interrupted = Some((Instant::now(), 2));
+            }
+            Some((at, 2)) if at.elapsed() >= TERMINATE_GRACE => {
+                signal(&child, "KILL");
+                let _ = child.kill();
+                break;
+            }
+            _ => {}
+        }
+        if interrupted.is_some() && matches!(child.try_wait(), Ok(Some(_))) {
+            // The step is gone; what it started may still hold its output.
+            signal(&child, "KILL");
             break;
         }
     }
@@ -193,12 +252,38 @@ pub(crate) fn run(mut command: Command, timeout: Duration, log: &mut Log, comman
     if timed_out {
         return Ok(Ended::TimedOut);
     }
+    if interrupted.is_some() {
+        return Ok(Ended::Cancelled);
+    }
     Ok(Ended::Exited(status.code().unwrap_or(1)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::parse_command;
+
+    /// A cancelled step hears SIGINT, and its own trap runs.
+    #[cfg(unix)]
+    #[test]
+    fn a_cancelled_step_is_interrupted_and_may_clean_up() {
+        use super::{Commands, Ended, run_until};
+        use crate::actions::report::{Api, Log};
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+
+        let api = Api { base: "http://127.0.0.1:9".into(), job: "job_1".into(), token: "t".into() };
+        let mut log = Log::new(api, Vec::new());
+        let mut command = Command::new("sh");
+        command.args(["-c", "trap 'echo cleaned up; exit 3' INT; echo started; while true; do sleep 0.1; done"]);
+        let began = Instant::now();
+        let ask = move || began.elapsed() >= Duration::from_millis(600);
+        let ended = run_until(command, Duration::from_secs(60), &mut log, &mut Commands::default(), &ask).unwrap();
+        assert!(matches!(ended, Ended::Cancelled));
+        assert!(began.elapsed() < Duration::from_secs(8), "SIGINT ended it, not the kill after the grace period");
+        let text = log.buffered();
+        assert!(text.contains("The operation was canceled."), "{text}");
+        assert!(text.contains("cleaned up"), "{text}");
+    }
 
     #[test]
     fn commands_are_read_with_their_properties() {

@@ -32,6 +32,12 @@ pub const TRANSFERRED: &[&str] = &[
 /// stay with the project.
 pub const PURGED: &[&str] = &[
     "DELETE FROM logs WHERE job_id IN (SELECT id FROM jobs WHERE repo_id = ?1)",
+    // Earlier attempts' logs and summaries, kept under their own ids.
+    "DELETE FROM logs WHERE job_id IN (SELECT id FROM job_attempts WHERE repo_id = ?1)",
+    "DELETE FROM job_summaries WHERE job_id IN (SELECT id FROM jobs WHERE repo_id = ?1)",
+    "DELETE FROM job_summaries WHERE job_id IN (SELECT id FROM job_attempts WHERE repo_id = ?1)",
+    "DELETE FROM job_attempts WHERE repo_id = ?1",
+    "DELETE FROM run_attempts WHERE repo_id = ?1",
     "DELETE FROM jobs WHERE repo_id = ?1",
     "DELETE FROM runs WHERE repo_id = ?1",
     "DELETE FROM workflows WHERE repo_id = ?1",

@@ -950,7 +950,7 @@ impl Work {
             let detail: Outcome<RunDetail> = g1t_kit::call(
                 &self.actions,
                 "run",
-                &RunArgs { repo: repo.clone(), viewer: viewer.clone(), id: run_id },
+                &RunArgs { repo: repo.clone(), viewer: viewer.clone(), id: run_id, attempt: None },
             )
             .await?;
             let Outcome::Ok(detail) = detail else { continue };

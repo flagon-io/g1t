@@ -1,4 +1,4 @@
-import { AlertTriangle, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
+import { AlertTriangle, BadgeCheck, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useSearchParams } from "react-router";
 
@@ -8,8 +8,11 @@ import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
-import { Button, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Button, ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
+import { useAddresses } from "../../lib/addresses";
+import { badgeMarkdown, badgeUrl } from "../../lib/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { computeNoteFor } from "../../lib/compute.server";
 import { actions } from "../../lib/services.server";
@@ -223,6 +226,69 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
   );
 }
 
+/** The address of a status badge for the workflow, and Markdown to show it, for a branch and event if chosen. */
+function StatusBadge({ workflow, repo }: { workflow: Workflow; repo: string }) {
+  const { site } = useAddresses();
+  const [branch, setBranch] = useState("");
+  const [event, setEvent] = useState("");
+  const file = workflow.path.split("/").pop() ?? workflow.path;
+  const options = { branch: branch.trim() || undefined, event: event || undefined };
+  const control = "w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-accent-dim";
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" variant="quiet">
+          <BadgeCheck size={14} />
+          Create status badge
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create status badge</DialogTitle>
+          <DialogDescription>
+            A badge that shows how {workflow.name}'s latest finished run went. Paste it into a README.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Branch</span>
+            <input
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              placeholder="The default branch"
+              className={`${control} font-mono`}
+              autoComplete="off"
+            />
+          </label>
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted">Event</span>
+            <Select value={event || "any"} onValueChange={(value) => setEvent(value === "any" ? "" : value)}>
+              <SelectTrigger size="sm" aria-label="Event">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any event</SelectItem>
+                {workflow.events.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex min-h-10 items-center rounded-lg border border-line bg-bg px-3 py-2">
+          <img src={badgeUrl(site, repo, file, options)} alt={`${workflow.name} status`} height={20} />
+        </div>
+        <CopyLine text={badgeMarkdown(site, repo, { name: workflow.name, file }, options)} />
+        <p className="text-xs text-muted">
+          Anyone can see a public repository's badge. A private repository's shows only to people who can see the repository.
+        </p>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow; base: string; member: boolean; manage: boolean }) {
   return (
     <div className="space-y-4">
@@ -237,10 +303,11 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
             <p className="mt-1.5 text-xs text-muted">On {workflow.events.map((e) => EVENT_WORDS[e] ?? e).join(", ")}</p>
           )}
         </div>
-        {member && !workflow.error && (
-          <div className="flex items-center gap-2">
-            {workflow.dispatch && workflow.state === "active" && <RunWorkflow workflow={workflow} />}
-            {manage && <Form method="post">
+        {!workflow.error && (
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge workflow={workflow} repo={base.slice(1)} />
+            {member && workflow.dispatch && workflow.state === "active" && <RunWorkflow workflow={workflow} />}
+            {member && manage && <Form method="post">
               <input type="hidden" name="intent" value="toggle" />
               <input type="hidden" name="workflow" value={workflow.id} />
               <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
