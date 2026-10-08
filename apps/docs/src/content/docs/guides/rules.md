@@ -117,8 +117,9 @@ Each rule has a `type` and `parameters`. A parameter you leave out takes its
 default. `applies_to` is `everyone` (the default), `agents` or `people`.
 
 A change counts as an agent's when it is pushed with an agent's token, or
-when its pull request was made by g1t or opened with an agent label through
-the API or MCP. A pull request a person opens on the site is a person's.
+when its pull request was made by g1t, opened with an agent's token, or opened
+naming an agent (`agent`) through the API or MCP. A pull request a person
+opens on the site, or through the API without naming an agent, is a person's.
 
 ### Branches and tags
 

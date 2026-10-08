@@ -1054,8 +1054,10 @@ impl Work {
                 Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
             },
         };
+        // Unnamed, the change is its author's, unless an agent opened it.
         let agent = match a.agent.trim() {
-            "" => "agent",
+            "" if g1t_contracts::rules::is_agent(&a.actor) => "agent",
+            "" => a.actor.username.as_str(),
             agent => agent,
         };
         let runtime = match a.runtime {

@@ -37374,7 +37374,7 @@
                   },
                   "agent": {
                     "type": "string",
-                    "description": "A label for the agent doing the work, e.g. \"claude-code\"."
+                    "description": "A label for the agent doing the work, e.g. \"claude-code\". Left out, the pull request is its author's (or \"agent\" when an agent's token opens it)."
                   },
                   "base": {
                     "type": "string",

@@ -2180,7 +2180,7 @@ impl Op {
                     },
                     "agent": {
                         "type": "string",
-                        "description": "A label for the agent doing the work, e.g. \"claude-code\".",
+                        "description": "A label for the agent doing the work, e.g. \"claude-code\". Left out, the pull request is its author's (or \"agent\" when an agent's token opens it).",
                     },
                     "base": {
                         "type": "string",
@@ -3998,7 +3998,9 @@ impl Op {
                         title: text(input, "title"),
                         body: text(input, "body"),
                         branch: optional_text(input, "branch"),
-                        agent: optional_text(input, "agent").unwrap_or_else(|| "agent".into()),
+                        // Unnamed, the change is its author's, unless an agent's token opened it.
+                        agent: optional_text(input, "agent")
+                            .unwrap_or_else(|| if g1t_contracts::rules::is_agent(&user) { "agent".into() } else { user.username.clone() }),
                         runtime: Runtime::External,
                         base: optional_text(input, "base"),
                     },
