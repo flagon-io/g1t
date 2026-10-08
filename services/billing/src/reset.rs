@@ -8,9 +8,16 @@
 //! an enterprise pays for. The reset itself is kept in the audit log, and
 //! g1t's own counts of the workspace's git operations stay: they are what
 //! Cloudflare's bill is compared with, not what the workspace owes.
+//!
+//! What the wiped usage cost g1t is kept too (`reset_costs`): the model
+//! calls and Cloudflare usage still happened, and AI Gateway and the bill
+//! still show them. The costs run counts that as given away on purpose
+//! ("testing resets"), so it is neither drift nor a leak.
 
 use g1t_contracts::billing::{AdminResetBillingArgs, BillingReset};
+use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
+use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
@@ -60,6 +67,20 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM billing_accounts WHERE id = ?2",
 ];
 
+/// Keeps one row of what a reset wiped that g1t paid for. Parameters: the
+/// workspace, day, bucket, cost, value, when and who.
+pub(crate) const KEEP: &str = "INSERT OR REPLACE INTO reset_costs (workspace, day, bucket, cost_micros, value_micros, reset_at, reset_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+
+/// The `reset_costs` rows a reset at `at` writes, each (day, bucket, cost,
+/// value): what it wiped that g1t paid for, and one for the reset itself
+/// (bucket '', nothing in it), so every reset is on record even when it
+/// wiped nothing.
+pub(crate) fn kept_rows(at: &str, wiped: &[crate::margin::Wiped]) -> Vec<(String, String, i64, i64)> {
+    let mut rows = vec![(at[..10.min(at.len())].to_owned(), String::new(), 0, 0)];
+    rows.extend(wiped.iter().map(|w| (w.day.clone(), w.bucket.clone(), w.cost, w.value)));
+    rows
+}
+
 impl Billing {
     pub(crate) async fn admin_reset_billing(&self, env: &worker::Env, a: AdminResetBillingArgs) -> Result<Outcome<BillingReset>> {
         let workspace = a.workspace.trim().to_lowercase();
@@ -99,17 +120,43 @@ impl Billing {
             }
         }
         let account = own_account(&workspace);
-        let mut batch = Vec::with_capacity(STATEMENTS.len());
+        // What g1t paid for is kept before it is wiped, in the same batch,
+        // so the costs run counts it as given away (testing resets) rather
+        // than finding AI Gateway's and Cloudflare's figures unexplained.
+        let at_ms = now_ms();
+        let at = rfc3339(at_ms);
+        let wiped = self.wiped_by_reset(&workspace).await?;
+        let kept = kept_rows(&at, &wiped);
+        let mut batch = Vec::with_capacity(kept.len() + STATEMENTS.len());
+        for (day, bucket, cost, value) in &kept {
+            batch.push(self.db.prepare(KEEP).bind(&[
+                workspace.as_str().into(),
+                day.as_str().into(),
+                bucket.as_str().into(),
+                (*cost as f64).into(),
+                (*value as f64).into(),
+                at.as_str().into(),
+                a.by.as_str().into(),
+            ])?);
+        }
         for sql in STATEMENTS {
             let values: Vec<JsValue> =
                 [workspace.as_str(), account.as_str()][..crate::rename::parameters(sql)].iter().map(|v| (*v).into()).collect();
             batch.push(self.db.prepare(*sql).bind(&values)?);
         }
         let mut rows = 0usize;
-        for result in self.db.batch(batch).await? {
+        for result in self.db.batch(batch).await?.into_iter().skip(kept.len()) {
             rows += result.meta()?.and_then(|m| m.changes).unwrap_or(0);
         }
-        self.audit(&account, "reset", &format!("billing of {workspace} reset ({rows} rows): {}", a.note.trim()), &a.by).await?;
+        let paid: i64 = wiped.iter().map(|w| w.cost).sum();
+        let detail = format!(
+            "billing of {workspace} reset ({rows} rows; {} g1t paid for kept as given away): {}",
+            crate::features::dollars(paid),
+            a.note.trim()
+        );
+        // At the same instant as the kept rows: that is how the costs run
+        // tells a reset that kept its costs from one before resets did.
+        self.audit_at(&account, "reset", &detail, &a.by, at_ms).await?;
         // The margin figures still hold the workspace's past usage: redo
         // them now (the day's analysis: the bill, 31 days, the alerts), so
         // the pages show the reset at once.
@@ -131,9 +178,12 @@ mod tests {
     #[test]
     fn every_table_with_a_workspace_is_wiped_or_kept_on_purpose() {
         let all = STATEMENTS.join("\n");
-        // What is kept: the audit log, and g1t's own counts compared with
-        // Cloudflare's bill.
-        let kept = ["admin_actions", "own_counts"];
+        // What is kept: the audit log, g1t's own counts compared with
+        // Cloudflare's bill, and what resets wiped that g1t paid for.
+        let kept = ["admin_actions", "own_counts", "reset_costs"];
+        for table in kept {
+            assert!(!all.contains(&format!("DELETE FROM {table} ")), "{table} is kept on purpose");
+        }
         for table in [
             "ledger", "runs", "checkouts", "workspace_invoices", "workspace_invoice_lines", "sales_notes", "accounts",
             "pending_usage", "pending_days", "limits", "subscriptions", "month_closes", "sales_records",
@@ -192,6 +242,49 @@ mod tests {
             let table = sql.split_whitespace().nth(2).unwrap();
             assert!(moved.contains(&format!(" {table} ")), "{table} is wiped on a reset but not moved on a rename");
         }
+    }
+
+    #[test]
+    fn a_reset_keeps_what_g1t_paid_for_and_a_row_for_itself() {
+        use crate::margin::{UsageRow, Wiped, wiped};
+        let map: std::collections::BTreeMap<String, String> =
+            [("sandbox", "sandboxes"), ("git", "git"), ("plan", "platform")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let row = |day: &str, key: &str, value: i64, cash: i64, cost: i64| UsageRow {
+            day: day.into(),
+            workspace: "syntaqx".into(),
+            key: key.into(),
+            value,
+            cash,
+            cost,
+            ..UsageRow::default()
+        };
+        // Two agent runs and a sandbox on Oct 2, a run in a free period on
+        // Oct 7 (valued at price), the plan's payment and a run on the
+        // workspace's own key (no cost to g1t): only what g1t paid for.
+        let rows = vec![
+            row("2026-10-02", "implement", 3_600_000, 3_600_000, 3_000_000),
+            row("2026-10-02", "review", 1_200_000, 0, 1_000_000),
+            row("2026-10-02", "sandbox", 240_000, 240_000, 200_000),
+            row("2026-10-07", "implement", 0, 0, 4_600_000),
+            row("2026-10-07", "plan", 20_000_000, 20_000_000, 0),
+            row("2026-10-07", "own_key", 50_000, 50_000, 0),
+        ];
+        let kept = wiped(&rows, &map, 20);
+        assert_eq!(
+            kept,
+            vec![
+                Wiped { day: "2026-10-02".into(), bucket: "models".into(), cost: 4_000_000, value: 4_800_000 },
+                Wiped { day: "2026-10-02".into(), bucket: "sandboxes".into(), cost: 200_000, value: 240_000 },
+                Wiped { day: "2026-10-07".into(), bucket: "models".into(), cost: 4_600_000, value: 5_520_000 },
+            ]
+        );
+        let rows = kept_rows("2026-10-07T09:12:00.000Z", &kept);
+        assert_eq!(rows[0], ("2026-10-07".to_string(), String::new(), 0, 0));
+        assert_eq!(rows.len(), 4);
+        // Nothing paid for: still on record.
+        assert_eq!(kept_rows("2026-10-08T00:00:00.000Z", &[]), vec![("2026-10-08".to_string(), String::new(), 0, 0)]);
+        assert_eq!(crate::rename::parameters(KEEP), 7);
+        assert!(live_tables().contains("reset_costs"));
     }
 
     #[test]

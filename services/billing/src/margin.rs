@@ -113,9 +113,10 @@ pub(crate) struct OwnRow {
 /// free period, free allowances, overruns g1t covered), the trial, and the
 /// open-source pool, and discounts on an account's terms (what they took
 /// below cost plus the margin, `ledger.discount_micros`), and credits g1t
-/// staff gave, promotional and goodwill, when spent (`grants`). The Team
-/// plan's included usage is paid for by the plan's price, so it is sold,
-/// not given; so is what a refund pays for.
+/// staff gave, promotional and goodwill, when spent (`grants`), and usage a
+/// testing reset wiped (`reset_costs`): g1t paid for it and nobody will.
+/// The Team plan's included usage is paid for by the plan's price, so it is
+/// sold, not given; so is what a refund pays for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Given {
     pub comped: i64,
@@ -125,11 +126,12 @@ pub(crate) struct Given {
     pub discount: i64,
     pub credit_promotional: i64,
     pub credit_goodwill: i64,
+    pub reset: i64,
 }
 
 impl Given {
     pub fn total(&self) -> i64 {
-        self.comped + self.free + self.trial + self.pool + self.discount + self.credit()
+        self.comped + self.free + self.trial + self.pool + self.discount + self.credit() + self.reset
     }
 
     /// Credits from g1t, both kinds.
@@ -145,6 +147,7 @@ impl Given {
         self.discount += other.discount;
         self.credit_promotional += other.credit_promotional;
         self.credit_goodwill += other.credit_goodwill;
+        self.reset += other.reset;
     }
 
     /// The same shares of `cost` as these are of `value`, at most all of it.
@@ -163,6 +166,7 @@ impl Given {
             discount: part(self.discount),
             credit_promotional: part(self.credit_promotional),
             credit_goodwill: part(self.credit_goodwill),
+            reset: part(self.reset),
         }
     }
 }
@@ -194,7 +198,7 @@ pub(crate) fn apply_credits(rows: &mut Vec<UsageRow>, draws: &[(String, crate::g
                 row.cash -= given.credit();
                 row.given.add(&given);
             }
-            None => rows.push(UsageRow { day, workspace, key, value: 0, cash: -given.credit(), cost: 0, given }),
+            None => rows.push(UsageRow { day, workspace, key, bucket: None, value: 0, cash: -given.credit(), cost: 0, given }),
         }
     }
     for refund in refunds {
@@ -229,6 +233,9 @@ pub(crate) struct UsageRow {
     pub workspace: String,
     /// A ledger task (or `builds`), a month-end source, or `plan`.
     pub key: String,
+    /// The bucket, where it is known already (what a testing reset kept,
+    /// `reset_costs`); else `key`'s, from `revenue_map`.
+    pub bucket: Option<String>,
     pub value: i64,
     pub cash: i64,
     pub cost: i64,
@@ -336,7 +343,7 @@ pub(crate) fn fold(
         let g = gave.entry((u.day.clone(), u.workspace.clone())).or_default();
         g.0.add(&u.given);
         g.1 += u.value;
-        let bucket = bucket_of(&u.key);
+        let bucket = u.bucket.clone().unwrap_or_else(|| bucket_of(&u.key));
         let key = (u.day.clone(), bucket.clone());
         let row = days.entry(key.clone()).or_insert_with(|| entry(&key.0, &key.1));
         row.own_cost_micros += u.cost;
@@ -418,7 +425,7 @@ pub(crate) fn pending_deltas(snapshots: &[(String, String, String, i64, i64)]) -
         };
         let (cost, charge) = ((cost - before_cost).max(0), (charge - before_charge).max(0));
         if cost > 0 || charge > 0 {
-            out.push(UsageRow { day: day.clone(), workspace: workspace.clone(), key: source.clone(), value: charge, cash: charge, cost, given: Given::default() });
+            out.push(UsageRow { day: day.clone(), workspace: workspace.clone(), key: source.clone(), bucket: None, value: charge, cash: charge, cost, given: Given::default() });
         }
         previous = Some(snap);
     }
@@ -545,8 +552,131 @@ fn caveat_notes(c: &costs::GatewayCaveats) -> Vec<String> {
     notes
 }
 
-/// The models drift's detail: the gateway's total against the ledger's.
-pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats) -> String {
+/// Where a testing reset's history starts: all of a workspace's ledger.
+pub(crate) const RESET_HISTORY_FROM: &str = "2000-01-01";
+
+/// What a testing reset wiped that g1t paid for, on one day for one
+/// bucket (`reset_costs`).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Wiped {
+    pub day: String,
+    pub bucket: String,
+    pub cost: i64,
+    pub value: i64,
+}
+
+/// A workspace's usage rows, about to be wiped, as what g1t paid for: the
+/// rows with a cost, by day and bucket, valued as the reconciliation
+/// valued them (at price where nothing paid). Plan payments, credits and
+/// a workspace's own model provider cost g1t nothing and are left out.
+pub(crate) fn wiped(rows: &[UsageRow], revenue_map: &BTreeMap<String, String>, margin_percent: u32) -> Vec<Wiped> {
+    let mut by: BTreeMap<(String, String), (i64, i64)> = BTreeMap::new();
+    for u in rows.iter().filter(|u| u.cost > 0) {
+        let bucket = u.bucket.clone().unwrap_or_else(|| revenue_map.get(&u.key).cloned().unwrap_or_else(|| NOT_CLOUDFLARE[0].to_owned()));
+        let sums = by.entry((u.day.clone(), bucket)).or_default();
+        sums.0 += u.cost;
+        sums.1 += u.value.max(0);
+    }
+    by.into_iter()
+        .map(|((day, bucket), (cost, value))| Wiped {
+            day,
+            bucket,
+            cost,
+            value: if value > 0 { value } else { crate::credits::with_margin(cost, margin_percent) },
+        })
+        .collect()
+}
+
+/// What testing resets kept, each (day, workspace, bucket, cost, value),
+/// as usage rows: valued as before, nothing paid, all of it given away
+/// (why "testing resets"). A reset's own row (bucket '') is not usage.
+pub(crate) fn reset_usage(kept: &[(String, String, String, i64, i64)]) -> Vec<UsageRow> {
+    kept.iter()
+        .filter(|(_, _, bucket, cost, value)| !bucket.is_empty() && (*cost != 0 || *value != 0))
+        .map(|(day, workspace, bucket, cost, value)| UsageRow {
+            day: day.clone(),
+            workspace: workspace.clone(),
+            key: "reset".into(),
+            bucket: Some(bucket.clone()),
+            value: *value,
+            cash: 0,
+            cost: *cost,
+            given: Given { reset: *value, ..Given::default() },
+        })
+        .collect()
+}
+
+/// A testing reset inside the drift window.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ResetNote {
+    pub workspace: String,
+    /// The UTC day it was reset.
+    pub day: String,
+    /// Whether it kept what it wiped (`reset_costs`, migration 0046):
+    /// then the ledger's side has it, given away. A reset from before
+    /// that wiped model usage the gateway still counts.
+    pub recorded: bool,
+    /// Of what it kept, model cost on the window's days.
+    pub models_micros: i64,
+}
+
+/// The resets: each audit entry (account `ws_<slug>`, when) and each kept
+/// reset (workspace, reset_at, its model cost in the window). An audit
+/// entry with no kept reset at the same instant is from before resets kept
+/// what they wiped.
+pub(crate) fn reset_notes(audits: &[(String, String)], kept: &[(String, String, i64)]) -> Vec<ResetNote> {
+    let mut notes: Vec<(String, ResetNote)> = kept
+        .iter()
+        .map(|(workspace, at, models)| {
+            (at.clone(), ResetNote { workspace: workspace.clone(), day: at[..10.min(at.len())].to_owned(), recorded: true, models_micros: *models })
+        })
+        .collect();
+    for (account, at) in audits {
+        let workspace = account.strip_prefix("ws_").unwrap_or(account);
+        if !kept.iter().any(|(w, a, _)| w == workspace && a == at) {
+            notes.push((at.clone(), ResetNote { workspace: workspace.to_owned(), day: at[..10.min(at.len())].to_owned(), recorded: false, models_micros: 0 }));
+        }
+    }
+    notes.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.workspace.cmp(&b.1.workspace)));
+    notes.into_iter().map(|(_, n)| n).collect()
+}
+
+/// Model usage a reset wiped before resets kept it is not a leak: while
+/// such a reset is in the window the models leak is not raised, and the
+/// models cost drift says what the gap is.
+pub(crate) fn wiped_not_leaked(drift: &Drift, resets: &[ResetNote]) -> bool {
+    drift.kind == DriftKind::Leak && NOT_CLOUDFLARE.contains(&drift.bucket.as_str()) && resets.iter().any(|r| !r.recorded)
+}
+
+/// What the models drift says about resets in the window.
+fn reset_sentences(resets: &[ResetNote]) -> Vec<String> {
+    resets
+        .iter()
+        .filter_map(|r| {
+            if !r.recorded {
+                Some(format!(
+                    "AI Gateway's figure includes model usage wiped by a testing reset of {} on {}, from before resets kept what they wiped: the ledger no longer has it, so that part of the gap is the reset, not a leak. It leaves the {DRIFT_DAYS} days on {}.",
+                    r.workspace,
+                    r.day,
+                    day_after(&r.day, DRIFT_DAYS)
+                ))
+            } else if r.models_micros > 0 {
+                Some(format!(
+                    "The ledger's figure includes {} of model cost wiped by a testing reset of {} on {}, counted as given away (testing resets).",
+                    dollars(r.models_micros),
+                    r.workspace,
+                    r.day
+                ))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// The models drift's detail: the gateway's total against the ledger's,
+/// and any testing reset in the window.
+pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats, resets: &[ResetNote]) -> String {
     if drift.cloudflare <= 0.0 {
         return format!(
             "Models: the ledger's model cost is {} over the last {DRIFT_DAYS} days and AI Gateway priced nothing, so the two were not compared. Either the gateway's analytics cannot be seen (Cloudflare answers a token without AI Gateway: Read with no rows, not an error; billing reads them with CLOUDFLARE_USAGE_TOKEN, then CLOUDFLARE_BILLING_TOKEN), or model calls went around the gateway.",
@@ -554,17 +684,24 @@ pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats) -> S
         );
     }
     let lower = drift.ours < drift.cloudflare;
+    let wiped = resets.iter().any(|r| !r.recorded);
     let mut detail = format!(
         "Models: AI Gateway priced g1t's own provider traffic at {} over the last {DRIFT_DAYS} days; the ledger's model cost for the same days is {} ({:+.1}%). {}",
         dollars(drift.cloudflare as i64),
         dollars(drift.ours as i64),
         drift.delta_percent.unwrap_or(0.0),
-        if lower {
+        if lower && wiped {
+            "The gateway counts model calls the ledger no longer has: a testing reset wiped them (below). Beyond that, runs not yet settled, runs with no session, or calls with no run."
+        } else if lower {
             "Model calls g1t paid for were not charged: runs not yet settled, runs with no session, or calls with no run (the ledger catches up as runs settle; a gap that stays is a leak)."
         } else {
             "The ledger counts more than the gateway priced: runs that went to a provider without the gateway, or sandbox reports the gateway could not correct."
         }
     );
+    for sentence in reset_sentences(resets) {
+        detail.push(' ');
+        detail.push_str(&sentence);
+    }
     let notes = caveat_notes(caveats);
     if !notes.is_empty() {
         detail.push_str(" The gateway's cost may be off: ");
@@ -729,6 +866,11 @@ fn day_before(day: &str, days: u64) -> String {
     rfc3339(ms.saturating_sub(days * DAY_MS))[..10].to_owned()
 }
 
+fn day_after(day: &str, days: u64) -> String {
+    let ms = g1t_contracts::time::parse_rfc3339(&format!("{day}T00:00:00Z")).unwrap_or(0);
+    rfc3339(ms + days * DAY_MS)[..10].to_owned()
+}
+
 /// Dollars to the cent from a dollar up, finer below: `$17.02`, `$0.063`.
 fn dollars(micros: i64) -> String {
     if micros.abs() >= 1_000_000 {
@@ -831,6 +973,8 @@ struct MarginRow {
     given_credit_promotional_micros: Option<i64>,
     #[serde(default)]
     given_credit_goodwill_micros: Option<i64>,
+    #[serde(default)]
+    given_reset_micros: Option<i64>,
 }
 
 impl From<MarginRow> for ProductDay {
@@ -852,6 +996,7 @@ impl From<MarginRow> for ProductDay {
                 discount: r.given_discount_micros.unwrap_or(0),
                 credit_promotional: r.given_credit_promotional_micros.unwrap_or(0),
                 credit_goodwill: r.given_credit_goodwill_micros.unwrap_or(0),
+                reset: r.given_reset_micros.unwrap_or(0),
             },
         }
     }
@@ -924,8 +1069,10 @@ impl Billing {
         Ok(())
     }
 
-    /// What customers were charged on the days, by workspace and key.
-    async fn usage_rows(&self, since: &str, until: &str) -> Result<Vec<UsageRow>> {
+    /// What customers were charged on the days, by workspace and key: every
+    /// workspace's, or only `only`'s.
+    async fn usage_rows(&self, since: &str, until: &str, only: Option<&str>) -> Result<Vec<UsageRow>> {
+        let only_sql = only.unwrap_or("");
         #[derive(Deserialize)]
         struct Row {
             day: String,
@@ -959,10 +1106,11 @@ impl Billing {
                         SUM(COALESCE(cost_micros, 0)) AS cost
                  FROM ledger
                  WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND COALESCE(task, '') NOT IN ({charged_here})
+                   AND (?3 = '' OR workspace = ?3)
                  GROUP BY 1, 2, 3, 4, 5",
                 internal = crate::sales::INTERNAL_SQL
             ))
-            .bind(&[since.into(), end.as_str().into()])?
+            .bind(&[since.into(), end.as_str().into(), only_sql.into()])?
             .all()
             .await?
             .results::<Row>()?;
@@ -990,12 +1138,16 @@ impl Billing {
                 if r.internal == 1 {
                     internal.insert(r.workspace.clone());
                 }
-                UsageRow { day: r.day, workspace: r.workspace, key: r.key, value, cash, cost, given }
+                UsageRow { day: r.day, workspace: r.workspace, key: r.key, bucket: None, value, cash, cost, given }
             })
             .collect();
         // Credits from g1t: what promotional and goodwill credit paid for
         // is given, not money in; a refund gives money back on its day.
-        let (draws, refunds) = self.credit_effects(since, until).await?;
+        let (mut draws, mut refunds) = self.credit_effects(since, until).await?;
+        if let Some(only) = only {
+            draws.retain(|(workspace, _)| workspace == only);
+            refunds.retain(|r| r.workspace == only);
+        }
         apply_credits(&mut out, &draws, &refunds);
         // Month-end sources, from their daily snapshots.
         #[derive(Deserialize)]
@@ -1008,8 +1160,8 @@ impl Billing {
         }
         let snaps = self
             .db
-            .prepare("SELECT day, workspace, source, cost_micros, charge_micros FROM pending_days WHERE day >= ?1 AND day <= ?2")
-            .bind(&[day_before(since, 1).into(), until.into()])?
+            .prepare("SELECT day, workspace, source, cost_micros, charge_micros FROM pending_days WHERE day >= ?1 AND day <= ?2 AND (?3 = '' OR workspace = ?3)")
+            .bind(&[day_before(since, 1).into(), until.into(), only_sql.into()])?
             .all()
             .await?
             .results::<Snap>()?
@@ -1035,31 +1187,30 @@ impl Billing {
             .db
             .prepare(
                 "SELECT substr(paid_at, 1, 10) AS day, workspace, SUM(amount_micros) AS micros FROM plan_payments
-                 WHERE paid_at >= ?1 AND paid_at <= ?2 GROUP BY 1, 2",
+                 WHERE paid_at >= ?1 AND paid_at <= ?2 AND (?3 = '' OR workspace = ?3) GROUP BY 1, 2",
             )
-            .bind(&[day_before(since, PLAN_DAYS - 1).into(), end.as_str().into()])?
+            .bind(&[day_before(since, PLAN_DAYS - 1).into(), end.as_str().into(), only_sql.into()])?
             .all()
             .await?
             .results::<Plan>()?;
         for p in plans {
             for (day, micros) in spread(&p.day, p.micros.unwrap_or(0), PLAN_DAYS) {
                 if day.as_str() >= since && day.as_str() <= until {
-                    out.push(UsageRow { day, workspace: p.workspace.clone(), key: "plan".into(), value: micros, cash: micros, cost: 0, given: Given::default() });
+                    out.push(UsageRow { day, workspace: p.workspace.clone(), key: "plan".into(), bucket: None, value: micros, cash: micros, cost: 0, given: Given::default() });
                 }
             }
         }
         Ok(out)
     }
 
-    /// Reconciles the days and writes `margin_days` and `workspace_costs`.
-    async fn reconcile_range(&self, since: &str, until: &str) -> Result<u32> {
-        let rules = self.rules().await?;
+    /// Which bucket each ledger key (and month-end source) is revenue of.
+    async fn revenue_map(&self) -> Result<BTreeMap<String, String>> {
         #[derive(Deserialize)]
         struct Map {
             key: String,
             bucket: String,
         }
-        let revenue_map: BTreeMap<String, String> = self
+        Ok(self
             .db
             .prepare("SELECT key, bucket FROM revenue_map")
             .all()
@@ -1067,7 +1218,87 @@ impl Billing {
             .results::<Map>()?
             .into_iter()
             .map(|m| (m.key, m.bucket))
-            .collect();
+            .collect())
+    }
+
+    /// What a testing reset of `workspace` is about to wipe that g1t paid
+    /// for, a row per day and bucket: its whole ledger and month-end
+    /// snapshots, valued as the reconciliation values them.
+    pub(crate) async fn wiped_by_reset(&self, workspace: &str) -> Result<Vec<Wiped>> {
+        let today = rfc3339(now_ms())[..10].to_owned();
+        let rows = self.usage_rows(RESET_HISTORY_FROM, &today, Some(workspace)).await?;
+        Ok(wiped(&rows, &self.revenue_map().await?, self.margin_percent))
+    }
+
+    /// What testing resets kept for the days, as usage rows.
+    async fn reset_rows(&self, since: &str, until: &str) -> Result<Vec<UsageRow>> {
+        #[derive(Deserialize)]
+        struct Kept {
+            day: String,
+            workspace: String,
+            bucket: String,
+            cost: Option<i64>,
+            value: Option<i64>,
+        }
+        let kept = self
+            .db
+            .prepare(
+                "SELECT day, workspace, bucket, SUM(cost_micros) AS cost, SUM(value_micros) AS value FROM reset_costs
+                 WHERE day >= ?1 AND day <= ?2 AND bucket <> '' GROUP BY day, workspace, bucket",
+            )
+            .bind(&[since.into(), until.into()])?
+            .all()
+            .await?
+            .results::<Kept>()?;
+        Ok(reset_usage(
+            &kept.into_iter().map(|k| (k.day, k.workspace, k.bucket, k.cost.unwrap_or(0), k.value.unwrap_or(0))).collect::<Vec<_>>(),
+        ))
+    }
+
+    /// Testing resets on or after `since` (the day they wiped usage up to
+    /// is their own, so one before it wiped nothing in the days): those
+    /// that kept what they wiped (`reset_costs`) and those from before
+    /// resets did, known only from the audit log.
+    async fn resets_since(&self, since: &str, until: &str) -> Result<Vec<ResetNote>> {
+        let end = format!("{until}T23:59:59.999Z");
+        #[derive(Deserialize)]
+        struct Audit {
+            account: String,
+            created_at: String,
+        }
+        let audits = self
+            .db
+            .prepare("SELECT account, created_at FROM admin_actions WHERE action = 'reset' AND created_at >= ?1 AND created_at <= ?2")
+            .bind(&[since.into(), end.as_str().into()])?
+            .all()
+            .await?
+            .results::<Audit>()?;
+        #[derive(Deserialize)]
+        struct Kept {
+            workspace: String,
+            reset_at: String,
+            models: Option<i64>,
+        }
+        let kept = self
+            .db
+            .prepare(
+                "SELECT workspace, reset_at, SUM(CASE WHEN bucket = ?3 AND day >= ?1 THEN cost_micros ELSE 0 END) AS models
+                 FROM reset_costs WHERE reset_at >= ?1 AND reset_at <= ?2 GROUP BY workspace, reset_at",
+            )
+            .bind(&[since.into(), end.as_str().into(), NOT_CLOUDFLARE[0].into()])?
+            .all()
+            .await?
+            .results::<Kept>()?;
+        Ok(reset_notes(
+            &audits.into_iter().map(|a| (a.account, a.created_at)).collect::<Vec<_>>(),
+            &kept.into_iter().map(|k| (k.workspace, k.reset_at, k.models.unwrap_or(0))).collect::<Vec<_>>(),
+        ))
+    }
+
+    /// Reconciles the days and writes `margin_days` and `workspace_costs`.
+    async fn reconcile_range(&self, since: &str, until: &str) -> Result<u32> {
+        let rules = self.rules().await?;
+        let revenue_map = self.revenue_map().await?;
         let lines = self
             .db
             .prepare("SELECT day, source, product, meter, quantity, cost_usd FROM cost_lines WHERE day >= ?1 AND day <= ?2")
@@ -1082,7 +1313,9 @@ impl Billing {
             .all()
             .await?
             .results::<OwnRow>()?;
-        let usage = self.usage_rows(since, until).await?;
+        let mut usage = self.usage_rows(since, until, None).await?;
+        // What testing resets wiped: still paid for, now given away.
+        usage.extend(self.reset_rows(since, until).await?);
         #[derive(Deserialize)]
         struct Internal {
             workspace: String,
@@ -1110,8 +1343,8 @@ impl Billing {
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, given_credit_promotional_micros, given_credit_goodwill_micros, computed_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, given_credit_promotional_micros, given_credit_goodwill_micros, given_reset_micros, computed_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&[
                             d.day.as_str().into(),
@@ -1130,6 +1363,7 @@ impl Billing {
                             (d.given.discount as f64).into(),
                             (d.given.credit_promotional as f64).into(),
                             (d.given.credit_goodwill as f64).into(),
+                            (d.given.reset as f64).into(),
                             now.as_str().into(),
                         ])?,
                 );
@@ -1218,6 +1452,7 @@ impl Billing {
             by.entry(d.bucket.clone()).or_default().push(d);
         }
         let caveats = self.gateway_caveats(&since, until).await?;
+        let resets = self.resets_since(&since, until).await?;
         let mut found = Vec::new();
         if let Some(drift) = unpriced_drift(&caveats) {
             found.push(drift);
@@ -1228,9 +1463,12 @@ impl Billing {
             let threshold = if threshold.is_finite() { threshold } else { 10.0 };
             let counted = bucket_rules.iter().any(|r| r.own_meter.is_some());
             for drift in drifts(bucket, days, threshold, counted, settings.min_daily_cost_micros) {
+                if wiped_not_leaked(&drift, &resets) {
+                    continue;
+                }
                 let title = costs::bucket_title(bucket);
                 let detail = match drift.kind {
-                    DriftKind::Cost if NOT_CLOUDFLARE.contains(&bucket.as_str()) => models_detail(&drift, &caveats),
+                    DriftKind::Cost if NOT_CLOUDFLARE.contains(&bucket.as_str()) => models_detail(&drift, &caveats, &resets),
                     DriftKind::Count => format!(
                         "{title}: g1t counted {}, Cloudflare {} over the last {DRIFT_DAYS} days ({:+.1}%). Customers are charged for what g1t counts; check what Cloudflare counts as a unit and change the repos service's operation_mapping (set_operation_mapping).",
                         crate::features::thousands(drift.ours.max(0.0).round() as u64),
@@ -1681,6 +1919,7 @@ impl Billing {
             overall.given_discount_micros += d.given.discount;
             overall.given_credit_promotional_micros += d.given.credit_promotional;
             overall.given_credit_goodwill_micros += d.given.credit_goodwill;
+            overall.given_reset_micros += d.given.reset;
             let sold = (d.cost() - d.given.total()).max(0);
             if OVERHEAD.contains(&d.bucket.as_str()) {
                 overall.plans_micros += d.cash_micros;
@@ -1950,7 +2189,7 @@ mod tests {
     }
 
     fn usage(day: &str, workspace: &str, key: &str, value: i64, cash: i64, cost: i64) -> UsageRow {
-        UsageRow { day: day.into(), workspace: workspace.into(), key: key.into(), value, cash, cost, given: Given::default() }
+        UsageRow { day: day.into(), workspace: workspace.into(), key: key.into(), bucket: None, value, cash, cost, given: Given::default() }
     }
 
     #[test]
@@ -2230,13 +2469,13 @@ mod tests {
         // rows), so it is said. Under the minimum, or no model cost: nothing.
         let silent = drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000);
         assert_eq!(silent, vec![Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 1_000_000.0, cloudflare: 0.0, delta_percent: None }]);
-        let said = models_detail(&silent[0], &costs::GatewayCaveats::default());
+        let said = models_detail(&silent[0], &costs::GatewayCaveats::default(), &[]);
         assert!(said.contains("$1.00") && said.contains("priced nothing") && said.contains("AI Gateway: Read"), "{said}");
         assert!(drifts("models", &[day("models", 0, 50_000, 60_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
         assert!(drifts("models", &[day("models", 0, 0, 0, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
         // The detail says which way and why it may be off.
         let caveats = costs::GatewayCaveats { cache_read_tokens: 3_000_000.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
-        let detail = models_detail(&short[0], &caveats);
+        let detail = models_detail(&short[0], &caveats, &[]);
         assert!(detail.contains("$5.00") && detail.contains("$3.00") && detail.contains("were not charged"), "{detail}");
         assert!(detail.contains("3,000,000 prompt-cache read") && detail.contains("no price for anthropic_claude_new_1"), "{detail}");
     }
@@ -2274,5 +2513,119 @@ mod tests {
         assert!(billed_rate(&[(10_000.0, 0.0)]).is_none());
         assert_eq!(unit_size("million requests"), 1e6);
         assert_eq!(unit_size("second"), 1.0);
+    }
+
+    /// The case that started it: syntaqx's ~$8.62 of model usage was wiped
+    /// by a testing reset, AI Gateway still priced all $11.11, and the
+    /// ledger had $2.49 left.
+    fn gateway_and_ledger(kept: bool) -> (Vec<ProductDay>, Vec<WorkspaceDay>) {
+        let rules = vec![rule("ai_gateway_requests", "*", "models", None), rule("containers", "*", "sandboxes", None)];
+        let lines = vec![
+            line("2026-10-05", costs::SOURCE_GATEWAY, "ai_gateway_requests", "anthropic_claude_opus_5_5", 1.0, 11.11),
+            line("2026-10-05", SOURCE_BILLABLE, "containers", "container_memory", 10.0, 0.30),
+        ];
+        let mut usage = vec![usage("2026-10-05", "acme", "implement", 2_988_000, 2_988_000, 2_490_000), usage("2026-10-05", "acme", "sandbox", 120_000, 120_000, 100_000)];
+        if kept {
+            // What the reset kept (reset_costs), read back for the day.
+            usage.extend(reset_usage(&[
+                ("2026-10-05".into(), "syntaqx".into(), "models".into(), 8_620_000, 10_344_000),
+                ("2026-10-05".into(), "syntaqx".into(), "sandboxes".into(), 100_000, 120_000),
+                // The reset's own row is not usage.
+                ("2026-10-07".into(), "syntaqx".into(), String::new(), 0, 0),
+            ]));
+        }
+        fold(&rules, &revenue_map(), &lines, &[], &usage, &BTreeSet::new())
+    }
+
+    #[test]
+    fn what_a_reset_kept_is_on_the_ledgers_side_of_the_models_drift() {
+        let models = |days: &[ProductDay]| days.iter().find(|d| d.bucket == "models").cloned().unwrap();
+        // Without it: AI Gateway's $11.11 against the ledger's $2.49.
+        let (days, _) = gateway_and_ledger(false);
+        let drift = drifts("models", &[models(&days)], 10.0, false, 100_000);
+        assert_eq!(drift.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost]);
+        assert_eq!((drift[0].ours, drift[0].cloudflare), (2_490_000.0, 11_110_000.0));
+        // With it: the ledger's model cost and the reset's add up to the gateway's.
+        let (days, _) = gateway_and_ledger(true);
+        let m = models(&days);
+        assert_eq!(m.own_cost_micros, 11_110_000);
+        assert!(drifts("models", &[m], 10.0, false, 100_000).is_empty());
+        // The reset's own row makes no bucket of its own.
+        assert!(!days.iter().any(|d| d.bucket.is_empty()));
+    }
+
+    #[test]
+    fn what_a_reset_kept_is_given_away_as_testing_resets() {
+        let (days, workspaces) = gateway_and_ledger(true);
+        let models = days.iter().find(|d| d.bucket == "models").unwrap();
+        // All of syntaqx's model cost is given, none of it money in.
+        assert_eq!(models.given, Given { reset: 8_620_000, ..Given::default() });
+        assert_eq!(models.cash_micros, 2_988_000);
+        // Cloudflare's sandbox cost is shared by what each workspace's usage
+        // cost: syntaqx's half is given too.
+        let sandboxes = days.iter().find(|d| d.bucket == "sandboxes").unwrap();
+        assert_eq!((sandboxes.cost(), sandboxes.given.reset), (300_000, 150_000));
+        // Who g1t paid: syntaqx is still on it, all of its cost given.
+        let syntaqx: Vec<&WorkspaceDay> = workspaces.iter().filter(|w| w.workspace == "syntaqx").collect();
+        assert_eq!(syntaqx.iter().map(|w| w.cost).sum::<i64>(), 8_770_000);
+        assert!(syntaqx.iter().all(|w| w.given.reset == w.cost && w.given.total() == w.cost && w.revenue == 0));
+        // The statement reads it back from margin_days by why.
+        let row = MarginRow {
+            day: models.day.clone(),
+            bucket: models.bucket.clone(),
+            cf_cost_micros: models.cf_cost_micros,
+            own_cost_micros: models.own_cost_micros,
+            value_micros: models.value_micros,
+            cash_micros: models.cash_micros,
+            cf_quantity: 0.0,
+            own_quantity: 0.0,
+            given_comped_micros: Some(0),
+            given_free_micros: Some(0),
+            given_trial_micros: Some(0),
+            given_pool_micros: Some(0),
+            given_discount_micros: Some(0),
+            given_credit_promotional_micros: Some(0),
+            given_credit_goodwill_micros: Some(0),
+            given_reset_micros: Some(models.given.reset),
+        };
+        assert_eq!(ProductDay::from(row).given, models.given);
+    }
+
+    #[test]
+    fn reconciling_again_gives_the_same_answer() {
+        assert_eq!(gateway_and_ledger(true), gateway_and_ledger(true));
+        // A reset's kept rows are read back exactly as kept: running it
+        // again cannot count them twice.
+        let kept = [("2026-10-05".to_string(), "syntaqx".to_string(), "models".to_string(), 8_620_000, 10_344_000)];
+        assert_eq!(reset_usage(&kept), reset_usage(&kept));
+        assert_eq!(reset_usage(&kept).len(), 1);
+    }
+
+    #[test]
+    fn a_reset_from_before_resets_kept_their_cost_is_said_not_called_a_leak() {
+        let notes = reset_notes(
+            &[("ws_syntaqx".into(), "2026-10-07T09:41:00.000Z".into()), ("ws_acme".into(), "2026-10-08T01:00:00.000Z".into())],
+            &[("acme".into(), "2026-10-08T01:00:00.000Z".into(), 1_500_000)],
+        );
+        assert_eq!(
+            notes,
+            vec![
+                ResetNote { workspace: "syntaqx".into(), day: "2026-10-07".into(), recorded: false, models_micros: 0 },
+                ResetNote { workspace: "acme".into(), day: "2026-10-08".into(), recorded: true, models_micros: 1_500_000 },
+            ]
+        );
+        let drift = Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 2_490_000.0, cloudflare: 11_110_000.0, delta_percent: Some(-77.6) };
+        let detail = models_detail(&drift, &costs::GatewayCaveats::default(), &notes);
+        assert!(detail.contains("includes model usage wiped by a testing reset of syntaqx on 2026-10-07"), "{detail}");
+        assert!(detail.contains("not a leak") && detail.contains("leaves the 7 days on 2026-10-14"), "{detail}");
+        assert!(!detail.contains("a gap that stays is a leak"), "{detail}");
+        assert!(detail.contains("$1.50 of model cost wiped by a testing reset of acme on 2026-10-08, counted as given away (testing resets)"), "{detail}");
+        // The models leak is not raised while such a reset is in the window.
+        let leak = Drift { bucket: "models".into(), kind: DriftKind::Leak, ours: 0.0, cloudflare: 11_110_000.0, delta_percent: None };
+        assert!(wiped_not_leaked(&leak, &notes));
+        assert!(!wiped_not_leaked(&leak, &notes[1..]));
+        assert!(!wiped_not_leaked(&Drift { bucket: "actions_cache".into(), ..leak }, &notes));
+        // No reset: the detail is as before.
+        assert!(models_detail(&drift, &costs::GatewayCaveats::default(), &[]).contains("a gap that stays is a leak"));
     }
 }
