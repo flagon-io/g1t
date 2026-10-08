@@ -619,6 +619,32 @@ impl Identity {
         Ok(rows.into_iter().map(SshKey::from).collect())
     }
 
+    /// The account (user id) that registered each key, by fingerprint
+    /// (`SHA256:…`). At most 100; unknown keys are left out.
+    async fn ssh_key_owners(&self, a: SshKeyOwnersArgs) -> Result<std::collections::HashMap<String, String>> {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            fingerprint: String,
+            user_id: String,
+        }
+        let fingerprints: Vec<&String> = a.fingerprints.iter().take(100).collect();
+        if fingerprints.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let marks = vec!["?"; fingerprints.len()].join(", ");
+        let binds: Vec<JsValue> = fingerprints.iter().map(|fingerprint| fingerprint.as_str().into()).collect();
+        Ok(self
+            .db
+            .prepare(format!("SELECT fingerprint, user_id FROM ssh_keys WHERE fingerprint IN ({marks})"))
+            .bind(&binds)?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| (row.fingerprint, row.user_id))
+            .collect())
+    }
+
     async fn add_ssh_key(&self, a: AddSshKeyArgs) -> Result<Outcome<SshKey>> {
         let Some(key) = crypto::parse_ssh_key(&a.public_key) else {
             return Ok(Outcome::fail(
@@ -818,6 +844,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "directory" => reply(&identity.directory(args(body)?).await?),
         "profile_workspaces" => reply(&identity.profile_workspaces(args(body)?).await?),
         "list_ssh_keys" => reply(&identity.list_ssh_keys(args(body)?).await?),
+        // Services only: who registered each key, for verifying commit
+        // signatures (repos' signatures.rs).
+        "ssh_key_owners" => reply(&identity.ssh_key_owners(args(body)?).await?),
         "add_ssh_key" => reply(&identity.add_ssh_key(args(body)?).await?),
         "remove_ssh_key" => reply(&identity.remove("ssh_keys", args(body)?).await?),
         "list_access_tokens" => reply(&identity.list_access_tokens(args(body)?).await?),

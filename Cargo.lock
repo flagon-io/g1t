@@ -1062,15 +1062,18 @@ name = "g1t-repos"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ed25519-dalek",
  "futures-util",
  "g1t-blobstore",
  "g1t-contracts",
  "g1t-kit",
+ "g1t-rules",
  "g1t-scan",
  "g1t-secrets",
  "miniz_oxide",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "similar",
  "worker",
 ]

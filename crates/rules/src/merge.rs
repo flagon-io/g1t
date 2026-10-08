@@ -247,6 +247,14 @@ fn level_rank(level: ConfidenceLevel) -> u8 {
 /// The problems one rule finds in a merge.
 fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
     match rule {
+        // Restricting updates restricts merges too: a merge moves the branch.
+        Rule::Update(_) => {
+            let branch = facts.git_ref.strip_prefix("refs/heads/").unwrap_or(&facts.git_ref);
+            vec![Problem::new(
+                format!("Only people this ruleset lets bypass it may change {branch}, merges included."),
+                "Ask someone who may bypass this ruleset to merge it.",
+            )]
+        }
         Rule::PullRequest(rule) => pull_request_problems(rule, facts),
         Rule::RequiredStatusChecks(rule) => checks_problems(rule, facts),
         Rule::RequiredDeployments(rule) => rule
@@ -798,6 +806,18 @@ mod tests {
         let docs = vec!["docs/a.md".to_owned()];
         assert!(!refused(&judge(&rules, "main", &facts(&[], &[], &docs))));
         assert_eq!(named_teams(&rules), vec!["acme/platform"]);
+    }
+
+    #[test]
+    fn restricting_updates_restricts_merges() {
+        let rules = [ruleset(vec![all(Rule::Update(NoParameters {}))])];
+        assert_eq!(
+            messages(&judge(&rules, "main", &facts(&[], &[], &[]))),
+            vec!["Only people this ruleset lets bypass it may change main, merges included."]
+        );
+        let mut bypassed = rules[0].clone();
+        bypassed.bypass = Some(BypassMode::Always);
+        assert!(!refused(&judge(&[bypassed], "main", &facts(&[], &[], &[]))));
     }
 
     #[test]

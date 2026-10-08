@@ -541,6 +541,30 @@ impl<S: GitStore> Repos<S> {
         } else {
             write_pack(&objects)
         };
+        // A branch of the repository itself: the rules of that branch hold
+        // for the merge pushed to it, as for any push (rules.rs). A catch-up
+        // brings nothing the base branch does not have, so no files.
+        if !from_fork {
+            let change = g1t_rules::push::RefChange {
+                git_ref: format!("refs/heads/{branch}"),
+                old: Some(head.hash.clone()),
+                new: Some(commit_id.clone()),
+                fast_forward: Some(true),
+                commits: vec![crate::rules::made_commit(
+                    &commit_id,
+                    &merge_message(&base_branch, &branch, a.number),
+                    &author.email,
+                    2,
+                    Vec::new(),
+                )],
+                complete: true,
+            };
+            if let crate::rules::Ruled::Refused { message, .. } =
+                self.check_changes(&source, &a.actor, g1t_contracts::rules::Action::Push, vec![change]).await?
+            {
+                return Ok(Outcome::fail(FailureCode::Forbidden, message));
+            }
+        }
         let source_access = source_git.access(Scope::Write).await?;
         // Only if the branch is still where it was: a push that landed
         // meanwhile is kept, and this is refused.

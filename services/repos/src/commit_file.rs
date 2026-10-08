@@ -125,6 +125,26 @@ impl<S: GitStore> Repos<S> {
         if let Some(refusal) = self.protect_file(&repo, &a.actor, &a.path, a.content.as_bytes(), &commit_id).await {
             return Ok(Outcome::fail(FailureCode::Forbidden, refusal));
         }
+        // The rules of the new branch, as for a push of this commit.
+        let change = g1t_rules::push::RefChange {
+            git_ref: format!("refs/heads/{}", a.branch),
+            old: None,
+            new: Some(commit_id.clone()),
+            fast_forward: None,
+            commits: vec![crate::rules::made_commit(
+                &commit_id,
+                message,
+                &author.email,
+                1,
+                vec![g1t_contracts::rules::FileChange { path: a.path.clone(), size: Some(blob.len() as u64), deleted: false }],
+            )],
+            complete: true,
+        };
+        if let crate::rules::Ruled::Refused { message, .. } =
+            self.check_changes(&repo, &a.actor, g1t_contracts::rules::Action::Commit, vec![change]).await?
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, message));
+        }
         let mut objects: Vec<(ObjectKind, Vec<u8>)> = vec![(ObjectKind::Blob, blob)];
         objects.extend(merged.objects.into_iter().map(|bytes| (ObjectKind::Tree, bytes)));
         objects.push((ObjectKind::Commit, commit));
