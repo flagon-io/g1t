@@ -7,11 +7,14 @@ import type { Route } from "./+types/costs";
 import { DaysChart } from "~/components/costs";
 import { CostsHeader, chip, costsHref } from "~/components/costs-header";
 import { Badge, Button, Field, Input, Notice, Section, Stat, When } from "~/components/ui";
-import { capPercent, daySeries, marginTone, parseBucket, percentLabel, spendRows } from "~/lib/costs";
+import { capPercent, daySeries, marginOnPrice, marginTone, parseBucket, percentLabel, spendRows, subscriptionsOver, whoPaid } from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { usd } from "~/lib/money";
 
 export const meta: Route.MetaFunction = () => [{ title: "Costs & margin · sudo" }, { name: "robots", content: "noindex, nofollow" }];
+
+/** Billing's MARGIN_PERCENT: what is added to cost. */
+const MARKUP_PERCENT = 20;
 
 export const loader = ({ request, context }: Route.LoaderArgs) => costsLoader(request, context);
 export const action = ({ request, context }: Route.ActionArgs) => costsAction(request, context);
@@ -23,8 +26,7 @@ export const action = ({ request, context }: Route.ActionArgs) => costsAction(re
 export default function Costs({ loaderData, actionData }: Route.ComponentProps) {
   const { range, report, error, done } = loaderData;
   const failed = actionData && "error" in actionData ? (actionData as CostsActionResult) : null;
-  const description =
-    "What g1t cost to run (Cloudflare's bill and the model providers') against what workspaces paid, with what g1t gave away on purpose kept apart. Prices are cost plus 20%; the bill itself, drift and the price book are on Bill & pricing.";
+  const description = `What g1t cost to run (Cloudflare's bill and the model providers') against what workspaces paid, with what g1t gave away on purpose kept apart. Prices are cost plus ${MARKUP_PERCENT}%, a ${percentLabel(marginOnPrice(MARKUP_PERCENT))} margin: every margin here is a share of the price, not of the cost. The bill itself, drift and the price book are on Bill & pricing.`;
   if (!report) {
     return (
       <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
@@ -46,7 +48,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
 
       <Statement report={report} floor={floor} range={range} proposals={open.length} />
 
-      <SpendSection caps={report.caps} error={failed?.section === "lift" ? failed.error : null} />
+      <SpendSection caps={report.caps} range={range} error={failed?.section === "lift" ? failed.error : null} />
 
       <Section
         className="mt-6"
@@ -75,7 +77,11 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
         />
       </Section>
 
-      <Section className="mt-6" title="By product" description={`Each of g1t's products over the last ${range} days. The floor is ${floor}%.`}>
+      <Section
+        className="mt-6"
+        title="By product"
+        description={`Each of g1t's products over the last ${range} days: what customers were charged at price, given away or not, against what it cost. The margin is the charge less the cost, as a share of the charge; at cost plus ${MARKUP_PERCENT}% it is ${percentLabel(marginOnPrice(MARKUP_PERCENT))}. The floor is ${floor}%.`}
+      >
         <div className="-mx-4 overflow-x-auto sm:-mx-5">
           <table className="w-full min-w-[44rem] text-sm">
             <thead>
@@ -85,7 +91,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
                 <th className="px-4 py-2 text-right font-medium">Cost</th>
                 <th className="px-4 py-2 text-right font-medium">Price book said</th>
                 <th className="px-4 py-2 text-right font-medium">Margin</th>
-                <th className="px-4 py-2 text-right font-medium sm:pr-5">%</th>
+                <th className="px-4 py-2 text-right font-medium sm:pr-5">% of price</th>
               </tr>
             </thead>
             <tbody>
@@ -142,6 +148,9 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
               <tbody>
                 {report.topWorkspaces.map((w) => {
                   const net = w.revenueMicros - w.costMicros;
+                  // What was given away on purpose is a budget, not a loss:
+                  // red only for what neither paid nor was given.
+                  const lost = net + (w.givenMicros ?? 0) < 0;
                   return (
                     <tr key={w.workspace} className="border-b border-line last:border-0">
                       <td className="px-4 py-2.5 sm:px-5">
@@ -153,7 +162,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
                       <td className="tabular px-4 py-2.5 text-right">{usd(w.costMicros)}</td>
                       <td className="tabular px-4 py-2.5 text-right text-fg-soft">{usd(w.givenMicros ?? 0)}</td>
                       <td className="tabular px-4 py-2.5 text-right">{usd(w.revenueMicros)}</td>
-                      <td className={`tabular px-4 py-2.5 text-right sm:pr-5 ${net < 0 && !w.internal ? "text-danger" : "text-fg-soft"}`}>{usd(net)}</td>
+                      <td className={`tabular px-4 py-2.5 text-right sm:pr-5 ${lost && !w.internal ? "text-danger" : "text-fg-soft"}`}>{usd(net)}</td>
                     </tr>
                   );
                 })}
@@ -204,10 +213,11 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   const usagePercent = soldSomething && o.usageMarginPercent !== undefined ? o.usageMarginPercent : null;
   const running = o.runningCostMicros ?? 0;
   const unmapped = o.unmappedCostMicros ?? 0;
-  // Cloudflare's subscriptions are not on the usage bill: the estimate, over the range.
-  const subscriptions = Math.round((report.caps.fixedMonthlyMicros * range) / 30);
+  // Cloudflare's subscriptions are not on the usage bill: a month's, over the range.
+  const subscriptions = subscriptionsOver(report.caps.fixedMonthlyMicros, range);
+  const paid = whoPaid(o, subscriptions);
   const moneyIn = o.usageMicros + o.plansMicros;
-  const spent = o.costMicros + subscriptions;
+  const spent = paid.totalMicros;
   const net = moneyIn - spent;
   const givenParts = [
     ["100% discounts", o.givenCompedMicros ?? 0],
@@ -272,7 +282,11 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <Stat
           label="Margin on usage sold"
           value={percentLabel(usagePercent)}
-          hint={soldSomething ? `${usd(usageIn, { cents: true })} paid for usage that cost ${usd(usageCost, { cents: true })}` : "No usage sold in this range"}
+          hint={
+            soldSomething
+              ? `Of the price: ${usd(usageIn, { cents: true })} paid for usage that cost ${usd(usageCost, { cents: true })}`
+              : "No usage sold in this range"
+          }
           tone={marginTone(usagePercent, floor)}
         />
         <Stat
@@ -282,8 +296,8 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         />
         <Stat
           label="Who g1t paid"
-          value={usd(o.costMicros, { cents: true })}
-          hint={`Cloudflare ${usd(o.cloudflareCostMicros ?? o.costMicros - (o.modelsCostMicros ?? 0), { cents: true })}, model providers ${usd(o.modelsCostMicros ?? 0, { cents: true })}`}
+          value={usd(paid.totalMicros, { cents: true })}
+          hint={`Cloudflare's usage ${usd(paid.cloudflareMicros, { cents: true })} and subscriptions ${usd(paid.subscriptionsMicros, { cents: true })}, model providers ${usd(paid.modelsMicros, { cents: true })}; the cost in All in`}
         />
         <Stat
           label="Proposals waiting"
@@ -370,7 +384,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   );
 }
 
-function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: string | null }) {
+function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range: number; error: string | null }) {
   const { rows, totalMicros } = spendRows(caps);
   const net = caps.revenueMicros - totalMicros;
   return (
@@ -378,7 +392,7 @@ function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: strin
       className="mt-6"
       id="spend"
       title="g1t's own spend"
-      description="What g1t pays for itself, at cost: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and anything charged without real money behind it. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new hosted-model agent runs g1t would pay for."
+      description="What g1t pays for itself this calendar month, today included: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and usage charged without real money behind it. Each is what the work cost g1t, never its price, counted as each charge settled: the model providers' cost, and the price book's cost of sandboxes and builds. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new hosted-model agent runs g1t would pay for."
     >
       <div className="grid gap-3 lg:grid-cols-2">
         <CapMeter
@@ -462,7 +476,7 @@ function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: strin
             <tr className="border-b border-line">
               <td className="px-4 py-2.5 sm:px-5">
                 Money in
-                <span className="block text-xs text-faint">Usage paid for and the plan, reconciled through yesterday</span>
+                <span className="block text-xs text-faint">Usage paid for with real money and the plan, as last reconciled</span>
               </td>
               <td className="tabular px-4 py-2.5 text-right sm:pr-5">{usd(caps.revenueMicros)}</td>
             </tr>
@@ -473,6 +487,19 @@ function SpendSection({ caps, error }: { caps: CostsReport["caps"]; error: strin
           </tbody>
         </table>
       </div>
+      <p className="mt-3 text-xs text-muted">
+        Why this differs from the statement above: this is {caps.month} so far, the statement the last {range} days. The statement takes Cloudflare&apos;s bill as the
+        cost of what Cloudflare runs, so sandboxes and builds inside Cloudflare&apos;s included usage cost nothing there, and here what the price book says they
+        cost. Here are Cloudflare&apos;s subscriptions for the whole month, there for the range.
+        {(caps.resetMicros ?? 0) > 0 && (
+          <>
+            {" "}
+            And {usd(caps.resetMicros ?? 0, { cents: true })} of this was spent on {(caps.resetWorkspaces ?? []).join(", ")} before a testing reset wiped
+            {(caps.resetWorkspaces ?? []).length === 1 ? " its" : " their"} billing: still g1t&apos;s spend, but the statement has it only where the reset kept
+            it, as given away.
+          </>
+        )}
+      </p>
     </Section>
   );
 }

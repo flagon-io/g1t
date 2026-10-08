@@ -44,6 +44,12 @@ use crate::costs::{self, ARTIFACTS_OPERATIONS, DAY_MS, Rule, SOURCE_ARTIFACTS, S
 pub(crate) const OVERHEAD: [&str; 1] = ["platform"];
 /// Buckets Cloudflare does not bill: their cost is g1t's own figure.
 pub(crate) const NOT_CLOUDFLARE: [&str; 1] = ["models"];
+/// The key an agent's planning run is reconciled under. Its ledger task
+/// is `plan`, which is also the plan's payments' key (`revenue_map`: the
+/// platform bucket), so read as `plan` its model cost went to running g1t,
+/// where Cloudflare's bill is the cost, and was lost. No `revenue_map`
+/// row: models, like every agent run.
+pub(crate) const PLANNING_KEY: &str = "planning";
 /// The days drift is judged over.
 const DRIFT_DAYS: u64 = 7;
 /// The days a workspace's cost is set against its revenue.
@@ -432,6 +438,17 @@ pub(crate) fn pending_deltas(snapshots: &[(String, String, String, i64, i64)]) -
     out
 }
 
+/// A month-end meter's day on a 100%-discount workspace: all of it given
+/// (comped) and none of it money in. The snapshot holds what the month
+/// would charge before the discount, which the month's close takes off in
+/// full; counted as paid, flagon-io's cache, embeddings and scans read as
+/// money in ($0.0023 on 2026-10-08).
+pub(crate) fn comped_meter(mut u: UsageRow) -> UsageRow {
+    u.given = Given { comped: u.value, ..Given::default() };
+    u.cash = 0;
+    u
+}
+
 /// Margin as a share of what was charged, in percent; None when nothing was.
 pub(crate) fn margin_percent(revenue_micros: i64, cost_micros: i64) -> Option<f64> {
     (revenue_micros > 0).then(|| (revenue_micros - cost_micros) as f64 * 100.0 / revenue_micros as f64)
@@ -676,12 +693,28 @@ fn reset_sentences(resets: &[ResetNote]) -> Vec<String> {
 
 /// The models drift's detail: the gateway's total against the ledger's,
 /// and any testing reset in the window.
-pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats, resets: &[ResetNote]) -> String {
+pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats, resets: &[ResetNote], read: &costs::GatewayRead) -> String {
     if drift.cloudflare <= 0.0 {
-        return format!(
-            "Models: the ledger's model cost is {} over the last {DRIFT_DAYS} days and AI Gateway priced nothing, so the two were not compared. Either the gateway's analytics cannot be seen (Cloudflare answers a token without AI Gateway: Read with no rows, not an error; billing reads them with CLOUDFLARE_USAGE_TOKEN, then CLOUDFLARE_BILLING_TOKEN), or model calls went around the gateway.",
+        let head = format!(
+            "Models: the ledger's model cost is {} over the last {DRIFT_DAYS} days and AI Gateway priced nothing, so the two were not compared.",
             dollars(drift.ours as i64)
         );
+        let why = if caveats.requests > 0.0 {
+            format!(
+                "The gateway logged {} requests in those days but put no price on them: it has no price for the models used{}. Add their prices to the gateway, or route those models where they are priced.",
+                crate::features::thousands(caveats.requests.round() as u64),
+                if caveats.unpriced.is_empty() { String::new() } else { format!(" ({})", caveats.unpriced.join(", ")) }
+            )
+        } else {
+            match read {
+                costs::GatewayRead::Empty { visible: Some(false) } => "The token billing reads AI Gateway with (CLOUDFLARE_USAGE_TOKEN, else CLOUDFLARE_BILLING_TOKEN) cannot see the gateway named in AI_GATEWAY_ID: Cloudflare refused it (no Account, AI Gateway, Read on the token, or no gateway by that id). Give the token AI Gateway Read, or fix AI_GATEWAY_ID.".to_owned(),
+                costs::GatewayRead::Empty { visible: Some(true) } => "The token can see the gateway and it logged no requests in those days: model calls went around it. Check that every caller of a hosted model uses the gateway's URL (services/models, the runner's ANTHROPIC_BASE_URL).".to_owned(),
+                costs::GatewayRead::Failed(error) => format!("AI Gateway's analytics could not be read: {error}"),
+                costs::GatewayRead::NotRead => "AI Gateway was not read on this run: no AI_GATEWAY_ID, or no CLOUDFLARE_USAGE_TOKEN or CLOUDFLARE_BILLING_TOKEN.".to_owned(),
+                costs::GatewayRead::Rows | costs::GatewayRead::Empty { visible: None } => "The gateway answered without requests for these days, and whether its token can see the gateway could not be told: either the token lacks AI Gateway Read, or model calls went around the gateway.".to_owned(),
+            }
+        };
+        return format!("{head} {why}");
     }
     let lower = drift.ours < drift.cloudflare;
     let wiped = resets.iter().any(|r| !r.recorded);
@@ -1016,7 +1049,8 @@ impl Billing {
     /// day has come, and raise or clear alerts.
     pub(crate) async fn costs_daily(&self, env: &Env, keeper: &crate::keeper::Keeper) -> Result<CostsRun> {
         let mut run = CostsRun::default();
-        let (since, until) = match self.read_cloudflare(keeper, &mut run.problems).await? {
+        let mut gateway = costs::GatewayRead::default();
+        let (since, until) = match self.read_cloudflare(keeper, &mut run.problems, &mut gateway).await? {
             Some((since, until, lines)) => {
                 run.lines = lines;
                 (since, until)
@@ -1048,7 +1082,7 @@ impl Billing {
         let window = day_before(&until, costs::BACKFILL_DAYS - 1);
         let reconcile_from = if window < since { window } else { since.clone() };
         run.days = self.reconcile_range(&reconcile_from, &until).await?;
-        let drift = self.find_drift(&until).await?;
+        let drift = self.find_drift(&until, &gateway).await?;
         run.proposals = self.measure_units(&until).await?;
         self.apply_due_versions().await?;
         run.alerts = self.raise_alerts(env, &until, &drift).await?;
@@ -1102,7 +1136,8 @@ impl Billing {
             .db
             .prepare(format!(
                 "SELECT substr(created_at, 1, 10) AS day, workspace,
-                        CASE WHEN task = 'deployments' AND reference LIKE 'deploy/%' THEN 'builds' ELSE COALESCE(task, 'other') END AS key,
+                        CASE WHEN task = 'deployments' AND reference LIKE 'deploy/%' THEN 'builds'
+                             WHEN task = 'plan' THEN '{planning}' ELSE COALESCE(task, 'other') END AS key,
                         CASE WHEN workspace IN ({internal}) THEN 1 ELSE 0 END AS internal,
                         CASE WHEN billed_to = 'workspace' THEN 1 ELSE 0 END AS own_provider,
                         -SUM(amount_micros) AS cash,
@@ -1116,7 +1151,8 @@ impl Billing {
                  WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND COALESCE(task, '') NOT IN ({charged_here})
                    AND (?3 = '' OR workspace = ?3)
                  GROUP BY 1, 2, 3, 4, 5",
-                internal = crate::sales::INTERNAL_SQL
+                internal = crate::sales::INTERNAL_SQL,
+                planning = PLANNING_KEY
             ))
             .bind(&[since.into(), end.as_str().into(), only_sql.into()])?
             .all()
@@ -1177,12 +1213,12 @@ impl Billing {
             .filter(|s| crate::storage::CHARGED_HERE.contains(&s.source.as_str()) || s.source == "domains")
             .map(|s| (s.day, s.workspace, s.source, s.cost_micros, s.charge_micros))
             .collect::<Vec<_>>();
-        out.extend(pending_deltas(&snaps).into_iter().filter(|u| u.day.as_str() >= since).map(|mut u| {
-            if internal.contains(&u.workspace) {
-                u.given = Given { comped: u.value, ..Given::default() };
-            }
-            u
-        }));
+        out.extend(
+            pending_deltas(&snaps)
+                .into_iter()
+                .filter(|u| u.day.as_str() >= since)
+                .map(|u| if internal.contains(&u.workspace) { comped_meter(u) } else { u }),
+        );
         // The plan's price, spread over the 30 days it pays for, so a month's
         // payment does not read as one very good day and 29 bad ones.
         #[derive(Deserialize)]
@@ -1450,7 +1486,7 @@ impl Billing {
 
     /// Drift over the last week, written to `cost_drift` (replacing the
     /// last run's), with unmapped Cloudflare meters as leaks.
-    async fn find_drift(&self, until: &str) -> Result<Vec<(Drift, String)>> {
+    async fn find_drift(&self, until: &str, read: &costs::GatewayRead) -> Result<Vec<(Drift, String)>> {
         let since = day_before(until, DRIFT_DAYS - 1);
         let settings = self.cost_settings().await?;
         let rules = self.rules().await?;
@@ -1476,7 +1512,7 @@ impl Billing {
                 }
                 let title = costs::bucket_title(bucket);
                 let detail = match drift.kind {
-                    DriftKind::Cost if NOT_CLOUDFLARE.contains(&bucket.as_str()) => models_detail(&drift, &caveats, &resets),
+                    DriftKind::Cost if NOT_CLOUDFLARE.contains(&bucket.as_str()) => models_detail(&drift, &caveats, &resets, read),
                     DriftKind::Count => format!(
                         "{title}: g1t counted {}, Cloudflare {} over the last {DRIFT_DAYS} days ({:+.1}%). Customers are charged for what g1t counts; check what Cloudflare counts as a unit and change the repos service's operation_mapping (set_operation_mapping).",
                         crate::features::thousands(drift.ours.max(0.0).round() as u64),
@@ -2246,6 +2282,34 @@ mod tests {
     }
 
     #[test]
+    fn a_planning_run_is_model_cost_not_running_g1t() {
+        // flagon-io's planning run on 2026-10-07 cost $0.0748 of model
+        // calls; read under the ledger's task, `plan`, it went to running
+        // g1t, where Cloudflare's bill is the cost, and the model cost was
+        // lost from the statement and the drift.
+        let usage = vec![
+            usage("2026-10-07", "flagon-io", PLANNING_KEY, 89_741, 0, 74_784),
+            usage("2026-10-07", "acme", "plan", 666_666, 666_666, 0),
+        ];
+        let (days, _) = fold(&rules(), &revenue_map(), &[], &[], &usage, &BTreeSet::new());
+        let get = |bucket: &str| days.iter().find(|d| d.bucket == bucket).unwrap();
+        assert_eq!((get("models").cost(), get("models").value_micros), (74_784, 89_741));
+        assert_eq!((get("platform").own_cost_micros, get("platform").cash_micros), (0, 666_666));
+        assert!(!revenue_map().contains_key(PLANNING_KEY));
+    }
+
+    #[test]
+    fn a_comped_workspaces_month_end_meters_are_given_never_money_in() {
+        let snap = |day: &str, cost: i64, charge: i64| (day.to_string(), "flagon-io".to_string(), "cache".to_string(), cost, charge);
+        let rows: Vec<UsageRow> = pending_deltas(&[snap("2026-10-07", 1, 2), snap("2026-10-08", 473, 568)]).into_iter().map(comped_meter).collect();
+        assert_eq!(rows.iter().map(|r| (r.cash, r.value, r.given.comped)).collect::<Vec<_>>(), vec![(0, 2, 2), (0, 566, 566)]);
+        let internal: BTreeSet<String> = ["flagon-io".to_string()].into();
+        let (days, workspaces) = fold(&rules(), &revenue_map(), &[], &[], &rows, &internal);
+        assert!(days.iter().all(|d| d.cash_micros == 0));
+        assert!(workspaces.iter().all(|w| w.revenue == 0));
+    }
+
+    #[test]
     fn artifacts_events_count_when_the_bill_does_not() {
         let lines = vec![
             line("2026-10-05", SOURCE_ARTIFACTS, "artifacts", "events_pull", 120.0, 0.0),
@@ -2477,13 +2541,26 @@ mod tests {
         // rows), so it is said. Under the minimum, or no model cost: nothing.
         let silent = drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000);
         assert_eq!(silent, vec![Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 1_000_000.0, cloudflare: 0.0, delta_percent: None }]);
-        let said = models_detail(&silent[0], &costs::GatewayCaveats::default(), &[]);
-        assert!(said.contains("$1.00") && said.contains("priced nothing") && said.contains("AI Gateway: Read"), "{said}");
+        // Why it is empty, as far as the run could tell.
+        let why = |caveats: &costs::GatewayCaveats, read: costs::GatewayRead| models_detail(&silent[0], caveats, &[], &read);
+        let none = costs::GatewayCaveats::default();
+        let said = why(&none, costs::GatewayRead::Empty { visible: Some(false) });
+        assert!(said.contains("$1.00") && said.contains("priced nothing") && said.contains("cannot see the gateway") && said.contains("AI Gateway Read"), "{said}");
+        let said = why(&none, costs::GatewayRead::Empty { visible: Some(true) });
+        assert!(said.contains("logged no requests") && said.contains("went around it"), "{said}");
+        let said = why(&none, costs::GatewayRead::Failed("Cloudflare answered 500".into()));
+        assert!(said.contains("could not be read: Cloudflare answered 500"), "{said}");
+        assert!(why(&none, costs::GatewayRead::NotRead).contains("not read on this run"));
+        assert!(why(&none, costs::GatewayRead::Empty { visible: None }).contains("could not be told"));
+        // Requests with no price: neither the token nor a bypass.
+        let unpriced = costs::GatewayCaveats { requests: 42.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
+        let said = why(&unpriced, costs::GatewayRead::Rows);
+        assert!(said.contains("logged 42 requests") && said.contains("no price for the models used (anthropic_claude_new_1)"), "{said}");
         assert!(drifts("models", &[day("models", 0, 50_000, 60_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
         assert!(drifts("models", &[day("models", 0, 0, 0, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
         // The detail says which way and why it may be off.
         let caveats = costs::GatewayCaveats { cache_read_tokens: 3_000_000.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
-        let detail = models_detail(&short[0], &caveats, &[]);
+        let detail = models_detail(&short[0], &caveats, &[], &costs::GatewayRead::default());
         assert!(detail.contains("$5.00") && detail.contains("$3.00") && detail.contains("were not charged"), "{detail}");
         assert!(detail.contains("3,000,000 prompt-cache read") && detail.contains("no price for anthropic_claude_new_1"), "{detail}");
     }
@@ -2623,7 +2700,7 @@ mod tests {
             ]
         );
         let drift = Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 2_490_000.0, cloudflare: 11_110_000.0, delta_percent: Some(-77.6) };
-        let detail = models_detail(&drift, &costs::GatewayCaveats::default(), &notes);
+        let detail = models_detail(&drift, &costs::GatewayCaveats::default(), &notes, &costs::GatewayRead::default());
         assert!(detail.contains("includes model usage wiped by a testing reset of syntaqx on 2026-10-07"), "{detail}");
         assert!(detail.contains("not a leak") && detail.contains("leaves the 7 days on 2026-10-14"), "{detail}");
         assert!(!detail.contains("a gap that stays is a leak"), "{detail}");
@@ -2634,6 +2711,6 @@ mod tests {
         assert!(!wiped_not_leaked(&leak, &notes[1..]));
         assert!(!wiped_not_leaked(&Drift { bucket: "actions_cache".into(), ..leak }, &notes));
         // No reset: the detail is as before.
-        assert!(models_detail(&drift, &costs::GatewayCaveats::default(), &[]).contains("a gap that stays is a leak"));
+        assert!(models_detail(&drift, &costs::GatewayCaveats::default(), &[], &costs::GatewayRead::default()).contains("a gap that stays is a leak"));
     }
 }

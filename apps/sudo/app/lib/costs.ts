@@ -44,6 +44,58 @@ export function daySeries(days: CostDay[], since: string, until: string, bucket:
   return [...totals.values()];
 }
 
+/**
+ * The margin on the price a markup gives, in percent: cost plus 20% is a
+ * 16.7% margin, since the 20% is of the cost and the margin of the price.
+ */
+export function marginOnPrice(markupPercent: number): number {
+  return markupPercent > -100 ? (markupPercent / (100 + markupPercent)) * 100 : 0;
+}
+
+/**
+ * Who g1t paid over the range: Cloudflare's usage bill, its subscriptions
+ * (a month's, over the range) and the model providers. The same total as
+ * the statement's All in.
+ */
+export function whoPaid(
+  overall: { costMicros: number; cloudflareCostMicros?: number; modelsCostMicros?: number },
+  subscriptionsMicros: number,
+): { totalMicros: number; cloudflareMicros: number; subscriptionsMicros: number; modelsMicros: number } {
+  const modelsMicros = overall.modelsCostMicros ?? 0;
+  const cloudflareMicros = overall.cloudflareCostMicros ?? overall.costMicros - modelsMicros;
+  return { totalMicros: overall.costMicros + subscriptionsMicros, cloudflareMicros, subscriptionsMicros, modelsMicros };
+}
+
+/** Cloudflare's subscriptions over a range of days: a month's, pro rata. */
+export function subscriptionsOver(monthlyMicros: number, days: number): number {
+  return Math.round((monthlyMicros * days) / 30);
+}
+
+/**
+ * A price version's cost and price as the table shows them. A rate g1t
+ * sets has no cost behind it; a weight is a multiplier, not money.
+ */
+export function versionCells(v: { costMicros: number; priceMicros: number; basis?: string }): { cost: string; price: string; note: string | null } {
+  if (v.basis === "weight") {
+    const weight = Number((v.costMicros / 1_000_000).toFixed(6));
+    return { cost: "—", price: `×${weight}`, note: "A weight on the agent rate's tokens, not money" };
+  }
+  if (v.basis === "rate") return { cost: "—", price: unitDollars(v.priceMicros), note: "g1t's own rate: no cost behind it" };
+  return { cost: unitDollars(v.costMicros), price: unitDollars(v.priceMicros), note: null };
+}
+
+/**
+ * What became of a proposal, in words, for its line: who decided it, and
+ * when one never took effect because a later measurement replaced it.
+ */
+export function proposalOutcome(p: { status: string; decidedBy: string | null; effectiveAt: string | null }): string | null {
+  const by = p.decidedBy ? `${p.status === "superseded" ? "applied" : p.status} by ${p.decidedBy}` : null;
+  const replaced = "replaced by a later measurement before it took effect; nothing was charged at it";
+  if (p.status === "superseded") return by ? `${by}, then ${replaced}` : "replaced by a later measurement";
+  if ((p.status === "applied" || p.status === "approved") && !p.effectiveAt) return by ? `${by}, then ${replaced}` : replaced;
+  return by;
+}
+
 /** Margin as a whole percent of revenue; none when there was none. */
 export function marginPercent(revenueMicros: number, costMicros: number): number | null {
   return revenueMicros > 0 ? ((revenueMicros - costMicros) / revenueMicros) * 100 : null;
@@ -192,19 +244,19 @@ export function spendBanner(caps: SpendCaps): string | null {
 /** What g1t paid this month, by bucket, with the free tier and Cloudflare's subscriptions; and the total. */
 export function spendRows(caps: SpendCaps): { rows: { key: string; title: string; micros: number; note: string }[]; totalMicros: number } {
   const notes: Record<string, string> = {
-    comped: "Work on accounts with a 100% discount, at cost",
-    trial: "Trial credit, at cost",
-    oss: "Checks and workflows on public repositories, at cost",
-    given: "Free workspaces' overruns past their trial",
-    unpaid: "Charged, but no real money yet (test-mode payments)",
+    comped: "Work on accounts with a 100% discount: what it cost g1t, not its price",
+    trial: "Trial credit, at what it cost g1t",
+    oss: "Checks and workflows on public repositories, at what they cost g1t",
+    given: "Free workspaces' overruns past their trial, at what they cost g1t",
+    unpaid: "Usage charged while payments are in Stripe's test mode: what it cost g1t, not what was charged",
   };
   const rows = caps.monthBuckets.map((b) => ({ key: b.bucket, title: b.title, micros: b.micros, note: notes[b.bucket] ?? "" }));
-  rows.push({ key: "free", title: "Free tier", micros: caps.freeTierMicros, note: "Free workspaces' share of git, storage and platform, reconciled through yesterday" });
+  rows.push({ key: "free", title: "Free tier", micros: caps.freeTierMicros, note: "Free workspaces' share of git, storage and platform, as last reconciled" });
   rows.push({
     key: "fixed",
     title: "Cloudflare subscriptions",
     micros: caps.fixedMonthlyMicros,
-    note: caps.fixedSource === "cloudflare" ? "A month, as Cloudflare lists them" : "A month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)",
+    note: caps.fixedSource === "cloudflare" ? "The whole month, as Cloudflare lists them" : "The whole month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)",
   });
   return { rows, totalMicros: rows.reduce((sum, row) => sum + row.micros, 0) };
 }

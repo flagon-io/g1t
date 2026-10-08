@@ -3419,6 +3419,13 @@ pub struct PriceVersion {
     pub created_by: String,
     /// When the price book took it on; absent while it waits for its date.
     pub applied_at: Option<String>,
+    /// What `cost_micros` is: `cost`, what g1t pays for a unit (a
+    /// provider's dollar passed on at cost is one); `rate`, a price g1t
+    /// sets with no cost behind it (the agent rate, security activation),
+    /// so its cost column is its price; `weight`, a multiplier in
+    /// millionths, not money (the agent rate's token weights).
+    #[serde(default)]
+    pub basis: String,
 }
 
 /// What a workspace cost g1t over the range, Cloudflare's costs shared
@@ -3590,6 +3597,15 @@ pub struct SpendCaps {
     pub fixed_items: Vec<FixedCost>,
     /// Money in this month, through the last reconciled day.
     pub revenue_micros: i64,
+    /// Of this month's buckets, what was spent on workspaces whose billing
+    /// a testing reset later wiped: still g1t's spend, but no longer on
+    /// their ledger, so the reconciled figures have it only where the
+    /// reset kept it (as given away, testing resets).
+    #[serde(default)]
+    pub reset_micros: i64,
+    /// Those workspaces.
+    #[serde(default)]
+    pub reset_workspaces: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

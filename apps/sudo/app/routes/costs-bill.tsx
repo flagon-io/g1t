@@ -5,7 +5,7 @@ import type { CostsReport, PriceProposal } from "@g1t/contracts";
 import type { Route } from "./+types/costs-bill";
 import { CostsHeader } from "~/components/costs-header";
 import { Badge, Button, EmptyState, Field, Input, Notice, Section, When } from "~/components/ui";
-import { countLabel, driftLabel, percentLabel, unitDollars } from "~/lib/costs";
+import { countLabel, driftLabel, percentLabel, proposalOutcome, unitDollars, versionCells } from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { dollarsField, usd } from "~/lib/money";
 
@@ -111,26 +111,30 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
               </tr>
             </thead>
             <tbody>
-              {report.versions.map((v) => (
-                <tr key={v.id} className="border-b border-line align-top last:border-0">
-                  <td className="px-4 py-2.5 sm:px-5">
-                    <span className="font-mono text-xs">{v.meter}</span> <span className="text-faint">v{v.version}</span>
-                    {!v.appliedAt && (
-                      <span className="ml-2">
-                        <Badge tone="info">Coming</Badge>
-                      </span>
-                    )}
-                  </td>
-                  <td className="tabular px-4 py-2.5 text-right">{unitDollars(v.costMicros)}</td>
-                  <td className="tabular px-4 py-2.5 text-right">{unitDollars(v.priceMicros)}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted">
-                    <When at={v.effectiveAt} />
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-faint sm:pr-5">
-                    {v.reason} · {v.createdBy}
-                  </td>
-                </tr>
-              ))}
+              {report.versions.map((v) => {
+                const cells = versionCells(v);
+                return (
+                  <tr key={v.id} className="border-b border-line align-top last:border-0">
+                    <td className="px-4 py-2.5 sm:px-5">
+                      <span className="font-mono text-xs">{v.meter}</span> <span className="text-faint">v{v.version}</span>
+                      {!v.appliedAt && (
+                        <span className="ml-2">
+                          <Badge tone="info">Coming</Badge>
+                        </span>
+                      )}
+                      {cells.note && <span className="block text-xs text-faint">{cells.note}</span>}
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right">{cells.cost === "—" ? <span className="text-faint">—</span> : cells.cost}</td>
+                    <td className="tabular px-4 py-2.5 text-right">{cells.price}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted">
+                      <When at={v.effectiveAt} time />
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-faint sm:pr-5">
+                      {v.reason} · {v.createdBy}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -278,6 +282,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
 
 function ProposalRow({ proposal: p, error }: { proposal: PriceProposal; error: string | null }) {
   const rise = p.proposedCostMicros > p.currentCostMicros;
+  const outcome = proposalOutcome(p);
   const statusTone = p.status === "open" ? "warn" : p.status === "rejected" || p.status === "superseded" ? "plain" : "mint";
   return (
     <li className="rounded-md border border-line px-4 py-3">
@@ -297,11 +302,11 @@ function ProposalRow({ proposal: p, error }: { proposal: PriceProposal; error: s
       <p className="mt-1 text-xs text-muted">{p.reason}</p>
       <p className="mt-1 text-xs text-faint">
         From the {p.source}, <When at={p.createdAt} time />
-        {p.decidedBy ? ` · ${p.status} by ${p.decidedBy}` : ""}
-        {p.effectiveAt ? (
+        {outcome ? ` · ${outcome}` : ""}
+        {p.effectiveAt && p.status !== "superseded" ? (
           <>
             {" "}
-            · in force from <When at={p.effectiveAt} />
+            · in force from <When at={p.effectiveAt} time />
           </>
         ) : null}
         {p.note ? ` · “${p.note}”` : ""}
