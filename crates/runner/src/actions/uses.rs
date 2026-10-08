@@ -43,7 +43,7 @@ impl Job {
         }
         command.args(args).env("GIT_TERMINAL_PROMPT", "0");
         let mut commands = Commands::default();
-        matches!(process::run(command, Duration::from_secs(600), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+        matches!(process::run(command, Duration::from_secs(600).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
     }
 
     /// A fetch, tried again after a short wait when it fails: a transfer
@@ -186,7 +186,7 @@ impl Job {
         let mut command = Command::new("bash");
         command.args(["-c", &script]);
         let mut commands = Commands::default();
-        match process::run(command, Duration::from_secs(300), &mut self.log, &mut commands) {
+        match process::run(command, Duration::from_secs(300).min(self.remaining_time()), &mut self.log, &mut commands) {
             Ok(Ended::Exited(0)) => {
                 let _ = std::fs::write(dir.join(".g1t-fetched"), "");
                 Some(dir)
@@ -225,10 +225,10 @@ impl Job {
         };
         let ended = process::run(command, Duration::from_secs(6 * 3600).min(self.deadline_left()), &mut self.log, &mut commands);
         let ok = matches!(ended, Ok(Ended::Exited(0)));
-        if let Ok(Ended::Exited(code)) = ended
-            && code != 0
-        {
-            self.log.line(&format!("##[error]The action exited with code {code}."));
+        match ended {
+            Ok(Ended::Exited(code)) if code != 0 => self.log.line(&format!("##[error]The action exited with code {code}.")),
+            Ok(Ended::TimedOut) => self.log.line("##[error]The action ran past its time limit and was stopped."),
+            _ => {}
         }
         let (outputs, state) = self.absorb(&files, &commands);
         self.last_node_outputs = outputs;

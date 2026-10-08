@@ -50,7 +50,7 @@ impl Job {
         let mut command = Command::new("bash");
         command.args(["-c", script]).current_dir(&self.workspace);
         let mut commands = Commands::default();
-        matches!(process::run(command, Duration::from_secs(1800), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+        matches!(process::run(command, Duration::from_secs(1800).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
     }
 
     /// Downloads into `file`, as it comes; `Ok(None)` when there is
@@ -632,7 +632,7 @@ impl Job {
         let mut command = Command::new("bash");
         command.args(["-c", script]).current_dir(&self.workspace);
         let mut commands = Commands::default();
-        match process::run(command, Duration::from_secs(1800), &mut self.log, &mut commands) {
+        match process::run(command, Duration::from_secs(1800).min(self.remaining_time()), &mut self.log, &mut commands) {
             Ok(Ended::Exited(code)) => Some(code),
             _ => None,
         }

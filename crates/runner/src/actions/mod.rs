@@ -82,6 +82,11 @@ pub(crate) struct Job {
     pub(crate) posts: Vec<Post>,
     step_names: Vec<String>,
     deadline: Instant,
+    /// The running step's `timeout-minutes`, as an instant: the nearest of
+    /// the step's own and those of the steps around it (a composite
+    /// action's step inside a `uses:` step). Every process a step starts
+    /// stops by it, as every one stops by the job's deadline.
+    step_deadline: Option<Instant>,
     debug: bool,
     /// What the last Node process left, for the step that ran it.
     pub(crate) last_node_outputs: BTreeMap<String, String>,
@@ -229,7 +234,15 @@ impl Job {
         self.remaining()
     }
 
+    /// What is left for the running step: its `timeout-minutes`, within
+    /// the job's.
     fn remaining(&self) -> Duration {
+        let until = self.step_deadline.map_or(self.deadline, |step| step.min(self.deadline));
+        until.saturating_duration_since(Instant::now())
+    }
+
+    /// What is left of the job's own time, whatever the step's.
+    fn job_remaining(&self) -> Duration {
         self.deadline.saturating_duration_since(Instant::now())
     }
 
@@ -382,11 +395,15 @@ impl Job {
                 env.insert(name.clone(), expr::to_text(&value));
             }
         }
-        let timeout = step
+        let minutes = step
             .get("timeout-minutes")
             .and_then(|v| self.with_scope(&contexts, |scope| expr::interpolate_value(v, scope)).ok())
-            .and_then(|v| v.as_f64().or_else(|| expr::to_text(&v).parse().ok()))
-            .map_or(Duration::from_secs(6 * 3600), |minutes| Duration::from_secs_f64(minutes * 60.0));
+            .and_then(|v| v.as_f64().or_else(|| expr::to_text(&v).parse().ok()));
+        let timeout = step_timeout(minutes);
+        // Every step stops at its own `timeout-minutes`, `run` or `uses`: a
+        // `uses:` step's action, and every process it starts, included.
+        let outer_deadline = self.step_deadline;
+        self.step_deadline = step_deadline(outer_deadline, Instant::now(), minutes);
         let continue_on_error = step
             .get("continue-on-error")
             .and_then(|v| self.with_scope(&contexts, |scope| expr::interpolate_value(v, scope)).ok())
@@ -440,6 +457,17 @@ impl Job {
             self.log.line("##[error]A step needs `run` or `uses`.");
             (false, BTreeMap::new())
         };
+        let own_deadline = self.step_deadline.filter(|_| self.step_deadline != outer_deadline);
+        self.step_deadline = outer_deadline;
+        let ok = if own_deadline.is_some_and(|until| Instant::now() >= until) {
+            self.log.line(&format!(
+                "##[error]The step ran past its timeout-minutes ({}) and was stopped.",
+                minutes.unwrap_or_default()
+            ));
+            false
+        } else {
+            ok
+        };
 
         let outcome = if ok { "success" } else { "failure" };
         let conclusion = if ok || continue_on_error { "success" } else { "failure" };
@@ -461,6 +489,27 @@ impl Job {
 
     fn report_steps(&self) {
         self.log.steps(&self.step_names);
+    }
+}
+
+/// How long a step's processes may run: its `timeout-minutes`, or six
+/// hours (the job's own limit still applies).
+fn step_timeout(minutes: Option<f64>) -> Duration {
+    match minutes {
+        Some(minutes) if minutes.is_finite() && minutes > 0.0 => Duration::from_secs_f64(minutes * 60.0),
+        Some(_) => Duration::ZERO,
+        None => Duration::from_secs(6 * 3600),
+    }
+}
+
+/// When a step must end by: its `timeout-minutes` from `now`, or `outer`
+/// (the deadline of the `uses:` step it runs inside, for a composite
+/// action's step), whichever is nearer. None when neither sets one.
+fn step_deadline(outer: Option<Instant>, now: Instant, minutes: Option<f64>) -> Option<Instant> {
+    let own = minutes.map(|minutes| now + step_timeout(Some(minutes)));
+    match (outer, own) {
+        (Some(outer), Some(own)) => Some(outer.min(own)),
+        (outer, own) => outer.or(own),
     }
 }
 
@@ -560,6 +609,7 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
         posts: Vec::new(),
         step_names: Vec::new(),
         deadline: Instant::now() + Duration::from_secs(timeout * 60),
+        step_deadline: None,
         debug,
         last_node_outputs: BTreeMap::new(),
         last_node_state: BTreeMap::new(),
@@ -657,7 +707,7 @@ fn run_job(job: &mut Job) {
     for (index, step) in steps.iter().enumerate().filter(|_| containers_started) {
         job.step(&mut frame, step, index as u32 + 1, true, &defaults);
         job.log_docker_notes();
-        if job.remaining().is_zero() {
+        if job.job_remaining().is_zero() {
             job.log.line("##[error]The job ran past its time limit.");
             job.failed = true;
             break;
@@ -744,4 +794,28 @@ pub(crate) fn main() -> i32 {
     };
     run_job(&mut job);
     if job.failed { 1 } else { 0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_steps_timeout_is_its_own_or_the_nearer_one_around_it() {
+        let now = Instant::now();
+        // No timeout-minutes anywhere: only the job's deadline applies.
+        assert_eq!(step_deadline(None, now, None), None);
+        // A step's own, in minutes, fractions included.
+        assert_eq!(step_deadline(None, now, Some(1.5)), Some(now + Duration::from_secs(90)));
+        // A composite action's step inside a `uses:` step with its own:
+        // the nearer of the two.
+        let outer = now + Duration::from_secs(60);
+        assert_eq!(step_deadline(Some(outer), now, Some(10.0)), Some(outer));
+        assert_eq!(step_deadline(Some(outer), now, Some(0.5)), Some(now + Duration::from_secs(30)));
+        assert_eq!(step_deadline(Some(outer), now, None), Some(outer));
+        // Zero or less is a time already up.
+        assert_eq!(step_deadline(None, now, Some(0.0)), Some(now));
+        assert_eq!(step_timeout(None), Duration::from_secs(6 * 3600));
+        assert_eq!(step_timeout(Some(-1.0)), Duration::ZERO);
+    }
 }
