@@ -127,9 +127,10 @@ test("facets count the whole workspace", () => {
     project("a", { ecosystem: "npm", deploying: true }),
     project("b", { ecosystem: "npm", private: true, kind: "library" }),
     project("c", { ecosystem: "go", archived: true }),
+    project("d", { kind: "tool" }),
   ]);
-  assert.deepEqual(facets.visibility, { public: 2, private: 1 });
-  assert.deepEqual(facets.kind, { app: 2, library: 1 });
+  assert.deepEqual(facets.visibility, { public: 3, private: 1 });
+  assert.deepEqual(facets.kind, { app: 2, library: 1, tool: 1, docs: 0, other: 0 });
   assert.deepEqual(facets.languages, [{ name: "JavaScript", count: 2 }, { name: "Go", count: 1 }]);
   assert.equal(facets.deploying, 1);
   assert.equal(facets.archived, 1);

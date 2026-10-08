@@ -21,6 +21,7 @@ import {
   projectQueryString,
   readProjectQuery,
 } from "../../lib/project-list";
+import { kindLabel, primaryLink } from "../../lib/project-kind";
 import { deployments, projects } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
@@ -45,6 +46,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     role ? projects.shortcuts(slug, viewer).catch(() => null) : null,
   ]);
   const live = new Map((deploys?.ok ? deploys.value : []).map((entry) => [entry.slug, entry]));
+  const full = new Map((listed.ok ? listed.value : []).map((project) => [project.id, project]));
   const all: Listed[] = (listed.ok ? listed.value : []).map((project) => ({
     id: project.id,
     slug: project.slug,
@@ -68,7 +70,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     total: all.length,
     matched: matched.length,
     page: { page: shown.page, pages: shown.pages, from: shown.from, to: shown.to },
-    items: shown.items.map((project) => ({ ...project, production: live.get(project.slug)?.production?.url ?? null })),
+    // Production where g1t serves it or elsewhere, else its homepage or docs.
+    items: shown.items.map((project) => {
+      const one = full.get(project.id)!;
+      return { ...project, runs: one.runs, production: primaryLink(one, live.get(project.slug)?.production?.url) };
+    }),
     facets: facetsOf(all),
     pinned: (shortcuts?.pinned ?? []).map((project) => project.id),
     failed: !listed.ok,
@@ -86,7 +92,8 @@ function Facts({ project }: { project: Item }) {
   return (
     <>
       {language && <span>{language}</span>}
-      {project.kind === "library" && <span>Library</span>}
+      {project.kind !== "app" && <span>{kindLabel(project)}</span>}
+      {project.kind === "app" && project.runs === "elsewhere" && <span>Deployed elsewhere</span>}
       {project.deploying && (
         <span className="inline-flex items-center gap-1 text-success">
           <Rocket size={11} />
@@ -333,6 +340,9 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
           <option value="all">All kinds</option>
           <option value="app">{option("Apps", facets.kind.app)}</option>
           <option value="library">{option("Libraries", facets.kind.library)}</option>
+          {(facets.kind.tool > 0 || query.kind === "tool") && <option value="tool">{option("Tools", facets.kind.tool)}</option>}
+          {(facets.kind.docs > 0 || query.kind === "docs") && <option value="docs">{option("Docs", facets.kind.docs)}</option>}
+          {(facets.kind.other > 0 || query.kind === "other") && <option value="other">{option("Other", facets.kind.other)}</option>}
         </select>
         {(facets.languages.length > 0 || query.language) && (
           <select name="language" aria-label="Language" defaultValue={query.language ?? ""} onChange={() => apply()} className={CONTROL}>

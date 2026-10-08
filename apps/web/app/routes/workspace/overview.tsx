@@ -11,7 +11,7 @@ import { PullIcon } from "../../components/work-icons";
 import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
 import { openedBy } from "../../lib/opened-by";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
-import { libraryPackages, packageLine, packagePath } from "../../lib/project-kind";
+import { kindLabel, libraryPackages, packageLine, packagePath, primaryLink } from "../../lib/project-kind";
 import { PinButton } from "../../components/pin-button";
 import { sortProjects } from "../../lib/project-list";
 import { billing, deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
@@ -113,7 +113,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   }
   const packageOf: Record<string, PackageSummary> = {};
   for (const project of [...pinned, ...active]) {
-    if (project.kind !== "library" || project.source.kind !== "hosted") continue;
+    if ((project.kind !== "library" && project.kind !== "tool") || project.source.kind !== "hosted") continue;
     const first = libraryPackages(byRepo.get(project.source.repoId) ?? [])[0];
     if (first) packageOf[project.id] = first;
   }
@@ -122,6 +122,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     slug,
     role,
     total: projects.length,
+    elsewhere: projects.filter((project) => project.runs === "elsewhere" && project.productionUrl).length,
     pinned,
     active,
     open,
@@ -186,9 +187,12 @@ function ProjectCard({
   /** Whether the viewer pinned it; null when they cannot pin. */
   pinned: boolean | null;
 }) {
-  const library = project.kind === "library";
+  // A library or a tool shows the package it publishes.
+  const library = project.kind === "library" || project.kind === "tool";
   const base = `/${project.workspace}/${project.slug}`;
   const production = deploys?.production ?? null;
+  // Production where g1t serves it or elsewhere, else its homepage or docs.
+  const link = primaryLink(project, production?.url);
   const latest = deploys?.latest ?? null;
   const source = project.source.kind === "hosted" ? project.source : null;
   return (
@@ -201,12 +205,12 @@ function ProjectCard({
           <Link to={base} prefetch="intent" className="font-medium after:absolute after:inset-0 hover:underline">
             {project.name}
           </Link>
-          {production ? (
+          {link && !(library && pkg && !production) ? (
             <a
-              href={production.url}
+              href={link}
               className="relative z-10 mt-0.5 flex items-center gap-1 truncate font-mono text-xs text-muted hover:text-accent"
             >
-              {host(production.url)}
+              {host(link)}
               <ArrowUpRight size={11} className="shrink-0" />
             </a>
           ) : library && pkg ? (
@@ -218,7 +222,14 @@ function ProjectCard({
             </Link>
           ) : (
             <p className="mt-0.5 truncate text-xs text-faint">
-              {project.description ?? (library ? "Not published yet" : deploys?.enabled ? "Not deployed yet" : "Deployments are off")}
+              {project.description ??
+                (library
+                  ? "Not published yet"
+                  : project.runs === "g1t"
+                    ? deploys?.enabled
+                      ? "Not deployed yet"
+                      : "Deployments are off"
+                    : kindLabel(project))}
             </p>
           )}
         </div>
@@ -233,7 +244,7 @@ function ProjectCard({
         )}
       </div>
 
-      {project.description && (production || (library && pkg)) && <p className="mt-3 line-clamp-2 text-sm text-muted">{project.description}</p>}
+      {project.description && (link || (library && pkg)) && <p className="mt-3 line-clamp-2 text-sm text-muted">{project.description}</p>}
 
       <div className="mt-auto pt-5">
         {member && latest && (
@@ -291,7 +302,10 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
     (sum, counts) => ({ issues: sum.issues + counts.issues, pulls: sum.pulls + counts.pulls }),
     { issues: 0, pulls: 0 },
   );
-  const liveApps = Object.values(deploys).filter((entry) => entry.production).length;
+  // Live on g1t, or deployed elsewhere with an address.
+  const liveApps =
+    Object.values(deploys).filter((entry) => entry.production).length +
+    loaderData.elsewhere;
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_18rem]">
       <div className="min-w-0 space-y-10">

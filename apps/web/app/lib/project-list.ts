@@ -5,7 +5,7 @@
  * filtered list can be shared, bookmarked and gone back to.
  */
 
-import type { Project, ProjectEcosystem } from "@g1t/contracts";
+import type { Project, ProjectEcosystem, ProjectKind } from "@g1t/contracts";
 
 export type ProjectSort = "updated" | "name" | "active" | "pushed";
 export type ProjectView = "list" | "grid";
@@ -14,7 +14,7 @@ export type ProjectQuery = {
   /** Words in the name, slug or description. */
   q: string;
   visibility: "all" | "public" | "private";
-  kind: "all" | "app" | "library";
+  kind: "all" | ProjectKind;
   /** A language, from the manifests at the project's root. */
   language: string | null;
   /** Only projects with Deployments on. */
@@ -73,7 +73,7 @@ export function readProjectQuery(params: URLSearchParams): ProjectQuery {
   return {
     q: (params.get("q") ?? "").trim().slice(0, 100),
     visibility: one(params.get("visibility"), ["all", "public", "private"] as const, "all"),
-    kind: one(params.get("kind"), ["all", "app", "library"] as const, "all"),
+    kind: one(params.get("kind"), ["all", "app", "library", "tool", "docs", "other"] as const, "all"),
     language: params.get("language")?.trim() || null,
     deployments: params.get("deployments") === "on",
     archived: one(params.get("archived"), ["hide", "include", "only"] as const, "hide"),
@@ -166,7 +166,7 @@ export function pageOf<T>(list: T[], page: number, size = PAGE_SIZE): { items: T
 
 export type Facets = {
   visibility: { public: number; private: number };
-  kind: { app: number; library: number };
+  kind: Record<ProjectKind, number>;
   languages: { name: string; count: number }[];
   deploying: number;
   archived: number;
@@ -175,7 +175,7 @@ export type Facets = {
 /** How many of the workspace's projects each filter would show, before any is chosen. */
 export function facetsOf(projects: Listed[]): Facets {
   const languages = new Map<string, number>();
-  const facets: Facets = { visibility: { public: 0, private: 0 }, kind: { app: 0, library: 0 }, languages: [], deploying: 0, archived: 0 };
+  const facets: Facets = { visibility: { public: 0, private: 0 }, kind: { app: 0, library: 0, tool: 0, docs: 0, other: 0 }, languages: [], deploying: 0, archived: 0 };
   for (const project of projects) {
     facets.visibility[project.private ? "private" : "public"]++;
     facets.kind[project.kind]++;

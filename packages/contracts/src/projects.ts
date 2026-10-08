@@ -36,16 +36,27 @@ export type Project = {
   archived: boolean;
   /** Whether it is the project its repository's workflows read secrets from. */
   primary: boolean;
-  /** Whether it deploys, as set in its settings: `auto` decides from the project itself. */
-  deploys: DeploysSetting;
-  /** What it is, from `deploys`, or for `auto` from its deployments, packages and files. */
+  /** What a person set it to be; each part null while it is left to detection. */
+  setting: ProjectSetting;
+  /** What it is: from `setting`, or for what is left out, from its deployments, packages and files. */
   kind: ProjectKind;
   /** Why it is that kind. */
   kindReason: KindReason;
-  /** What `auto` decides, whatever the setting is, to show beside it. */
+  /**
+   * Where it runs: `g1t` when g1t deploys it (Deployments, on g1t.page),
+   * `elsewhere` when it is deployed by other means, at `productionUrl`.
+   * Null for what is not deployed (a library, a tool) and for an app nobody
+   * has said yet while Deployments are off.
+   */
+  runs: ProjectRuns | null;
+  /** Where production is when it runs elsewhere; null when nobody has given one. */
+  productionUrl: string | null;
+  /** What detection decides, whatever the setting is, to show beside it. */
   detected: { kind: ProjectKind; reason: KindReason };
   /** The ecosystem its files say it publishes to, for how to publish; null when none says. */
   ecosystem: ProjectEcosystem | null;
+  /** Its homepage, docs and other links, shown wherever the project is. */
+  links: ProjectLinks;
   createdBy: string;
   /** RFC 3339. */
   createdAt: string;
@@ -60,15 +71,63 @@ export type Project = {
   activity: number;
 };
 
-/** Whether a project deploys: decided from the project, or set by a person. */
-export type DeploysSetting = "auto" | "yes" | "no";
-
 /**
- * An app deploys and gets production, previews and domains; a library (or
- * a tool) is published and installed, so its pages offer releases and
- * packages instead.
+ * What a project is. An app (or a site) runs somewhere and gets a
+ * production card; a library is published and installed; a tool, such as
+ * a CLI, ships as releases people install; docs are documentation or site
+ * content; other is anything else, such as configuration or research.
  */
-export type ProjectKind = "app" | "library";
+export type ProjectKind = "app" | "library" | "tool" | "docs" | "other";
+
+/** Every kind, in the order pages offer them. */
+export const PROJECT_KINDS: readonly ProjectKind[] = ["app", "library", "tool", "docs", "other"];
+
+/** Where an app or a site runs: deployed by g1t on g1t.page, or deployed by other means. */
+export type ProjectRuns = "g1t" | "elsewhere";
+
+/** What a person set; null for each part left to detection. */
+export type ProjectSetting = { kind: ProjectKind | null; runs: ProjectRuns | null };
+
+/** One of a project's own links: a label and an http(s) address. */
+export type ProjectLink = { label: string; url: string };
+
+export type ProjectLinks = {
+  /** Its homepage: its own, or its repository's website while it has none. */
+  homepage: string | null;
+  /** Whether `homepage` is its repository's website, following it as it changes. */
+  homepageInherited: boolean;
+  /** Where its documentation is read. */
+  docs: string | null;
+  /** Any others, in the order given, at most `MAX_PROJECT_LINKS`. */
+  custom: ProjectLink[];
+};
+
+/** How many links of its own a project keeps besides its homepage and docs. */
+export const MAX_PROJECT_LINKS = 10;
+/** The longest link label. */
+export const MAX_LINK_LABEL = 40;
+/** The longest link address. */
+export const MAX_LINK_URL = 255;
+
+/** A change to a project; only what is given changes. */
+export type ProjectChanges = {
+  name?: string;
+  /** Null or blank goes back to the repository's. */
+  description?: string | null;
+  rootDir?: string;
+  /** What it is; `auto` leaves it to detection. Anything but an app or docs stops it running anywhere. */
+  kind?: ProjectKind | "auto";
+  /** Where it runs; `auto` leaves it to Deployments. Setting it makes it an app unless it is docs. */
+  runs?: ProjectRuns | "auto";
+  /** Production's address when it runs elsewhere; null or blank clears it. */
+  productionUrl?: string | null;
+  /** Null or blank goes back to the repository's website. */
+  homepage?: string | null;
+  /** Null or blank clears it. */
+  docsUrl?: string | null;
+  /** Replaces its other links. */
+  links?: ProjectLink[];
+};
 
 /**
  * What decided the kind: the setting, Deployments being on, a package its
@@ -123,13 +182,12 @@ export interface ProjectsApi {
   byRepo(repoId: string): Promise<Project[]>;
   /** Members only. */
   create(actor: User, workspace: string, input: NewProject): Promise<Result<Project>>;
-  /** Members only. A null or blank description goes back to the repository's. */
-  update(
-    actor: User,
-    workspace: string,
-    slug: string,
-    changes: { name?: string; description?: string | null; rootDir?: string; deploys?: DeploysSetting },
-  ): Promise<Result<Project>>;
+  /**
+   * Members with a role that may change its settings. Making it something
+   * that does not run (a library, a tool, other) while Deployments are on
+   * is refused: they are turned off first.
+   */
+  update(actor: User, workspace: string, slug: string, changes: ProjectChanges): Promise<Result<Project>>;
   /** For deployments: Deployments were turned on or off for the project. */
   deploymentsChanged(projectId: string, enabled: boolean): Promise<void>;
   /** What a project uses and what uses it. Whoever may see the project. */
@@ -157,4 +215,11 @@ export interface ProjectsApi {
   reorderPins(actor: User, workspace: string, slugs: string[]): Promise<Result<Project[]>>;
   /** The person opened the project: it leads their recent ones. */
   visited(actor: User, projectId: string): Promise<void>;
+  /**
+   * For lists of public repositories, such as Explore: each one's own
+   * project's address to show, by `namespace/name` in lower case:
+   * production when it is deployed elsewhere, else its homepage, else its
+   * docs. Repositories without one are left out. At most 100 asked at once.
+   */
+  publicLinks(repos: RepoPath[]): Promise<Record<string, string>>;
 }

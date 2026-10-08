@@ -46,6 +46,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::ListPinnedProjects, Op::PinProject, Op::UnpinProject, Op::ReorderPinnedProjects],
     ),
     (
+        "Projects",
+        "A project is what a workspace builds and runs, from a repository or a root directory in one. Each says what it is, where it runs and where to find it: its homepage, docs and other links.",
+        &[Op::ListProjects, Op::GetProject, Op::UpdateProject],
+    ),
+    (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
         &[Op::GetWorkspace, Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
@@ -538,6 +543,9 @@ fn title(op: Op) -> &'static str {
         Op::PinProject => "Pin a project",
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",
+        Op::ListProjects => "List a workspace's projects",
+        Op::GetProject => "Get a project",
+        Op::UpdateProject => "Update a project",
         Op::ListTeams => "List teams",
         Op::GetTeam => "Get a team",
         Op::CreateTeam => "Create a team",

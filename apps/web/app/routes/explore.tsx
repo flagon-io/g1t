@@ -1,4 +1,4 @@
-import { BookMarked, Search } from "lucide-react";
+import { ArrowUpRight, BookMarked, Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 
@@ -7,7 +7,8 @@ import type { ExploreRepo } from "@g1t/contracts";
 import type { Route } from "./+types/explore";
 import { EmptyState, Pill, TimeAgo, notACredential } from "../components/ui";
 import { page } from "../lib/meta";
-import { search } from "../lib/services.server";
+import { host } from "../components/deploy";
+import { projects, search } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
 export function meta({ loaderData, ...args }: Route.MetaArgs) {
@@ -29,7 +30,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const explore = await search
     .explore(getViewer(context), { sort, language, topic, page: pageNumber })
     .catch(() => null);
-  return { sort, language, topic, explore };
+  // Each one's homepage or production, from its project; the page shows without them.
+  const links = explore
+    ? await projects.publicLinks(explore.repos.map((repo) => ({ namespace: repo.namespace, name: repo.name }))).catch(() => ({}))
+    : {};
+  return { sort, language, topic, explore, links: links as Record<string, string> };
 }
 
 /** The address of Explore with some of its filters changed. */
@@ -44,19 +49,15 @@ function href(current: { sort: string; language: string | null; topic: string | 
   return query ? `/explore?${query}` : "/explore";
 }
 
-function RepoCard({ repo }: { repo: ExploreRepo }) {
+function RepoCard({ repo, link }: { repo: ExploreRepo; link: string | null }) {
   return (
-    <Link
-      prefetch="intent"
-      to={`/${repo.namespace}/${repo.name}`}
-      className="flex h-full flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong"
-    >
+    <div className="relative flex h-full flex-col rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
       <span className="flex items-center gap-2">
         <BookMarked size={15} className="shrink-0 text-faint" />
-        <span className="truncate font-mono text-sm">
+        <Link prefetch="intent" to={`/${repo.namespace}/${repo.name}`} className="truncate font-mono text-sm after:absolute after:inset-0">
           <span className="text-muted">{repo.namespace}/</span>
           <span className="font-medium">{repo.name}</span>
-        </span>
+        </Link>
         {repo.archived && (
           <span className="ml-auto shrink-0">
             <Pill>archived</Pill>
@@ -64,6 +65,16 @@ function RepoCard({ repo }: { repo: ExploreRepo }) {
         )}
       </span>
       <span className="mt-2 line-clamp-2 grow text-sm text-muted">{repo.description ?? "No description."}</span>
+      {link && (
+        <a
+          href={link}
+          rel="noopener noreferrer nofollow"
+          className="relative z-10 mt-2 flex min-w-0 items-center gap-1 self-start font-mono text-xs text-muted hover:text-accent"
+        >
+          <span className="truncate">{host(link).replace(/\/$/, "")}</span>
+          <ArrowUpRight size={11} className="shrink-0" />
+        </a>
+      )}
       {repo.topics.length > 0 && (
         <span className="mt-3 flex flex-wrap gap-1.5">
           {repo.topics.slice(0, 4).map((topic) => (
@@ -87,7 +98,7 @@ function RepoCard({ repo }: { repo: ExploreRepo }) {
           )}
         </span>
       </span>
-    </Link>
+    </div>
   );
 }
 
@@ -167,7 +178,7 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
             <ul className="mt-4 grid gap-3 sm:grid-cols-2">
               {explore.repos.map((repo) => (
                 <li key={`${repo.namespace}/${repo.name}`}>
-                  <RepoCard repo={repo} />
+                  <RepoCard repo={repo} link={loaderData.links[`${repo.namespace}/${repo.name}`.toLowerCase()] ?? null} />
                 </li>
               ))}
             </ul>
