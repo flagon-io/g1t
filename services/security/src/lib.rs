@@ -74,9 +74,10 @@ const PAGES_PER_SWEEP: u32 = 4;
 const DEPENDENCIES_PER_SWEEP: u32 = 10;
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 const MAX_REASON_CHARS: usize = 500;
-/// What seeing a repository's findings takes: the Write role, as changing
-/// its code does. Dismissing or allowing one takes Admin.
-const SEE_FINDINGS: Capability = Capability::Push;
+/// What seeing and dismissing a repository's findings takes: the Write
+/// role, as on GitHub, or a security manager of its workspace. Changing its
+/// security settings takes Admin (`ManageSecurity`).
+const SEE_FINDINGS: Capability = Capability::SecurityAlerts;
 
 pub struct Security {
     store: Store,
@@ -239,11 +240,11 @@ impl Security {
         }))
     }
 
-    /// What dismissing or reopening alert `id` takes: Admin for a secret,
-    /// whose dismissal lets it through push protection, Write for a
-    /// vulnerable dependency.
-    fn capability_for(id: &str) -> Capability {
-        if id.starts_with("sec_") { Capability::ManageIntegrations } else { SEE_FINDINGS }
+    /// What dismissing or reopening alert `id` takes: Write, for a secret
+    /// as for a vulnerable dependency, as on GitHub; a security manager may
+    /// too.
+    fn capability_for(_id: &str) -> Capability {
+        SEE_FINDINGS
     }
 
     async fn dismiss(&self, a: DismissArgs) -> Result<Outcome<AlertChange>> {
@@ -800,7 +801,7 @@ mod tests {
 
     #[test]
     fn dismissing_a_secret_takes_admin_and_a_dependency_write() {
-        assert_eq!(Security::capability_for("sec_1"), Capability::ManageIntegrations);
-        assert_eq!(Security::capability_for("vul_1"), Capability::Push);
+        assert_eq!(Security::capability_for("sec_1"), Capability::SecurityAlerts);
+        assert_eq!(Security::capability_for("vul_1"), Capability::SecurityAlerts);
     }
 }

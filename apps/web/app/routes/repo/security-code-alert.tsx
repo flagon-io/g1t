@@ -20,7 +20,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
-  const { access } = await requireInsider(context, params, "push");
+  const { access } = await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
   return { detail: unwrap(await securitySuite.codeAlert(repo, Number(params.number) || 0, viewer)), can: access.can };
 }
@@ -33,7 +33,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const repo = { namespace: params.owner, name: params.repo };
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const refused = await refusal(context, params, intent === "fix" ? "run" : "push");
+  const refused = await refusal(context, params, intent === "fix" ? "run" : "security_alerts");
   if (refused) return { ok: false, error: refused };
   const number = Number(params.number) || 0;
   if (intent === "dismiss") {

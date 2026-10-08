@@ -152,6 +152,13 @@ impl Identity {
             ])?
             .run()
             .await?;
+        self.log_security(&row.user_id, "oauth_grant_created", Some(&row.client_name), None).await;
+        if let Some(person) = self
+            .find_public_user("SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?", &row.user_id)
+            .await?
+        {
+            self.audit_account(&person, "oauth_grant.created", &format!("Authorized the application {}", row.client_name)).await;
+        }
         Ok(Outcome::Ok(
             self.issue_oauth_tokens(
                 &grant_id,
@@ -291,12 +298,24 @@ impl Identity {
             .bind(&[scopes.as_str().into(), a.id.as_str().into()])?
             .run()
             .await?;
+        self.log_security(&a.user.id, "oauth_grant_rescoped", Some(&row.client_name), None).await;
+        self.audit_account(&a.user, "oauth_grant.rescoped", &format!("Changed what the application {} may do", row.client_name)).await;
         Ok(Outcome::Ok(grant(row)))
     }
 
     /// Signs an application out: its refresh token and access token stop
     /// working.
     pub async fn revoke_oauth_grant(&self, a: RemoveArgs) -> Result<()> {
+        let client: Option<String> = self
+            .db
+            .prepare("SELECT client_name FROM oauth_grants WHERE id = ? AND user_id = ?")
+            .bind(&[a.id.as_str().into(), a.user.id.as_str().into()])?
+            .first(Some("client_name"))
+            .await?;
+        if let Some(client) = &client {
+            self.log_security(&a.user.id, "oauth_grant_revoked", Some(client), None).await;
+            self.audit_account(&a.user, "oauth_grant.revoked", &format!("Revoked the application {client}")).await;
+        }
         self.db
             .batch(vec![
                 self.db

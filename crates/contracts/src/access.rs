@@ -13,9 +13,14 @@
 //! - **ownership**: an owner of the repository's workspace has Admin on
 //!   every repository in it;
 //! - **the base permission** of the workspace ([`BasePermission`]), which
-//!   every member gets on every repository (Write unless an owner changes
-//!   it);
-//! - **a direct grant** ([`RepoGrant`]) to the person, on that repository;
+//!   every member gets on every repository (Read for a workspace made from
+//!   2026-10-08, [`BasePermission::FOR_NEW_WORKSPACES`]; Write for one made
+//!   before, until an owner changes it);
+//! - **a direct grant** ([`RepoGrant`]) to the person, on that repository.
+//!   Whoever creates a repository is given Admin on it this way;
+//! - **security manager**: Read on every repository of a workspace where
+//!   the person is one, with the security capabilities
+//!   ([`SECURITY_MANAGER`]) on top;
 //! - **public**: anyone, signed in or not, can read a public repository.
 //!
 //! - **a team's grant**: a role given to a team the person is in, or to
@@ -51,9 +56,10 @@ pub enum RepoRole {
     Triage,
     /// Triage, and push, merge, and put agents to work.
     Write,
-    /// Write, and manage the repository's settings and branch protection.
+    /// Write, and manage the repository's settings and topics.
     Maintain,
-    /// Everything: webhooks, secrets, deployments, who has access, and the
+    /// Everything: branch protection and rulesets, webhooks, secrets,
+    /// deployments, security settings, who has access, and the
     /// repository's name, visibility and archiving.
     Admin,
 }
@@ -96,6 +102,10 @@ impl RepoRole {
 }
 
 /// What every member of a workspace gets on each of its repositories.
+///
+/// Its `Default` is what a membership that does not say gets: one a service
+/// made up to act inside a workspace. Every workspace stores its own value,
+/// and a new one starts at [`BasePermission::FOR_NEW_WORKSPACES`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BasePermission {
@@ -110,6 +120,10 @@ pub enum BasePermission {
 }
 
 impl BasePermission {
+    /// What a new workspace's members get: Read, as on GitHub. Workspaces
+    /// made before 2026-10-08 kept the Write they had.
+    pub const FOR_NEW_WORKSPACES: BasePermission = BasePermission::Read;
+
     pub const ALL: [BasePermission; 4] = [
         BasePermission::None,
         BasePermission::Read,
@@ -151,29 +165,41 @@ pub enum Capability {
     Read,
     /// Open issues and pull requests, and comment on them.
     Participate,
-    /// Label, assign, close and reopen issues and pull requests.
+    /// Apply labels and milestones; assign, close and reopen issues and
+    /// pull requests; ask for reviews.
     Triage,
     /// Push to branches that are not protected, and edit files on the web.
     Push,
     /// Merge pull requests and manage the merge queue.
     Merge,
+    /// Create, edit and delete labels and milestones.
+    ManageLabels,
+    /// See and dismiss security alerts: secret scanning, code scanning and
+    /// vulnerable dependencies.
+    SecurityAlerts,
     /// Assign agents, start runs, plans and workflows: anything that
     /// spends compute.
     Run,
     /// Change the description, topics, website, and how pull requests and
     /// agents work.
     ManageSettings,
-    /// Change branch protection and guardrails.
+    /// Change branch protection, rulesets and guardrails.
     ManageProtection,
+    /// Change security settings: scanning, push protection, custom
+    /// patterns and bypass reviews.
+    ManageSecurity,
     /// Manage webhooks, secrets and variables, deployments, domains and
     /// integrations.
     ManageIntegrations,
     /// Add, change and remove who has access, and invitations.
     ManageAccess,
-    /// Rename, archive, change visibility and the default branch.
+    /// Rename, archive, and change the default branch.
     Administer,
-    /// Transfer or delete the repository. Also needs an owner of its
-    /// workspace, as [`OWNER_ONLY`] says.
+    /// Make the repository public or private. Owners only when the
+    /// workspace's member privileges say so.
+    ChangeVisibility,
+    /// Transfer or delete the repository. Owners only unless the
+    /// workspace's member privileges let repository admins do it.
     Delete,
 }
 
@@ -185,12 +211,16 @@ impl Capability {
             Capability::Triage => "triage",
             Capability::Push => "push",
             Capability::Merge => "merge",
+            Capability::ManageLabels => "manage_labels",
+            Capability::SecurityAlerts => "security_alerts",
             Capability::Run => "run",
             Capability::ManageSettings => "manage_settings",
             Capability::ManageProtection => "manage_protection",
+            Capability::ManageSecurity => "manage_security",
             Capability::ManageIntegrations => "manage_integrations",
             Capability::ManageAccess => "manage_access",
             Capability::Administer => "administer",
+            Capability::ChangeVisibility => "change_visibility",
             Capability::Delete => "delete",
         }
     }
@@ -207,25 +237,48 @@ pub struct CapabilityRow {
 }
 
 /// The permission table: the least role for each capability. The single
-/// source of truth; `packages/contracts/src/access.ts` mirrors it.
-pub const CAPABILITIES: [CapabilityRow; 12] = [
+/// source of truth; `packages/contracts/src/access.ts` mirrors it. It
+/// follows GitHub's table of repository roles; where g1t differs, the
+/// access guide says so.
+pub const CAPABILITIES: [CapabilityRow; 16] = [
     CapabilityRow { capability: Capability::Read, role: RepoRole::Read, about: "See code, issues and pull requests; clone and fetch" },
     CapabilityRow { capability: Capability::Participate, role: RepoRole::Read, about: "Open issues and pull requests, and comment" },
-    CapabilityRow { capability: Capability::Triage, role: RepoRole::Triage, about: "Label, assign, close and reopen issues and pull requests" },
+    CapabilityRow { capability: Capability::Triage, role: RepoRole::Triage, about: "Apply labels and milestones; assign, close and reopen issues and pull requests" },
     CapabilityRow { capability: Capability::Push, role: RepoRole::Write, about: "Push to branches that are not protected" },
     CapabilityRow { capability: Capability::Merge, role: RepoRole::Write, about: "Merge pull requests and use the merge queue" },
+    CapabilityRow { capability: Capability::ManageLabels, role: RepoRole::Write, about: "Create, edit and delete labels and milestones" },
+    CapabilityRow { capability: Capability::SecurityAlerts, role: RepoRole::Write, about: "See and dismiss security alerts" },
     CapabilityRow { capability: Capability::Run, role: RepoRole::Write, about: "Assign agents and start runs, plans and workflows" },
     CapabilityRow { capability: Capability::ManageSettings, role: RepoRole::Maintain, about: "Change the description, topics, and pull request and agent settings" },
-    CapabilityRow { capability: Capability::ManageProtection, role: RepoRole::Maintain, about: "Change branch protection and guardrails" },
+    CapabilityRow { capability: Capability::ManageProtection, role: RepoRole::Admin, about: "Change branch protection, rulesets and guardrails" },
+    CapabilityRow { capability: Capability::ManageSecurity, role: RepoRole::Admin, about: "Change security settings, custom patterns and bypass reviews" },
     CapabilityRow { capability: Capability::ManageIntegrations, role: RepoRole::Admin, about: "Manage webhooks, secrets, variables, deployments and domains" },
     CapabilityRow { capability: Capability::ManageAccess, role: RepoRole::Admin, about: "Manage who has access, and invitations" },
-    CapabilityRow { capability: Capability::Administer, role: RepoRole::Admin, about: "Rename, archive, change visibility and the default branch" },
-    CapabilityRow { capability: Capability::Delete, role: RepoRole::Admin, about: "Transfer or delete the repository (owners of the workspace only)" },
+    CapabilityRow { capability: Capability::Administer, role: RepoRole::Admin, about: "Rename, archive and change the default branch" },
+    CapabilityRow { capability: Capability::ChangeVisibility, role: RepoRole::Admin, about: "Change visibility (owners only, unless member privileges allow admins)" },
+    CapabilityRow { capability: Capability::Delete, role: RepoRole::Admin, about: "Transfer or delete the repository (owners only, unless member privileges allow admins)" },
 ];
 
 /// Capabilities that also need an owner of the repository's workspace,
-/// whatever a person's role on the repository.
-pub const OWNER_ONLY: [Capability; 1] = [Capability::Delete];
+/// whatever a person's role on the repository, unless the workspace's
+/// member privileges ([`crate::MemberPrivileges`]) let its members with
+/// the Admin role do them: see [`owner_only`].
+pub const OWNER_ONLY: [Capability; 2] = [Capability::ChangeVisibility, Capability::Delete];
+
+/// What a security manager may do on every repository of their workspace,
+/// whatever their role on it: read it, and see and manage its security.
+pub const SECURITY_MANAGER: [Capability; 4] =
+    [Capability::Read, Capability::Participate, Capability::SecurityAlerts, Capability::ManageSecurity];
+
+/// Whether `capability` needs an owner of a workspace whose member
+/// privileges are `privileges`, for a member with the Admin role.
+pub fn owner_only(capability: Capability, privileges: &crate::MemberPrivileges) -> bool {
+    match capability {
+        Capability::ChangeVisibility => !privileges.members_can_change_repo_visibility,
+        Capability::Delete => !privileges.members_can_delete_repositories,
+        _ => false,
+    }
+}
 
 /// The least role that has `capability`.
 pub fn least_role(capability: Capability) -> RepoRole {
@@ -281,7 +334,15 @@ fn membership_role(user: &User, membership: &Membership) -> Option<RepoRole> {
     }
     match membership.role {
         Role::Owner => Some(RepoRole::Admin),
-        Role::Member => membership.base_permission.unwrap_or_default().role(),
+        Role::Member => {
+            let base = membership.base_permission.unwrap_or_default().role();
+            // A security manager reads every repository.
+            if membership.has(crate::OrgRole::SecurityManager) {
+                base.max(Some(RepoRole::Read))
+            } else {
+                base
+            }
+        }
     }
 }
 
@@ -315,19 +376,38 @@ pub fn permission<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>) -> Op
 }
 
 /// Whether the viewer may do `capability` in the repository. Owner-only
-/// capabilities ([`OWNER_ONLY`]) also need the viewer to own its workspace.
+/// capabilities ([`OWNER_ONLY`]) also need the viewer to own its workspace,
+/// or to be a member of it whose member privileges allow it. A security
+/// manager of its workspace may do what [`SECURITY_MANAGER`] lists.
 pub fn can<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>, capability: Capability) -> bool {
     let repo = repo.into();
     let Some(role) = permission(viewer, repo) else {
         return false;
     };
+    let namespace = repo.namespace.to_lowercase();
     if !allows(role, capability) {
-        return false;
+        return SECURITY_MANAGER.contains(&capability)
+            && viewer.is_some_and(|user| is_security_manager(user, &namespace));
     }
     if OWNER_ONLY.contains(&capability) {
-        return viewer.is_some_and(|user| user.role_in(&repo.namespace.to_lowercase()) == Some(Role::Owner));
+        return viewer.is_some_and(|user| match user.membership(&namespace) {
+            Some(membership) if membership.role == Role::Owner => true,
+            // A member with the Admin role, when the privileges allow it;
+            // never an outside collaborator.
+            Some(membership) => !owner_only(capability, &membership.privileges.unwrap_or_default()),
+            None => false,
+        });
     }
     true
+}
+
+/// Whether `user` is a security manager of the workspace `namespace`
+/// (a person, not a token acting for one).
+pub fn is_security_manager(user: &User, namespace: &str) -> bool {
+    user.kind == PrincipalKind::User
+        && user
+            .membership(namespace)
+            .is_some_and(|membership| membership.has(crate::OrgRole::SecurityManager))
 }
 
 /// What a refusal answers: a repository the viewer cannot read is not
@@ -361,7 +441,10 @@ pub fn check<'a>(
 pub fn needs(capability: Capability, repo: &str) -> String {
     let role = least_role(capability);
     if OWNER_ONLY.contains(&capability) {
-        return format!("Only an owner of the workspace can do that to {repo}.");
+        return format!(
+            "Only an owner of the workspace can do that to {repo}, unless its member privileges let members with the {} role do it.",
+            role.label()
+        );
     }
     format!(
         "You need the {} role or higher on {repo} to do that.",
@@ -663,6 +746,8 @@ mod tests {
                     avatar: None,
                     base_permission: *base,
                     team_creation: None,
+                    org_roles: Vec::new(),
+                    privileges: None,
                 })
                 .collect(),
             grants: grants
@@ -689,16 +774,17 @@ mod tests {
         let expected: [(RepoRole, &[Capability]); 5] = [
             (RepoRole::Read, &[Read, Participate]),
             (RepoRole::Triage, &[Read, Participate, Triage]),
-            (RepoRole::Write, &[Read, Participate, Triage, Push, Merge, Run]),
+            (RepoRole::Write, &[Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run]),
             (
                 RepoRole::Maintain,
-                &[Read, Participate, Triage, Push, Merge, Run, ManageSettings, ManageProtection],
+                &[Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run, ManageSettings],
             ),
             (
                 RepoRole::Admin,
                 &[
-                    Read, Participate, Triage, Push, Merge, Run, ManageSettings, ManageProtection,
-                    ManageIntegrations, ManageAccess, Administer, Delete,
+                    Read, Participate, Triage, Push, Merge, ManageLabels, SecurityAlerts, Run, ManageSettings,
+                    ManageProtection, ManageSecurity, ManageIntegrations, ManageAccess, Administer, ChangeVisibility,
+                    Delete,
                 ],
             ),
         ];
@@ -781,7 +867,8 @@ mod tests {
             team: None,
         });
         assert_eq!(permission(Some(&member), repo("rep_1", "acme", true)), Some(RepoRole::Maintain));
-        assert!(can(Some(&member), repo("rep_1", "acme", true), Capability::ManageProtection));
+        assert!(can(Some(&member), repo("rep_1", "acme", true), Capability::ManageSettings));
+        assert!(!can(Some(&member), repo("rep_1", "acme", true), Capability::ManageProtection));
         assert!(!can(Some(&member), repo("rep_1", "acme", true), Capability::ManageAccess));
         // Elsewhere, only the base.
         assert_eq!(permission(Some(&member), repo("rep_2", "acme", true)), Some(RepoRole::Read));
@@ -810,6 +897,135 @@ mod tests {
         assert!(can(Some(&admin), repo("rep_1", "acme", true), Capability::Administer));
         assert!(can(Some(&admin), repo("rep_1", "acme", true), Capability::ManageAccess));
         assert!(!can(Some(&admin), repo("rep_1", "acme", true), Capability::Delete));
+    }
+
+    /// GitHub's table, row by row where g1t has the action: the least role
+    /// each one takes there.
+    #[test]
+    fn the_table_matches_githubs_repository_roles() {
+        let github: [(Capability, RepoRole); 16] = [
+            // "Pull from the repository", "View ..."
+            (Capability::Read, RepoRole::Read),
+            // "Open issues", "Comment on issues and pull requests"
+            (Capability::Participate, RepoRole::Read),
+            // "Apply/dismiss labels", "Apply milestones", "Close, reopen,
+            // and assign all issues and pull requests"
+            (Capability::Triage, RepoRole::Triage),
+            // "Push to (write) the person or team's assigned repositories"
+            (Capability::Push, RepoRole::Write),
+            // "Merge pull requests"
+            (Capability::Merge, RepoRole::Write),
+            // "Create, edit, delete labels", "Create, edit, delete milestones"
+            (Capability::ManageLabels, RepoRole::Write),
+            // "Receive and dismiss Dependabot alerts", "List, dismiss, and
+            // delete code scanning alerts", "View and dismiss secret
+            // scanning alerts"
+            (Capability::SecurityAlerts, RepoRole::Write),
+            // "Create, edit, run, re-run, and cancel GitHub Actions workflows"
+            (Capability::Run, RepoRole::Write),
+            // "Edit a repository's description", "Manage topics", "Manage
+            // pull request merges"
+            (Capability::ManageSettings, RepoRole::Maintain),
+            // "Manage branch protection rules and repository rulesets"
+            (Capability::ManageProtection, RepoRole::Admin),
+            // "Manage security and analysis features"
+            (Capability::ManageSecurity, RepoRole::Admin),
+            // "Manage webhooks and deploy keys"
+            (Capability::ManageIntegrations, RepoRole::Admin),
+            // "Manage individual and team access to the repository"
+            (Capability::ManageAccess, RepoRole::Admin),
+            // "Rename a repository", "Archive repositories", "Change the
+            // default branch"
+            (Capability::Administer, RepoRole::Admin),
+            // "Change a repository's visibility"
+            (Capability::ChangeVisibility, RepoRole::Admin),
+            // "Delete or transfer repositories"
+            (Capability::Delete, RepoRole::Admin),
+        ];
+        for (capability, role) in github {
+            assert_eq!(least_role(capability), role, "{}", capability.as_str());
+        }
+        assert_eq!(github.len(), CAPABILITIES.len());
+    }
+
+    fn with_privileges(mut person: User, privileges: crate::MemberPrivileges) -> User {
+        for membership in &mut person.workspaces {
+            membership.privileges = Some(privileges);
+        }
+        person
+    }
+
+    #[test]
+    fn member_privileges_decide_whether_admins_change_visibility_delete_and_transfer() {
+        let admin = user(&[("acme", Role::Member, Some(BasePermission::Read))], &[("rep_1", "acme", RepoRole::Admin)]);
+        let rep = repo("rep_1", "acme", true);
+        // The defaults: admins change visibility; only owners delete.
+        assert!(can(Some(&admin), rep, Capability::ChangeVisibility));
+        assert!(!can(Some(&admin), rep, Capability::Delete));
+        let open = with_privileges(
+            admin.clone(),
+            crate::MemberPrivileges { members_can_delete_repositories: true, ..crate::MemberPrivileges::default() },
+        );
+        assert!(can(Some(&open), rep, Capability::Delete));
+        let closed = with_privileges(
+            admin.clone(),
+            crate::MemberPrivileges { members_can_change_repo_visibility: false, ..crate::MemberPrivileges::default() },
+        );
+        assert!(!can(Some(&closed), rep, Capability::ChangeVisibility));
+        // A writer never can, whatever the privileges.
+        let writer = with_privileges(
+            user(&[("acme", Role::Member, Some(BasePermission::Write))], &[]),
+            crate::MemberPrivileges { members_can_delete_repositories: true, ..crate::MemberPrivileges::default() },
+        );
+        assert!(!can(Some(&writer), rep, Capability::Delete));
+        // Owners always can.
+        let owner = with_privileges(
+            user(&[("acme", Role::Owner, None)], &[]),
+            crate::MemberPrivileges { members_can_change_repo_visibility: false, ..crate::MemberPrivileges::default() },
+        );
+        assert!(can(Some(&owner), rep, Capability::ChangeVisibility));
+        assert!(can(Some(&owner), rep, Capability::Delete));
+    }
+
+    #[test]
+    fn a_security_manager_reads_everything_and_manages_its_security_only() {
+        let mut manager = user(&[("acme", Role::Member, Some(BasePermission::None))], &[]);
+        manager.workspaces[0].org_roles.push(crate::OrgRole::SecurityManager);
+        let rep = repo("rep_1", "acme", true);
+        assert_eq!(permission(Some(&manager), rep), Some(RepoRole::Read));
+        for capability in SECURITY_MANAGER {
+            assert!(can(Some(&manager), rep, capability), "{}", capability.as_str());
+        }
+        for capability in [Capability::Triage, Capability::Push, Capability::ManageSettings, Capability::ManageProtection] {
+            assert!(!can(Some(&manager), rep, capability), "{}", capability.as_str());
+        }
+        // Elsewhere, nothing.
+        assert_eq!(permission(Some(&manager), repo("rep_2", "globex", true)), None);
+        // A billing manager gets no repository access from the role.
+        let mut billing = user(&[("acme", Role::Member, Some(BasePermission::None))], &[]);
+        billing.workspaces[0].org_roles.push(crate::OrgRole::BillingManager);
+        assert_eq!(permission(Some(&billing), rep), None);
+        assert!(billing.manages_billing("acme"));
+        assert!(!billing.manages_security("acme"));
+    }
+
+    #[test]
+    fn a_maintainer_no_longer_changes_branch_protection() {
+        let maintainer = user(&[], &[("rep_1", "acme", RepoRole::Maintain)]);
+        let rep = repo("rep_1", "acme", true);
+        assert!(can(Some(&maintainer), rep, Capability::ManageSettings));
+        assert!(!can(Some(&maintainer), rep, Capability::ManageProtection));
+        let triager = user(&[], &[("rep_1", "acme", RepoRole::Triage)]);
+        assert!(can(Some(&triager), rep, Capability::Triage));
+        assert!(!can(Some(&triager), rep, Capability::ManageLabels));
+        let writer = user(&[], &[("rep_1", "acme", RepoRole::Write)]);
+        assert!(can(Some(&writer), rep, Capability::ManageLabels));
+        assert!(can(Some(&writer), rep, Capability::SecurityAlerts));
+    }
+
+    #[test]
+    fn new_workspaces_start_at_read() {
+        assert_eq!(BasePermission::FOR_NEW_WORKSPACES, BasePermission::Read);
     }
 
     #[test]

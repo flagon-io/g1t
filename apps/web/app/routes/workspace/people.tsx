@@ -1,19 +1,43 @@
-import { ArrowUpRight, Users } from "lucide-react";
+import { ArrowUpRight, Check, Ellipsis, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 import { useState } from "react";
-import { Form, Link, data, useSearchParams } from "react-router";
+import { Form, Link, data, redirect, useSearchParams, useSubmit } from "react-router";
 
 import {
   BASE_PERMISSIONS,
   BASE_PERMISSION_LABELS,
   type BasePermission,
   DEFAULT_BASE_PERMISSION,
+  type Member,
+  ORG_ROLES,
+  ORG_ROLE_LABELS,
+  ORG_ROLE_SUMMARIES,
+  type OrgRole,
   REPO_ROLE_LABELS,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/people";
 import { page } from "../../lib/meta";
-import { Avatar, CopyLine, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "../../components/ui";
+import { Avatar, Button, CopyLine, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import { Hint } from "../../components/ui/hint";
+import { forgetWorkspace } from "../../lib/workspace-choice";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { inviteLink, inviteState, moreInvitesMailto } from "../../lib/invites";
@@ -58,6 +82,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     outside: outside?.ok ? outside.value : [],
     teams: Object.fromEntries((teams?.ok ? teams.value : []).map((person) => [person.username, person.teams])),
     origin: new URL(request.url).origin,
+    me: viewer?.username ?? null,
   };
 }
 
@@ -68,6 +93,30 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (form.get("action") === "revoke-invite") {
     const result = await identity.revokeWorkspaceInvite(user, params.owner, String(form.get("id") ?? ""));
     return result.ok ? null : { error: result.error.message };
+  }
+  const target = String(form.get("member") ?? "").trim();
+  // Owner or member, and the roles that add to a member.
+  if (form.get("action") === "role") {
+    const role = form.get("role") === "owner" ? "owner" : "member";
+    const result = await identity.updateMember(user, params.owner, target, { role });
+    return result.ok ? { changed: target } : { error: result.error.message, row: target };
+  }
+  if (form.get("action") === "org-roles") {
+    const roles = String(form.get("org_roles") ?? "")
+      .split(",")
+      .filter((role): role is OrgRole => (ORG_ROLES as readonly string[]).includes(role));
+    const result = await identity.updateMember(user, params.owner, target, { org_roles: roles });
+    return result.ok ? { changed: target } : { error: result.error.message, row: target };
+  }
+  if (form.get("action") === "transfer") {
+    const result = await identity.transferOwnership(user, params.owner, target);
+    return result.ok ? { transferred: target } : { error: result.error.message, row: target };
+  }
+  if (form.get("action") === "leave") {
+    const result = await identity.leaveWorkspace(user, params.owner);
+    if (!result.ok) return { error: result.error.message, leaving: true };
+    const secure = new URL(request.url).protocol === "https:";
+    throw redirect("/", { headers: { "Set-Cookie": forgetWorkspace(secure) } });
   }
   if (form.get("action") === "base-permission") {
     const base = String(form.get("base") ?? "");
@@ -97,9 +146,166 @@ const BASE_MEANS: Record<BasePermission, string> = {
   admin: "Members can do everything on every repository, including its settings, webhooks, secrets and who has access. Only owners transfer or delete one.",
 };
 
+/** What a member's roles say about them, as badges: owner or member, then the roles on top. */
+function RoleBadges({ member }: { member: Member }) {
+  return (
+    <span className="flex flex-wrap justify-end gap-1">
+      {member.role === "owner" ? <Badge tone="accent">Owner</Badge> : <Badge>Member</Badge>}
+      {(member.org_roles ?? []).map((role) => (
+        <Hint key={role} label={ORG_ROLE_SUMMARIES[role]}>
+          <Badge tone="info" tabIndex={0}>
+            {ORG_ROLE_LABELS[role]}
+          </Badge>
+        </Hint>
+      ))}
+    </span>
+  );
+}
+
+/** Whether a member has two-factor authentication on, for owners. */
+function TwoFactorMark({ on }: { on: boolean | null | undefined }) {
+  if (on == null) return null;
+  return on ? (
+    <Hint label="Two-factor authentication is on">
+      <span tabIndex={0} className="inline-flex text-success" aria-label="Two-factor authentication on">
+        <ShieldCheck size={15} />
+      </span>
+    </Hint>
+  ) : (
+    <Hint label="Two-factor authentication is off">
+      <span tabIndex={0} className="inline-flex text-warn" aria-label="Two-factor authentication off">
+        <ShieldAlert size={15} />
+      </span>
+    </Hint>
+  );
+}
+
+/** An owner's menu for one member: their role, the roles on top, handing over and removing. */
+function MemberMenu({ member, self, owners, slug }: { member: Member; self: boolean; owners: number; slug: string }) {
+  const submit = useSubmit();
+  const [confirm, setConfirm] = useState<"transfer" | "remove" | null>(null);
+  const roles = member.org_roles ?? [];
+  const post = (fields: Record<string, string>) =>
+    submit({ ...fields, member: member.username }, { method: "post", preventScrollReset: true });
+  const lastOwner = member.role === "owner" && owners <= 1;
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Manage ${member.username}`}
+            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+          >
+            <Ellipsis size={16} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel>Role in {slug}</DropdownMenuLabel>
+          {member.role === "member" ? (
+            <DropdownMenuItem onSelect={() => post({ action: "role", role: "owner" })}>Make owner</DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled={lastOwner} onSelect={() => post({ action: "role", role: "member" })}>
+              {lastOwner ? "The only owner" : "Make member"}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Also</DropdownMenuLabel>
+          {ORG_ROLES.map((role) => {
+            const has = roles.includes(role);
+            const next = has ? roles.filter((other) => other !== role) : [...roles, role];
+            return (
+              <DropdownMenuItem key={role} onSelect={() => post({ action: "org-roles", org_roles: next.join(",") })}>
+                <span className="flex size-4 items-center justify-center">{has && <Check />}</span>
+                {ORG_ROLE_LABELS[role]}
+              </DropdownMenuItem>
+            );
+          })}
+          {!self && (
+            <>
+              <DropdownMenuSeparator />
+              {member.role === "member" && (
+                <DropdownMenuItem onSelect={() => setConfirm("transfer")}>Transfer ownership…</DropdownMenuItem>
+              )}
+              <DropdownMenuItem disabled={lastOwner} onSelect={() => setConfirm("remove")} className="text-danger">
+                Remove from {slug}…
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+        <AlertDialogContent>
+          <Form method="post" className="grid gap-4" onSubmit={() => setConfirm(null)}>
+            <input type="hidden" name="action" value={confirm === "transfer" ? "transfer" : "remove"} />
+            <input type="hidden" name="member" value={member.username} />
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirm === "transfer" ? `Hand ${slug} to ${member.username}?` : `Remove ${member.username} from ${slug}?`}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirm === "transfer"
+                  ? `${member.username} becomes an owner and you a member. Only an owner can make you an owner again.`
+                  : `Their roles on ${slug}'s repositories and their place in its teams go too. To keep them on a repository, add them back to it as an outside collaborator.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+              <SubmitButton variant="danger" match={{ action: confirm ?? "", member: member.username }} pending="Working…">
+                {confirm === "transfer" ? "Transfer ownership" : "Remove"}
+              </SubmitButton>
+            </AlertDialogFooter>
+          </Form>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+/** Leaving the workspace, for anyone in it. */
+function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boolean; error: string | null }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section id="leave" className="mt-10 scroll-mt-20 border-t border-line pt-8">
+      <h2 className="font-medium">Leave {slug}</h2>
+      <p className="mt-1 text-sm text-muted">
+        {soleOwner
+          ? `You are ${slug}'s only owner. Make another member an owner first, or delete the workspace in its settings.`
+          : "Your roles on its repositories and your place in its teams go too. An owner can add you again."}
+      </p>
+      <div className="mt-4">
+        <Button variant="danger" type="button" disabled={soleOwner} onClick={() => setOpen(true)}>
+          Leave {slug}
+        </Button>
+      </div>
+      <ErrorText>{error}</ErrorText>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <Form method="post" className="grid gap-4">
+            <input type="hidden" name="action" value="leave" />
+            <AlertDialogHeader>
+              <AlertDialogTitle>Leave {slug}?</AlertDialogTitle>
+              <AlertDialogDescription>You lose access to its private repositories at once.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+              <SubmitButton variant="danger" match={{ action: "leave" }} pending="Leaving…">
+                Leave
+              </SubmitButton>
+            </AlertDialogFooter>
+          </Form>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
+}
+
 export default function WorkspacePeople({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, invites, origin, base, outside, teams, free } = loaderData;
+  const { role, members, invites, origin, base, outside, teams, free, me } = loaderData;
   const owner = role === "owner";
+  const owners = members.filter((member) => member.role === "owner").length;
+  const rowError = (username: string) =>
+    actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
   const pending = invites.filter((invite) => invite.status === "pending");
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
@@ -107,7 +313,7 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
     <>
       <ul className="divide-y divide-line rounded-xl border border-line">
         {members.map((member) => (
-          <li key={member.username} className="flex items-center gap-3 px-4 py-3">
+          <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
             <Avatar name={member.username} image={member.avatar} size={28} />
             <div className="min-w-0 grow truncate">
               <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
@@ -131,20 +337,16 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
                 </div>
               )}
             </div>
-            {member.role === "owner" ? <Badge tone="accent">Owner</Badge> : <Badge>Member</Badge>}
-            {owner && (
-              // The same room on every row, so the badges line up.
-              <span className="flex w-[5.5rem] justify-end">
-                {member.role !== "owner" && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value="remove" />
-                    <input type="hidden" name="member" value={member.username} />
-                    <SubmitButton variant="quiet" match={{ action: "remove", member: member.username }} pending="Removing…">
-                      Remove
-                    </SubmitButton>
-                  </Form>
-                )}
-              </span>
+            {/* Together, so on a narrow screen they move under the name as one. */}
+            <div className="ml-auto flex items-center gap-2">
+              {owner && <TwoFactorMark on={member.two_factor} />}
+              <RoleBadges member={member} />
+              {owner && <MemberMenu member={member} self={member.username === me} owners={owners} slug={params.owner} />}
+            </div>
+            {rowError(member.username) && (
+              <p className="basis-full text-sm text-danger" role="alert">
+                {rowError(member.username)}
+              </p>
             )}
           </li>
         ))}
@@ -182,12 +384,21 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
           Invite sent to <span className="text-fg">{actionData.invited}</span>.
         </p>
       )}
+      {actionData && "transferred" in actionData && (
+        <p className="text-sm text-muted" role="status">
+          <span className="font-mono text-fg">{actionData.transferred}</span> owns {params.owner} now, and you are a member.
+        </p>
+      )}
       {actionData && "converted" in actionData && (
         <p className="text-sm text-muted" role="status">
           <span className="font-mono text-fg">{actionData.converted}</span> is now a member of {params.owner}.
         </p>
       )}
-      {actionData && !("base" in actionData) && !("converting" in actionData && actionData.converting) && (
+      {actionData &&
+        !("base" in actionData) &&
+        !("row" in actionData) &&
+        !("leaving" in actionData) &&
+        !("converting" in actionData && actionData.converting) && (
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       )}
       {actionData && "outOfInvites" in actionData && actionData.outOfInvites && (
@@ -234,6 +445,12 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
         slug={params.owner}
         error={actionData && "base" in actionData && "error" in actionData ? (actionData.error ?? null) : null}
         saved={Boolean(actionData && "based" in actionData)}
+      />
+
+      <LeaveSection
+        slug={params.owner}
+        soleOwner={owner && owners <= 1}
+        error={actionData && "leaving" in actionData ? (actionData.error ?? null) : null}
       />
     </>
   );

@@ -8,6 +8,10 @@
 export const STATE_COOKIE = "g1t_github_state";
 /** A GitHub sign-in waiting on a username, or on signing in to link. */
 export const PENDING_COOKIE = "g1t_github_pending";
+/** A sign-in that gave the right password and waits for a two-factor code: identity's challenge. */
+export const TWO_FACTOR_COOKIE = "g1t_two_factor";
+/** How long that waits, in seconds, as identity's `TWO_FACTOR_CHALLENGE_SECONDS`. */
+export const TWO_FACTOR_SECONDS = 600;
 /** An installation under way: its state and the workspace it is for. */
 export const INSTALL_COOKIE = "g1t_github_install";
 

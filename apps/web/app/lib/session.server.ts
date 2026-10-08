@@ -52,6 +52,9 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
     (viewer.workspaces ?? []).length === 0 &&
     // Someone a repository is shared with can use it without a workspace.
     (viewer.grants ?? []).length === 0 &&
+    // Someone held out of their workspaces until they meet its policy is
+    // told so, and sent to turn on two-factor authentication, not to make one.
+    (viewer.held ?? []).length === 0 &&
     !BEFORE_WORKSPACE.includes(pathname) &&
     !pathname.startsWith("/settings/") &&
     // An invite to a workspace is how someone without one gets one, and an
@@ -77,6 +80,18 @@ export function roleIn(viewer: Viewer, slug: string): Role | null {
   return (
     viewer?.workspaces?.find((membership) => membership.slug === wanted)?.role ?? null
   );
+}
+
+/** Whether the viewer may manage a workspace's billing: an owner or a billing manager. */
+export function managesBilling(viewer: Viewer, slug: string): boolean {
+  const membership = viewer?.workspaces?.find((m) => m.slug === slug.toLowerCase());
+  return membership?.role === "owner" || !!membership?.org_roles?.includes("billing_manager");
+}
+
+/** Whether the viewer may manage security across a workspace: an owner or a security manager. */
+export function managesSecurity(viewer: Viewer, slug: string): boolean {
+  const membership = viewer?.workspaces?.find((m) => m.slug === slug.toLowerCase());
+  return membership?.role === "owner" || !!membership?.org_roles?.includes("security_manager");
 }
 
 export function requireUser(context: Context, request: Request): User {

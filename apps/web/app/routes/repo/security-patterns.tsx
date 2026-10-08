@@ -5,7 +5,7 @@ import type { Route } from "./+types/security-patterns";
 import { page } from "../../lib/meta";
 import { ActivationPrompt, PatternEditor, SectionHeader, patternFields } from "../../components/security-suite";
 import { securitySuite } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { activationPrice } from "../../lib/security-suite.server";
 
@@ -22,7 +22,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const patterns = unwrap(list);
   const pattern = id ? patterns.patterns.find((found) => found.id === id && found.scope === "repository") : null;
   if (id && !pattern) throw data("No such pattern.", { status: 404 });
-  return { pattern: pattern ?? null, entitled: patterns.entitled, price, owner: roleIn(viewer, params.owner) === "owner" };
+  return { pattern: pattern ?? null, entitled: patterns.entitled, price, owner: managesSecurity(viewer, params.owner) };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {

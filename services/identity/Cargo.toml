@@ -18,6 +18,8 @@ worker.workspace = true
 base64 = "0.22"
 getrandom = { version = "0.2", features = ["js"] }
 hex = "0.4"
+hmac = "0.12"
+sha1 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha2 = "0.10"
 

@@ -3,7 +3,7 @@ import { Link, data, redirect } from "react-router";
 import type { Route } from "./+types/auth-github-callback";
 import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub } from "../components/github";
-import { PENDING_COOKIE, STATE_COOKIE, cookie, readCookie, stateMatches } from "../lib/github";
+import { PENDING_COOKIE, STATE_COOKIE, TWO_FACTOR_COOKIE, TWO_FACTOR_SECONDS, cookie, readCookie, stateMatches } from "../lib/github";
 import { githubSignIn } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { safeNext } from "../lib/next";
@@ -36,9 +36,18 @@ export async function loader({ request }: Route.LoaderArgs) {
   const done = finished.value;
   const headers = new Headers({ "set-cookie": clear });
   switch (done.kind) {
-    case "signed_in":
+    case "signed_in": {
+      // Two-factor authentication on: GitHub proved the account, a code
+      // from the app comes next.
+      const challenge = done.signedIn.twoFactorChallenge;
+      if (challenge) {
+        headers.append("set-cookie", cookie(TWO_FACTOR_COOKIE, challenge, TWO_FACTOR_SECONDS));
+        const next = safeNext(done.next);
+        throw redirect(`/login/two-factor${next === "/" ? "" : `?next=${encodeURIComponent(next)}`}`, { headers });
+      }
       headers.append("set-cookie", startSession(done.signedIn.sessionToken));
       throw redirect(safeNext(done.next), { headers });
+    }
     case "linked":
       throw redirect(safeNext(done.next === "/" ? "/settings/github" : done.next), { headers });
     case "needs_link":

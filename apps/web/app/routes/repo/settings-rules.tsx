@@ -17,7 +17,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Maintain and up, as for branch protection.
+  // Admin, as for branch protection.
   const { repo, access } = await requireInsider(context, params, "manage_protection");
   const url = new URL(request.url);
   const tab = url.searchParams.get("tab") === "insights" ? "insights" : "rulesets";

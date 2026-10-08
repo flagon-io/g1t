@@ -40,6 +40,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     milestones: milestones?.ok ? milestones.value : [],
     // Making labels, and choosing a milestone, need Triage.
     canTriage: can.triage,
+    // Making labels needs Write; choosing them and a milestone, Triage.
+    canMakeLabels: can.manage_labels,
     sources,
     canAssign: can.run,
     agents,
@@ -151,7 +153,7 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
               />
             ))}
           </div>
-          {loaderData.canTriage && (
+          {loaderData.canMakeLabels && (
             <div className="mt-2">
               <Input
                 name="labels"

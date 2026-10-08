@@ -20,7 +20,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Git's refusal links here; someone signed out signs in first.
   const viewer = getViewer(context) ?? requireUser(context, request);
-  const { access } = await requireInsider(context, params, "push");
+  const { access } = await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
   const [detail, settings] = await Promise.all([securitySuite.secretAlert(repo, params.id, viewer), securitySuite.settings(repo, viewer)]);
   return { detail: unwrap(detail), settings: settings.ok ? settings.value : null, can: access.can };
@@ -37,7 +37,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const intent = String(form.get("intent") ?? "");
   const id = params.id;
   const comment = String(form.get("comment") ?? "").trim().slice(0, 500);
-  const capability = intent === "dismiss" || intent === "reopen" ? "manage_integrations" : intent === "fix" ? "run" : "push";
+  const capability = intent === "dismiss" || intent === "reopen" ? "security_alerts" : intent === "fix" ? "run" : "security_alerts";
   const refused = await refusal(context, params, capability);
   if (refused) return { ok: false, error: refused };
   if (intent === "dismiss") {

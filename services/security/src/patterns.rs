@@ -9,7 +9,7 @@ use g1t_contracts::security_suite::{
     CustomPatternsArgs, DeleteCustomPatternArgs, DryRun, DryRunPatternArgs, DryRunRepo, MatchPatternArgs, PaidFeature, PatternList,
     PatternMatches, PatternSpec, PatternsForArgs, SaveCustomPatternArgs, SavedPattern,
 };
-use g1t_contracts::{FailureCode, Outcome, Role, User};
+use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_scan::custom;
 use worker::Result;
 
@@ -59,7 +59,7 @@ impl Security {
         let workspace = workspace.to_lowercase();
         match repo {
             Some(path) => {
-                let capability = if change { Capability::ManageIntegrations } else { crate::SEE_FINDINGS };
+                let capability = if change { Capability::ManageSecurity } else { crate::SEE_FINDINGS };
                 Ok(match self.member_repo(path, actor, capability).await? {
                     Outcome::Ok(repo) => Outcome::Ok(Scope::Repo(repo)),
                     Outcome::Fail(failure) => Outcome::Fail(failure),
@@ -67,10 +67,12 @@ impl Security {
             }
             None => {
                 let role = actor.as_ref().and_then(|user| user.role_in(&workspace));
+                let manages = actor.as_ref().is_some_and(|user| user.manages_security(&workspace));
                 Ok(match (role, change) {
                     (None, _) => fail(FailureCode::NotFound, "Workspace not found."),
-                    (Some(Role::Owner), _) | (Some(_), false) => Outcome::Ok(Scope::Workspace(workspace)),
-                    (Some(_), true) => fail(FailureCode::Forbidden, "Only an owner can change the workspace's custom patterns."),
+                    (Some(_), false) => Outcome::Ok(Scope::Workspace(workspace)),
+                    (Some(_), true) if manages => Outcome::Ok(Scope::Workspace(workspace)),
+                    (Some(_), true) => fail(FailureCode::Forbidden, "Only an owner or a security manager can change the workspace's custom patterns."),
                 })
             }
         }

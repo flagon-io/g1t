@@ -66,8 +66,8 @@ has no checks**: nothing proves a change works, for people or for agents.
 What a pull request needs before it merges is set by the
 [rulesets](/guides/rules/) that cover the branch it merges into, the
 repository's and its workspace's. They hold for every pull request into
-that branch, a person's or an agent's. Someone with the Maintain
-[role](/guides/access-and-roles/) or higher sets them under the
+that branch, a person's or an agent's. Someone with the Admin
+[role](/guides/access-and-roles/) sets them under the
 repository's **Settings → Rules**:
 
 | Rule | What it does |

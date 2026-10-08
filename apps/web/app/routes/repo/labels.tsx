@@ -31,7 +31,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, access } = await requireRepo(context, params, "read");
   const labels = await work.listLabels({ namespace: params.owner, name: params.repo }, viewer);
-  return { labels: unwrap(labels), canEdit: access.can.triage };
+  return { labels: unwrap(labels), canEdit: access.can.manage_labels };
 }
 
 type ActionData = { intent: string; name?: string; error?: string; done?: string };
@@ -42,8 +42,8 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const name = String(form.get("name") ?? "");
-  // Labels are managed with the Triage role.
-  const refused = await refusal(context, params, "triage");
+  // Labels are made, changed and deleted with the Write role; Triage applies them.
+  const refused = await refusal(context, params, "manage_labels");
   if (refused) return { intent, name, error: refused };
   const path = { namespace: params.owner, name: params.repo };
   const text = (key: string) => String(form.get(key) ?? "");

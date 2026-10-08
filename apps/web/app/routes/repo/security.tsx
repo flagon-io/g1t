@@ -33,7 +33,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Git's refusal links here; someone signed out signs in first.
   const viewer = getViewer(context) ?? requireUser(context, request);
   // Findings are for people who can push, public project or not: Write and up.
-  const { access } = await requireInsider(context, params, "push");
+  const { access } = await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
   const overview = unwrap(await security.overview(repo, viewer));
   const unique = (numbers: (number | null | undefined)[]) =>
@@ -87,8 +87,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const intent = String(form.get("intent") ?? "");
   const id = String(form.get("id") ?? "");
   // Scanning spends compute (Write); security updates are a setting
-  // (Maintain); a secret alert is dismissed or reopened by Admins, who
-  // manage the repository's secrets, and a dependency alert by Write.
+  // (Maintain); an alert is dismissed or reopened with Write, or by a
+  // security manager of the workspace.
   const capability =
     intent === "rescan" ? "run" : intent === "upkeep" ? "manage_settings" : intent === "dismiss" || intent === "reopen" ? alertCapability(id) : null;
   if (!capability) return { ok: false, error: "Unknown action." };

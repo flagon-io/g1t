@@ -639,8 +639,8 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           labels={labels}
           chosen={issue.labels}
           canEdit={loaderData.canManage}
-          canCreate={can.triage}
-          manageUrl={can.triage ? `${base}/labels` : undefined}
+          canCreate={can.manage_labels}
+          manageUrl={can.manage_labels ? `${base}/labels` : undefined}
         />
         <MilestoneBox
           milestones={loaderData.milestones}

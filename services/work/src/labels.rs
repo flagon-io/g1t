@@ -169,11 +169,12 @@ fn tidy_description(description: &str) -> Result<String, &'static str> {
 }
 
 impl Work {
-    /// The repository, if `actor` may manage its labels and milestones.
+    /// The repository, if `actor` may create, edit and delete its labels
+    /// and milestones: Write, as on GitHub. Applying them is Triage.
     pub(crate) async fn triaged_repo(&self, actor: &User, path: &RepoPath) -> Result<Outcome<Repo>> {
         let repo = check!(self.repo(path, &Some(actor.clone())).await?);
         check!(writable(&repo));
-        check!(allowed(Some(actor), &repo, Capability::Triage));
+        check!(allowed(Some(actor), &repo, Capability::ManageLabels));
         Ok(Outcome::Ok(repo))
     }
 
@@ -382,12 +383,12 @@ impl Work {
         let existing: Vec<Label> = self.labels_in(&repo.id, None).await?;
         let missing: Vec<&String> = names.iter().filter(|name| !existing.iter().any(|label| label.name == **name)).collect();
         if !missing.is_empty() {
-            if !g1t_contracts::access::check(Some(actor), repo, Capability::Triage).is_ok() {
+            if !g1t_contracts::access::check(Some(actor), repo, Capability::ManageLabels).is_ok() {
                 let list = missing.iter().map(|name| name.as_str()).collect::<Vec<_>>().join(", ");
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
                     format!(
-                        "{} has no label named {list}. Someone with the Triage role can create it on the labels page.",
+                        "{} has no label named {list}. Someone with the Write role can create it on the labels page.",
                         repo.name
                     ),
                 ));

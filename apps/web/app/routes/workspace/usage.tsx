@@ -8,7 +8,7 @@ import { Breakdown, IncludedAndCredit, UsageChart, UsageFilterBar, type UsageFil
 import { columns, defaultGrain, type Grain, type GroupBy, resolveRange } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
-import { getViewer, roleIn } from "../../lib/session.server";
+import { getViewer, managesBilling, roleIn } from "../../lib/session.server";
 
 /** Where the usage API is documented. */
 export const USAGE_API = "https://docs.g1t.sh/reference/api/#usage";
@@ -58,7 +58,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const report = billing
     .usageReport(slug, viewer, { from: filters.from, until: filters.until, products: filters.products, projects: filters.projects })
     .then((result) => (result.ok ? { report: result.value, error: null } : { report: null, error: result.error.message }));
-  return { slug, owner: role === "owner", filters, url: url.toString(), report };
+  return { slug, owner: managesBilling(getViewer(context), slug), filters, url: url.toString(), report };
 }
 
 export function UsageView({

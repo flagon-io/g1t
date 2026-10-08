@@ -118,6 +118,9 @@ struct GrantRow {
     role: String,
     #[serde(default)]
     team: Option<String>,
+    /// Whether the grant's workspace requires two-factor authentication.
+    #[serde(default)]
+    require_two_factor: u8,
 }
 
 /// The highest role a team gives each person on a repository, and that
@@ -251,7 +254,10 @@ impl Identity {
     /// team they are in (or through that team's parents, whose roles child
     /// teams inherit), with the slug of its workspace now. Attached to
     /// every user resolved from credentials.
-    pub async fn grants_of(&self, user_id: &str) -> Result<Vec<RepoGrant>> {
+    ///
+    /// Each comes with whether its workspace requires two-factor
+    /// authentication (security.rs).
+    pub async fn grants_of(&self, user_id: &str) -> Result<Vec<(RepoGrant, bool)>> {
         let rows = self
             .db
             .prepare(format!(
@@ -260,11 +266,11 @@ impl Identity {
                    UNION
                    SELECT t.parent_id FROM teams t JOIN mine ON t.id = mine.id WHERE t.parent_id IS NOT NULL
                  )
-                 SELECT g.repo_id, w.slug AS workspace, g.role, NULL AS team FROM repo_grants g
+                 SELECT g.repo_id, w.slug AS workspace, g.role, NULL AS team, w.require_two_factor FROM repo_grants g
                  JOIN workspaces w ON w.id = g.workspace_id AND w.deleted_at IS NULL
                  WHERE g.principal_kind = 'user' AND g.principal_id = ?1
                  UNION ALL
-                 SELECT g.repo_id, w.slug AS workspace, g.role, t.slug AS team FROM repo_grants g
+                 SELECT g.repo_id, w.slug AS workspace, g.role, t.slug AS team, w.require_two_factor FROM repo_grants g
                  JOIN mine ON g.principal_kind = 'team' AND g.principal_id = mine.id
                  JOIN teams t ON t.id = g.principal_id
                  JOIN workspaces w ON w.id = g.workspace_id AND w.deleted_at IS NULL
@@ -277,12 +283,15 @@ impl Identity {
         Ok(rows
             .into_iter()
             .filter_map(|row| {
-                Some(RepoGrant {
-                    repo_id: row.repo_id,
-                    workspace: row.workspace,
-                    role: RepoRole::parse(&row.role)?,
-                    team: row.team,
-                })
+                Some((
+                    RepoGrant {
+                        repo_id: row.repo_id,
+                        workspace: row.workspace,
+                        role: RepoRole::parse(&row.role)?,
+                        team: row.team,
+                    },
+                    row.require_two_factor != 0,
+                ))
             })
             .collect())
     }
@@ -627,6 +636,23 @@ impl Identity {
         Ok(previous)
     }
 
+    /// Why `actor` may not give someone outside the workspace a role on one
+    /// of its repositories: its member privileges leave that to owners
+    /// (`members_can_invite_outside_collaborators`). Read from the workspace
+    /// itself, so an outside collaborator with Admin is held to it too.
+    async fn outside_refusal<T>(&self, actor: &User, namespace: &str, workspace_id: &str) -> Result<Option<Outcome<T>>> {
+        if actor.role_in(&namespace.to_lowercase()) == Some(Role::Owner) || actor.kind == PrincipalKind::Workspace {
+            return Ok(None);
+        }
+        if self.privileges_of(workspace_id).await?.members_can_invite_outside_collaborators {
+            return Ok(None);
+        }
+        Ok(Some(Outcome::fail(
+            FailureCode::Forbidden,
+            format!("Only owners of {namespace} can add people from outside the workspace to its repositories."),
+        )))
+    }
+
     pub async fn add_collaborator(&self, a: AddCollaboratorArgs) -> Result<Outcome<Added>> {
         let Target { repo, workspace_id } = match self.manageable(&a.actor, &a.path).await? {
             Outcome::Ok(target) => target,
@@ -658,6 +684,9 @@ impl Identity {
             let Invitee::Email(email) = invitee else {
                 return Ok(Outcome::fail(FailureCode::NotFound, NO_SUCH_USER));
             };
+            if let Some(refused) = self.outside_refusal(&a.actor, &repo.namespace, &workspace_id).await? {
+                return Ok(refused);
+            }
             // An address is always someone from outside: a free workspace
             // invites no one (paid.rs).
             if let Some(refused) = self.free_workspace_refusal(&repo.namespace).await? {
@@ -684,6 +713,9 @@ impl Identity {
                 FailureCode::Conflict,
                 format!("{username} already has access to {}. Change their role instead.", full_name(&repo)),
             ));
+        }
+        if let Some(refused) = self.outside_refusal(&a.actor, &repo.namespace, &workspace_id).await? {
+            return Ok(refused);
         }
         // An outside collaborator is someone added: a free workspace adds
         // no one (paid.rs). Its members' roles above are its own business,

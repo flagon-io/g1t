@@ -113,6 +113,12 @@ pub const ROUTES: &[Route] = &[
     route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
     route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
     route("PATCH", "/workspaces/:workspace", Op::UpdateWorkspace, &[]),
+    // Members and owners: GitHub's organization members, by username.
+    route("GET", "/workspaces/:workspace/members", Op::ListMembers, &[]),
+    route("PATCH", "/workspaces/:workspace/members/:username", Op::UpdateMember, &[]),
+    route("DELETE", "/workspaces/:workspace/members/:username", Op::RemoveMember, &[]),
+    route("POST", "/workspaces/:workspace/transfer_ownership", Op::TransferOwnership, &[]),
+    route("DELETE", "/user/memberships/:workspace", Op::LeaveWorkspace, &[]),
     // A workspace's projects: what each is, where it runs, its links.
     route("GET", "/workspaces/:workspace/projects", Op::ListProjects, &[]),
     route("GET", "/workspaces/:workspace/projects/:project", Op::GetProject, &[]),

@@ -2,7 +2,7 @@ import { ChevronRight, GitBranch } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, redirect, useNavigation } from "react-router";
 
-import { RESTORE_DAYS, type Result, needs } from "@g1t/contracts";
+import { DEFAULT_MEMBER_PRIVILEGES, RESTORE_DAYS, type Result, needs } from "@g1t/contracts";
 
 import { DangerAction, DangerZone } from "../../components/danger-zone";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
@@ -42,12 +42,19 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { repo, access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
   const [branches, retention] = await Promise.all([repos.branches(path, viewer), actions.artifactRetention(path, viewer)]);
-  // Renaming, visibility, archiving and the default branch are for Admins;
-  // moving and deleting, for owners of the workspace.
+  // Renaming, archiving and the default branch are for Admins; visibility,
+  // moving and deleting, for owners of the workspace unless its member
+  // privileges let its members with Admin do them.
   const owner = access.can.administer;
+  // Where it can go: a workspace where the person can create a repository like it.
   const destinations = access.can.delete
     ? (viewer?.workspaces ?? [])
-        .filter((m) => m.role === "owner" && m.slug !== params.owner.toLowerCase())
+        .filter((m) => m.slug !== params.owner.toLowerCase())
+        .filter((m) => {
+          if (m.role === "owner") return true;
+          const privileges = { ...DEFAULT_MEMBER_PRIVILEGES, ...(m.privileges ?? {}) };
+          return repo.isPrivate ? privileges.members_can_create_private_repositories : privileges.members_can_create_public_repositories;
+        })
         .map((m) => ({ slug: m.slug, name: m.name ?? m.slug }))
     : [];
   return {
@@ -56,6 +63,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     branches: branches.ok ? branches.value.map((b) => b.name) : [],
     owner,
     remove: access.can.delete,
+    visibility: access.can.change_visibility,
     destinations,
     // How long workflow runs' artifacts are kept.
     retention: retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
@@ -145,7 +153,7 @@ function Status({ intent, data: result, saved = "Saved." }: { intent: string; da
 }
 
 export default function RepoSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, branches, owner, remove, destinations, retention } = loaderData;
+  const { repo, branches, owner, remove, visibility, destinations, retention } = loaderData;
   const navigation = useNavigation();
   const posting = (intent: string) => navigation.state !== "idle" && navigation.formData?.get("intent") === intent;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -246,17 +254,23 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         {owner ? (
           <div id="danger-zone" className="scroll-mt-20 border-t border-line pt-8">
             <DangerZone>
-              <VisibilityAction full={full} isPrivate={repo.isPrivate} error={errorFor("visibility")} />
+              {visibility && <VisibilityAction full={full} isPrivate={repo.isPrivate} error={errorFor("visibility")} />}
               <ArchiveAction full={full} archived={archived} error={errorFor("archive")} />
               {remove && <TransferAction repo={full} destinations={destinations} error={errorFor("transfer") ?? undefined} />}
               {remove && <DeleteAction full={full} error={errorFor("delete")} />}
             </DangerZone>
-            {!remove && <p className="mt-4 text-sm text-muted">Only an owner of the workspace can transfer or delete it.</p>}
+            {(!remove || !visibility) && (
+              <p className="mt-4 text-sm text-muted">
+                Only an owner of the workspace can{" "}
+                {[!visibility && "change who can see it", !remove && "transfer or delete it"].filter(Boolean).join(", or ")}:
+                its member privileges keep that to owners.
+              </p>
+            )}
           </div>
         ) : (
           <p className="border-t border-line pt-8 text-sm text-muted">
-            Renaming it, changing who can see it and archiving it need the Admin role. Only an owner of the workspace can
-            transfer or delete it.
+            Renaming it, changing who can see it and archiving it need the Admin role. Transferring and deleting it need an
+            owner of the workspace, unless its member privileges let repository admins.
           </p>
         )}
       </div>

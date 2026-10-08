@@ -52,7 +52,7 @@ use g1t_contracts::events::{
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::repos::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer, is_valid_repo_name, new_id};
+use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, Viewer, is_valid_repo_name, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
@@ -292,8 +292,8 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &viewer).await? else {
             return Ok(not_found());
         };
-        // Its details take Maintain; its protection, Maintain too; who can
-        // see it, Admin (below). See g1t_contracts::access.
+        // Its details take Maintain; its protection, Admin; who can see it,
+        // Admin and the member privileges (below). See g1t_contracts::access.
         let protection_changes = a.protected.is_some_and(|protected| protected != repo.protected);
         let details_change = a.description.is_some() || a.website.is_some() || a.topics.is_some();
         let mut needed = Vec::new();
@@ -341,10 +341,15 @@ impl<S: GitStore> Repos<S> {
                 lifecycle::Asker::on(&a.actor, &repo),
                 &repo.namespace,
                 "change the visibility of",
-                Capability::Administer,
+                Capability::ChangeVisibility,
             )
         {
             return Ok(Outcome::fail(code, message));
+        }
+        if let Some(private) = wants_private
+            && let Some(why) = lifecycle::visibility_refusal(&a.actor, &repo, private)
+        {
+            return Ok(Outcome::fail(FailureCode::Forbidden, why));
         }
         let is_private = repo.is_private;
         let protected = a.protected.unwrap_or(repo.protected);
@@ -503,11 +508,17 @@ impl<S: GitStore> Repos<S> {
                 "Say which workspace to create the repository in.",
             ));
         }
-        if !a.owner.is_member(&namespace) {
+        let Some(role) = a.owner.role_in(&namespace) else {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "You are not a member of that workspace.",
             ));
+        };
+        // Who may create which: the workspace's member privileges. A
+        // workspace's own token acts as an owner would.
+        let role = if a.owner.kind == PrincipalKind::Workspace { Role::Owner } else { role };
+        if let Some(why) = a.owner.privileges_in(&namespace).creation_refusal(role, a.is_private, &namespace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, why));
         }
         let path = RepoPath { namespace, name };
         match self.registry.by_path_any(&path).await? {
@@ -652,6 +663,26 @@ impl<S: GitStore> Repos<S> {
                         format!("The repository could not be copied: {reason}"),
                     ));
                 }
+            }
+        }
+        // Whoever creates a repository is an Admin of it, as a role given
+        // to them on it, whatever the workspace's base permission.
+        if a.owner.kind == PrincipalKind::User
+            && let Some(identity) = &self.identity
+        {
+            let granted: Result<bool> = g1t_kit::call(
+                identity,
+                "grant_creator",
+                &g1t_contracts::members::GrantCreatorArgs {
+                    repo_id: repo.id.clone(),
+                    namespace: repo.namespace.clone(),
+                    name: repo.name.clone(),
+                    user_id: a.owner.id.clone(),
+                },
+            )
+            .await;
+            if let Err(error) = granted {
+                worker::console_error!("creator of {} not given Admin: {error}", repo.id);
             }
         }
         self.publish(NewEvent {
@@ -2363,6 +2394,14 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "git_operations" => {
             let a: GitOperationsArgs = args(body)?;
             reply(&git_ops::totals(&repos.registry.db, &a.month, a.since.as_deref(), a.namespace.as_deref().map(str::to_lowercase).as_deref()).await?)
+        }
+        // Identity, once: who created each repository (members.rs there).
+        "repo_creators" => {
+            let a: AllIdsArgs = args(body)?;
+            let limit = a.limit.clamp(1, 500);
+            let repos = repos.registry.creators_after(a.after.as_deref(), limit).await?;
+            let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
+            reply(&CreatorPage { repos, next })
         }
         "all_ids" => {
             let a: AllIdsArgs = args(body)?;

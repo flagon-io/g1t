@@ -92,6 +92,23 @@ export type AdminUser = {
   log: SecurityEvent[];
 };
 
+/** Where an account's two-factor authentication stands. */
+export type TwoFactorStatus = {
+  enabled: boolean;
+  /** RFC 3339. */
+  enabled_at: string | null;
+  /** Recovery codes not used yet. */
+  recovery_codes_left: number;
+  /** The workspaces the person belongs to that require it. */
+  required_by: string[];
+};
+
+/** What an authenticator app needs: the secret in base32, and the same as an `otpauth://` address for a QR code. */
+export type TwoFactorSetup = { secret: string; uri: string };
+
+/** How many recovery codes an account gets. */
+export const RECOVERY_CODES = 10;
+
 export interface AccountsApi {
   /** The person's own addresses. People only, never an agent's or a workspace's token. */
   listEmails(user: User): Promise<Result<AccountEmails>>;
@@ -109,6 +126,16 @@ export interface AccountsApi {
   securityLog(user: User): Promise<Result<SecurityEvent[]>>;
   /** Whose commits these are, by author address: confirmed and noreply addresses only. */
   emailOwners(emails: string[]): Promise<Record<string, EmailOwner>>;
+  /** Whether two-factor authentication is on, and which workspaces require it. */
+  twoFactorStatus(user: User): Promise<Result<TwoFactorStatus>>;
+  /** Begins turning it on: a new secret for the app. Needs `reauth`. */
+  twoFactorStart(user: User, reauth: Reauth): Promise<Result<TwoFactorSetup>>;
+  /** A code from the app confirms it; returns the recovery codes, shown once. Needs `reauth`. */
+  twoFactorEnable(user: User, code: string, reauth: Reauth): Promise<Result<{ codes: string[] }>>;
+  /** Turns it off with a code (or a recovery code). Needs `reauth`. */
+  twoFactorDisable(user: User, code: string, reauth: Reauth): Promise<Result<boolean>>;
+  /** New recovery codes, replacing the old ones. Needs `reauth`. */
+  twoFactorRecoveryCodes(user: User, reauth: Reauth): Promise<Result<{ codes: string[] }>>;
 }
 
 /** Staff only, for sudo.g1t.sh. */
@@ -138,6 +165,11 @@ export function accountsClient(identity: ServiceBinding): AccountsApi {
     reauthenticate: (sessionToken, password, client) => call(identity, "reauthenticate", { sessionToken, password, client: client ?? null }),
     securityLog: (user) => call(identity, "security_log", { user }),
     emailOwners: (emails) => call(identity, "email_owners", { emails }),
+    twoFactorStatus: (user) => call(identity, "two_factor_status", { user }),
+    twoFactorStart: (user, reauth) => call(identity, "two_factor_start", { user, reauth }),
+    twoFactorEnable: (user, code, reauth) => call(identity, "two_factor_enable", { user, code, reauth }),
+    twoFactorDisable: (user, code, reauth) => call(identity, "two_factor_disable", { user, code, reauth }),
+    twoFactorRecoveryCodes: (user, reauth) => call(identity, "two_factor_recovery_codes", { user, reauth }),
   };
 }
 
@@ -168,6 +200,30 @@ export function securityEventLabel(event: Pick<SecurityEvent, "kind" | "detail">
       return "Changed the password";
     case "password_locked":
       return `Password sign-in paused after ${detail}`;
+    case "two_factor_enabled":
+      return "Turned on two-factor authentication";
+    case "two_factor_disabled":
+      return "Turned off two-factor authentication";
+    case "recovery_codes_regenerated":
+      return "Made new recovery codes";
+    case "recovery_code_used":
+      return "Signed in with a recovery code";
+    case "token_created":
+      return `Created access token ${detail}`;
+    case "token_deleted":
+      return `Deleted access token ${detail}`;
+    case "token_rescoped":
+      return `Changed the scopes of access token ${detail}`;
+    case "ssh_key_added":
+      return `Added SSH key ${detail}`;
+    case "ssh_key_removed":
+      return `Removed SSH key ${detail}`;
+    case "oauth_grant_created":
+      return `Authorized ${detail}`;
+    case "oauth_grant_revoked":
+      return `Revoked ${detail}`;
+    case "oauth_grant_rescoped":
+      return `Changed what ${detail} may do`;
     default:
       return detail ? `${event.kind}: ${detail}` : event.kind;
   }

@@ -50,6 +50,7 @@ import {
 import { AppShell, Progress, type ShellData, useLeaving } from "./components/shell";
 import { SiteFooter } from "./components/footer";
 import { SpikeBanner } from "./components/spike-banner";
+import { PolicyNotice } from "./components/policy-notice";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { NotFound } from "./components/not-found";
@@ -502,12 +503,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </SubmitButton>
     </Form>
   );
+  // A workspace that requires two-factor authentication of someone who
+  // has not turned it on: they keep their place, and cannot use it yet.
+  const held = user?.held && user.held.length > 0 && pathname !== "/settings/two-factor" && <PolicyNotice held={user.held} />;
   const leaving = useLeaving();
   const banner =
-    paused || verify ? (
+    paused || verify || held ? (
       <>
         {paused}
         {verify}
+        {held}
       </>
     ) : null;
   return (

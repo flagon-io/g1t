@@ -23,7 +23,7 @@ it runs, is watched for [mining](#abuse-and-mining).
 - **Workspace defaults**: the workspace's **Settings**, **Guardrails**.
   Owners can change them; members can read them.
 - **A project's overrides**: the project's **Settings**, **Guardrails**.
-  People with the Maintain [role](/guides/access-and-roles/) or higher on
+  People with the Admin [role](/guides/access-and-roles/) on
   its repository can see and change them; the page is not shown to anyone
   else.
 
@@ -149,7 +149,7 @@ expression (`environment: ${{ inputs.target }}`) matches only lines with
 no environments.
 
 Workflow-only domains are set by the same people as the rest of the page:
-owners for the workspace's, Maintain or higher for a project's. Each change
+owners for the workspace's, Admin for a project's. Each change
 is recorded in the workspace's [audit log](/guides/audit-log/) as
 `update_guardrails`, saying which domains were added or removed and what
 they were limited to.

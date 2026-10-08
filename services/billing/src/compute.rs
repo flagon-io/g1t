@@ -33,7 +33,7 @@ use g1t_contracts::billing::{
     ReserveArgs, SettleArgs, Spike, UNLIMITED_MICROS, UsageAlert, RESERVATION_HOURS,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role, new_id};
+use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -703,8 +703,8 @@ impl Billing {
     /// `confirm_spike`: an owner keeps going, or stops.
     pub(crate) async fn confirm_spike(&self, a: ConfirmSpikeArgs) -> Result<Outcome<Entitlements>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can answer a spend spike."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can answer a spend spike."));
         }
         let Some(spike) = self.latest_spike(&workspace).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no spend spike to answer."));
@@ -752,8 +752,8 @@ impl Billing {
     /// `set_caps`: the owners' own run and issue caps.
     pub(crate) async fn set_caps(&self, a: SetCapsArgs) -> Result<Outcome<Entitlements>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can set the workspace's caps."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can set the workspace's caps."));
         }
         if let Err(why) = cap_bounds(a.run_cap_micros, a.issue_cap_micros) {
             return Ok(Outcome::fail(FailureCode::Invalid, why));

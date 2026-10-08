@@ -56,7 +56,7 @@ Who may do this:
 An issue or a pull request carries at most 20 labels.
 
 You can label an issue as you open it, too: tick labels on **New issue**,
-or with the Triage role, type new ones beside them.
+or with the Write role, type new ones beside them.
 
 ## Filter by a label
 
@@ -73,7 +73,7 @@ lists every label with its description and how many issues and pull
 requests carry it; choose a count to see them. Search finds a label by its
 name or description.
 
-With the Triage role or higher you can:
+With the Write role or higher you can (applying labels needs only Triage):
 
 | To | Do this |
 | --- | --- |

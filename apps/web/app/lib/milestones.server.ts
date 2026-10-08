@@ -15,7 +15,7 @@ export async function milestoneAction(request: Request, params: RepoParams, cont
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const number = Number(form.get("number")) || undefined;
-  const refused = await refusal(context, params, "triage");
+  const refused = await refusal(context, params, "manage_labels");
   if (refused) return { intent, number, error: refused };
   const path = { namespace: params.owner ?? "", name: params.repo ?? "" };
   const text = (key: string) => (form.has(key) ? String(form.get(key) ?? "") : undefined);

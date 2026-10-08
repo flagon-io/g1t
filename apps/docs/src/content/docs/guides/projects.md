@@ -239,8 +239,8 @@ repository:
 
 | Tab | Needs |
 | --- | --- |
-| **General**, **Dependencies**, **Agents**, and on **Repository** its description, website and topics | Maintain |
-| **Branches and merging**, **Rules**, **Guardrails** | Maintain |
+| **General**, **Dependencies**, **Agents**, **Branches and merging**, and on **Repository** its description, website and topics | Maintain |
+| **Rules**, **Guardrails** | Admin |
 | **Access**: seeing who has a role; changing it | Write; Admin |
 | **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks** | Admin |
 | On **Repository**: its name, default branch, and the danger zone (visibility, archive) | Admin |

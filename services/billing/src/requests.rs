@@ -15,7 +15,7 @@ use g1t_contracts::billing::{
     LimitRequestReview, LimitRequestsArgs, RequestLimitArgs, WorkspaceHistory, MICROS_PER_DOLLAR,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role, new_id};
+use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -111,8 +111,8 @@ impl Billing {
     /// `request_limit`: an owner asks.
     pub(crate) async fn request_limit(&self, a: RequestLimitArgs) -> Result<Outcome<LimitRequest>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can ask g1t about the workspace's limit."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can ask g1t about the workspace's limit."));
         }
         let limit = self.limit_of(&workspace).await?;
         let current = limit.available_micros.max(limit.raise_once_micros);

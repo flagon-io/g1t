@@ -117,7 +117,7 @@ impl Work {
             None => None,
         };
         // Members see them; so does anyone else who may change the
-        // project's, such as an outside collaborator with Maintain.
+        // project's, such as an outside collaborator with Admin.
         if !member
             && !repo
                 .as_ref()
@@ -141,7 +141,7 @@ impl Work {
             },
             None => None,
         };
-        // A project's guardrails go with its branch protection (Maintain);
+        // A project's guardrails go with its branch protection (Admin);
         // the defaults every project inherits are the owners'.
         let allowed = is_person(&a.actor)
             && match &repo {

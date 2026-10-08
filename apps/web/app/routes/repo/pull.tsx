@@ -221,6 +221,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     milestones: milestones.ok ? milestones.value : [],
     // Labelling and milestones: Triage and up; its author, its labels.
     canTriage: can.triage,
+    // Making labels needs Write; applying them, Triage.
+    canMakeLabels: can.manage_labels,
     // The branch it merges into: Write and up.
     canChangeBase: can.push,
     workflowJobs,
@@ -1540,8 +1542,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             labels={loaderData.labels}
             chosen={pull.labels ?? []}
             canEdit={canManage && active}
-            canCreate={loaderData.canTriage}
-            manageUrl={loaderData.canTriage ? `${base}/labels` : undefined}
+            canCreate={loaderData.canMakeLabels}
+            manageUrl={loaderData.canMakeLabels ? `${base}/labels` : undefined}
           />
           <MilestoneBox
             milestones={loaderData.milestones}

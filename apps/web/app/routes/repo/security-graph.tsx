@@ -15,7 +15,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
-  await requireInsider(context, params, "push");
+  await requireInsider(context, params, "security_alerts");
   return { graph: unwrap(await securitySuite.dependencyGraph({ namespace: params.owner, name: params.repo }, viewer)) };
 }
 

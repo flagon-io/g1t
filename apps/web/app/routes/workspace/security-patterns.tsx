@@ -10,7 +10,7 @@ import { CARD, PatternEditor, patternFields } from "../../components/security-su
 import { WorkspaceSecurityHeading, WorkspaceSecurityTabs } from "../../components/workspace-security-tabs";
 import { Badge } from "../../components/ui/badge";
 import { securitySuite } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesSecurity, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Custom patterns · ${params.owner} · g1t` });
@@ -20,7 +20,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
-  return { list: unwrap(await securitySuite.patterns(params.owner, null, viewer)), owner: role === "owner" };
+  return { list: unwrap(await securitySuite.patterns(params.owner, null, viewer)), owner: managesSecurity(viewer, params.owner) };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {

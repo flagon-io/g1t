@@ -240,7 +240,7 @@ what is missing:
 
 ## Require review from code owners
 
-Someone with the Maintain role or higher turns it on under the
+Someone with the Admin role turns it on under the
 repository's **Settings → Rules**, in a ruleset's **Require a pull request before merging** rule:
 **Require review from code owners**. It is off by default. From the API it
 is the `pull_request` rule's `require_code_owner_review` (see [rules](/guides/rules/)).
@@ -333,7 +333,7 @@ stop a broken file from merging.
 | --- | --- | --- |
 | `GET /repos/{owner}/{name}/codeowners/errors` | `repository` `codeowners` | The file at `ref` (the default branch when left out): where it is, its size, its rules and sections, and every error. Needs `repo:read`. |
 | `GET /repos/{owner}/{name}/pulls/{number}` | `pull_request` `get` | `code_owners`: the file's path, `required`, a review per rule with `section`, `pattern`, `owners`, `files`, `required`, `approved_by`, `changes_requested_by` and `satisfied`, what is `missing`, and how many `errors` the file has. Absent when the target has no file. |
-| `PATCH /repos/{owner}/{name}/settings` | `repository` `update_settings` | `require_code_owner_review`: `true` or `false`. Needs Maintain. |
+| `PATCH /repos/{owner}/{name}/settings` | `repository` `update_settings` | `require_code_owner_review`: `true` or `false`. Needs Admin. |
 
 ```sh
 curl "https://api.g1t.sh/repos/acme/api/codeowners/errors?ref=main" \

@@ -9,10 +9,14 @@
 //! have signed in within [`RECENT_AUTH_SECONDS`], or to give their password
 //! again ([`Reauth`]); a refusal for that is `FailureCode::ReauthRequired`.
 //!
-//! Workspaces will be able to ask more of their members (addresses at their
-//! own domain, a second factor). [`WorkspacePolicy`] is where that goes:
-//! identity evaluates it wherever someone gains or uses access to a
-//! workspace, and today every workspace's policy asks for nothing.
+//! An account can turn on two-factor authentication: a code from an
+//! authenticator app (TOTP, RFC 6238), with recovery codes for when the app
+//! is lost. Signing in with a password then asks for a code as well.
+//!
+//! Workspaces can ask more of their members. [`WorkspacePolicy`] is where
+//! that goes: identity evaluates it wherever someone gains or uses access
+//! to a workspace. Today an owner can require two-factor authentication;
+//! the email rules are there for later.
 
 use serde::{Deserialize, Serialize};
 
@@ -284,7 +288,12 @@ pub fn mask_email(email: &str) -> String {
 pub struct SecurityEvent {
     /// `email_added`, `email_verified`, `email_removed`,
     /// `primary_email_changed`, `backup_email_changed`,
-    /// `email_privacy_changed` or `password_changed`.
+    /// `email_privacy_changed`, `password_changed`, `two_factor_enabled`,
+    /// `two_factor_disabled`, `recovery_codes_regenerated`,
+    /// `recovery_code_used`, `token_created`, `token_deleted`,
+    /// `token_rescoped`, `ssh_key_added`, `ssh_key_removed`,
+    /// `oauth_grant_created`, `oauth_grant_revoked` or
+    /// `oauth_grant_rescoped`.
     pub kind: String,
     /// The address concerned, or what changed.
     pub detail: Option<String>,
@@ -301,6 +310,112 @@ pub struct SecurityEvent {
 
 /// How many entries `security_log` returns.
 pub const SECURITY_LOG_LIMIT: usize = 50;
+
+// --- Two-factor authentication ---
+
+/// How long one TOTP code lasts, in seconds (RFC 6238's default).
+pub const TOTP_STEP_SECONDS: u64 = 30;
+/// How many digits a code has.
+pub const TOTP_DIGITS: u32 = 6;
+/// How many steps either side of now a code is accepted from, for clocks
+/// that are a little off: one, so a code works for up to 90 seconds.
+pub const TOTP_SKEW_STEPS: u64 = 1;
+/// How many recovery codes an account gets.
+pub const RECOVERY_CODES: usize = 10;
+/// How long a sign-in waits for its code, in seconds.
+pub const TWO_FACTOR_CHALLENGE_SECONDS: u64 = 10 * 60;
+/// How many wrong codes one sign-in may have before it must start again.
+pub const TWO_FACTOR_ATTEMPTS: u32 = 5;
+/// The issuer authenticator apps show beside the account.
+pub const TOTP_ISSUER: &str = "g1t";
+
+/// Where an account's two-factor authentication stands.
+/// `two_factor_status` (takes `UserArgs`) returns `Outcome<TwoFactorStatus>`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TwoFactorStatus {
+    pub enabled: bool,
+    /// RFC 3339.
+    pub enabled_at: Option<String>,
+    /// Recovery codes not used yet.
+    pub recovery_codes_left: u32,
+    /// The workspaces the person belongs to that require it.
+    pub required_by: Vec<String>,
+}
+
+/// What an authenticator app needs: the secret in base32, and the same as
+/// an `otpauth://` address for a QR code.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TwoFactorSetup {
+    pub secret: String,
+    pub uri: String,
+}
+
+/// Single-use recovery codes, shown once.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryCodes {
+    pub codes: Vec<String>,
+}
+
+/// `two_factor_start`: begins turning it on, replacing any enrolment in
+/// progress. Needs [`Reauth`]. Refused while it is on. Returns
+/// `Outcome<TwoFactorSetup>`.
+///
+/// `two_factor_recovery_codes`: makes new recovery codes, replacing the
+/// old ones. Needs [`Reauth`] and two-factor on. Returns
+/// `Outcome<RecoveryCodes>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TwoFactorArgs {
+    pub user: User,
+    #[serde(default)]
+    pub reauth: Reauth,
+}
+
+/// `two_factor_enable`: a code from the app confirms the enrolment, and
+/// two-factor is on; returns the recovery codes, shown once.
+/// `two_factor_disable`: turns it off; needs a code (or a recovery code)
+/// as well as [`Reauth`]. Refused for an owner of a workspace that
+/// requires it. Both return `Outcome<...>`: `RecoveryCodes` and `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TwoFactorCodeArgs {
+    pub user: User,
+    pub code: String,
+    #[serde(default)]
+    pub reauth: Reauth,
+}
+
+/// `two_factor_sign_in`: the second step of signing in. `challenge` is
+/// what `sign_in` returned as `SignedIn::two_factor_challenge`; `code` is a
+/// code from the app or a recovery code. Returns `Outcome<SignedIn>`, with
+/// a session.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TwoFactorSignInArgs {
+    pub challenge: String,
+    pub code: String,
+    #[serde(default)]
+    pub client: Option<String>,
+}
+
+/// The `otpauth://` address for a secret, as authenticator apps read it
+/// from a QR code.
+pub fn otpauth_uri(secret_base32: &str, username: &str) -> String {
+    let label: String = format!("{TOTP_ISSUER}:{username}")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || "-._~:".contains(c) { c.to_string() } else { format!("%{:02X}", c as u32) })
+        .collect();
+    format!(
+        "otpauth://totp/{label}?secret={secret_base32}&issuer={TOTP_ISSUER}&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_STEP_SECONDS}"
+    )
+}
+
+/// A code as typed, tidied: spaces and hyphens taken out, lowercased.
+pub fn tidy_code(code: &str) -> String {
+    code.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>().to_lowercase()
+}
+
+/// Whether a tidied code is shaped like an app's: six digits.
+pub fn is_totp_shaped(code: &str) -> bool {
+    code.len() == TOTP_DIGITS as usize && code.chars().all(|c| c.is_ascii_digit())
+}
 
 // --- Staff ---
 
@@ -370,6 +485,15 @@ pub enum PolicyGap {
 }
 
 impl PolicyGap {
+    /// Its name: `verified_email`, `email_domain` or `two_factor`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PolicyGap::VerifiedEmail => "verified_email",
+            PolicyGap::EmailDomain(_) => "email_domain",
+            PolicyGap::TwoFactor => "two_factor",
+        }
+    }
+
     /// What to tell the person, for a workspace named `slug`.
     pub fn message(&self, slug: &str) -> String {
         match self {
@@ -378,7 +502,7 @@ impl PolicyGap {
                 "{slug} needs members to have a confirmed address at {}. Add one in your account settings.",
                 domains.join(" or ")
             ),
-            PolicyGap::TwoFactor => format!("{slug} needs members to turn on two-factor authentication."),
+            PolicyGap::TwoFactor => format!("{slug} requires two-factor authentication. Turn it on in your account's security settings to use it again."),
         }
     }
 }
@@ -487,6 +611,24 @@ mod tests {
         assert_eq!(primary_refusal(&all, "a@x.io"), None);
         assert!(primary_refusal(&all, "b@x.io").unwrap().contains("Confirm"));
         assert!(primary_refusal(&all, "z@x.io").is_some());
+    }
+
+    #[test]
+    fn the_otpauth_address_names_the_account_and_issuer() {
+        let uri = otpauth_uri("JBSWY3DPEHPK3PXP", "ada lovelace");
+        assert_eq!(
+            uri,
+            "otpauth://totp/g1t:ada%20lovelace?secret=JBSWY3DPEHPK3PXP&issuer=g1t&algorithm=SHA1&digits=6&period=30"
+        );
+    }
+
+    #[test]
+    fn codes_are_tidied_before_they_are_checked() {
+        assert_eq!(tidy_code(" 123 456 "), "123456");
+        assert!(is_totp_shaped(&tidy_code("123-456")));
+        assert!(!is_totp_shaped("12345"));
+        assert!(!is_totp_shaped("abcdef"));
+        assert_eq!(tidy_code("ABCD-EFGH-IJ"), "abcdefghij");
     }
 
     #[test]

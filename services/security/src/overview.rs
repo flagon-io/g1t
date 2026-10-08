@@ -13,7 +13,7 @@ use g1t_contracts::security_suite::{
 };
 use g1t_contracts::repos::{MAX_READABLE, ReadableArgs, Repo};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use worker::Result;
 
@@ -96,7 +96,7 @@ impl Security {
     }
 
     pub(crate) async fn set_security_settings(&self, a: SetSecuritySettingsArgs) -> Result<Outcome<SecuritySettingsView>> {
-        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Capability::ManageSettings).await? {
+        let repo = match self.member_repo(&a.repo, &Some(a.actor.clone()), Capability::ManageSecurity).await? {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
@@ -148,8 +148,8 @@ impl Security {
 
     pub(crate) async fn set_workspace_security_settings(&self, a: SetWorkspaceSecuritySettingsArgs) -> Result<Outcome<WorkspaceSecurityView>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(fail(FailureCode::Forbidden, "Only an owner can change the workspace's security settings."));
+        if !a.actor.manages_security(&workspace) {
+            return Ok(fail(FailureCode::Forbidden, "Only an owner or a security manager can change the workspace's security settings."));
         }
         if !a.actor.verified {
             return Ok(fail(FailureCode::Forbidden, "Confirm your email address first."));

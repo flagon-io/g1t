@@ -339,7 +339,12 @@ pub const TOOLS: &[Tool] = &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
             a("create", Op::CreateWorkspace, "Create a workspace"),
             a("delete", Op::DeleteWorkspace, "Delete a workspace and everything in it (support can restore it for 30 days)"),
-            a("update", Op::UpdateWorkspace, "Change its name, description, base permission or who may create teams"),
+            a("update", Op::UpdateWorkspace, "Change its name, description, base permission, who may create teams, member privileges or the two-factor requirement"),
+            a("list_members", Op::ListMembers, "Its members, owners first, with their roles"),
+            a("update_member", Op::UpdateMember, "Make someone an owner or a member, billing manager or security manager"),
+            a("remove_member", Op::RemoveMember, "Remove someone from it"),
+            a("transfer_ownership", Op::TransferOwnership, "Hand it to another member: they become an owner, you a member"),
+            a("leave", Op::LeaveWorkspace, "Leave it yourself"),
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite an email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
@@ -472,6 +477,9 @@ fn destructive(op: Op) -> bool {
             | Op::Rules(RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset)
             | Op::DeleteWorkspace
             | Op::UpdateWorkspace
+            | Op::RemoveMember
+            | Op::TransferOwnership
+            | Op::LeaveWorkspace
             | Op::DeleteRepo
             | Op::PurgeRepo
             | Op::TransferRepo

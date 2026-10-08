@@ -31,11 +31,12 @@ export function tabOf(id: string): "secrets" | "dependencies" {
 }
 
 /**
- * The role an alert takes to dismiss or reopen: Admin
- * (`manage_integrations`) for a secret, Write (`push`) for a dependency.
+ * What an alert takes to dismiss or reopen: `security_alerts`, the Write
+ * role or a security manager, for a secret and a dependency alike, as on
+ * GitHub.
  */
-export function alertCapability(id: string): "manage_integrations" | "push" {
-  return id.startsWith("vul_") ? "push" : "manage_integrations";
+export function alertCapability(_id: string): "security_alerts" {
+  return "security_alerts";
 }
 
 export function countByState(alerts: { state: AlertState }[]): Record<AlertState, number> {
