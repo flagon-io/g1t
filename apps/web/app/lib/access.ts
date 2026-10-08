@@ -40,4 +40,6 @@ export const SETTINGS_CAPABILITY: Record<string, Capability> = {
   dependencies: "manage_settings",
   // Write and up can see who has access; Admins change it.
   access: "push",
+  // Deploy keys decide who reaches a repository too: Admins only.
+  keys: "manage_access",
 };

@@ -11,6 +11,7 @@ export * from "./codeowners";
 export * from "./compute";
 export * from "./context";
 export * from "./d1";
+export * from "./deploy-keys";
 export * from "./deployments";
 export * from "./events";
 export * from "./fine-grained";

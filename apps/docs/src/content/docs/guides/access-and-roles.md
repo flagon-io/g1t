@@ -1,6 +1,6 @@
 ---
 title: Access and roles
-description: The five repository roles and what each can do, the base permission members get, roles through teams, outside collaborators and invitations, and what agents may do on a person's behalf.
+description: The five repository roles and what each can do, the base permission members get, roles through teams, outside collaborators and invitations, who may manage deploy keys, and what agents may do on a person's behalf.
 ---
 
 Everyone who can work in a repository has a role on it. The role says what
@@ -35,7 +35,7 @@ Each role has everything the one above it has.
 | Change the description, topics, and pull request and agent settings | | | | Yes | Yes |
 | Change branch protection and guardrails | | | | Yes | Yes |
 | Manage webhooks, secrets, variables, deployments and domains | | | | | Yes |
-| Manage who has access, and invitations | | | | | Yes |
+| Manage who has access, invitations and deploy keys | | | | | Yes |
 | Rename, archive, change visibility and the default branch | | | | | Yes |
 | Transfer or delete the repository | | | | | Owners only |
 
@@ -238,11 +238,30 @@ Because putting agents to work spends compute, it needs Write. Someone with
 Read or Triage who mentions or assigns an agent is told so, and nothing
 starts.
 
+## Deploy keys
+
+A [deploy key](/guides/git/#deploy-keys) is an SSH key that lets a machine
+reach one repository: Read, or Write when it was added with write access,
+on that repository and no other. It is part of who has access, so managing
+deploy keys needs the Admin role:
+
+| Who | Can list, add and delete a repository's deploy keys |
+| --- | --- |
+| Someone with the Admin role on it, owners included | Yes |
+| Someone with Maintain or less | No |
+| An agent, whoever it works for | No |
+| A workspace's [access token](/guides/workspaces/#workspace-access-tokens) | Only when an owner gave it Admin |
+| A deploy key | No |
+
+Adding one also needs a confirmed email address. A personal access token
+needs the `access:read` scope to list and read them, and `access:admin` to
+add and delete them.
+
 ## Through the API
 
 Every route is in the [API reference](/reference/api/). Each is also an
 action of an [MCP tool](/reference/mcp/): `access` for a repository's
-people and the base permission, `account` for invitations to you.
+people, its deploy keys and the base permission, `account` for invitations to you.
 
 | Route | MCP tool and action | What it does | Who |
 | --- | --- | --- | --- |
@@ -258,6 +277,10 @@ people and the base permission, `account` for invitations to you.
 | `DELETE /user/repository_invitations/{id}` | `account` `decline_repository_invitation` | Decline one. | You |
 | `PUT /workspaces/{workspace}/base_permission` | `access` `set_base_permission` | Set the base permission. Body: `base_permission`: `none`, `read`, `write` or `admin`. `PATCH /workspaces/{workspace}` (`workspace` `update`) takes `base_permission` too, with the `access:admin` scope. | Owners |
 | `GET /workspaces/{workspace}/outside_collaborators` | `access` `list_outside_collaborators` | A workspace's outside collaborators and the repositories each can reach. | Owners |
+| `GET /repos/{owner}/{name}/keys` | `access` `list_deploy_keys` | A repository's [deploy keys](/guides/git/#deploy-keys). | Admin |
+| `GET /repos/{owner}/{name}/keys/{id}` | `access` `get_deploy_key` | One deploy key. | Admin |
+| `POST /repos/{owner}/{name}/keys` | `access` `add_deploy_key` | Add a deploy key. Body: `title`, `key` and `read_only` (true unless you send false). | Admin |
+| `DELETE /repos/{owner}/{name}/keys/{id}` | `access` `remove_deploy_key` | Delete a deploy key. | Admin |
 
 Changing who has access, answering an invitation and setting the base
 permission are for people, signed in or with a personal access token.
@@ -299,7 +322,9 @@ Each has `data.username`, `data.role` and `data.previous_role`.
 
 The workspace's [audit log](/guides/audit-log/) records the same changes
 under those names, and also `repo.invitation_created`,
-`repo.invitation_revoked` and `workspace.base_permission_changed`.
+`repo.invitation_revoked`, `workspace.base_permission_changed`, and
+`repo.deploy_key_added` and `repo.deploy_key_removed` for
+[deploy keys](#deploy-keys).
 
 A team's role on a repository changing is sent as `team.repo_added`,
 `team.repo_role_changed` or `team.repo_removed`; see

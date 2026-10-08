@@ -198,6 +198,11 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("revoke_repo_invitation", { actor, path: { namespace: owner, name }, id }),
     setBasePermission: (actor, slug, base) => call("set_base_permission", { actor, slug, base_permission: base }),
     outsideCollaborators: (viewer, slug) => call("outside_collaborators", { viewer, slug }),
+    // A repository's deploy keys; see deploy-keys.ts.
+    listDeployKeys: (viewer, owner, name) => call("list_deploy_keys", { viewer, path: { namespace: owner, name } }),
+    addDeployKey: (actor, owner, name, key) =>
+      call("add_deploy_key", { actor, path: { namespace: owner, name }, title: key.title, key: key.key, read_only: key.readOnly }),
+    removeDeployKey: (actor, owner, name, id) => call("remove_deploy_key", { actor, path: { namespace: owner, name }, id }),
     // Teams; see teams.ts.
     listTeams: (viewer, workspace, query) => call("list_teams", { viewer, workspace, query: query ?? null }),
     getTeam: (viewer, workspace, team) => call("get_team", { viewer, workspace, team }),

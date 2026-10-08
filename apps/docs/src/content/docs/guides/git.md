@@ -1,6 +1,6 @@
 ---
 title: Git
-description: Remotes, credentials, private repositories and limits.
+description: Remotes, credentials, private repositories, deploy keys and limits.
 ---
 
 g1t speaks git's smart HTTP protocol. Any git client works.
@@ -261,4 +261,143 @@ entirely on Cloudflare's network. Accepting inbound TCP traffic directly
 into Workers is in a beta from Cloudflare that g1t has applied for and is
 waiting on. SSH keys can already be added under
 [Settings → SSH keys](https://g1t.sh/settings/keys),
-and will be used once SSH is on.
+and will be used once SSH is on. So can [deploy keys](#deploy-keys).
+
+## Deploy keys
+
+A deploy key is an SSH key that reaches one repository and nothing else.
+Give one to a server or a pipeline that needs to clone a repository, or
+push to it, without a person's account behind it. A deploy key belongs to
+the repository: it keeps working when the person who added it leaves the
+workspace, and it is not tied to anyone's role.
+
+:::note
+Deploy keys are used over SSH, which is [not on yet](#ssh). You can add
+them now, and they will work as soon as SSH is. Until then, a machine can
+clone and push over HTTPS with a
+[workspace access token](/guides/workspaces/#workspace-access-tokens).
+:::
+
+### Read-only or read and write
+
+A deploy key is read-only unless you choose **Allow write access** when
+you add it:
+
+| Access | It can |
+| --- | --- |
+| **Read-only** (the default) | Clone and fetch the repository, private or not. |
+| **Read and write** | Clone, fetch and push, workflow files under `.g1t/workflows/` and `.github/workflows/` included. |
+
+Either way it reaches only its own repository: any other address is
+refused, in its workspace or anywhere else, and so is pushing to an
+address with no repository, which would otherwise make one.
+
+A key with write access can change workflows, and workflows run with the
+repository's secrets. Allow it only for a machine that must push. You
+cannot change a key's access later: delete it and add it again.
+
+### Add a deploy key
+
+You need the Admin role on the repository and a confirmed email address.
+
+1. Make a key pair on the machine that will use it, without a passphrase
+   if it runs unattended:
+
+   ```sh
+   ssh-keygen -t ed25519 -C "deploy@build-server" -f ~/.ssh/g1t_deploy -N ""
+   ```
+
+2. Open the repository's **Settings → Deploy keys**,
+   `g1t.sh/<workspace>/<repo>/settings/keys`.
+3. Under **Add a deploy key**, give it a **Title**, such as the machine that
+   uses it, and paste the public key (`~/.ssh/g1t_deploy.pub`) into **Key**.
+   Left without a title, it takes the key's comment.
+4. Choose **Allow write access** only if the machine must push.
+5. Choose **Add deploy key**.
+
+g1t takes `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ecdsa-sha2-nistp384`,
+`ecdsa-sha2-nistp521` and `ssh-rsa` keys. A public key can be registered
+once on g1t: a key that is already someone's SSH key, or a deploy key on
+any repository, is refused with **Key is already in use.** Give each
+machine, and each repository, its own key. A repository can have up to
+100 deploy keys.
+
+### Manage deploy keys
+
+**Settings → Deploy keys** lists every key on the repository, oldest
+first, with its title, fingerprint, whether it is **Read-only** or **Read
+and write**, who added it and when, and when it was last used. **Last
+used** is when the key last signed in over SSH, to within 5 minutes;
+**Never used** means it never has. Use it to find keys nothing uses any
+more.
+
+To remove a key, choose **Delete** beside it and confirm. Anything using
+it stops at once.
+
+Only people with the Admin role on the repository see the page and
+manage its keys. An agent's token never can, and neither can a deploy key.
+A workspace's own access token can only when an owner gave it Admin. See
+[access and roles](/guides/access-and-roles/#deploy-keys). Adding and
+deleting a key is recorded in the workspace's
+[audit log](/guides/audit-log/) as `repo.deploy_key_added` and
+`repo.deploy_key_removed`.
+
+Deploy keys are kept by repository, so renaming or transferring the
+repository keeps them. While a repository is deleted its keys do not work,
+and when it is removed for good they go with it.
+
+### Use a deploy key with git
+
+Once SSH is on, point git at the key for the repository's remote:
+
+```sh
+GIT_SSH_COMMAND="ssh -i ~/.ssh/g1t_deploy -o IdentitiesOnly=yes" \
+  git clone git@g1t.sh:<workspace>/<repo>.git
+```
+
+Or name it in `~/.ssh/config` for every git command on that machine:
+
+```text
+Host g1t.sh
+  User git
+  IdentityFile ~/.ssh/g1t_deploy
+  IdentitiesOnly yes
+```
+
+A machine that needs several repositories needs a key for each; give each
+a `Host` alias with its own `IdentityFile`.
+
+### Through the API
+
+| Route | MCP tool and action | What it does |
+| --- | --- | --- |
+| `GET /repos/{owner}/{name}/keys` | `access` `list_deploy_keys` | The repository's deploy keys. |
+| `GET /repos/{owner}/{name}/keys/{id}` | `access` `get_deploy_key` | One key, by its `id`. |
+| `POST /repos/{owner}/{name}/keys` | `access` `add_deploy_key` | Add a key. Body: `title`, `key` and `read_only` (true unless you send false). |
+| `DELETE /repos/{owner}/{name}/keys/{id}` | `access` `remove_deploy_key` | Delete a key. |
+
+Listing and reading need the `access:read` scope; adding and deleting
+need `access:admin`. Each needs the Admin role on the repository.
+
+```sh
+curl https://api.g1t.sh/repos/acme/rocket/keys \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Build server", "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE", "read_only": true}'
+```
+
+```json
+{
+  "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s",
+  "title": "Build server",
+  "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE",
+  "fingerprint": "SHA256:ubxEl41fJDnUoEPKSZE0y6R0ZjjAQf/wV5vZgeBV8qk",
+  "read_only": true,
+  "created_at": "2026-10-08T09:12:00.000Z",
+  "created_by": "ada",
+  "last_used_at": null
+}
+```
+
+See [create a deploy key](/reference/api/access/create-deploy-key/) in the
+API reference.

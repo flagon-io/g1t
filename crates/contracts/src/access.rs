@@ -222,7 +222,7 @@ pub const CAPABILITIES: [CapabilityRow; 12] = [
     CapabilityRow { capability: Capability::ManageSettings, role: RepoRole::Maintain, about: "Change the description, topics, and pull request and agent settings" },
     CapabilityRow { capability: Capability::ManageProtection, role: RepoRole::Maintain, about: "Change branch protection and guardrails" },
     CapabilityRow { capability: Capability::ManageIntegrations, role: RepoRole::Admin, about: "Manage webhooks, secrets, variables, deployments and domains" },
-    CapabilityRow { capability: Capability::ManageAccess, role: RepoRole::Admin, about: "Manage who has access, and invitations" },
+    CapabilityRow { capability: Capability::ManageAccess, role: RepoRole::Admin, about: "Manage who has access, invitations and deploy keys" },
     CapabilityRow { capability: Capability::Administer, role: RepoRole::Admin, about: "Rename, archive, change visibility and the default branch" },
     CapabilityRow { capability: Capability::Delete, role: RepoRole::Admin, about: "Transfer or delete the repository (owners of the workspace only)" },
 ];

@@ -30,6 +30,7 @@ Every workspace keeps an audit log. It records:
 | `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored, or removed for good. |
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had it changed, or lost it. See [access and roles](/guides/access-and-roles/). |
 | `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
+| `repo.deploy_key_added`, `repo.deploy_key_removed` | A [deploy key](/guides/git/#deploy-keys) was added to it, saying whether it may write, or deleted. |
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
 | `workspace.team_creation_changed` | An owner changed who can create teams. See [who can create teams](/guides/teams/#who-can-create-teams). |
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. |

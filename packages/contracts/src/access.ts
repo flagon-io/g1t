@@ -72,7 +72,7 @@ export const CAPABILITIES = [
   { capability: "manage_settings", role: "maintain", about: "Change the description, topics, and pull request and agent settings" },
   { capability: "manage_protection", role: "maintain", about: "Change branch protection and guardrails" },
   { capability: "manage_integrations", role: "admin", about: "Manage webhooks, secrets, variables, deployments and domains" },
-  { capability: "manage_access", role: "admin", about: "Manage who has access, and invitations" },
+  { capability: "manage_access", role: "admin", about: "Manage who has access, invitations and deploy keys" },
   { capability: "administer", role: "admin", about: "Rename, archive, change visibility and the default branch" },
   { capability: "delete", role: "admin", about: "Transfer or delete the repository (owners of the workspace only)" },
 ] as const satisfies readonly { capability: Capability; role: RepoRole; about: string }[];

@@ -989,6 +989,12 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("set_base_permission", Scope::AccessAdmin),
     ("set_team_repo", Scope::AccessAdmin),
     ("remove_team_repo", Scope::AccessAdmin),
+    // Deploy keys: each lets a machine reach one repository, so they
+    // are part of who has access.
+    ("list_deploy_keys", Scope::AccessRead),
+    ("get_deploy_key", Scope::AccessRead),
+    ("create_deploy_key", Scope::AccessAdmin),
+    ("delete_deploy_key", Scope::AccessAdmin),
     // Webhooks.
     ("list_webhooks", Scope::WebhooksRead),
     ("list_webhook_deliveries", Scope::WebhooksRead),
@@ -1136,12 +1142,18 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
 }
 
 /// Whether a token may use the repository `owner/name` at all: a refusal
-/// for a workflow job's token in another repository, else `None`. Git and
+/// for a workflow job's token or a deploy key in another repository,
+/// else `None`. Git and
 /// the package registries ask this before [`decide_git`] and
 /// [`decide_packages`].
 pub fn decide_repo(access: &TokenAccess, repo: &str) -> Option<Decision> {
     let only = access.repo.as_deref()?;
-    (!access.reaches(repo)).then(|| Decision::deny("token:repository", format!("This token is a workflow job's in {only}: it cannot reach {repo}.")))
+    let why = if access.deploy_key.is_some() {
+        format!("This deploy key is for {only}: it cannot reach {repo}.")
+    } else {
+        format!("This token is a workflow job's in {only}: it cannot reach {repo}.")
+    };
+    (!access.reaches(repo)).then(|| Decision::deny("token:repository", why))
 }
 
 /// Whether a token may clone or fetch (`write` false), or push to (`write`
@@ -1150,6 +1162,12 @@ pub fn decide_repo(access: &TokenAccess, repo: &str) -> Option<Decision> {
 pub fn decide_git(access: &TokenAccess, write: bool, public: bool) -> Decision {
     let needed = if write { Scope::CodeWrite } else { Scope::CodeRead };
     if !access.allows(needed) && (write || !public) {
+        if access.deploy_key.is_some() {
+            return Decision::deny(
+                "token:scope",
+                "This deploy key is read-only. An admin of the repository can add it again with write access to push with it.",
+            );
+        }
         return Decision::deny(
             "token:scope",
             format!("This access token needs the {} scope to {} with git.", needed.as_str(), if write { "push" } else { "clone or fetch a private repository" }),

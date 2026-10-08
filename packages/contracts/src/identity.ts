@@ -4,6 +4,7 @@ import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 import type { TeamCreation, TeamsClient } from "./teams";
+import type { DeployKeysClient } from "./deploy-keys";
 
 export type User = {
   id: string;
@@ -360,6 +361,8 @@ export type SshKey = {
   fingerprint: string;
   /** RFC 3339. */
   createdAt: string;
+  /** When it last signed in over SSH, RFC 3339, to within 5 minutes; null when it never has. */
+  lastUsedAt: string | null;
 };
 
 export type AccessToken = {
@@ -552,7 +555,7 @@ export type DeletedWorkspace = {
   restorable: boolean;
 };
 
-export interface IdentityApi extends AccessClient, TeamsClient {
+export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient {
   /**
    * Creates an account and signs it in. While registration is invite-only,
    * `inviteCode` must be an unused, unexpired invite (and, when it names an

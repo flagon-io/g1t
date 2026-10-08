@@ -17,6 +17,7 @@ use crate::openapi::document;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
+use crate::deploy_keys::DeployKeysOp;
 
 /// A key as `#[serde(rename_all = "camelCase")]` writes it.
 fn camel_key(key: &str) -> String {
@@ -114,6 +115,12 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Deployments(_) => return as_is,
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Artifacts(_) => return as_is,
+        // Deploy keys travel in `snake_case` from identity.
+        Op::DeployKeys(DeployKeysOp::ListDeployKeys) => return through::<Vec<g1t_contracts::deploy_keys::DeployKey>>(op, as_is),
+        Op::DeployKeys(DeployKeysOp::GetDeployKey | DeployKeysOp::CreateDeployKey) => {
+            return through::<g1t_contracts::deploy_keys::DeployKey>(op, as_is);
+        }
+        Op::DeployKeys(DeployKeysOp::DeleteDeployKey) => return through::<bool>(op, as_is),
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {

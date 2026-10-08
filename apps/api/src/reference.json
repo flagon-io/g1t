@@ -4419,6 +4419,84 @@
     ],
     "notes": "By username, each with the repositories they have a role on. Refused with `403` for anyone but an owner. See [Access and roles](/guides/access-and-roles/)."
   },
+  "list_deploy_keys": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "response": [
+      {
+        "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s",
+        "title": "Docs build",
+        "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE",
+        "fingerprint": "SHA256:ubxEl41fJDnUoEPKSZE0y6R0ZjjAQf/wV5vZgeBV8qk",
+        "read_only": true,
+        "created_at": "2026-10-06T09:12:00.000Z",
+        "created_by": "syntaqx",
+        "last_used_at": "2026-10-08T07:40:00.000Z"
+      },
+      {
+        "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t",
+        "title": "Release bot",
+        "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8Vq2nLr5Xw0sT3yK7mP1cH4dF6gB9aE2uZ5oN8iR0j",
+        "fingerprint": "SHA256:2h7VyLkcqBHwKVtfFUchGsE5pDwpgBPV/VvJgYiS27M",
+        "read_only": false,
+        "created_at": "2026-10-07T15:30:00.000Z",
+        "created_by": "syntaqx",
+        "last_used_at": null
+      }
+    ],
+    "notes": "Oldest first. `read_only` false means the key may push, workflow files included. `last_used_at` is when it last signed in over SSH, to within 5 minutes, and null when it never has. Refused with `403` without the Admin role, and for an agent's token or a workspace token without Admin; `404` for a private repository you cannot see. See [Deploy keys](/guides/git/#deploy-keys)."
+  },
+  "get_deploy_key": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s"
+    },
+    "response": {
+      "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s",
+      "title": "Docs build",
+      "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE",
+      "fingerprint": "SHA256:ubxEl41fJDnUoEPKSZE0y6R0ZjjAQf/wV5vZgeBV8qk",
+      "read_only": true,
+      "created_at": "2026-10-06T09:12:00.000Z",
+      "created_by": "syntaqx",
+      "last_used_at": "2026-10-08T07:40:00.000Z"
+    },
+    "notes": "`404` when the repository has no deploy key with that id."
+  },
+  "create_deploy_key": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "request": {
+      "title": "Release bot",
+      "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8Vq2nLr5Xw0sT3yK7mP1cH4dF6gB9aE2uZ5oN8iR0j release@ci",
+      "read_only": false
+    },
+    "response": {
+      "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t",
+      "title": "Release bot",
+      "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8Vq2nLr5Xw0sT3yK7mP1cH4dF6gB9aE2uZ5oN8iR0j",
+      "fingerprint": "SHA256:2h7VyLkcqBHwKVtfFUchGsE5pDwpgBPV/VvJgYiS27M",
+      "read_only": false,
+      "created_at": "2026-10-07T15:30:00.000Z",
+      "created_by": "syntaqx",
+      "last_used_at": null
+    },
+    "notes": "`read_only` is true unless you send false. The key's comment is not kept; it becomes the title when you send none. Refused with `400` for a line that is not an OpenSSH public key, `409` with `Key is already in use.` when the key is registered already (as anyone's SSH key or as a deploy key anywhere), `409` past 100 keys, and `403` without the Admin role, from an agent's token, from a workspace token without Admin, or before your email address is confirmed. Recorded in the workspace's audit log as `repo.deploy_key_added`."
+  },
+  "delete_deploy_key": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t"
+    },
+    "response": true,
+    "notes": "The key stops working at once. `404` when the repository has no deploy key with that id. Recorded in the workspace's audit log as `repo.deploy_key_removed`."
+  },
   "list_teams": {
     "params": {
       "workspace": "flagon-io"

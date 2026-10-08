@@ -20,6 +20,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
+use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
@@ -295,7 +296,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "access",
         title: "Who has access",
-        description: "Who has access to a repository and with which role (read, triage, write, maintain, admin), outside collaborators, and a workspace's base permission.",
+        description: "Who has access to a repository and with which role (read, triage, write, maintain, admin), outside collaborators, a workspace's base permission, and a repository's deploy keys.",
         default_action: None,
         actions: &[
             a("list_collaborators", Op::ListCollaborators, "Everyone with a role, and pending invitations"),
@@ -307,6 +308,10 @@ pub const TOOLS: &[Tool] = &[
             a("revoke_invitation", Op::RevokeRepoInvitation, "Withdraw one"),
             a("set_base_permission", Op::SetBasePermission, "What every member gets on each repository"),
             a("list_outside_collaborators", Op::ListOutsideCollaborators, "People with roles who are not members"),
+            a("list_deploy_keys", Op::DeployKeys(DeployKeysOp::ListDeployKeys), "SSH keys that reach this one repository"),
+            a("get_deploy_key", Op::DeployKeys(DeployKeysOp::GetDeployKey), "One deploy key, by id"),
+            a("add_deploy_key", Op::DeployKeys(DeployKeysOp::CreateDeployKey), "Add one; read-only unless read_only is false"),
+            a("remove_deploy_key", Op::DeployKeys(DeployKeysOp::DeleteDeployKey), "Delete one"),
         ],
     },
     Tool {

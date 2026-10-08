@@ -16,6 +16,7 @@ pub mod capture;
 pub mod checks;
 pub mod codeowners;
 pub mod credentials;
+pub mod deploy_keys;
 pub mod events;
 pub mod fine_grained;
 pub mod github;

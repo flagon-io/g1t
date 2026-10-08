@@ -3,7 +3,7 @@ import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/keys";
 import { page } from "../../lib/meta";
-import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
+import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { DeleteButton } from "../../components/account-settings";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
@@ -54,6 +54,16 @@ export default function SshKeySettings({ loaderData, actionData }: Route.Compone
             <div className="min-w-0">
               <p className="text-sm">{key.title}</p>
               <p className="truncate font-mono text-xs text-muted">{key.fingerprint}</p>
+              <p className="mt-0.5 text-xs text-faint">
+                Added <TimeAgo at={key.createdAt} /> ·{" "}
+                {key.lastUsedAt ? (
+                  <>
+                    Last used <TimeAgo at={key.lastUsedAt} />
+                  </>
+                ) : (
+                  "Never used"
+                )}
+              </p>
             </div>
             <DeleteButton intent="delete-key" id={key.id} />
           </li>

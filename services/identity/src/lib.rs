@@ -9,6 +9,7 @@ mod aliases;
 mod avatars;
 mod crypto;
 mod deletion;
+mod deploy_keys;
 mod device;
 mod directory;
 mod email;
@@ -91,6 +92,8 @@ struct KeyRow {
     title: String,
     fingerprint: String,
     created_at: String,
+    #[serde(default)]
+    last_used_at: Option<String>,
 }
 
 impl From<KeyRow> for SshKey {
@@ -100,6 +103,7 @@ impl From<KeyRow> for SshKey {
             title: row.title,
             fingerprint: row.fingerprint,
             created_at: row.created_at,
+            last_used_at: row.last_used_at,
         }
     }
 }
@@ -645,7 +649,7 @@ impl Identity {
     async fn list_ssh_keys(&self, a: UserArgs) -> Result<Vec<SshKey>> {
         let rows = self
             .db
-            .prepare("SELECT id, title, fingerprint, created_at FROM ssh_keys WHERE user_id = ? ORDER BY id")
+            .prepare("SELECT id, title, fingerprint, created_at, last_used_at FROM ssh_keys WHERE user_id = ? ORDER BY id")
             .bind(&[a.user.id.into()])?
             .all()
             .await?
@@ -686,17 +690,9 @@ impl Identity {
                 "That is not a valid OpenSSH public key.",
             ));
         };
-        let taken = self
-            .db
-            .prepare("SELECT id FROM ssh_keys WHERE fingerprint = ?")
-            .bind(&[key.fingerprint.as_str().into()])?
-            .first::<serde_json::Value>(None)
-            .await?;
-        if taken.is_some() {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "That key is already registered.",
-            ));
+        // Someone's SSH key, or a repository's deploy key (deploy_keys.rs).
+        if self.key_in_use(&key.fingerprint).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, g1t_contracts::deploy_keys::KEY_IN_USE));
         }
         let now = now_ms();
         let title = [a.title.trim(), key.comment.as_str(), "SSH key"]
@@ -709,23 +705,52 @@ impl Identity {
             title,
             fingerprint: key.fingerprint,
             created_at: rfc3339(now),
+            last_used_at: None,
         };
-        self.db
+        let inserted = self.db
             .prepare(
                 "INSERT INTO ssh_keys (id, user_id, title, public_key, fingerprint, created_at)
                  VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 row.id.as_str().into(),
-                a.user.id.into(),
+                a.user.id.as_str().into(),
                 row.title.as_str().into(),
                 key.public_key.into(),
                 row.fingerprint.as_str().into(),
                 row.created_at.as_str().into(),
             ])?
             .run()
-            .await?;
+            .await;
+        // Added at the same moment elsewhere: the trigger or the unique
+        // index refused it.
+        if let Err(error) = inserted {
+            if self.key_in_use(&row.fingerprint).await? {
+                return Ok(Outcome::fail(FailureCode::Conflict, g1t_contracts::deploy_keys::KEY_IN_USE));
+            }
+            return Err(error);
+        }
+        let added = format!("{} ({})", row.title, row.fingerprint);
+        self.log_security(&a.user.id, "ssh_key_added", Some(&added), None).await;
         Ok(Outcome::Ok(row.into()))
+    }
+
+    /// Deletes one of the person's SSH keys, and says so in their security log.
+    async fn remove_ssh_key(&self, a: RemoveArgs) -> Result<()> {
+        let key = self
+            .db
+            .prepare("SELECT id, title, fingerprint, created_at FROM ssh_keys WHERE id = ? AND user_id = ?")
+            .bind(&[a.id.as_str().into(), a.user.id.as_str().into()])?
+            .first::<KeyRow>(None)
+            .await?;
+        let Some(key) = key else {
+            return Ok(());
+        };
+        let user_id = a.user.id.clone();
+        self.remove("ssh_keys", a).await?;
+        let removed = format!("{} ({})", key.title, key.fingerprint);
+        self.log_security(&user_id, "ssh_key_removed", Some(&removed), None).await;
+        Ok(())
     }
 
     /// Deletes a row the user owns from `table`.
@@ -884,7 +909,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // signatures (repos' signatures.rs).
         "ssh_key_owners" => reply(&identity.ssh_key_owners(args(body)?).await?),
         "add_ssh_key" => reply(&identity.add_ssh_key(args(body)?).await?),
-        "remove_ssh_key" => reply(&identity.remove("ssh_keys", args(body)?).await?),
+        "remove_ssh_key" => reply(&identity.remove_ssh_key(args(body)?).await?),
+        // A repository's deploy keys, and who an SSH key signs in as; see
+        // deploy_keys.rs.
+        "list_deploy_keys" => reply(&identity.list_deploy_keys(args(body)?).await?),
+        "get_deploy_key" => reply(&identity.get_deploy_key(args(body)?).await?),
+        "add_deploy_key" => reply(&identity.add_deploy_key(args(body)?).await?),
+        "remove_deploy_key" => reply(&identity.remove_deploy_key(args(body)?).await?),
+        "principal_for_ssh_key" => reply(&identity.principal_for_ssh_key(args(body)?).await?),
         "list_access_tokens" => reply(&identity.list_access_tokens(args(body)?).await?),
         "create_access_token" => reply(&identity.create_access_token(args(body)?).await?),
         "update_access_token" => reply(&identity.update_access_token(args(body)?).await?),
@@ -929,7 +961,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "workspace_residency" => reply(&identity.workspace_residency(args(body)?).await?),
         "set_workspace_residency" => reply(&identity.set_workspace_residency(args(body)?).await?),
         "outside_collaborators" => reply(&identity.outside_collaborators(args(body)?).await?),
-        "forget_repo_access" => reply(&identity.forget_repo_access(args(body)?).await?),
+        "forget_repo_access" => {
+            let a: g1t_contracts::access::ForgetRepoAccessArgs = args(body)?;
+            // A purged repository's deploy keys go with its access.
+            identity.forget_deploy_keys(&a.repo_id).await?;
+            reply(&identity.forget_repo_access(a).await?)
+        }
         // Teams (teams.rs).
         "list_teams" => reply(&identity.list_teams(args(body)?).await?),
         "get_team" => reply(&identity.get_team(args(body)?).await?),

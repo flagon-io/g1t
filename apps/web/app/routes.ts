@@ -197,6 +197,7 @@ export default [
     route("settings", "routes/repo/settings.tsx"),
     route("settings/repository", "routes/repo/settings-repository.tsx"),
     route("settings/access", "routes/repo/settings-access.tsx"),
+    route("settings/keys", "routes/repo/settings-deploy-keys.tsx"),
     route("settings/branches", "routes/repo/settings-branches.tsx"),
     route("settings/rules", "routes/repo/settings-rules.tsx"),
     route("settings/rules/:id", "routes/repo/settings-ruleset.tsx"),

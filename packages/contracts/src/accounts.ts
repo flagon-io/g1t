@@ -68,6 +68,8 @@ export type SecurityEvent = {
     | "email_privacy_changed"
     | "password_changed"
     | "password_locked"
+    | "ssh_key_added"
+    | "ssh_key_removed"
     | (string & {});
   detail: string | null;
   byStaff: boolean;
@@ -168,6 +170,10 @@ export function securityEventLabel(event: Pick<SecurityEvent, "kind" | "detail">
       return "Changed the password";
     case "password_locked":
       return `Password sign-in paused after ${detail}`;
+    case "ssh_key_added":
+      return `Added the SSH key ${detail}`;
+    case "ssh_key_removed":
+      return `Removed the SSH key ${detail}`;
     default:
       return detail ? `${event.kind}: ${detail}` : event.kind;
   }

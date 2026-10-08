@@ -397,6 +397,11 @@ pub const NEVER: &[&str] = &[
     "decline_repo_invitation",
     "set_base_permission",
     "list_outside_collaborators",
+    // Deploy keys, which let a machine into a repository.
+    "list_deploy_keys",
+    "get_deploy_key",
+    "create_deploy_key",
+    "delete_deploy_key",
     // Teams: who is in which, and what they reach, is for people.
     "create_team",
     "update_team",

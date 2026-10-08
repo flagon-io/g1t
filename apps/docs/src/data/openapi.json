@@ -179,7 +179,7 @@
     },
     {
       "name": "Access",
-      "description": "Who can do what in a repository: repository roles, people given a role on one repository (outside collaborators when they are not members), invitations, and a workspace's base permission.",
+      "description": "Who can do what in a repository: repository roles, people given a role on one repository (outside collaborators when they are not members), invitations, a workspace's base permission, and deploy keys: SSH keys that reach one repository.",
       "x-tools": [
         "list_collaborators",
         "add_collaborator",
@@ -192,7 +192,11 @@
         "accept_repo_invitation",
         "decline_repo_invitation",
         "set_base_permission",
-        "list_outside_collaborators"
+        "list_outside_collaborators",
+        "list_deploy_keys",
+        "get_deploy_key",
+        "create_deploy_key",
+        "delete_deploy_key"
       ]
     },
     {
@@ -4274,6 +4278,497 @@
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/keys": {
+      "get": {
+        "operationId": "list_deploy_keys",
+        "tags": [
+          "Access"
+        ],
+        "summary": "List deploy keys",
+        "description": "List a repository's deploy keys, oldest first: SSH keys that reach this one repository, for a server or a pipeline. Each has its `id` (`dk_…`), `title`, public `key`, `fingerprint` (`SHA256:…`), `read_only` (false when it may push), `created_at`, `created_by` (who added it) and `last_used_at` (null when it never signed in). Needs the Admin role on the repository; agents' tokens are refused.\n\nOldest first. `read_only` false means the key may push, workflow files included. `last_used_at` is when it last signed in over SSH, to within 5 minutes, and null when it never has. Refused with `403` without the Admin role, and for an agent's token or a workspace token without Admin; `404` for a private repository you cannot see. See [Deploy keys](/guides/git/#deploy-keys).",
+        "x-operation": "list_deploy_keys",
+        "x-mcp-tool": "access",
+        "x-mcp-action": "list_deploy_keys",
+        "x-scope": "access:read",
+        "security": [
+          {
+            "token": [
+              "access:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s",
+                    "title": "Docs build",
+                    "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE",
+                    "fingerprint": "SHA256:ubxEl41fJDnUoEPKSZE0y6R0ZjjAQf/wV5vZgeBV8qk",
+                    "read_only": true,
+                    "created_at": "2026-10-06T09:12:00.000Z",
+                    "created_by": "syntaqx",
+                    "last_used_at": "2026-10-08T07:40:00.000Z"
+                  },
+                  {
+                    "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t",
+                    "title": "Release bot",
+                    "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8Vq2nLr5Xw0sT3yK7mP1cH4dF6gB9aE2uZ5oN8iR0j",
+                    "fingerprint": "SHA256:2h7VyLkcqBHwKVtfFUchGsE5pDwpgBPV/VvJgYiS27M",
+                    "read_only": false,
+                    "created_at": "2026-10-07T15:30:00.000Z",
+                    "created_by": "syntaqx",
+                    "last_used_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      },
+      "post": {
+        "operationId": "create_deploy_key",
+        "tags": [
+          "Access"
+        ],
+        "summary": "Create a deploy key",
+        "description": "Add a deploy key to a repository: `key`, one line in OpenSSH public key format (ssh-ed25519, ecdsa-sha2-nistp256/384/521 or ssh-rsa), and a `title`. It is read-only unless `read_only` is false, which lets it push, workflow files included. A key registered anywhere already, as a person's SSH key or another deploy key, is refused with `409`: give each machine its own. At most 100 keys a repository. Needs the Admin role on the repository and a confirmed email address; agents' tokens and workspace tokens without Admin are refused. Recorded in the workspace's audit log.\n\n`read_only` is true unless you send false. The key's comment is not kept; it becomes the title when you send none. Refused with `400` for a line that is not an OpenSSH public key, `409` with `Key is already in use.` when the key is registered already (as anyone's SSH key or as a deploy key anywhere), `409` past 100 keys, and `403` without the Admin role, from an agent's token, from a workspace token without Admin, or before your email address is confirmed. Recorded in the workspace's audit log as `repo.deploy_key_added`.",
+        "x-operation": "create_deploy_key",
+        "x-mcp-tool": "access",
+        "x-mcp-action": "add_deploy_key",
+        "x-scope": "access:admin",
+        "security": [
+          {
+            "token": [
+              "access:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t",
+                  "title": "Release bot",
+                  "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8Vq2nLr5Xw0sT3yK7mP1cH4dF6gB9aE2uZ5oN8iR0j",
+                  "fingerprint": "SHA256:2h7VyLkcqBHwKVtfFUchGsE5pDwpgBPV/VvJgYiS27M",
+                  "read_only": false,
+                  "created_at": "2026-10-07T15:30:00.000Z",
+                  "created_by": "syntaqx",
+                  "last_used_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "A name for it, such as the machine that uses it. Left out, the key's comment, else \"Deploy key\"."
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The public key, one line in OpenSSH format: the contents of a .pub file."
+                  },
+                  "read_only": {
+                    "type": "boolean",
+                    "description": "False lets it push, workflow files included. True (read-only) unless you say."
+                  }
+                },
+                "required": [
+                  "key"
+                ]
+              },
+              "example": {
+                "title": "Release bot",
+                "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8Vq2nLr5Xw0sT3yK7mP1cH4dF6gB9aE2uZ5oN8iR0j release@ci",
+                "read_only": false
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/keys/{id}": {
+      "get": {
+        "operationId": "get_deploy_key",
+        "tags": [
+          "Access"
+        ],
+        "summary": "Get a deploy key",
+        "description": "Get one of a repository's deploy keys by its `id`, in the shape list_deploy_keys gives. Needs the Admin role on the repository.\n\n`404` when the repository has no deploy key with that id.",
+        "x-operation": "get_deploy_key",
+        "x-mcp-tool": "access",
+        "x-mcp-action": "get_deploy_key",
+        "x-scope": "access:read",
+        "security": [
+          {
+            "token": [
+              "access:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The deploy key's id (dk_…), from list_deploy_keys."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s",
+                  "title": "Docs build",
+                  "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE",
+                  "fingerprint": "SHA256:ubxEl41fJDnUoEPKSZE0y6R0ZjjAQf/wV5vZgeBV8qk",
+                  "read_only": true,
+                  "created_at": "2026-10-06T09:12:00.000Z",
+                  "created_by": "syntaqx",
+                  "last_used_at": "2026-10-08T07:40:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "dk_01kp3f2g3h4j5k6m7n8p9q0r1s"
+        }
+      },
+      "delete": {
+        "operationId": "delete_deploy_key",
+        "tags": [
+          "Access"
+        ],
+        "summary": "Delete a deploy key",
+        "description": "Delete one of a repository's deploy keys by its `id`. A machine using it can no longer clone or push. There is no editing a key: to change its title or access, delete it and add it again. Needs the Admin role on the repository. Recorded in the workspace's audit log.\n\nThe key stops working at once. `404` when the repository has no deploy key with that id. Recorded in the workspace's audit log as `repo.deploy_key_removed`.",
+        "x-operation": "delete_deploy_key",
+        "x-mcp-tool": "access",
+        "x-mcp-action": "remove_deploy_key",
+        "x-scope": "access:admin",
+        "security": [
+          {
+            "token": [
+              "access:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The deploy key's id (dk_…), from list_deploy_keys."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "id": "dk_01kp3g4h5j6k7m8n9p0q1r2s3t"
         }
       }
     },

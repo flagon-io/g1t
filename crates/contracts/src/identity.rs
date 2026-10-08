@@ -15,6 +15,10 @@ pub struct SshKey {
     pub fingerprint: String,
     /// RFC 3339.
     pub created_at: String,
+    /// When it was last used to sign in over SSH, RFC 3339, to within 5
+    /// minutes; null when it never was.
+    #[serde(default)]
+    pub last_used_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -94,7 +98,7 @@ pub struct TokenArgs {
     pub token: String,
 }
 
-/// `user_for_ssh_key`.
+/// `user_for_ssh_key`, and `principal_for_ssh_key` (see [`crate::deploy_keys`]).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FingerprintArgs {
     pub fingerprint: String,
