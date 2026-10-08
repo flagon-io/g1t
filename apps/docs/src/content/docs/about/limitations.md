@@ -384,6 +384,15 @@ straight at a provider.
 g1t is invite-only for now. See [Invites](/guides/authentication/#invites).
 **Status.** Opening sign-up is planned.
 
+### Fine-grained tokens for workspaces you belong to
+
+A fine-grained personal access token can name a workspace as its resource
+owner only when you are a member of it. For a repository where you are an
+outside collaborator, use a classic token. A workspace's
+[rules for tokens](/guides/authentication/#a-workspaces-rules-for-tokens)
+cover personal access tokens only, not applications you signed in to with
+OAuth. **Status.** Planned.
+
 ### No uptime commitment during the beta
 
 g1t does not promise a particular uptime or offer a service level agreement

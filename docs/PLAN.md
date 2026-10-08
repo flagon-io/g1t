@@ -325,9 +325,13 @@ How it feeds up, and what is built:
   (people, access tokens, settings), which no repository can be named.
 - **Workspace access tokens instead of service accounts.** A workspace has
   tokens of its own, in the same table and code path as personal ones. One
-  acts as the workspace, with a member's rights in that workspace only,
-  records who made it and when it was last used, and keeps working when
-  that person leaves. CI, integrations and automations use these.
+  acts as the workspace, with a member's rights in that workspace only (the
+  Write role on its repositories; Admin only when an owner ticks it at
+  creation, `access_tokens.admin`, identity/0034), records who made it and
+  when it was last used, and keeps working when that person leaves. CI,
+  integrations and automations use these. Until 2026-10-08 the code gave
+  them Admin on every repository, which the security audit found let any
+  workspace token manage webhooks; code, this plan and the docs now agree.
 
 ### Portfolio
 
@@ -478,6 +482,58 @@ issue and resolves it.
 **Checks** are the other half of what GitHub Actions does: build and test
 commands declared in `.g1t/checks.yaml`, run in sandboxes on every pull request
 and on every combined state in the landing queue.
+
+### Tokens, scopes and packages the GitHub way (built 2026-10-08)
+
+> **2026-10-08 (owner):** "emulate all of what GitHub does for scope
+> mapping and packages." GitHub's current behaviour is the spec.
+
+This **reverses identity/0023**, which retired a token's reach to some
+workspaces or repositories and left classic tokens only. The reason it is
+reversed: the owner chose GitHub parity, and GitHub has fine-grained tokens
+beside classic ones, with workspaces (organizations) governing both.
+
+- **Fine-grained personal access tokens** (identity/0034,
+  `services/identity/src/token_reach.rs`, `g1t_contracts::fine_grained`):
+  one resource owner (a workspace the person belongs to, or their own
+  account), all, selected (up to 50, by repository id) or only public
+  repositories, and a level per permission under GitHub's names (contents,
+  metadata, issues, pull_requests, actions, workflows, checks, statuses,
+  deployments, pages, environments, secrets, variables, webhooks,
+  administration, packages, security_events; members,
+  workspace_administration, self_hosted_runners, workspace_secrets,
+  workspace_webhooks, workspace_billing, models; email_addresses, starring,
+  notifications; g1t's agents and memory). Each level maps onto g1t's
+  scopes, which the token stores, so every check that reads scopes
+  (`scopes::decide` for the API and MCP, `decide_git`, `decide_packages`)
+  reads them unchanged. They must expire, within 366 days. On each use,
+  identity cuts the resolved person down to the token's reach
+  (`apply_reach`); `access::granted` gives no role outside it, so a public
+  repository elsewhere still reads and nothing more.
+- **Governance** (`token_policies`, `token_workspace_revocations`): per
+  workspace, allow classic, allow fine-grained, require approval (on by
+  default, as GitHub's; owners' own tokens never wait), the longest
+  lifetime, and forbidding tokens that never expire. Owners see every
+  member's token that can reach the workspace, approve or deny pending
+  fine-grained ones (inbox: `token.approval_requested` and
+  `token.approval_reviewed`, the inbox's first notices about no
+  repository), and revoke one there. REST and MCP for owners; audited as
+  `token.*`.
+- **Workflow files** need `workflow_files:write` (GitHub's `workflow`
+  scope; the `workflows` permission) from any token, checked commit by
+  commit on push (`services/repos/src/workflow_gate.rs`) and on files g1t
+  writes for a token. A job's token never has it. g1t's agents push with
+  run credentials, not tokens, and are not gated by it; their work arrives
+  as pull requests people review.
+- **Workspace tokens** have Write unless an owner gives Admin at creation.
+- **Deploy keys** (identity/0035): per repository, read-only unless write
+  is ticked; resolved to a principal bound to the one repository.
+  Serving git over SSH is still to come, so nothing uses them yet.
+- **Packages**: per-package roles with "inherit access from the linked
+  repository", "Manage Actions access" enforced against job tokens, linking
+  by `org.opencontainers.image.source`, 30-day soft delete with restore and
+  a purge, a settings tab, public REST and MCP, and download counts per
+  version in every registry.
 
 ### Keeping workflow runs safe (built 2026-10-08)
 
@@ -1758,7 +1814,8 @@ Earlier items still open, after those:
 
 1. Deleting a branch once its pull request merges; risk tiers. (Approval
    rules per path are in, as CODEOWNERS.)
-2. Scopes on OAuth grants and access tokens.
+2. Scopes on OAuth grants and access tokens. (Done, with fine-grained
+   tokens and workspace rules for them, 2026-10-08.)
 3. Event storage per the design above: per-repo hot log, Iceberg on R2,
    hash-chained audit.
 4. CLI with Claude Code hooks to record sessions automatically.

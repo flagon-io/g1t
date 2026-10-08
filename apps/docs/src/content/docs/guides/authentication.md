@@ -1,6 +1,6 @@
 ---
 title: Accounts and authentication
-description: Accounts, invites, email addresses, confirming them, personal access tokens and their scopes, OAuth, signing in from a tool, password reset and your security log.
+description: Accounts, invites, email addresses, confirming them, fine-grained and classic personal access tokens, scopes and permissions, a workspace's rules for tokens, OAuth, signing in from a tool, password reset and your security log.
 ---
 
 ## Creating an account
@@ -27,7 +27,7 @@ under **Your settings**; the sidebar then lists every page.
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
 | Invites | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites](#invites). |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
-| Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens). |
+| Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): fine-grained and classic. |
 | GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
 | Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
 | Security log | [`/settings/security-log`](https://g1t.sh/settings/security-log) | [What happened to your account](#security-log). |
@@ -278,18 +278,131 @@ A token is shown once, when it is created; g1t stores only a hash of it.
 If you lose one, delete it and create another. Delete a token the moment
 you think someone else has seen it.
 
-A token reaches everything you can reach, and its [scopes](#scopes) say
-what it may do there. Give each token only the scopes the thing using it
-needs.
+There are two kinds of personal access token, on two tabs of
+[Settings → Access tokens](https://g1t.sh/settings/tokens):
+
+| | Fine-grained token | Classic token |
+| --- | --- | --- |
+| Reaches | One resource owner: one workspace you belong to, or your own account | Every workspace and repository you can reach, including ones you join later |
+| Repositories | All of the workspace's, the ones you choose (up to 50), or public ones only | All you can reach |
+| What it may do | A level for each [permission](#permissions) | Its [scopes](#scopes) |
+| Expires | Always, within 366 days | 7 days to 1 year, or never |
+| A workspace can | Require an owner's approval first, or keep them out | Keep them out |
+
+Both never do more than you could on the website, and both are sent the
+same way. Prefer a fine-grained token: it reaches only what it needs.
 
 For CI and integrations that work for a team, a workspace can have tokens
 of its own that act as the workspace and keep working when their creator
 leaves. See [workspace tokens](#workspace-tokens).
 
-### Create a token
+### Create a fine-grained token
 
-1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens).
-2. Under **New token**, give it a **Name** after what will use it.
+1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens). The
+   **Fine-grained tokens** tab is first.
+2. Under **New fine-grained token**, give it a **Token name** after what
+   will use it, and optionally a **Description**, which a workspace's
+   owners see if they review it.
+3. Choose the **Resource owner**: a workspace you belong to, or **Your
+   account**. A workspace that does not allow fine-grained tokens cannot be
+   chosen.
+4. Choose its **Expiration**: 7, 30, 60, 90 or 180 days, or 1 year, or
+   less when the workspace sets a shorter limit.
+5. Under **Repository access**, choose **Public repositories** (read-only),
+   **All repositories** of the workspace (including ones made later), or
+   **Only select repositories**, and tick up to 50.
+6. Under **Permissions**, set each one the token needs to **Read-only** or
+   **Read and write** (and **Admin** for packages). **Metadata** is always
+   read-only. Each row shows the g1t scopes its level gives.
+7. Select **Generate token**, and copy it. It is not shown again.
+
+When the workspace [requires approval](#a-workspaces-rules-for-tokens) and
+you are not one of its owners, the token is made **Pending approval**: it
+works at once, but reads public repositories only until an owner approves
+it. The owners hear of it in their [inbox](/guides/inbox/), and you hear of
+their answer in yours. An owner's own token never waits.
+
+Select **Edit** on a token to change its name, description, repositories
+or permissions. The token stays the same. Widening it in a workspace that
+requires approval asks again. Its resource owner and expiry cannot change;
+make a new token instead.
+
+The list shows each token's status (pending, denied or revoked, with the
+owner's note), what it reaches, its permissions, and when it was made, last
+used and expires.
+
+### Permissions
+
+Each level of a fine-grained token's permissions gives g1t
+[scopes](#scopes), and the token is checked by those scopes
+exactly as a classic token is. Where two permissions give the same scopes
+(Checks and Commit statuses; Secrets and Variables; Deployments and Pages),
+giving either gives both.
+
+Repository permissions, for a workspace as the resource owner:
+
+| Permission | Levels | What it covers | g1t scopes it gives |
+| --- | --- | --- | --- |
+| `actions` (Actions) | read, write | Workflow runs, jobs, logs and artifacts: reading them, and running, cancelling and rerunning workflows | read: `workflows:read`; write: `workflows:write` |
+| `administration` (Administration) | read, write | Repository settings, rulesets, who has access and deploy keys; renaming, archiving, transferring and deleting | read: `repo:read`, `access:read`; write: `repo:admin`, `access:admin` |
+| `agents` (g1t agents) | write | Putting g1t's agents to work and messaging them, which uses the workspace's money | write: `agents:run` |
+| `checks` (Checks) | read, write | Check runs and check suites on commits. Shares its scopes with Commit statuses | read: `checks:read`; write: `checks:write` |
+| `contents` (Contents) | read, write | Code, branches, commits and releases: cloning and fetching, pushing, and publishing releases | read: `code:read`; write: `code:write`, `repo:write` |
+| `deployments` (Deployments) | read, write | Deployments and their statuses | read: `deployments:read`; write: `deployments:write` |
+| `environments` (Environments) | read, write | Environments, and their secrets and variables | read: `deployments:read`, `secrets:read`; write: `secrets:admin` |
+| `issues` (Issues) | read, write | Issues, their comments, labels and milestones, and plans | read: `issues:read`; write: `issues:write` |
+| `memory` (Memory and context) | read, write | Recalling memory and searching the workspace's context, and saving memory for the next agent | read: `memory:read`; write: `memory:write` |
+| `metadata` (Metadata) | read | Seeing repositories and searching them. Always read | read: `repo:read` |
+| `packages` (Packages) | read, write, admin | Pulling private packages, publishing them, and (admin) deleting packages and versions | read: `packages:read`; write: `packages:write`; admin: `packages:delete` |
+| `pages` (Pages) | read, write | Deployments on g1t.page. Shares its scopes with Deployments | read: `deployments:read`; write: `deployments:write` |
+| `pull_requests` (Pull requests) | read, write | Pull requests, their reviews, changes, sessions and merge queues | read: `pull_requests:read`; write: `pull_requests:write` |
+| `secrets` (Secrets) | read, write | Actions secrets: listing them (never their values), setting and deleting them. Shares its scopes with Variables | read: `secrets:read`; write: `secrets:admin` |
+| `security_events` (Security events and alerts) | read, write | Code scanning, secret scanning and vulnerability alerts, SARIF uploads and security settings | read: `security:read`; write: `security:write` |
+| `statuses` (Commit statuses) | read, write | Statuses on commits. Shares its scopes with Checks | read: `checks:read`; write: `checks:write` |
+| `variables` (Variables) | read, write | Actions variables: reading, setting and deleting them. Shares its scopes with Secrets | read: `secrets:read`; write: `secrets:admin` |
+| `webhooks` (Webhooks) | read, write | Webhooks and their deliveries | read: `webhooks:read`; write: `webhooks:admin` |
+| `workflows` (Workflows) | write | Adding, changing and deleting workflow files under .g1t/workflows and .github/workflows. Write only | write: `workflow_files:write` |
+
+Workspace permissions, for a workspace as the resource owner:
+
+| Permission | Levels | What it covers | g1t scopes it gives |
+| --- | --- | --- | --- |
+| `members` (Members) | read, write | The workspace's people, invitations and teams | read: `workspace:read`; write: `workspace:admin` |
+| `workspace_administration` (Administration) | read, write | The workspace's settings, integrations, rulesets and base permission | read: `workspace:read`, `access:read`; write: `workspace:admin`, `access:admin` |
+| `workspace_billing` (Billing) | read, write | Usage, budget, AI credit and invoices, and (write) changing the budget and buying credit | read: `billing:read`; write: `billing:write` |
+| `models` (AI Gateway) | read, write | AI Gateway requests: seeing them, and sending requests, which uses the workspace's AI credit | read: `models:read`; write: `models:write` |
+| `self_hosted_runners` (Self-hosted runners) | read, write | Runners, their groups and settings | read: `runners:read`; write: `runners:admin` |
+| `workspace_secrets` (Secrets) | read, write | The workspace's Actions secrets. Shares its scopes with the repository Secrets permission | read: `secrets:read`; write: `secrets:admin` |
+| `workspace_webhooks` (Webhooks) | read, write | The workspace's webhooks. Shares its scopes with the repository Webhooks permission | read: `webhooks:read`; write: `webhooks:admin` |
+
+Account permissions, for your own account as the resource owner:
+
+| Permission | Levels | What it covers | g1t scopes it gives |
+| --- | --- | --- | --- |
+| `email_addresses` (Email addresses) | read, write | Your email addresses and email settings, invites and invitations | read: `account:read`; write: `account:write` |
+| `starring` (Starring) | read, write | Stars and pinned projects. Shares its scopes with Email addresses | read: `account:read`; write: `account:write` |
+| `notifications` (Notifications) | read, write | Your inbox, subscriptions and watched repositories | read: `notifications:read`; write: `notifications:write` |
+
+### What a fine-grained token reaches
+
+- **In its workspace**, what your role allows, in the repositories it
+  reaches, and only what its permissions give.
+- **Elsewhere**, public repositories, read-only, as anyone can. It cannot
+  comment, open issues or push there.
+- **With your account as its resource owner**, public repositories,
+  read-only, and what its account permissions give.
+- **While pending, denied or revoked**, public repositories, read-only.
+
+A request it cannot make answers `403` naming why: the scope it lacks, or
+`This fine-grained token's resource owner is the workspace acme: it can only
+read public repositories elsewhere, …`. A repository outside its selection
+answers as if it did not exist.
+
+### Create a classic token
+
+1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens), and
+   select the **Tokens (classic)** tab.
+2. Under **New classic token**, give it a **Name** after what will use it.
 3. Choose when it **Expires**: 7 days, 30 days, 90 days (the default),
    1 year, or No expiry. An expired token stops working; make a new one.
    No expiry shows a warning: the token works until someone deletes it.
@@ -303,6 +416,12 @@ expires, and its access: a preset's name, its scopes, or Full access. To
 change what a token may do, select **Edit access**, tick or untick boxes,
 and select **Save access**. The token stays the same; the change applies
 from its next request.
+
+A classic token reaches every workspace you belong to unless the
+workspace's [rules](#a-workspaces-rules-for-tokens) keep it out: one that
+does not allow classic tokens, one whose longest lifetime this token
+exceeds, or one whose owner revoked it there. It keeps working everywhere
+else.
 
 ## Scopes
 
@@ -320,7 +439,7 @@ On the form, scopes are a checklist grouped by area:
 | Packages | `packages:read`, `packages:write` |
 | Issues & pull requests | `issues:read`, `issues:write`, `pull_requests:read`, `pull_requests:write` |
 | Agents | `agents:run` |
-| Workflows | `workflows:read`, `workflows:write` |
+| Workflows | `workflows:read`, `workflows:write`, `workflow_files:write` |
 | Checks | `checks:read`, `checks:write` |
 | Deployments | `deployments:read`, `deployments:write` |
 | Memory & search | `memory:read`, `memory:write` |
@@ -356,6 +475,7 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `agents:run` | Put g1t to work and message it, which uses the workspace's money |
 | `workflows:read` | Read workflows, runs and logs |
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
+| `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset but full access. |
 | `checks:read` | Read commits' statuses, check runs, check suites and annotations |
 | `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
 | `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
@@ -395,18 +515,20 @@ what they ask:
 
 ### What a token can do
 
-What a request may do is where two things overlap:
+What a request may do is where these overlap:
 
-1. **Your role.** A token reaches every workspace and repository you can,
-   including ones you join later, and never does more there than you could
-   on the website. A token with `repo:admin` still cannot delete a
-   repository unless you are an owner of its workspace. See
-   [access and roles](/guides/access-and-roles/).
-2. **Its scopes.** What kinds of thing it may do.
+1. **Your role.** A token never does more than you could on the website. A
+   token with `repo:admin` still cannot delete a repository unless you are
+   an owner of its workspace. See [access and roles](/guides/access-and-roles/).
+2. **What it reaches.** A classic token, every workspace and repository you
+   can reach, including ones you join later, unless a workspace's
+   [rules](#a-workspaces-rules-for-tokens) keep it out. A fine-grained
+   token, its [resource owner](#what-a-fine-grained-token-reaches) only.
+3. **Its scopes.** What kinds of thing it may do: chosen directly on a
+   classic token, given by its permissions on a fine-grained one.
 
-To keep a token away from a workspace, use a
-[workspace token](#workspace-tokens) instead: it reaches only its own
-workspace.
+To keep a token away from other workspaces, make a fine-grained one, or use
+a [workspace token](#workspace-tokens): it reaches only its own workspace.
 
 ### Presets
 
@@ -433,9 +555,38 @@ Over HTTPS, git checks the same token:
 | Clone or fetch a public repository | No scope |
 | Clone or fetch a private repository | `code:read` |
 | Push | `code:write` |
+| Push commits that add, change or delete [workflow files](#workflow-files) | `code:write` and `workflow_files:write` |
 
 Your role on the repository applies too, as on the website. A refused push
 or clone says which scope is missing.
+
+### Workflow files
+
+A workflow runs with its repository's secrets and a token of its own, so
+changing one is as powerful as holding those. A token therefore needs
+`workflow_files:write` (a fine-grained token's **Workflows** permission) to
+add, change or delete any file under `.g1t/workflows/` or
+`.github/workflows/`, besides `code:write`:
+
+- **With git**, every commit a push adds is compared with its parent, and a
+  push that changes a workflow file is declined, naming it:
+
+  ```text
+  remote: This access token cannot change the workflow file .github/workflows/ci.yml: it needs the workflow_files:write scope.
+  remote: Push with a token that has the workflow_files:write scope, or make the change signed in on g1t.sh.
+  ```
+
+  A push too large for g1t to read whole is declined for such a token too,
+  since it cannot be checked; push it in smaller parts.
+- **Through g1t**, a file written for a token (such as a starter workflow)
+  is refused the same way.
+- **A workflow job's token** never may, whatever its `permissions:` say.
+  See [the job's token](/guides/actions/#the-jobs-token).
+- **Signed in on g1t.sh**, your role decides, as for any file.
+
+Full-access tokens, and tokens made before scopes, include it. A
+[deploy key](/guides/git/#deploy-keys) with write access may change
+workflow files.
 
 ### When a token lacks a scope
 
@@ -473,8 +624,65 @@ A workspace's own tokens act as the workspace rather than a person. An
 owner makes them in the workspace's **Settings → Access tokens**, with the
 same checklist and expiry choices; the form starts on the CI preset. A
 workspace token reaches all of that workspace's repositories, never
-another workspace, and cannot manage people, tokens or workspaces. See
+another workspace, and cannot manage people, tokens or workspaces.
+
+It has the Write role on the workspace's repositories, as a member does:
+it pushes, merges and works on issues and pull requests, within its scopes.
+Tick **Admin on the workspace's repositories** when making it to give it
+Admin instead, so it can also manage webhooks, secrets, deploy keys and who
+has access, and manage teams as an owner would. Only an owner can, and only
+when making it. See
 [workspace access tokens](/guides/workspaces/#workspace-access-tokens).
+
+## A workspace's rules for tokens
+
+An owner decides which of the members' own personal tokens reach the
+workspace, under its **Settings → Personal access tokens**
+(`g1t.sh/<workspace>/-/personal-access-tokens`). The rules apply from each
+token's next request, to tokens made before them too. A token they keep out
+keeps working everywhere else, and reads the workspace's public
+repositories as anyone can.
+
+| Rule | Default | What it does |
+| --- | --- | --- |
+| Allow fine-grained personal access tokens | On | Off: no fine-grained token can name the workspace as its resource owner, and existing ones stop reaching it. |
+| Require approval of fine-grained tokens | On | A member's fine-grained token naming the workspace waits for an owner's approval, and again when it is widened. Owners' own tokens never wait. |
+| Allow classic personal access tokens | On | Off: classic tokens no longer reach the workspace. |
+| Tokens must expire | Off | On: a token that never expires does not reach the workspace. |
+| Longest lifetime | No limit | A token that lasts longer (from when it was made to when it expires), or never expires, does not reach the workspace. Fine-grained tokens for it cannot be made longer. |
+
+The same page lists:
+
+- **Waiting for approval.** Each pending fine-grained token with its owner,
+  permissions, repositories and expiry. Add an optional note, then select
+  **Approve** or **Deny**. Its owner hears of it in their inbox, with the
+  note.
+- **Tokens that can reach the workspace.** Every fine-grained token naming
+  it, and every classic token of its members and outside collaborators that
+  has not expired, with its owner, permissions or scopes, last use and
+  expiry, and whether it reaches the workspace now (and if not, why). Never
+  the token itself. Select **Revoke** to take one out: a fine-grained token
+  stops reaching the workspace for good; a classic token keeps working
+  everywhere else, but never reaches this workspace again.
+
+Approvals, denials, revocations and rule changes are
+[audit log](/guides/audit-log/) entries: `token.approval_requested`,
+`token.approved`, `token.denied`, `token.revoked` and
+`token.policy_changed`.
+
+### A workspace's rules through the API
+
+Owners, as people (a personal token with the scope works; a workspace's own
+token does not):
+
+| Route | MCP tool and action | What it does | Scope |
+| --- | --- | --- | --- |
+| [`GET /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/get-token-policy/) | `workspace` `get_token_policy` | The rules. Members may read them. | `workspace:read` |
+| [`PATCH /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/set-token-policy/) | `workspace` `set_token_policy` | Change `allow_classic`, `allow_fine_grained`, `require_approval`, `max_lifetime_days` (0 for no limit) or `forbid_no_expiry` | `workspace:admin` |
+| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | `workspace` `list_member_tokens` | The tokens that can reach it; `kind` is `classic` or `fine_grained` | `access:read` |
+| [`GET /workspaces/{workspace}/personal-access-token-requests`](/reference/api/personal-access-tokens/list-token-requests/) | `workspace` `list_token_requests` | The fine-grained tokens waiting for approval | `access:read` |
+| [`POST /workspaces/{workspace}/personal-access-token-requests/{id}`](/reference/api/personal-access-tokens/review-token-request/) | `workspace` `review_token_request` | `decision` is `approve` or `deny`, with an optional `reason` | `access:admin` |
+| [`POST /workspaces/{workspace}/personal-access-tokens/{id}`](/reference/api/personal-access-tokens/revoke-member-token/) | `workspace` `revoke_member_token` | Revoke a token in the workspace, with an optional `reason` | `access:admin` |
 
 ## Signing in with OAuth
 
@@ -562,7 +770,7 @@ can delete it.
 
 Only approve a code you asked for. The token has full access: it can do
 everything you can. To give a tool less, make an
-[access token](#create-a-token) with only the scopes it needs instead.
+[access token](#create-a-fine-grained-token) with only the scopes it needs instead.
 
 ## Resetting your password
 

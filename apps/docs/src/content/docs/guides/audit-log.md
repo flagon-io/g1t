@@ -32,6 +32,9 @@ Every workspace keeps an audit log. It records:
 | `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
 | `repo.deploy_key_added`, `repo.deploy_key_removed` | A [deploy key](/guides/git/#deploy-keys) was added to it, saying whether it may write, or deleted. |
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
+| `token.policy_changed` | An owner changed the workspace's [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens). |
+| `token.approval_requested`, `token.approved`, `token.denied` | A member's fine-grained token asked to reach the workspace, and an owner approved or denied it, with their note. |
+| `token.revoked` | An owner revoked a member's token in the workspace, with their note. |
 | `workspace.team_creation_changed` | An owner changed who can create teams. See [who can create teams](/guides/teams/#who-can-create-teams). |
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. |
 | `team.member_added`, `team.member_role_changed`, `team.member_removed` | Someone was added to a team, made its maintainer or a member, or taken out of it. |

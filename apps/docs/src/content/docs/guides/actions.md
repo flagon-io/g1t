@@ -806,6 +806,18 @@ jobs:
 none, so the token cannot even clone a private repository. A reusable
 workflow's jobs get no more than the job that calls it.
 
+There is no `workflows` permission for a job's token: it can never add,
+change or delete a file under `.g1t/workflows/` or `.github/workflows/`,
+even with `contents: write`. A push that does is declined, naming the file,
+so a workflow cannot rewrite the workflows that run with its repository's
+secrets. To change workflows from a job, push with a
+[fine-grained token](/guides/authentication/#workflow-files) that has the
+Workflows permission, kept as a secret.
+
+The job's token is the repository's workspace acting with the Write role
+at most, never Admin: it cannot manage webhooks, secrets, deploy keys or who
+has access, whatever it asks for.
+
 **Without `permissions:`** a job gets the repository's default, which
 someone with the Admin role sets under **Settings → Actions**:
 

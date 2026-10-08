@@ -509,9 +509,9 @@ for or lose the password to.
 | --- | --- | --- |
 | Belongs to | You | The workspace |
 | Acts as | You | The workspace: its name is the author of what it does |
-| Can reach | Every workspace you belong to | That workspace only |
-| Can do | What its [scopes](/guides/authentication/#scopes) allow, never more than you can | What its scopes allow, on the workspace's repositories; it cannot manage people, tokens or workspaces |
-| Expires | 7, 30 or 90 days (the default), 1 year, or never | The same choices |
+| Can reach | A classic token, every workspace you belong to; a fine-grained one, the one it names | That workspace only |
+| Can do | What its [scopes](/guides/authentication/#scopes) or permissions allow, never more than you can | What its scopes allow, with Write on the workspace's repositories (Admin only when an owner gives it that); it cannot manage people, tokens or workspaces |
+| Expires | A classic token: 7, 30 or 90 days (the default), 1 year, or never. A fine-grained one: within a year | 7, 30 or 90 days, 1 year, or never |
 | When its creator leaves | Stops working | Keeps working |
 | Created by | You, in [Settings → Access tokens](https://g1t.sh/settings/tokens) | An owner, under the workspace's **Settings → Access tokens** |
 
@@ -523,8 +523,15 @@ username works; the token is the password. `GET /user` answers with
 Every member can see a workspace's tokens: the name, who created each,
 when it was last used and when it expires. Only owners can create or
 delete them. An owner creates one with a name, an expiry (No expiry shows
-a warning) and the same scope checklist as a personal token, starting on
-the CI preset.
+a warning) and the same scope checklist as a classic personal token,
+starting on the CI preset. Each token shows **Write** or **Admin**: tick
+**Admin on the workspace's repositories** when making it to let it manage
+webhooks, secrets, deploy keys and who has access, and teams as an owner
+would. A token made before this choice existed has Write.
+
+Which of your members' own personal tokens reach the workspace is set under
+**Settings → Personal access tokens**; see
+[a workspace's rules for tokens](/guides/authentication/#a-workspaces-rules-for-tokens).
 
 ## Profiles
 
