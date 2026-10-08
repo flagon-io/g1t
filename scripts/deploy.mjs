@@ -124,7 +124,11 @@ function writeGithubOutputs(data, p) {
     const include = jobs.length ? jobs : [{ group: "none", units: "" }];
     lines.push(`has_${stage}=${jobs.length > 0}`, `${stage}=${JSON.stringify({ include })}`);
   }
-  if (data.migration_errors.length) throw new Error(`Could not read pending migrations: ${data.migration_errors.map((e) => e.unit).join(", ")}`);
+  if (data.migration_errors.length) {
+    // The units, then why for the first: one cause (a token, say) is usually all of them.
+    throw new Error(`Could not read pending migrations: ${data.migration_errors.map((e) => e.unit).join(", ")}
+${data.migration_errors[0].error}`);
+  }
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
   else console.log(lines.join("\n"));
   if (process.env.GITHUB_STEP_SUMMARY) {
