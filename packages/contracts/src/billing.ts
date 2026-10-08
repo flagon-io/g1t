@@ -1176,16 +1176,40 @@ export type TokenUsage = {
 
 /** A model the AI Gateway offers on g1t's key, with its prices per million tokens. */
 export type GatewayModel = {
-  /** The id a request names, such as `claude-sonnet-5-5`. */
+  /**
+   * The provider's own id, such as `claude-sonnet-5-5` or
+   * `@cf/openai/gpt-oss-120b`. A request names it as it is or with its
+   * provider in front (`anthropic/claude-sonnet-5-5`).
+   */
   model: string;
   /** For people: `Claude Sonnet 5.5`. */
   name: string;
+  /** `anthropic` or `workers-ai`. */
   provider: string;
+  /** `chat`, or `embeddings` for a model that only embeds text. */
+  kind?: "chat" | "embeddings";
   inputMicros: number;
   outputMicros: number;
   cacheReadMicros: number;
+  /** Cache writes that live five minutes. */
   cacheWriteMicros: number;
+  /** Cache writes that live an hour. */
+  cacheWrite1hMicros?: number;
+  /**
+   * Priced by the prompt's length: a request whose prompt (input, cache
+   * read and cache write tokens) is longer than this is charged entirely at
+   * the `over` prices. 0 or absent for one price.
+   */
+  threshold?: number;
+  overInputMicros?: number;
+  overOutputMicros?: number;
+  overCacheReadMicros?: number;
+  overCacheWriteMicros?: number;
+  overCacheWrite1hMicros?: number;
 };
+
+/** The format a gateway request was sent in. */
+export type GatewayFormat = "anthropic" | "openai";
 
 /** One AI Gateway request, as the model proxy reports it to billing. */
 export type GatewayRecord = {
@@ -1198,11 +1222,23 @@ export type GatewayRecord = {
   input: number;
   output: number;
   cacheRead: number;
+  /** Every cache write, of either lifetime. */
   cacheWrite: number;
+  /** Of `cacheWrite`, those that live an hour. */
+  cacheWriteHour?: number;
   /** The HTTP status the caller was answered with. */
   status: number;
   /** On the workspace's own provider key: counted, never charged. */
   ownKey: boolean;
+  format: GatewayFormat;
+  /**
+   * Who served it: `anthropic` or `workers-ai` on g1t's key, the
+   * connection's provider on the workspace's own. Empty when it never got
+   * that far.
+   */
+  provider: string;
+  /** On the workspace's own provider: the connection's name. */
+  connection?: string | null;
   streamed: boolean;
   durationMs: number;
   error?: string | null;
@@ -1219,12 +1255,19 @@ export type GatewayRequest = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** Of `cacheWrite`, those that live an hour. */
+  cacheWriteHour: number;
   /** What the tokens cost at the model's price. */
   costMicros: number;
   /** What the workspace was charged, before included usage and credit paid for it; 0 on its own key. */
   chargedMicros: number;
   status: number;
   ownKey: boolean;
+  format: GatewayFormat;
+  /** `anthropic` or `workers-ai` on g1t's key; the connection's provider on the workspace's own. */
+  provider: string;
+  /** On the workspace's own provider: the connection's name. */
+  connection: string | null;
   streamed: boolean;
   durationMs: number;
   error: string | null;

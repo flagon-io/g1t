@@ -169,6 +169,7 @@ pub enum Op {
     ListEvents,
     ListIntegrations,
     ConnectIntegration,
+    UpdateIntegration,
     DisconnectIntegration,
     TestIntegration,
     GetContext,
@@ -629,7 +630,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 219] = [
+    pub const ALL: [Op; 220] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -711,6 +712,7 @@ impl Op {
         Op::ListEvents,
         Op::ListIntegrations,
         Op::ConnectIntegration,
+        Op::UpdateIntegration,
         Op::DisconnectIntegration,
         Op::TestIntegration,
         Op::GetContext,
@@ -939,6 +941,7 @@ impl Op {
             Op::ListEvents => "list_events",
             Op::ListIntegrations => "list_integrations",
             Op::ConnectIntegration => "connect_integration",
+            Op::UpdateIntegration => "update_integration",
             Op::DisconnectIntegration => "disconnect_integration",
             Op::TestIntegration => "test_integration",
             Op::GetContext => "get_context",
@@ -1267,7 +1270,10 @@ impl Op {
                 "A workspace's integrations: its own model provider, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
             }
             Op::ConnectIntegration => {
-                "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only."
+                "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). For a model provider, config.gateway_models chooses which AI Gateway requests go to it by the model they name: ids such as gpt-5.5, or prefixes ending in * such as gpt-* or ollama/* (a /* prefix is taken off before sending); absent, an Anthropic key or Anthropic-compatible endpoint takes claude-* and the others take nothing. Requests on the workspace's own provider are counted and never charged. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only."
+            }
+            Op::UpdateIntegration => {
+                "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a model provider's key or to choose its config.gateway_models, the AI Gateway models it takes. Fields left out are kept. Secrets are never returned. Owners only."
             }
             Op::DisconnectIntegration => {
                 "Remove an integration and its secrets. Agents already running on a model provider being removed stop reaching it. Owners only."
@@ -1517,7 +1523,7 @@ impl Op {
                 "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Tax is worked out from the address: `tax_location` says whether it is enough for that (a country, and in the US a ZIP code), `tax_address_needed_at` is set while g1t is holding a charge for want of one, `tax_id_status` is Stripe's check of the tax ID (`pending`, `verified`, `unverified` or `unavailable`), and `tax_exempt` is `none`, `exempt` or `reverse`. Members of the workspace only."
             }
             Op::ListGatewayRequests => {
-                "A workspace's recent AI Gateway requests, newest first: each with its `id`, `created_at`, `model`, the access token that sent it (`token_id`, `token_name`), its tokens by kind (`input`, `output`, `cache_read`, `cache_write`), what they cost at the model's price (`cost_micros`) and what the workspace was charged (`charged_micros`, before included usage and AI credit paid for it; 0 on the workspace's own provider key, `own_key`), the HTTP `status` it was answered with, whether it was `streamed`, `duration_ms`, and `error` for one that was refused or failed. Prompts and answers are never kept. `limit` is how many, 50 unless given and 200 at most; pass `next` from one page as `before` for the next. Requests are kept `retention_days` (30). Members of the workspace only."
+                "A workspace's recent AI Gateway requests, newest first: each with its `id`, `created_at`, `model`, the access token that sent it (`token_id`, `token_name`), its tokens by kind (`input`, `output`, `cache_read`, `cache_write`, and of those writes `cache_write_hour` to the hour-long cache), the `format` it was sent in (`anthropic` or `openai`), who served it (`provider`: `anthropic` or `workers-ai` on g1t's account, the connection's provider on the workspace's own, and `connection`, that connection's name), what they cost at the model's price (`cost_micros`) and what the workspace was charged (`charged_micros`, before included usage and AI credit paid for it; 0 on the workspace's own provider key, `own_key`), the HTTP `status` it was answered with, whether it was `streamed`, `duration_ms`, and `error` for one that was refused or failed. Prompts and answers are never kept. `limit` is how many, 50 unless given and 200 at most; pass `next` from one page as `before` for the next. Requests are kept `retention_days` (30). Members of the workspace only."
             }
             Op::ListUserTeams => {
                 "The teams someone is in within a workspace, as list_teams describes them, leaving out secret teams you cannot see. Members of the workspace only."
@@ -2260,12 +2266,26 @@ impl Op {
                     "name": { "type": "string", "description": "What to call it. The provider's name if left out." },
                     "config": {
                         "type": "object",
-                        "description": "Settings. repo (owner/name) is where alerts open issues; assign puts an agent on each; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. base_url and auth_header (x-api-key or authorization) are for your own endpoint; model overrides the model for every kind of work. write_back (default true) tells the outside system when the work lands.",
+                        "description": "Settings. repo (owner/name) is where alerts open issues; assign puts an agent on each; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. base_url and auth_header (x-api-key or authorization) are for your own endpoint; model overrides the model for every kind of work; gateway_models (model ids, or prefixes ending in * such as gpt-* or ollama/*) chooses which AI Gateway requests go to a model provider. write_back (default true) tells the outside system when the work lands.",
                     },
-                    "secret": { "type": "string", "description": "The API key or token g1t uses to call it." },
+                    "secret": { "type": "string", "description": "The API key or token g1t uses to call it. Write-only: kept encrypted, never returned." },
                     "signing_secret": { "type": "string", "description": "For sentry: the integration's client secret." },
                 }),
                 &["workspace", "provider"],
+            ),
+            Op::UpdateIntegration => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "id": { "type": "string", "description": "The integration's id." },
+                    "name": { "type": "string", "description": "A new name." },
+                    "config": {
+                        "type": "object",
+                        "description": "Its settings, replaced whole: the same fields as connect_integration's config. For a model provider, gateway_models chooses the AI Gateway models it takes.",
+                    },
+                    "secret": { "type": "string", "description": "A new API key or token, replacing the old one. Write-only: kept encrypted, never returned." },
+                    "signing_secret": { "type": "string", "description": "For sentry: a new client secret." },
+                }),
+                &["workspace", "id"],
             ),
             Op::GetModelRoutes => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::ListWebhooks => object(hook_owner(json!({})), &[]),
@@ -2910,6 +2930,7 @@ impl Op {
                 | Op::CreateRepo
                 | Op::ListIntegrations
                 | Op::ConnectIntegration
+                | Op::UpdateIntegration
                 | Op::DisconnectIntegration
                 | Op::TestIntegration
                 | Op::GetModelRoutes
@@ -4088,6 +4109,26 @@ impl Op {
                         "provider": provider,
                         "name": optional_text(input, "name"),
                         "config": camel_keys(&input["config"]),
+                        "secret": optional_text(input, "secret"),
+                        "signingSecret": optional_text(input, "signing_secret"),
+                    }),
+                )
+                .await
+            }
+            Op::UpdateIntegration => {
+                let config = match &input["config"] {
+                    Value::Null => Value::Null,
+                    config => camel_keys(config),
+                };
+                pass(
+                    integrations,
+                    "update",
+                    &json!({
+                        "actor": actor(),
+                        "workspace": workspace(),
+                        "id": text(input, "id"),
+                        "name": optional_text(input, "name"),
+                        "config": config,
                         "secret": optional_text(input, "secret"),
                         "signingSecret": optional_text(input, "signing_secret"),
                     }),

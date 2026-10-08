@@ -334,6 +334,7 @@ pub const NEVER: &[&str] = &[
     "import_issue",
     "list_integrations",
     "connect_integration",
+    "update_integration",
     "disconnect_integration",
     "test_integration",
     "get_model_routes",

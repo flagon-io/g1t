@@ -208,6 +208,7 @@ token (a workspace token or an agent cannot):
 | --- | --- |
 | `workspace` `list_integrations` | `GET /workspaces/{workspace}/integrations` |
 | `workspace` `connect_integration` | `POST /workspaces/{workspace}/integrations` |
+| `workspace` `update_integration` | `PATCH /workspaces/{workspace}/integrations/{id}` |
 | `workspace` `test_integration` | `POST /workspaces/{workspace}/integrations/{id}/test` |
 | `workspace` `disconnect_integration` | `DELETE /workspaces/{workspace}/integrations/{id}` |
 | `search` `ticket` | `GET /repos/{owner}/{name}/context?reference=` |

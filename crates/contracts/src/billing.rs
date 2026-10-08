@@ -481,7 +481,9 @@ pub struct TokenUsage {
 // --- AI Gateway -------------------------------------------------------------
 //
 // A workspace's own model requests, sent with one of its access tokens to
-// the model proxy (`models.g1t.sh/anthropic`). On g1t's models each request
+// the model proxy (`models.g1t.sh/anthropic` in Anthropic's Messages format,
+// `models.g1t.sh/openai/v1` in OpenAI's Chat Completions format). On g1t's
+// models each request
 // is charged to the workspace at the model's price, with the price book's
 // `gateway_models` markup, drawn from AI credit; on the workspace's own
 // provider key it is only counted.
@@ -492,16 +494,49 @@ pub struct TokenUsage {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GatewayModel {
-    /// The id a request names, such as `claude-sonnet-5-5`.
+    /// The provider's own id, such as `claude-sonnet-5-5` or
+    /// `@cf/openai/gpt-oss-120b`. A request names it as it is or with its
+    /// provider in front (`anthropic/claude-sonnet-5-5`,
+    /// `workers-ai/@cf/openai/gpt-oss-120b`).
     pub model: String,
     /// For people: `Claude Sonnet 5.5`.
     pub name: String,
-    /// `anthropic`.
+    /// `anthropic` or `workers-ai`.
     pub provider: String,
+    /// `chat`, or `embeddings` for a model that only embeds text.
+    #[serde(default = "chat")]
+    pub kind: String,
     pub input_micros: i64,
     pub output_micros: i64,
     pub cache_read_micros: i64,
+    /// Cache writes that live five minutes.
     pub cache_write_micros: i64,
+    /// Cache writes that live an hour.
+    #[serde(default)]
+    pub cache_write_1h_micros: i64,
+    /// A model priced by the prompt's length: a request whose prompt (its
+    /// input, cache read and cache write tokens) is longer than this many
+    /// tokens is charged entirely at the `over_` prices. 0 for one price.
+    #[serde(default)]
+    pub threshold: u64,
+    #[serde(default)]
+    pub over_input_micros: i64,
+    #[serde(default)]
+    pub over_output_micros: i64,
+    #[serde(default)]
+    pub over_cache_read_micros: i64,
+    #[serde(default)]
+    pub over_cache_write_micros: i64,
+    #[serde(default)]
+    pub over_cache_write_1h_micros: i64,
+}
+
+fn chat() -> String {
+    "chat".to_owned()
+}
+
+fn anthropic_format() -> String {
+    "anthropic".to_owned()
 }
 
 /// `gateway_admit`: whether a workspace's next AI Gateway request may go to
@@ -535,13 +570,28 @@ pub struct RecordGatewayArgs {
     pub output: u64,
     #[serde(default)]
     pub cache_read: u64,
+    /// Every cache write, of either lifetime.
     #[serde(default)]
     pub cache_write: u64,
+    /// Of `cache_write`, those that live an hour.
+    #[serde(default)]
+    pub cache_write_hour: u64,
     /// The HTTP status the caller was answered with.
     pub status: u16,
     /// On the workspace's own provider key: counted, never charged.
     #[serde(default)]
     pub own_key: bool,
+    /// The format the request was sent in: `anthropic` or `openai`.
+    #[serde(default = "anthropic_format")]
+    pub format: String,
+    /// Who served it: on g1t's key the catalogue's provider (`anthropic`,
+    /// `workers-ai`); on the workspace's own, its connection's provider
+    /// (`openai`, `openai_endpoint`…). Empty when it never got that far.
+    #[serde(default)]
+    pub provider: String,
+    /// On the workspace's own provider: the connection's name.
+    #[serde(default)]
+    pub connection: Option<String>,
     #[serde(default)]
     pub streamed: bool,
     #[serde(default)]
@@ -579,6 +629,9 @@ pub struct GatewayRequest {
     pub output: u64,
     pub cache_read: u64,
     pub cache_write: u64,
+    /// Of `cache_write`, those that live an hour.
+    #[serde(default)]
+    pub cache_write_hour: u64,
     /// What the tokens cost at the model's price.
     pub cost_micros: i64,
     /// What the workspace was charged for it, before included usage and
@@ -586,6 +639,16 @@ pub struct GatewayRequest {
     pub charged_micros: i64,
     pub status: u16,
     pub own_key: bool,
+    /// `anthropic` or `openai`: the format it was sent in.
+    #[serde(default = "anthropic_format")]
+    pub format: String,
+    /// Who served it: `anthropic` or `workers-ai` on g1t's key, the
+    /// connection's provider on the workspace's own.
+    #[serde(default)]
+    pub provider: String,
+    /// On the workspace's own provider: the connection's name.
+    #[serde(default)]
+    pub connection: Option<String>,
     pub streamed: bool,
     pub duration_ms: u64,
     pub error: Option<String>,

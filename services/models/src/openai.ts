@@ -32,7 +32,18 @@ export type AnthropicRequest = {
   top_p?: number;
   stop_sequences?: string[];
   stream?: boolean;
+  /** Effort, and a JSON schema the answer follows. */
+  output_config?: { effort?: string; format?: { type?: string; schema?: unknown } };
 };
+
+/**
+ * Anthropic's effort as OpenAI's `reasoning_effort`, which stops at `high`.
+ */
+export function reasoningEffort(effort: unknown): string | undefined {
+  if (effort === "low" || effort === "medium" || effort === "high") return effort;
+  if (effort === "xhigh" || effort === "max") return "high";
+  return undefined;
+}
 
 type ChatMessage =
   | { role: "system"; content: string }
@@ -151,6 +162,12 @@ export function toChat(request: AnthropicRequest, model: string, dialect: Dialec
   if (!dialect.official && request.temperature != null) body.temperature = request.temperature;
   if (!dialect.official && request.top_p != null) body.top_p = request.top_p;
   if (request.stop_sequences?.length) body.stop = request.stop_sequences.slice(0, 4);
+  const effort = reasoningEffort(request.output_config?.effort);
+  if (effort) body.reasoning_effort = effort;
+  const format = request.output_config?.format;
+  if (format?.type === "json_schema" && format.schema) {
+    body.response_format = { type: "json_schema", json_schema: { name: "answer", schema: format.schema, strict: true } };
+  }
   // Anthropic's own server tools (web search and the like) have no
   // counterpart; functions do.
   const tools = (request.tools ?? []).filter((tool) => tool.input_schema != null);
@@ -198,7 +215,6 @@ export function fromChat(completion: Json, model: string): Json {
       input: parseArguments(String(fn.arguments ?? "")),
     });
   }
-  const usage = (completion.usage as Json | undefined) ?? {};
   return {
     id: `msg_${String(completion.id ?? crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g, "")}`,
     type: "message",
@@ -207,7 +223,23 @@ export function fromChat(completion: Json, model: string): Json {
     content,
     stop_reason: STOP[String(choice.finish_reason)] ?? "end_turn",
     stop_sequence: null,
-    usage: { input_tokens: Number(usage.prompt_tokens ?? 0), output_tokens: Number(usage.completion_tokens ?? 0) },
+    usage: anthropicUsage(completion.usage as Json | undefined),
+  };
+}
+
+/**
+ * A chat completion's usage as Anthropic counts it: prompt tokens read
+ * from the cache are cache reads, the rest input.
+ */
+export function anthropicUsage(usage: Json | undefined | null): Json {
+  const n = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+  const prompt = n(usage?.prompt_tokens);
+  const details = usage?.prompt_tokens_details as Json | undefined;
+  const cached = Math.min(prompt, n(details?.cached_tokens) || n(usage?.prompt_cache_hit_tokens));
+  return {
+    input_tokens: prompt - cached,
+    output_tokens: n(usage?.completion_tokens),
+    ...(cached ? { cache_read_input_tokens: cached } : {}),
   };
 }
 
@@ -225,8 +257,7 @@ export class StreamTranslator {
   private open: { kind: "text" } | { kind: "tool"; slot: number } | null = null;
   private index = -1;
   private stopReason = "end_turn";
-  private inputTokens = 0;
-  private outputTokens = 0;
+  private usage: Json = { input_tokens: 0, output_tokens: 0 };
   private buffer = "";
   private finished = false;
 
@@ -263,8 +294,7 @@ export class StreamTranslator {
     let out = this.start(String(data.id ?? ""));
     const usage = data.usage as Json | undefined;
     if (usage) {
-      this.inputTokens = Number(usage.prompt_tokens ?? this.inputTokens);
-      this.outputTokens = Number(usage.completion_tokens ?? this.outputTokens);
+      this.usage = anthropicUsage(usage);
     }
     for (const choice of (data.choices as Json[] | undefined) ?? []) {
       const delta = (choice.delta as Json | undefined) ?? {};
@@ -338,7 +368,7 @@ export class StreamTranslator {
       this.close() +
       event("message_delta", {
         delta: { stop_reason: this.stopReason, stop_sequence: null },
-        usage: { input_tokens: this.inputTokens, output_tokens: this.outputTokens },
+        usage: this.usage,
       }) +
       event("message_stop", {})
     );

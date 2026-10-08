@@ -1,5 +1,7 @@
 //! The AI Gateway: a workspace's own model requests, sent with one of its
-//! access tokens to the model proxy at `models.g1t.sh/anthropic`.
+//! access tokens to the model proxy at `models.g1t.sh/anthropic` (Anthropic's
+//! Messages format) or `models.g1t.sh/openai/v1` (OpenAI's Chat Completions
+//! and Embeddings formats).
 //!
 //! - **Admission.** Before a request goes to g1t's models the proxy asks
 //!   `gateway_admit`. A workspace over its spend limit is refused, as one is
@@ -10,16 +12,21 @@
 //!   need nothing more. On the workspace's own provider key nothing is
 //!   asked: those requests cost g1t nothing.
 //! - **Charging.** Each request that used tokens on g1t's models is
-//!   charged its tokens at the model's list price (`gateway_models`), plus
+//!   charged its tokens at the model's list price (`gateway_models`: Claude
+//!   on Anthropic, open models on Workers AI) by kind, five-minute and
+//!   hour-long cache writes apart, and at the long-prompt prices when the
+//!   model is priced by prompt length and the prompt is longer, plus
 //!   the price book's `gateway_models` markup (0 while the gateway is in
 //!   beta), on a ledger line of its own (task `gateway`, one request each).
 //!   The plan's included usage pays first, then AI credit (`grants::replay`
 //!   counts gateway lines as model usage). Not an agent run, so never the
 //!   agent rate, and never trial credit or g1t's pools.
-//! - **On the workspace's own key.** Logged with its tokens and charged
-//!   nothing.
+//! - **On the workspace's own provider.** Any of its model connections (an
+//!   Anthropic or OpenAI key, any compatible endpoint), chosen by the model
+//!   a request names. Logged with its tokens and charged nothing.
 //! - **The log.** Every request is kept for `RETENTION_DAYS`, with its
-//!   model, tokens by kind, cost, status and the token that sent it; never
+//!   model, format, provider, tokens by kind, cost, status and the token
+//!   that sent it; never
 //!   its prompt or answer.
 
 use g1t_contracts::billing::{
@@ -43,10 +50,54 @@ const PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 const DAY_MS: u64 = 86_400_000;
 
-/// What `tokens` (input, output, cache reads, cache writes) cost at a
-/// model's prices per million, rounded up to a whole millionth of a dollar.
-pub(crate) fn cost_micros(model: &GatewayModel, tokens: [u64; 4]) -> i64 {
-    let prices = [model.input_micros, model.output_micros, model.cache_read_micros, model.cache_write_micros];
+/// The tokens of one request, by kind. `cache_write` counts every cache
+/// write; `cache_write_1h` those of them that live an hour.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Used {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub cache_write_1h: u64,
+}
+
+impl Used {
+    /// The prompt's length, which a model priced by it is priced by.
+    pub(crate) fn prompt(&self) -> u64 {
+        self.input + self.cache_read + self.cache_write
+    }
+
+    pub(crate) fn total(&self) -> u64 {
+        self.prompt() + self.output
+    }
+}
+
+/// Whether a request is charged at a model's over-threshold prices: its
+/// prompt is longer than the model's threshold.
+pub(crate) fn over_threshold(model: &GatewayModel, used: &Used) -> bool {
+    model.threshold > 0 && used.prompt() > model.threshold
+}
+
+/// What a request's tokens cost at a model's prices per million, rounded
+/// up to a whole millionth of a dollar. A prompt longer than the model's
+/// threshold puts the whole request at the over-threshold prices.
+pub(crate) fn cost_micros(model: &GatewayModel, used: &Used) -> i64 {
+    let over = over_threshold(model, used);
+    let pick = |base: i64, above: i64| if over { above } else { base };
+    let hour = used.cache_write_1h.min(used.cache_write);
+    let tokens = [used.input, used.output, used.cache_read, used.cache_write - hour, hour];
+    let five_minutes = pick(model.cache_write_micros, model.over_cache_write_micros);
+    let prices = [
+        pick(model.input_micros, model.over_input_micros),
+        pick(model.output_micros, model.over_output_micros),
+        pick(model.cache_read_micros, model.over_cache_read_micros),
+        five_minutes,
+        // A model with no hour-long price charges those writes as five-minute ones.
+        match pick(model.cache_write_1h_micros, model.over_cache_write_1h_micros) {
+            0 => five_minutes,
+            price => price,
+        },
+    ];
     let millionths: u128 = tokens
         .iter()
         .zip(prices)
@@ -85,9 +136,9 @@ pub(crate) fn plan_standing(plan: PlanKind, exhausted: Option<bool>) -> Standing
 /// What one request costs g1t, to charge: its tokens at its model's prices
 /// on g1t's key; nothing on the workspace's own key, or for a model g1t
 /// has no price for.
-pub(crate) fn request_cost(own_key: bool, model: Option<&GatewayModel>, tokens: [u64; 4]) -> i64 {
+pub(crate) fn request_cost(own_key: bool, model: Option<&GatewayModel>, used: &Used) -> i64 {
     match model {
-        Some(model) if !own_key => cost_micros(model, tokens),
+        Some(model) if !own_key => cost_micros(model, used),
         _ => 0,
     }
 }
@@ -98,7 +149,7 @@ pub(crate) fn refusal(workspace: &str, standing: &Standing) -> Option<String> {
         Standing::Admitted => None,
         Standing::Stopped(message) => Some(message.clone()),
         Standing::NoPlan => Some(format!(
-            "The AI Gateway on g1t's models is paid for from AI credit, which comes with the g1t plan. An owner can start the plan for {workspace} at /{workspace}/-/billing, or connect the workspace's own Anthropic key under Integrations to use the gateway at no charge."
+            "The AI Gateway on g1t's models is paid for from AI credit, which comes with the g1t plan. An owner can start the plan for {workspace} at /{workspace}/-/billing, or connect the workspace's own model provider (an Anthropic or OpenAI key, or any compatible endpoint) under Integrations to use the gateway at no charge."
         )),
         Standing::OutOfCredit { reload_failed } => {
             let reload = if *reload_failed { " Auto-reload was turned off after its last charge failed." } else { "" };
@@ -110,10 +161,15 @@ pub(crate) fn refusal(workspace: &str, standing: &Standing) -> Option<String> {
 }
 
 /// What a ledger line for one request says.
-pub(crate) fn describe(model_name: &str, tokens: [u64; 4], token_name: Option<&str>) -> String {
-    let used: u64 = tokens.iter().sum();
+pub(crate) fn describe(model_name: &str, used: &Used, over: bool, token_name: Option<&str>) -> String {
     let by = token_name.map(str::trim).filter(|name| !name.is_empty()).map_or(String::new(), |name| format!(", token {name}"));
-    format!("AI Gateway: {model_name}, {} tokens{by}", thousands(used))
+    let long = if over { ", long-prompt price" } else { "" };
+    format!("AI Gateway: {model_name}, {} tokens{long}{by}", thousands(used.total()))
+}
+
+/// A request's format as the log keeps it: `anthropic` or `openai`.
+pub(crate) fn format_of(format: &str) -> &'static str {
+    if format.eq_ignore_ascii_case("openai") { "openai" } else { "anthropic" }
 }
 
 /// Whether a request id is one the proxy makes: `gw_` and up to 64 letters,
@@ -127,10 +183,26 @@ struct ModelRow {
     model: String,
     name: String,
     provider: String,
+    #[serde(default)]
+    kind: Option<String>,
     input_micros: i64,
     output_micros: i64,
     cache_read_micros: i64,
     cache_write_micros: i64,
+    #[serde(default)]
+    cache_write_1h_micros: Option<i64>,
+    #[serde(default)]
+    threshold: Option<f64>,
+    #[serde(default)]
+    over_input_micros: Option<i64>,
+    #[serde(default)]
+    over_output_micros: Option<i64>,
+    #[serde(default)]
+    over_cache_read_micros: Option<i64>,
+    #[serde(default)]
+    over_cache_write_micros: Option<i64>,
+    #[serde(default)]
+    over_cache_write_1h_micros: Option<i64>,
 }
 
 impl From<ModelRow> for GatewayModel {
@@ -139,10 +211,18 @@ impl From<ModelRow> for GatewayModel {
             model: row.model,
             name: row.name,
             provider: row.provider,
+            kind: row.kind.unwrap_or_else(|| "chat".to_owned()),
             input_micros: row.input_micros,
             output_micros: row.output_micros,
             cache_read_micros: row.cache_read_micros,
             cache_write_micros: row.cache_write_micros,
+            cache_write_1h_micros: row.cache_write_1h_micros.unwrap_or(0),
+            threshold: row.threshold.unwrap_or(0.0).max(0.0) as u64,
+            over_input_micros: row.over_input_micros.unwrap_or(0),
+            over_output_micros: row.over_output_micros.unwrap_or(0),
+            over_cache_read_micros: row.over_cache_read_micros.unwrap_or(0),
+            over_cache_write_micros: row.over_cache_write_micros.unwrap_or(0),
+            over_cache_write_1h_micros: row.over_cache_write_1h_micros.unwrap_or(0),
         }
     }
 }
@@ -158,10 +238,18 @@ struct RequestRow {
     output: f64,
     cache_read: f64,
     cache_write: f64,
+    #[serde(default)]
+    cache_write_1h: Option<f64>,
     cost_micros: f64,
     charged_micros: f64,
     status: f64,
     own_key: f64,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    connection: Option<String>,
     streamed: f64,
     duration_ms: f64,
     error: Option<String>,
@@ -180,10 +268,14 @@ impl From<RequestRow> for GatewayRequest {
             output: n(row.output),
             cache_read: n(row.cache_read),
             cache_write: n(row.cache_write),
+            cache_write_hour: n(row.cache_write_1h.unwrap_or(0.0)),
             cost_micros: row.cost_micros as i64,
             charged_micros: row.charged_micros as i64,
             status: row.status as u16,
             own_key: row.own_key != 0.0,
+            format: format_of(row.format.as_deref().unwrap_or_default()).to_owned(),
+            provider: row.provider.unwrap_or_default(),
+            connection: row.connection,
             streamed: row.streamed != 0.0,
             duration_ms: n(row.duration_ms),
             error: row.error,
@@ -262,11 +354,19 @@ impl Billing {
         if workspace.is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Name the workspace."));
         }
-        let tokens = [a.input, a.output, a.cache_read, a.cache_write];
+        let used = Used {
+            input: a.input,
+            output: a.output,
+            cache_read: a.cache_read,
+            cache_write: a.cache_write,
+            cache_write_1h: a.cache_write_hour.min(a.cache_write),
+        };
         let model_name: String = a.model.trim().chars().take(200).collect();
         let token_name = a.token_name.as_deref().map(|name| name.trim().chars().take(100).collect::<String>());
+        let provider: String = a.provider.trim().chars().take(40).collect();
+        let connection = a.connection.as_deref().map(|name| name.trim().chars().take(80).collect::<String>());
         let priced = if a.own_key { None } else { self.gateway_model(&model_name).await? };
-        let cost = request_cost(a.own_key, priced.as_ref(), tokens);
+        let cost = request_cost(a.own_key, priced.as_ref(), &used);
         let now = now_ms();
         let timestamp = rfc3339(now);
         // Claimed first: the same request recorded twice is one row and one charge.
@@ -275,8 +375,9 @@ impl Billing {
             .prepare(
                 "INSERT OR IGNORE INTO gateway_requests
                    (id, workspace, created_at, token_id, token_name, model, input, output, cache_read, cache_write,
-                    cost_micros, charged_micros, status, own_key, streamed, duration_ms, error)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+                    cache_write_1h, cost_micros, charged_micros, status, own_key, format, provider, connection,
+                    streamed, duration_ms, error)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
                  RETURNING id",
             )
             .bind(&[
@@ -290,9 +391,13 @@ impl Billing {
                 number(a.output),
                 number(a.cache_read),
                 number(a.cache_write),
+                number(used.cache_write_1h),
                 (cost as f64).into(),
                 f64::from(a.status).into(),
                 f64::from(u8::from(a.own_key)).into(),
+                format_of(&a.format).into(),
+                provider.as_str().into(),
+                optional(connection.as_deref()),
                 f64::from(u8::from(a.streamed)).into(),
                 number(a.duration_ms),
                 optional(a.error.as_deref().map(|e| e.chars().take(500).collect::<String>()).as_deref()),
@@ -313,7 +418,8 @@ impl Billing {
         let eligible = Eligible { trial: false, repo: None, cover_rest: false };
         let drawn = self.draw(&workspace, charge, &month_of(&timestamp), &eligible).await?;
         let owed = charge - drawn.total();
-        let description = format!("{}{terms_note}{}", describe(&model.name, tokens, token_name.as_deref()), drawn.note());
+        let over = over_threshold(&model, &used);
+        let description = format!("{}{terms_note}{}", describe(&model.name, &used, over, token_name.as_deref()), drawn.note());
         self.db
             .batch(vec![
                 self.db
@@ -401,104 +507,6 @@ impl Billing {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "gateway_tests.rs"]
+mod tests;
 
-    fn sonnet() -> GatewayModel {
-        GatewayModel {
-            model: "claude-sonnet-5-5".into(),
-            name: "Claude Sonnet 5.5".into(),
-            provider: "anthropic".into(),
-            input_micros: 2_000_000,
-            output_micros: 10_000_000,
-            cache_read_micros: 200_000,
-            cache_write_micros: 2_500_000,
-        }
-    }
-
-    #[test]
-    fn a_request_costs_its_tokens_at_the_models_prices() {
-        // A million of each: $2 + $10 + $0.20 + $2.50.
-        assert_eq!(cost_micros(&sonnet(), [1_000_000; 4]), 14_700_000);
-        // 1,000 input and 500 output: $0.002 + $0.005.
-        assert_eq!(cost_micros(&sonnet(), [1_000, 500, 0, 0]), 7_000);
-        // Nothing used costs nothing.
-        assert_eq!(cost_micros(&sonnet(), [0; 4]), 0);
-    }
-
-    #[test]
-    fn a_fraction_of_a_millionth_rounds_up() {
-        // One cache-read token: 0.2 millionths.
-        assert_eq!(cost_micros(&sonnet(), [0, 0, 1, 0]), 1);
-        // A negative price in the table is never a credit: it counts as nothing.
-        let odd = GatewayModel { input_micros: -5, ..sonnet() };
-        assert_eq!(cost_micros(&odd, [10, 0, 0, 0]), 0);
-    }
-
-    #[test]
-    fn the_markup_is_the_price_books_and_zero_in_beta_charges_the_cost() {
-        let cost = cost_micros(&sonnet(), [12_000, 800, 40_000, 0]);
-        assert_eq!(margin_on(cost, 0), cost);
-        assert_eq!(margin_on(1_000, 20), 1_200);
-    }
-
-    #[test]
-    fn the_workspaces_own_key_is_counted_and_never_charged() {
-        let tokens = [50_000, 2_000, 0, 0];
-        assert_eq!(request_cost(false, Some(&sonnet()), tokens), 120_000);
-        assert_eq!(request_cost(true, Some(&sonnet()), tokens), 0);
-        // A model g1t has no price for is never charged a guess.
-        assert_eq!(request_cost(false, None, tokens), 0);
-    }
-
-    #[test]
-    fn out_of_credit_on_the_plan_is_refused_and_the_rest_by_plan() {
-        assert_eq!(plan_standing(PlanKind::Paid, None), Standing::Admitted);
-        assert_eq!(plan_standing(PlanKind::Paid, Some(false)), Standing::OutOfCredit { reload_failed: false });
-        assert_eq!(plan_standing(PlanKind::Paid, Some(true)), Standing::OutOfCredit { reload_failed: true });
-        assert_eq!(plan_standing(PlanKind::Free, None), Standing::NoPlan);
-        // Comped and invoiced workspaces need no credit.
-        assert_eq!(plan_standing(PlanKind::Internal, Some(false)), Standing::Admitted);
-        assert_eq!(plan_standing(PlanKind::Enterprise, Some(false)), Standing::Admitted);
-        assert!(refusal("acme", &plan_standing(PlanKind::Paid, Some(false))).is_some());
-    }
-
-    #[test]
-    fn only_an_admitted_workspace_is_let_through() {
-        assert_eq!(refusal("acme", &Standing::Admitted), None);
-        let out = refusal("acme", &Standing::OutOfCredit { reload_failed: false }).unwrap();
-        assert!(out.contains("out of AI credit") && out.contains("/acme/-/billing#ai-credit"), "{out}");
-        assert!(!out.contains("Auto-reload"));
-        let failed = refusal("acme", &Standing::OutOfCredit { reload_failed: true }).unwrap();
-        assert!(failed.contains("Auto-reload was turned off"));
-        let no_plan = refusal("acme", &Standing::NoPlan).unwrap();
-        assert!(no_plan.contains("g1t plan") && no_plan.contains("own Anthropic key"), "{no_plan}");
-        assert_eq!(refusal("acme", &Standing::Stopped("Over the limit.".into())).as_deref(), Some("Over the limit."));
-    }
-
-    #[test]
-    fn a_ledger_line_names_the_model_tokens_and_token() {
-        assert_eq!(describe("Claude Sonnet 5.5", [12_000, 800, 0, 0], Some("ci")), "AI Gateway: Claude Sonnet 5.5, 12,800 tokens, token ci");
-        assert_eq!(describe("Claude Haiku 4.5", [5, 0, 0, 0], None), "AI Gateway: Claude Haiku 4.5, 5 tokens");
-        assert_eq!(describe("Claude Haiku 4.5", [5, 0, 0, 0], Some("  ")), "AI Gateway: Claude Haiku 4.5, 5 tokens");
-    }
-
-    #[test]
-    fn request_ids_are_the_proxys() {
-        assert!(valid_id("gw_01kkr2m4c8f1t7qh3d6n9w5p0x"));
-        assert!(valid_id("gw_a-b_c"));
-        assert!(!valid_id("run_1"));
-        assert!(!valid_id("gw_x'; DROP TABLE ledger"));
-        assert!(!valid_id(&format!("gw_{}", "a".repeat(80))));
-    }
-
-    #[test]
-    fn the_migration_prices_every_model_it_offers() {
-        let sql = include_str!("../migrations/0045_gateway.sql");
-        for model in ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"] {
-            assert!(sql.contains(&format!("('{model}', ")), "{model}");
-        }
-        // Sonnet 5.5 at $2 / $10, cache reads $0.20, five-minute cache writes $2.50.
-        assert!(sql.contains("('claude-sonnet-5-5', 'Claude Sonnet 5.5', 'anthropic', 2000000, 10000000, 200000, 2500000"));
-    }
-}

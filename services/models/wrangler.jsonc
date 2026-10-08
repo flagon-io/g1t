@@ -7,7 +7,7 @@
 	"workers_dev": false,
 	// Sandboxes reach models only through here, with a token for their run;
 	// a workspace's own code reaches the AI Gateway here with one of its
-	// access tokens.
+	// access tokens, at /anthropic or /openai/v1.
 	"routes": [{ "pattern": "models.g1t.sh", "custom_domain": true }],
 	"services": [
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
@@ -23,6 +23,8 @@
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58"
 	},
 	// Secrets: AI_GATEWAY_TOKEN; ANTHROPIC_API_KEY only if the gateway does
-	// not hold g1t's key.
+	// not hold g1t's key; WORKERS_AI_TOKEN, a Cloudflare API token with
+	// Workers AI Read on this account, for the AI Gateway's open models
+	// (without it AI_GATEWAY_TOKEN is tried, and needs that permission too).
 	"observability": { "enabled": true }
 }

@@ -232,6 +232,56 @@ pub struct ConnectionConfig {
     /// choice for the kind of work when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Models: which AI Gateway requests go to this connection, by the
+    /// model they name. Each is a model id (`gpt-5.5`), or a prefix ending
+    /// in `*` (`gpt-*`, `ollama/*`, or `*` for every model). A prefix that
+    /// ends in `/*` is taken off before the request is sent, so
+    /// `ollama/llama3.3` reaches the endpoint as `llama3.3`. Absent: Claude
+    /// models (`claude-*`) on an Anthropic key or Anthropic-compatible
+    /// endpoint, and nothing on the others. Empty: nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway_models: Option<Vec<String>>,
+}
+
+impl ConnectionConfig {
+    /// The AI Gateway models this connection takes: its own list, or its
+    /// provider's default.
+    pub fn gateway_patterns(&self, provider: Provider) -> Vec<String> {
+        match &self.gateway_models {
+            Some(models) => models.clone(),
+            None if provider.kind() == ProviderKind::Models && provider.api() == "anthropic" => vec!["claude-*".to_owned()],
+            None => Vec::new(),
+        }
+    }
+}
+
+/// The most models a connection can list for the AI Gateway, and how long
+/// each may be.
+pub const GATEWAY_MODELS_MAX: usize = 100;
+pub const GATEWAY_MODEL_LEN: usize = 200;
+
+/// Tidies a connection's AI Gateway models, or says what is wrong.
+pub fn tidy_gateway_models(models: &[String]) -> std::result::Result<Vec<String>, String> {
+    let mut tidy: Vec<String> = Vec::new();
+    for model in models {
+        let model = model.trim();
+        if model.is_empty() {
+            continue;
+        }
+        if model.len() > GATEWAY_MODEL_LEN || model.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(format!("{model} is not a model id: one word of at most {GATEWAY_MODEL_LEN} characters, such as gpt-5.5 or gpt-*."));
+        }
+        if model.contains('*') && !model.ends_with('*') || model.matches('*').count() > 1 {
+            return Err(format!("{model}: a * can only end a model id, as in gpt-*."));
+        }
+        if !tidy.iter().any(|seen| seen == model) {
+            tidy.push(model.to_owned());
+        }
+    }
+    if tidy.len() > GATEWAY_MODELS_MAX {
+        return Err(format!("A connection can take at most {GATEWAY_MODELS_MAX} AI Gateway models."));
+    }
+    Ok(tidy)
 }
 
 fn yes() -> bool {
@@ -252,6 +302,7 @@ impl Default for ConnectionConfig {
             base_url: None,
             auth_header: None,
             model: None,
+            gateway_models: None,
         }
     }
 }
@@ -623,6 +674,44 @@ pub struct GatewayUpstreamArgs {
     pub workspace: String,
 }
 
+/// `gateway_providers`: the workspace's own model providers, in the order
+/// they were connected, with what the AI Gateway needs to send requests to
+/// each and which models it takes. Returns `Vec<GatewayProvider>`. For the
+/// model proxy only: it carries keys.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GatewayProvidersArgs {
+    pub workspace: String,
+}
+
+/// One of a workspace's own model providers, for the AI Gateway.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayProvider {
+    /// The connection's id and name.
+    pub id: String,
+    pub name: String,
+    /// The provider, by name: `anthropic`, `openai`, `openai_endpoint`…
+    pub provider: String,
+    /// The API it speaks: `anthropic` or `openai`.
+    pub api: String,
+    /// OpenAI's own API (or Azure's), which shapes requests its own way.
+    pub official: bool,
+    /// Where requests go: without `/v1` for Anthropic's API, with it for OpenAI's.
+    pub base_url: String,
+    pub api_key: Option<String>,
+    /// `x-api-key`, `authorization` (as `Bearer`) or `api-key`.
+    pub auth_header: String,
+    /// For an endpoint behind an authenticated Cloudflare AI Gateway.
+    #[serde(default)]
+    pub gateway_token: Option<String>,
+    /// Which models it takes: ids and `*` prefixes (see
+    /// `ConnectionConfig::gateway_models`).
+    pub patterns: Vec<String>,
+    /// The models the provider listed when last checked.
+    #[serde(default)]
+    pub models: Vec<String>,
+}
+
 /// `close_model_sessions`: ends the model sessions whose tokens hash to
 /// these (SHA-256, lowercase hex), so a run's model token stops working
 /// when its run does rather than when it would lapse. Returns how many
@@ -653,6 +742,31 @@ mod tests {
         names.sort();
         names.dedup();
         assert_eq!(names.len(), PROVIDERS.len());
+    }
+
+    #[test]
+    fn gateway_models_default_to_claude_on_anthropic_and_nothing_elsewhere() {
+        let config = ConnectionConfig::default();
+        assert_eq!(config.gateway_patterns(Provider::Anthropic), ["claude-*"]);
+        assert_eq!(config.gateway_patterns(Provider::AnthropicEndpoint), ["claude-*"]);
+        assert!(config.gateway_patterns(Provider::Openai).is_empty());
+        assert!(config.gateway_patterns(Provider::OpenaiEndpoint).is_empty());
+        let chosen = ConnectionConfig { gateway_models: Some(vec!["gpt-*".into()]), ..ConnectionConfig::default() };
+        assert_eq!(chosen.gateway_patterns(Provider::Openai), ["gpt-*"]);
+        let none = ConnectionConfig { gateway_models: Some(Vec::new()), ..ConnectionConfig::default() };
+        assert!(none.gateway_patterns(Provider::Anthropic).is_empty());
+    }
+
+    #[test]
+    fn gateway_models_are_ids_or_prefixes() {
+        let tidy = tidy_gateway_models(&[" gpt-5.5 ".into(), "".into(), "ollama/*".into(), "gpt-5.5".into(), "*".into()]).unwrap();
+        assert_eq!(tidy, ["gpt-5.5", "ollama/*", "*"]);
+        assert!(tidy_gateway_models(&["gpt *".into()]).is_err());
+        assert!(tidy_gateway_models(&["g*t".into()]).is_err());
+        assert!(tidy_gateway_models(&["**".into()]).is_err());
+        assert!(tidy_gateway_models(&["x".repeat(201)]).is_err());
+        let many: Vec<String> = (0..101).map(|n| format!("m{n}")).collect();
+        assert!(tidy_gateway_models(&many).is_err());
     }
 
     #[test]

@@ -3713,6 +3713,39 @@
     },
     "notes": "`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/)."
   },
+  "update_integration": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0"
+    },
+    "request": {
+      "config": {
+        "base_url": "https://gpu.flagon.dev/v1",
+        "gateway_models": ["ollama/*"]
+      },
+      "secret": "sk-office-gpu-key"
+    },
+    "response": {
+      "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0",
+      "workspace": "flagon-io",
+      "provider": "openai_endpoint",
+      "kind": "models",
+      "name": "Office GPU",
+      "config": {
+        "write_back": true,
+        "base_url": "https://gpu.flagon.dev/v1",
+        "gateway_models": ["ollama/*"]
+      },
+      "secret_hint": "…-key",
+      "webhook_url": null,
+      "created_by": "syntaqx",
+      "created_at": "2026-10-07T12:10:44.512Z",
+      "last_used_at": "2026-10-07T14:00:02.000Z",
+      "last_error": null,
+      "models": ["llama3.3:70b", "qwen3-coder:30b"]
+    },
+    "notes": "The secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. With `gateway_models` set to `ollama/*`, an AI Gateway request for `ollama/qwen3-coder:30b` reaches this endpoint as `qwen3-coder:30b`, on the workspace's own account. See [the AI Gateway guide](/guides/ai-gateway/#your-own-providers)."
+  },
   "disconnect_integration": {
     "params": {
       "workspace": "flagon-io",
@@ -5966,7 +5999,7 @@
       "workspace": "flagon-io"
     },
     "query": {
-      "limit": 2
+      "limit": 3
     },
     "response": {
       "requests": [
@@ -5980,12 +6013,38 @@
           "output": 512,
           "cache_read": 12000,
           "cache_write": 0,
-          "cost_micros": 11200,
-          "charged_micros": 11200,
+          "cache_write_hour": 0,
+          "cost_micros": 10000,
+          "charged_micros": 10000,
           "status": 200,
           "own_key": false,
+          "format": "anthropic",
+          "provider": "anthropic",
+          "connection": null,
           "streamed": true,
           "duration_ms": 4210,
+          "error": null
+        },
+        {
+          "id": "gw_9b3d1f7a5c2e4b6d8f0a1c33",
+          "created_at": "2026-10-07T14:00:02.000Z",
+          "model": "qwen3-coder:30b",
+          "token_id": "tok_01kkr5a2b8c4d6e0f3g5h7j9k1",
+          "token_name": "triage-bot",
+          "input": 2210,
+          "output": 96,
+          "cache_read": 0,
+          "cache_write": 0,
+          "cache_write_hour": 0,
+          "cost_micros": 0,
+          "charged_micros": 0,
+          "status": 200,
+          "own_key": true,
+          "format": "openai",
+          "provider": "openai_endpoint",
+          "connection": "Office GPU",
+          "streamed": false,
+          "duration_ms": 1830,
           "error": null
         },
         {
@@ -5998,10 +6057,14 @@
           "output": 0,
           "cache_read": 0,
           "cache_write": 0,
+          "cache_write_hour": 0,
           "cost_micros": 0,
           "charged_micros": 0,
           "status": 402,
           "own_key": false,
+          "format": "openai",
+          "provider": "",
+          "connection": null,
           "streamed": false,
           "duration_ms": 38,
           "error": "The flagon-io workspace is out of AI credit and has used this month's included usage, so the AI Gateway refuses requests to g1t's models. An owner can buy AI credit or turn on auto-reload at /flagon-io/-/billing#ai-credit."
@@ -6010,7 +6073,7 @@
       "next": "gw_1a7e3c5b9d2f4e6a8c0b2d41",
       "retention_days": 30
     },
-    "notes": "To send requests, see the AI Gateway guide: POST https://models.g1t.sh/anthropic/v1/messages with a workspace access token that has `models:write`. `charged_micros` is what the request was charged before included usage and AI credit paid for it; the payment itself is on the statement as AI Gateway. Pass `next` as `before` for the next page; it is null on the last."
+    "notes": "To send requests, see the AI Gateway guide: POST https://models.g1t.sh/anthropic/v1/messages (Anthropic's format) or https://models.g1t.sh/openai/v1/chat/completions (OpenAI's) with a workspace access token that has `models:write`. `format` is the format a request was sent in; `provider` who served it (`anthropic` or `workers-ai` on g1t's account, the connection's provider on the workspace's own, empty when it was refused before reaching one), and `connection` the workspace's own connection by name. `cache_write_hour` is the part of `cache_write` written to the hour-long cache. `charged_micros` is what the request was charged before included usage and AI credit paid for it; the payment itself is on the statement as AI Gateway. Pass `next` as `before` for the next page; it is null on the last."
   },
   "list_invoices": {
     "params": {

@@ -629,6 +629,7 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     openModelSession: (run) => call("open_model_session", run),
     modelUpstream: (token) => call("model_upstream", { token }),
     gatewayUpstream: (workspace) => call("gateway_upstream", { workspace }),
+    gatewayProviders: (workspace) => call("gateway_providers", { workspace }),
     closeModelSessions: (tokenHashes) => call("close_model_sessions", { token_hashes: tokenHashes }),
     routes: (workspace, viewer) => call("routes", { workspace, viewer }),
     setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),

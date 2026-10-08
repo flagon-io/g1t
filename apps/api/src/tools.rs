@@ -287,6 +287,7 @@ pub const TOOLS: &[Tool] = &[
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
             a("list_integrations", Op::ListIntegrations, "Model providers, alert sources, trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
+            a("update_integration", Op::UpdateIntegration, "Change one: rotate its key, choose its AI Gateway models"),
             a("disconnect_integration", Op::DisconnectIntegration, "Remove one"),
             a("test_integration", Op::TestIntegration, "Check its credentials"),
             a("get_model_routes", Op::GetModelRoutes, "Where each kind of work's model requests go"),
@@ -417,6 +418,7 @@ fn destructive(op: Op) -> bool {
             | Op::RemoveEmail
             | Op::RemoveCollaborator
             | Op::DisconnectIntegration
+            | Op::UpdateIntegration
             | Op::DeleteWebhook
             | Op::DeleteActionsSecret
             | Op::DeleteActionsVariable

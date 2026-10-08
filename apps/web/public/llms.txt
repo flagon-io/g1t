@@ -330,25 +330,41 @@ https://docs.g1t.sh/guides/authentication/#scopes
 
 ## AI Gateway
 
-Your own code can call models through g1t: base URL
-`https://models.g1t.sh/anthropic`, API key a workspace access token with
-`models:write` (as `x-api-key` or `Authorization: Bearer`). It serves
-Anthropic's Messages API as it is: `POST /v1/messages` (streamed or not)
-and `POST /v1/messages/count_tokens`. Models: `claude-opus-5-5`,
-`claude-sonnet-5-5`, `claude-haiku-4-5`. Each request is charged at the
+Your own code can call models through g1t in either format, with a
+workspace access token with `models:write` as the API key (`x-api-key` or
+`Authorization: Bearer`):
+- Anthropic's Messages API at `https://models.g1t.sh/anthropic`:
+  `POST /v1/messages` (streamed or not), `POST /v1/messages/count_tokens`.
+- OpenAI's at `https://models.g1t.sh/openai/v1`: `POST /chat/completions`
+  (streamed or not, function tools, `response_format`, `reasoning_effort`),
+  `POST /embeddings`, `GET /models` (what the workspace can use, with g1t's
+  `pricing` per million tokens and `billed_to`).
+Any model works in either format; the proxy translates. Model ids:
+`anthropic/claude-haiku-5-5` (cheapest Claude; priced higher above 100,000
+prompt tokens), `anthropic/claude-sonnet-5-5`, `anthropic/claude-opus-5-5`,
+`anthropic/claude-haiku-4-5` (bare Claude ids work too), and open models on
+Workers AI such as `workers-ai/@cf/openai/gpt-oss-120b`,
+`workers-ai/@cf/zai-org/glm-5.3-flash`, and embeddings
+`workers-ai/@cf/baai/bge-m3`. Requests on g1t's models are charged at the
 model's list price (no markup in beta) from included usage and AI credit,
-never the agent rate; on the workspace's own Anthropic key under
-Integrations it is free and only counted. Refusals are Anthropic-shaped:
-`402 billing_error` when out of AI credit, over the spend limit or not on
-the plan; `403 permission_error` without `models:write` or with a personal
-token; `400 invalid_request_error` for a model not offered, or on g1t's
-models for fast mode (`speed`), `inference_geo`, `fallbacks`, `container`
-or server tools such as web search (all fine on the workspace's own key). For Claude
-Code: `ANTHROPIC_BASE_URL=https://models.g1t.sh/anthropic` and
-`ANTHROPIC_AUTH_TOKEN=g1t_…`. The log (30 days, no prompts):
+never the agent rate. The workspace's own providers under Integrations (an
+Anthropic or OpenAI key, any OpenAI- or Anthropic-compatible endpoint such
+as vLLM or Ollama) take the models listed in their `config.gateway_models`
+(ids or `prefix*`; `ns/*` strips `ns/`; Anthropic keys default to
+`claude-*`), come first, and are free on g1t, only counted. Set them with
+`connect_integration` or `update_integration` (`workspace:admin`); keys are
+write-only. Refusals are in the route's format: `402` (`billing_error` /
+`insufficient_quota`) when out of AI credit, over the spend limit or not on
+the plan; `403` without `models:write` or with a personal token; `404` for a
+model no provider offers; `400` on g1t's models for fast mode (`speed`),
+`inference_geo`, `fallbacks`, `container`, server tools or non-function
+tools, `web_search_options` (all fine on the workspace's own provider). For
+Claude Code: `ANTHROPIC_BASE_URL=https://models.g1t.sh/anthropic` and
+`ANTHROPIC_AUTH_TOKEN=g1t_…`. The log (30 days, no prompts; each request's
+`format`, `provider`, `connection`, model and tokens):
 `GET /workspaces/{workspace}/gateway/requests` or the `billing` tool's
-`gateway_requests` action, with `models:read`. OpenAI's format and open
-models come later. Guide: https://docs.g1t.sh/guides/ai-gateway/
+`gateway_requests` action, with `models:read`. Guide:
+https://docs.g1t.sh/guides/ai-gateway/
 
 ## Access and roles
 

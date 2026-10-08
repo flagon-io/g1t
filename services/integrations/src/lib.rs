@@ -229,6 +229,12 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             return Err(format!("The repository has to be in the {workspace} workspace."));
         }
     }
+    if let Some(models) = &config.gateway_models {
+        if provider.kind() != ProviderKind::Models {
+            return Err("Only a model provider takes AI Gateway models.".to_owned());
+        }
+        config.gateway_models = Some(tidy_gateway_models(models)?);
+    }
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
         Provider::AzureOpenai => {
@@ -1378,6 +1384,21 @@ impl Integrations {
         }))
     }
 
+    /// The workspace's own model providers, with their keys and the AI
+    /// Gateway models each takes, for the model proxy to route by.
+    async fn gateway_providers(&self, a: GatewayProvidersArgs) -> Result<Vec<GatewayProvider>> {
+        let workspace = a.workspace.to_lowercase();
+        let rows = self.rows(&workspace).await?;
+        Ok(rows
+            .iter()
+            .filter(|row| row.provider().kind() == ProviderKind::Models)
+            .map(|row| {
+                let secrets = self.secrets(row);
+                gateway_provider(row, secrets)
+            })
+            .collect())
+    }
+
     /// Ends the model sessions of a run that has finished: their tokens are
     /// refused from now on, whatever time they had left.
     async fn close_model_sessions(&self, a: CloseModelSessionsArgs) -> Result<u32> {
@@ -1469,6 +1490,27 @@ fn gateway_connection(rows: &[Row]) -> Option<&Row> {
     rows.iter().find(|row| row.provider().kind() == ProviderKind::Models && row.provider().api() == "anthropic")
 }
 
+/// What the AI Gateway needs of one model connection, given its secrets.
+fn gateway_provider(row: &Row, secrets: Secrets) -> GatewayProvider {
+    let provider = row.provider();
+    let config = row.config();
+    GatewayProvider {
+        id: row.id.clone(),
+        name: row.name.clone(),
+        provider: provider.name().to_owned(),
+        api: provider.api().to_owned(),
+        official: matches!(provider, Provider::Openai | Provider::AzureOpenai),
+        base_url: models::base_url(provider, &config),
+        api_key: secrets.secret,
+        auth_header: models::auth_header(provider, &config),
+        gateway_token: matches!(provider, Provider::AnthropicEndpoint | Provider::OpenaiEndpoint)
+            .then_some(secrets.signing_secret)
+            .flatten(),
+        patterns: config.gateway_patterns(provider),
+        models: row.models.as_deref().and_then(|models| serde_json::from_str(models).ok()).unwrap_or_default(),
+    }
+}
+
 fn clone_row(row: &Row) -> Row {
     Row {
         id: row.id.clone(),
@@ -1525,6 +1567,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "open_model_session" => reply(&service.open_model_session(args(body)?).await?),
         "model_upstream" => reply(&service.model_upstream(args(body)?).await?),
         "gateway_upstream" => reply(&service.gateway_upstream(args(body)?).await?),
+        "gateway_providers" => reply(&service.gateway_providers(args(body)?).await?),
         "close_model_sessions" => reply(&service.close_model_sessions(args(body)?).await?),
         "routes" => reply(&service.routes(args(body)?).await?),
         "set_routes" => reply(&service.set_routes(args(body)?).await?),
@@ -1611,5 +1654,60 @@ mod choice_tests {
         assert_eq!(hosted_choice(&routes, "implement"), None);
         // Not a tier: Auto.
         assert_eq!(hosted_choice(&routes, "update"), None);
+    }
+}
+
+#[cfg(test)]
+mod gateway_tests {
+    use super::*;
+
+    #[test]
+    fn gateway_models_are_checked_and_only_on_model_providers() {
+        let secrets = Secrets { secret: Some("sk-test".into()), signing_secret: None };
+        let mut config = ConnectionConfig { gateway_models: Some(vec![" gpt-* ".into(), "gpt-*".into()]), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::Openai, "acme", &mut config, &secrets).is_ok());
+        assert_eq!(config.gateway_models.as_deref(), Some(&["gpt-*".to_owned()][..]));
+        let mut bad = ConnectionConfig { gateway_models: Some(vec!["g*t".into()]), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::Openai, "acme", &mut bad, &secrets).is_err());
+        let mut alerts = ConnectionConfig { repo: Some("acme/web".into()), gateway_models: Some(vec!["*".into()]), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::Webhook, "acme", &mut alerts, &secrets).is_err());
+    }
+
+    fn row(provider: &str, config: &str) -> Row {
+        Row {
+            id: "con_1".into(),
+            workspace: "acme".into(),
+            provider: provider.into(),
+            name: "Ours".into(),
+            config: config.into(),
+            secrets: None,
+            secret_hint: Some("3f9a".into()),
+            created_by: "ada".into(),
+            created_at: "2026-10-07T00:00:00Z".into(),
+            last_used_at: None,
+            last_error: None,
+            models: Some(r#"["llama3.3","qwen3"]"#.into()),
+        }
+    }
+
+    #[test]
+    fn a_gateway_provider_says_where_and_which_models() {
+        let secrets = || Secrets { secret: Some("sk-live".into()), signing_secret: Some("cf-token".into()) };
+        let endpoint = gateway_provider(
+            &row("openai_endpoint", r#"{"baseUrl":"https://llm.acme.dev/v1","gatewayModels":["ollama/*"]}"#),
+            secrets(),
+        );
+        assert_eq!(endpoint.api, "openai");
+        assert_eq!(endpoint.base_url, "https://llm.acme.dev/v1");
+        assert_eq!(endpoint.auth_header, "authorization");
+        assert_eq!(endpoint.patterns, ["ollama/*"]);
+        assert_eq!(endpoint.models, ["llama3.3", "qwen3"]);
+        assert_eq!(endpoint.gateway_token.as_deref(), Some("cf-token"));
+        let anthropic = gateway_provider(&row("anthropic", "{}"), secrets());
+        assert_eq!(anthropic.patterns, ["claude-*"]);
+        assert_eq!(anthropic.base_url, "https://api.anthropic.com");
+        // A fixed provider's gateway token is never sent anywhere.
+        assert_eq!(anthropic.gateway_token, None);
+        assert!(gateway_provider(&row("openai", "{}"), secrets()).official);
     }
 }

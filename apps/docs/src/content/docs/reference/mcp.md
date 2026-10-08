@@ -548,6 +548,7 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 | [`revoke_invite`](/reference/api/invites/revoke-workspace-invite/) | Revoke a workspace's pending invite. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's connections. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
 | [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect a model provider (Anthropic, OpenAI, Gemini, or a compatible endpoint), Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |
+| [`update_integration`](/reference/api/integrations/update-integration/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Rotates a model provider's key, or sets `config.gateway_models`, the [AI Gateway](/guides/ai-gateway/#your-own-providers) models it takes. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`disconnect_integration`](/reference/api/integrations/disconnect-integration/) | Remove it and its secrets. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`get_model_routes`](/reference/api/integrations/get-model-routes/) | Which provider and model each kind of work goes to. Members only. | `workspace` | `workspace:read` |
@@ -583,7 +584,7 @@ billing, whatever their scopes, and no preset but full access includes
 | [`buy_ai_credit`](/reference/api/billing/buy-ai-credit/) | A payment page (`url`) to buy `amount_cents` of credit, in whole dollars from $10 to $1,000, for a person to open and pay; it returns to the workspace's billing page. Owners, as people. | `workspace`, `amount_cents` | `billing:write` |
 | [`invoices`](/reference/api/billing/list-invoices/) | Every invoice (`invoices`, in cents), g1t's itemised usage invoices (`usage_invoices`), and what the next one comes to so far (`upcoming`). | `workspace` | `billing:read` |
 | [`billing_details`](/reference/api/billing/get-billing-details/) | Who invoices are made out to, and the payment method on file as far as it is safe to show. | `workspace` | `billing:read` |
-| [`gateway_requests`](/reference/api/billing/list-gateway-requests/) | The workspace's recent [AI Gateway](/guides/ai-gateway/) requests, newest first: model, tokens by kind, `cost_micros`, `charged_micros`, `status`, `own_key` and the token that sent each. `limit` (50, at most 200) and `before` (the last page's `next`) page through them. Kept 30 days. | `workspace` | `models:read` |
+| [`gateway_requests`](/reference/api/billing/list-gateway-requests/) | The workspace's recent [AI Gateway](/guides/ai-gateway/) requests, newest first: model, `format` (`anthropic` or `openai`), `provider` and `connection` (who served it), tokens by kind with `cache_write_hour`, `cost_micros`, `charged_micros`, `status`, `own_key` and the token that sent each. `limit` (50, at most 200) and `before` (the last page's `next`) page through them. Kept 30 days. | `workspace` | `models:read` |
 
 ## `notifications`
 

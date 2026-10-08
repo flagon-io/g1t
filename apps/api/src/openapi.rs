@@ -359,6 +359,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[
             Op::ListIntegrations,
             Op::ConnectIntegration,
+            Op::UpdateIntegration,
             Op::DisconnectIntegration,
             Op::TestIntegration,
             Op::GetModelRoutes,
@@ -461,6 +462,7 @@ fn title(op: Op) -> &'static str {
         Op::ListEvents => "List repository events",
         Op::ListIntegrations => "List integrations",
         Op::ConnectIntegration => "Connect an integration",
+        Op::UpdateIntegration => "Update an integration",
         Op::DisconnectIntegration => "Disconnect an integration",
         Op::TestIntegration => "Test an integration",
         Op::GetContext => "Look up a ticket",

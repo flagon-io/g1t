@@ -9,6 +9,11 @@ export type HostedRouting = {
   AI_GATEWAY_TOKEN?: string;
   /** g1t's key, when the gateway does not hold it. */
   ANTHROPIC_API_KEY?: string;
+  /**
+   * A Cloudflare API token that may run Workers AI on g1t's account, for
+   * the AI Gateway's open models. Without one, `AI_GATEWAY_TOKEN` is tried.
+   */
+  WORKERS_AI_TOKEN?: string;
 };
 
 /** Headers the sandbox sends that never go further. */

@@ -52,7 +52,42 @@ export type ConnectionConfig = {
   authHeader?: string;
   /** Models: the model used when a route to this connection names none. */
   model?: string;
+  /**
+   * Models: which AI Gateway requests go to this connection, by the model
+   * they name: ids (`gpt-5.5`) or prefixes ending in `*` (`gpt-*`,
+   * `ollama/*`, `*`). A `/*` prefix is taken off before sending. Absent:
+   * `claude-*` on an Anthropic key or Anthropic-compatible endpoint,
+   * nothing on the others.
+   */
+  gatewayModels?: string[];
 };
+
+/** One of a workspace's own model providers, for the AI Gateway. Carries its key: for the model proxy only. */
+export type GatewayProvider = {
+  id: string;
+  name: string;
+  /** `anthropic`, `openai`, `openai_endpoint`… */
+  provider: string;
+  api: "anthropic" | "openai";
+  /** OpenAI's own API (or Azure's). */
+  official: boolean;
+  /** Without `/v1` for Anthropic's API, with it for OpenAI's. */
+  baseUrl: string;
+  apiKey: string | null;
+  /** `x-api-key`, `authorization` (as `Bearer`) or `api-key`. */
+  authHeader: string;
+  gatewayToken?: string | null;
+  /** The models it takes: ids and `*` prefixes. */
+  patterns: string[];
+  /** The models the provider listed when last checked. */
+  models: string[];
+};
+
+/** The AI Gateway models a connection takes when it names none. */
+export function gatewayPatterns(provider: Provider, config: ConnectionConfig): string[] {
+  if (config.gatewayModels) return config.gatewayModels;
+  return provider === "anthropic" || provider === "anthropic_endpoint" ? ["claude-*"] : [];
+}
 
 export type Connection = {
   id: string;
@@ -218,6 +253,12 @@ export interface IntegrationsApi {
    * Null sends them to g1t's models.
    */
   gatewayUpstream(workspace: string): Promise<ModelUpstream | null>;
+  /**
+   * The workspace's own model providers, in the order they were connected,
+   * with their keys and which AI Gateway models each takes. For the model
+   * proxy only.
+   */
+  gatewayProviders(workspace: string): Promise<GatewayProvider[]>;
   /**
    * Ends the model sessions whose tokens hash to these (SHA-256, lowercase
    * hex) when their run finishes, so the tokens stop working then. Returns

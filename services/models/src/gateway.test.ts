@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { GatewayModel, User } from "@g1t/contracts";
+import type { User } from "@g1t/contracts";
 
 import {
   anthropicError,
@@ -12,7 +12,6 @@ import {
   hostedRequest,
   requestId,
   sessionOf,
-  unoffered,
   unpriced,
 } from "./gateway.ts";
 
@@ -23,16 +22,6 @@ const workspaceToken = (scopes: string[] | null, name = "ci"): User => ({
   workspaces: [{ slug: "acme", role: "member" }],
   token: { token_id: "tok_1", scopes, name },
 });
-
-const sonnet: GatewayModel = {
-  model: "claude-sonnet-5-5",
-  name: "Claude Sonnet 5.5",
-  provider: "anthropic",
-  inputMicros: 2_000_000,
-  outputMicros: 10_000_000,
-  cacheReadMicros: 200_000,
-  cacheWriteMicros: 2_500_000,
-};
 
 test("a workspace's token with models:write is let through, as that workspace", () => {
   const who = callerOf(workspaceToken(["repo:read", "models:write"]));
@@ -77,14 +66,6 @@ test("the gateway answers messages and counting tokens only", () => {
   assert.equal(gatewayRoute("/v1/messages/count_tokens"), "count_tokens");
   assert.equal(gatewayRoute("/v1/messages/batches"), null);
   assert.equal(gatewayRoute("/v1/models"), null);
-});
-
-test("only the models g1t prices are offered on its key", () => {
-  assert.equal(unoffered("claude-sonnet-5-5", [sonnet]), null);
-  const why = unoffered("gpt-5", [sonnet, sonnet]);
-  assert.match(why ?? "", /gpt-5 is not offered/);
-  assert.match(why ?? "", /It offers claude-sonnet-5-5\. /);
-  assert.match(unoffered(undefined, [sonnet]) ?? "", /model/);
 });
 
 test("requests to g1t's models go through its gateway, tagged, without the caller's token", () => {
@@ -167,8 +148,12 @@ test("what billing is told: tokens by kind, whose key, and how it went", () => {
     output: 5,
     cacheRead: 100,
     cacheWrite: 0,
+    cacheWriteHour: 0,
     status: 200,
     ownKey: true,
+    format: "anthropic",
+    provider: "",
+    connection: null,
     streamed: true,
     durationMs: 812,
     error: null,

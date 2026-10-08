@@ -536,7 +536,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                       <p className="font-medium">
                         AI Gateway <span className="ml-1 rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">Free during beta</span>
                       </p>
-                      <p className="text-xs text-faint">Your own code calling Claude models through g1t with a workspace token, paid from AI credit; with your own Anthropic key, free</p>
+                      <p className="text-xs text-faint">Your own code calling Claude and open models through g1t, in Anthropic's or OpenAI's format, paid from AI credit; on your own providers, free</p>
                     </td>
                     <td className="px-4 py-3 text-muted">What the provider charges</td>
                     <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{gateway?.markupPercent ?? 0}%</td>

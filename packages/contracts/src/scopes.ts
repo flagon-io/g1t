@@ -216,6 +216,7 @@ export const OPERATION_SCOPES = [
   ["revoke_workspace_invite", "workspace:admin"],
   ["list_integrations", "workspace:read"],
   ["connect_integration", "workspace:admin"],
+  ["update_integration", "workspace:admin"],
   ["disconnect_integration", "workspace:admin"],
   ["test_integration", "workspace:admin"],
   ["get_model_routes", "workspace:read"],

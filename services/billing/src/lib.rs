@@ -1498,6 +1498,7 @@ mod tests {
         include_str!("../migrations/0043_tax_and_card_fees.sql"),
         include_str!("../migrations/0044_cache_reads_count_a_tenth.sql"),
         include_str!("../migrations/0045_gateway.sql"),
+        include_str!("../migrations/0046_gateway_formats.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

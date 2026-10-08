@@ -485,6 +485,12 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
+        "PATCH",
+        "/workspaces/:workspace/integrations/:id",
+        Op::UpdateIntegration,
+        &[],
+    ),
+    route(
         "DELETE",
         "/workspaces/:workspace/integrations/:id",
         Op::DisconnectIntegration,

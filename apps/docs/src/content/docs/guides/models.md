@@ -18,8 +18,11 @@ Each workspace decides where its agents' model spend goes:
   kind of work, which provider and model it runs on. Each provider bills
   you for the model directly. Open to every workspace now.
 
-To call models from your own code with a workspace token, paid from the
-same AI credit, use the [AI Gateway](/guides/ai-gateway/).
+To call models from your own code with a workspace token, in Anthropic's
+or OpenAI's format, paid from the same AI credit or sent to these same
+providers, use the [AI Gateway](/guides/ai-gateway/). Each provider's
+**AI Gateway models** say which of those requests go to it; see
+[your own providers](/guides/ai-gateway/#your-own-providers).
 
 ## Auto
 

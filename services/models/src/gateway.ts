@@ -1,20 +1,27 @@
 /**
- * The AI Gateway: a workspace's own model requests, in Anthropic's Messages
- * format, at the same address as its sandboxes' (`models.g1t.sh/anthropic`).
+ * The AI Gateway: a workspace's own model requests, at the same address as
+ * its sandboxes' (`models.g1t.sh`), in either format:
+ *
+ * - `/anthropic/v1/messages` (and `/count_tokens`): Anthropic's Messages API.
+ * - `/openai/v1/chat/completions`, `/openai/v1/embeddings` and
+ *   `/openai/v1/models`: OpenAI's.
  *
  * A request carries one of the workspace's access tokens (`g1t_…`) with
  * the `models:write` scope, as `x-api-key` or `Authorization: Bearer`, so
- * an Anthropic SDK or Claude Code needs only a base URL and a key. When the
- * workspace has its own Anthropic key under Integrations, requests go there
- * and cost nothing; otherwise they go to g1t's models through its AI
- * Gateway, are admitted by billing first (spend limit, AI credit), and are
- * charged at the model's price afterwards. Every request is logged, with
- * its tokens, never its prompt or answer.
+ * either format's SDKs and tools need only a base URL and a key. The model
+ * it names decides where it goes (`catalogue.ts`): one of the workspace's
+ * own providers under Integrations, where it costs nothing, or g1t's
+ * catalogue (Claude on Anthropic, open models on Workers AI), admitted by
+ * billing first (spend limit, AI credit) and charged at the model's price
+ * afterwards. Either format reaches either kind of provider: the proxy
+ * translates (`openai.ts`, `chat.ts`). Every request is logged, with its
+ * tokens, never its prompt or answer.
  *
- * What is here is the part that decides; `index.ts` sends.
+ * What is here is the part that decides; `serve.ts` sends.
  */
-import type { GatewayModel, GatewayRecord, User } from "@g1t/contracts";
+import type { GatewayProvider, GatewayRecord, User } from "@g1t/contracts";
 
+import type { Dialect } from "./openai.ts";
 import type { HostedRouting } from "./route.ts";
 import { passedHeaders } from "./route.ts";
 import type { Tokens } from "./usage.ts";
@@ -26,11 +33,23 @@ export type ErrorType =
   | "billing_error"
   | "permission_error"
   | "not_found_error"
+  | "rate_limit_error"
   | "api_error";
 
 /** An error in the shape Anthropic's API and SDKs use. */
 export function anthropicError(status: number, type: ErrorType, message: string): Response {
   return Response.json({ type: "error", error: { type, message } }, { status });
+}
+
+/** Anthropic's error type for a status. */
+export function anthropicErrorType(status: number): ErrorType {
+  if (status === 401) return "authentication_error";
+  if (status === 402) return "billing_error";
+  if (status === 403) return "permission_error";
+  if (status === 404) return "not_found_error";
+  if (status === 429) return "rate_limit_error";
+  if (status >= 500) return "api_error";
+  return "invalid_request_error";
 }
 
 /** Who a gateway request is for, from its token. */
@@ -62,6 +81,12 @@ export function callerOf(viewer: User | null): { caller: Caller } | { status: nu
   return { caller: { workspace: viewer.username.toLowerCase(), tokenId: viewer.token.token_id, tokenName: viewer.token.name ?? null } };
 }
 
+/** The request formats, by their path. */
+export type Format = "anthropic" | "openai";
+
+/** What a request asks. */
+export type Operation = "messages" | "count_tokens" | "chat" | "embeddings" | "models";
+
 /** Which of the gateway's routes a path (after `/anthropic`) is, or null. */
 export function gatewayRoute(path: string): "messages" | "count_tokens" | null {
   const bare = path.split("?")[0]!.replace(/\/+$/, "");
@@ -70,13 +95,27 @@ export function gatewayRoute(path: string): "messages" | "count_tokens" | null {
   return null;
 }
 
-/** Why a model is not offered on g1t's key, or null when it is. */
-export function unoffered(model: unknown, offered: GatewayModel[]): string | null {
-  if (typeof model !== "string" || !model.trim()) return "Name a model: `model` is required.";
-  if (offered.some((row) => row.model === model)) return null;
-  const names = offered.map((row) => row.model).filter((id, i, all) => all.indexOf(id) === i);
-  return `${model} is not offered on the AI Gateway. It offers ${names.join(", ")}. See https://docs.g1t.sh/guides/ai-gateway/#models`;
+/**
+ * The format and operation of a request by its whole path and method, or
+ * null for one the gateway does not answer.
+ */
+export function gatewayOperation(path: string, method: string): { format: Format; op: Operation } | null {
+  const bare = path.split("?")[0]!.replace(/\/+$/, "");
+  if (bare.startsWith("/anthropic/")) {
+    const op = method === "POST" ? gatewayRoute(bare.slice("/anthropic".length)) : null;
+    return op ? { format: "anthropic", op } : null;
+  }
+  if (bare === "/openai/v1/chat/completions" && method === "POST") return { format: "openai", op: "chat" };
+  if (bare === "/openai/v1/embeddings" && method === "POST") return { format: "openai", op: "embeddings" };
+  if (bare === "/openai/v1/models" && method === "GET") return { format: "openai", op: "models" };
+  return null;
 }
+
+/** What the gateway answers, per format, for a request to a route it does not have. */
+export const ROUTES: Record<Format, string> = {
+  anthropic: "The AI Gateway answers POST /anthropic/v1/messages and POST /anthropic/v1/messages/count_tokens in Anthropic's format.",
+  openai: "The AI Gateway answers POST /openai/v1/chat/completions, POST /openai/v1/embeddings and GET /openai/v1/models in OpenAI's format.",
+};
 
 /**
  * Tool types that run on the caller's side, so cost only their tokens. A
@@ -84,31 +123,50 @@ export function unoffered(model: unknown, offered: GatewayModel[]): string | nul
  */
 const CLIENT_TOOLS = ["custom", "bash_", "text_editor_", "computer_", "memory_"];
 
+const OWN = "Use it with the workspace's own Anthropic key, under Integrations.";
+
 /**
- * Why a request to g1t's models asks for something charged other than by
- * its tokens at the model's price, which the gateway cannot charge for
- * yet, or null. On the workspace's own key the provider bills it, so
- * anything goes there.
+ * Why an Anthropic-format request to g1t's models asks for something
+ * charged other than by its tokens at the model's price, which the gateway
+ * cannot charge for yet, or null. On the workspace's own key the provider
+ * bills it, so anything goes there.
  */
 export function unpriced(body: Record<string, unknown>): string | null {
-  const own = "Use it with the workspace's own Anthropic key, under Integrations.";
   if (body.speed != null && body.speed !== "standard") {
-    return `Fast mode is not offered on the AI Gateway on g1t's models yet. ${own}`;
+    return `Fast mode is not offered on the AI Gateway on g1t's models yet. ${OWN}`;
   }
   if (body.inference_geo != null && body.inference_geo !== "global") {
-    return `Only global inference is offered on the AI Gateway on g1t's models yet: leave out inference_geo. ${own}`;
+    return `Only global inference is offered on the AI Gateway on g1t's models yet: leave out inference_geo. ${OWN}`;
   }
   if (body.fallbacks != null) {
-    return `Server-side fallbacks are not offered on the AI Gateway on g1t's models yet: leave out fallbacks. ${own}`;
+    return `Server-side fallbacks are not offered on the AI Gateway on g1t's models yet: leave out fallbacks. ${OWN}`;
   }
   if (body.container != null) {
-    return `Containers and skills are not offered on the AI Gateway on g1t's models yet. ${own}`;
+    return `Containers and skills are not offered on the AI Gateway on g1t's models yet. ${OWN}`;
   }
   const tools = Array.isArray(body.tools) ? (body.tools as unknown[]) : [];
   for (const tool of tools) {
     const type = (tool as { type?: unknown } | null)?.type;
     if (type == null || (typeof type === "string" && CLIENT_TOOLS.some((prefix) => type === prefix || type.startsWith(prefix)))) continue;
-    return `Server tools such as web search and code execution (${String(type)}) are not offered on the AI Gateway on g1t's models yet. ${own}`;
+    return `Server tools such as web search and code execution (${String(type)}) are not offered on the AI Gateway on g1t's models yet. ${OWN}`;
+  }
+  return null;
+}
+
+/**
+ * The same for an OpenAI-format request to g1t's models: web search and
+ * tools other than functions are billed other than by tokens.
+ */
+export function unpricedChat(body: Record<string, unknown>): string | null {
+  const own = "Use it with the workspace's own provider, under Integrations.";
+  if (body.web_search_options != null) {
+    return `Web search is not offered on the AI Gateway on g1t's models yet: leave out web_search_options. ${own}`;
+  }
+  const tools = Array.isArray(body.tools) ? (body.tools as unknown[]) : [];
+  for (const tool of tools) {
+    const type = (tool as { type?: unknown } | null)?.type;
+    if (type === "function") continue;
+    return `Only function tools are offered on the AI Gateway on g1t's models (not ${String(type)}). ${own}`;
   }
   return null;
 }
@@ -130,9 +188,9 @@ export function sessionOf(tokenId: string, now: Date): string {
 }
 
 /**
- * Where a request to g1t's models goes and what it carries: the caller's
- * request, without its token, to g1t's AI Gateway with g1t's credentials
- * and tags for the workspace, token and session.
+ * Where a request to g1t's Claude models goes and what it carries: the
+ * caller's request, without its token, to g1t's AI Gateway with g1t's
+ * credentials and tags for the workspace, token and session.
  */
 export function hostedRequest(
   hosted: HostedRouting,
@@ -141,25 +199,127 @@ export function hostedRequest(
   caller: Caller,
   session: string,
 ): { url: string; headers: Headers } {
+  const target = hostedTarget(hosted, "anthropic", incoming, caller, session);
+  return { url: `${target!.base}${path}`, headers: target!.headers };
+}
+
+/** Where a request goes, how, and who answers it. */
+export type Target = {
+  api: "anthropic" | "openai";
+  /** For Anthropic's API, without `/v1`; for OpenAI's, with it. */
+  base: string;
+  headers: Headers;
+  /** Who serves it, as the log names it: `anthropic`, `workers-ai`, or the connection's provider. */
+  provider: string;
+  dialect: Dialect;
+  ownKey: boolean;
+  /** On the workspace's own provider: the connection's name. */
+  connection: string | null;
+  /** What must never reach the caller or the log: the keys this request carries. */
+  secrets: string[];
+};
+
+/** The address of one operation at a target. */
+export function targetUrl(target: Target, op: Operation): string {
+  if (target.api === "anthropic") return `${target.base}/v1/messages${op === "count_tokens" ? "/count_tokens" : ""}`;
+  return `${target.base}/${op === "embeddings" ? "embeddings" : "chat/completions"}`;
+}
+
+/**
+ * g1t's own way to a catalogue provider's models, through its Cloudflare AI
+ * Gateway, tagged for the workspace, token and session. Null when this g1t
+ * has no way to that provider (Workers AI with no token).
+ */
+export function hostedTarget(
+  hosted: HostedRouting,
+  provider: string,
+  incoming: Headers,
+  caller: Caller,
+  session: string,
+): Target | null {
   const headers = passedHeaders(incoming);
+  const metadata = JSON.stringify({ task: "gateway", workspace: caller.workspace, token: caller.tokenId, session });
+  const secrets = [hosted.AI_GATEWAY_TOKEN, hosted.ANTHROPIC_API_KEY, hosted.WORKERS_AI_TOKEN].filter((s): s is string => !!s);
+  const common = { ownKey: false, connection: null, secrets, provider };
+  if (provider === "workers-ai") {
+    const token = hosted.WORKERS_AI_TOKEN || hosted.AI_GATEWAY_TOKEN;
+    if (!token || !hosted.CLOUDFLARE_ACCOUNT_ID) return null;
+    headers.set("authorization", `Bearer ${token}`);
+    headers.set("content-type", "application/json");
+    if (!hosted.AI_GATEWAY_ID) {
+      return { ...common, api: "openai", dialect: { official: false, provider }, headers, base: `https://api.cloudflare.com/client/v4/accounts/${hosted.CLOUDFLARE_ACCOUNT_ID}/ai/v1` };
+    }
+    headers.set("cf-aig-metadata", metadata);
+    if (hosted.AI_GATEWAY_TOKEN) headers.set("cf-aig-authorization", `Bearer ${hosted.AI_GATEWAY_TOKEN}`);
+    return {
+      ...common,
+      api: "openai",
+      dialect: { official: false, provider },
+      headers,
+      base: `https://gateway.ai.cloudflare.com/v1/${hosted.CLOUDFLARE_ACCOUNT_ID}/${hosted.AI_GATEWAY_ID}/workers-ai/v1`,
+    };
+  }
+  if (provider !== "anthropic") return null;
+  if (!headers.has("anthropic-version")) headers.set("anthropic-version", "2023-06-01");
+  headers.set("content-type", "application/json");
+  const anthropic = { ...common, api: "anthropic" as const, dialect: { official: false, provider }, headers };
   if (!hosted.AI_GATEWAY_ID) {
     if (hosted.ANTHROPIC_API_KEY) headers.set("x-api-key", hosted.ANTHROPIC_API_KEY);
-    return { url: `https://api.anthropic.com${path}`, headers };
+    return { ...anthropic, base: "https://api.anthropic.com" };
   }
-  headers.set("cf-aig-metadata", JSON.stringify({ task: "gateway", workspace: caller.workspace, token: caller.tokenId, session }));
+  headers.set("cf-aig-metadata", metadata);
   if (hosted.AI_GATEWAY_TOKEN) headers.set("cf-aig-authorization", `Bearer ${hosted.AI_GATEWAY_TOKEN}`);
   if (hosted.ANTHROPIC_API_KEY) headers.set("x-api-key", hosted.ANTHROPIC_API_KEY);
+  return { ...anthropic, base: `https://gateway.ai.cloudflare.com/v1/${hosted.CLOUDFLARE_ACCOUNT_ID}/${hosted.AI_GATEWAY_ID}/anthropic` };
+}
+
+/** The workspace's own provider, with its key: never g1t's gateway. */
+export function ownTarget(provider: GatewayProvider, incoming: Headers): Target {
+  const headers = passedHeaders(incoming);
+  headers.set("content-type", "application/json");
+  const key = provider.apiKey;
+  if (key) {
+    const header = provider.authHeader || (provider.api === "anthropic" ? "x-api-key" : "authorization");
+    headers.set(header, header === "authorization" ? `Bearer ${key}` : key);
+  }
+  if (provider.gatewayToken) headers.set("cf-aig-authorization", `Bearer ${provider.gatewayToken}`);
+  if (provider.api === "anthropic" && !headers.has("anthropic-version")) headers.set("anthropic-version", "2023-06-01");
+  const fallback = provider.api === "anthropic" ? "https://api.anthropic.com" : "";
   return {
-    url: `https://gateway.ai.cloudflare.com/v1/${hosted.CLOUDFLARE_ACCOUNT_ID}/${hosted.AI_GATEWAY_ID}/anthropic${path}`,
+    api: provider.api,
+    base: (provider.baseUrl || fallback).replace(/\/+$/, ""),
     headers,
+    provider: provider.provider,
+    dialect: { official: provider.official, provider: provider.provider },
+    ownKey: true,
+    connection: provider.name,
+    secrets: [provider.apiKey, provider.gatewayToken].filter((s): s is string => !!s),
   };
 }
 
-/** The message of an Anthropic-shaped error body, or the status. */
+/**
+ * A text with every secret it might carry taken out, as a provider's error
+ * can quote the key it refused.
+ */
+export function scrub(text: string, secrets: string[]): string {
+  let out = text;
+  for (const secret of secrets) {
+    if (secret.length < 8) continue;
+    out = out.split(secret).join("[redacted]");
+    // A key quoted with its end cut off is still most of the key.
+    const head = secret.slice(0, Math.max(8, Math.floor(secret.length * 0.75)));
+    out = out.split(head).join("[redacted]");
+  }
+  return out;
+}
+
+/** The message of a provider's error body, either format's shape, or the status. */
 export function errorMessage(status: number, body: string): string {
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: unknown } };
-    if (typeof parsed.error?.message === "string") return parsed.error.message.slice(0, 500);
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } | string } | { error?: { message?: unknown } }[];
+    const error = Array.isArray(parsed) ? parsed[0]?.error : parsed.error;
+    if (typeof error === "string") return error.slice(0, 500);
+    if (typeof error?.message === "string") return error.message.slice(0, 500);
   } catch {
     // Not JSON: the status says enough.
   }
@@ -177,6 +337,9 @@ export function gatewayRecord(input: {
   streamed: boolean;
   durationMs: number;
   error?: string | null;
+  format?: Format;
+  provider?: string;
+  connection?: string | null;
 }): GatewayRecord {
   return {
     id: input.id,
@@ -188,8 +351,12 @@ export function gatewayRecord(input: {
     output: input.tokens.output,
     cacheRead: input.tokens.cacheRead,
     cacheWrite: input.tokens.cacheWrite,
+    cacheWriteHour: input.tokens.cacheWrite1h ?? 0,
     status: input.status,
     ownKey: input.ownKey,
+    format: input.format ?? "anthropic",
+    provider: input.provider ?? "",
+    connection: input.connection ?? null,
     streamed: input.streamed,
     durationMs: Math.max(0, Math.round(input.durationMs)),
     error: input.error ?? null,

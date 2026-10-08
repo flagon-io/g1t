@@ -7,7 +7,7 @@ import { Bot, ChevronRight, Sparkles, Webhook } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
-import { type Connection, MODEL_TASKS, MODEL_TIERS, type ModelRoute, type ModelTask, type ModelTier, type Provider, PROVIDERS } from "@g1t/contracts";
+import { type Connection, MODEL_TASKS, MODEL_TIERS, type ModelRoute, type ModelTask, type ModelTier, type Provider, PROVIDERS, gatewayPatterns } from "@g1t/contracts";
 
 import { Field, Input, SubmitButton } from "./ui";
 import { Hint } from "./ui/hint";
@@ -259,8 +259,57 @@ const GATEWAY_TOKEN = (
   </Field>
 );
 
+/** What to suggest a provider's AI Gateway models be, as typed. */
+const GATEWAY_EXAMPLES: Partial<Record<Provider, string>> = {
+  openai: "gpt-*",
+  gemini: "gemini-*",
+  xai: "grok-*",
+  mistral: "mistral-* codestral-*",
+  deepseek: "deepseek-*",
+  openrouter: "openrouter/*",
+  groq: "groq/*",
+  together: "together/*",
+  fireworks: "fireworks/*",
+  cerebras: "cerebras/*",
+  openai_endpoint: "ollama/*",
+  anthropic_endpoint: "claude-*",
+  azure_openai: "azure/*",
+};
+
+/**
+ * Which of the AI Gateway's requests go to a model provider, by the model
+ * they name: for connecting one, and for changing it after.
+ */
+export function GatewayModelsField({ provider, value }: { provider: Provider; value?: string[] }) {
+  const defaults = gatewayPatterns(provider, {});
+  return (
+    <Field
+      label="AI Gateway models"
+      hint="Your own code's requests to the AI Gateway that name one of these models come here, counted and never charged by g1t. Model ids, or prefixes ending in *; a prefix ending in /* is taken off before sending, so ollama/llama3.3 arrives as llama3.3. Separate them with spaces. Empty: none."
+    >
+      <Input
+        name="gatewayModels"
+        defaultValue={(value ?? defaults).join(" ")}
+        placeholder={GATEWAY_EXAMPLES[provider] ?? "model-id or prefix-*"}
+        className="font-mono text-[0.8125rem]"
+        autoComplete="off"
+        spellCheck={false}
+      />
+    </Field>
+  );
+}
+
 /** What connecting a model provider asks for. */
 export function ModelProviderFields({ provider }: { provider: Provider }): ReactNode {
+  return (
+    <>
+      <ModelProviderKeyFields provider={provider} />
+      <GatewayModelsField provider={provider} />
+    </>
+  );
+}
+
+function ModelProviderKeyFields({ provider }: { provider: Provider }): ReactNode {
   const entry = MODEL_CATALOG[provider];
   if (provider === "azure_openai") {
     return (

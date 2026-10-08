@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 
 import type { GatewayRequest } from "@g1t/contracts";
 
-import { duration, shortCount, statusTone, tokenKinds } from "../lib/gateway";
+import { cacheKinds, duration, formatLabel, servedBy, shortCount, statusTone, tokenKinds } from "../lib/gateway";
 import { money } from "../lib/usage";
 import { TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
@@ -18,11 +18,12 @@ const HEAD = "px-3 py-2 text-xs font-medium text-muted whitespace-nowrap";
 const NUM = "px-3 py-2 text-right tabular-nums whitespace-nowrap";
 
 /** The columns, so the skeleton has as many as the table. */
-const COLUMNS = ["Time", "Model", "Input", "Output", "Cache read", "Cache write", "Cost", "Status", "Token"] as const;
+const COLUMNS = ["Time", "Model", "Served by", "Input", "Output", "Cache", "Cost", "Status", "Token"] as const;
 
 /** One request's row. */
 function Row({ request }: { request: GatewayRequest }) {
   const status = statusTone(request.status);
+  const served = servedBy(request);
   return (
     <tr className="text-sm">
       <td className="px-3 py-2 whitespace-nowrap text-muted">
@@ -32,20 +33,41 @@ function Row({ request }: { request: GatewayRequest }) {
           </span>
         </Hint>
       </td>
-      <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{request.model}</td>
+      <td className="max-w-[15rem] px-3 py-2 whitespace-nowrap">
+        <Hint label={request.model}>
+          <span tabIndex={0} className="block truncate font-mono text-xs">
+            {request.model}
+          </span>
+        </Hint>
+        <span className="block text-[0.6875rem] text-faint">{formatLabel(request.format)} format</span>
+      </td>
+      <td className="max-w-[12rem] truncate px-3 py-2 whitespace-nowrap">
+        <Hint label={served.hint}>
+          <span tabIndex={0} className={request.ownKey ? "" : "text-muted"}>
+            {served.label}
+          </span>
+        </Hint>
+      </td>
       <td className={NUM}>
         <Hint label={tokenKinds(request)}>
           <span tabIndex={0}>{shortCount(request.input)}</span>
         </Hint>
       </td>
       <td className={NUM}>{shortCount(request.output)}</td>
-      <td className={NUM}>{shortCount(request.cacheRead)}</td>
-      <td className={NUM}>{shortCount(request.cacheWrite)}</td>
+      <td className={NUM}>
+        <Hint label={cacheKinds(request)}>
+          <span tabIndex={0}>
+            {shortCount(request.cacheRead)}
+            <span className="text-faint"> / </span>
+            {shortCount(request.cacheWrite)}
+          </span>
+        </Hint>
+      </td>
       <td className={NUM}>
         {request.ownKey ? (
-          <Hint label="Sent with the workspace's own provider key: counted, not charged.">
+          <Hint label="Sent to the workspace's own provider: counted, not charged.">
             <span tabIndex={0}>
-              <Badge>Own key</Badge>
+              <Badge>Not charged</Badge>
             </span>
           </Hint>
         ) : (
@@ -69,7 +91,7 @@ function Row({ request }: { request: GatewayRequest }) {
 }
 
 /** Whether a column holds a number, read right-aligned. */
-const numeric = (index: number) => index >= 2 && index <= 6;
+const numeric = (index: number) => index >= 3 && index <= 6;
 
 /** The table's frame: its heading row, around its body. */
 function Frame({ children }: { children: ReactNode }) {
@@ -114,7 +136,7 @@ export function GatewaySkeleton() {
             <tr key={row} className="text-sm">
               {COLUMNS.map((column, index) => (
                 <td key={column} className={numeric(index) ? NUM : "px-3 py-2"}>
-                  <SkeletonLine className={numeric(index) ? "ml-auto w-10" : index === 1 ? "w-36" : "w-16"} />
+                  <SkeletonLine className={numeric(index) ? "ml-auto w-10" : index === 1 ? "w-36" : index === 2 ? "w-24" : "w-16"} />
                 </td>
               ))}
             </tr>

@@ -1,11 +1,11 @@
-import { BookOpen, KeyRound } from "lucide-react";
+import { BookOpen, KeyRound, Plug } from "lucide-react";
 import { Suspense } from "react";
 import { Await, Link, data } from "react-router";
 
 import type { Route } from "./+types/gateway";
 import { GatewaySkeleton, GatewayTable } from "../../components/gateway";
 import { ButtonLink, CopyLine, EmptyState } from "../../components/ui";
-import { GATEWAY_BASE_URL, GATEWAY_DOCS } from "../../lib/gateway";
+import { GATEWAY_BASE_URL, GATEWAY_DOCS, GATEWAY_OPENAI_BASE_URL } from "../../lib/gateway";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
@@ -37,14 +37,26 @@ export default function WorkspaceGateway({ loaderData }: Route.ComponentProps) {
     <div className="space-y-6">
       <section className="space-y-3">
         <p className="max-w-3xl text-sm text-muted">
-          Send your own code's model requests in Anthropic's Messages format to this base URL, with one of the workspace's
-          access tokens that has the <code className="font-mono text-xs">models:write</code> scope as the API key. On g1t's
-          models each request is charged at the model's price and paid from AI credit; with the workspace's own Anthropic key
-          under Integrations it is only counted. Prompts and answers are never kept.
+          Send your own code's model requests to one of these base URLs, in Anthropic's or OpenAI's format, with one of the
+          workspace's access tokens that has the <code className="font-mono text-xs">models:write</code> scope as the API key.
+          Any model works in either format: Claude and open models on g1t's account are charged at the model's price and paid
+          from AI credit; models on the workspace's own providers under Integrations are only counted. Prompts and answers are
+          never kept.
         </p>
-        <div className="max-w-xl">
-          <CopyLine text={GATEWAY_BASE_URL} />
-        </div>
+        <dl className="grid max-w-3xl gap-3 md:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="mb-1.5 text-xs text-faint">Anthropic format</dt>
+            <dd>
+              <CopyLine text={GATEWAY_BASE_URL} />
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="mb-1.5 text-xs text-faint">OpenAI format</dt>
+            <dd>
+              <CopyLine text={GATEWAY_OPENAI_BASE_URL} />
+            </dd>
+          </div>
+        </dl>
         <div className="flex flex-wrap gap-2">
           {owner && (
             <ButtonLink variant="quiet" to={`/${slug}/-/tokens`}>
@@ -52,6 +64,10 @@ export default function WorkspaceGateway({ loaderData }: Route.ComponentProps) {
               Access tokens
             </ButtonLink>
           )}
+          <ButtonLink variant="quiet" to={`/${slug}/-/integrations`}>
+            <Plug size={14} />
+            Your own providers
+          </ButtonLink>
           <ButtonLink variant="quiet" to={GATEWAY_DOCS} reloadDocument>
             <BookOpen size={14} />
             How to use it

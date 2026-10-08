@@ -20,12 +20,14 @@ import {
   type Provider,
   type ProviderKind,
   PROVIDERS,
+  gatewayPatterns,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
 import { trialClosed } from "../../lib/trial";
-import { MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
+import { GatewayModelsField, MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
+import { parseGatewayModels } from "../../lib/gateway";
 import { Avatar, CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Combobox } from "../../components/ui/combobox";
@@ -98,6 +100,8 @@ function configFrom(form: FormData): ConnectionConfig {
     baseUrl: text(form, "baseUrl"),
     authHeader: text(form, "authHeader"),
     model: text(form, "model"),
+    // Only a model provider's form has the field; empty means none.
+    gatewayModels: form.has("gatewayModels") ? parseGatewayModels(String(form.get("gatewayModels"))) : undefined,
   };
 }
 
@@ -130,6 +134,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
     const saved = await integrations.setRoutes(user, slug, routes);
     return saved.ok ? { routed: true } : { error: saved.error.message };
+  }
+  if (intent === "gateway") {
+    // A model provider's AI Gateway models, and a new key if one was given:
+    // its other settings as they are.
+    const listed = await integrations.list(slug, user);
+    const connection = listed.ok ? listed.value.find((c) => c.id === id) : undefined;
+    if (!connection) return { error: listed.ok ? "No such integration." : listed.error.message };
+    const updated = await integrations.update(user, slug, id, {
+      config: { ...connection.config, gatewayModels: parseGatewayModels(String(form.get("gatewayModels") ?? "")) },
+      secret: text(form, "secret"),
+    });
+    return updated.ok ? { updated: id } : { error: updated.error.message };
   }
   if (intent === "update") {
     const updated = await integrations.update(user, slug, id, {
@@ -383,6 +399,7 @@ function ConnectionRow({
     config.keys?.length ? config.keys.join(", ") : null,
     connection.secretHint && `key ${connection.secretHint}`,
   ].filter(Boolean);
+  const gateway = connection.kind === "models" ? gatewayPatterns(connection.provider, config) : null;
   const waitingForSecret = connection.provider === "sentry" && !deliveries.length && !connection.lastUsedAt;
   return (
     <div>
@@ -417,6 +434,42 @@ function ConnectionRow({
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           {connection.lastError}
         </p>
+      )}
+      {gateway && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <span className="text-faint">AI Gateway</span>
+          {gateway.length === 0 ? (
+            <span>no models</span>
+          ) : (
+            gateway.map((pattern) => (
+              <code key={pattern} className="rounded border border-line bg-bg px-1.5 py-0.5 font-mono text-[0.75rem] text-fg">
+                {pattern}
+              </code>
+            ))
+          )}
+        </div>
+      )}
+      {owner && gateway && (
+        <details className="group mt-3" open={updated || undefined}>
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-muted hover:text-fg">
+            <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
+            Change its AI Gateway models or key
+          </summary>
+          <Form method="post" className="mt-3 max-w-2xl space-y-3">
+            <input type="hidden" name="intent" value="gateway" />
+            <input type="hidden" name="id" value={connection.id} />
+            <GatewayModelsField provider={connection.provider} value={gateway} />
+            <Field label="Replace the key" hint="Write-only: g1t never shows it again. Leave it empty to keep the key you have.">
+              <Input name="secret" type="password" placeholder={connection.secretHint ? `Now ${connection.secretHint}` : "Paste a key"} autoComplete="new-password" className="max-w-sm" />
+            </Field>
+            <div className="flex items-center gap-3">
+              <SubmitButton variant="quiet" match={{ intent: "gateway", id: connection.id }} pending="Saving…">
+                Save
+              </SubmitButton>
+              {updated && <span className="text-sm text-success">Saved.</span>}
+            </div>
+          </Form>
+        </details>
       )}
       {connection.webhookUrl && (
         <div className="mt-3">

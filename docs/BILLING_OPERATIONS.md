@@ -271,8 +271,10 @@ overall and leak alerts.
 
 Every model call g1t pays for is an agent run's (the `claude` CLI in the
 sandbox, `crates/runner`) or a customer's AI Gateway request (a workspace
-token with `models:write` at `models.g1t.sh/anthropic`, `gateway.rs`); the
-only other model is Workers AI's embeddings, which are on Cloudflare's bill
+token with `models:write` at `models.g1t.sh/anthropic` or
+`models.g1t.sh/openai/v1`, `gateway.rs`, to Claude on Anthropic or to open
+models on Workers AI through the same AI Gateway); the only other model is
+Workers AI's embeddings for g1t's own search, which are on Cloudflare's bill
 (`embeddings`). How each reaches the ledger:
 
 | Call | Who pays | Run and session | Ledger cost | Settled to the gateway |
@@ -281,8 +283,8 @@ only other model is Workers AI's embeddings, which are on Cloudflare's bill
 | Agent run straight to the gateway (no `MODELS_URL`) | g1t | `runs` row; session `rs_…` in `cf-aig-metadata` (`services/runner` `gatewaySession`) | As above | Yes |
 | Agent run with no gateway (`AI_GATEWAY_ID` empty, self-hosting) | g1t's key | `runs` row, no session | The sandbox's figure | No: nothing to settle against |
 | Agent run on a workspace's own provider | The workspace | `runs` row, `billed_to = 'workspace'`, session `ms_…` (the proxy counts its tokens by it) | No model cost (none to g1t); the agent rate on `agent_tokens_own`, line `<run>/agent-own` | No; never on g1t's gateway. Closed by the cron's `settle_own_runs`, which charges tokens counted late |
-| AI Gateway request on g1t's key | The workspace, from included usage and AI credit (`gateway_admit` refuses at $0, over the limit, or with no plan) | No run; `gateway_requests` row; session `gw_<token>_<YYYYMMDDHH>` in `cf-aig-metadata` (`task: gateway`) | Per request: its tokens at `gateway_models` (the table, migration 0045: list price per million by kind) plus the `gateway_models` meter's markup (0 in beta); a `usage` line with task `gateway`, reference the request id, quantity 1 | No, not yet: the session tag is there for it. **Cost** drift on `models` compares the gateway's total with these lines too. Requests billed other than by tokens (fast mode, `inference_geo`, fallbacks, server tools, containers) are refused by the proxy |
-| AI Gateway request on a workspace's own key | The workspace's provider | `gateway_requests` row, `own_key = 1` | None | No; never on g1t's gateway |
+| AI Gateway request on g1t's key | The workspace, from included usage and AI credit (`gateway_admit` refuses at $0, over the limit, or with no plan) | No run; `gateway_requests` row; session `gw_<token>_<YYYYMMDDHH>` in `cf-aig-metadata` (`task: gateway`) | Per request: its tokens at `gateway_models` (the table, migrations 0045 and 0046: list price per million by kind, five-minute and one-hour cache writes apart, and for a model priced by prompt length such as Claude Haiku 5.5 a `threshold` above which the whole request is at the `over_` prices) plus the `gateway_models` meter's markup (0 in beta); a `usage` line with task `gateway`, reference the request id, quantity 1 | No, not yet: the session tag is there for it. **Cost** drift on `models` compares the gateway's total with these lines too. Requests billed other than by tokens (fast mode, `inference_geo`, fallbacks, server tools, containers) are refused by the proxy |
+| AI Gateway request on a workspace's own provider (any model connection whose `gateway_models` takes the model) | The workspace's provider | `gateway_requests` row, `own_key = 1`, `provider` and `connection` | None | No; never on g1t's gateway |
 | A sandbox that died before reporting | g1t | as its route | Charged from the gateway when settled | Yes |
 | Embeddings (indexing) | g1t | none (Workers AI) | Month-end `context` meter | No: Cloudflare's bill, `embeddings` bucket |
 | Embeddings (queries, search and agent context) | g1t | none | None: not charged, by design | No: in Cloudflare's `embeddings` line, shared out |
@@ -298,7 +300,13 @@ keeps `runs.gateway_note`, its correction says why, and it raises the
 the first figure is Claude Code's, the final one the gateway's. AI Gateway
 requests are the exception: they are charged from `gateway_models` (one
 row per model offered), which has to follow the provider's price list by
-hand until they are settled like runs.
+hand until they are settled like runs. It is not part of the price book's
+`price_versions`: a price change is a migration that updates the row and
+its `updated_at` (as 0046 did for Sonnet 5.5's cache reads), and the
+`gateway_models` meter's markup is the only price-book number on it. Open
+models need `WORKERS_AI_TOKEN` (a Cloudflare API token with Workers AI on
+g1t's account) on the model proxy; without it, and without
+`AI_GATEWAY_TOKEN` holding that permission, they are refused with `503`.
 
 **The daily total.** AI Gateway's analytics for the day (above) against
 the ledger's model cost is the check that nothing slips past: a model call

@@ -545,6 +545,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("revoke_workspace_invite", Scope::WorkspaceAdmin),
     ("list_integrations", Scope::WorkspaceRead),
     ("connect_integration", Scope::WorkspaceAdmin),
+    ("update_integration", Scope::WorkspaceAdmin),
     ("disconnect_integration", Scope::WorkspaceAdmin),
     ("test_integration", Scope::WorkspaceAdmin),
     ("get_model_routes", Scope::WorkspaceRead),

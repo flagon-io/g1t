@@ -400,6 +400,7 @@
       "x-tools": [
         "list_integrations",
         "connect_integration",
+        "update_integration",
         "disconnect_integration",
         "test_integration",
         "get_model_routes",
@@ -10607,7 +10608,7 @@
           "Billing"
         ],
         "summary": "List a workspace's AI Gateway requests",
-        "description": "A workspace's recent AI Gateway requests, newest first: each with its `id`, `created_at`, `model`, the access token that sent it (`token_id`, `token_name`), its tokens by kind (`input`, `output`, `cache_read`, `cache_write`), what they cost at the model's price (`cost_micros`) and what the workspace was charged (`charged_micros`, before included usage and AI credit paid for it; 0 on the workspace's own provider key, `own_key`), the HTTP `status` it was answered with, whether it was `streamed`, `duration_ms`, and `error` for one that was refused or failed. Prompts and answers are never kept. `limit` is how many, 50 unless given and 200 at most; pass `next` from one page as `before` for the next. Requests are kept `retention_days` (30). Members of the workspace only.\n\nTo send requests, see the AI Gateway guide: POST https://models.g1t.sh/anthropic/v1/messages with a workspace access token that has `models:write`. `charged_micros` is what the request was charged before included usage and AI credit paid for it; the payment itself is on the statement as AI Gateway. Pass `next` as `before` for the next page; it is null on the last.",
+        "description": "A workspace's recent AI Gateway requests, newest first: each with its `id`, `created_at`, `model`, the access token that sent it (`token_id`, `token_name`), its tokens by kind (`input`, `output`, `cache_read`, `cache_write`, and of those writes `cache_write_hour` to the hour-long cache), the `format` it was sent in (`anthropic` or `openai`), who served it (`provider`: `anthropic` or `workers-ai` on g1t's account, the connection's provider on the workspace's own, and `connection`, that connection's name), what they cost at the model's price (`cost_micros`) and what the workspace was charged (`charged_micros`, before included usage and AI credit paid for it; 0 on the workspace's own provider key, `own_key`), the HTTP `status` it was answered with, whether it was `streamed`, `duration_ms`, and `error` for one that was refused or failed. Prompts and answers are never kept. `limit` is how many, 50 unless given and 200 at most; pass `next` from one page as `before` for the next. Requests are kept `retention_days` (30). Members of the workspace only.\n\nTo send requests, see the AI Gateway guide: POST https://models.g1t.sh/anthropic/v1/messages (Anthropic's format) or https://models.g1t.sh/openai/v1/chat/completions (OpenAI's) with a workspace access token that has `models:write`. `format` is the format a request was sent in; `provider` who served it (`anthropic` or `workers-ai` on g1t's account, the connection's provider on the workspace's own, empty when it was refused before reaching one), and `connection` the workspace's own connection by name. `cache_write_hour` is the part of `cache_write` written to the hour-long cache. `charged_micros` is what the request was charged before included usage and AI credit paid for it; the payment itself is on the statement as AI Gateway. Pass `next` as `before` for the next page; it is null on the last.",
         "x-operation": "list_gateway_requests",
         "x-mcp-tool": "billing",
         "x-mcp-action": "gateway_requests",
@@ -10668,12 +10669,38 @@
                       "output": 512,
                       "cache_read": 12000,
                       "cache_write": 0,
-                      "cost_micros": 11200,
-                      "charged_micros": 11200,
+                      "cache_write_hour": 0,
+                      "cost_micros": 10000,
+                      "charged_micros": 10000,
                       "status": 200,
                       "own_key": false,
+                      "format": "anthropic",
+                      "provider": "anthropic",
+                      "connection": null,
                       "streamed": true,
                       "duration_ms": 4210,
+                      "error": null
+                    },
+                    {
+                      "id": "gw_9b3d1f7a5c2e4b6d8f0a1c33",
+                      "created_at": "2026-10-07T14:00:02.000Z",
+                      "model": "qwen3-coder:30b",
+                      "token_id": "tok_01kkr5a2b8c4d6e0f3g5h7j9k1",
+                      "token_name": "triage-bot",
+                      "input": 2210,
+                      "output": 96,
+                      "cache_read": 0,
+                      "cache_write": 0,
+                      "cache_write_hour": 0,
+                      "cost_micros": 0,
+                      "charged_micros": 0,
+                      "status": 200,
+                      "own_key": true,
+                      "format": "openai",
+                      "provider": "openai_endpoint",
+                      "connection": "Office GPU",
+                      "streamed": false,
+                      "duration_ms": 1830,
                       "error": null
                     },
                     {
@@ -10686,10 +10713,14 @@
                       "output": 0,
                       "cache_read": 0,
                       "cache_write": 0,
+                      "cache_write_hour": 0,
                       "cost_micros": 0,
                       "charged_micros": 0,
                       "status": 402,
                       "own_key": false,
+                      "format": "openai",
+                      "provider": "",
+                      "connection": null,
                       "streamed": false,
                       "duration_ms": 38,
                       "error": "The flagon-io workspace is out of AI credit and has used this month's included usage, so the AI Gateway refuses requests to g1t's models. An owner can buy AI credit or turn on auto-reload at /flagon-io/-/billing#ai-credit."
@@ -10746,7 +10777,7 @@
           "workspace": "flagon-io"
         },
         "x-example-query": {
-          "limit": 2
+          "limit": 3
         }
       }
     },
@@ -28062,7 +28093,7 @@
           "Integrations"
         ],
         "summary": "Connect an integration",
-        "description": "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/).",
+        "description": "Connect a workspace to an outside system. provider is a model provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint: your own key, billed by that provider, and free on g1t while it is being built out; a workspace can connect several and route each kind of work with set_model_routes), or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). For a model provider, config.gateway_models chooses which AI Gateway requests go to it by the model they name: ids such as gpt-5.5, or prefixes ending in * such as gpt-* or ollama/* (a /* prefix is taken off before sending); absent, an Anthropic key or Anthropic-compatible endpoint takes claude-* and the others take nothing. Requests on the workspace's own provider are counted and never charged. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/).",
         "x-operation": "connect_integration",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "connect_integration",
@@ -28205,11 +28236,11 @@
                   },
                   "config": {
                     "type": "object",
-                    "description": "Settings. repo (owner/name) is where alerts open issues; assign puts an agent on each; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. base_url and auth_header (x-api-key or authorization) are for your own endpoint; model overrides the model for every kind of work. write_back (default true) tells the outside system when the work lands."
+                    "description": "Settings. repo (owner/name) is where alerts open issues; assign puts an agent on each; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. base_url and auth_header (x-api-key or authorization) are for your own endpoint; model overrides the model for every kind of work; gateway_models (model ids, or prefixes ending in * such as gpt-* or ollama/*) chooses which AI Gateway requests go to a model provider. write_back (default true) tells the outside system when the work lands."
                   },
                   "secret": {
                     "type": "string",
-                    "description": "The API key or token g1t uses to call it."
+                    "description": "The API key or token g1t uses to call it. Write-only: kept encrypted, never returned."
                   },
                   "signing_secret": {
                     "type": "string",
@@ -30722,6 +30753,170 @@
       }
     },
     "/workspaces/{workspace}/integrations/{id}": {
+      "patch": {
+        "operationId": "update_integration",
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Update an integration",
+        "description": "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a model provider's key or to choose its config.gateway_models, the AI Gateway models it takes. Fields left out are kept. Secrets are never returned. Owners only.\n\nThe secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. With `gateway_models` set to `ollama/*`, an AI Gateway request for `ollama/qwen3-coder:30b` reaches this endpoint as `qwen3-coder:30b`, on the workspace's own account. See [the AI Gateway guide](/guides/ai-gateway/#your-own-providers).",
+        "x-operation": "update_integration",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "update_integration",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The integration's id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0",
+                  "workspace": "flagon-io",
+                  "provider": "openai_endpoint",
+                  "kind": "models",
+                  "name": "Office GPU",
+                  "config": {
+                    "write_back": true,
+                    "base_url": "https://gpu.flagon.dev/v1",
+                    "gateway_models": [
+                      "ollama/*"
+                    ]
+                  },
+                  "secret_hint": "…-key",
+                  "webhook_url": null,
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-07T12:10:44.512Z",
+                  "last_used_at": "2026-10-07T14:00:02.000Z",
+                  "last_error": null,
+                  "models": [
+                    "llama3.3:70b",
+                    "qwen3-coder:30b"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "A new name."
+                  },
+                  "config": {
+                    "type": "object",
+                    "description": "Its settings, replaced whole: the same fields as connect_integration's config. For a model provider, gateway_models chooses the AI Gateway models it takes."
+                  },
+                  "secret": {
+                    "type": "string",
+                    "description": "A new API key or token, replacing the old one. Write-only: kept encrypted, never returned."
+                  },
+                  "signing_secret": {
+                    "type": "string",
+                    "description": "For sentry: a new client secret."
+                  }
+                }
+              },
+              "example": {
+                "config": {
+                  "base_url": "https://gpu.flagon.dev/v1",
+                  "gateway_models": [
+                    "ollama/*"
+                  ]
+                },
+                "secret": "sk-office-gpu-key"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0"
+        }
+      },
       "delete": {
         "operationId": "disconnect_integration",
         "tags": [
