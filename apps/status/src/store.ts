@@ -7,6 +7,8 @@ import type {
   AdminIncident,
   AdminIncidentDetail,
   AdminMaintenance,
+  CheckHistory,
+  CheckSample,
   ComponentImpact,
   FollowUp,
   ImpactInput,
@@ -23,7 +25,7 @@ import type {
   TimelineKind,
 } from "@g1t/contracts";
 
-import type { DeployWindow, Streak, WatchedDraft } from "./detect.ts";
+import { type DeployWindow, type Streak, type WatchedDraft, upgradeStreak } from "./detect.ts";
 import { type Entry, type IncidentFacts, durations, shortId } from "./incidents.ts";
 import { type Current, type DayRow, HISTORY_DAYS, dayOf, overallImpact } from "./model.ts";
 import { postmortemDraft } from "./postmortem.ts";
@@ -33,12 +35,22 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const iso = (ms: number) => new Date(ms).toISOString();
 
 /** One part's check, ready to keep. */
-export type Observation = Current & { component: string };
+export type Observation = Current & {
+  component: string;
+  /** The data centre the check ran from (cf-ray), when known. */
+  colo?: string | null;
+  /** A slow answer asked again (probe.ts `confirmSlow`): the first try's time. */
+  first_ms?: number | null;
+};
+
+/** How long every single check is kept (`check_history`), for sudo's incident pages. */
+export const CHECK_HISTORY_DAYS = 7;
 
 /**
- * Keeps one round of checks: each part's state, today's tally, and the
- * time. Parts under maintenance keep their last check but are left out of
- * the tally: failures in a planned window do not count against uptime.
+ * Keeps one round of checks: each part's state, today's tally, every
+ * check for CHECK_HISTORY_DAYS, and the time. Parts under maintenance keep
+ * their last check but are left out of the tally: failures in a planned
+ * window do not count against uptime.
  */
 export async function record(db: D1Database, observations: Observation[], at: Date, maintenance: Set<string> = new Set()): Promise<void> {
   const when = at.toISOString();
@@ -54,7 +66,13 @@ export async function record(db: D1Database, observations: Observation[], at: Da
         )
         .bind(o.component, o.state, o.detail, o.latency_ms, when),
     );
-    if (o.state === "unmonitored" || maintenance.has(o.component)) continue;
+    if (o.state === "unmonitored") continue;
+    statements.push(
+      db
+        .prepare(`INSERT OR REPLACE INTO check_history (component, at, ms, outcome, colo, first_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`)
+        .bind(o.component, when, o.latency_ms, o.state, o.colo ?? null, o.first_ms ?? null),
+    );
+    if (maintenance.has(o.component)) continue;
     const up = o.state === "up" ? 1 : 0;
     const degraded = o.state === "degraded" ? 1 : 0;
     const down = o.state === "down" ? 1 : 0;
@@ -77,7 +95,35 @@ export async function record(db: D1Database, observations: Observation[], at: Da
     db.prepare(`INSERT INTO meta (key, value) VALUES ('checked_at', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1`).bind(when),
   );
   statements.push(db.prepare(`DELETE FROM daily WHERE day < ?1`).bind(oldest));
+  statements.push(db.prepare(`DELETE FROM check_history WHERE at < ?1`).bind(iso(at.getTime() - CHECK_HISTORY_DAYS * DAY_MS)));
   await db.batch(statements);
+}
+
+/** Every check of `components` from `from` to `to`, oldest first. */
+export async function checkHistory(db: D1Database, components: string[], from: Date, to: Date): Promise<CheckSample[]> {
+  if (!components.length) return [];
+  const list = rows<CheckSample>(
+    (await db
+      .prepare(
+        `SELECT component, at, ms, outcome, colo, first_ms FROM check_history
+         WHERE at >= ? AND at <= ? AND component IN (${inList(components)}) ORDER BY at, component`,
+      )
+      .bind(from.toISOString(), to.toISOString(), ...components)
+      .all()) as D1Result,
+  );
+  return list.map((r) => ({ ...r, ms: r.ms == null ? null : Number(r.ms), first_ms: r.first_ms == null ? null : Number(r.first_ms) }));
+}
+
+/** Before the impact began, and after it ended, the incident page shows this much more. */
+const AROUND_MS = 30 * 60_000;
+/** The most of one incident's checks the incident page shows: the last day of it. */
+const SPAN_MS = DAY_MS;
+
+/** The span of checks an incident's page shows: from before it began to after it ended (or now), at most a day, within what is kept. */
+export function historySpan(started_at: string, resolved_at: string | null, now: Date): { from: Date; to: Date } {
+  const to = Math.min(now.getTime(), resolved_at ? Date.parse(resolved_at) + AROUND_MS : now.getTime());
+  const from = Math.max(Date.parse(started_at) - AROUND_MS, to - SPAN_MS, now.getTime() - CHECK_HISTORY_DAYS * DAY_MS);
+  return { from: new Date(Math.min(from, to)), to: new Date(to) };
 }
 
 // --- Rows ------------------------------------------------------------------------
@@ -340,10 +386,27 @@ export async function openCount(db: D1Database): Promise<number> {
   return row?.n ?? 0;
 }
 
-export async function incidentDetail(db: D1Database, id: string, origin: string, names: Map<string, string>): Promise<AdminIncidentDetail | null> {
+export async function incidentDetail(
+  db: D1Database,
+  id: string,
+  origin: string,
+  names: Map<string, string>,
+  { limits = new Map<string, number>(), now = new Date() }: { limits?: Map<string, number>; now?: Date } = {},
+): Promise<AdminIncidentDetail | null> {
   const data = await adminIncidents(db, `id = ?1`, [id]);
   const row = data.list[0];
   if (!row) return null;
+  // Every check of its parts around it, for the latency chart.
+  const keys = [...new Set(data.comps.filter((c) => c.incident_id === row.id).map((c) => c.component))];
+  const span = historySpan(row.started_at, row.resolved_at, now);
+  const samples = await checkHistory(db, keys, span.from, span.to);
+  const checks: CheckHistory[] = keys.map((key) => ({
+    key,
+    slow_ms: limits.get(key) ?? null,
+    from: span.from.toISOString(),
+    to: span.to.toISOString(),
+    samples: samples.filter((s) => s.component === key),
+  }));
   const pmRow = data.pms[0] ?? null;
   const incident = toAdmin(row, data.comps, data.timeline, data.followups, pmRow);
   const timeline = data.timeline.map(toTimeline);
@@ -376,6 +439,7 @@ export async function incidentDetail(db: D1Database, id: string, origin: string,
     postmortem,
     postmortem_draft: postmortemDraft(incident, timeline, followups, names),
     url: incidentUrl(origin, id),
+    checks,
   };
 }
 
@@ -699,10 +763,11 @@ export async function recipients(db: D1Database, about: string[]): Promise<{ id:
 // --- Detection ---------------------------------------------------------------------------
 
 export async function loadStreaks(db: D1Database): Promise<Map<string, Streak>> {
-  const list = rows<{ component: string; state: "degraded" | "down"; count: number; since: string; alerted: number }>(
-    (await db.prepare(`SELECT * FROM streak`).all()) as D1Result,
+  const list = rows<{ component: string; state: "degraded" | "down"; count: number; checks: number | null; recent: string | null; since: string; alerted: number }>(
+    (await db.prepare(`SELECT component, state, count, checks, recent, since, alerted FROM streak`).all()) as D1Result,
   );
-  return new Map(list.map((s) => [s.component, { ...s, alerted: s.alerted === 1 }]));
+  // Runs kept before migration 0003 have no `checks` or `recent`: upgradeStreak fills them in.
+  return new Map(list.map((s) => [s.component, upgradeStreak({ ...s, alerted: s.alerted === 1 })]));
 }
 
 /**
@@ -717,10 +782,10 @@ export async function saveStreaks(db: D1Database, streaks: Streak[]): Promise<vo
     ...streaks.map((s) =>
       db
         .prepare(
-          `INSERT INTO streak (component, state, count, since, alerted) VALUES (?1, ?2, ?3, ?4, ?5)
-           ON CONFLICT (component) DO UPDATE SET state = ?2, count = ?3, since = ?4, alerted = ?5`,
+          `INSERT INTO streak (component, state, count, since, alerted, checks, recent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+           ON CONFLICT (component) DO UPDATE SET state = ?2, count = ?3, since = ?4, alerted = ?5, checks = ?6, recent = ?7`,
         )
-        .bind(s.component, s.state, s.count, s.since, s.alerted ? 1 : 0),
+        .bind(s.component, s.state, s.count, s.since, s.alerted ? 1 : 0, s.checks, s.recent),
     ),
   ]);
 }
@@ -750,7 +815,16 @@ export async function loadDeploy(db: D1Database): Promise<DeployWindow | null> {
   if (!row?.value) return null;
   try {
     const w = JSON.parse(row.value) as Partial<DeployWindow>;
-    return typeof w.started_at === "string" ? { id: w.id ?? null, started_at: w.started_at, finished_at: w.finished_at ?? null } : null;
+    if (typeof w.started_at !== "string") return null;
+    const finished_at = w.finished_at ?? null;
+    return {
+      id: w.id ?? null,
+      started_at: w.started_at,
+      finished_at,
+      // Kept before deploys were counted: one, unless it finished.
+      running: typeof w.running === "number" ? w.running : finished_at ? 0 : 1,
+      last_started_at: typeof w.last_started_at === "string" ? w.last_started_at : w.started_at,
+    };
   } catch {
     return null;
   }
@@ -764,25 +838,44 @@ export async function saveDeploy(db: D1Database, window: DeployWindow): Promise<
 }
 
 const HEALTHY = "draft_healthy:";
+const REMINDED = "draft_reminded:";
 
 /**
  * Detected drafts no one has picked up (unacknowledged, never published),
- * with their parts and since when those have been healthy.
+ * with their parts, since when those have been healthy, and when the
+ * alert last went out again for them.
  */
 export async function watchedDrafts(db: D1Database): Promise<WatchedDraft[]> {
-  const list = rows<{ id: string; title: string; started_at: string; healthy_since: string | null; component: string | null }>(
+  const list = rows<{
+    id: string;
+    title: string;
+    started_at: string;
+    declared_at: string;
+    healthy_since: string | null;
+    reminded_at: string | null;
+    component: string | null;
+  }>(
     (await db
       .prepare(
-        `SELECT i.id, i.title, i.started_at, m.value AS healthy_since, c.component FROM incident i
+        `SELECT i.id, i.title, i.started_at, i.declared_at, m.value AS healthy_since, r.value AS reminded_at, c.component FROM incident i
          LEFT JOIN incident_component c ON c.incident_id = i.id AND c.impact != 'operational'
          LEFT JOIN meta m ON m.key = '${HEALTHY}' || i.id
+         LEFT JOIN meta r ON r.key = '${REMINDED}' || i.id
          WHERE i.source = 'detected' AND i.visibility = 'draft' AND i.acknowledged_at IS NULL AND i.resolved_at IS NULL AND i.published_at IS NULL`,
       )
       .all()) as D1Result,
   );
   const map = new Map<string, WatchedDraft>();
   for (const r of list) {
-    const d = map.get(r.id) ?? { id: r.id, title: r.title, started_at: r.started_at, healthy_since: r.healthy_since ?? null, components: [] };
+    const d = map.get(r.id) ?? {
+      id: r.id,
+      title: r.title,
+      started_at: r.started_at,
+      declared_at: r.declared_at,
+      healthy_since: r.healthy_since ?? null,
+      reminded_at: r.reminded_at ?? null,
+      components: [],
+    };
     if (r.component) d.components.push(r.component);
     map.set(r.id, d);
   }
@@ -807,6 +900,26 @@ export async function saveHealthy(db: D1Database, healthy: { id: string; since: 
 }
 
 /**
+ * Notes that the alert went out again for these drafts (`staleDrafts`),
+ * with a line on each one's timeline, and forgets the drafts no longer
+ * watched (`watching`: every watched draft's id).
+ */
+export async function saveReminders(db: D1Database, watching: string[], reminded: { id: string; text: string }[], now: Date): Promise<void> {
+  const keys = watching.map((id) => `${REMINDED}${id}`);
+  await db.batch([
+    keys.length
+      ? db.prepare(`DELETE FROM meta WHERE key LIKE '${REMINDED}%' AND key NOT IN (${inList(keys)})`).bind(...keys)
+      : db.prepare(`DELETE FROM meta WHERE key LIKE '${REMINDED}%'`),
+    ...reminded.flatMap((r) => [
+      db
+        .prepare(`INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
+        .bind(`${REMINDED}${r.id}`, now.toISOString()),
+      ...timelineStatements(db, r.id, [{ kind: "note", public: false, status: null, text: r.text }], now, "status"),
+    ]),
+  ]);
+}
+
+/**
  * Dismisses a detected draft that recovered, as `status`, resolved at the
  * moment it recovered. Only while it is still an untouched draft: returns
  * false (and changes nothing) when staff got to it first.
@@ -822,7 +935,7 @@ export async function autoDismiss(db: D1Database, id: string, recoveredAt: strin
   if ((done.meta?.changes ?? 0) === 0) return false;
   await db.batch([
     ...timelineStatements(db, id, [{ kind: "dismissed", public: false, status: null, text }], now, "status"),
-    db.prepare(`DELETE FROM meta WHERE key = ?1`).bind(`${HEALTHY}${id}`),
+    db.prepare(`DELETE FROM meta WHERE key IN (?1, ?2)`).bind(`${HEALTHY}${id}`, `${REMINDED}${id}`),
     auditStatement(db, now.toISOString(), "status", "incident_dismissed", id, `Dismissed automatically: ${text}`),
   ]);
   return true;

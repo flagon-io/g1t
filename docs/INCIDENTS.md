@@ -56,10 +56,40 @@ change of role is written on the timeline.
 
 ## Detected drafts
 
-When a part fails or is slow three checks in a row (three minutes), the
-status worker makes a **draft** incident and emails `STATUS_ALERT_EMAIL`
-(hey@flagon.io) with a link. A draft is not on the status page; the
-part's own state already is, from the checks.
+When a part fails or is slow on four of its last five checks (a check a
+minute), the status worker makes a **draft** incident and emails
+`STATUS_ALERT_EMAIL` (hey@flagon.io) with a link. A draft is not on the
+status page; the part's own state already is, from the checks.
+
+How the checks decide (`apps/status/src/detect.ts`, `probe.ts`):
+
+- **A slow answer is asked again at once.** It counts as slow only if the
+  second answer is slow too, so one cold start or cache refill is not a
+  slow check. A check that fails (an error or a timeout) is not asked
+  again; four of five decides.
+- **Four of five, not three in a row.** A good check in between does not
+  hide trouble that keeps coming; three good checks in a row end a run of
+  trouble, however long it lasted, and the next trouble starts a new one
+  with its own start. A draft's lines say "on 4 checks in a row" or "on 4
+  of 5 checks".
+- **Page loads are timed to the first byte.** The site's pages are loaded
+  with a browser's user agent (ending `g1t-status/1.0 (+status.g1t.sh)`),
+  because the site renders the whole page first for a crawler. See
+  `docs/PERFORMANCE.md`.
+- **Every check is kept for 7 days**: how long it took, what it meant, and
+  the Cloudflare data centre it ran from (from the answer's `cf-ray`). The
+  incident page shows a **Checks** chart per part, from 30 minutes before
+  the impact began to 30 minutes after it ended (at most a day), with the
+  slow line, slow checks dotted and failures marked, and the latest 30
+  checks as a table.
+- **A draft nobody acknowledges is raised again**: the alert goes out once
+  more after 45 minutes, then every 6 hours while it waits, with a note on
+  its timeline each time. Publishing it, posting a note or dismissing it
+  acknowledges it and stops the reminders.
+- **Deploys are announced.** `scripts/deploy.mjs` tells the status worker
+  when a deploy starts and finishes (`docs/DEPLOYING.md`); during one, and
+  for 3 minutes after, trouble is counted but not drafted unless it
+  outlasts the deploy.
 
 Open it from the **Drafts** tab (the sidebar's Incidents count includes
 drafts) and either:
@@ -71,7 +101,7 @@ drafts) and either:
 
 While an incident is open on a part, more failures on it add a line to
 that incident's timeline instead of a new draft, and the part answering
-again adds a "answering again" line.
+again (three good checks in a row) adds an "answering again" line.
 
 ## Running it
 

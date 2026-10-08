@@ -5,6 +5,7 @@ import type { AdminIncidentDetail, IncidentSeverity, IncidentStatus, TimelineEnt
 
 import type { Route } from "./+types/incident";
 import { BackLink, ImpactBadge, ImpactPicker, PhaseBadge, SeverityBadge, Timer } from "~/components/incidents";
+import { IncidentChecks } from "~/components/latency";
 import { Badge, Button, Field, Input, Notice, Section, Select, Textarea, When } from "~/components/ui";
 import { text } from "~/lib/forms";
 import {
@@ -309,7 +310,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
           <h2 className="font-semibold">This is a draft</h2>
           <p className="mt-1 text-sm text-muted">
             {incident.source === "detected"
-              ? "The checks failed or were slow three times in a row and made this. Nobody outside sees it until you publish it. If it was a blip, dismiss it; if no one picks it up and its parts stay healthy for 10 minutes, it is dismissed on its own."
+              ? "The checks failed or were slow on four of five checks in a row and made this. Nobody outside sees it until you publish it. If it was a blip, dismiss it; if no one picks it up and its parts stay healthy for 10 minutes, it is dismissed on its own. Left unacknowledged, the alert goes out again after 45 minutes, then every 6 hours."
               : "Nobody outside sees it until you publish it."}
           </p>
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -349,6 +350,15 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-6">
           {incident.visibility !== "dismissed" && <UpdateForm incident={incident} components={components} error={errorFor("update")} />}
+          {(incident.checks?.length ?? 0) > 0 && (
+            <Section
+              id="checks"
+              title="Checks"
+              description="How long each check of its parts took, from 30 minutes before it began to 30 minutes after it ended (at most a day), with the data centre each ran from. Kept for 7 days."
+            >
+              <IncidentChecks checks={incident.checks} names={names} />
+            </Section>
+          )}
           <Section title="Timeline" description="Newest first. Public updates are what the status page shows; everything else is for staff.">
             <ol className="space-y-2">
               {timeline.map((entry) => (

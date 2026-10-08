@@ -115,6 +115,22 @@ export function alertLetter(input: { title: string; lines: string[]; link: strin
   };
 }
 
+/**
+ * The alert again, for a detected draft nobody has acknowledged: after 45
+ * minutes, then every 6 hours while it waits (detect.ts `staleDrafts`).
+ */
+export function staleLetter(input: { title: string; waiting: string; link: string }): Letter {
+  return {
+    heading: `Still waiting: ${input.title.replace(/^Detected: /, "")}`,
+    paragraphs: [
+      `A detected draft incident has been waiting ${input.waiting} for someone to pick it up, and its parts have not stayed healthy long enough for it to be dismissed on its own.`,
+      "Acknowledge it in sudo: publish it, add a note, or dismiss it if it is not an incident. Until then this goes out again every 6 hours.",
+    ],
+    action: { label: "Open it in sudo", url: input.link },
+    footer: ["Sent by status.g1t.sh to the staff alert address (STATUS_ALERT_EMAIL)."],
+  };
+}
+
 /** The follow-up when a detected draft recovered and was dismissed on its own. */
 export function recoveredLetter(input: { title: string; text: string; link: string }): Letter {
   return {

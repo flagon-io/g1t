@@ -10,15 +10,34 @@
 // STATUS_URL defaults to https://status.g1t.sh. Never fails a deploy:
 // without the token it does nothing, and any error is a warning.
 //
-// In scripts/deploy.mjs `deploy()`, once there is something to ship and
-// before the first stage (not in a dry run):
-//
-//   import { announceDeploy } from "./deploy/status-window.mjs";
-//   const id = head ?? null;
-//   if (!dryRun) await announceDeploy("started", { id });
-//   try { ...the stages... } finally { if (!dryRun) await announceDeploy("finished", { id }); }
+// scripts/deploy.mjs `deploy()` wraps its stages in `withDeployWindow`
+// once there is something to ship (never in a dry run), so every deploy,
+// by hand or in g1t Actions (.g1t/workflows/deploy.yml passes the
+// STATUS_DEPLOY_TOKEN secret), says so. Jobs that run at once (a stage's
+// matrix) each say started and finished; the status Worker counts them and
+// the window closes when the last one finishes.
 
 import { pathToFileURL } from "node:url";
+
+/**
+ * Runs `work` inside a deploy window: "started" before, "finished" after,
+ * whether it succeeded or threw. Neither announcement can fail the deploy.
+ *
+ * @template T
+ * @param {() => Promise<T>} work
+ * @param {{ id?: string | null, dryRun?: boolean, announce?: typeof announceDeploy, env?: Record<string, string | undefined>, log?: (line: string) => void }} [options]
+ * @returns {Promise<T>}
+ */
+export async function withDeployWindow(work, { id = null, dryRun = false, announce = announceDeploy, env = process.env, log } = {}) {
+  if (dryRun) return work();
+  const options = { id, env, ...(log ? { log } : {}) };
+  await announce("started", options);
+  try {
+    return await work();
+  } finally {
+    await announce("finished", options);
+  }
+}
 
 /**
  * @param {"started" | "finished"} phase

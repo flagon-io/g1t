@@ -324,8 +324,17 @@ them.
 | Streamed panels | within 1 s |
 
 The status page's **Page speed** part checks a public project page and
-Explore every minute and shows them as degraded over 800 ms
-(`apps/status/src/components.ts`, `SPEED_BUDGET_MS`).
+Explore every minute, timed to the first byte (the answer's headers), and
+shows them as degraded over 800 ms (`apps/status/src/components.ts`,
+`SPEED_BUDGET_MS`). It asks as a browser does: a crawler's user agent makes
+the site render the whole page before the first byte (`isbot` in
+`apps/web/app/entry.server.tsx`), so the check sends a browser's user
+agent ending in `g1t-status/1.0 (+status.g1t.sh)`, which isbot reads as a
+browser (`apps/status/src/probe.ts`, `BROWSER_USER_AGENT`; the sign-in page
+of **Website and sign-in** is loaded the same way). A slow answer is asked
+again at once and counts only if the second is slow too, at the faster of
+the two times; every check is kept for 7 days with the data centre it ran
+from, and sudo's incident page charts them.
 
 ## Measuring
 

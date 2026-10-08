@@ -258,7 +258,7 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
               : filters.tab === "open"
                 ? "The status page shows only its own checks."
                 : filters.tab === "drafts"
-                  ? "When a part fails or is slow on three checks in a row, a draft appears here and the alert address gets an email. If no one picks it up and the part stays healthy for 10 minutes, it is dismissed on its own. Restarts during a deploy are not drafted unless they outlast it."
+                  ? "When a part fails or is slow on four of five checks in a row, a draft appears here and the alert address gets an email, again after 45 minutes if no one picks it up, then every 6 hours. If no one picks it up and the part stays healthy for 10 minutes, it is dismissed on its own. Restarts during a deploy are not drafted unless they outlast it."
                   : null}
           </EmptyState>
         ) : (

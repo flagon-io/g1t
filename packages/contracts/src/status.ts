@@ -224,6 +224,37 @@ export type AdminIncidentDetail = AdminIncident & {
   postmortem_draft: PostmortemFields;
   /** Its page on the status site. */
   url: string;
+  /**
+   * Every check of each of its parts around it, for the latency chart:
+   * from 30 minutes before it began to 30 minutes after it ended (or now),
+   * at most a day of it. Checks are kept for 7 days, so an older incident
+   * has none.
+   */
+  checks: CheckHistory[];
+};
+
+/** One check of one part, as the status worker keeps it (7 days). */
+export type CheckSample = {
+  component: string;
+  at: string;
+  /** How long it took; null when it took no time to speak of (a part with no check). */
+  ms: number | null;
+  outcome: "up" | "degraded" | "down";
+  /** The Cloudflare data centre the check ran from, from the answer's cf-ray; null when unknown. */
+  colo: string | null;
+  /** When the first try was slow and it was asked again at once: the first try's time. */
+  first_ms: number | null;
+};
+
+/** One part's checks over a span, and the time over which an answer counts as slow. */
+export type CheckHistory = {
+  key: string;
+  /** Slower than this counts as degraded; null when not known. */
+  slow_ms: number | null;
+  from: string;
+  to: string;
+  /** Oldest first. */
+  samples: CheckSample[];
 };
 
 export type AdminMaintenance = StatusMaintenance & { created_at: string; created_by: string };

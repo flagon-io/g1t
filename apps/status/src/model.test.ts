@@ -191,7 +191,7 @@ test("components: an installation without a host leaves that part off", () => {
     ["site", "api", "git", "speed", "mcp", "docs", "deployments", "agents", "sandboxes", "billing"],
   );
   const speed = all.find((c) => c.key === "speed")!;
-  assert.deepEqual(speed.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t" }, { url: "https://g1t.sh/explore" }] });
+  assert.deepEqual(speed.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t", browser: true }, { url: "https://g1t.sh/explore", browser: true }] });
   assert.equal(classify({ ok: true, ms: 900 }, speed.slowMs).state, "degraded");
   assert.equal(classify({ ok: true, ms: 300 }, speed.slowMs).state, "up");
   const git = all.find((c) => c.key === "git")!;

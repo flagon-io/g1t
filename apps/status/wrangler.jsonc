@@ -39,9 +39,10 @@
 	//   npx wrangler secret put STATUS_SECRET
 	// Without either, the page offers the feeds only.
 	//
-	// The deploy tool says when a deploy starts and finishes (POST /deploys,
-	// bearer STATUS_DEPLOY_TOKEN), so restarts do not draft incidents.
-	// Optional; without it, deploys are not announced:
+	// The deploy tool (scripts/deploy.mjs) says when a deploy starts and
+	// finishes (POST /deploys, bearer STATUS_DEPLOY_TOKEN), so restarts do
+	// not draft incidents. The same value is the STATUS_DEPLOY_TOKEN Actions
+	// secret on flagon-io/g1t. Optional; without it, deploys are not announced:
 	//   npx wrangler secret put STATUS_DEPLOY_TOKEN
 	"send_email": [{ "name": "EMAIL", "remote": true }],
 	"vars": {
@@ -61,8 +62,9 @@
 		"STATUS_URL": "https://status.g1t.sh",
 		// sudo, for the link in the staff alert.
 		"SUDO_URL": "https://sudo.g1t.sh",
-		// Who hears when a part fails three checks in a row and a draft
-		// incident is made. Empty sends none.
+		// Who hears when a part fails four of five checks and a draft
+		// incident is made, and again when it waits unacknowledged (after
+		// 45 minutes, then every 6 hours). Empty sends none.
 		"STATUS_ALERT_EMAIL": "hey@flagon.io",
 		"STATUS_FROM": "g1t status <noreply@g1t.sh>",
 		"OG_IMAGE": "https://og.g1t.sh/image?path=%2Fstatus&v=2"

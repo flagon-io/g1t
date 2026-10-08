@@ -13,5 +13,8 @@
   "dependencies": {
     "@g1t/contracts": "*",
     "@g1t/theme": "*"
+  },
+  "devDependencies": {
+    "isbot": "^5.1.36"
   }
 }
