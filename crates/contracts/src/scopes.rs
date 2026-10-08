@@ -740,6 +740,12 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("delete_workspace", Scope::WorkspaceAdmin),
     ("get_workspace", Scope::WorkspaceRead),
     ("update_workspace", Scope::WorkspaceAdmin),
+    // Its members, and who owns it.
+    ("list_members", Scope::WorkspaceRead),
+    ("update_member", Scope::WorkspaceAdmin),
+    ("remove_member", Scope::WorkspaceAdmin),
+    ("transfer_ownership", Scope::WorkspaceAdmin),
+    ("leave_workspace", Scope::AccountWrite),
     ("list_workspace_invites", Scope::WorkspaceRead),
     ("invite_member", Scope::WorkspaceAdmin),
     ("revoke_workspace_invite", Scope::WorkspaceAdmin),

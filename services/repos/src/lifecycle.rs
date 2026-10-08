@@ -67,6 +67,8 @@ pub struct Asker {
     /// Their role on the repository itself (see g1t_contracts::access).
     /// None where only the workspace is known, as for deleted ones.
     pub repo_role: Option<RepoRole>,
+    /// The workspace's member privileges, as their membership carries them.
+    pub privileges: g1t_contracts::MemberPrivileges,
 }
 
 impl Asker {
@@ -76,6 +78,7 @@ impl Asker {
             verified: user.verified,
             role: user.role_in(&namespace.to_lowercase()),
             repo_role: None,
+            privileges: user.privileges_in(&namespace.to_lowercase()),
         }
     }
 
@@ -90,10 +93,14 @@ impl Asker {
 
 /// Whether `asker` may `what` ("rename", "archive"...) a repository of
 /// `namespace` that takes `capability`: a verified person with the role
-/// the permission table asks (Admin), and for transferring and deleting,
-/// an owner of the workspace as well.
+/// the permission table asks (Admin), and for changing visibility,
+/// transferring and deleting, an owner of the workspace as well, unless its
+/// member privileges let its members with Admin do it.
 pub fn admin_only(asker: Asker, namespace: &str, what: &str, capability: Capability) -> std::result::Result<(), Refusal> {
-    if access::OWNER_ONLY.contains(&capability) {
+    let admins_may = asker.role == Some(Role::Member)
+        && asker.repo_role == Some(RepoRole::Admin)
+        && !access::owner_only(capability, &asker.privileges);
+    if access::OWNER_ONLY.contains(&capability) && !admins_may {
         // Someone who can see the repository is told why, not that it is missing.
         if asker.role.is_none() && asker.repo_role.is_some() && asker.person {
             return Err((
@@ -125,6 +132,17 @@ pub fn admin_only(asker: Asker, namespace: &str, what: &str, capability: Capabil
         return Err((FailureCode::Forbidden, UNVERIFIED.into()));
     }
     Ok(())
+}
+
+/// Making a repository public or private is, as far as the workspace's
+/// member privileges go, creating one of that kind: a member may only make
+/// it what they may create.
+pub fn visibility_refusal(actor: &User, repo: &Repo, private: bool) -> Option<String> {
+    if repo.is_private == private {
+        return None;
+    }
+    let role = actor.role_in(&repo.namespace.to_lowercase())?;
+    actor.privileges_in(&repo.namespace.to_lowercase()).creation_refusal(role, private, &repo.namespace)
 }
 
 /// Whether `asker` may `what` ("delete", "rename"...) a repository of
@@ -1172,12 +1190,15 @@ impl<S: GitStore> Repos<S> {
 
     /// `set_visibility`: see `g1t_contracts::repos::SetVisibilityArgs`.
     pub(crate) async fn set_visibility(&self, a: SetVisibilityArgs) -> Result<Outcome<Repo>> {
-        let repo = match self.owned(&a.actor, &a.path, "change the visibility of", Capability::Administer).await? {
+        let repo = match self.owned(&a.actor, &a.path, "change the visibility of", Capability::ChangeVisibility).await? {
             Ok(repo) => repo,
             Err(refusal) => return Ok(fail(refusal)),
         };
         if !confirmed(&path_of(&repo), &a.confirm) {
             return Ok(fail(confirm_refusal(&path_of(&repo))));
+        }
+        if let Some(why) = visibility_refusal(&a.actor, &repo, a.is_private) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, why));
         }
         self.change_visibility(repo, a.is_private, &a.actor, a.surface).await
     }
@@ -1530,6 +1551,7 @@ mod tests {
             verified: true,
             role: Some(Role::Owner),
             repo_role: Some(RepoRole::Admin),
+            privileges: g1t_contracts::MemberPrivileges::default(),
         }
     }
 
@@ -1566,6 +1588,24 @@ mod tests {
         let member_admin = Asker { role: Some(Role::Member), ..admin };
         assert_eq!(admin_only(member_admin, "acme", "delete", Capability::Delete).unwrap_err().0, FailureCode::Forbidden);
         // Write (the default base permission) cannot rename.
+        // By default a member with Admin changes visibility but does not
+        // delete; the workspace's member privileges change both.
+        assert!(admin_only(member_admin, "acme", "change the visibility of", Capability::ChangeVisibility).is_ok());
+        let open = Asker {
+            privileges: g1t_contracts::MemberPrivileges { members_can_delete_repositories: true, ..g1t_contracts::MemberPrivileges::default() },
+            ..member_admin
+        };
+        assert!(admin_only(open, "acme", "delete", Capability::Delete).is_ok());
+        let closed = Asker {
+            privileges: g1t_contracts::MemberPrivileges { members_can_change_repo_visibility: false, ..g1t_contracts::MemberPrivileges::default() },
+            ..member_admin
+        };
+        assert_eq!(
+            admin_only(closed, "acme", "change the visibility of", Capability::ChangeVisibility).unwrap_err().0,
+            FailureCode::Forbidden
+        );
+        // An outside collaborator with Admin never can.
+        assert_eq!(admin_only(Asker { privileges: open.privileges, ..admin }, "acme", "delete", Capability::Delete).unwrap_err().0, FailureCode::Forbidden);
         let writer = Asker { role: Some(Role::Member), repo_role: Some(RepoRole::Write), ..owner() };
         let (code, message) = admin_only(writer, "acme", "rename", Capability::Administer).unwrap_err();
         assert_eq!(code, FailureCode::Forbidden);

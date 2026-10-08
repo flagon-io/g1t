@@ -56,7 +56,7 @@ under it.
 
 ## Create a ruleset
 
-You need the Maintain [role](/guides/access-and-roles/) or higher for a
+You need the Admin [role](/guides/access-and-roles/) for a
 repository's ruleset. For a workspace's, you need to be an owner.
 
 1. Open the repository's **Settings → Rules**, or the workspace's

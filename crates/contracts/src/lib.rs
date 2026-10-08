@@ -24,6 +24,7 @@ pub mod guardrails;
 pub mod identity;
 pub mod inbox;
 pub mod integrations;
+pub mod members;
 mod ids;
 mod names;
 mod outcome;
@@ -52,15 +53,20 @@ pub use outcome::{Failure, FailureCode, Outcome};
 
 use serde::{Deserialize, Serialize};
 
-/// What a member may do in a workspace.
+/// What a member may do in a workspace. A member may also hold
+/// [`members::OrgRole`]s, which add to it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
-    /// Everything a member can, plus managing members.
+    /// Everything: Admin on every repository, the workspace's members,
+    /// settings, billing and security.
     Owner,
-    /// Create repositories, push, manage issues and merge pull requests.
+    /// The workspace's base permission on each repository, and what its
+    /// member privileges allow (see [`members::MemberPrivileges`]).
     Member,
 }
+
+pub use members::{MemberPrivileges, OrgRole};
 
 /// One workspace a user belongs to.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -88,6 +94,15 @@ pub struct Membership {
     /// [`teams::TeamCreation`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_creation: Option<teams::TeamCreation>,
+    /// The roles the member holds besides `role`: billing manager,
+    /// security manager. Set when a user is resolved from credentials.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub org_roles: Vec<OrgRole>,
+    /// What the workspace lets members (and repository admins) do. Set
+    /// when a user is resolved from credentials; absent means the
+    /// defaults. See [`members::MemberPrivileges`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privileges: Option<MemberPrivileges>,
 }
 
 impl Membership {
@@ -100,7 +115,14 @@ impl Membership {
             avatar: None,
             base_permission: None,
             team_creation: None,
+            org_roles: Vec::new(),
+            privileges: None,
         }
+    }
+
+    /// Whether the member holds `role` besides owner or member.
+    pub fn has(&self, role: OrgRole) -> bool {
+        self.org_roles.contains(&role)
     }
 }
 
@@ -178,6 +200,12 @@ pub struct User {
     /// See [`scopes`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<Box<scopes::TokenAccess>>,
+    /// The workspaces this person belongs to but cannot use until they
+    /// meet its policy, such as turning on two-factor authentication.
+    /// They are left out of `workspaces` and `grants` meanwhile. Set when
+    /// a person is resolved from a session.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held: Vec<members::PolicyHold>,
 }
 
 impl User {
@@ -208,6 +236,35 @@ impl User {
 
     pub fn is_member(&self, slug: &str) -> bool {
         self.role_in(slug).is_some()
+    }
+
+    /// The membership in `slug`, if any.
+    pub fn membership(&self, slug: &str) -> Option<&Membership> {
+        self.workspaces.iter().find(|membership| membership.slug.eq_ignore_ascii_case(slug))
+    }
+
+    /// Whether this is a person who owns `slug`, or holds `role` in it.
+    pub fn owns_or_has(&self, slug: &str, role: OrgRole) -> bool {
+        self.membership(slug)
+            .is_some_and(|membership| membership.role == Role::Owner || membership.has(role))
+    }
+
+    /// Whether the user may manage `slug`'s billing: an owner or a billing
+    /// manager.
+    pub fn manages_billing(&self, slug: &str) -> bool {
+        self.owns_or_has(slug, OrgRole::BillingManager)
+    }
+
+    /// Whether the user may see and manage security across `slug`: an
+    /// owner or a security manager.
+    pub fn manages_security(&self, slug: &str) -> bool {
+        self.owns_or_has(slug, OrgRole::SecurityManager)
+    }
+
+    /// The workspace's member privileges as this user sees them: the
+    /// defaults when the membership does not say.
+    pub fn privileges_in(&self, slug: &str) -> MemberPrivileges {
+        self.membership(slug).and_then(|membership| membership.privileges).unwrap_or_default()
     }
 }
 

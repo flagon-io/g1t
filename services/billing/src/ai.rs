@@ -39,7 +39,7 @@ use g1t_contracts::billing::{
     RunTokens, SetAiReloadArgs, MICROS_PER_DOLLAR,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -369,8 +369,8 @@ impl Billing {
     /// `buy_ai_credit`: Stripe's page for a purchase.
     pub(crate) async fn buy_ai_credit(&self, a: BuyAiCreditArgs) -> Result<Outcome<Checkout>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can buy AI credit for the workspace."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can buy AI credit for the workspace."));
         }
         let Some(stripe) = &self.stripe else {
             return Ok(Outcome::fail(FailureCode::Conflict, "Payments are not set up on this g1t."));
@@ -600,8 +600,8 @@ impl Billing {
     /// `set_ai_reload`: owners only.
     pub(crate) async fn set_ai_reload(&self, a: SetAiReloadArgs) -> Result<Outcome<AiCredit>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can change auto-reload."));
+        if !a.actor.manages_billing(&workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can change auto-reload."));
         }
         if let Some(why) = reload_invalid(a.threshold_micros, a.target_micros, a.monthly_max_micros) {
             return Ok(Outcome::fail(FailureCode::Invalid, why));

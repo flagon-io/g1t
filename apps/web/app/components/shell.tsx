@@ -1172,6 +1172,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
       </div>
       <Rule />
       <div className="space-y-px">
+        {link("two-factor", <ShieldCheck size={15} />)}
         {link("security-log", <History size={15} />)}
       </div>
     </nav>

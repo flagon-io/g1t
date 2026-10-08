@@ -8,7 +8,7 @@ import { ActivationPrompt, CARD, SectionHeader } from "../../components/security
 import { Hint } from "../../components/ui/hint";
 import { Switch } from "../../components/ui/switch";
 import { securitySuite } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
 import { activationPrice } from "../../lib/security-suite.server";
@@ -22,7 +22,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { access } = await requireInsider(context, params, "push");
   const repo = { namespace: params.owner, name: params.repo };
   const [view, price] = await Promise.all([securitySuite.settings(repo, viewer), activationPrice(params.owner, viewer)]);
-  return { view: unwrap(view), price, can: access.can, owner: roleIn(viewer, params.owner) === "owner" };
+  return { view: unwrap(view), price, can: access.can, owner: managesSecurity(viewer, params.owner) };
 }
 
 const GATES = new Set(CODE_SCANNING_GATES.map((gate) => gate.gate));

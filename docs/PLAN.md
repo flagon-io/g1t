@@ -294,8 +294,14 @@ phone and Claude Code are views of the same session.
   preview URL (Workers Builds from the pull request's fork), so an approver clicks
   through the result instead of reading a diff. Changes are also summarised
   in plain language.
-- **Roles.** Viewer, commenter, planner, approver: a person can plan and
-  approve work without ever cloning a repo.
+- **Roles.** A person can plan and approve work without ever cloning a
+  repo. The roles that were sketched here map onto the five repository
+  roles that are built (see "Access" under what is built): a viewer is
+  Read, a commenter is Read (anyone with Read opens issues and comments),
+  a planner is Triage (labels, milestones, assigning, closing) or Write
+  where planning spends compute, and an approver is Write (reviews count
+  and merges). Workspace-wide, a member may also be a billing manager or a
+  security manager.
 
 ## The macro view
 
@@ -1698,8 +1704,21 @@ for volume splits storage by how the data is read.
   never moves; every service follows `repo.transferred`; old paths redirect
   until reused) and deleting an empty, settled workspace (its slug is
   tombstoned, never reissued except to the person whose username it is).
-- Access: five repository roles, a workspace base permission, outside
-  collaborators and invitations. Teams are built on it (2026-10-07): visible
+- Access: five repository roles (Read, Triage, Write, Maintain, Admin;
+  the capability table follows GitHub's repository roles, 2026-10-08:
+  branch protection and rulesets are Admin, labels and milestones are made
+  with Write and applied with Triage, security alerts are Write), a
+  workspace base permission (Read for new workspaces), the creator of a
+  repository given Admin on it, outside collaborators and invitations.
+  Membership as GitHub's organizations have it (2026-10-08): owners and
+  members, promote and demote, transfer ownership, leave, a last-owner
+  guard; billing manager and security manager on top of member; member
+  privileges (who creates public and private repositories, whether
+  repository admins change visibility, delete and transfer, and invite
+  outside collaborators); two-factor authentication (TOTP and recovery
+  codes) and a workspace policy that requires it, holding non-compliant
+  people out until they turn it on. Every membership change, token, SSH
+  key, OAuth grant and two-factor change is in the audit log. Teams are built on it (2026-10-07): visible
   or secret, nested up to 8 levels (child teams inherit their parents'
   roles), run by maintainers and owners. A team's role on a repository is a
   `repo_grants` row whose principal is the team, which identity resolves
@@ -1814,19 +1833,20 @@ Earlier items still open, after those:
 
 1. Deleting a branch once its pull request merges; risk tiers. (Approval
    rules per path are in, as CODEOWNERS.)
-2. Scopes on OAuth grants and access tokens. (Done, with fine-grained
-   tokens and workspace rules for them, 2026-10-08.)
-3. Event storage per the design above: per-repo hot log, Iceberg on R2,
+2. Event storage per the design above: per-repo hot log, Iceberg on R2,
    hash-chained audit.
-4. CLI with Claude Code hooks to record sessions automatically.
-5. Reviewing and catching up automatically, by policy; required reviews;
+3. CLI with Claude Code hooks to record sessions automatically.
+4. Reviewing and catching up automatically, by policy; required reviews;
    risk tiers.
-6. Compare view, proof bundles; handoff between agents.
-7. Projects, mission control, steering; why-blame, digest, timeline.
-8. Context hub, portfolio; automations and integrations (Sentry first).
-9. SSH; bot protection; own keys, endpoints and runners.
-10. Large run (100+ agents across many issues), hardening, demo.
+5. Compare view, proof bundles; handoff between agents.
+6. Projects, mission control, steering; why-blame, digest, timeline.
+7. Context hub, portfolio; automations and integrations (Sentry first).
+8. SSH; bot protection; own keys, endpoints and runners.
+9. Large run (100+ agents across many issues), hardening, demo.
+10. Passkeys (WebAuthn) as a second factor and for signing in: feasible on
+    Workers (P-256 and RS256 verification in Rust, or WebCrypto), next
+    after TOTP. Then fine-grained tokens, deploy keys and package access.
 
-Later: code search, mirroring to GitHub, passkeys, SSH
+Later: code search, mirroring to GitHub, SSH
 on port 22 without the CLI proxy (needs the Workers inbound TCP private
 beta).

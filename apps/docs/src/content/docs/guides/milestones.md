@@ -46,7 +46,7 @@ filter the list by one; the address keeps it as `?milestone=3`.
 
 ## Change, close or delete one
 
-With the Triage role or higher, on **Milestones** or a milestone's page:
+With the Write role or higher, on **Milestones** or a milestone's page (putting an issue in one needs only Triage):
 
 | To | Do this |
 | --- | --- |

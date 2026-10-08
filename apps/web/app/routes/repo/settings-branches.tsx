@@ -22,8 +22,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Maintain and up; to anyone without a role here the page does not exist.
-  const { access } = await requireInsider(context, params, "manage_protection");
+  // Maintain and up: it shows the rules and changes only how agents work; to anyone without a role here the page does not exist.
+  const { access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
   const [repo, settings, seen, workflows] = await Promise.all([
     repos.get(path, viewer),
@@ -59,7 +59,7 @@ function count(value: FormDataEntryValue | null, min: number, max: number): numb
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireCapability(context, params, "manage_protection");
+  await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
   const on = (name: string) => form.get(name) === "on";

@@ -163,7 +163,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, merging a pull request, removing a self-hosted runner, deleting a runner group, and changing runner settings. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, and changing runner settings. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -238,28 +238,28 @@ out.
 | [`list`](/reference/api/repositories/list-repos/) | Repositories you can see, optionally filtered by `query`. | None | `repo:read` |
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
-| [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `private` and `default_branch` need Admin. | `repo` | `repo:write` |
+| [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `protected`, `private` and `default_branch` need Admin, and `private` the [member privileges](/guides/workspaces/#member-privileges) unless you are an owner. | `repo` | `repo:write` |
 | [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: how g1t's agents are reviewed, revised and merged, and the default branch's required checks, approvals, bypassing checks, being up to date and merge queue as its [rulesets](/guides/rules/) stack. | `repo` | `repo:read` |
 | [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds g1t's [low-confidence](/guides/working-with-g1t/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
 | [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
 | [`list_rulesets`](/reference/api/rules/list-repo-rulesets/) | Its [rulesets](/guides/rules/); `include_parents` adds the workspace's that hold in it. | `repo` | `repo:read` |
 | [`get_ruleset`](/reference/api/rules/get-repo-ruleset/) | One ruleset by `id`. | `repo`, `id` | `repo:read` |
-| [`create_ruleset`](/reference/api/rules/create-repo-ruleset/) | Create one: `ruleset_name`, `enforcement`, `target`, `conditions`, `bypass_actors`, `rules`. Maintain role. | `repo` | `repo:admin` |
-| [`update_ruleset`](/reference/api/rules/update-repo-ruleset/) | Change one; fields left out stay. Maintain role. | `repo`, `id` | `repo:admin` |
-| [`delete_ruleset`](/reference/api/rules/delete-repo-ruleset/) | Delete one. Maintain role. | `repo`, `id` | `repo:admin` |
+| [`create_ruleset`](/reference/api/rules/create-repo-ruleset/) | Create one: `ruleset_name`, `enforcement`, `target`, `conditions`, `bypass_actors`, `rules`. Admin role. | `repo` | `repo:admin` |
+| [`update_ruleset`](/reference/api/rules/update-repo-ruleset/) | Change one; fields left out stay. Admin role. | `repo`, `id` | `repo:admin` |
+| [`delete_ruleset`](/reference/api/rules/delete-repo-ruleset/) | Delete one. Admin role. | `repo`, `id` | `repo:admin` |
 | [`branch_rules`](/reference/api/rules/get-branch-rules/) | Every rule that holds for a `branch` (or, with `target` `tag`, a tag), with the ruleset each comes from. | `repo`, `branch` | `repo:read` |
 | [`rule_evaluations`](/reference/api/rules/list-rule-evaluations/) | How its rules judged pushes and merges, newest first, with 30 days of insights. Write role. | `repo` | `repo:read` |
 | [`codeowners`](/reference/api/repositories/get-codeowners-errors/) | Its [CODEOWNERS file](/guides/codeowners/) checked as a linter would, on `ref` (the default branch unless you say): its `path`, `rules`, `sections`, and `errors`, each with `line`, `kind`, `token` and `message`. Read role. | `repo` | `repo:read` |
 | [`list_labels`](/reference/api/labels-and-milestones/list-labels/) | Its labels by name, each with `color`, `description`, and how many `issues` and `pulls` carry it. | `repo` | `repo:read` |
-| [`create_label`](/reference/api/labels-and-milestones/create-label/) | Create a label named `label`, with `color` (six hex digits; chosen from the name when left out) and `description`. Triage role. | `repo`, `label` | `issues:write` |
-| [`update_label`](/reference/api/labels-and-milestones/update-label/) | Change a label's `new_name`, `color` or `description`. Renaming renames it on everything that carries it. Triage role. | `repo`, `label` | `issues:write` |
-| [`delete_label`](/reference/api/labels-and-milestones/delete-label/) | Delete a label, from everything that carries it. Triage role. | `repo`, `label` | `issues:write` |
-| [`add_default_labels`](/reference/api/labels-and-milestones/add-default-labels/) | Add the default labels it is missing. Triage role. | `repo` | `issues:write` |
+| [`create_label`](/reference/api/labels-and-milestones/create-label/) | Create a label named `label`, with `color` (six hex digits; chosen from the name when left out) and `description`. Write role. | `repo`, `label` | `issues:write` |
+| [`update_label`](/reference/api/labels-and-milestones/update-label/) | Change a label's `new_name`, `color` or `description`. Renaming renames it on everything that carries it. Write role. | `repo`, `label` | `issues:write` |
+| [`delete_label`](/reference/api/labels-and-milestones/delete-label/) | Delete a label, from everything that carries it. Write role. | `repo`, `label` | `issues:write` |
+| [`add_default_labels`](/reference/api/labels-and-milestones/add-default-labels/) | Add the default labels it is missing. Write role. | `repo` | `issues:write` |
 | [`list_milestones`](/reference/api/labels-and-milestones/list-milestones/) | Its milestones, open ones soonest due first, each with `due_on`, `state`, `open_items` and `closed_items`. `state` filters them. | `repo` | `repo:read` |
 | [`get_milestone`](/reference/api/labels-and-milestones/get-milestone/) | One milestone with its issues and pull requests. | `repo`, `milestone` | `repo:read` |
-| [`create_milestone`](/reference/api/labels-and-milestones/create-milestone/) | Create a milestone with `title`, `description` and `due_on` (`YYYY-MM-DD`). Triage role. | `repo`, `title` | `issues:write` |
-| [`update_milestone`](/reference/api/labels-and-milestones/update-milestone/) | Change its `title`, `description`, `due_on` (`""` clears it) or `state` (`open` or `closed`). Triage role. | `repo`, `milestone` | `issues:write` |
-| [`delete_milestone`](/reference/api/labels-and-milestones/delete-milestone/) | Delete a milestone; what was in it is in none. Triage role. | `repo`, `milestone` | `issues:write` |
+| [`create_milestone`](/reference/api/labels-and-milestones/create-milestone/) | Create a milestone with `title`, `description` and `due_on` (`YYYY-MM-DD`). Write role. | `repo`, `title` | `issues:write` |
+| [`update_milestone`](/reference/api/labels-and-milestones/update-milestone/) | Change its `title`, `description`, `due_on` (`""` clears it) or `state` (`open` or `closed`). Write role. | `repo`, `milestone` | `issues:write` |
+| [`delete_milestone`](/reference/api/labels-and-milestones/delete-milestone/) | Delete a milestone; what was in it is in none. Write role. | `repo`, `milestone` | `issues:write` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
 | [`languages`](/reference/api/repository-insights/get-languages/) | Its [languages](/guides/managing-repositories/#languages) by bytes, each with `color` and `percent`, for the default branch's `commit`; `pending` while it is first read. | `repo` | `repo:read` |
 | [`contributors`](/reference/api/repository-insights/list-contributors/) | Its [contributors](/guides/managing-repositories/#contributors): `kind` (`user`, `g1t` or `author`), `commits` and `weeks`, and the repository's commits by week. | `repo` | `repo:read` |
@@ -278,7 +278,7 @@ out.
 | [`delete_release`](/reference/api/releases/delete-release/) | Delete a release; its tag stays. Write role. | `repo`, `id` | `repo:write` |
 | [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
 | [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
-| [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. Owners of both workspaces only. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |
+| [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. An owner, or an Admin when the member privileges allow it; and someone who can create a repository in the other workspace. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |
 | [`archive`](/reference/api/repositories/archive-repo/) | Make it read-only: pushes and merges are refused, issues and pull requests are locked, agents and workflows stop. Admin role. | `repo` | `repo:admin` |
 | [`unarchive`](/reference/api/repositories/unarchive-repo/) | Make it writable again. Admin role. | `repo` | `repo:admin` |
 | [`set_visibility`](/reference/api/repositories/set-repo-visibility/) | Make it public or private; `confirm` is its full name. Admin role. | `repo`, `private`, `confirm` | `repo:admin` |
@@ -314,7 +314,7 @@ requests already made for it. Issues and pull requests share numbers, so
 | --- | --- | --- | --- |
 | [`list`](/reference/api/issues/list-issues/) | Issues, newest first, by `state`, `label` and `milestone` (its number). | `repo` | `issues:read` |
 | [`get`](/reference/api/issues/get-issue/) | An issue: description (which may say what done means, under **Definition of done**), labels, comments, and every pull request made for it. | `repo`, `number` | `issues:read` |
-| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body`, `labels` and `milestone`. A label the repository lacks is created for someone with the Triage role. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `repo`, `title` | `issues:write` |
+| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body`, `labels` and `milestone`. A label the repository lacks is created for someone with the Write role. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `repo`, `title` | `issues:write` |
 | [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels, milestone or assignees. Labels and assignees each replace the whole set; `milestone` `null` or `0` takes it out of its milestone. | `repo`, `number` | `issues:write` |
 | [`labels`](/reference/api/issues/list-issue-labels/) | The labels an issue or pull request carries, with their colors. | `repo`, `number` | `issues:read` |
 | [`add_labels`](/reference/api/issues/add-issue-labels/) | Add `labels` to an issue or pull request, keeping the ones it has. | `repo`, `number`, `labels` | `issues:write` |
@@ -490,7 +490,7 @@ vulnerability alerts, the [dependency graph and its SBOM](/guides/security/suppl
 dependency review, settings, and a workspace's
 [overview](/guides/security/security-overview/). `secret_alerts` is the
 default action. Findings are shown only to those with Write on the
-repository; on private repositories, some actions need the
+repository, and to the workspace's security managers; on private repositories, some actions need the
 [Security and quality activation](/guides/security/pricing/), and are
 refused with `402` without it.
 
@@ -498,7 +498,7 @@ refused with `402` without it.
 | --- | --- | --- | --- |
 | [`secret_alerts`](/reference/api/secret-scanning/list-secret-scanning-alerts/) | Secret scanning alerts, newest first: `repo`, or `workspace` for all of one. Filter with `state`, `secret_type`, `validity` and `bypassed`. Never the secret itself. | None | `security:read` |
 | [`secret_alert`](/reference/api/secret-scanning/get-secret-scanning-alert/) | One alert by `id`, with where it was found, its activity and bypass requests, and whether you may bypass it. | `repo`, `id` | `security:read` |
-| [`update_secret_alert`](/reference/api/secret-scanning/update-secret-scanning-alert/) | Dismiss (`state` `dismissed`, `reason` `false_positive`, `used_in_tests`, `revoked` or `wont_fix`, optional `comment`) or reopen (`state` `open`). Admin role. | `repo`, `id`, `state` | `security:write` |
+| [`update_secret_alert`](/reference/api/secret-scanning/update-secret-scanning-alert/) | Dismiss (`state` `dismissed`, `reason` `false_positive`, `used_in_tests`, `revoked` or `wont_fix`, optional `comment`) or reopen (`state` `open`). Write role, or a security manager. | `repo`, `id`, `state` | `security:write` |
 | [`secret_locations`](/reference/api/secret-scanning/list-secret-scanning-locations/) | Every file, line and commit a secret is in. | `repo`, `id` | `security:read` |
 | [`bypass`](/reference/api/secret-scanning/bypass-push-protection/) | Push past push protection for a blocked secret with a `reason` (`false_positive`, `used_in_tests`, `will_fix_later`), or ask to when the workspace delegates bypasses. | `repo`, `id`, `reason` | `security:write` |
 | [`check_validity`](/reference/api/secret-scanning/check-secret-validity/) | Ask a landed secret's issuer whether it still works. | `repo`, `id` | `security:write` |
@@ -523,9 +523,9 @@ refused with `402` without it.
 | [`sbom`](/reference/api/supply-chain/get-sbom/) | The dependency graph as an SPDX 2.3 document, in `sbom`. | `repo` | `security:read` |
 | [`compare_dependencies`](/reference/api/supply-chain/compare-dependencies/) | What changes between `basehead` (`base...head`), and whether it passes dependency review. | `repo`, `basehead` | `security:read` |
 | [`settings`](/reference/api/security-settings/get-security-settings/) | A repository's security settings, and whether the paid features are on. | `repo` | `security:read` |
-| [`update_settings`](/reference/api/security-settings/update-security-settings/) | Change `code_scanning_gate`, `dependency_review`, `review_fail_on`, `review_deny_licenses`, `review_comment`. Maintain role. | `repo` | `security:write` |
+| [`update_settings`](/reference/api/security-settings/update-security-settings/) | Change `code_scanning_gate`, `dependency_review`, `review_fail_on`, `review_deny_licenses`, `review_comment`. Admin role, or a security manager. | `repo` | `security:write` |
 | [`workspace_settings`](/reference/api/security-settings/get-workspace-security-settings/) | A workspace's delegated bypass and validity checks. | `workspace` | `security:read` |
-| [`update_workspace_settings`](/reference/api/security-settings/update-workspace-security-settings/) | Turn `delegated_bypass` or `validity_checks` on or off. Owners only. | `workspace` | `security:write` |
+| [`update_workspace_settings`](/reference/api/security-settings/update-workspace-security-settings/) | Turn `delegated_bypass` or `validity_checks` on or off. Owners and security managers. | `workspace` | `security:write` |
 | [`overview`](/reference/api/security-settings/get-security-overview/) | A workspace's alerts by type and severity, trends and coverage. | `workspace` | `security:read` |
 
 ## `webhook`
@@ -597,6 +597,7 @@ for people: an agent's or a workspace's token cannot make them.
 ## `workspace`
 
 Workspaces own repositories: create, update or delete one, invite members,
+manage its members and owners,
 connect [integrations](/guides/integrations/) and model providers, read and
 change its [projects](/guides/projects/) (what each is, where it runs, its
 links), and keep your own
@@ -605,9 +606,14 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`get`](/reference/api/workspaces/get-workspace/) | One workspace you belong to: its name, description and member count, its `base_permission` and `team_creation`. Members only. | `workspace` | `workspace:read` |
+| [`get`](/reference/api/workspaces/get-workspace/) | One workspace you belong to: its name, description and member count, its `base_permission` and `team_creation`, its [member privileges](/guides/workspaces/#member-privileges) (`members_can_…`) and `two_factor_requirement_enabled`. Members only. | `workspace` | `workspace:read` |
 | [`create`](/reference/api/workspaces/create-workspace/) | Create a workspace. A new one is free, and each person owns at most one free workspace: refused with `402` while you own one, until it is on the plan or deleted. See [one free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person). | `slug` | `workspace:admin` |
-| [`update`](/reference/api/workspaces/update-workspace/) | Change its display name and description, who may create its teams (`team_creation`: `members` or `owners`), and with the `access:admin` scope too, its `base_permission`. Only the fields given change; the slug never does. Owners only. | `workspace` | `workspace:admin` |
+| [`update`](/reference/api/workspaces/update-workspace/) | Change its display name and description, who may create its teams (`team_creation`: `members` or `owners`), its member privileges, whether it requires two-factor authentication (`two_factor_requirement_enabled`), and with the `access:admin` scope too, its `base_permission`. Only the fields given change; the slug never does. Owners only. | `workspace` | `workspace:admin` |
+| [`list_members`](/reference/api/members/list-members/) | Its members, owners first, each with `role`, `org_roles` and, for owners asking, `two_factor`. Members only. | `workspace` | `workspace:read` |
+| [`update_member`](/reference/api/members/update-member/) | Make someone an owner or a member (`role`), and give or take away `org_roles` (`billing_manager`, `security_manager`). Never leaves the workspace without an owner. Owners only. | `workspace`, `username` | `workspace:admin` |
+| [`remove_member`](/reference/api/members/remove-member/) | Remove someone; their roles on its repositories and their teams go too. Owners only. | `workspace`, `username` | `workspace:admin` |
+| [`transfer_ownership`](/reference/api/members/transfer-ownership/) | Hand it to another member: they become an owner, you a member. Owners only. | `workspace`, `username` | `workspace:admin` |
+| [`leave`](/reference/api/members/leave-workspace/) | Leave it yourself. Never the last owner. | `workspace` | `account:write` |
 | [`delete`](/reference/api/workspaces/delete-workspace/) | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | `workspace`, `confirm` | `workspace:admin` |
 | [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
 | [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. A free workspace cannot invite: refused with `402` until it starts the plan. | `workspace`, `email` | `workspace:admin` |

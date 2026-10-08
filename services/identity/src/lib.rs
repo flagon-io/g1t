@@ -16,6 +16,7 @@ mod email;
 mod emails;
 mod github;
 mod invites;
+mod members;
 mod oauth;
 mod paid;
 mod profiles;
@@ -27,6 +28,7 @@ mod teams;
 mod throttle;
 mod token_reach;
 mod tokens;
+mod two_factor;
 mod workspaces;
 
 use g1t_contracts::identity::*;
@@ -132,12 +134,14 @@ impl Identity {
         let Some(mut user) = user else {
             return Ok(None);
         };
-        let memberships = self.memberships(&user.id).await?;
-        // Access to a workspace is used only within its policy; see security.rs.
-        user.workspaces = self.within_policy(&user.id, memberships).await?;
+        let memberships = self.memberships_and_policies(&user.id).await?;
         // Roles on single repositories, under the same policy (access.rs).
         let grants = self.grants_of(&user.id).await?;
-        user.grants = self.grants_within_policy(&user.id, grants).await?;
+        // Access to a workspace is used only within its policy; see security.rs.
+        let within = self.within_policy(&user.id, memberships, grants).await?;
+        user.workspaces = within.memberships;
+        user.grants = within.grants;
+        user.held = within.held;
         Ok(Some(user))
     }
 
@@ -389,8 +393,16 @@ impl Identity {
         }
     }
 
+    /// Git over HTTPS with the account's password. With two-factor
+    /// authentication on, a password alone is never enough: use an access
+    /// token (two_factor.rs).
     async fn user_for_password(&self, login: &str, password: &str) -> Result<Viewer> {
         let user = self.checked_password(login, password, None).await?.ok();
+        if let Some(user) = &user
+            && self.two_factor_enabled(&user.id).await?
+        {
+            return Ok(None);
+        }
         self.with_workspaces(user).await
     }
 
@@ -479,7 +491,23 @@ impl Identity {
         self.start_session(user).await
     }
 
+    /// Starts a session for someone who just proved their password (or
+    /// GitHub account). With two-factor authentication on, it starts none:
+    /// it returns a challenge for `two_factor_sign_in` (two_factor.rs).
     async fn start_session(&self, user: User) -> Result<Outcome<SignedIn>> {
+        if self.two_factor_enabled(&user.id).await? {
+            let challenge = self.issue_challenge(&user.id).await?;
+            return Ok(Outcome::Ok(SignedIn {
+                user: User { workspaces: Vec::new(), grants: Vec::new(), held: Vec::new(), ..user },
+                session_token: String::new(),
+                two_factor_challenge: Some(challenge),
+            }));
+        }
+        self.session_for(user).await
+    }
+
+    /// A new session for `user`, who has proved who they are in full.
+    async fn session_for(&self, user: User) -> Result<Outcome<SignedIn>> {
         let session_token = crypto::random_hex(32);
         self.db
             .prepare(format!(
@@ -496,6 +524,7 @@ impl Identity {
         Ok(Outcome::Ok(SignedIn {
             user,
             session_token,
+            two_factor_challenge: None,
         }))
     }
 
@@ -730,36 +759,30 @@ impl Identity {
             }
             return Err(error);
         }
-        let added = format!("{} ({})", row.title, row.fingerprint);
-        self.log_security(&a.user.id, "ssh_key_added", Some(&added), None).await;
+        let shown = format!("{} ({})", row.title, row.fingerprint);
+        self.log_security(&a.user.id, "ssh_key_added", Some(&shown), None).await;
+        self.audit_account(&a.user, "ssh_key.added", &format!("Added SSH key {shown}")).await;
         Ok(Outcome::Ok(row.into()))
     }
 
-    /// Deletes one of the person's SSH keys, and says so in their security log.
+    /// Deletes one of the person's SSH keys.
     async fn remove_ssh_key(&self, a: RemoveArgs) -> Result<()> {
-        let key = self
+        #[derive(Deserialize)]
+        struct Removed {
+            title: String,
+            fingerprint: String,
+        }
+        let removed = self
             .db
-            .prepare("SELECT id, title, fingerprint, created_at FROM ssh_keys WHERE id = ? AND user_id = ?")
+            .prepare("DELETE FROM ssh_keys WHERE id = ? AND user_id = ? RETURNING title, fingerprint")
             .bind(&[a.id.as_str().into(), a.user.id.as_str().into()])?
-            .first::<KeyRow>(None)
+            .first::<Removed>(None)
             .await?;
-        let Some(key) = key else {
-            return Ok(());
-        };
-        let user_id = a.user.id.clone();
-        self.remove("ssh_keys", a).await?;
-        let removed = format!("{} ({})", key.title, key.fingerprint);
-        self.log_security(&user_id, "ssh_key_removed", Some(&removed), None).await;
-        Ok(())
-    }
-
-    /// Deletes a row the user owns from `table`.
-    async fn remove(&self, table: &str, a: RemoveArgs) -> Result<()> {
-        self.db
-            .prepare(format!("DELETE FROM {table} WHERE id = ? AND user_id = ?"))
-            .bind(&[a.id.into(), a.user.id.into()])?
-            .run()
-            .await?;
+        if let Some(removed) = removed {
+            let shown = format!("{} ({})", removed.title, removed.fingerprint);
+            self.log_security(&a.user.id, "ssh_key_removed", Some(&shown), None).await;
+            self.audit_account(&a.user, "ssh_key.removed", &format!("Removed SSH key {shown}")).await;
+        }
         Ok(())
     }
 }
@@ -777,6 +800,10 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     if let Err(error) = identity.purge_due_workspaces().await {
         worker::console_error!("workspace purge: {error}");
+    }
+    // Once: creators of repositories made before they got Admin (members.rs).
+    if let Err(error) = identity.backfill_creator_grants().await {
+        worker::console_error!("creator grants: {error}");
     }
 }
 
@@ -810,6 +837,13 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_members" => reply(&identity.list_members(args(body)?).await?),
         "add_member" => reply(&identity.add_member(args(body)?).await?),
         "remove_member" => reply(&identity.remove_member(args(body)?).await?),
+        // Owners, roles, leaving and member privileges; see members.rs.
+        "update_member" => reply(&identity.update_member(args(body)?).await?),
+        "transfer_ownership" => reply(&identity.transfer_ownership(args(body)?).await?),
+        "leave_workspace" => reply(&identity.leave_workspace(args(body)?).await?),
+        "set_member_privileges" => reply(&identity.set_member_privileges(args(body)?).await?),
+        "set_two_factor_requirement" => reply(&identity.set_two_factor_requirement(args(body)?).await?),
+        "grant_creator" => reply(&identity.grant_creator(args(body)?).await?),
         "update_workspace" => {
             let outcome = identity.update_workspace(args(body)?).await?;
             if let Outcome::Ok(workspace) = &outcome {
@@ -876,6 +910,13 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "resend_email_verification" => reply(&identity.resend_email_verification(args(body)?).await?),
         "update_email_settings" => reply(&identity.update_email_settings(args(body)?).await?),
         "reauthenticate" => reply(&identity.reauthenticate(args(body)?).await?),
+        // Two-factor authentication; see two_factor.rs.
+        "two_factor_status" => reply(&identity.two_factor_status(args(body)?).await?),
+        "two_factor_start" => reply(&identity.two_factor_start(args(body)?).await?),
+        "two_factor_enable" => reply(&identity.two_factor_enable(args(body)?).await?),
+        "two_factor_disable" => reply(&identity.two_factor_disable(args(body)?).await?),
+        "two_factor_recovery_codes" => reply(&identity.two_factor_recovery_codes(args(body)?).await?),
+        "two_factor_sign_in" => reply(&identity.two_factor_sign_in(args(body)?).await?),
         "security_log" => reply(&identity.security_log(args(body)?).await?),
         "email_owners" => reply(&identity.email_owners(args(body)?).await?),
         "commit_identity" => reply(&identity.commit_identity(args(body)?).await?),
@@ -935,7 +976,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "revoke_run_credentials" => reply(&identity.revoke_run_credentials(args(body)?).await?),
         "create_job_token" => reply(&identity.create_job_token(args(body)?).await?),
         "revoke_job_tokens" => reply(&identity.revoke_job_tokens(args(body)?).await?),
-        "remove_access_token" => reply(&identity.remove("access_tokens", args(body)?).await?),
+        "remove_access_token" => reply(&identity.remove_access_token(args(body)?).await?),
         // Invites and the waitlist; see invites.rs.
         "registration" => reply(&identity.registration_mode()),
         "list_invites" => reply(&identity.list_invites(args(body)?).await?),

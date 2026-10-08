@@ -44,6 +44,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     register: (username, email, password, inviteCode, client) =>
       call("register", { username, email, password, invite_code: inviteCode ?? null, client: client ?? null }),
     signIn: (username, password, client) => call("sign_in", { username, password, client: client ?? null }),
+    twoFactorSignIn: (challenge, code, client) => call("two_factor_sign_in", { challenge, code, client: client ?? null }),
     signOut: (sessionToken) => call("sign_out", { sessionToken }),
     resendVerification: (user) => call("resend_verification", { user }),
     verifyEmail: (token) => call("verify_email", { token }),
@@ -71,7 +72,14 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     listMembers: (slug, viewer) => call("list_members", { slug, viewer }),
     addMember: (actor, slug, username) => call("add_member", { actor, slug, username }),
     removeMember: (actor, slug, username) =>
-      call("remove_member", { actor, slug, username }),
+      call("remove_member", { actor, slug, username, surface: "web" }),
+    updateMember: (actor, slug, username, change) =>
+      call("update_member", { actor, slug, username, role: change.role ?? null, org_roles: change.org_roles ?? null, surface: "web" }),
+    transferOwnership: (actor, slug, username) => call("transfer_ownership", { actor, slug, username, surface: "web" }),
+    leaveWorkspace: (user, slug) => call("leave_workspace", { user, slug, surface: "web" }),
+    setMemberPrivileges: (actor, slug, change) => call("set_member_privileges", { actor, slug, privileges: change, surface: "web" }),
+    setTwoFactorRequirement: (actor, slug, required) =>
+      call("set_two_factor_requirement", { actor, slug, required, surface: "web" }),
     updateWorkspace: (actor, slug, details) =>
       call("update_workspace", { actor, slug, ...details }),
     renameWorkspace: (actor, slug, newSlug) => call("rename_workspace", { actor, slug, newSlug }),

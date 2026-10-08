@@ -17,7 +17,7 @@
 use g1t_contracts::billing::deployment_costs as costs;
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, Role};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -431,10 +431,10 @@ impl Billing {
 
     pub(crate) async fn subscribe(&self, a: SubscribeArgs) -> Result<Outcome<Checkout>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
+        if !a.actor.manages_billing(&workspace) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only an owner can turn on a paid feature.",
+                "Only an owner or a billing manager can turn on a paid feature.",
             ));
         }
         let Some(stripe) = &self.stripe else {
@@ -622,10 +622,10 @@ impl Billing {
         a: CancelSubscriptionArgs,
     ) -> Result<Outcome<FeatureState>> {
         let workspace = a.workspace.to_lowercase();
-        if a.actor.role_in(&workspace) != Some(Role::Owner) {
+        if !a.actor.manages_billing(&workspace) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                "Only an owner can change the workspace's plan.",
+                "Only an owner or a billing manager can change the workspace's plan.",
             ));
         }
         // The activation; or the plan, or a Deployments subscription from

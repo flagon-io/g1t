@@ -17,7 +17,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Maintain and up; to anyone without a role here the page does not exist.
+  // Admin; to anyone without a role here the page does not exist.
   await requireInsider(context, params, "manage_protection");
   const view = await guardrails.getGuardrails(viewer, params.owner, { namespace: params.owner, name: params.repo });
   return { view: unwrap(view) };

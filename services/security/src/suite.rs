@@ -101,7 +101,7 @@ impl Security {
             if event.notify.is_empty() {
                 event.notify = members
                     .iter()
-                    .filter(|member| member.role == Role::Owner)
+                    .filter(|member| member.role == Role::Owner || member.org_roles.contains(&g1t_contracts::OrgRole::SecurityManager))
                     .map(|member| member.username.clone())
                     .collect();
             }

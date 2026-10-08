@@ -11,7 +11,7 @@ import { WorkspaceSecurityTabs } from "../../components/workspace-security-tabs"
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { repos, security, securitySuite } from "../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { getViewer, managesSecurity, roleIn, unwrap } from "../../lib/session.server";
 import { activationPrice } from "../../lib/security-suite.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -58,7 +58,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     overview: full,
     pending: requests.ok ? requests.value.length : 0,
     price,
-    owner: roleIn(viewer, params.owner) === "owner",
+    owner: managesSecurity(viewer, params.owner),
   };
 }
 

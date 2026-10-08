@@ -41,7 +41,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     detail: found.value,
     labels: labels.ok ? labels.value : [],
     state,
-    canEdit: access.can.triage,
+    canEdit: access.can.manage_labels,
     today: new Date().toISOString(),
   } as const;
 }

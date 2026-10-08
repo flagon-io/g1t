@@ -16,7 +16,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
-  await requireInsider(context, params, "push");
+  await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
   return { scanning: unwrap(await securitySuite.pullScanning(repo, Number(params.number) || 0, viewer)) };
 }

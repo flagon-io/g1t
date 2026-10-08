@@ -7,8 +7,18 @@
  * when the two differ. Keep each row on one line.
  */
 import type { Membership, Role, User } from "./identity";
+import type { MemberPrivileges } from "./members";
 import type { Result } from "./result";
 import type { RepoTeam } from "./teams";
+
+/** What members may do in a workspace that has not chosen otherwise: what they could before the setting existed. */
+export const DEFAULT_MEMBER_PRIVILEGES: MemberPrivileges = {
+  members_can_create_public_repositories: true,
+  members_can_create_private_repositories: true,
+  members_can_change_repo_visibility: true,
+  members_can_delete_repositories: false,
+  members_can_invite_outside_collaborators: true,
+};
 
 /** What someone may do in one repository, from least to most. */
 export type RepoRole = "read" | "triage" | "write" | "maintain" | "admin";
@@ -26,10 +36,10 @@ export const REPO_ROLE_LABELS: Record<RepoRole, string> = {
 /** One line on what each role is for, as role pickers show it. */
 export const REPO_ROLE_SUMMARIES: Record<RepoRole, string> = {
   read: "Read and clone; open issues and pull requests, and comment.",
-  triage: "Read, and manage issues and pull requests: label, assign, close.",
-  write: "Triage, and push, merge, and put agents to work.",
-  maintain: "Write, and manage settings and branch protection.",
-  admin: "Everything: webhooks, secrets, deployments, access, name and visibility.",
+  triage: "Read, and manage issues and pull requests: apply labels, assign, close.",
+  write: "Triage, and push, merge, manage labels, see security alerts, and put agents to work.",
+  maintain: "Write, and manage the repository's settings and topics.",
+  admin: "Everything: branch protection, webhooks, secrets, security, access, name and visibility.",
 };
 
 /** What every member of a workspace gets on each of its repositories. */
@@ -37,8 +47,11 @@ export type BasePermission = "none" | "read" | "write" | "admin";
 
 export const BASE_PERMISSIONS: readonly BasePermission[] = ["none", "read", "write", "admin"];
 
-/** Unless an owner changes it: what members could do before roles. */
+/** What a membership that does not say gets: what members could do before roles. */
 export const DEFAULT_BASE_PERMISSION: BasePermission = "write";
+
+/** What a new workspace's members get, as on GitHub. Workspaces made before 2026-10-08 kept Write. */
+export const NEW_WORKSPACE_BASE_PERMISSION: BasePermission = "read";
 
 export const BASE_PERMISSION_LABELS: Record<BasePermission, string> = {
   none: "No permission",
@@ -53,32 +66,54 @@ export type Capability =
   | "triage"
   | "push"
   | "merge"
+  | "manage_labels"
+  | "security_alerts"
   | "run"
   | "manage_settings"
   | "manage_protection"
+  | "manage_security"
   | "manage_integrations"
   | "manage_access"
   | "administer"
+  | "change_visibility"
   | "delete";
 
 /** The permission table: the least role for each capability. */
 export const CAPABILITIES = [
   { capability: "read", role: "read", about: "See code, issues and pull requests; clone and fetch" },
   { capability: "participate", role: "read", about: "Open issues and pull requests, and comment" },
-  { capability: "triage", role: "triage", about: "Label, assign, close and reopen issues and pull requests" },
+  { capability: "triage", role: "triage", about: "Apply labels and milestones; assign, close and reopen issues and pull requests" },
   { capability: "push", role: "write", about: "Push to branches that are not protected" },
   { capability: "merge", role: "write", about: "Merge pull requests and use the merge queue" },
+  { capability: "manage_labels", role: "write", about: "Create, edit and delete labels and milestones" },
+  { capability: "security_alerts", role: "write", about: "See and dismiss security alerts" },
   { capability: "run", role: "write", about: "Assign agents and start runs, plans and workflows" },
   { capability: "manage_settings", role: "maintain", about: "Change the description, topics, and pull request and agent settings" },
-  { capability: "manage_protection", role: "maintain", about: "Change branch protection and guardrails" },
+  { capability: "manage_protection", role: "admin", about: "Change branch protection, rulesets and guardrails" },
+  { capability: "manage_security", role: "admin", about: "Change security settings, custom patterns and bypass reviews" },
   { capability: "manage_integrations", role: "admin", about: "Manage webhooks, secrets, variables, deployments and domains" },
   { capability: "manage_access", role: "admin", about: "Manage who has access, invitations and deploy keys" },
-  { capability: "administer", role: "admin", about: "Rename, archive, change visibility and the default branch" },
-  { capability: "delete", role: "admin", about: "Transfer or delete the repository (owners of the workspace only)" },
+  { capability: "administer", role: "admin", about: "Rename, archive and change the default branch" },
+  { capability: "change_visibility", role: "admin", about: "Change visibility (owners only, unless member privileges allow admins)" },
+  { capability: "delete", role: "admin", about: "Transfer or delete the repository (owners only, unless member privileges allow admins)" },
 ] as const satisfies readonly { capability: Capability; role: RepoRole; about: string }[];
 
-/** Capabilities that also need an owner of the repository's workspace. */
-export const OWNER_ONLY = ["delete"] as const satisfies readonly Capability[];
+/**
+ * Capabilities that also need an owner of the repository's workspace,
+ * unless its member privileges let members with the Admin role do them.
+ */
+export const OWNER_ONLY = ["change_visibility", "delete"] as const satisfies readonly Capability[];
+
+/** What a security manager may do on every repository of their workspace. */
+export const SECURITY_MANAGER = ["read", "participate", "security_alerts", "manage_security"] as const satisfies readonly Capability[];
+
+/** Whether an owner-only capability is left to owners by these member privileges. */
+export function ownerOnly(capability: Capability, privileges: MemberPrivileges | null | undefined): boolean {
+  const p = { ...DEFAULT_MEMBER_PRIVILEGES, ...(privileges ?? {}) };
+  if (capability === "change_visibility") return !p.members_can_change_repo_visibility;
+  if (capability === "delete") return !p.members_can_delete_repositories;
+  return false;
+}
 
 /** A person's role on one repository, given directly. */
 export type RepoGrant = {
@@ -120,7 +155,10 @@ function membershipRole(user: User, membership: Membership): RepoRole | null {
   // g1t, and a service acting as the workspace, do what an owner can.
   if (user.kind === "workspace" && user.token) return user.token.admin ? "admin" : "write";
   if (user.kind === "workspace" || user.kind === "system") return "admin";
-  return membership.role === "owner" ? "admin" : baseRole(membership.base_permission);
+  if (membership.role === "owner") return "admin";
+  const base = baseRole(membership.base_permission);
+  // A security manager reads every repository.
+  return membership.org_roles?.includes("security_manager") ? maxRole(base, "read") : base;
 }
 
 /** The user's role on the repository, not counting that it may be public. */
@@ -151,10 +189,18 @@ export function permission(viewer: User | null | undefined, repo: RepoRef): Repo
 
 /** Whether the viewer may do `capability` in the repository. */
 export function can(viewer: User | null | undefined, repo: RepoRef, capability: Capability): boolean {
-  if (!allows(permission(viewer, repo), capability)) return false;
+  const namespace = repo.namespace.toLowerCase();
+  const membership = viewer?.workspaces?.find((m) => m.slug.toLowerCase() === namespace);
+  if (!allows(permission(viewer, repo), capability)) {
+    return (
+      (SECURITY_MANAGER as readonly Capability[]).includes(capability) &&
+      (viewer?.kind ?? "user") === "user" &&
+      !!membership?.org_roles?.includes("security_manager")
+    );
+  }
   if ((OWNER_ONLY as readonly Capability[]).includes(capability)) {
-    const namespace = repo.namespace.toLowerCase();
-    return viewer?.workspaces?.find((m) => m.slug.toLowerCase() === namespace)?.role === "owner";
+    if (!membership) return false;
+    return membership.role === "owner" || !ownerOnly(capability, membership.privileges);
   }
   return true;
 }
@@ -168,7 +214,8 @@ export function abilities(viewer: User | null | undefined, repo: RepoRef): Abili
 
 /** The sentence shown beside something the viewer cannot use. */
 export function needs(capability: Capability): string {
-  if ((OWNER_ONLY as readonly Capability[]).includes(capability)) return "Only an owner of the workspace can do this.";
+  if ((OWNER_ONLY as readonly Capability[]).includes(capability))
+    return "Only an owner of the workspace can do this, unless its member privileges let repository admins.";
   return `Needs the ${REPO_ROLE_LABELS[leastRole(capability)]} role or higher.`;
 }
 

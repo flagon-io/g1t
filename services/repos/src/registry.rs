@@ -538,6 +538,20 @@ impl Registry {
     }
 
     /// Repositories that are not forks, by id, a page at a time.
+    /// Repositories that are not forks, with who created each, by id after
+    /// `after`.
+    pub async fn creators_after(&self, after: Option<&str>, limit: u32) -> Result<Vec<g1t_contracts::repos::RepoCreator>> {
+        self.db
+            .prepare(
+                "SELECT id, namespace, name, owner_id FROM repos
+                 WHERE fork_of IS NULL AND deleted_at IS NULL AND id > ? ORDER BY id LIMIT ?",
+            )
+            .bind(&[after.unwrap_or("").into(), limit.into()])?
+            .all()
+            .await?
+            .results::<g1t_contracts::repos::RepoCreator>()
+    }
+
     pub async fn ids_after(&self, after: Option<&str>, limit: u32) -> Result<Vec<String>> {
         #[derive(Deserialize)]
         struct Row {

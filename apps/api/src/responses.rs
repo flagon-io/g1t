@@ -82,6 +82,10 @@ fn sample(op: Op, example: &Value) -> Value {
             return through::<access::RepoInvitation>(op, as_is);
         }
         Op::ListOutsideCollaborators => return through::<Vec<access::OutsideCollaborator>>(op, as_is),
+        // Members, also `snake_case`.
+        Op::ListMembers => return through::<Vec<g1t_contracts::identity::Member>>(op, as_is),
+        Op::UpdateMember => return through::<g1t_contracts::identity::Member>(op, as_is),
+        Op::RemoveMember | Op::TransferOwnership | Op::LeaveWorkspace => return through::<bool>(op, as_is),
         // Teams and code owners, also `snake_case`.
         Op::ListTeams | Op::ListChildTeams | Op::ListUserTeams => return through::<Vec<teams::Team>>(op, as_is),
         Op::GetTeam | Op::CreateTeam | Op::UpdateTeam | Op::SetTeamReviewAssignment => {

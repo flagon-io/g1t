@@ -968,6 +968,26 @@ pub struct IdPage {
     pub next: Option<String>,
 }
 
+/// `repo_creators` takes [`AllIdsArgs`]: every repository that is not a
+/// fork, with the account that created it, a page at a time, for identity
+/// giving creators the Admin role. Returns [`CreatorPage`].
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct CreatorPage {
+    pub repos: Vec<RepoCreator>,
+    /// Where the next page starts; null on the last.
+    pub next: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepoCreator {
+    pub id: String,
+    /// Its workspace's slug.
+    pub namespace: String,
+    pub name: String,
+    /// The account that created it.
+    pub owner_id: String,
+}
+
 /// `visibility`: which of these repositories (`namespace/name`) are
 /// private, for billing, which pays for work on public ones from g1t's
 /// open-source pool. A pull request's working copy answers as the

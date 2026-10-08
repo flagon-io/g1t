@@ -479,6 +479,10 @@ impl Identity {
             status,
             review_reason: None,
         });
+        // In the person's security log and their workspaces' audit logs, as
+        // a classic token is (tokens.rs).
+        self.log_security(&a.user.id, "token_created", Some(&created.info.name), None).await;
+        self.audit_account(&a.user, "token.created", &format!("Created fine-grained access token {}", created.info.name)).await;
         if let (Some(slug), TokenStatus::Pending) = (&slug, status) {
             self.ask_owners(&a.user, slug, &created.info).await?;
         }
@@ -569,6 +573,10 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
         };
         self.name_repositories(std::slice::from_mut(&mut info), &Some(a.user.clone())).await?;
+        if widened {
+            self.log_security(&a.user.id, "token_rescoped", Some(&info.name), None).await;
+            self.audit_account(&a.user, "token.rescoped", &format!("Changed the permissions of fine-grained access token {}", info.name)).await;
+        }
         if ask && let Some(slug) = &slug {
             self.ask_owners(&a.user, slug, &info).await?;
         }

@@ -110,10 +110,11 @@ Owners of its workspace have Admin on it.
 | Default branch | Admin |
 | Rename a branch | Write; Admin for the default branch |
 | Rename the repository | Admin |
-| Make it public or private | Admin |
+| Make it public or private | Admin, and the [member privileges](/guides/workspaces/#member-privileges) to allow it, or an owner |
 | Archive or unarchive | Admin |
-| [Transfer](/guides/transferring-repositories/) | An owner of both workspaces |
-| Delete, restore and purge | An owner of its workspace |
+| [Transfer](/guides/transferring-repositories/) | An owner of its workspace, or a member with Admin when the member privileges allow it; and in the other workspace, being able to create a repository |
+| Delete | An owner of its workspace, or a member with Admin when the member privileges allow it |
+| Restore and purge | An owner of its workspace |
 | See the Recently deleted list | An owner of its workspace |
 
 Renaming the repository or its default branch, changing its visibility

@@ -67,8 +67,8 @@ test("the state parameter falls back to open", () => {
 test("ids say which tab and which role an alert takes", () => {
   assert.equal(tabOf("sec_9"), "secrets");
   assert.equal(tabOf("vul_9"), "dependencies");
-  assert.equal(alertCapability("sec_9"), "manage_integrations");
-  assert.equal(alertCapability("vul_9"), "push");
+  assert.equal(alertCapability("sec_9"), "security_alerts");
+  assert.equal(alertCapability("vul_9"), "security_alerts");
 });
 
 test("alerts are counted by state", () => {

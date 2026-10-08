@@ -32,6 +32,17 @@ Every workspace keeps an audit log. It records:
 | `repo.invitation_created`, `repo.invitation_revoked` | Someone was invited to it, or an invitation was withdrawn. |
 | `repo.deploy_key_added`, `repo.deploy_key_removed` | A [deploy key](/guides/git/#deploy-keys) was added to it, saying whether it may write, or deleted. |
 | `workspace.base_permission_changed` | An owner changed what members get on every repository. |
+| `member.added`, `member.removed`, `member.left` | Someone joined the workspace (added by an owner, or with an invite), was removed by an owner, or left. See [members and roles](/guides/workspaces/#members-and-roles). |
+| `member.role_changed` | An owner made someone an owner or a member. |
+| `member.org_role_added`, `member.org_role_removed` | An owner made someone a billing manager or a security manager, or took it away. |
+| `workspace.ownership_transferred` | An owner handed the workspace to another member. |
+| `workspace.member_privileges_changed` | An owner turned a [member privilege](/guides/workspaces/#member-privileges) on or off. |
+| `workspace.two_factor_required`, `workspace.two_factor_not_required` | An owner started or stopped [requiring two-factor authentication](/guides/workspaces/#require-two-factor-authentication). |
+| `workspace_token.created`, `workspace_token.deleted` | An owner made or deleted one of the workspace's [access tokens](/guides/workspaces/#workspace-access-tokens). |
+| `token.created`, `token.deleted`, `token.rescoped` | A member made, deleted or changed the scopes of one of their own [access tokens](/guides/authentication/#access-tokens). Recorded in each of their workspaces. |
+| `ssh_key.added`, `ssh_key.removed` | A member added or removed an SSH key. Recorded in each of their workspaces. |
+| `oauth_grant.created`, `oauth_grant.rescoped`, `oauth_grant.revoked` | A member [signed in to an application](/guides/authentication/#signing-in-with-oauth), changed what it may do, or signed it out. Recorded in each of their workspaces. |
+| `two_factor.enabled`, `two_factor.disabled` | A member turned [two-factor authentication](/guides/authentication/#two-factor-authentication) on or off. Recorded in each of their workspaces. |
 | `token.policy_changed` | An owner changed the workspace's [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens). |
 | `token.approval_requested`, `token.approved`, `token.denied` | A member's fine-grained token asked to reach the workspace, and an owner approved or denied it, with their note. |
 | `token.revoked` | An owner revoked a member's token in the workspace, with their note. |
@@ -120,7 +131,9 @@ written as text.
 ## What is not recorded
 
 - Reads by people and workspace tokens.
-- What people do on the website itself. The API, the MCP server and git
-  are recorded.
+- Most of what people do on the website itself. The API, the MCP server
+  and git are recorded, and so are the changes to members, roles, access,
+  tokens, keys, applications, two-factor authentication and workspace
+  settings in the table above, wherever they are made.
 - What g1t does on its own, such as closing a pull request whose agent
   failed. Those changes are in the pull request's timeline.

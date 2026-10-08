@@ -21,7 +21,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const moved = legacySecurityTarget(base, new URL(request.url).searchParams);
   if (moved) throw redirect(moved);
   const viewer = getViewer(context) ?? requireUser(context, request);
-  await requireInsider(context, params, "push");
+  await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
   const [overview, code] = await Promise.all([security.overview(repo, viewer), securitySuite.codeScanning(repo, viewer)]);
   return { overview: unwrap(overview), code: code.ok ? code.value : null };

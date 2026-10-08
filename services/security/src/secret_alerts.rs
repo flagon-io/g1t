@@ -64,10 +64,10 @@ pub fn secret_event(repo: &RepoRow, secret: &SecretFinding) -> SecurityEvent {
 }
 
 /// Whether a person reviews bypass requests in this repository: an owner
-/// of its workspace, or one of its admins.
+/// or a security manager of its workspace, or one of its admins.
 fn reviews_bypasses(user: &User, repo: &RepoRow) -> bool {
-    user.role_in(&repo.namespace) == Some(Role::Owner)
-        || access::can(Some(user), access::RepoRef { id: &repo.repo_id, namespace: &repo.namespace, private: true }, Capability::ManageIntegrations)
+    user.manages_security(&repo.namespace)
+        || access::can(Some(user), access::RepoRef { id: &repo.repo_id, namespace: &repo.namespace, private: true }, Capability::ManageSecurity)
 }
 
 impl Security {
@@ -177,12 +177,12 @@ impl Security {
     }
 
     /// The people who review bypass requests that the inbox tells: the
-    /// workspace's owners.
+    /// workspace's owners and security managers.
     async fn bypass_reviewers(&self, repo: &RepoRow) -> Vec<String> {
         self.members(&repo.namespace)
             .await
             .into_iter()
-            .filter(|member| member.role == Role::Owner)
+            .filter(|member| member.role == Role::Owner || member.org_roles.contains(&g1t_contracts::OrgRole::SecurityManager))
             .map(|member| member.username)
             .collect()
     }
@@ -242,12 +242,12 @@ impl Security {
             },
             None => None,
         };
-        let owner = viewer.role_in(&workspace) == Some(Role::Owner);
+        let owner = viewer.manages_security(&workspace);
         let mut shown = Vec::new();
         for row in self.store.requests(&workspace, repo_id.as_deref(), a.state.as_deref()).await? {
             // Reviewers see every request; anyone else their own.
             let reviewer = owner
-                || access::can(Some(viewer), access::RepoRef { id: &row.repo_id, namespace: &workspace, private: true }, Capability::ManageIntegrations);
+                || access::can(Some(viewer), access::RepoRef { id: &row.repo_id, namespace: &workspace, private: true }, Capability::ManageSecurity);
             if reviewer || row.requester.eq_ignore_ascii_case(&viewer.username) {
                 shown.push(row.contract());
             }
@@ -448,5 +448,11 @@ mod tests {
         };
         assert!(reviews_bypasses(&member(Role::Owner), &repo));
         assert!(!reviews_bypasses(&User { username: "eve".into(), ..User::default() }, &repo));
+        // A security manager reviews them too; a plain member does not.
+        let mut manager = member(Role::Member);
+        manager.workspaces[0].base_permission = Some(g1t_contracts::access::BasePermission::None);
+        assert!(!reviews_bypasses(&manager, &repo));
+        manager.workspaces[0].org_roles.push(g1t_contracts::OrgRole::SecurityManager);
+        assert!(reviews_bypasses(&manager, &repo));
     }
 }

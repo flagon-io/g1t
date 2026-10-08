@@ -16,7 +16,13 @@ export type GithubPurpose = "sign_in" | "link";
 
 /** How a return from GitHub ended. */
 export type GithubFinished =
-  | { kind: "signed_in"; signedIn: { user: User; sessionToken: string }; created: boolean; next: string }
+  | {
+      kind: "signed_in";
+      /** `twoFactorChallenge` is set, and `sessionToken` empty, while the account's two-factor code is still to come. */
+      signedIn: { user: User; sessionToken: string; twoFactorChallenge?: string | null };
+      created: boolean;
+      next: string;
+    }
   | { kind: "linked"; login: string; next: string }
   /** An account has one of its verified emails: sign in to it, then claim. */
   | { kind: "needs_link"; pending: string; login: string; next: string }

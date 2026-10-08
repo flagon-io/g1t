@@ -75,6 +75,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Members",
+        "A workspace's members and owners: who belongs to it, their roles (owner or member, with billing manager and security manager on top), handing it to another member, and leaving it.",
+        &[Op::ListMembers, Op::UpdateMember, Op::RemoveMember, Op::TransferOwnership, Op::LeaveWorkspace],
+    ),
+    (
         "Invites",
         "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
         &[
@@ -499,6 +504,11 @@ fn title(op: Op) -> &'static str {
         Op::CreateWorkspace => "Create a workspace",
         Op::DeleteWorkspace => "Delete a workspace",
         Op::UpdateWorkspace => "Update a workspace",
+        Op::ListMembers => "List a workspace's members",
+        Op::UpdateMember => "Change a member's role",
+        Op::RemoveMember => "Remove a member",
+        Op::TransferOwnership => "Transfer a workspace's ownership",
+        Op::LeaveWorkspace => "Leave a workspace",
         Op::ListEmails => "List your email addresses",
         Op::AddEmail => "Add an email address",
         Op::RemoveEmail => "Remove an email address",

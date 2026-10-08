@@ -1007,9 +1007,11 @@ dependencies = [
  "g1t-secrets",
  "getrandom 0.2.17",
  "hex",
+ "hmac 0.12.1",
  "pbkdf2 0.12.2",
  "serde",
  "serde_json",
+ "sha1 0.10.7",
  "sha2 0.10.9",
  "worker",
 ]

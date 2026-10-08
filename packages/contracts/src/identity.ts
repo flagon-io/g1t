@@ -1,5 +1,6 @@
 import type { AccessClient, BasePermission, RepoGrant } from "./access";
 import type { PermissionAccess, RepositorySelection } from "./fine-grained";
+import type { MemberPrivileges, OrgRole, PolicyHold } from "./members";
 import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -65,6 +66,12 @@ export type User = {
     /** The one repository a job's token or a deploy key reaches. */
     repo?: string;
   };
+  /**
+   * Workspaces the person belongs to but cannot use until they meet its
+   * policy, such as turning on two-factor authentication. Left out of
+   * `workspaces` and `grants` meanwhile.
+   */
+  held?: PolicyHold[];
 };
 
 /** What a member may do: an owner also manages the workspace's members. */
@@ -82,6 +89,10 @@ export type Membership = {
   base_permission?: BasePermission;
   /** Who may create its teams. Absent means any member. */
   team_creation?: TeamCreation;
+  /** The roles held besides owner or member. */
+  org_roles?: OrgRole[];
+  /** What the workspace lets its members do. Absent means the defaults. */
+  privileges?: MemberPrivileges;
 };
 
 /** How long an old workspace slug redirects, and stays reserved for it, after a rename. */
@@ -122,11 +133,17 @@ export type Workspace = {
   basePermission?: BasePermission;
   /** Who may create its teams. Absent means any member. */
   teamCreation?: TeamCreation;
-};
+  /** Whether members and outside collaborators need two-factor authentication. */
+  twoFactorRequirementEnabled?: boolean;
+} & Partial<MemberPrivileges>;
 
 export type Member = {
   username: string;
   role: Role;
+  /** The roles they hold besides `role`. */
+  org_roles?: OrgRole[];
+  /** Whether two-factor authentication is on; owners only, null for anyone else. */
+  two_factor?: boolean | null;
   /** Their display name, when they set one. */
   name?: string | null;
   /** Their uploaded avatar's hash, served at `/avatars/<avatar>`; null for the generated letter avatar. */
@@ -587,7 +604,17 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
    * password. Wrong passwords are counted against the account and `client`
    * (the visitor's IP address); past a limit nothing is checked for a while.
    */
-  signIn(username: string, password: string, client?: string | null): Promise<Result<{ user: User; sessionToken: string }>>;
+  signIn(
+    username: string,
+    password: string,
+    client?: string | null,
+  ): Promise<Result<{ user: User; sessionToken: string; twoFactorChallenge?: string | null }>>;
+  /**
+   * The second step of signing in, for an account with two-factor
+   * authentication: the challenge `signIn` returned, and a code from the
+   * app or a recovery code.
+   */
+  twoFactorSignIn(challenge: string, code: string, client?: string | null): Promise<Result<{ user: User; sessionToken: string }>>;
   signOut(sessionToken: string): Promise<void>;
 
   /** Sends the confirmation email again. */
@@ -644,8 +671,18 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
   listMembers(slug: string, viewer: Viewer): Promise<Result<Member[]>>;
   /** Owners only. */
   addMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
-  /** Owners only. */
+  /** Owners only; your own username is leaving. Never the last owner. */
   removeMember(actor: User, slug: string, username: string): Promise<Result<boolean>>;
+  /** Owners only: owner or member, and the roles held besides it. Never leaves no owner. */
+  updateMember(actor: User, slug: string, username: string, change: { role?: Role; org_roles?: OrgRole[] }): Promise<Result<Member>>;
+  /** Owners only: `username` becomes an owner, and you a member. */
+  transferOwnership(actor: User, slug: string, username: string): Promise<Result<boolean>>;
+  /** You leave the workspace. Never the last owner. */
+  leaveWorkspace(user: User, slug: string): Promise<Result<boolean>>;
+  /** Owners only: change some member privileges; returns all of them. */
+  setMemberPrivileges(actor: User, slug: string, change: Partial<MemberPrivileges>): Promise<Result<MemberPrivileges>>;
+  /** Owners only, with two-factor on themselves: require it of everyone. */
+  setTwoFactorRequirement(actor: User, slug: string, required: boolean): Promise<Result<boolean>>;
   /** Owners only. An empty name falls back to the slug. */
   updateWorkspace(actor: User, slug: string, details: { name: string; description: string }): Promise<Result<Workspace>>;
   /**

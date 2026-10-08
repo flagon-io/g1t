@@ -1,6 +1,6 @@
 ---
 title: Transferring a repository
-description: Move a repository to another workspace you own, with its issues, pull requests, deployments and history, while its old address keeps working.
+description: Move a repository to another workspace, with its issues, pull requests, deployments and history, while its old address keeps working.
 ---
 
 Transferring moves a repository from one workspace to another. It keeps its
@@ -15,16 +15,20 @@ than move it, [delete it](/guides/managing-repositories/#delete-a-repository).
 
 ## Who can transfer
 
-You must be an **owner of both workspaces**: the one the repository is in
-and the one it moves to. A member of either cannot, and neither can an
-access token that belongs to a workspace or g1t's token. Your email
-address must be confirmed.
+In the workspace the repository is in, you must be an **owner**, or a
+member with the Admin role on it when the workspace's
+[member privileges](/guides/workspaces/#member-privileges) let repository
+admins delete and transfer repositories (off by default). In the workspace
+it moves to, you must be an owner, or a member who may create a repository
+of its kind there. An access token that belongs to a workspace, or g1t's
+token, cannot transfer. Your email address must be confirmed.
 
 ## Transfer a repository
 
 1. Open the repository's **Settings → Repository**.
 2. Under **Danger zone**, choose **Transfer**.
-3. Pick the workspace to move it to. Only workspaces you own are listed.
+3. Pick the workspace to move it to. Only workspaces where you can create
+   a repository like it are listed.
 4. Read what changes, type the repository's full name (`<old>/<repo>`) to
    confirm, and choose **Transfer**.
 
