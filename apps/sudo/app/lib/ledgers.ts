@@ -67,6 +67,8 @@ const ENTERPRISE = /^ent_[a-z0-9_-]{1,80}$/;
  */
 export function accountPath(account: string | null | undefined): string | null {
   const id = (account ?? "").trim().toLowerCase();
+  // The model catalogue's changes (billing's catalogue.rs).
+  if (id === "models") return "/agents";
   const status = /^(incident|maintenance):([a-z0-9-]{1,64})$/.exec(id);
   if (status) return status[1] === "incident" ? `/incidents/${status[2]}` : `/incidents/maintenance/${status[2]}`;
   if (ENTERPRISE.test(id)) return `/enterprises/${encodeURIComponent(id)}`;
@@ -77,6 +79,7 @@ export function accountPath(account: string | null | undefined): string | null {
 /** What to call an account: a workspace by its slug, an enterprise by its name when known. */
 export function accountName(account: string, names: Map<string, string> = new Map()): string {
   if (names.has(account)) return names.get(account) as string;
+  if (account === "models") return "Agents & models";
   if (account.startsWith("incident:")) return "Incident";
   if (account.startsWith("maintenance:")) return "Maintenance";
   if (account.startsWith("ws_")) return account.slice(3);
@@ -133,6 +136,12 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   maintenance_cancelled: "Maintenance cancelled",
   credit_revoked: "Credit revoked",
   credit_expired: "Credit expired",
+  // The model catalogue (Agents & models).
+  models_discovered: "Models found or gone",
+  model_approved: "Model approved",
+  model_retired: "Model retired",
+  model_restored: "Model restored",
+  model_default: "Model default changed",
 };
 
 /**

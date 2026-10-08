@@ -19,6 +19,7 @@ export default [
   route("velocity", "routes/velocity.tsx"),
   route("costs", "routes/costs.tsx"),
   route("costs/bill", "routes/costs-bill.tsx"),
+  route("agents", "routes/agents.tsx"),
   route("abuse", "routes/abuse.tsx"),
   route("invoices", "routes/invoices.tsx"),
   route("credits", "routes/credits.tsx"),

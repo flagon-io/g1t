@@ -47,6 +47,13 @@ at the same work failed, and what has worked in the repository before:
   of the same kind, Auto moves that work down a tier there; when a model
   keeps failing, up.
 
+The models behind the tiers are today's. g1t keeps up with new models
+as providers release them: it checks for new ones every day, and when g1t
+moves a tier to a new model, your runs use it within a minute, with
+nothing for you to change. Nobody picks a model; Auto keeps choosing by the
+work. A model a provider retires is never used again: the next model for
+that tier runs instead, and the run says so.
+
 Every run says which model it used and why, in one line on its run and in
 its pull request's session, such as *Used a fast model (Claude Haiku 5.5):
 small change, 3 files and 80 lines.* The full rules are in

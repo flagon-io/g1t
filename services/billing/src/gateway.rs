@@ -178,32 +178,71 @@ pub(crate) fn valid_id(id: &str) -> bool {
     id.starts_with("gw_") && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-#[derive(Deserialize)]
-struct ModelRow {
-    model: String,
-    name: String,
-    provider: String,
+/// A row of `gateway_models`, the model catalogue (catalogue.rs reads the
+/// rest of its columns).
+#[derive(Clone, Deserialize)]
+pub(crate) struct ModelRow {
+    pub model: String,
+    pub name: String,
+    pub provider: String,
     #[serde(default)]
-    kind: Option<String>,
-    input_micros: i64,
-    output_micros: i64,
-    cache_read_micros: i64,
-    cache_write_micros: i64,
+    pub kind: Option<String>,
+    pub input_micros: i64,
+    pub output_micros: i64,
+    pub cache_read_micros: i64,
+    pub cache_write_micros: i64,
     #[serde(default)]
-    cache_write_1h_micros: Option<i64>,
+    pub cache_write_1h_micros: Option<i64>,
     #[serde(default)]
-    threshold: Option<f64>,
+    pub threshold: Option<f64>,
     #[serde(default)]
-    over_input_micros: Option<i64>,
+    pub over_input_micros: Option<i64>,
     #[serde(default)]
-    over_output_micros: Option<i64>,
+    pub over_output_micros: Option<i64>,
     #[serde(default)]
-    over_cache_read_micros: Option<i64>,
+    pub over_cache_read_micros: Option<i64>,
     #[serde(default)]
-    over_cache_write_micros: Option<i64>,
+    pub over_cache_write_micros: Option<i64>,
     #[serde(default)]
-    over_cache_write_1h_micros: Option<i64>,
+    pub over_cache_write_1h_micros: Option<i64>,
+    #[serde(default)]
+    pub aliases: Option<String>,
+    #[serde(default)]
+    pub family: Option<String>,
+    #[serde(default)]
+    pub tier_hint: Option<String>,
+    #[serde(default)]
+    pub context_window: Option<f64>,
+    #[serde(default)]
+    pub max_output: Option<f64>,
+    #[serde(default)]
+    pub capabilities: Option<String>,
+    #[serde(default)]
+    pub dimensions: Option<f64>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub priced: Option<f64>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub first_seen_at: Option<String>,
+    #[serde(default)]
+    pub last_seen_at: Option<String>,
+    #[serde(default)]
+    pub missing_since: Option<String>,
+    #[serde(default)]
+    pub approved_by: Option<String>,
+    #[serde(default)]
+    pub approved_at: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
 }
+
+/// The models the AI Gateway offers: approved or deprecated, and priced.
+/// `new` (not approved yet), `retired` and unpriced models are refused
+/// before they reach a provider, and never charged.
+pub(crate) const OFFERED_SQL: &str = "status IN ('available', 'deprecated') AND priced = 1";
 
 impl From<ModelRow> for GatewayModel {
     fn from(row: ModelRow) -> Self {
@@ -289,23 +328,29 @@ fn number(n: u64) -> JsValue {
 }
 
 impl Billing {
-    /// `gateway_models`: what the gateway offers on g1t's key, with prices.
+    /// `gateway_models`: what the gateway offers on g1t's key, with prices,
+    /// in the catalogue's order, with staff's first Claude (`gateway_first`
+    /// in `model_defaults`) at the top.
     pub(crate) async fn gateway_models(&self) -> Result<Vec<GatewayModel>> {
-        Ok(self
+        let mut models: Vec<GatewayModel> = self
             .db
-            .prepare("SELECT * FROM gateway_models ORDER BY position, model")
+            .prepare(format!("SELECT * FROM gateway_models WHERE {OFFERED_SQL} ORDER BY position, model"))
             .all()
             .await?
             .results::<ModelRow>()?
             .into_iter()
             .map(GatewayModel::from)
-            .collect())
+            .collect();
+        // Without the defaults (a database before them), the catalogue's order.
+        let first = self.model_default("gateway_first").await.ok().flatten().and_then(|row| row.model);
+        crate::catalogue::put_first(&mut models, first.as_deref());
+        Ok(models)
     }
 
     async fn gateway_model(&self, model: &str) -> Result<Option<GatewayModel>> {
         Ok(self
             .db
-            .prepare("SELECT * FROM gateway_models WHERE model = ?")
+            .prepare(format!("SELECT * FROM gateway_models WHERE model = ? AND {OFFERED_SQL}"))
             .bind(&[model.into()])?
             .first::<ModelRow>(None)
             .await?

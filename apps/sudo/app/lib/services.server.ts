@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 
 import {
+  type ModelDiscoveryApi,
   type StatusAdminApi,
   accountsAdminClient,
   billingAdminClient,
@@ -29,6 +30,9 @@ export const events = eventsClient(env.EVENTS);
 
 /** The status page's incidents (apps/status's `StatusAdmin` entrypoint). */
 export const statusAdmin = env.STATUS as unknown as StatusAdminApi;
+
+/** "Check for new models": the model proxy's `Discovery` entrypoint (services/models). */
+export const modelDiscovery = env.MODELS as unknown as ModelDiscoveryApi;
 
 /** STAFF_EMAILS, for suggesting staff in the incident roles. */
 export const staffEmails = (): string => env.STAFF_EMAILS ?? "";

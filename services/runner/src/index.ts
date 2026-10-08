@@ -67,16 +67,23 @@ import {
   type RouteSignals,
   canReachModel,
   changeSize,
+  effortFor,
   failuresInARow,
   gatewaySession,
   leftLowConfidence,
   modelEnv,
   outcomesOf,
-  parseRouting,
   route,
+  routingReader,
   taskOf,
   tierVars,
 } from "./model-env";
+
+/**
+ * The routing in force: staff's defaults from billing, read at most once a
+ * minute per isolate, on AGENT_ROUTING (alone when billing cannot be read).
+ */
+const routingNow = routingReader();
 import { hubContext } from "./hub";
 import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
@@ -162,7 +169,9 @@ export interface RunnerEnv {
    * change; `largeLabels`, `frontierLabels` and `smallLabels`, issue
    * labels that move work; `frontierAfter`, failures in a row before the
    * frontier tier; `learning`, how a repository's own runs move it.
-   * Anything left out takes the default.
+   * Anything left out takes the default. Staff's defaults in sudo
+   * (billing's `model_defaults`) replace `tiers`, `tasks` and `effort`
+   * whenever billing can be read.
    */
   AGENT_ROUTING?: string;
   /**
@@ -1388,7 +1397,8 @@ export default class RunnerService
     requestedBy: string | null,
     input: RouteInput = {},
   ): Promise<Result<Record<string, string>>> {
-    const routing = parseRouting(this.env.AGENT_ROUTING);
+    // Staff's defaults from billing's catalogue, on AGENT_ROUTING.
+    const routing = await routingNow(this.env.AGENT_ROUTING, () => billingClient(this.env.BILLING).modelDefaults());
     const task = taskOf(kind);
     const signals: RouteSignals = { ...input };
     if (input.viewer) {
@@ -1464,7 +1474,7 @@ export default class RunnerService
         }
       : modelEnv(this.env, routing, task, tier, direct ? { ...tags, session: direct } : tags);
     // How hard it thinks, by the kind of work, on g1t's tiers.
-    const effort = named ? undefined : routing.effort[kind];
+    const effort = named ? undefined : effortFor(routing, kind, tier);
     if (effort) vars.CLAUDE_CODE_EFFORT_LEVEL = effort;
     // Why this model: shown on the run and at the top of its session.
     vars.AGENT_MODEL_REASON = effort ? `${reason.replace(/\.$/, "")}, at ${effort} effort.` : reason;

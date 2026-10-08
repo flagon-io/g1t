@@ -487,6 +487,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
       call("token_usage", { workspace, viewer, person: options.person ?? null, days: options.days ?? null }),
     recordTokens: (usage) => call("record_tokens", usage),
     gatewayModels: () => call("gateway_models", {}),
+    modelDefaults: () => call("model_defaults", {}),
+    recordDiscovery: (provider, models, by, error = null) => call("record_discovery", { provider, models, by, error }),
     gatewayAdmit: (workspace) => call("gateway_admit", { workspace }),
     recordGateway: (record) => call("record_gateway", record),
     gatewayRequests: (workspace, viewer, options = {}) =>
@@ -619,6 +621,40 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
         by,
       }),
     runCosts: (by) => call("admin_run_costs", { by }),
+    models: () => call("admin_models", {}),
+    decideModel: (model, decision, details, reason, by) =>
+      call("admin_decide_model", {
+        model,
+        decision,
+        name: details.name ?? null,
+        tier_hint: details.tierHint ?? null,
+        prices: details.prices
+          ? {
+              input_micros: details.prices.inputMicros,
+              output_micros: details.prices.outputMicros,
+              cache_read_micros: details.prices.cacheReadMicros,
+              cache_write_micros: details.prices.cacheWriteMicros,
+              cache_write_1h_micros: details.prices.cacheWrite1hMicros,
+              threshold: details.prices.threshold,
+              over_input_micros: details.prices.overInputMicros,
+              over_output_micros: details.prices.overOutputMicros,
+              over_cache_read_micros: details.prices.overCacheReadMicros,
+              over_cache_write_micros: details.prices.overCacheWriteMicros,
+              over_cache_write_1h_micros: details.prices.overCacheWrite1hMicros,
+            }
+          : null,
+        reason,
+        by,
+      }),
+    setModelDefault: (purpose, value, reason, by) =>
+      call("admin_set_model_default", {
+        purpose,
+        model: value.model ?? null,
+        tier: value.tier ?? null,
+        effort: value.effort ?? null,
+        reason,
+        by,
+      }),
   };
 }
 

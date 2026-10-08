@@ -253,7 +253,11 @@ goes there, even one that names a model g1t offers. An Anthropic key takes
 your key.
 
 `GET /openai/v1/models` lists what the workspace can use: its own
-providers' models first, then g1t's, cheapest Claude first. Each has
+providers' models first, then g1t's, starting with the Claude g1t suggests
+starting with (Claude Haiku 5.5 today). g1t adds models as providers
+release them, once their prices are confirmed, so the list and the tables
+below grow over time; a model a provider stops offering is listed until it
+is retired. Each has
 `billed_to` (`workspace` or `g1t`), `connection` (your provider's name) and,
 on g1t's models, `pricing` in dollars per million tokens:
 

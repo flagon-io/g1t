@@ -93,7 +93,12 @@ type Env = {
   BILLING?: ServiceBinding;
 };
 
-/** Workers AI's embedding model: 768 dimensions, as the index was made with. */
+/**
+ * Workers AI's embedding model: 768 dimensions, as the index was made with.
+ * Pinned, not a default staff choose in sudo: vectors from another model
+ * mean nothing beside these, so changing it means a new index, rebuilt.
+ * The catalogue (billing's `gateway_models`) lists it with its price.
+ */
 const EMBED_MODEL = "@cf/baai/bge-base-en-v1.5";
 /** What it costs, in millionths of a dollar per token ($0.067 per million). */
 const MICROS_PER_TOKEN = 0.067;

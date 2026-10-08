@@ -1142,9 +1142,25 @@ fails and is retried on the same model costs more than one that finishes.
 - **Tiers and catalogue.** `small` (Claude Haiku 5.5 since 2026-10-08,
   $0.10/$0.50 per million input/output up to 100k-token prompts, five
   times that above; it was Haiku 4.5 at $1/$5), `large` (Claude Sonnet 5.5, $2/$10) and `frontier`
-  (Claude Opus 5.5, $4/$20). Models, names and list prices are
-  configuration (`AGENT_ROUTING`), never code; prices there are for
-  estimates only, runs are charged what AI Gateway priced them at.
+  (Claude Opus 5.5, $4/$20). Models, names and list prices are data,
+  never code: since 2026-10-08 billing's model catalogue
+  (`gateway_models`, one row per model g1t can use) and staff's defaults
+  in sudo, **Agents & models** (`model_defaults`: each tier's model, the
+  harness's background model, the AI Gateway's first Claude, each job's
+  starting tier and effort), read by the runner once a minute over
+  `AGENT_ROUTING`, which is only the fallback when billing cannot be read.
+  Catalogue prices are for estimates only; runs are charged what AI
+  Gateway priced them at.
+- **Keeping up with new models (built 2026-10-08).** The models service
+  lists Anthropic's models (through the AI Gateway) and Workers AI's daily
+  and on demand; a new id lands in the catalogue as `new`, priced from a
+  maintained table of Anthropic's list prices or Workers AI's listing, or
+  unpriced, and staff are emailed. Nothing routes to it, offers it or
+  charges for it until staff approve it with its prices. A model a provider
+  stops listing is `deprecated`; routing never sends work to a deprecated
+  or retired model, falling back to the next model of the tier and saying
+  so on the run. Customers keep Auto: the catalogue is staff's. See
+  [BILLING_OPERATIONS.md](BILLING_OPERATIONS.md#the-model-catalogue).
 - **Starting tier by job.** Catch-up, answering a question, and reviews of
   at most 10 files and 200 lines touching no sensitive path: small.
   Plans: small at high effort (Haiku 5.5 takes an effort level).
@@ -1163,7 +1179,8 @@ fails and is retried on the same model costs more than one that finishes.
   *Used a fast model (Claude Haiku 5.5): small change, 3 files and 80
   lines.* Effort per kind of job (`effort` in `AGENT_ROUTING`: plan high,
   answer medium, update low) is sent as `CLAUDE_CODE_EFFORT_LEVEL` on
-  g1t's tiers and named in that line.
+  g1t's tiers (never on a model the catalogue says takes none) and named
+  in that line, with the catalogue's name for the model.
 - **Chosen instead.** `model_routes` rows to g1t's models name `small`,
   `large` or `frontier`, or nothing for Auto (Integrations → Models).
   A workspace's own Anthropic key with no model named is routed by Auto

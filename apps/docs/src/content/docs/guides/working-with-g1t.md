@@ -452,6 +452,10 @@ least costly model that can do it, from three tiers:
 | Standard | Claude Sonnet 5.5 | Most changes and reviews |
 | Most capable | Claude Opus 5.5 | Hard work, and work that failed on the standard model |
 
+The models are today's: when g1t moves a tier to a newer model, runs use
+it within a minute. A model its provider retires is never used; the next
+model for the tier runs, and the run's line says so.
+
 The job starts on its tier:
 
 | Work | Starts on |

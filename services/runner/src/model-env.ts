@@ -41,6 +41,11 @@ export type ModelRoute = {
    * Gateway priced them at.
    */
   price?: TokenPrice;
+  /**
+   * What the model can do, from the catalogue (`effort`, `thinking`…);
+   * absent when the route came from configuration, which says nothing.
+   */
+  capabilities?: string[];
 };
 
 /**
@@ -64,8 +69,12 @@ export type Learning = { window: number; minRuns: number; stepDownAt: number; st
 
 /**
  * g1t's routing policy. Nobody assigning an agent has to pick a model:
- * "Auto" decides here, by the work, and the operator changes the policy in
- * one place (`AGENT_ROUTING` in wrangler.jsonc), never in code.
+ * "Auto" decides here, by the work. Staff choose the model behind each
+ * tier, the background model and each job's tier and effort in sudo
+ * (billing's `model_defaults`, applied by `withDefaults`); the rest of the
+ * policy (labels, change sizes, learning) is `AGENT_ROUTING` in
+ * wrangler.jsonc, which is also the whole of it when billing cannot be
+ * read. Never in code.
  */
 export type AgentRouting = {
   /** The model behind each tier: the catalogue. */
@@ -91,6 +100,16 @@ export type AgentRouting = {
   /** Failed attempts at the same work, in a row, before the frontier tier. */
   frontierAfter: number;
   learning: Learning;
+  /**
+   * The harness's own small background tasks (titles, summaries): the
+   * small tier's model when absent.
+   */
+  background?: ModelRoute;
+  /**
+   * Why a tier's model is not the one staff chose (it was retired, or has
+   * no price): said in the run's reason line.
+   */
+  notes?: Partial<Record<Tier, string>>;
 };
 
 /** What a change is, as far as routing cares. */
@@ -134,7 +153,7 @@ export type RouteSignals = {
 /** The router's answer: the tier, and why, in one line people can read. */
 export type Routed = {
   tier: Tier;
-  /** E.g. `Used a fast model (Claude Haiku 4.5): small change, 3 files and 80 lines.` */
+  /** E.g. `Used a fast model (Claude Haiku 5.5): small change, 3 files and 80 lines.` */
   reason: string;
 };
 
@@ -262,7 +281,7 @@ export function record(history: PastOutcome[], tier: Tier, window: number): { ru
 export function route(kind: JobKind, signals: RouteSignals, routing: AgentRouting = DEFAULT_ROUTING): Routed {
   const say = (tier: Tier, why: string): Routed => ({
     tier,
-    reason: `${TIER_LABEL[tier].used} (${routing.tiers[tier].modelName}): ${why}.`,
+    reason: `${TIER_LABEL[tier].used} (${routing.tiers[tier].modelName}): ${why}.${routing.notes?.[tier] ? ` ${routing.notes[tier]}` : ""}`,
   });
   if (signals.chosen && isTier(signals.chosen)) {
     return say(signals.chosen, `the workspace chose the ${TIER_LABEL[signals.chosen].noun} model for this work`);
@@ -398,12 +417,118 @@ export function canReachModel(env: ModelRouting): boolean {
  */
 export function tierVars(routing: AgentRouting, tier: Tier): Record<string, string> {
   const route = routing.tiers[tier];
+  const background = (routing.background ?? routing.tiers.small).model;
   return {
     ANTHROPIC_MODEL: route.model,
     // Recorded at the top of the session, so anyone can see what ran.
     AGENT_MODEL_NAME: route.modelName,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: routing.tiers.small.model,
-    ANTHROPIC_SMALL_FAST_MODEL: routing.tiers.small.model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: background,
+    ANTHROPIC_SMALL_FAST_MODEL: background,
+  };
+}
+
+/**
+ * The effort a job runs at on a tier: the job's, unless the catalogue says
+ * the tier's model takes no effort level (Claude Haiku 4.5), when the
+ * harness's own default is left.
+ */
+export function effortFor(routing: AgentRouting, kind: JobKind, tier: Tier): Effort | undefined {
+  const effort = routing.effort[kind];
+  const capabilities = routing.tiers[tier].capabilities;
+  if (effort && capabilities && !capabilities.includes("effort")) return undefined;
+  return effort;
+}
+
+/** What `model_defaults` gives: billing's `ModelDefaults`, as far as routing reads it. */
+export type StoredDefaults = {
+  models: {
+    purpose: string;
+    model: {
+      model: string;
+      name: string;
+      inputMicros: number;
+      outputMicros: number;
+      cacheReadMicros: number;
+      cacheWriteMicros: number;
+    } | null;
+    capabilities: string[];
+    note: string | null;
+  }[];
+  jobs: { kind: string; tier: string; effort: string | null }[];
+};
+
+const TIER_PURPOSE: Record<Tier, string> = { small: "tier_small", large: "tier_large", frontier: "tier_frontier" };
+
+/**
+ * `routing` with staff's defaults from billing's catalogue on top: the
+ * model behind each tier (named as the catalogue names it, priced from
+ * it), the background model, and each job's starting tier and effort. A
+ * purpose billing left out, or could not find any model for, keeps what
+ * `routing` had; a fallback's note is said in the run's reason line.
+ */
+export function withDefaults(routing: AgentRouting, stored: StoredDefaults): AgentRouting {
+  const perMillion = (micros: number) => Math.max(0, micros) / 1_000_000;
+  const routeOf = (purpose: string): { route: ModelRoute; note: string | null } | null => {
+    const found = stored.models.find((entry) => entry.purpose === purpose);
+    if (!found?.model?.model) return null;
+    const { model } = found;
+    return {
+      route: {
+        modelName: model.name || model.model,
+        model: model.model,
+        price: {
+          input: perMillion(model.inputMicros),
+          output: perMillion(model.outputMicros),
+          cacheRead: perMillion(model.cacheReadMicros),
+          cacheWrite: perMillion(model.cacheWriteMicros),
+        },
+        capabilities: found.capabilities,
+      },
+      note: found.note,
+    };
+  };
+  const tiers = { ...routing.tiers };
+  const notes: Partial<Record<Tier, string>> = { ...routing.notes };
+  for (const tier of TIERS) {
+    const found = routeOf(TIER_PURPOSE[tier]);
+    if (!found) continue;
+    tiers[tier] = found.route;
+    if (found.note) notes[tier] = found.note;
+    else delete notes[tier];
+  }
+  const tasks = { ...routing.tasks };
+  const effort = { ...routing.effort };
+  for (const job of stored.jobs) {
+    if (!(job.kind in tasks)) continue;
+    const kind = job.kind as JobKind;
+    // Only a review is sized by the change it reads.
+    if (isTier(job.tier) || (job.tier === "change" && kind === "review")) tasks[kind] = job.tier as TaskRule;
+    if (job.effort && EFFORTS.includes(job.effort as Effort)) effort[kind] = job.effort as Effort;
+    else delete effort[kind];
+  }
+  const background = routeOf("background")?.route ?? routing.background;
+  return { ...routing, tiers, tasks, effort, notes, ...(background ? { background } : {}) };
+}
+
+/**
+ * The routing to use now: staff's defaults from billing, read at most once
+ * a minute per isolate, on top of `AGENT_ROUTING`. When billing cannot be
+ * read, `AGENT_ROUTING` (and `DEFAULT_ROUTING` under it) alone, and billing
+ * is asked again ten seconds later.
+ */
+export function routingReader(ttlMs = 60_000, retryMs = 10_000) {
+  let cached: { value: StoredDefaults | null; until: number } | null = null;
+  return async (configured: string | undefined, read: () => Promise<StoredDefaults>, now = Date.now()): Promise<AgentRouting> => {
+    const base = parseRouting(configured);
+    if (!cached || cached.until <= now) {
+      try {
+        cached = { value: await read(), until: now + ttlMs };
+      } catch (error) {
+        console.log(`model defaults unreadable, using AGENT_ROUTING: ${error instanceof Error ? error.message : String(error)}`);
+        cached = { value: null, until: now + retryMs };
+      }
+    }
+    return cached.value ? withDefaults(base, cached.value) : base;
   };
 }
 
