@@ -580,7 +580,7 @@ impl Billing {
             .prepare(
                 "SELECT id, workspace, repo, number, task, model, token_hash, billed_to, session_id, created_at, finished_at
                  FROM runs
-                 WHERE session_id IS NOT NULL AND settled_at IS NULL
+                 WHERE session_id IS NOT NULL AND settled_at IS NULL AND COALESCE(billed_to, 'g1t') = 'g1t'
                    AND ((finished_at IS NOT NULL AND finished_at < ?1) OR created_at < ?2)
                  ORDER BY created_at LIMIT 10",
             )
@@ -601,6 +601,64 @@ impl Billing {
                 continue;
             }
             self.settle(&run, &gateway).await?;
+        }
+        Ok(())
+    }
+
+    /// Closes runs on a workspace's own model provider: none is on g1t's
+    /// gateway, so nothing is corrected, but tokens the proxy counted after
+    /// the run reported, or for a sandbox that died before reporting, are
+    /// charged their agent rate now. Needs no gateway token.
+    pub(crate) async fn settle_own_runs(&self) -> Result<()> {
+        #[derive(Deserialize)]
+        struct Own {
+            id: String,
+            workspace: String,
+            repo: String,
+            number: u32,
+            task: String,
+            model: String,
+            token_hash: String,
+            billed_to: Option<String>,
+        }
+        let now = now_ms();
+        let runs = self
+            .db
+            .prepare(
+                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to
+                 FROM runs
+                 WHERE billed_to = 'workspace' AND session_id IS NOT NULL AND settled_at IS NULL
+                   AND ((finished_at IS NOT NULL AND finished_at < ?1) OR created_at < ?2)
+                 ORDER BY created_at LIMIT 25",
+            )
+            .bind(&[rfc3339(now - SETTLE_AFTER_MS).into(), rfc3339(now - ABANDONED_AFTER_MS).into()])?
+            .all()
+            .await?
+            .results::<Own>()?;
+        for run in runs {
+            let settled_at = rfc3339(now_ms());
+            let claimed = self
+                .db
+                .prepare(
+                    "UPDATE runs SET settled_at = ?1, finished_at = COALESCE(finished_at, ?1)
+                     WHERE id = ?2 AND settled_at IS NULL RETURNING id",
+                )
+                .bind(&[settled_at.as_str().into(), run.id.as_str().into()])?
+                .first::<Value>(None)
+                .await?;
+            if claimed.is_none() {
+                continue;
+            }
+            let row = RunRow {
+                workspace: run.workspace,
+                repo: run.repo,
+                number: run.number,
+                task: run.task,
+                model: run.model,
+                token_hash: run.token_hash,
+                billed_to: run.billed_to,
+            };
+            self.charge_agent_rate(&run.id, &row, None).await?;
         }
         Ok(())
     }
@@ -657,7 +715,7 @@ impl Billing {
         }
         // Tokens counted after the run reported are charged their agent
         // rate now (ai.rs).
-        self.charge_agent_rate(&run.id, &row).await?;
+        self.charge_agent_rate(&run.id, &row, None).await?;
         if let Some(why) = &short {
             worker::console_warn!("run {} settled at no less than reported: {why}", run.id);
         }

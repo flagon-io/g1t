@@ -440,25 +440,43 @@ removes the rule.
 
 ## Which model runs
 
-You do not pick one. You assign the work to `g1t`, the way you would
-assign an issue to a colleague, and g1t routes it. On g1t's hosted models,
-each piece of work goes to the least costly of two tiers that can do it:
+You do not have to pick one. You assign the work to `g1t`, the way you
+would assign an issue to a colleague, and **Auto** routes each job to the
+least costly model that can do it, from three tiers:
 
-| Tier | Model today |
+| Tier | Model today | For |
+| --- | --- | --- |
+| Fast | Claude Haiku 4.5 | Small, well-bounded work |
+| Standard | Claude Sonnet 5.5 | Most changes and reviews |
+| Most capable | Claude Opus 5.5 | Hard work, and work that failed on the standard model |
+
+The job starts on its tier:
+
+| Work | Starts on |
 | --- | --- |
-| Small | Claude Haiku 4.5 |
-| Large | Claude Sonnet 5.5 |
+| Making a change for an issue, revising it, and taking over handed-on work | Standard |
+| Answering a question asked of `@g1t` | Fast |
+| Reviewing a pull request that changes at most 10 files and 200 lines and touches no sensitive path | Fast |
+| Reviewing a pull request that changes more than 60 files or 3,000 lines | Most capable |
+| Reviewing any other pull request, or one whose changed files g1t does not know yet | Standard |
+| Catching up with the base branch and resolving conflicts | Fast |
+| Planning an outcome | Standard |
 
-The work decides the tier:
+Then, in this order:
 
-| Work | Tier |
-| --- | --- |
-| Making a change for an issue, revising it, and answering a mention | Large |
-| Reviewing a pull request that changes at most 10 files and 200 lines, touches no sensitive path, and is not for an issue labelled `security` | Small |
-| Reviewing any other pull request, or one whose changed files g1t does not know yet | Large |
-| Catching up with `main` and resolving conflicts | Small |
-| Planning an outcome | Small |
-| Any of these again, after the last attempt at the same work failed or stopped at a guardrail cap | Large |
+1. **Labels on the issue.** `architecture` sends the work to the most
+   capable model. `security` keeps it off the fast one. `documentation`,
+   `docs` and `typo` let a change or an answer start on the fast one.
+2. **Failures.** When the last attempt at the same work failed or stopped
+   at a guardrail cap, the next goes one tier up; after two in a row, to
+   the most capable. A revision counts each round before it. When the
+   last attempt finished but left a change g1t had
+   [low confidence](#how-sure-the-agent-is) in, the next goes one tier up.
+3. **What worked here.** g1t looks at the repository's last 20 runs of
+   the same kind. When the tier below finished at least 9 in 10 of at
+   least 5, the work goes down a tier; when this tier failed half of at
+   least 5, it goes up. Work that touches a sensitive path or carries
+   one of the labels above is never moved down.
 
 Sensitive paths are the ones that run, configure or guard things: CI
 workflows, `.g1t/` and `.github/`, `CODEOWNERS`, secrets such as `.env`
@@ -466,15 +484,23 @@ and `.pem` files, and infrastructure such as Dockerfiles, Terraform and
 `wrangler.*` files. They are the same paths that lower a change's
 [confidence](#how-sure-the-agent-is).
 
-The agent's own small background steps run on the small tier.
+The agent's own small background steps run on the fast tier.
 
-Every session opens with a note naming the model that ran, and an agent's
-review says which model wrote it, so what you got is always on the record.
-When a better model for a tier appears, g1t changes the route and nothing
-you have set up needs to change.
+Every run says which model it used and why, in one line: as the first
+step on its run, and at the top of its pull request's session. For
+example, *Used a fast model (Claude Haiku 4.5): small change, 3 files and
+80 lines.* An agent's review also says which model wrote it. When a better
+model for a tier appears, g1t changes the route and nothing you have set
+up needs to change.
+
+To choose instead of Auto, an owner picks **Fast**, **Standard** or **Most
+capable** for a kind of work under
+[which model does which work](/guides/models/#choose-which-model-does-which-work).
+Every run of that kind then uses it, and says the workspace chose it.
 
 A workspace that routes its work to [its own provider](/guides/models/)
-is not routed by tier: its work runs on the model its route names.
+runs the model its route names. On an Anthropic key with no model named,
+Auto chooses the tier's Claude model, as on g1t's models.
 
 A pull request g1t opens has `g1t` as its author and as its `agent` in the
 API, and its commits are authored `g1t <g1t@users.noreply.g1t.sh>`.
@@ -525,7 +551,7 @@ If you run your own copy of g1t, these settings control it:
 
 | Setting | Where | What it does |
 | --- | --- | --- |
-| `AGENT_ROUTING` | Runner | JSON. `tiers`: the model behind `small` and `large`, each `{ "modelName", "model" }`. `tasks`: the tier of `implement`, `review`, `update` and `plan`, or `change` to decide by the change. `smallChange`: the most `files` and `lines` a `change` review runs on the small tier with. `largeLabels`: issue labels that keep a review on the large tier. Anything left out takes the defaults above. |
+| `AGENT_ROUTING` | Runner | JSON. `tiers`: the model behind `small`, `large` and `frontier`, each `{ "modelName", "model", "price" }` (`price`, dollars per million `input`, `output`, `cacheRead` and `cacheWrite` tokens, is for estimates only). `tasks`: the tier `implement`, `revise`, `answer`, `review`, `update` and `plan` start on, or `change` to decide by the change. `smallChange` and `largeChange`: the most `files` and `lines` of a small change, and the least of a large one. `smallLabels`, `largeLabels` and `frontierLabels`: issue labels that move work. `frontierAfter`: failures in a row before the most capable tier. `learning`: `window`, `minRuns`, `stepDownAt` and `stepUpAt`. Anything left out takes the defaults above. |
 | `MODELS_URL` | Runner | Where sandboxes send model requests: the model proxy. |
 | `AI_GATEWAY_ID` | Model proxy | The gateway hosted requests go through. Empty sends them to the provider directly. |
 | `AI_GATEWAY_TOKEN` | Model proxy | Secret. Authenticates to the gateway. |
@@ -533,16 +559,17 @@ If you run your own copy of g1t, these settings control it:
 
 ## What it costs
 
-A workspace pays for g1t's runs on its repositories, after
-they run: each run is charged its sandbox by the second, at cost plus 20%,
-and, on g1t's hosted models, what AI Gateway priced its model requests at,
-plus 20%. A workspace's [own provider](/guides/models/) bills it for the
-model directly. See
-[Usage and billing](/guides/usage-and-billing/) for how prices are set and
-the limits on usage not yet paid for.
-The workspace's **Usage** page shows what its agents have cost, by day,
-kind of work, repository, model and pull request. See
-[usage and billing](/guides/usage-and-billing/).
+A workspace pays for g1t's runs on its repositories, after they run: each
+run is charged its sandbox by the second, at cost plus 20%, and the
+[agent rate](/guides/usage-and-billing/#the-agent-rate) on the tokens it
+used. On g1t's hosted models, the model is charged at what AI Gateway
+priced its requests at, the provider's price with no markup. A
+workspace's [own provider](/guides/models/) bills it for the model
+directly; the agent rate is still charged, as **Agent rate, your own model
+key**. See [Usage and billing](/guides/usage-and-billing/) for how prices
+are set and the limits on usage not yet paid for. The workspace's
+**Usage** page shows what its agents have cost, by day, kind of work,
+repository and pull request, and their tokens by model.
 
 ## What a sandbox has
 

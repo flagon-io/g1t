@@ -122,6 +122,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const choice = String(form.get(`route-${task}`) ?? "");
       if (!choice) continue;
       if (choice === "g1t") routes.push({ task, connectionId: null, model: null });
+      else if (choice.startsWith("g1t::")) routes.push({ task, connectionId: null, model: choice.slice("g1t::".length) || null });
       else {
         const [connectionId, model] = choice.split("::");
         routes.push({ task, connectionId, model: model || null });
@@ -222,17 +223,16 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
                 : `All work runs on g1t's models. ${slug} gets ${dollars(trial.limitMicros)} of trial credit the first time its agents work. Connect a provider of your own for more, or to choose models.`
               : free
                 ? "All work runs on g1t's models, free while g1t is being built out. Connect a provider of your own to choose models and pay for them there."
-                : `All work runs on g1t's models, charged to your credit at cost plus ${marginPercent}%. Connect a provider of your own to choose models and pay for them there.`}
+                : "All work runs on g1t's models, charged to your AI credit at the provider's price plus the agent rate. Auto picks the model for each job; choose one per kind of work below, or connect a provider of your own and pay for its models there."}
           </p>
         )}
-        {modelConnections.length > 0 && (
+        {(modelConnections.length > 0 || hostedOpen) && (
         <Routing
           // Started again from what is saved whenever that changes, such as a provider disconnected.
           key={JSON.stringify([routes, modelConnections.map((c) => c.id)])}
           connections={modelConnections}
           routes={routes}
           hostedOpen={hostedOpen}
-          marginPercent={marginPercent}
           owner={owner}
           saved={actionData != null && "routed" in actionData}
         />
@@ -240,8 +240,8 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         <p className="mt-3 text-xs text-faint">
           On your own providers, their bills are yours.{" "}
           {free
-            ? `g1t charges nothing while it is being built out; once pricing starts, only each run's sandbox time, at cost plus ${marginPercent}%.`
-            : `g1t charges only each run's sandbox time, at cost plus ${marginPercent}%.`}{" "}
+            ? `g1t charges nothing while it is being built out; once pricing starts, each run's sandbox time at cost plus ${marginPercent}%, and the agent rate on the tokens it used.`
+            : `g1t charges each run's sandbox time at cost plus ${marginPercent}%, and the agent rate on the tokens it used, shown on Usage as "Agent rate, your own model key".`}{" "}
           Keys go only from g1t's model proxy to the provider: the agent's
           sandbox holds a token that dies with the run.
         </p>

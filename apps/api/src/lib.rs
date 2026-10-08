@@ -23,7 +23,7 @@ mod runners;
 mod security;
 mod tools;
 
-use g1t_contracts::billing::FinishRunArgs;
+use g1t_contracts::billing::{FinishRunArgs, RunTokens};
 use g1t_contracts::identity::{
     DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs,
 };
@@ -457,6 +457,14 @@ async fn report_usage(
             token: body["token"].as_str().unwrap_or_default().to_owned(),
             cost_usd: body["cost_usd"].as_f64().unwrap_or_default(),
             turns: body["turns"].as_u64().unwrap_or_default() as u32,
+            // What the harness counted; the agent rate is charged on no
+            // fewer, on a workspace's own model key too.
+            tokens: body.get("tokens").filter(|t| t.is_object()).map(|t| RunTokens {
+                input: t["input"].as_u64().unwrap_or_default(),
+                output: t["output"].as_u64().unwrap_or_default(),
+                cache_read: t["cache_read"].as_u64().unwrap_or_default(),
+                cache_write: t["cache_write"].as_u64().unwrap_or_default(),
+            }),
         },
     )
     .await?;

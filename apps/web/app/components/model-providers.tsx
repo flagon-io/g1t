@@ -7,7 +7,7 @@ import { Bot, ChevronRight, Sparkles, Webhook } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
-import { type Connection, MODEL_TASKS, type ModelRoute, type ModelTask, type Provider, PROVIDERS } from "@g1t/contracts";
+import { type Connection, MODEL_TASKS, MODEL_TIERS, type ModelRoute, type ModelTask, type ModelTier, type Provider, PROVIDERS } from "@g1t/contracts";
 
 import { Field, Input, SubmitButton } from "./ui";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
@@ -349,6 +349,14 @@ const TASK_LABELS: Record<ModelTask, { label: string; hint: string }> = {
 
 type Choice = { target: string; model: string };
 
+/** g1t's models, as a route can choose them: Auto, or one tier. */
+const AUTO = "auto";
+const TIER_CHOICES: Record<ModelTier, { label: string; hint: string }> = {
+  small: { label: "Fast", hint: "Cheapest; simple work" },
+  large: { label: "Standard", hint: "Most changes" },
+  frontier: { label: "Most capable", hint: "Hard work; costs the most" },
+};
+
 function choiceOf(route: ModelRoute | undefined): Choice {
   if (!route) return { target: "", model: "" };
   return { target: route.connectionId ?? "g1t", model: route.model ?? "" };
@@ -359,14 +367,12 @@ export function Routing({
   connections,
   routes,
   hostedOpen,
-  marginPercent,
   owner,
   saved,
 }: {
   connections: Connection[];
   routes: ModelRoute[];
   hostedOpen: boolean;
-  marginPercent: number;
   owner: boolean;
   saved: boolean;
 }) {
@@ -394,7 +400,7 @@ export function Routing({
       <div className="border-b border-line px-4 py-3">
         <p className="text-sm font-medium">Which model does which work</p>
         <p className="text-xs text-muted">
-          Each kind of work can go to g1t's models, or to any of your providers on the model you choose.
+          Each kind of work can go to g1t's models, or to any of your providers on the model you choose. On g1t's models, Auto picks the cheapest model that can do each job and says why on the run.
         </p>
       </div>
       <ul className="divide-y divide-line">
@@ -403,7 +409,14 @@ export function Routing({
           const connection = connections.find((c) => c.id === choice.target);
           const speaksAnthropic = connection && PROVIDERS[connection.provider] && (connection.provider === "anthropic" || connection.provider === "anthropic_endpoint");
           const needsModel = connection && !speaksAnthropic && !choice.model && !connection.config.model;
-          const value = !choice.target ? "" : choice.target === "g1t" ? "g1t" : `${choice.target}::${choice.model}`;
+          const hosted = choice.target === "g1t";
+          const value = !choice.target
+            ? ""
+            : hosted
+              ? choice.model
+                ? `g1t::${choice.model}`
+                : "g1t"
+              : `${choice.target}::${choice.model}`;
           return (
             <li key={task} className="grid items-start gap-2 px-4 py-3 md:grid-cols-[11rem_1fr_1fr]">
               <div className="pt-1.5">
@@ -432,7 +445,7 @@ export function Routing({
                     value="g1t"
                     disabled={!hostedOpen}
                     icon={<Sparkles />}
-                    description={hostedOpen ? `Credit at cost + ${marginPercent}%` : "Not open to this workspace yet"}
+                    description={hostedOpen ? "The provider's price, plus the agent rate" : "Not open to this workspace yet"}
                   >
                     g1t's models
                   </SelectItem>
@@ -448,6 +461,28 @@ export function Routing({
                   )}
                 </SelectContent>
               </Select>
+              {hosted ? (
+                <Select
+                  disabled={!owner}
+                  value={choice.model || AUTO}
+                  onValueChange={(model) => set(task, { model: model === AUTO ? "" : model })}
+                >
+                  <SelectTrigger aria-label={`${TASK_LABELS[task].label}: g1t's model`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTO} description="g1t picks per job, and says why">
+                      Auto
+                    </SelectItem>
+                    <SelectSeparator />
+                    {MODEL_TIERS.map((tier) => (
+                      <SelectItem key={tier} value={tier} description={TIER_CHOICES[tier].hint}>
+                        {TIER_CHOICES[tier].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
               <div>
                 <input
                   aria-label={`${TASK_LABELS[task].label}: model`}
@@ -459,7 +494,7 @@ export function Routing({
                     !choice.target
                       ? "Follows everything"
                       : !connection
-                        ? "g1t's choice for this work"
+                        ? "Auto"
                         : speaksAnthropic
                           ? connection.config.model ?? "g1t's choice of Claude"
                           : connection.config.model ?? `Search ${connection.models.length} models`
@@ -469,6 +504,7 @@ export function Routing({
                 />
                 {needsModel && <p className="mt-1 text-xs text-warn">Choose a model.</p>}
               </div>
+              )}
             </li>
           );
         })}

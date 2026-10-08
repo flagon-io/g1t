@@ -170,6 +170,11 @@ impl Provider {
 /// The kinds of work a model is chosen for, and `default` for the rest.
 pub const MODEL_TASKS: [&str; 5] = ["default", "implement", "review", "plan", "update"];
 
+/// The tiers g1t routes its hosted models' work to, cheapest first: `small`
+/// (fast), `large` (standard) and `frontier` (most capable). A route to
+/// g1t's models may name one instead of leaving the choice to Auto.
+pub const MODEL_TIERS: [&str; 3] = ["small", "large", "frontier"];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -286,7 +291,8 @@ pub struct ModelRoute {
     /// The workspace's own model connection, or `None` for g1t's hosted
     /// models.
     pub connection_id: Option<String>,
-    /// The model at that connection; its default model when `None`.
+    /// The model at that connection; its default model when `None`. On
+    /// g1t's hosted models, one of [`MODEL_TIERS`], or `None` for Auto.
     pub model: Option<String>,
 }
 
@@ -354,10 +360,16 @@ pub struct ModelSession {
     /// The model to use instead of g1t's choice, if the connection names one.
     pub model: Option<String>,
     /// Names the run in AI Gateway's logs (`metadata.session`), so billing
-    /// can charge each run what the gateway priced its requests at. Not a
-    /// secret: it cannot be turned back into the token.
+    /// can charge each run what the gateway priced its requests at, and its
+    /// tokens in billing's count (the agent rate). Not a secret: it cannot
+    /// be turned back into the token.
     #[serde(default)]
     pub id: String,
+    /// The tier the workspace chose for this work on g1t's models instead
+    /// of Auto: the run goes there. `None` for Auto and on its own
+    /// providers.
+    #[serde(default)]
+    pub tier_choice: Option<String>,
 }
 
 /// What the model proxy needs to forward one run's requests.
@@ -565,9 +577,10 @@ pub struct OpenModelSessionArgs {
     /// decides that; this service only follows the routes.
     #[serde(default = "yes")]
     pub hosted_open: bool,
-    /// `small` or `large`: the tier the runner routed the run to on g1t's
-    /// hosted models, tagged on its requests at the gateway. Kept only
-    /// when the run goes to g1t's models.
+    /// `small`, `large` or `frontier`: the tier the runner routed the run
+    /// to on g1t's hosted models, tagged on its requests at the gateway.
+    /// Kept only when the run goes to g1t's models, where a tier the
+    /// workspace chose for the work takes its place.
     #[serde(default)]
     pub tier: Option<String>,
     /// The person the run is for, by username, so usage can be shown per

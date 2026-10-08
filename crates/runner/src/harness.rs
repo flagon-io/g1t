@@ -44,10 +44,25 @@ fn result_text(content: &Value) -> String {
     }
 }
 
+/// The tokens a run used, from Claude Code's closing `usage`: input,
+/// output, and prompt-cache reads and writes. On a workspace's own model
+/// key this is what g1t charges its agent rate on (the model proxy's own
+/// count, when it has more, wins), so it is reported with the cost.
+fn run_tokens(event: &Value) -> Value {
+    let usage = &event["usage"];
+    let count = |field: &str| usage[field].as_u64().unwrap_or_default();
+    serde_json::json!({
+        "input": count("input_tokens"),
+        "output": count("output_tokens"),
+        "cache_read": count("cache_read_input_tokens"),
+        "cache_write": count("cache_creation_input_tokens"),
+    })
+}
+
 /// Tells g1t what the run cost, so that the workspace it was for can be
 /// charged. The run's own token, given to this sandbox and to nothing
 /// else, is the credential. Does nothing where runs are not billed.
-fn report_cost(cost_usd: f64, turns: u64) {
+fn report_cost(cost_usd: f64, turns: u64, tokens: Value) {
     let (Ok(api), Ok(run), Ok(token)) = (
         std::env::var("G1T_API"),
         std::env::var("BILLING_RUN"),
@@ -59,6 +74,7 @@ fn report_cost(cost_usd: f64, turns: u64) {
         "token": token,
         "cost_usd": cost_usd,
         "turns": turns,
+        "tokens": tokens,
     }));
     if let Err(error) = sent {
         eprintln!("g1t-runner: could not report what the run cost: {error}");
@@ -125,7 +141,7 @@ fn handle_event(
             // the session so that spend can be read per pull request.
             if let Some(cost) = event["total_cost_usd"].as_f64() {
                 let turns = event["num_turns"].as_u64().unwrap_or_default();
-                report_cost(cost, turns);
+                report_cost(cost, turns, run_tokens(event));
                 if let Some(progress) = progress {
                     progress.cost(cost, turns);
                 }
@@ -314,5 +330,33 @@ pub fn run_claude(workdir: &Path, prompt: &str, reporter: &mut Reporter) -> Resu
     match outcome {
         Some(result) => result,
         None => bail!("Claude Code exited ({status}) without a result"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_runs_tokens_come_from_the_closing_usage_by_kind() {
+        let event = serde_json::json!({
+            "type": "result",
+            "total_cost_usd": 0.42,
+            "usage": {
+                "input_tokens": 1200,
+                "output_tokens": 340,
+                "cache_read_input_tokens": 90000,
+                "cache_creation_input_tokens": 5000,
+            },
+        });
+        assert_eq!(
+            run_tokens(&event),
+            serde_json::json!({ "input": 1200, "output": 340, "cache_read": 90000, "cache_write": 5000 })
+        );
+        // An older harness without usage reports nothing, not an error.
+        assert_eq!(
+            run_tokens(&serde_json::json!({ "type": "result" })),
+            serde_json::json!({ "input": 0, "output": 0, "cache_read": 0, "cache_write": 0 })
+        );
     }
 }

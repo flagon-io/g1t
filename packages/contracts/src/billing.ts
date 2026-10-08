@@ -916,7 +916,7 @@ export interface BillingApi {
     /** The person the run is for, by username. */
     person?: string | null;
     model: string;
-    tier?: "small" | "large" | null;
+    tier?: "small" | "large" | "frontier" | null;
     input: number;
     output: number;
     cacheRead: number;
@@ -1082,10 +1082,14 @@ export interface BillingApi {
     model: string;
     /** `workspace` when the run uses the workspace's own model provider. */
     billedTo?: "g1t" | "workspace";
-    /** The model session's id, so the run can be settled at AI Gateway's price. */
+    /**
+     * The model session's id: the run is settled at AI Gateway's price by
+     * it, and on the workspace's own provider its tokens are counted under
+     * it for the agent rate.
+     */
     session?: string | null;
-    /** `small` or `large`: the tier g1t routed the run to, on its hosted models. */
-    tier?: "small" | "large" | null;
+    /** The tier g1t routed the run to: `small`, `large` or `frontier`. */
+    tier?: "small" | "large" | "frontier" | null;
   }): Promise<Result<RunTicket | null>>;
   /** Usage over a range of days (`YYYY-MM-DD`, both included), at price, by product, meter, project and day. Members only. */
   usageReport(
@@ -1464,11 +1468,16 @@ export type MeterLine = {
   daily: number[];
   allowance?: UsageAllowance | null;
   byProject: ProjectUsage[];
+  /** How the quantity is counted, when that needs saying (the agent rate's token weights). */
+  note?: string | null;
 };
 
 export type FeatureUsage = { key: string; label: string; micros: number; count: number };
 
 export type ProductUsage = { key: string; label: string; micros: number; meters: MeterLine[]; features?: FeatureUsage[] };
+
+/** The tokens one model used over a range, as the model proxy counted them. */
+export type ModelTokens = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number };
 
 export type UsageReport = {
   from: string;
@@ -1477,6 +1486,8 @@ export type UsageReport = {
   days: UsageDay[];
   products: ProductUsage[];
   projects: string[];
+  /** Agent tokens by model over the range, most first. */
+  models?: ModelTokens[];
   /** The plan's included usage this month, in micros. */
   included?: UsageAllowance | null;
   discountPercent?: number | null;

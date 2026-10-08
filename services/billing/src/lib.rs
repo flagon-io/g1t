@@ -157,7 +157,7 @@ impl From<LedgerRow> for LedgerEntry {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct RunRow {
     workspace: String,
     repo: String,
@@ -779,12 +779,10 @@ impl Billing {
                 hash(&token).into(),
                 rfc3339(now).into(),
                 if a.billed_to == "workspace" { "workspace" } else { "g1t" }.into(),
-                optional(a.session.as_deref().filter(|_| a.billed_to != "workspace")),
-                optional(
-                    a.tier
-                        .as_deref()
-                        .filter(|tier| a.billed_to != "workspace" && matches!(*tier, "small" | "large")),
-                ),
+                // On the workspace's own provider too: the proxy counts the
+                // run's tokens under it, and the agent rate is charged on them.
+                optional(a.session.as_deref()),
+                optional(a.tier.as_deref().filter(|tier| tokens::is_tier(tier))),
             ])?
             .run()
             .await?;
@@ -819,10 +817,11 @@ impl Billing {
         if claimed.is_none() {
             return Ok(Outcome::Ok(false));
         }
-        // On the workspace's own provider, the model was paid for there,
-        // and the run's sandbox time is recorded on its own: nothing more
-        // to charge.
+        // On the workspace's own provider, the model was paid for there and
+        // the run's sandbox time is recorded on its own: only the agent rate
+        // is charged, on its own meter.
         if run.own_provider() {
+            self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
             return Ok(Outcome::Ok(true));
         }
         // Its cost plus the margin, on the account's terms; then the plan's
@@ -860,7 +859,7 @@ impl Billing {
         self.record_drawn(&a.run_id, &drawn).await?;
         self.record_discount(&a.run_id, discount).await?;
         self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
-        self.charge_agent_rate(&a.run_id, &run).await?;
+        self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
         Ok(Outcome::Ok(true))
     }
 }
@@ -1137,6 +1136,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let keeper = keeper::Keeper::from_env(&env);
     if let Err(error) = billing.settle_runs(&keeper).await {
         worker::console_error!("settling runs failed: {error}");
+    }
+    if let Err(error) = billing.settle_own_runs().await {
+        worker::console_error!("closing runs on own providers failed: {error}");
     }
     // Stripe events billing never received, handled now.
     match billing.replay_events().await {
@@ -1456,6 +1458,8 @@ mod tests {
         include_str!("../migrations/0038_staff_credits.sql"),
         include_str!("../migrations/0039_discounts_not_comped.sql"),
         include_str!("../migrations/0040_ai_credit.sql"),
+        include_str!("../migrations/0041_agent_rate_own_key.sql"),
+        include_str!("../migrations/0042_agent_rate_weights.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an
@@ -1509,6 +1513,31 @@ mod tests {
         assert!(row("('card_fee_percent'").contains("29000"));
         assert!(row("('card_fee_fixed'").contains("300000"));
         assert!(row("('card_fee', 'on'").contains("'on'"));
+    }
+
+    #[test]
+    fn the_agent_rate_on_an_own_model_key_is_its_own_dated_meter() {
+        let sql = include_str!("../migrations/0041_agent_rate_own_key.sql");
+        let row = |needle: &str| sql.lines().find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no {needle}")).to_owned();
+        // Nothing until the notice has run…
+        assert!(row("('pv_agent_tokens_own_1'").contains("0, 0, '2026-10-08"));
+        // …then $0.25 a million tokens, as on g1t's models, 14 days after.
+        assert!(row("('pv_agent_tokens_own_2'").contains("250000, 0, '2026-10-22"));
+        assert!(row("('agent_tokens_own',").contains("'million tokens', 0, 0, 'list'"));
+        assert_eq!(ai::agent_rate_meter(true), "agent_tokens_own");
+    }
+
+    #[test]
+    fn the_agent_rate_counts_every_token_once_until_a_weight_is_decided() {
+        let sql = include_str!("../migrations/0042_agent_rate_weights.sql");
+        for kind in ["input", "output", "cache_read", "cache_write"] {
+            let meter = format!("('agent_token_weight_{kind}', 'Agent rate weight");
+            let row = sql.lines().find(|l| l.contains(&meter)).unwrap_or_else(|| panic!("no {kind} weight"));
+            assert!(row.contains("'weight', 1000000, 0, 'list'"), "{kind}: {row}");
+            let version = format!("('pv_agent_token_weight_{kind}_1', 'agent_token_weight_{kind}', 1, 1000000,");
+            assert!(sql.contains(&version), "{kind} has no applied version");
+        }
+        assert_eq!(ai::weight_of(1_000_000.0), 1.0);
     }
     #[test]
     fn every_checkout_insert_fills_the_table() {

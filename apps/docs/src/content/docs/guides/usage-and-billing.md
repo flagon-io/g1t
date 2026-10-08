@@ -81,7 +81,8 @@ The live figures are on [g1t.sh/pricing](https://g1t.sh/pricing).
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
 | Agent models | A run | What the provider charged | The provider's price, from [AI credit](#ai-credit) |
-| g1t agent rate | Million tokens a run uses (input, output and cached) | — | $0.25, from Oct 22, 2026 |
+| g1t agent rate | Million tokens a run uses (input, output and cached), [weighted by kind](#the-agent-rate) | — | $0.25, from Oct 22, 2026 |
+| g1t agent rate, your own model key | The same, on runs that use [your own provider](/guides/models/) | — | $0.25, from Oct 22, 2026 |
 | AI Gateway | A request | What the provider charged | The provider's price: free of markup during beta |
 | Sandbox time (agents, workflows, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
 | [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
@@ -232,8 +233,30 @@ $0, and from Oct 8, 2026 models carry no markup (before, cost plus 20%); both
 are dated changes on the pricing page.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
-paid for at those providers instead. Such a run is charged here only for
-its [sandbox time](#sandbox-time), like any other sandbox.
+paid for at those providers instead. Such a run is charged here for its
+[sandbox time](#sandbox-time), like any other sandbox, and the agent rate
+on the tokens it used, on a line of its own (*g1t agent rate, your own
+model key: 980,000 tokens for work on acme/api#12*).
+
+### The agent rate
+
+The agent rate pays for what g1t adds around the model: context, memory,
+routing and orchestration. It is charged per million tokens a run used,
+on g1t's models and on your own model key alike:
+
+1. g1t's model proxy counts each answer's tokens as it passes: input,
+   output, and prompt-cache reads and writes. The sandbox reports what its
+   agent counted too, and the rate is charged on the more of the two.
+2. Each kind of token counts at its weight. Today every token counts
+   once: input ×1, output ×1, cache reads ×1, cache writes ×1. The weights
+   are on [g1t.sh/pricing](https://g1t.sh/pricing) under the rate, and a
+   change to them is a dated price change like any other.
+3. The run is charged when it reports, and again for tokens counted after
+   that, never twice for the same token.
+
+On the **Usage** page the agent rate's lines count weighted tokens and name
+the weights: **Agent rate** for runs on g1t's models, and **Agent rate, your
+own model key** for runs on your own provider.
 
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why putting g1t to work on a
@@ -808,10 +831,11 @@ Then:
   Hover or focus a column for each product's part; **Show as a table** has
   every number.
 - **The breakdown**: each product family with its meters (the agent's
-  model tokens, agent rate and sandbox time; sandbox time; builds; git
-  operations and private storage with what is free; and so on), each with a
-  trend line, how much was used and its charge at price. Open a meter for
-  its projects. The agent also shows its runs, reviews, plans and checks.
+  model tokens, agent rate, agent rate on your own model key and sandbox
+  time; sandbox time; builds; git operations and private storage with what
+  is free; and so on), each with a trend line, how much was used and its
+  charge at price. Open a meter for its projects. The agent also shows its
+  runs, reviews, plans and checks, and its tokens by model.
 
 Storage, git operations, scans and search embeddings are metered through
 the month and charged when it closes; until then they are marked pending.
@@ -831,7 +855,9 @@ time. Every member can see it.
 
   | Line | What it holds |
   | --- | --- |
-  | Agent runs | Runs on g1t's models: the model's cost plus the margin. |
+  | Agent runs | Runs on g1t's models: the model at the provider's price (cost plus 20% before Oct 8, 2026). |
+  | Agent rate | The agent rate on runs on g1t's models. |
+  | Agent rate, your own model key | The agent rate on runs on your own provider. |
   | Runs on your own model provider | Older months only: the flat fee runs on your own provider used to carry. |
   | Sandbox time | Each sandbox's time. |
   | Self-hosted runner time | Each job on your own runners, at $0. |

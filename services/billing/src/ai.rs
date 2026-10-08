@@ -36,7 +36,7 @@
 
 use g1t_contracts::billing::{
     AccountArgs, AiCredit, AiReload, BuyAiCreditArgs, CardFee, Checkout, ConfirmAiCreditArgs, CreditKind, EntryKind, PlanKind,
-    SetAiReloadArgs, MICROS_PER_DOLLAR,
+    RunTokens, SetAiReloadArgs, MICROS_PER_DOLLAR,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
@@ -802,10 +802,36 @@ impl Billing {
 
     // --- The agent rate --------------------------------------------------------
 
+    /// How much each kind of token counts toward the agent rate: the price
+    /// book's `agent_token_weight_*` meters, a token's weight in millionths
+    /// (1,000,000 is 1). A meter missing counts 1.
+    pub(crate) async fn token_weights(&self) -> Result<TokenWeights> {
+        let mut weights = TokenWeights::default();
+        for (meter, slot) in [
+            ("agent_token_weight_input", &mut weights.input),
+            ("agent_token_weight_output", &mut weights.output),
+            ("agent_token_weight_cache_read", &mut weights.cache_read),
+            ("agent_token_weight_cache_write", &mut weights.cache_write),
+        ] {
+            if let Some((cost, _)) = self.price(meter).await? {
+                *slot = weight_of(cost);
+            }
+        }
+        Ok(weights)
+    }
+
     /// Charges a run's agent rate for the tokens counted since it was last
     /// charged, once each: when the run reports and again when it is
-    /// settled, so tokens counted late are charged too.
-    pub(crate) async fn charge_agent_rate(&self, run_id: &str, run: &RunRow) -> Result<()> {
+    /// settled, so tokens counted late are charged too. `reported` is what
+    /// the run's harness counted; the rate is charged on no fewer. Tokens
+    /// are weighted by kind (`token_weights`), and `runs.agent_tokens`
+    /// keeps the weighted tokens charged so far.
+    ///
+    /// On the workspace's own provider the model is not g1t's to charge,
+    /// but the agent rate is, on its own meter (`agent_tokens_own`) and its
+    /// own line (`<run>/agent-own`), so Usage and the statement show it as
+    /// the agent rate on the workspace's own model key.
+    pub(crate) async fn charge_agent_rate(&self, run_id: &str, run: &RunRow, reported: Option<RunTokens>) -> Result<()> {
         if self.stripe.is_none() {
             return Ok(());
         }
@@ -824,34 +850,54 @@ impl Billing {
         else {
             return Ok(());
         };
-        let Some(session) = row.session_id else { return Ok(()) };
-        let counted = self
-            .db
-            .prepare(
-                "SELECT SUM(input + output + cache_read + cache_write) AS micros FROM token_usage
-                 WHERE workspace = ? AND session = ? AND day >= ?",
-            )
-            .bind(&[run.workspace.as_str().into(), session.as_str().into(), row.created_at[..10].into()])?
-            .first::<Sum>(None)
-            .await?
-            .and_then(|s| s.micros)
-            .unwrap_or(0.0) as u64;
-        let charged = row.agent_tokens.unwrap_or(0.0) as u64;
-        if counted <= charged {
-            return Ok(());
+        #[derive(Deserialize)]
+        struct Kinds {
+            input: Option<f64>,
+            output: Option<f64>,
+            cache_read: Option<f64>,
+            cache_write: Option<f64>,
         }
+        let counted = match &row.session_id {
+            Some(session) => self
+                .db
+                .prepare(
+                    "SELECT SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cache_read, SUM(cache_write) AS cache_write
+                     FROM token_usage WHERE workspace = ? AND session = ? AND day >= ?",
+                )
+                .bind(&[run.workspace.as_str().into(), session.as_str().into(), row.created_at[..10].into()])?
+                .first::<Kinds>(None)
+                .await?
+                .map(|k| {
+                    let n = |v: Option<f64>| v.unwrap_or(0.0).max(0.0) as u64;
+                    RunTokens { input: n(k.input), output: n(k.output), cache_read: n(k.cache_read), cache_write: n(k.cache_write) }
+                })
+                .unwrap_or_default(),
+            None => RunTokens::default(),
+        };
+        let weights = self.token_weights().await?;
+        let charged = row.agent_tokens.unwrap_or(0.0) as u64;
+        let Some(total) = tokens_to_charge(
+            weighted(&counted, &weights),
+            reported.map_or(0, |tokens| weighted(&tokens, &weights)),
+            charged,
+        ) else {
+            return Ok(());
+        };
         // Claimed first: two callers never charge the same tokens.
         let claimed = self
             .db
             .prepare("UPDATE runs SET agent_tokens = ?1 WHERE id = ?2 AND agent_tokens = ?3 RETURNING id")
-            .bind(&[(counted as f64).into(), run_id.into(), (charged as f64).into()])?
+            .bind(&[(total as f64).into(), run_id.into(), (charged as f64).into()])?
             .first::<serde_json::Value>(None)
             .await?;
         if claimed.is_none() {
             return Ok(());
         }
-        let tokens = counted - charged;
-        let base = agent_rate_micros(tokens, self.agent_rate().await?);
+        let own = run.own_provider();
+        let meter = agent_rate_meter(own);
+        let tokens = total - charged;
+        let per_million = self.price(meter).await?.map_or(0.0, |(_, price)| price);
+        let base = agent_rate_micros(tokens, per_million);
         // Before the rate takes effect: counted, and nothing charged.
         if base == 0 {
             return Ok(());
@@ -860,23 +906,24 @@ impl Billing {
         let now = rfc3339(now_ms());
         let eligible = crate::credits::eligible_for(Some(g1t_contracts::billing::ComputeKind::Agent), None);
         let drawn = self.draw(&run.workspace, charge, &crate::credits::month_of(&now), &eligible).await?;
-        let reference = if charged == 0 { format!("{run_id}/agent") } else { format!("{run_id}/agent/{counted}") };
+        let reference = agent_rate_reference(run_id, own, charged, total);
         let what = match run.task.as_str() {
             "plan" => format!("planning for {}", run.repo),
             "review" => format!("the review of {}#{}", run.repo, run.number),
             "update" => format!("catching up {}#{}", run.repo, run.number),
             _ => format!("work on {}#{}", run.repo, run.number),
         };
-        let description = format!(
-            "g1t agent rate: {} tokens for {what}{terms_note}{}",
-            crate::features::thousands(tokens),
-            drawn.note()
-        );
-        self.enter(&run.workspace, EntryKind::Usage, -(charge - drawn.total()), &description, &reference, Some(run), Some(0), None, None)
+        let label = if own { "g1t agent rate, your own model key" } else { "g1t agent rate" };
+        let counted_as = if weights.is_flat() { "tokens".to_owned() } else { format!("weighted tokens ({})", weights.describe()) };
+        let description = format!("{label}: {} {counted_as} for {what}{terms_note}{}", crate::features::thousands(tokens), drawn.note());
+        // g1t's own charge, even on the workspace's provider: it counts
+        // toward limits and spend like any other.
+        let line = RunRow { billed_to: None, ..run.clone() };
+        self.enter(&run.workspace, EntryKind::Usage, -(charge - drawn.total()), &description, &reference, Some(&line), Some(0), None, None)
             .await?;
         self.db
             .prepare("UPDATE ledger SET quantity = ?, price_version = ? WHERE reference = ?")
-            .bind(&[(tokens as f64).into(), optional(self.version_now("agent_tokens").await?.as_deref()), reference.as_str().into()])?
+            .bind(&[(tokens as f64).into(), optional(self.version_now(meter).await?.as_deref()), reference.as_str().into()])?
             .run()
             .await?;
         self.record_drawn(&reference, &drawn).await?;
@@ -884,6 +931,81 @@ impl Billing {
         self.count_spend(&run.workspace, 0, charge - drawn.total(), &drawn).await;
         Ok(())
     }
+}
+
+/// How much each kind of token counts toward the agent rate. All 1 by
+/// default: every token counts once.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TokenWeights {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+
+impl Default for TokenWeights {
+    fn default() -> Self {
+        TokenWeights { input: 1.0, output: 1.0, cache_read: 1.0, cache_write: 1.0 }
+    }
+}
+
+impl TokenWeights {
+    /// Every token counts once.
+    pub(crate) fn is_flat(&self) -> bool {
+        *self == TokenWeights::default()
+    }
+
+    /// `input ×1, output ×1, cache reads ×0.1, cache writes ×1`.
+    pub(crate) fn describe(&self) -> String {
+        let w = |v: f64| {
+            let text = format!("{v:.3}");
+            text.trim_end_matches('0').trim_end_matches('.').to_owned()
+        };
+        format!(
+            "input ×{}, output ×{}, cache reads ×{}, cache writes ×{}",
+            w(self.input),
+            w(self.output),
+            w(self.cache_read),
+            w(self.cache_write)
+        )
+    }
+}
+
+/// A weight from its price-book figure, in millionths; never below 0.
+pub(crate) fn weight_of(micros: f64) -> f64 {
+    if micros.is_finite() { (micros / 1_000_000.0).max(0.0) } else { 1.0 }
+}
+
+/// A run's tokens as the agent rate counts them, each kind at its weight,
+/// rounded down to a whole token.
+pub(crate) fn weighted(tokens: &RunTokens, weights: &TokenWeights) -> u64 {
+    let sum = tokens.input as f64 * weights.input
+        + tokens.output as f64 * weights.output
+        + tokens.cache_read as f64 * weights.cache_read
+        + tokens.cache_write as f64 * weights.cache_write;
+    sum.max(0.0).floor() as u64
+}
+
+/// The price-book meter a run's agent rate is on: its own for runs on the
+/// workspace's own model key, so it can be priced and shown apart.
+pub(crate) fn agent_rate_meter(own_provider: bool) -> &'static str {
+    if own_provider { "agent_tokens_own" } else { "agent_tokens" }
+}
+
+/// The tokens a run's agent rate covers now: the more of what the proxy
+/// counted and what the harness reported, when that is more than was
+/// charged already. None when there is nothing new.
+pub(crate) fn tokens_to_charge(counted: u64, reported: u64, charged: u64) -> Option<u64> {
+    let total = counted.max(reported);
+    (total > charged).then_some(total)
+}
+
+/// The ledger reference of an agent-rate line: `<run>/agent` the first
+/// time, `<run>/agent/<tokens>` for tokens counted later; `agent-own` on
+/// the workspace's own model key.
+pub(crate) fn agent_rate_reference(run_id: &str, own_provider: bool, charged: u64, total: u64) -> String {
+    let part = if own_provider { "agent-own" } else { "agent" };
+    if charged == 0 { format!("{run_id}/{part}") } else { format!("{run_id}/{part}/{total}") }
 }
 
 #[cfg(test)]
@@ -965,6 +1087,61 @@ mod tests {
         assert_eq!(agent_rate_micros(0, 250_000.0), 0);
         // Before it takes effect the price book says 0.
         assert_eq!(agent_rate_micros(5_000_000, 0.0), 0);
+    }
+
+    #[test]
+    fn own_key_runs_are_charged_the_agent_rate_on_their_own_meter_and_line() {
+        assert_eq!(agent_rate_meter(true), "agent_tokens_own");
+        assert_eq!(agent_rate_meter(false), "agent_tokens");
+        assert_eq!(agent_rate_reference("run_1", true, 0, 900), "run_1/agent-own");
+        assert_eq!(agent_rate_reference("run_1", true, 900, 1_200), "run_1/agent-own/1200");
+        assert_eq!(agent_rate_reference("run_1", false, 0, 900), "run_1/agent");
+        assert_eq!(agent_rate_reference("run_1", false, 900, 1_200), "run_1/agent/1200");
+    }
+
+    fn tokens(input: u64, output: u64, cache_read: u64, cache_write: u64) -> RunTokens {
+        RunTokens { input, output, cache_read, cache_write }
+    }
+
+    #[test]
+    fn every_token_counts_once_by_default() {
+        let flat = TokenWeights::default();
+        assert!(flat.is_flat());
+        assert_eq!(weighted(&tokens(1_000, 500, 90_000, 5_000), &flat), 96_500);
+        assert_eq!(weighted(&RunTokens::default(), &flat), 0);
+    }
+
+    #[test]
+    fn cache_reads_can_count_for_a_tenth() {
+        let tenth = TokenWeights { cache_read: weight_of(100_000.0), ..TokenWeights::default() };
+        assert!(!tenth.is_flat());
+        // 1,000 + 500 + 9,000 + 5,000.
+        assert_eq!(weighted(&tokens(1_000, 500, 90_000, 5_000), &tenth), 15_500);
+        // Rounded down to a whole token.
+        assert_eq!(weighted(&tokens(0, 0, 15, 0), &tenth), 1);
+        assert_eq!(tenth.describe(), "input ×1, output ×1, cache reads ×0.1, cache writes ×1");
+        assert_eq!(TokenWeights::default().describe(), "input ×1, output ×1, cache reads ×1, cache writes ×1");
+    }
+
+    #[test]
+    fn a_weight_is_never_below_nothing() {
+        assert_eq!(weight_of(1_000_000.0), 1.0);
+        assert_eq!(weight_of(1_250_000.0), 1.25);
+        assert_eq!(weight_of(-5.0), 0.0);
+        assert_eq!(weight_of(f64::NAN), 1.0);
+    }
+
+    #[test]
+    fn the_rate_covers_the_more_of_what_was_counted_and_reported_once() {
+        // The proxy counted nothing (no session, or its reports were lost):
+        // the harness's count is charged.
+        assert_eq!(tokens_to_charge(0, 5_000, 0), Some(5_000));
+        // The proxy counted more: its count.
+        assert_eq!(tokens_to_charge(6_000, 5_000, 0), Some(6_000));
+        // Charged already: only what is new, and nothing twice.
+        assert_eq!(tokens_to_charge(6_000, 5_000, 6_000), None);
+        assert_eq!(tokens_to_charge(7_000, 0, 6_000), Some(7_000));
+        assert_eq!(tokens_to_charge(0, 0, 0), None);
     }
 
     #[test]

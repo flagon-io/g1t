@@ -276,7 +276,7 @@ which are on Cloudflare's bill (`embeddings`). How each reaches the ledger:
 | Agent run through the model proxy (`services/models`) on g1t's hosted models | g1t | `runs` row; session `ms_…` in `cf-aig-metadata` | On finish, the sandbox's figure (Claude Code's `total_cost_usd`, at its own price table, cache tokens included) | Yes, every 15 minutes |
 | Agent run straight to the gateway (no `MODELS_URL`) | g1t | `runs` row; session `rs_…` in `cf-aig-metadata` (`services/runner` `gatewaySession`) | As above | Yes |
 | Agent run with no gateway (`AI_GATEWAY_ID` empty, self-hosting) | g1t's key | `runs` row, no session | The sandbox's figure | No: nothing to settle against |
-| Agent run on a workspace's own provider | The workspace | `runs` row, `billed_to = 'workspace'`, no session | None (no cost to g1t) | No; never on g1t's gateway |
+| Agent run on a workspace's own provider | The workspace | `runs` row, `billed_to = 'workspace'`, session `ms_…` (the proxy counts its tokens by it) | No model cost (none to g1t); the agent rate on `agent_tokens_own`, line `<run>/agent-own` | No; never on g1t's gateway. Closed by the cron's `settle_own_runs`, which charges tokens counted late |
 | A sandbox that died before reporting | g1t | as its route | Charged from the gateway when settled | Yes |
 | Embeddings (indexing) | g1t | none (Workers AI) | Month-end `context` meter | No: Cloudflare's bill, `embeddings` bucket |
 | Embeddings (queries, search and agent context) | g1t | none | None: not charged, by design | No: in Cloudflare's `embeddings` line, shared out |
@@ -494,12 +494,59 @@ plan by `tell_owners_of_rises`), `gateway_models` (markup 0 during beta),
 `card_fee_percent` (29,000 micros per dollar) and `card_fee_fixed`
 (300,000). Changing any is a price-book change, never a deploy. `finish_run`
 and `settle` charge models at `agent_models`' markup; `charge_agent_rate`
-charges the tokens `token_usage` counted for the run's session since it was
-last charged (`runs.agent_tokens`, claimed with a compare-and-set), on a
-line `<run>/agent` (later `<run>/agent/<tokens>`), with `quantity` the
-tokens. Runs on a workspace's own provider have no session here and are not
-charged the rate. **Card fee switch:** sudo → Costs → Guardrails → *Card fee
+charges the weighted tokens of the run's session since it was last charged
+(`runs.agent_tokens`, the weighted tokens charged so far, claimed with a
+compare-and-set), on a line `<run>/agent` (later `<run>/agent/<tokens>`),
+with `quantity` the weighted tokens. What it counts is the more of what
+`token_usage` holds for the session and what the sandbox reported with its
+cost (`finish_run`'s `tokens`, from Claude Code's closing `usage`), each
+weighted by kind. **Card fee switch:** sudo → Costs → Guardrails → *Card fee
 on AI credit bought by card* (`cost_settings.card_fee`, `on`/`off`).
+
+**On a workspace's own model key** (migration `0041_agent_rate_own_key.sql`):
+the run keeps its model session (`runs.session_id`, `ms_…`) so the proxy's
+counts reach it, and the agent rate is charged at `agent_tokens_own` ($0 until
+2026-10-22, then $0.25 a million, a rise from nothing with its notice), on
+`<run>/agent-own` (later `<run>/agent-own/<tokens>`), `billed_to = 'g1t'`
+(g1t's own charge: it counts toward limits and spend), named *Agent rate,
+your own model key* on Usage and the statement. The model is never charged.
+`settle_runs` skips these runs (nothing on g1t's gateway); the cron's
+`settle_own_runs` closes them 5 minutes after they finish (3 hours after
+they start, for a sandbox that never reported) and charges tokens counted
+late. Runs from before have no session and are never charged the rate.
+
+### The agent rate's token weights
+
+How much each kind of token counts toward the agent rate, on g1t's models
+and own keys alike, is four price-book meters (migration
+`0042_agent_rate_weights.sql`): `agent_token_weight_input`, `_output`,
+`_cache_read` and `_cache_write`, each a weight in millionths in
+`cost_micros` (1,000,000 counts a token once). All start at 1, which is what
+the rate always counted. A cached agent run reads most of its context from
+cache (about 90% of its tokens on a typical Sonnet implement run), so the
+cache-read weight is the lever: at 1 the rate adds about 44% to such a run's
+model cost; at 0.1, far less.
+
+To count cache reads at a tenth:
+
+1. Add the version, effective at once (a lower weight is a fall):
+
+   ```sql
+   INSERT INTO price_versions (id, meter, version, cost_micros, markup_percent, effective_at, reason, created_by, created_at)
+   VALUES ('pv_agent_token_weight_cache_read_2', 'agent_token_weight_cache_read', 2, 100000, 0,
+           '2026-10-08T00:00:00Z', 'Cache reads count a tenth toward the agent rate', 'staff', '2026-10-08T00:00:00Z');
+   ```
+
+   in a migration, or with `npx wrangler d1 execute g1t-billing --remote`
+   until sudo has a form.
+2. The daily run applies it once `effective_at` has come and writes the
+   public `price_changes` record (**Run the analysis now** applies it at
+   once). Raising a weight later is a rise: give it an `effective_at` 14
+   days out, and owners on the plan are emailed.
+3. Check `/pricing`: the agent rate's row lists the weights, and Usage's
+   agent-rate lines name them.
+
+`weighted` (`ai.rs`) rounds down to a whole token; a weight is never below 0.
 
 ### Budgets
 
@@ -532,8 +579,9 @@ report that fails is dropped and never affects the answer.
 `token_usage` reads a window (42 days by default, 366 at most) for the
 workspace or one person: totals, every day's tokens and the active days,
 with `costMicros` the window's run charges from the ledger, measured as
-`usage` measures them. These counts are for views only: runs are still
-priced from AI Gateway's logs, never from `token_usage`.
+`usage` measures them. Usage's report also lists tokens by model
+(`UsageReport.models`). The agent rate is charged on these counts (above);
+a run's model is still priced from AI Gateway's logs, never from them.
 
 ## Tables (migration `0022_costs_and_margin.sql`)
 

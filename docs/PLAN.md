@@ -1043,19 +1043,22 @@ Decisions behind this:
 - **All hosted model traffic goes through Cloudflare AI Gateway.** That gives
   one place for spend tracking, budgets, rate limits, fallback and logs,
   whichever provider or endpoint is behind it.
-- **Nobody picks a model.** A person assigns work to `g1t`, as they
-  would assign an issue to Copilot, and g1t routes it. Today the kind of
-  work decides (implementing, reviewing, catching up), from one setting on
-  the runner, and each request is tagged at the gateway with that kind, the
-  repository and the pull request. The session records which model ran.
-  The gateway's own dynamic routes cannot make the choice yet: they work
-  only on its OpenAI-compatible endpoint, and the harness speaks
-  Anthropic's.
+- **Nobody has to pick a model.** A person assigns work to `g1t`, as
+  they would assign an issue to a colleague, and **Auto** routes each job
+  to the cheapest model that can do it (see
+  [Routing for cost](#routing-for-cost) below). A workspace can pin a tier
+  per kind of work instead. Each request is tagged at the gateway with the
+  kind of work, the tier, the repository and the pull request, and each
+  run says which model ran and why. The gateway's own dynamic routes
+  cannot make the choice yet: they work only on its OpenAI-compatible
+  endpoint, and the harness speaks Anthropic's.
 - **Subscriptions stay local.** A Claude subscription cannot be used by a
   hosted sandbox; it needs an API key. People on subscriptions use their own
   Claude Code session, which is a full participant.
-- **The workspace pays.** A workspace buys credit by card and each agent
-  run deducts what the model cost plus a margin. The billing service asks
+- **The workspace pays.** A workspace buys AI credit by card and each
+  agent run deducts the model at the provider's price plus the agent rate
+  per million (weighted) tokens; on its own model key, only the agent rate,
+  counted from the model proxy and the sandbox's own report. The billing service asks
   nothing of the others: the runner asks it before starting a sandbox and
   is refused when there is no credit, and the sandbox reports what its run
   cost with a token only it holds. Where no card processor is configured
@@ -1099,6 +1102,59 @@ Merging is a person's decision unless the repository says otherwise. With
 request lands by itself, attributed to `g1t`. That is the whole path from
 an assigned issue to a commit on `main` with nobody in between. Required
 human approval per path, and risk tiers, are still to come.
+
+### Routing for cost
+
+*Built (runner `route` in `services/runner/src/model-env.ts`).* The goal
+is cost per merged change, not cost per request: a cheap attempt that
+fails and is retried on the same model costs more than one that finishes.
+
+- **Tiers and catalogue.** `small` (Claude Haiku 4.5, $1/$5 per million
+  input/output), `large` (Claude Sonnet 5.5, $2/$10) and `frontier`
+  (Claude Opus 5.5, $4/$20). Models, names and list prices are
+  configuration (`AGENT_ROUTING`), never code; prices there are for
+  estimates only, runs are charged what AI Gateway priced them at.
+- **Starting tier by job.** Catch-up, answering a question, and reviews of
+  at most 10 files and 200 lines touching no sensitive path: small.
+  Changes, revisions, plans and other reviews: large. Reviews over 60 files
+  or 3,000 lines: frontier. Labels: `architecture` frontier, `security` off
+  small, `docs`/`documentation`/`typo` let changes and answers start small.
+- **Escalation.** A failed (or guardrail-stopped) attempt at the same work
+  goes one tier up; two in a row, frontier; a revision counts its rounds;
+  a change left at low confidence sends the next attempt up.
+- **Learning, per repository.** From the last 20 runs of the same kind:
+  one tier down when the cheaper tier finished at least 90% of at least 5
+  (never for sensitive or labelled work, never on a retry); one tier up
+  when this tier failed at least half of at least 5. No new tables: it
+  reads work's `agent_runs` (model, status, confidence).
+- **Explained.** Every run's first step and session note is one line:
+  *Used a fast model (Claude Haiku 4.5): small change, 3 files and 80
+  lines.*
+- **Chosen instead.** `model_routes` rows to g1t's models name `small`,
+  `large` or `frontier`, or nothing for Auto (Integrations → Models).
+  A workspace's own Anthropic key with no model named is routed by Auto
+  too.
+- **Measured.** `scripts/ops/routing-savings.mjs` replays tasks through
+  the router offline, priced from the catalogue, against routing before
+  Auto and against the frontier model for everything, net of failed
+  attempts, with cost per merged change; `--live` reads billing's runs and
+  counted tokens. On the bundled sample (13 tasks, assumed failures): Auto
+  costs 7% less than the frontier model for everything and about 7% more
+  per run than routing before it, but half as much per merged change,
+  because it finishes the hard tasks the old routing gave up on. At
+  current prices Opus 5.5 and Sonnet 5.5 cost the same per cache read, and
+  cache reads are most of an agent run's tokens, so moving off the
+  frontier model saves less than its list price suggests; the fast tier
+  and fewer failed attempts are where the money is. Run `--live` monthly
+  and after any routing change.
+- **A cheaper route for the simplest jobs (designed, off).** A fourth tier
+  on Workers AI through AI Gateway (an open model, billed on Cloudflare's
+  invoice) for classification-sized jobs: commit messages, triage,
+  summaries. Behind the same router as a tier with its own catalogue entry
+  and `tasks` rules, off by default. It needs the proxy to translate the
+  harness's Anthropic requests to the gateway's OpenAI-compatible
+  endpoint (it already does for workspaces' own OpenAI-shaped providers)
+  and a quality bar from the savings harness before any job moves to it.
 
 ### Choosing the right agent automatically
 

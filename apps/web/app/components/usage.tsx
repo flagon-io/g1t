@@ -483,7 +483,10 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
     <>
       <span className="flex min-w-0 items-center gap-2">
         <span className="size-2 shrink-0 rounded-sm" style={{ background: color }} />
-        <span className="truncate">{meter.label}</span>
+        <span className="min-w-0">
+          <span className="block truncate">{meter.label}</span>
+          {meter.note && <span className="block truncate text-[0.6875rem] text-faint" title={meter.note}>{meter.note}</span>}
+        </span>
         {parts.length > 0 && <ChevronDown size={13} className="shrink-0 text-faint transition-transform group-open:rotate-180" />}
       </span>
       <span className="hidden sm:block">
@@ -628,6 +631,12 @@ export function Breakdown({
               {product.features && product.features.length > 0 && (
                 <p className="px-4 pt-2 text-xs text-faint">
                   {product.features.map((f) => `${f.label}${f.count ? ` (${f.count})` : ""} ${money(f.micros)}`).join(" · ")}
+                </p>
+              )}
+              {product.key === "agent" && report.models && report.models.length > 0 && (
+                <p className="px-4 pt-1 text-xs text-faint">
+                  Tokens by model:{" "}
+                  {report.models.map((m) => `${m.model} ${quantity(m.input + m.output + m.cacheRead + m.cacheWrite, "tokens")}`).join(" · ")}
                 </p>
               )}
               <ul className="divide-y divide-line/60">

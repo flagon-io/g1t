@@ -9371,7 +9371,7 @@
           "Billing"
         ],
         "summary": "Get a workspace's usage",
-        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance` and the split `by_project`), `projects` (every repository with usage in the range), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
+        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, the split `by_project`, and a `note` where the quantity needs one: the agent rate's meters, `agent_rate` and `agent_rate_own` (on the workspace's own model key), count weighted tokens and name the weights), `projects` (every repository with usage in the range), `models` (the agent's input, output, cache-read and cache-write tokens by model, most first), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
         "x-operation": "get_usage",
         "x-mcp-tool": "billing",
         "x-mcp-action": "usage",
@@ -9592,6 +9592,15 @@
                   "projects": [
                     "flagon-io/g1t",
                     "flagon-io/hello"
+                  ],
+                  "models": [
+                    {
+                      "model": "claude-sonnet-5-5",
+                      "input": 310000,
+                      "output": 420000,
+                      "cache_read": 7800000,
+                      "cache_write": 590000
+                    }
                   ],
                   "included": {
                     "used": 20,
@@ -27051,7 +27060,7 @@
           "Integrations"
         ],
         "summary": "Get model routes",
-        "description": "Where each kind of work's model requests go in a workspace: g1t's hosted models (connection_id null) or one of the workspace's own model providers, with a model. Kinds of work are default, implement, review, plan and update; one without a route follows default. Members only.",
+        "description": "Where each kind of work's model requests go in a workspace: g1t's hosted models (connection_id null) or one of the workspace's own model providers, with a model. On g1t's hosted models, model is a tier the workspace chose (small, large or frontier) or null for Auto, which picks a model per job. Kinds of work are default, implement, review, plan and update; one without a route follows default. Members only.",
         "x-operation": "get_model_routes",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "get_model_routes",
@@ -27146,7 +27155,7 @@
           "Integrations"
         ],
         "summary": "Set model routes",
-        "description": "Replace a workspace's model routes. Each route names a task (default, implement, review, plan or update), a connection_id (null for g1t's hosted models) and a model at that provider. Providers that speak OpenAI's API need a model. Owners only.\n\nThe response is the routes as saved, ordered by task.",
+        "description": "Replace a workspace's model routes. Each route names a task (default, implement, review, plan or update), a connection_id (null for g1t's hosted models) and a model at that provider. On g1t's hosted models, model is small (fast), large (standard) or frontier (most capable), or null for Auto, which picks the cheapest model that can do each job. Providers that speak OpenAI's API need a model. Owners only.\n\nThe response is the routes as saved, ordered by task. On g1t's hosted models (`connection_id` null), `model` is `small`, `large` or `frontier`, or null for Auto, which picks the cheapest model that can do each job and says why on the run.",
         "x-operation": "set_model_routes",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "set_model_routes",
@@ -27180,6 +27189,11 @@
                     "task": "default",
                     "connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
                     "model": "claude-sonnet-4-5"
+                  },
+                  {
+                    "task": "plan",
+                    "connection_id": null,
+                    "model": "frontier"
                   },
                   {
                     "task": "review",
@@ -27275,7 +27289,7 @@
                             "string",
                             "null"
                           ],
-                          "description": "The model at that provider."
+                          "description": "The model at that provider. On g1t's hosted models: small, large or frontier, or null for Auto."
                         }
                       },
                       "required": [
@@ -27294,6 +27308,11 @@
                     "task": "default",
                     "connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
                     "model": "claude-sonnet-4-5"
+                  },
+                  {
+                    "task": "plan",
+                    "connection_id": null,
+                    "model": "frontier"
                   },
                   {
                     "task": "review",

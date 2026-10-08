@@ -3741,6 +3741,11 @@
 					"model": "claude-sonnet-4-5"
 				},
 				{
+					"task": "plan",
+					"connection_id": null,
+					"model": "frontier"
+				},
+				{
 					"task": "review",
 					"connection_id": null
 				}
@@ -3753,12 +3758,17 @@
 				"model": "claude-sonnet-4-5"
 			},
 			{
+				"task": "plan",
+				"connection_id": null,
+				"model": "frontier"
+			},
+			{
 				"task": "review",
 				"connection_id": null,
 				"model": null
 			}
 		],
-		"notes": "The response is the routes as saved, ordered by task."
+		"notes": "The response is the routes as saved, ordered by task. On g1t's hosted models (`connection_id` null), `model` is `small`, `large` or `frontier`, or null for Auto, which picks the cheapest model that can do each job and says why on the run."
 	},
 	"get_context": {
 		"query": {
@@ -5767,6 +5777,15 @@
 			"projects": [
 				"flagon-io/g1t",
 				"flagon-io/hello"
+			],
+			"models": [
+				{
+					"model": "claude-sonnet-5-5",
+					"input": 310000,
+					"output": 420000,
+					"cache_read": 7800000,
+					"cache_write": 590000
+				}
 			],
 			"included": {
 				"used": 20,

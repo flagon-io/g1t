@@ -1,0 +1,212 @@
+{
+  "about": "A handful of tasks shaped like g1t's own agent work, for estimating what routing saves. Illustrative, not production data: tokens follow the profile in docs/research/reviewbench.md (turns from the change's size, 92% of input read from cache, output per turn), and failsOn is an assumption, the tiers a task of that difficulty is expected to fail on. Run with --live for g1t's real runs.",
+  "tasks": [
+    {
+      "id": "fix-typo-in-readme",
+      "kind": "implement",
+      "change": {
+        "files": 1,
+        "lines": 6,
+        "sensitive": []
+      },
+      "labels": [
+        "docs"
+      ],
+      "merged": true,
+      "tokens": {
+        "input": 11455,
+        "output": 8400,
+        "cacheRead": 351314,
+        "cacheWrite": 48072
+      }
+    },
+    {
+      "id": "add-search-filter",
+      "kind": "implement",
+      "change": {
+        "files": 6,
+        "lines": 240,
+        "sensitive": []
+      },
+      "merged": true,
+      "tokens": {
+        "input": 80004,
+        "output": 31200,
+        "cacheRead": 2453474,
+        "cacheWrite": 118380
+      }
+    },
+    {
+      "id": "rework-billing-ledger",
+      "kind": "implement",
+      "change": {
+        "files": 14,
+        "lines": 900,
+        "sensitive": []
+      },
+      "failsOn": [
+        "small",
+        "large"
+      ],
+      "merged": true,
+      "tokens": {
+        "input": 184590,
+        "output": 48000,
+        "cacheRead": 5660760,
+        "cacheWrite": 178800
+      }
+    },
+    {
+      "id": "split-auth-service",
+      "kind": "implement",
+      "change": {
+        "files": 20,
+        "lines": 1500,
+        "sensitive": []
+      },
+      "labels": [
+        "architecture"
+      ],
+      "failsOn": [
+        "small",
+        "large"
+      ],
+      "merged": true,
+      "tokens": {
+        "input": 278415,
+        "output": 60000,
+        "cacheRead": 8538060,
+        "cacheWrite": 180000
+      }
+    },
+    {
+      "id": "fix-failing-check",
+      "kind": "revise",
+      "change": {
+        "files": 2,
+        "lines": 30,
+        "sensitive": []
+      },
+      "merged": false,
+      "tokens": {
+        "input": 19563,
+        "output": 11900,
+        "cacheRead": 599950,
+        "cacheWrite": 60860
+      }
+    },
+    {
+      "id": "what-does-this-flag-do",
+      "kind": "answer",
+      "merged": false,
+      "tokens": {
+        "input": 7560,
+        "output": 3600,
+        "cacheRead": 231840,
+        "cacheWrite": 40500
+      }
+    },
+    {
+      "id": "why-is-this-slow",
+      "kind": "answer",
+      "failsOn": [
+        "small"
+      ],
+      "merged": false,
+      "tokens": {
+        "input": 19380,
+        "output": 6800,
+        "cacheRead": 594320,
+        "cacheWrite": 60500
+      }
+    },
+    {
+      "id": "review-small-change",
+      "kind": "review",
+      "change": {
+        "files": 3,
+        "lines": 80,
+        "sensitive": []
+      },
+      "merged": false,
+      "tokens": {
+        "input": 25626,
+        "output": 9000,
+        "cacheRead": 785864,
+        "cacheWrite": 68960
+      }
+    },
+    {
+      "id": "review-ci-change",
+      "kind": "review",
+      "change": {
+        "files": 2,
+        "lines": 40,
+        "sensitive": [
+          "CI workflows"
+        ]
+      },
+      "merged": false,
+      "tokens": {
+        "input": 21454,
+        "output": 8100,
+        "cacheRead": 657928,
+        "cacheWrite": 63480
+      }
+    },
+    {
+      "id": "review-medium-change",
+      "kind": "review",
+      "change": {
+        "files": 12,
+        "lines": 450,
+        "sensitive": []
+      },
+      "merged": false,
+      "tokens": {
+        "input": 65943,
+        "output": 15300,
+        "cacheRead": 2022252,
+        "cacheWrite": 108400
+      }
+    },
+    {
+      "id": "review-large-migration",
+      "kind": "review",
+      "change": {
+        "files": 80,
+        "lines": 4200,
+        "sensitive": []
+      },
+      "merged": false,
+      "tokens": {
+        "input": 355590,
+        "output": 36000,
+        "cacheRead": 10904760,
+        "cacheWrite": 180000
+      }
+    },
+    {
+      "id": "catch-up-with-conflict",
+      "kind": "update",
+      "merged": false,
+      "tokens": {
+        "input": 21583,
+        "output": 9000,
+        "cacheRead": 661903,
+        "cacheWrite": 63720
+      }
+    },
+    {
+      "id": "plan-checkout-redesign",
+      "kind": "plan",
+      "merged": false,
+      "tokens": {
+        "input": 54480,
+        "output": 28800,
+        "cacheRead": 1670720,
+        "cacheWrite": 98000
+      }
+    }
+  ]
+}

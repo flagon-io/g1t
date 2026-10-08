@@ -274,12 +274,14 @@ pub struct StartRunArgs {
     /// The runner, which is TypeScript, sends it as `billedTo`.
     #[serde(default = "g1t", alias = "billedTo")]
     pub billed_to: String,
-    /// The model session's id, when its requests go through g1t's AI
-    /// Gateway: settling charges the run what the gateway priced them at.
+    /// The model session's id. Through g1t's AI Gateway, settling charges
+    /// the run what the gateway priced its requests at; on the workspace's
+    /// own provider, it is what the proxy counts the run's tokens under,
+    /// for the agent rate.
     #[serde(default)]
     pub session: Option<String>,
-    /// `small` or `large`: the tier g1t routed the run to, when g1t pays
-    /// for its model. None on the workspace's own provider.
+    /// `small`, `large` or `frontier`: the tier g1t routed the run to.
+    /// None when the workspace's own provider names its model.
     #[serde(default)]
     pub tier: Option<String>,
 }
@@ -303,6 +305,32 @@ pub struct FinishRunArgs {
     pub cost_usd: f64,
     #[serde(default)]
     pub turns: u32,
+    /// The tokens the run used, as the harness counted them from the
+    /// provider's answers. On the workspace's own provider, the agent rate
+    /// is charged on no fewer than these. Absent from older sandboxes.
+    #[serde(default)]
+    pub tokens: Option<RunTokens>,
+}
+
+/// The tokens one run used, by kind.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunTokens {
+    #[serde(default)]
+    pub input: u64,
+    #[serde(default)]
+    pub output: u64,
+    #[serde(default)]
+    pub cache_read: u64,
+    #[serde(default)]
+    pub cache_write: u64,
+}
+
+impl RunTokens {
+    /// Every token, of every kind: what the agent rate is charged on.
+    pub fn total(&self) -> u64 {
+        self.input.saturating_add(self.output).saturating_add(self.cache_read).saturating_add(self.cache_write)
+    }
 }
 
 
@@ -391,7 +419,7 @@ pub struct RecordTokensArgs {
     #[serde(default)]
     pub person: Option<String>,
     pub model: String,
-    /// On g1t's hosted models: `small` or `large`.
+    /// The tier g1t routed the run to: `small`, `large` or `frontier`.
     #[serde(default)]
     pub tier: Option<String>,
     #[serde(default)]
@@ -3209,6 +3237,10 @@ pub struct MeterLine {
     #[serde(default)]
     pub allowance: Option<Allowance>,
     pub by_project: Vec<ProjectUsage>,
+    /// How the quantity is counted, when that needs saying: for the agent
+    /// rate, its tokens are weighted by kind, and this names the weights.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// A part of a product, such as the agent's runs, reviews and plans.
@@ -3219,6 +3251,19 @@ pub struct FeatureUsage {
     pub label: String,
     pub micros: i64,
     pub count: u32,
+}
+
+/// The tokens one model used over the range, as the model proxy counted
+/// them: on g1t's models and the workspace's own provider alike.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelTokens {
+    /// The model's id, as it ran.
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
 }
 
 /// One product family over the range.
@@ -3246,6 +3291,9 @@ pub struct UsageReport {
     pub products: Vec<ProductUsage>,
     /// Every project with usage in the range, for the filter.
     pub projects: Vec<String>,
+    /// Agent tokens by model over the range, most first.
+    #[serde(default)]
+    pub models: Vec<ModelTokens>,
     /// The plan's included usage this month, when the workspace has it.
     #[serde(default)]
     pub included: Option<Allowance>,

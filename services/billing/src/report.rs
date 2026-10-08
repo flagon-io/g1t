@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use futures_util::future::{try_join, try_join5};
 use g1t_contracts::billing::{
-    Allowance, FeatureUsage, MeterLine, PlanKind, ProductUsage, ProjectUsage, UsageDay, UsageReport, UsageReportArgs, UsageTotals,
+    Allowance, FeatureUsage, MeterLine, ModelTokens, PlanKind, ProductUsage, ProjectUsage, UsageDay, UsageReport, UsageReportArgs, UsageTotals,
     PRODUCTS,
 };
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
@@ -46,13 +46,15 @@ pub(crate) const METER_KEY_SQL: &str = "CASE
     WHEN task = 'security' THEN 'security'
     WHEN task = 'context' THEN 'context'
     WHEN task = 'gateway' THEN 'gateway'
+    WHEN reference LIKE '%/agent-own%' THEN 'agent_rate_own'
     WHEN reference LIKE '%/agent%' THEN 'agent_rate'
     ELSE 'agent_models' END";
 
 /// Every meter: key, name, product family and the unit of its quantity.
-pub(crate) const METERS: [(&str, &str, &str, &str); 16] = [
+pub(crate) const METERS: [(&str, &str, &str, &str); 17] = [
     ("agent_models", "Model tokens", "agent", "tokens"),
     ("agent_rate", "Agent rate", "agent", "tokens"),
+    ("agent_rate_own", "Agent rate, your own model key", "agent", "tokens"),
     ("agent_sandbox", "Agent sandbox time", "agent", "seconds"),
     ("sandbox", "Sandbox time", "sandboxes", "seconds"),
     ("self_hosted", "Self-hosted runner time", "sandboxes", "seconds"),
@@ -177,6 +179,7 @@ pub(crate) fn shape(
             daily: vec![0; days.len()],
             allowance: None,
             by_project: vec![],
+            note: None,
         })
         .collect();
     let mut by_day: BTreeMap<(String, String), i64> = BTreeMap::new();
@@ -330,7 +333,7 @@ impl Billing {
                 .prepare(format!(
                     "SELECT COALESCE(task, 'implement') AS task, SUM({measure}) AS price, SUM(CASE WHEN {RUN_SQL} THEN 1 ELSE 0 END) AS runs
                      FROM ledger WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND created_at < ?3
-                       AND ({meter}) IN ('agent_models', 'agent_rate', 'agent_sandbox')
+                       AND ({meter}) IN ('agent_models', 'agent_rate', 'agent_rate_own', 'agent_sandbox')
                      GROUP BY 1",
                     meter = METER_KEY_SQL
                 ))
@@ -424,7 +427,17 @@ impl Billing {
                 trial = Some(crate::credits::left(grant.granted_micros, grant.used_micros));
             }
         }
+        // The agent rate's tokens are weighted by kind: say how.
+        let weights = self.token_weights().await?;
+        for product in &mut products {
+            for meter in &mut product.meters {
+                if meter.key == "agent_rate" || meter.key == "agent_rate_own" {
+                    meter.note = Some(agent_rate_note(&weights));
+                }
+            }
+        }
         let ai: i64 = credits.grants.iter().filter(|g| g.scope == "models").map(|g| g.left_micros).sum();
+        let models = self.tokens_by_model(&workspace, &from, &until).await?;
         Ok(Outcome::Ok(UsageReport {
             from,
             until,
@@ -432,6 +445,7 @@ impl Billing {
             days: days_out,
             products,
             projects: all_projects,
+            models,
             included,
             discount_percent: (percent > 0).then_some(percent),
             ai_credit_micros: ai,
@@ -440,6 +454,47 @@ impl Billing {
             plan,
             free: self.free,
         }))
+    }
+}
+
+/// What the agent rate's meters say of their tokens.
+pub(crate) fn agent_rate_note(weights: &crate::ai::TokenWeights) -> String {
+    if weights.is_flat() {
+        "Weighted tokens: every token counts once (input ×1, output ×1, cache reads ×1, cache writes ×1)".to_owned()
+    } else {
+        format!("Weighted tokens: {}", weights.describe())
+    }
+}
+
+impl Billing {
+    /// Agent tokens by model over the days `from` to `until`, most first:
+    /// what the model proxy counted, on g1t's models and the workspace's
+    /// own provider alike.
+    async fn tokens_by_model(&self, workspace: &str, from: &str, until: &str) -> Result<Vec<ModelTokens>> {
+        #[derive(Deserialize)]
+        struct Row {
+            model: String,
+            input: Option<f64>,
+            output: Option<f64>,
+            cache_read: Option<f64>,
+            cache_write: Option<f64>,
+        }
+        let rows = self
+            .db
+            .prepare(
+                "SELECT model, SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cache_read, SUM(cache_write) AS cache_write
+                 FROM token_usage WHERE workspace = ?1 AND day >= ?2 AND day <= ?3
+                 GROUP BY model ORDER BY SUM(input + output + cache_read + cache_write) DESC LIMIT 20",
+            )
+            .bind(&[workspace.into(), from.into(), until.into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        let n = |v: Option<f64>| v.unwrap_or(0.0).max(0.0) as u64;
+        Ok(rows
+            .into_iter()
+            .map(|r| ModelTokens { model: r.model, input: n(r.input), output: n(r.output), cache_read: n(r.cache_read), cache_write: n(r.cache_write) })
+            .collect())
     }
 }
 
