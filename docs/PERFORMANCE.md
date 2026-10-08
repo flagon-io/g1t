@@ -188,7 +188,9 @@ than it reads (indexing), so replicas help it least.
 | Public pages for people signed out | the data centre's cache (`workers/app.ts`, `servePublic`) | fresh 30 s, then served once more while a new copy is made, up to 5 min | GET, no `g1t_session` cookie, an allowlisted path (home, pricing, explore, policies, a project's pages), status 200 or 404, no `Set-Cookie`, nothing private. Reserved first segments and workspace pages (`-`) are never kept. A project's kept page is served only after repos' `visibility` says the repository is still there and public (one indexed read, alongside the cache lookup); a repository made private or deleted is never served from any data centre's copy, and the copy is dropped. The answer says `server-timing: cache;desc="hit, Ns old"`. |
 | Sidebar data (projects, spend, limit, entitlements) | per isolate (`lib/cache.server.ts`) | 15 s, per person and workspace | skipped during a write and for 30 s after the person's last one; failures not kept; only settled answers kept |
 | Registration mode | per isolate | 60 s | |
-| A commit's log by hash | repos' data-centre cache | for good | history from a commit never changes; Active branches asks by hash |
+| A commit's log by hash | repos' data-centre cache | for good | history from a commit never changes. One of 100 commits or more is put together from a 16-commit read and the history kept from any of those commits, when there is one (`store.rs` `spliced_log`): a default branch that moved by a merge costs 16 commits, not 120 or 1,000 |
+| A branch's drift from the default branch (Active branches) | repos' data-centre cache (`branch_drift`) | for good | by repository and the pair of head commits; a failed read is not kept |
+| A repository's tags | repos' data-centre cache | until the refs move, 5 min at most | as the branch list; not kept when a tag's commit could not be read |
 | Git objects, trees, refs | repos' caches | see services/repos | |
 | A branch's log, the branch list, a file by branch and path | repos' data-centre cache | until the repository's refs change (`refs_version`), 5 min at most | only while no handed-out push credential is live; by commit hash for good (docs/ARTIFACTS.md R9) |
 | A target branch's history, for mergeability | the repos isolate | 60 s, per target head | 100 pull requests checked after a push walk it once (R10) |
@@ -235,7 +237,7 @@ Rounds are what cost: calls in the same round overlap.
 | --- | --- | --- |
 | Any in-app navigation | root (sidebar: 6 calls, then up to 20 `get_by_id` for shared repositories) and the project layout re-ran when moving between pages of a project | root re-runs only when the workspace or project changes, or after a form; the project layout likewise; shared repositories are one `readable` call, in the same round; the sidebar's workspace data is cached for 15 s; open counts are read once per request for both |
 | Pull request ("Review and respond") | access, then 8 calls, then checks' runs / comparison / session, then up to 5 more deployments lookups for stacked previews | one round of 9 (access-dependent ones start as soon as the repository lookup returns), then the comparison on Changes; the workflow jobs and stacked previews stream in |
-| Project overview | access, then 17 calls, one of which (Active branches) read the default branch's last 120 commits and up to 10 branches' last 40 | one round; Active branches streams in with a skeleton, reading logs by commit hash so a branch that has not moved costs nothing |
+| Project overview | access, then 17 calls, one of which (Active branches) read the default branch's last 120 commits and up to 10 branches' last 40 | one round; Active branches streams in with a skeleton, in one `branch_drift` call (below) |
 | Mission control | per project: open pulls, closed pulls and events (3 × up to 10), then `get_by_id` per unknown repository | one `pulls_for_repos` call for every project (one access check, one query), events per project alongside, one `readable` for the rest |
 | Issue, issues | access, then the rest | one round |
 
@@ -286,6 +288,62 @@ cheap calls) and a skeleton go out first; the sections follow in the
 same response. Crawlers still get the whole page (`entry.server.tsx`
 waits for `allReady` for bots), and signed out it is kept in the public
 cache like any other project page.
+
+### Active branches (2026-10-08)
+
+Measured on production, `/flagon-io/g1t` uncached, as a crawler, soon
+after pushes: **3,606 ms** to the first byte, `rpc` 3,605 ms over 38
+service calls, **repos 25 calls, 17,953 ms inside**. Nearly all of it was
+Active branches:
+
+- The site measured each branch itself: a `log` call per branch per
+  depth (40, then 1,000), plus the default branch's (120, then 1,000), plus
+  one more for the default branch's head, each call with its own access
+  check and store handle. The answer was kept by the pair of heads in the
+  site's cache, so every push to a branch, and every merge to the default
+  branch (which changes every pair), started the walks again, in every
+  data centre.
+- A branch far from the default branch read 1,000 commits of both, and
+  the default branch's 1,000 again after each merge.
+- The page waits 3.5 s for the section, then shows a link to Branches.
+  The walks were not in `waitUntil`, so when the page stopped waiting
+  they were dropped with it: an answer that took longer than 3.5 s was
+  never kept, and the next view started over. 3,606 ms is that timeout.
+
+Now:
+
+- **One call.** `branch_drift` (services/repos/src/drift.rs) takes the
+  default branch's head and every branch head, checks access once, opens
+  the store once, and reads the default branch's history once per depth
+  for all of them. Each answer is kept in repos' data-centre cache by the
+  pair of hashes; only pairs that changed are walked. It also returns the
+  default branch's head commit, which the site read with its own call.
+- **Shallower first.** Depths are (branch, default branch) 12/120, then
+  40/120, 40/1,000 and 1,000/1,000: most branches are a few commits
+  ahead and meet at the first.
+- **Long histories spliced.** A log by hash of 100 commits or more is a
+  16-commit read plus the log kept from one of those commits (the
+  first-parent chain from a commit never changes), so the default branch
+  after a merge costs 16 commits instead of 120 or 1,000.
+- **Finished after the page.** The call runs in `waitUntil`, so repos
+  keeps the answer even when the page stopped waiting for it.
+- **Crawlers wait 0.7 s** for the section (browsers 3.5 s, streamed);
+  past that they get the link to Branches, as a slow browser does.
+- `tags` is kept until the refs move (it listed the refs from the store
+  on every call), and the project is looked up once per request for the
+  layout and the overview (`projectFor`, beside `repoFor`).
+- `tags`, `commit_checks`, `shortcuts` and the Files page's reads were
+  missing from `READS`, so every signed-in overview counted as a write:
+  it set `g1t_d1`, sent the next 30 seconds of reads to the primary and
+  turned off the sidebar cache.
+
+| Overview, signed out, uncached | Before | After |
+| --- | --- | --- |
+| repos calls | 25 (6 when nothing had moved) | 6 whatever moved: `get`, `stars`, `branches`, `log`, `tags`, `branch_drift` |
+| projects calls | 3 (`get` twice) | 2 |
+| Crawler, after a push | 3,606 ms (the 3.5 s timeout) | at most about 0.8 s: the rest of the page, or 0.7 s for Active branches |
+| Crawler, nothing moved | 460 to 570 ms | not yet measured on production |
+| Browser, first byte | 115 to 160 ms (`total`), 200 to 245 ms measured from Colorado | unchanged: the page does not wait for any of this |
 
 ## Client navigation
 
@@ -350,3 +408,11 @@ powershell -File scripts/perf/measure.ps1 -Runs 7 -Pull 12 -Issue 11 -Out before
 It prints p50 and p90 of the server's share (TLS handshake done to first
 byte), where the Worker ran, whether the answer set `g1t_d1` (it should
 not, for a page that only reads), and the slowest Server-Timing entries.
+
+Signed out, a public page is usually answered from the data centre's
+cache (`server-timing: cache;desc="hit, …"`), and `cache-control:
+no-cache` does not change that. To time a render, add a query string the
+page ignores: the cache is keyed by the whole URL, so
+`/flagon-io/g1t?nc=<random>` is always a miss. A crawler's user agent
+(`Googlebot/2.1`) waits for the whole page; a browser's gets the first
+byte and the streamed rest.

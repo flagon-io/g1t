@@ -617,6 +617,43 @@ pub struct LastCommits {
     pub complete: bool,
 }
 
+/// `branch_drift`: how far each of `heads` (branch head commits) has moved
+/// from `base` (the default branch's head commit), and each one's head
+/// commit, in one call. Every answer is kept by the pair of hashes: neither
+/// history can change, so neither can it. Returns `Outcome<BranchDrifts>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchDriftArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+    pub base: String,
+    pub heads: Vec<String>,
+}
+
+/// Commits a branch has that the default branch does not (`ahead`), and
+/// the other way round (`behind`), as `git rev-list --left-right --count`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Drift {
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+/// One branch head's commit and drift. `drift` is absent when the two
+/// histories do not meet within what is read (or could not be read).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BranchDrift {
+    pub head: String,
+    pub commit: Option<Commit>,
+    pub drift: Option<Drift>,
+}
+
+/// `base`'s own commit, and each head's answer in the order asked.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BranchDrifts {
+    pub base: Option<Commit>,
+    pub branches: Vec<BranchDrift>,
+}
+
 /// `tags`: the repository's tags, newest commit first, each with the
 /// commit it names. Returns `Outcome<Vec<Tag>>`.
 #[derive(Debug, Serialize, Deserialize)]

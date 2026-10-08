@@ -64,7 +64,7 @@ test("what each call asks for", () => {
 });
 
 test("only known reads are taken not to write", () => {
-  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage", "get", "list", "queue", "pulls_for_repos", "stars", "about", "public_links"]) {
+  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage", "get", "list", "queue", "pulls_for_repos", "stars", "about", "public_links", "branch_drift", "tags", "commit_checks", "shortcuts", "last_commits", "languages"]) {
     assert.equal(mayWrite(method), false, method);
   }
   for (const method of ["merge_pull", "verify_email", "github_finish", "sign_in", "something_new"]) {
