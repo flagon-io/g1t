@@ -22,7 +22,10 @@
 # deploy.yml in production (Settings, Guardrails), and
 # registry.cloudflare.com there too, to find, pull and push the runner's
 # image. A job that must build that image (the `runner-image` group) does
-# so with its own Docker Engine, on a larger machine. See docs/DEPLOYING.md.
+# so with its own Docker Engine, on a larger machine. Optionally, the
+# secret STATUS_DEPLOY_TOKEN (the status Worker's secret of the same name)
+# and status.g1t.sh among the same workflow-only domains, so status.g1t.sh
+# hears each deploy start and finish. See docs/DEPLOYING.md.
 name: Deploy
 
 on:
@@ -215,6 +218,9 @@ jobs:
       - name: Deploy ${{ matrix.units }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # status.g1t.sh hears the deploy start and finish, so its restarts
+          # are not drafted as incidents. Optional: without it, nothing is sent.
+          STATUS_DEPLOY_TOKEN: ${{ secrets.STATUS_DEPLOY_TOKEN }}
         run: node scripts/deploy.mjs deploy --only "${{ matrix.units }}" --force --no-migrations --concurrency 2
 
   edge:

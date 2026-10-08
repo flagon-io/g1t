@@ -9,17 +9,22 @@ import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import { type Streak, autoDismissText, deployChange, detect, settleDrafts } from "./detect.ts";
+import { type Streak, autoDismissText, deployChange, detect, settleDrafts, staleDrafts, staleText } from "./detect.ts";
 import { stamp } from "./postmortem.ts";
 import {
+  CHECK_HISTORY_DAYS,
   autoDismiss,
+  checkHistory,
   createIncident,
+  historySpan,
   incidentDetail,
   loadDeploy,
   loadStreaks,
   openRefs,
+  record,
   saveDeploy,
   saveHealthy,
+  saveReminders,
   saveStreaks,
   watchedDrafts,
 } from "./store.ts";
@@ -78,26 +83,42 @@ async function round(db: D1Database, now: Date, git: "up" | "degraded" | "down",
 
 test("the 6 Oct draft: a slow run at 03:13 that recovered does not leak into the one at 07:25", async () => {
   const db = d1();
-  // 03:13 and 03:14 slow, then fine: never three in a row.
+  // 03:13 and 03:14 slow, then fine: never four of five.
   assert.equal((await round(db, at(3, 13), "degraded")).draft.length, 0);
   assert.equal((await round(db, at(3, 14), "degraded")).draft.length, 0);
   await round(db, at(3, 15), "up");
-  assert.equal((await loadStreaks(db)).size, 0, "a recovery with nothing else failing leaves no run behind");
+  assert.equal((await loadStreaks(db)).size, 1, "one good check does not end a run");
+  await round(db, at(3, 16), "up");
+  await round(db, at(3, 17), "up");
+  assert.equal((await loadStreaks(db)).size, 0, "three good checks in a row, with nothing else failing, leave no run behind");
   // 07:25 slow: the first check of a new run, not the third of the old one.
   const first = await round(db, at(7, 25), "degraded");
   assert.equal(first.draft.length, 0);
-  assert.deepEqual([...(await loadStreaks(db)).values()], [{ component: "git", state: "degraded", count: 1, since: at(7, 25).toISOString(), alerted: false }]);
+  assert.deepEqual([...(await loadStreaks(db)).values()], [{ component: "git", state: "degraded", count: 1, checks: 1, recent: "s", since: at(7, 25).toISOString(), alerted: false }]);
   await round(db, at(7, 26), "degraded");
-  const third = await round(db, at(7, 27), "degraded");
-  assert.deepEqual(third.draft, [{ key: "git", state: "degraded", since: at(7, 25).toISOString(), checks: 3 }]);
+  await round(db, at(7, 27), "degraded");
+  const fourth = await round(db, at(7, 28), "degraded");
+  assert.deepEqual(fourth.draft, [{ key: "git", state: "degraded", since: at(7, 25).toISOString(), checks: 4, of: 4 }]);
+});
+
+test("a run kept before N of M (no checks, no recent) is read as all bad, and still ends", async () => {
+  const db = d1();
+  await db.prepare(`INSERT INTO streak (component, state, count, since, alerted) VALUES ('git', 'degraded', 180, ?1, 1)`).bind(at(4, 0).toISOString()).run();
+  assert.deepEqual((await loadStreaks(db)).get("git"), { component: "git", state: "degraded", count: 180, checks: 180, recent: "sssss", since: at(4, 0).toISOString(), alerted: true });
+  await round(db, at(7, 0), "up");
+  await round(db, at(7, 1), "up");
+  assert.equal((await loadStreaks(db)).size, 1);
+  await round(db, at(7, 2), "up");
+  assert.equal((await loadStreaks(db)).size, 0);
 });
 
 test("a run is kept while it lasts, and only the parts still failing keep one", async () => {
   const db = d1();
-  const streak = (component: string): Streak => ({ component, state: "down", count: 2, since: at(1, 0).toISOString(), alerted: false });
+  const streak = (component: string): Streak => ({ component, state: "down", count: 2, checks: 3, recent: "x.x", since: at(1, 0).toISOString(), alerted: false });
   await saveStreaks(db, [streak("git"), streak("api")]);
   await saveStreaks(db, [streak("api")]);
   assert.deepEqual([...(await loadStreaks(db)).keys()], ["api"]);
+  assert.deepEqual((await loadStreaks(db)).get("api"), streak("api"));
   await saveStreaks(db, []);
   assert.equal((await loadStreaks(db)).size, 0);
 });
@@ -107,7 +128,108 @@ test("the deploy window is kept between rounds", async () => {
   assert.equal(await loadDeploy(db), null);
   await saveDeploy(db, deployChange(null, "started", "run-1", at(7, 20)));
   await saveDeploy(db, deployChange(await loadDeploy(db), "finished", null, at(7, 24)));
-  assert.deepEqual(await loadDeploy(db), { id: "run-1", started_at: at(7, 20).toISOString(), finished_at: at(7, 24).toISOString() });
+  assert.deepEqual(await loadDeploy(db), { id: "run-1", started_at: at(7, 20).toISOString(), finished_at: at(7, 24).toISOString(), running: 0, last_started_at: at(7, 20).toISOString() });
+  // A window kept before deploys were counted reads as one deploy.
+  await db.prepare(`UPDATE meta SET value = ?1 WHERE key = 'deploy'`).bind(JSON.stringify({ id: "old", started_at: at(8, 0).toISOString(), finished_at: null })).run();
+  assert.deepEqual(await loadDeploy(db), { id: "old", started_at: at(8, 0).toISOString(), finished_at: null, running: 1, last_started_at: at(8, 0).toISOString() });
+});
+
+test("every check is kept for 7 days, with where it ran from, and an incident's page reads its parts' checks", async () => {
+  const db = d1();
+  const minute = (m: number) => new Date(at(7, 0).getTime() + m * 60_000);
+  for (let m = 0; m < 5; m++) {
+    await record(
+      db,
+      [
+        { component: "speed", state: m < 3 ? "degraded" : "up", detail: "", latency_ms: m < 3 ? 1900 : 300, colo: "IAD", first_ms: m < 3 ? 2400 : null },
+        { component: "api", state: "up", detail: "", latency_ms: 90, colo: "IAD" },
+        { component: "sandboxes", state: "unmonitored", detail: "", latency_ms: null },
+      ],
+      minute(m),
+    );
+  }
+  const kept = await checkHistory(db, ["speed"], minute(0), minute(4));
+  assert.equal(kept.length, 5);
+  assert.deepEqual(kept[0], { component: "speed", at: minute(0).toISOString(), ms: 1900, outcome: "degraded", colo: "IAD", first_ms: 2400 });
+  assert.deepEqual(kept[4], { component: "speed", at: minute(4).toISOString(), ms: 300, outcome: "up", colo: "IAD", first_ms: null });
+  assert.equal((await checkHistory(db, ["sandboxes"], minute(0), minute(4))).length, 0, "a part with no check keeps no history");
+  // A round 7 days later prunes everything older.
+  await record(db, [{ component: "api", state: "up", detail: "", latency_ms: 80, colo: "SJC" }], new Date(minute(2).getTime() + CHECK_HISTORY_DAYS * 86_400_000));
+  const left = await checkHistory(db, ["speed", "api"], minute(0), new Date(minute(0).getTime() + 8 * 86_400_000));
+  assert.deepEqual(left.map((c) => `${c.component}@${c.colo}`), ["api@IAD", "speed@IAD", "api@IAD", "speed@IAD", "api@IAD", "speed@IAD", "api@SJC"], "the two oldest rounds are gone");
+
+  // The incident page: its parts' checks around it, with the slow line.
+  const id = await createIncident(
+    db,
+    {
+      title: "Detected: Page speed slow",
+      severity: "sev3",
+      status: "investigating",
+      visibility: "draft",
+      source: "detected",
+      components: [{ key: "speed", impact: "degraded" }],
+      started_at: minute(0).toISOString(),
+      acknowledged_at: null,
+      commander: null,
+      communications: null,
+      by: "status",
+    },
+    [{ kind: "detected", public: false, status: null, text: "Detected." }],
+    minute(4),
+    null,
+  );
+  const detail = (await incidentDetail(db, id, "https://status.g1t.sh", new Map(), { limits: new Map([["speed", 800]]), now: minute(5) }))!;
+  assert.equal(detail.checks.length, 1);
+  assert.deepEqual([detail.checks[0]!.key, detail.checks[0]!.slow_ms, detail.checks[0]!.samples.length], ["speed", 800, 3]);
+  assert.deepEqual(historySpan(minute(0).toISOString(), null, minute(5)), { from: minute(-30), to: minute(5) });
+  assert.deepEqual(historySpan(minute(0).toISOString(), minute(10).toISOString(), minute(500)), { from: minute(-30), to: minute(40) });
+  // A long one shows its last day.
+  assert.deepEqual(historySpan(minute(0).toISOString(), minute(3000).toISOString(), minute(4000)), { from: minute(3030 - 1440), to: minute(3030) });
+});
+
+test("a draft left waiting is raised again, with a line on its timeline, and forgotten once it is not waiting", async () => {
+  const db = d1();
+  const id = await createIncident(
+    db,
+    {
+      title: "Detected: Page speed slow",
+      severity: "sev3",
+      status: "investigating",
+      visibility: "draft",
+      source: "detected",
+      components: [{ key: "speed", impact: "degraded" }],
+      started_at: at(7, 0).toISOString(),
+      acknowledged_at: null,
+      commander: null,
+      communications: null,
+      by: "status",
+    },
+    [{ kind: "detected", public: false, status: null, text: "Detected." }],
+    at(7, 4),
+    null,
+  );
+  const tick = async (now: Date) => {
+    const waiting = await watchedDrafts(db);
+    const due = staleDrafts(waiting, now);
+    await saveReminders(db, waiting.map((d) => d.id), due.map((d) => ({ id: d.id, text: staleText(d.waiting_ms, true) })), now);
+    return due.map((d) => d.id);
+  };
+  assert.deepEqual(await tick(at(7, 48)), []);
+  assert.deepEqual(await tick(at(7, 49)), [id], "45 minutes after the draft was made");
+  assert.equal((await watchedDrafts(db))[0]!.reminded_at, at(7, 49).toISOString());
+  assert.deepEqual(await tick(at(7, 50)), [], "once");
+  assert.deepEqual(await tick(at(13, 48)), []);
+  assert.deepEqual(await tick(at(13, 49)), [id], "then every 6 hours");
+  const detail = (await incidentDetail(db, id, "https://status.g1t.sh", new Map()))!;
+  assert.deepEqual(detail.timeline.filter((e) => e.kind === "note").map((e) => [e.by, e.text]), [
+    ["status", "Unacknowledged for 45 minutes. The alert address was emailed again."],
+    ["status", "Unacknowledged for 6h 45m. The alert address was emailed again."],
+  ]);
+  assert.equal(detail.acknowledged_at, null, "a reminder is not an acknowledgement");
+  // Picked up: no longer watched, and its bookkeeping goes.
+  await db.prepare(`UPDATE incident SET acknowledged_at = ?1 WHERE id = ?2`).bind(at(14, 0).toISOString(), id).run();
+  assert.deepEqual(await tick(at(20, 0)), []);
+  assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM meta WHERE key LIKE 'draft_reminded:%'`).first<{ n: number }>())!.n, 0);
 });
 
 test("a detected draft that recovered is dismissed after ten healthy minutes; one staff picked up is left alone", async () => {

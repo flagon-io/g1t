@@ -116,17 +116,22 @@ page, which shows each part's impact instead.
 
 ### Noticed before anyone reports it
 
-When a part fails, or is slow, three checks in a row, g1t staff are
-alerted and an incident is drafted for them. It appears on the status
-page once someone confirms it, usually within minutes. The part's own
-state on the page changes at once either way, because it comes from the
-checks.
+When a part fails, or is slow, on four of five checks in a row, g1t
+staff are alerted and an incident is drafted for them. It appears on the
+status page once someone confirms it, usually within minutes. The part's
+own state on the page changes at once either way, because it comes from
+the checks.
 
-A brief blip does not become an incident: if the part recovers and stays
-healthy for 10 minutes before anyone confirms the draft, the draft is
-dismissed and never appears on the page. While g1t is deploying, and for
-3 minutes after, a slow restart is not drafted unless it outlasts the
-deploy.
+A brief blip does not become an incident. A slow answer is checked again
+straight away, and counts as slow only if the second answer is slow too.
+If the part recovers and stays healthy for 10 minutes before anyone
+confirms the draft, the draft is dismissed and never appears on the page.
+While g1t is deploying, and for 3 minutes after, a slow restart is not
+drafted unless it outlasts the deploy.
+
+**Page speed** is timed to the first byte of each page, loaded as a
+browser loads it. The checks identify themselves as `g1t-status/1.0` at
+the end of a browser's user agent.
 
 If something is broken and the page does not show it, write to
 [hey@flagon.io](mailto:hey@flagon.io) or see

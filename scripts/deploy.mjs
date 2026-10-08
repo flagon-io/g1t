@@ -61,6 +61,7 @@ import {
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
 import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack } from "./deploy/stack.mjs";
+import { withDeployWindow } from "./deploy/status-window.mjs";
 
 const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
 
@@ -414,17 +415,25 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
   // dirty tree is not a commit anyone can look at, so it is left out.
   const settle = dryRun || dirty ? null : await reportDeployment({ head, subject: context.subject, units: touched.map((u) => u.id), log });
 
+  // status.g1t.sh hears the deploy start and finish (STATUS_DEPLOY_TOKEN;
+  // nothing without it), so the restarts it causes are not drafted as
+  // incidents. Never in a dry run, and it never fails a deploy.
   let failed = false;
-  for (const { stage, units } of byStage(stack, touched)) {
-    if (failed) {
-      for (const unit of units) results.push({ unit: unit.id, stage, ok: false, skipped: true, ms: 0, note: "an earlier stage failed" });
-      continue;
-    }
-    log(`== ${stage}: ${units.map((u) => u.id).join(", ")}`);
-    const shipped = await pool(units, opts.concurrency, (unit) => ship(unit, deploying.find((d) => d.unit === unit), context));
-    results.push(...shipped);
-    failed = shipped.some((r) => !r.ok);
-  }
+  await withDeployWindow(
+    async () => {
+      for (const { stage, units } of byStage(stack, touched)) {
+        if (failed) {
+          for (const unit of units) results.push({ unit: unit.id, stage, ok: false, skipped: true, ms: 0, note: "an earlier stage failed" });
+          continue;
+        }
+        log(`== ${stage}: ${units.map((u) => u.id).join(", ")}`);
+        const shipped = await pool(units, opts.concurrency, (unit) => ship(unit, deploying.find((d) => d.unit === unit), context));
+        results.push(...shipped);
+        failed = shipped.some((r) => !r.ok);
+      }
+    },
+    { id: head ?? null, dryRun, log },
+  );
   summary(results);
   await settle?.(!failed);
   console.log(`\n${failed ? "Failed" : dryRun ? "Built" : "Deployed"} in ${seconds(Date.now() - started)}.`);

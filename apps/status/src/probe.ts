@@ -13,6 +13,13 @@ export type ProbeResult = {
   error?: string;
   /** Why it worked but not well, when that is not just slowness. */
   degraded?: string;
+  /**
+   * The Cloudflare data centre that answered, from the `cf-ray` header's
+   * suffix (`8c1f…-IAD`): where the check ran from, as far as g1t saw it.
+   */
+  colo?: string;
+  /** Slow at first and checked again at once (`confirmSlow`): the first try's time. */
+  first_ms?: number;
 };
 
 /** How one git store namespace answered lately: repos `store_health`. */
@@ -62,7 +69,24 @@ export function judgeStorage(report: StorageReport): ProbeResult {
 /** No request waits longer than this. */
 export const TIMEOUT_MS = 5000;
 
+/** What every check but a page load says it is. */
 export const USER_AGENT = "g1t-status (+https://status.g1t.sh)";
+
+/**
+ * What a page load (`Step.browser`) says it is: a browser's user agent with
+ * `g1t-status/1.0 (+status.g1t.sh)` on the end, so it still says who it is.
+ *
+ * The site renders a page for a crawler in full before sending a byte (an
+ * `isbot` match makes apps/web's entry.server.tsx wait for `allReady`),
+ * and streams the shell first for a browser. USER_AGENT matches isbot (on
+ * "http", and "status/"), so with it Page speed timed a crawler's full
+ * render, while its budget is to the first byte. probe.test.ts checks this
+ * one against the isbot the site uses. Keep the name after "Safari/537.36",
+ * and keep "http" and "compatible;" out of it: isbot matches a URL, and
+ * "status/" inside a "compatible" comment.
+ */
+export const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 g1t-status/1.0 (+status.g1t.sh)";
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -96,24 +120,55 @@ export async function timed(
 }
 
 /** One request, answered with the status that means it works. */
-export function step(fetcher: Fetch, { url, headers = {}, expect }: Step, timeoutMs = TIMEOUT_MS): Promise<ProbeResult> {
-  return timed(async (signal) => {
+export async function step(fetcher: Fetch, { url, headers = {}, expect, browser = false }: Step, timeoutMs = TIMEOUT_MS): Promise<ProbeResult> {
+  let colo: string | null = null;
+  const result = await timed(async (signal) => {
     const response = await fetcher(url, {
       signal,
       redirect: "manual",
-      headers: { "user-agent": USER_AGENT, "cache-control": "no-cache", ...headers },
+      headers: { "user-agent": browser ? BROWSER_USER_AGENT : USER_AGENT, "cache-control": "no-cache", ...headers },
     });
+    // Timed to the answer's headers: the body is never read.
+    colo = coloOf(response.headers.get("cf-ray"));
     await response.body?.cancel().catch(() => undefined);
     const good = expect == null ? response.ok : response.status === expect;
     return good || `HTTP ${response.status}`;
   }, timeoutMs);
+  return colo ? { ...result, colo } : result;
+}
+
+/** The data centre in a `cf-ray` header: `8c1f2e3d4a5b6c7d-IAD` is `IAD`. */
+export function coloOf(ray: string | null | undefined): string | null {
+  const m = /-([A-Za-z]{3,4})$/.exec((ray ?? "").trim());
+  return m ? m[1]!.toUpperCase() : null;
 }
 
 /** A check's requests together: it works when every one does, and takes as long as the slowest. */
 export function combine(results: ProbeResult[]): ProbeResult {
   const ms = Math.max(0, ...results.map((r) => r.ms));
   const failed = results.find((r) => !r.ok);
-  return failed ? { ok: false, ms, error: failed.error ?? "no answer" } : { ok: true, ms };
+  const colo = results.find((r) => r.colo)?.colo;
+  const out: ProbeResult = failed ? { ok: false, ms, error: failed.error ?? "no answer" } : { ok: true, ms };
+  return colo ? { ...out, colo } : out;
+}
+
+/** Whether a result is only slow: it worked, with nothing else wrong, but over `slowMs`. */
+export function onlySlow(result: ProbeResult | null, slowMs: number): boolean {
+  return result != null && result.ok && !result.degraded && Math.round(result.ms) > slowMs;
+}
+
+/**
+ * A slow check, and the same check run again at once: the better of the
+ * two. One slow answer (a cold isolate, a cache refill, a busy moment on
+ * the path) does not count when the next answers in time; slow twice is
+ * slow, at the faster of the two times. A second try that failed does not
+ * make a slow check worse. `first_ms` keeps the first try's time.
+ */
+export function confirmSlow(first: ProbeResult, again: ProbeResult | null): ProbeResult {
+  if (!again || !again.ok || again.degraded) return { ...first, first_ms: first.ms };
+  const better = again.ms < first.ms ? again : first;
+  const colo = better.colo ?? first.colo ?? again.colo;
+  return { ...better, ...(colo ? { colo } : {}), first_ms: first.ms };
 }
 
 /** What runs a check. `billing` is null when there is no binding to it. */
@@ -149,4 +204,16 @@ export async function runCheck(check: Check, probers: Probers): Promise<ProbeRes
     case "none":
       return null;
   }
+}
+
+/**
+ * Runs one part's check as the cron does: an address that answered, but
+ * slowly, is asked once more straight away (`confirmSlow`) before the slow
+ * answer counts. Checks through a binding are not repeated: git storage
+ * reports the minutes gone by, and asking twice says the same.
+ */
+export async function probe(check: Check, probers: Probers, slowMs: number): Promise<ProbeResult | null> {
+  const first = await runCheck(check, probers);
+  if (check.kind !== "http" || !first || !onlySlow(first, slowMs)) return first;
+  return confirmSlow(first, await runCheck(check, probers));
 }

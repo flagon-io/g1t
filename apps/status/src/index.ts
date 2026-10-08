@@ -53,19 +53,33 @@ import plexMono from "@g1t/theme/fonts/ibm-plex-mono-latin-400.woff2";
 
 import { type Targets, components } from "./components.ts";
 import {
-  DEPLOY_GRACE_MS,
-  DEPLOY_MAX_MS,
   autoDismissText,
   deployChange,
   deployQuiet,
   detect,
   detectedImpact,
   draftTitle,
+  minutesWords,
+  quietUntil,
   recoverySentence,
   settleDrafts,
+  staleDrafts,
+  staleText,
   troubleSentence,
+  troubledNow,
 } from "./detect.ts";
-import { type EmailBinding, type Sender, alertLetter, bindingSender, confirmLetter, recoveredLetter, render as renderMail, unsubscribeHeaders, updateLetter } from "./email.ts";
+import {
+  type EmailBinding,
+  type Sender,
+  alertLetter,
+  bindingSender,
+  confirmLetter,
+  recoveredLetter,
+  render as renderMail,
+  staleLetter,
+  unsubscribeHeaders,
+  updateLetter,
+} from "./email.ts";
 import { atom, feedItems, jsonFeed } from "./feed.ts";
 import {
   type Entry,
@@ -85,7 +99,7 @@ import {
 } from "./incidents.ts";
 import { INCIDENT_STATUS, type PageModel, SLOW_MS, buildPage, classify, underMaintenance } from "./model.ts";
 import { stamp } from "./postmortem.ts";
-import { type StorageReport, runCheck } from "./probe.ts";
+import { type StorageReport, probe } from "./probe.ts";
 import { readZone } from "./time.ts";
 import {
   FAVICON,
@@ -130,6 +144,7 @@ import {
   saveHealthy,
   saveIncident,
   savePostmortem,
+  saveReminders,
   saveStreaks,
   scheduleMaintenance,
   setFollowUp,
@@ -218,17 +233,34 @@ export async function checkAll(env: Env, now = new Date()): Promise<Observation[
   const billing = env.BILLING;
   const repos = env.REPOS;
   const list = parts(env);
-  const observations = await Promise.all(
-    list.map(async (info): Promise<Observation> => {
-      const result = await runCheck(info.check, {
-        fetch: (url, init) => fetch(url, init),
-        billing: billing ? () => billingClient(billing).prices() : null,
-        storage: repos ? () => storeHealth(repos) : null,
-      });
-      const { state, detail } = classify(result, info.slowMs);
-      return { component: info.key, state, detail, latency_ms: result ? Math.round(result.ms) : null };
+  const results = await Promise.all(
+    list.map(async (info) => {
+      // A slow answer is asked again at once before it counts (probe.ts `probe`).
+      const result = await probe(
+        info.check,
+        {
+          fetch: (url, init) => fetch(url, init),
+          billing: billing ? () => billingClient(billing).prices() : null,
+          storage: repos ? () => storeHealth(repos) : null,
+        },
+        info.slowMs ?? SLOW_MS,
+      );
+      return { info, result };
     }),
   );
+  // Checks through a binding have no cf-ray of their own: they ran where the others did.
+  const roundColo = results.find((r) => r.result?.colo)?.result?.colo ?? null;
+  const observations = results.map(({ info, result }): Observation => {
+    const { state, detail } = classify(result, info.slowMs);
+    return {
+      component: info.key,
+      state,
+      detail,
+      latency_ms: result ? Math.round(result.ms) : null,
+      colo: result ? (result.colo ?? roundColo) : null,
+      first_ms: result?.first_ms != null ? Math.round(result.first_ms) : null,
+    };
+  });
   const { maintenance } = await load(env.DB, now, originOf(env));
   await record(env.DB, observations, now, underMaintenance(maintenance, now));
   return observations;
@@ -341,18 +373,39 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
     }
   }
   // Detected drafts no one picked up, whose parts have stayed healthy long enough: dismissed, with a word to staff.
-  const troubled = new Set(found.streaks.map((s) => s.component));
-  const settled = settleDrafts(await watchedDrafts(env.DB), troubled, now);
+  // A part counts as healthy from its first good check; a run that is still going but answered well last time does not hold a draft up.
+  const troubled = new Set(found.streaks.filter(troubledNow).map((s) => s.component));
+  const watched = await watchedDrafts(env.DB);
+  const settled = settleDrafts(watched, troubled, now);
   await saveHealthy(env.DB, settled.healthy);
+  const dismissed = new Set<string>();
   for (const d of settled.dismiss) {
     const text = autoDismissText(d.lasted_ms, stamp(d.recovered_at));
     if (!(await autoDismiss(env.DB, d.id, d.recovered_at, text, now))) continue;
+    dismissed.add(d.id);
     console.log(JSON.stringify({ event: "status.auto_dismissed", id: d.id, lasted_ms: d.lasted_ms }));
     if (alertTo && send) {
       const letter = recoveredLetter({ title: d.title, text, link: sudo(d.id) });
       const { text: body, html } = renderMail(letter);
       ctx.waitUntil(send.send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
     }
+  }
+  // Drafts still waiting for someone: the alert goes out again after 45 minutes, then every 6 hours.
+  const waiting = watched.filter((d) => !dismissed.has(d.id));
+  const stale = staleDrafts(waiting, now);
+  const emailed = !!(alertTo && send);
+  await saveReminders(
+    env.DB,
+    waiting.map((d) => d.id),
+    stale.map((d) => ({ id: d.id, text: staleText(d.waiting_ms, emailed) })),
+    now,
+  );
+  for (const d of stale) {
+    console.warn(JSON.stringify({ event: "status.draft_waiting", id: d.id, waiting_ms: d.waiting_ms }));
+    if (!emailed) continue;
+    const letter = staleLetter({ title: d.title, waiting: minutesWords(d.waiting_ms), link: sudo(d.id) });
+    const { text: body, html } = renderMail(letter);
+    ctx.waitUntil(send!.send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
   }
 }
 
@@ -380,9 +433,8 @@ async function deployHook(request: Request, env: Env): Promise<Response> {
   const now = new Date();
   const window = deployChange(await loadDeploy(env.DB), phase, id, now);
   await saveDeploy(env.DB, window);
-  console.log(JSON.stringify({ event: `status.deploy_${phase}`, id }));
-  const quietUntil = window.finished_at ? Date.parse(window.finished_at) + DEPLOY_GRACE_MS : Date.parse(window.started_at) + DEPLOY_MAX_MS;
-  return json({ deploy: window, quiet_until: new Date(quietUntil).toISOString() });
+  console.log(JSON.stringify({ event: `status.deploy_${phase}`, id, running: window.running }));
+  return json({ deploy: window, quiet_until: quietUntil(window) });
 }
 
 /** Compares two secrets in constant time, by their hashes. */
@@ -668,11 +720,12 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
   }
 
   private async detail(id: string): Promise<AdminIncidentDetail | null> {
-    return incidentDetail(this.env.DB, String(id), this.origin(), names(this.env));
+    const limits = new Map(parts(this.env).map((p) => [p.key, p.slowMs ?? SLOW_MS]));
+    return incidentDetail(this.env.DB, String(id), this.origin(), names(this.env), { limits });
   }
 
   private async summary(id: string): Promise<AdminIncident> {
-    const { timeline: _t, followups: _f, postmortem: _p, postmortem_draft: _d, url: _u, ...incident } = (await this.detail(id))!;
+    const { timeline: _t, followups: _f, postmortem: _p, postmortem_draft: _d, url: _u, checks: _c, ...incident } = (await this.detail(id))!;
     return incident;
   }
 

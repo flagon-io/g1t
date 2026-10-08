@@ -173,17 +173,39 @@ schema. A migration must keep the old code right:
 #### Telling the status page about a deploy
 
 Restarts during a deploy can make a part slow for a minute, which the
-status page's checks would otherwise draft as an incident. Before the
-first stage and after the last, a deploy can say so with
-`scripts/deploy/status-window.mjs` (`announceDeploy("started" | "finished",
-{ id })`, or `node scripts/deploy/status-window.mjs started|finished [id]`).
-It posts to `POST https://status.g1t.sh/deploys` with
+status page's checks would otherwise draft as an incident. So
+`scripts/deploy.mjs deploy` says when it starts its stages and when they
+end (`withDeployWindow` in `scripts/deploy/status-window.mjs`; never in a
+dry run, and only once there is something to ship), by hand and in g1t
+Actions alike. It posts to `POST https://status.g1t.sh/deploys` with
 `Authorization: Bearer $STATUS_DEPLOY_TOKEN`, the same value as the status
-Worker's `STATUS_DEPLOY_TOKEN` secret. During the deploy and for 3 minutes
-after it, detection keeps counting failed and slow checks but makes no new
-draft; trouble that outlasts that is drafted with its true start. A
-start with no finish stops counting after 30 minutes. Without the token
-the helper does nothing, and it never fails a deploy.
+Worker's `STATUS_DEPLOY_TOKEN` secret, and `{"phase": "started" |
+"finished", "id": "<commit>"}`. During the deploy and for 3 minutes after
+it, detection keeps counting failed and slow checks but makes no new
+draft; trouble that outlasts that is drafted with its true start. Deploys
+that overlap (the jobs of one stage run at once, each announcing itself)
+are one window: the status Worker counts the starts, and the window closes
+when the last one finishes. A start with no finish stops counting 30
+minutes after the latest start. Without the token nothing is sent, and an
+announcement never fails a deploy: a refusal or network error is one
+warning line. By hand: `node scripts/deploy/status-window.mjs
+started|finished [id]`.
+
+To turn it on (once; until then deploys are not announced):
+
+1. Make a token and set it as the status Worker's secret:
+   `npx wrangler secret put STATUS_DEPLOY_TOKEN` in `apps/status` (as of
+   2026-10-08 the Worker has only `STATUS_SECRET`). Without it,
+   `POST /deploys` answers 404.
+2. Set the same value as the **`STATUS_DEPLOY_TOKEN`** Actions secret on
+   flagon-io/g1t (Settings, Secrets and variables, or
+   `PUT /repos/flagon-io/g1t/actions/secrets/STATUS_DEPLOY_TOKEN`);
+   `.g1t/workflows/deploy.yml` passes it to every deploy job.
+3. Add `status.g1t.sh | deploy.yml | production` to the project's
+   **Workflow-only domains** (see Network below), or the job's request is
+   refused by the guardrails (the deploy still goes on, with a warning).
+4. For deploys by hand, set `STATUS_DEPLOY_TOKEN` in your shell's
+   environment (the tool does not read `.env`).
 
 On a laptop the tool uses your `wrangler login` (or `CLOUDFLARE_DEPLOY_TOKEN`
 if set), as `scripts/deploy.sh` always did: a `CLOUDFLARE_API_TOKEN` or
@@ -478,12 +500,14 @@ pull requests from forks (`Guardrails::workflow_hosts`, the runner's
 ```text
 api.cloudflare.com | deploy.yml | production
 registry.cloudflare.com | deploy.yml, runner-base.yml | production
+status.g1t.sh | deploy.yml | production
 ```
 
 `api.cloudflare.com` is Wrangler's API; `registry.cloudflare.com` is where
 the deploy asks whether the runner's image is already built, and where the
 `runner-image` job pulls the base from and pushes the runner's image to
-(as `runner-base.yml` pushes the base). The job's Docker Engine shares the
+(as `runner-base.yml` pushes the base); `status.g1t.sh` hears the deploy
+start and finish (see "Telling the status page about a deploy"). The job's Docker Engine shares the
 job's network, so these lines are what let it reach the registry. If a pull
 is refused with `g1t guardrails: <host> is not on this project's allowed
 domains`, the registry sent the layers from another host: add that host on

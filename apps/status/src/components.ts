@@ -32,6 +32,12 @@ export type Step = {
   headers?: Record<string, string>;
   /** The status that means it works; any 2xx when absent. */
   expect?: number;
+  /**
+   * A page people open in a browser: asked for with a browser's user agent
+   * (probe.ts `BROWSER_USER_AGENT`), so the site streams it as it does for
+   * people, and the time is to the first byte, not to a crawler's full render.
+   */
+  browser?: boolean;
 };
 
 export type Check =
@@ -102,7 +108,7 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           check: {
             kind: "http",
             steps: [
-              { url: `${site}/login` },
+              { url: `${site}/login`, browser: true },
               ...(api ? [{ url: `${api}/v1/user`, headers: { authorization: `Bearer ${NO_TOKEN}` }, expect: 401 }] : []),
             ],
           },
@@ -146,7 +152,7 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           address: `${shown}/${repo}`,
           checks: `A public project page and Explore each answering within ${SPEED_BUDGET_MS} ms. Slower counts as degraded.`,
           core: false,
-          check: { kind: "http", steps: [{ url: `${site}/${repo}` }, { url: `${site}/explore` }] },
+          check: { kind: "http", steps: [{ url: `${site}/${repo}`, browser: true }, { url: `${site}/explore`, browser: true }] },
           slowMs: SPEED_BUDGET_MS,
         }
       : null,
