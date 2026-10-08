@@ -332,9 +332,12 @@ workspace's **People**, `g1t.sh/<workspace>/-/people` (in the sidebar):
   never says which it was.
 
 The email names you and the workspace and links to the invite's page.
-Someone new signs up right there, with the invited address filled in and
-already confirmed; someone with an account signs in. Either way they land
-in the workspace as a member, with a one-time welcome. See
+Someone new signs up right there, with the invited address filled in, and
+joins once they confirm it with the code g1t emails them; someone with an
+account signs in. Either way they land in the workspace as a member, with
+a one-time welcome. Until a new account confirms its address, its invite
+shows as **confirming their email** under the members, and you can still
+revoke it. See
 [using an invite](/guides/authentication/#using-an-invite).
 
 Pending invites are listed under the members, with a link to copy and

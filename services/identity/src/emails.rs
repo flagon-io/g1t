@@ -19,6 +19,21 @@
 //! is the person (`security.rs`), are written to their security log, are
 //! announced as `user.email_*` events, and are told to every confirmed
 //! address, the removed one included.
+//!
+//! A confirmation email carries a six-digit code and a link, either one
+//! enough. Both live in one `email_tokens` row, bound to the account and
+//! the address: the link's token as its id (a SHA-256), the code as an
+//! HMAC under IDENTITY_KEY ([`crypto::code_hash`]). Using either deletes
+//! the row, so the other stops working too, and sending another email for
+//! the address deletes the rows before it. Both work for
+//! [`CONFIRM_TTL_SECONDS`]. Wrong codes are throttled per account and per
+//! client (throttle.rs).
+//!
+//! An account with no confirmed primary is pending: the site, the API and
+//! git let it do nothing but confirm its address, change it, or sign out.
+//! The invite it signed up with was spent then, and what it gives (its
+//! workspace) is applied in the same transaction that confirms the address
+//! (invites.rs, `apply_invite_statements`).
 
 use std::collections::HashMap;
 
@@ -32,9 +47,18 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
+use crate::email::Confirming;
+use crate::invites::AwaitingJoin;
 use crate::security::{PEOPLE_ONLY, is_person};
-use crate::throttle::CONFIRM_ACCOUNT;
-use crate::{Identity, VERIFY_TTL_SECONDS, crypto, email};
+use crate::throttle::{self, CODE_ACCOUNT, CODE_CLIENT, CODE_THROTTLED, CONFIRM_ACCOUNT};
+use crate::{Identity, crypto, email};
+
+/// The one answer to a code that does not confirm anything: wrong, used,
+/// expired, or for an address no longer on the account.
+pub const WRONG_CODE: &str = "That code is not right, or it has expired. Check the latest email from g1t, or send a new code.";
+
+/// The answer when a confirmation email was sent less than a minute ago.
+pub const SENT_RECENTLY: &str = "We sent an email less than a minute ago. Check your inbox, then try again.";
 
 /// One row of `user_emails`.
 #[derive(Clone, Debug, Deserialize)]
@@ -216,24 +240,53 @@ impl Identity {
         self.emails_view(&a.user.id).await
     }
 
-    /// Stores a confirmation link for one address and emails it.
-    async fn send_address_link(&self, user_id: &str, username: &str, row: &EmailRow) -> Result<()> {
+    /// The key confirmation codes are kept under: IDENTITY_KEY, or none in
+    /// a development setup without one.
+    fn code_key(&self) -> Vec<u8> {
+        self.env.secret("IDENTITY_KEY").map(|key| key.to_string().into_bytes()).unwrap_or_default()
+    }
+
+    /// Stores a new code and link for one address, ending any sent before
+    /// for it, and emails them.
+    async fn send_confirmation(&self, user_id: &str, username: &str, row: &EmailRow, confirming: Confirming) -> Result<()> {
         let token = crypto::random_hex(32);
+        let code = crypto::random_digits(CONFIRM_CODE_DIGITS);
+        let id = crypto::sha256_hex(&token);
+        let code_hash = crypto::code_hash(&self.code_key(), &id, &code);
         self.db
             .batch(vec![
+                // A new email ends the code and link of the one before.
+                self.db
+                    .prepare("DELETE FROM email_tokens WHERE user_id = ? AND kind = 'verify' AND email_id = ?")
+                    .bind(&[user_id.into(), row.id.as_str().into()])?,
                 self.db
                     .prepare(format!(
-                        "INSERT INTO email_tokens (id, user_id, kind, expires_at, email_id)
-                         VALUES (?, ?, 'verify', {}, ?)",
-                        sql_after(VERIFY_TTL_SECONDS)
+                        "INSERT INTO email_tokens (id, user_id, kind, expires_at, email_id, code_hash)
+                         VALUES (?, ?, 'verify', {}, ?, ?)",
+                        sql_after(CONFIRM_TTL_SECONDS)
                     ))
-                    .bind(&[crypto::sha256_hex(&token).into(), user_id.into(), row.id.as_str().into()])?,
+                    .bind(&[id.as_str().into(), user_id.into(), row.id.as_str().into(), code_hash.as_str().into()])?,
                 self.db
                     .prepare(format!("UPDATE user_emails SET sent_at = {SQL_NOW} WHERE id = ?"))
                     .bind(&[row.id.as_str().into()])?,
             ])
             .await?;
-        email::send_added_address(&self.env, &row.display, username, &token).await
+        email::send_confirmation(&self.env, &row.display, username, confirming, &token, &code).await
+    }
+
+    /// Sends a new account its first code and link, to its primary.
+    pub async fn send_primary_confirmation(&self, user_id: &str, username: &str) -> Result<()> {
+        let Some(account) = self.account_row(user_id).await? else {
+            return Ok(());
+        };
+        let rows = self.email_rows(user_id).await?;
+        let Some(row) = rows.iter().find(|row| Some(row.id.as_str()) == account.primary_email_id.as_deref()) else {
+            return Ok(());
+        };
+        if row.verified_at.is_some() {
+            return Ok(());
+        }
+        self.send_confirmation(user_id, username, row, Confirming::NewAccount).await
     }
 
     /// `add_email`.
@@ -258,7 +311,7 @@ impl Identity {
             }
             // Added before and not confirmed: adding it again sends the link again.
             if may_resend(row.sent_at.as_deref(), now_ms()) && self.allow(CONFIRM_ACCOUNT, &a.user.id).await? {
-                self.send_address_link(&a.user.id, &a.user.username, row).await?;
+                self.send_confirmation(&a.user.id, &a.user.username, row, Confirming::AddedAddress).await?;
             }
             return self.emails_view(&a.user.id).await;
         }
@@ -306,7 +359,7 @@ impl Identity {
         }
         if !self.allow(CONFIRM_ACCOUNT, &a.user.id).await? {
             worker::console_log!("confirmation email held back: too many this hour");
-        } else if let Err(error) = self.send_address_link(&a.user.id, &a.user.username, &row).await {
+        } else if let Err(error) = self.send_confirmation(&a.user.id, &a.user.username, &row, Confirming::AddedAddress).await {
             worker::console_error!("confirmation email failed: {error}");
         }
         self.log_security(&a.user.id, "email_added", Some(&row.display), None).await;
@@ -329,18 +382,33 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, "That address is already confirmed."));
         }
         if !may_resend(row.sent_at.as_deref(), now_ms()) {
-            return Ok(Outcome::fail(FailureCode::Conflict, "A link was sent less than a minute ago. Check your inbox, then try again."));
+            return Ok(Outcome::fail(FailureCode::Conflict, SENT_RECENTLY));
         }
         if !self.allow(CONFIRM_ACCOUNT, &a.user.id).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
         }
-        self.send_address_link(&a.user.id, &a.user.username, row).await?;
+        let confirming = if self.account_confirmed(&a.user.id).await? { Confirming::AddedAddress } else { Confirming::NewAccount };
+        self.send_confirmation(&a.user.id, &a.user.username, row, confirming).await?;
         Ok(Outcome::Ok(true))
     }
 
-    /// The banner's "resend": the link for the primary of an account that
-    /// has not confirmed it, or for its oldest unconfirmed address when a
-    /// confirmed account elsewhere took its primary.
+    /// Whether the account has a confirmed primary: whether it is past the
+    /// confirmation page.
+    pub async fn account_confirmed(&self, user_id: &str) -> Result<bool> {
+        let Some(account) = self.account_row(user_id).await? else {
+            return Ok(false);
+        };
+        Ok(self
+            .email_rows(user_id)
+            .await?
+            .iter()
+            .any(|row| Some(row.id.as_str()) == account.primary_email_id.as_deref() && row.verified_at.is_some()))
+    }
+
+    /// The confirmation page's "send a new code": a new code and link for
+    /// the primary of an account that has not confirmed it, or for its
+    /// oldest unconfirmed address when a confirmed account elsewhere took
+    /// its primary. At most one a minute; the ones before stop working.
     pub async fn resend_primary(&self, user: &g1t_contracts::User) -> Result<Outcome<bool>> {
         let Some(account) = self.account_row(&user.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
@@ -353,31 +421,186 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, "Add an email address in your settings first."));
         };
         if !may_resend(row.sent_at.as_deref(), now_ms()) {
-            return Ok(Outcome::Ok(true));
+            return Ok(Outcome::fail(FailureCode::Conflict, SENT_RECENTLY));
         }
-        let token = crypto::random_hex(32);
-        self.db
-            .batch(vec![
-                self.db
-                    .prepare(format!(
-                        "INSERT INTO email_tokens (id, user_id, kind, expires_at, email_id)
-                         VALUES (?, ?, 'verify', {}, ?)",
-                        sql_after(VERIFY_TTL_SECONDS)
-                    ))
-                    .bind(&[crypto::sha256_hex(&token).into(), user.id.as_str().into(), row.id.as_str().into()])?,
-                self.db
-                    .prepare(format!("UPDATE user_emails SET sent_at = {SQL_NOW} WHERE id = ?"))
-                    .bind(&[row.id.as_str().into()])?,
-            ])
-            .await?;
-        email::send_verification(&self.env, &row.display, &account.username, &token).await?;
+        self.send_confirmation(&user.id, &account.username, row, Confirming::NewAccount).await?;
         Ok(Outcome::Ok(true))
     }
 
-    /// Confirms an address after its link was followed: `email_id`, or the
-    /// primary for links sent before addresses had ids. Returns the address
-    /// confirmed, or why it could not be.
-    pub async fn confirm_address(&self, user_id: &str, email_id: Option<&str>) -> Result<Outcome<String>> {
+    /// `change_pending_email`: the confirmation page's "wrong address?".
+    /// Only for an account with no confirmed address: its unconfirmed
+    /// addresses are replaced by this one, which becomes the primary and
+    /// gets a new code and link. Needs no password: the account has nothing
+    /// yet that one would protect, and the new address still has to be
+    /// confirmed. Counts against the confirmation emails an hour.
+    pub async fn change_pending_email(&self, a: PendingEmailArgs) -> Result<Outcome<AccountEmails>> {
+        if !is_person(&a.user) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
+        }
+        let typed = a.email.trim();
+        let Some(email) = normalize_email(typed) else {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Enter a valid email address."));
+        };
+        if parse_noreply(&email).is_some() || email.ends_with("@users.g1t.sh") {
+            return Ok(Outcome::fail(FailureCode::Invalid, "That is a g1t noreply address; use an address you receive mail at."));
+        }
+        let rows = self.email_rows(&a.user.id).await?;
+        if rows.iter().any(|row| row.verified_at.is_some()) {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "Your account has a confirmed address already. Change your addresses in your email settings.",
+            ));
+        }
+        if self.user_with_verified_email(&email).await?.is_some() {
+            return Ok(Outcome::fail(FailureCode::Conflict, "That address is confirmed on another g1t account."));
+        }
+        // The address it has already: nothing to change; the page's "send a
+        // new code" sends one.
+        if let [only] = rows.as_slice()
+            && only.email == email
+        {
+            return self.emails_view(&a.user.id).await;
+        }
+        if !self.allow(CONFIRM_ACCOUNT, &a.user.id).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
+        }
+        let now = now_ms();
+        let row = EmailRow {
+            id: new_id("eml", now),
+            email: email.clone(),
+            display: typed.to_owned(),
+            verified_at: None,
+            sent_at: None,
+            created_at: rfc3339(now),
+        };
+        let user = JsValue::from(a.user.id.as_str());
+        // One transaction: every unconfirmed address and its codes go, the
+        // new one comes in as the primary.
+        let changed = self
+            .db
+            .batch(vec![
+                self.db
+                    .prepare("DELETE FROM email_tokens WHERE user_id = ? AND kind = 'verify'")
+                    .bind(&[user.clone()])?,
+                self.db
+                    .prepare("UPDATE users SET primary_email_id = NULL, backup_email_id = NULL, email = NULL, email_verified_at = NULL WHERE id = ?")
+                    .bind(&[user.clone()])?,
+                self.db
+                    .prepare("DELETE FROM user_emails WHERE user_id = ? AND verified_at IS NULL")
+                    .bind(&[user.clone()])?,
+                self.db
+                    .prepare("INSERT INTO user_emails (id, user_id, email, display, created_at) VALUES (?, ?, ?, ?, ?)")
+                    .bind(&[
+                        row.id.as_str().into(),
+                        user.clone(),
+                        row.email.as_str().into(),
+                        row.display.as_str().into(),
+                        row.created_at.as_str().into(),
+                    ])?,
+                self.db
+                    .prepare("UPDATE users SET primary_email_id = ?, email = ? WHERE id = ?")
+                    .bind(&[row.id.as_str().into(), row.email.as_str().into(), user.clone()])?,
+            ])
+            .await;
+        if let Err(error) = changed {
+            if error.to_string().contains("UNIQUE") {
+                return Ok(Outcome::fail(FailureCode::Conflict, "That address is already registered."));
+            }
+            return Err(error);
+        }
+        self.log_security(&a.user.id, "email_changed_before_confirming", Some(&row.display), None).await;
+        if let Err(error) = self.send_confirmation(&a.user.id, &a.user.username, &row, Confirming::NewAccount).await {
+            worker::console_error!("confirmation email failed: {error}");
+        }
+        self.announce_email("user.primary_email_changed", &a.user.id, false).await;
+        self.emails_view(&a.user.id).await
+    }
+
+    /// `confirm_email_code`: the code from a confirmation email, typed by
+    /// the signed-in person it was sent to. Every outstanding code of the
+    /// account is compared, each in constant time; wrong ones are counted
+    /// against the account and the client (throttle.rs). A right one is
+    /// used up with its link, then confirms the address it was sent to.
+    pub async fn confirm_email_code(&self, a: ConfirmEmailCodeArgs) -> Result<Outcome<EmailConfirmed>> {
+        #[derive(Deserialize)]
+        struct Sent {
+            id: String,
+            email_id: Option<String>,
+            code_hash: String,
+            expires_at: String,
+        }
+        if !is_person(&a.user) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
+        }
+        let account_key = throttle::key(CODE_ACCOUNT, &a.user.id);
+        let client_key = a
+            .client
+            .as_deref()
+            .filter(|client| !client.trim().is_empty())
+            .map(|client| throttle::key(CODE_CLIENT, client));
+        // While either key is locked, no code is even compared.
+        let mut locked = self.locked(&account_key).await?;
+        if !locked && let Some(client_key) = &client_key {
+            locked = self.locked(client_key).await?;
+        }
+        if locked {
+            return Ok(Outcome::fail(FailureCode::Conflict, CODE_THROTTLED));
+        }
+        let now = rfc3339(now_ms());
+        let sent: Vec<Sent> = match tidy_confirm_code(&a.code) {
+            Some(_) => self
+                .db
+                .prepare(
+                    "SELECT id, email_id, code_hash, expires_at FROM email_tokens
+                     WHERE user_id = ? AND kind = 'verify' AND code_hash IS NOT NULL",
+                )
+                .bind(&[a.user.id.as_str().into()])?
+                .all()
+                .await?
+                .results::<Sent>()?
+                .into_iter()
+                .filter(|sent| still_works(&sent.expires_at, &now))
+                .collect(),
+            None => Vec::new(),
+        };
+        let code = tidy_confirm_code(&a.code).unwrap_or_default();
+        let key = self.code_key();
+        let matched = matching_code(&key, &code, sent.iter().map(|sent| (sent.id.as_str(), sent.code_hash.as_str())))
+            .and_then(|index| sent.get(index));
+        // Used once: whoever deletes the row first has it.
+        let used = match matched {
+            Some(sent) => self
+                .db
+                .prepare("DELETE FROM email_tokens WHERE id = ? AND user_id = ? RETURNING id")
+                .bind(&[sent.id.as_str().into(), a.user.id.as_str().into()])?
+                .first::<serde_json::Value>(None)
+                .await?
+                .is_some(),
+            None => false,
+        };
+        let Some(sent) = matched.filter(|_| used) else {
+            self.count(CODE_ACCOUNT, &account_key).await?;
+            if let Some(client_key) = &client_key {
+                self.count(CODE_CLIENT, client_key).await?;
+            }
+            return Ok(Outcome::fail(FailureCode::Invalid, WRONG_CODE));
+        };
+        self.clear(&account_key).await?;
+        // Any other code and link for the same address go too.
+        self.db
+            .prepare("DELETE FROM email_tokens WHERE user_id = ? AND kind = 'verify' AND email_id IS ?")
+            .bind(&[a.user.id.as_str().into(), sent.email_id.as_deref().map_or(JsValue::NULL, Into::into)])?
+            .run()
+            .await?;
+        self.confirm_address(&a.user.id, sent.email_id.as_deref()).await
+    }
+
+    /// Confirms an address after its link was followed or its code typed:
+    /// `email_id`, or the primary for links sent before addresses had ids.
+    /// When this confirms the account, the invite it signed up with is
+    /// applied in the same transaction. Returns what it did, or why the
+    /// address could not be confirmed.
+    pub async fn confirm_address(&self, user_id: &str, email_id: Option<&str>) -> Result<Outcome<EmailConfirmed>> {
         let Some(account) = self.account_row(user_id).await? else {
             return Ok(Outcome::fail(FailureCode::Invalid, "This confirmation link is not valid or has expired."));
         };
@@ -392,8 +615,19 @@ impl Identity {
             ));
         };
         if row.verified_at.is_some() {
-            return Ok(Outcome::Ok(row.display));
+            return Ok(Outcome::Ok(EmailConfirmed {
+                username: account.username,
+                email: row.display,
+                verified: self.account_confirmed(user_id).await?,
+                ..EmailConfirmed::default()
+            }));
         }
+        // The invite the account signed up with, if it waits for this.
+        let awaiting = self.awaiting_invite(user_id).await?;
+        let join = match &awaiting {
+            Some(invite) => Some(self.awaiting_join(invite).await),
+            None => None,
+        };
         let won = |sql: &str| sql.replace("{WON}", "EXISTS (SELECT 1 FROM user_emails WHERE id = ?1 AND verified_at IS NOT NULL)");
         let id = JsValue::from(row.id.as_str());
         let user = JsValue::from(user_id);
@@ -401,9 +635,9 @@ impl Identity {
         // One transaction. Confirm this row only if no account has the
         // address confirmed; then, only if it was, drop everyone else's
         // claim to it, and make it this account's primary when the account
-        // has no confirmed primary.
-        self.db
-            .batch(vec![
+        // has no confirmed primary; then, if that confirmed the account,
+        // apply the invite it signed up with.
+        let mut statements = vec![
                 self.db
                     .prepare(format!(
                         "UPDATE user_emails SET verified_at = {SQL_NOW}
@@ -439,8 +673,11 @@ impl Identity {
                            OR NOT EXISTS (SELECT 1 FROM user_emails WHERE id = users.primary_email_id AND verified_at IS NOT NULL))",
                     ))
                     .bind(&[id.clone(), address.clone(), user.clone()])?,
-            ])
-            .await?;
+        ];
+        if let (Some(invite), Some(join)) = (&awaiting, &join) {
+            statements.extend(self.apply_invite_statements(user_id, invite, join)?);
+        }
+        self.db.batch(statements).await?;
         let confirmed = self
             .email_rows(user_id)
             .await?
@@ -454,7 +691,33 @@ impl Identity {
         }
         self.log_security(user_id, "email_verified", Some(&row.display), None).await;
         self.announce_email("user.email_verified", user_id, false).await;
-        Ok(Outcome::Ok(row.display))
+        let verified = self.account_confirmed(user_id).await?;
+        let (mut joined, mut invite_lapsed) = (None, None);
+        if let (Some(invite), Some(join), true) = (&awaiting, &join, verified) {
+            let user = g1t_contracts::User {
+                id: user_id.to_owned(),
+                username: account.username.clone(),
+                verified: true,
+                ..g1t_contracts::User::default()
+            };
+            joined = self.after_applied(invite, &user, join).await?;
+            invite_lapsed = match join {
+                AwaitingJoin::Lapsed(why) => Some(why.clone()),
+                // Revoked between the read and the transaction.
+                AwaitingJoin::Join { .. } if joined.is_none() => Some(
+                    "Your email address is confirmed. The invite you signed up with no longer applies, so it did not join you to a workspace."
+                        .to_owned(),
+                ),
+                _ => None,
+            };
+        }
+        Ok(Outcome::Ok(EmailConfirmed {
+            username: account.username,
+            email: row.display,
+            verified,
+            joined,
+            invite_lapsed,
+        }))
     }
 
     /// `remove_email`.
@@ -923,6 +1186,26 @@ impl Identity {
     }
 }
 
+/// Whether a code and link that stop working at `expires_at` still work
+/// at `now` (both RFC 3339, which sort as they read).
+pub fn still_works(expires_at: &str, now: &str) -> bool {
+    expires_at > now
+}
+
+/// Which of the account's outstanding codes `code` is, by index: each
+/// `(token id, code hash)` is compared in constant time, and every one is
+/// compared whatever matched before it.
+pub fn matching_code<'a>(key: &[u8], code: &str, sent: impl Iterator<Item = (&'a str, &'a str)>) -> Option<usize> {
+    let mut found = None;
+    for (index, (id, hash)) in sent.enumerate() {
+        let expected = crypto::code_hash(key, id, code);
+        if crypto::same(&expected, hash) && found.is_none() {
+            found = Some(index);
+        }
+    }
+    if code.is_empty() { None } else { found }
+}
+
 /// Where a password reset goes.
 #[derive(Debug, Deserialize)]
 pub struct ResetTarget {
@@ -1001,6 +1284,41 @@ mod tests {
         assert!(guards_pushes(&ada));
         ada.private_email = 0;
         assert!(!guards_pushes(&ada));
+    }
+
+    #[test]
+    fn a_code_works_for_its_own_link_and_address_only_and_not_after_a_new_email() {
+        let key = b"identity key".as_slice();
+        let first = ("link-1", crypto::code_hash(key, "link-1", "482913"));
+        let other_address = ("link-2", crypto::code_hash(key, "link-2", "100200"));
+        fn sent<'a>(rows: &'a [(&'static str, String)]) -> Vec<(&'static str, &'a str)> {
+            rows.iter().map(|(id, hash)| (*id, hash.as_str())).collect()
+        }
+        let rows = vec![first.clone(), other_address.clone()];
+        assert_eq!(matching_code(key, "482913", sent(&rows).into_iter()), Some(0));
+        assert_eq!(matching_code(key, "100200", sent(&rows).into_iter()), Some(1));
+        // A wrong code, an empty one, or the right one under another key.
+        assert_eq!(matching_code(key, "482914", sent(&rows).into_iter()), None);
+        assert_eq!(matching_code(key, "", sent(&rows).into_iter()), None);
+        assert_eq!(matching_code(b"another key", "482913", sent(&rows).into_iter()), None);
+        // Used, or replaced by a new email: the row is gone, and the new
+        // pair's code is bound to its own link, so the old code fails.
+        let resent = vec![("link-3", crypto::code_hash(key, "link-3", "731055")), other_address];
+        assert_eq!(matching_code(key, "482913", sent(&resent).into_iter()), None);
+        assert_eq!(matching_code(key, "731055", sent(&resent).into_iter()), Some(0));
+    }
+
+    #[test]
+    fn a_code_and_link_stop_working_after_an_hour() {
+        let sent = 1_800_000_000_000;
+        let expires = rfc3339(sent + CONFIRM_TTL_SECONDS * 1000);
+        assert!(still_works(&expires, &rfc3339(sent)));
+        assert!(still_works(&expires, &rfc3339(sent + 59 * 60 * 1000)));
+        assert!(!still_works(&expires, &rfc3339(sent + 60 * 60 * 1000)));
+        assert!(!still_works(&expires, &rfc3339(sent + 61 * 60 * 1000)));
+        // Long enough to switch to a mail app, short enough that six
+        // digits are not worth guessing.
+        assert!((30 * 60..=60 * 60).contains(&CONFIRM_TTL_SECONDS));
     }
 
     #[test]

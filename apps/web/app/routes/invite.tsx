@@ -207,9 +207,9 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
       </h2>
       <p className="mt-1 text-sm text-muted">
         {invite.workspace
-          ? `You land in ${invite.workspace.name} as soon as it is made.`
+          ? `You join ${invite.workspace.name} as soon as you confirm your email.`
           : invite.repository
-            ? `You land in ${invite.repository.name} as soon as it is made.`
+            ? `You get ${invite.repository.name} as soon as you confirm your email.`
             : "It takes a minute."}
       </p>
       {loaded.github && (
@@ -222,14 +222,14 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
         <input type="hidden" name="intent" value="register" />
         <Honeypot started={loaded.started} />
         {invite.address ? (
-          <Field label="Email" hint="Your invite was sent here, so this address is confirmed already.">
+          <Field label="Email" hint="Your invite was sent here. We email it a code to confirm it before you start.">
             <span className="relative block">
               <Input name="email" type="email" value={invite.address} readOnly aria-readonly="true" autoComplete="email" />
               <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
             </span>
           </Field>
         ) : (
-          <Field label="Email" hint="We send a link to confirm it.">
+          <Field label="Email" hint="We email it a code to confirm it before you start.">
             <Input name="email" type="email" autoComplete="email" required maxLength={254} />
           </Field>
         )}

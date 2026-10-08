@@ -28,6 +28,7 @@
         "whoami",
         "list_emails",
         "add_email",
+        "confirm_email",
         "remove_email",
         "update_email_settings"
       ]
@@ -1412,7 +1413,7 @@
           "Accounts"
         ],
         "summary": "Add an email address",
-        "description": "Add an email address to your account. g1t emails it a link to confirm it; until then it cannot be primary and does not sign you in. Adding an address you added before and have not confirmed sends the link again. An address another account has confirmed cannot be added. An account has at most 10. Needs your account `password`; your confirmed addresses are told. People only.\n\nAnswers `403` with code `reauth_required` when `password` is missing or wrong, and `409` when another account has confirmed the address. The new address stays unconfirmed until its link is followed.",
+        "description": "Add an email address to your account. g1t emails it a link to confirm it; until then it cannot be primary and does not sign you in. Adding an address you added before and have not confirmed sends the link again. An address another account has confirmed cannot be added. An account has at most 10. Needs your account `password`; your confirmed addresses are told. People only.\n\nAnswers `403` with code `reauth_required` when `password` is missing or wrong, and `409` when another account has confirmed the address. g1t emails the address a six-digit code and a link; it stays unconfirmed until the code is sent to [`confirm_email`](/reference/api/accounts/confirm-email/) or the link is followed.",
         "x-operation": "add_email",
         "x-mcp-tool": "account",
         "x-mcp-action": "add_email",
@@ -1542,6 +1543,117 @@
               "example": {
                 "email": "ada.l@example.org",
                 "password": "…"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/emails/confirm": {
+      "post": {
+        "operationId": "confirm_email",
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Confirm an email address",
+        "description": "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also joins the workspace its invite named, when the invite still applies: the answer's `joined` names it, or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only.\n\nThe code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `joined` is set when confirming a new account's address joined the workspace its invite named; when the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address).",
+        "x-operation": "confirm_email",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "confirm_email",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "username": "ada",
+                  "email": "ada@example.com",
+                  "verified": true,
+                  "joined": "acme",
+                  "invite_lapsed": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "The six-digit code from the confirmation email. Spaces and hyphens are ignored."
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              },
+              "example": {
+                "code": "482913"
               }
             }
           }

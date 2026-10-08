@@ -1683,6 +1683,15 @@ impl<S: GitStore> Repos<S> {
             }
         }
         let viewer = viewer?;
+        // A person who has not confirmed their email address can do
+        // nothing with git until they do: told so, not asked to sign in.
+        if viewer.as_ref().is_some_and(g1t_contracts::User::awaits_confirmation) {
+            let site = request.url()?.origin().ascii_serialization();
+            return git_http::refuse(Outcome::<()>::fail(
+                FailureCode::Forbidden,
+                g1t_contracts::accounts::confirm_email_first(&site),
+            ));
+        }
         // A run credential is checked against its grants, then acts as the
         // person it works for. See run_access.rs.
         let (request, viewer, audit) = match self.admit_git(request, git, viewer, found.as_ref()).await? {

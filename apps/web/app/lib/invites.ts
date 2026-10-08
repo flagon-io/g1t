@@ -43,7 +43,7 @@ export function cleanCode(raw: string | null | undefined): string {
 }
 
 type Listed = {
-  status: "pending" | "redeemed" | "expired" | "revoked";
+  status: "pending" | "awaiting_confirmation" | "redeemed" | "expired" | "revoked";
   redeemedBy: string | null;
   email: string | null;
   workspace: string | null;
@@ -54,6 +54,12 @@ export function inviteState(invite: Listed): { label: string; tone: "pending" | 
   switch (invite.status) {
     case "pending":
       return { label: "Pending", tone: "pending" };
+    case "awaiting_confirmation":
+      // The account is made; it joins once it confirms its address.
+      return {
+        label: invite.redeemedBy ? `@${invite.redeemedBy} is confirming their email` : "Confirming their email",
+        tone: "pending",
+      };
     case "redeemed":
       return { label: invite.redeemedBy ? `Joined as @${invite.redeemedBy}` : "Used", tone: "done" };
     case "expired":

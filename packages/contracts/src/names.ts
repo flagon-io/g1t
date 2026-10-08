@@ -6,7 +6,7 @@ const REPO_NAME = /^[a-z0-9._-]{1,100}$/;
 /** Routes and reserved words that may not be registered as usernames. */
 const RESERVED = new Set([
   "api", "mcp", "login", "logout", "register", "new", "settings", "search",
-  "admin", "auth", "integrations", "pulls", "issues", "verify", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "about", "pricing",
+  "admin", "auth", "integrations", "pulls", "issues", "verify", "confirm-email", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "about", "pricing",
   // g1t itself, and the name its agent once went by: everything g1t does is
   // shown as `g1t`, so nobody else may be called either.
   "g1t", "g1t-agent",

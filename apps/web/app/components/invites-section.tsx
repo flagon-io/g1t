@@ -19,7 +19,7 @@ function InviteRow({ invite, origin }: { invite: Invite; origin: string }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${TONE[state.tone]}`}>{state.label}</span>
         <span className="min-w-0 truncate text-sm">{inviteFor(invite)}</span>
-        {invite.status === "pending" && (
+        {(invite.status === "pending" || invite.status === "awaiting_confirmation") && (
           <Form method="post" className="ml-auto">
             <input type="hidden" name="intent" value="revoke-invite" />
             <input type="hidden" name="id" value={invite.id} />

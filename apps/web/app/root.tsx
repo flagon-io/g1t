@@ -31,7 +31,7 @@ import {
   useSubmit,
 } from "react-router";
 
-import { type User, hasAccessIn, sharedWorkspaces } from "@g1t/contracts";
+import { type User, awaitsConfirmation, hasAccessIn, sharedWorkspaces } from "@g1t/contracts";
 
 import type { Route } from "./+types/root";
 import appCss from "./app.css?url";
@@ -85,7 +85,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
   // What sign-up buttons say: Request access while g1t is invite-only.
   const [shell, mode] = await Promise.all([
-    user
+    // An account still confirming its address sees only the pages that
+    // allows (lib/confirm-gate.ts), in the visitor's frame.
+    user && !awaitsConfirmation(user)
       ? shellFor(user, params, chosen, context).catch((error: unknown) => {
           // A sidebar that could not be read is no reason to lose the page,
           // or to draw it as if they were signed out.
@@ -467,8 +469,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const root = loaded ?? (inBrowser ? lastRoot : undefined);
   const user = root?.user;
   const { pathname, search } = useLocation();
-  // /verify lands here with ?sent=1 once it has sent the link again.
-  const sentAgain = new URLSearchParams(search).get("sent") === "1";
   // Drawn around the error page too: a 404 keeps the sidebar out of a
   // project or workspace the viewer cannot see.
   const error = useRouteError();
@@ -482,26 +482,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
       owner={root.shell.compute.owner}
     />
   );
-  const verify = user && !user.verified && (
-    <Form
-      method="post"
-      action="/verify"
+  // On the few pages an account still confirming its address can open
+  // besides /confirm-email (policies, support, signing in): the way back.
+  const verify = user && awaitsConfirmation(user) && pathname !== "/confirm-email" && (
+    <p
+      role="status"
       className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm"
     >
-      <span role="status">
-        {sentAgain
-          ? "We sent the link again. It can take a minute to arrive."
-          : "Confirm your email address to create repositories and push. We sent you a link."}
-      </span>
-      <SubmitButton
-        name="intent"
-        value="resend-verification"
-        pending="Sending…"
-        className="inline-flex items-center gap-1.5 font-medium underline underline-offset-4 disabled:opacity-50"
-      >
-        {sentAgain ? "Send another" : "Send it again"}
-      </SubmitButton>
-    </Form>
+      <span>Confirm your email address to start using g1t.</span>
+      <Link to="/confirm-email" className="font-medium underline underline-offset-4">
+        Enter your code
+      </Link>
+    </p>
   );
   // A workspace that requires two-factor authentication of someone who
   // has not turned it on: they keep their place, and cannot use it yet.
@@ -535,7 +527,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         >
           Skip to content
         </a>
-        {root?.shell && usesAppShell(pathname, user != null) ? (
+        {root?.shell && usesAppShell(pathname, user != null && !awaitsConfirmation(user)) ? (
           <AppShell user={user ?? null} shell={root.shell} missing={missing} banner={banner}>
             {children}
           </AppShell>

@@ -227,6 +227,14 @@ impl User {
         self.kind == PrincipalKind::System
     }
 
+    /// Whether this is a person whose account has not confirmed its email
+    /// address. Such an account can only confirm it (or change it, or sign
+    /// out): the site, the API, MCP and git refuse it everything else
+    /// ([`accounts::confirm_email_first`]).
+    pub fn awaits_confirmation(&self) -> bool {
+        self.kind == PrincipalKind::User && !self.verified
+    }
+
     pub fn role_in(&self, slug: &str) -> Option<Role> {
         self.workspaces
             .iter()

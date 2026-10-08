@@ -1112,13 +1112,17 @@ pub const INVITES_PER_USER: u32 = 5;
 /// otherwise.
 pub const INVITE_TTL_DAYS: u64 = 30;
 
-/// Where an invite stands. Only a pending invite can be used or revoked.
-/// An expired or revoked invite that was never used gives its inviter the
-/// invite back.
+/// Where an invite stands. Only a pending invite can be used. A pending
+/// invite can be revoked, and so can one awaiting confirmation. An expired
+/// or revoked invite that was never used gives its inviter the invite back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InviteStatus {
     Pending,
+    /// Used to make an account that has not confirmed its email address
+    /// yet. The code is spent; the workspace (or repository) it gives is
+    /// joined when the address is confirmed, unless it is revoked first.
+    AwaitingConfirmation,
     Redeemed,
     Expired,
     Revoked,

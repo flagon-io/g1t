@@ -26,7 +26,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Accounts",
         "Signing in from a tool, who a token acts as, and your email addresses.",
-        &[Op::Whoami, Op::ListEmails, Op::AddEmail, Op::RemoveEmail, Op::UpdateEmailSettings],
+        &[Op::Whoami, Op::ListEmails, Op::AddEmail, Op::ConfirmEmail, Op::RemoveEmail, Op::UpdateEmailSettings],
     ),
     (
         "Notifications",
@@ -535,6 +535,7 @@ fn title(op: Op) -> &'static str {
         Op::LeaveWorkspace => "Leave a workspace",
         Op::ListEmails => "List your email addresses",
         Op::AddEmail => "Add an email address",
+        Op::ConfirmEmail => "Confirm an email address",
         Op::RemoveEmail => "Remove an email address",
         Op::UpdateEmailSettings => "Change your email settings",
         Op::ListInvites => "List your invites",

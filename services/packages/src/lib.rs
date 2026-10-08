@@ -253,12 +253,15 @@ impl Packages {
     }
 
     async fn viewer_for(&self, username: &str, secret: &str) -> Result<Viewer> {
-        g1t_kit::call(
+        let viewer: Viewer = g1t_kit::call(
             &self.identity,
             "user_for_git_credentials",
             &GitCredentialsArgs { username: username.to_owned(), secret: secret.to_owned() },
         )
-        .await
+        .await?;
+        // An account that has not confirmed its email address signs in to
+        // nothing yet: its credentials are refused like wrong ones.
+        Ok(viewer.filter(|user| !user.awaits_confirmation()))
     }
 
     /// A repository of the workspace by name, whoever may see it.

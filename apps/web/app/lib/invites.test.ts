@@ -56,6 +56,10 @@ test("each invite says where it stands and whom it is for", () => {
   const base = { redeemedBy: null, email: null, workspace: null };
   assert.deepEqual(inviteState({ ...base, status: "pending" }), { label: "Pending", tone: "pending" });
   assert.deepEqual(inviteState({ ...base, status: "redeemed", redeemedBy: "ada" }), { label: "Joined as @ada", tone: "done" });
+  assert.deepEqual(inviteState({ ...base, status: "awaiting_confirmation", redeemedBy: "ada" }), {
+    label: "@ada is confirming their email",
+    tone: "pending",
+  });
   assert.deepEqual(inviteState({ ...base, status: "expired" }), { label: "Expired", tone: "dead" });
   assert.deepEqual(inviteState({ ...base, status: "revoked" }), { label: "Revoked", tone: "dead" });
   assert.equal(inviteFor({ ...base, status: "pending" }), "Anyone with the link");

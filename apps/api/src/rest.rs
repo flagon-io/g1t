@@ -44,6 +44,7 @@ pub const ROUTES: &[Route] = &[
     route("DELETE", "/workspaces/:workspace", Op::DeleteWorkspace, &[]),
     route("GET", "/user/emails", Op::ListEmails, &[]),
     route("POST", "/user/emails", Op::AddEmail, &[]),
+    route("POST", "/user/emails/confirm", Op::ConfirmEmail, &[]),
     route("DELETE", "/user/emails/:email", Op::RemoveEmail, &[]),
     route("PATCH", "/user/email-settings", Op::UpdateEmailSettings, &[]),
     route("GET", "/user/invites", Op::ListInvites, &[]),

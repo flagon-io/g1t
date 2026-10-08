@@ -11,6 +11,9 @@ g1t is invite-only for now: to make an account you need an
 on the same page. Usernames are lowercase letters, digits and single
 hyphens, up to 39 characters.
 
+Before you can do anything else, you [confirm your email
+address](#confirming-your-email-address) with the code g1t emails you.
+
 Accounts can only be created in a browser. There is no API for it, by
 design: it keeps passwords out of scripts and agents, and lets g1t protect
 the one place accounts are made.
@@ -115,7 +118,8 @@ people who [asked for access](#asking-for-access). An invite:
 - works once, for one new account;
 - works for 30 days;
 - when it was made for an email address, works only with that address;
-- can be revoked by whoever made it until it is used.
+- can be revoked by whoever made it until it is used, and after that until
+  the new account [confirms its email address](#confirming-your-email-address).
 
 ### Using an invite
 
@@ -124,20 +128,32 @@ who sent it and what it is for (joining a workspace, collaborating on a
 repository, or just making an account), and finishes the job there:
 
 1. **No account yet**: sign up on the page. When the invite was sent to
-   your address, the email field is filled in and locked, and the address
-   is confirmed already, so no confirmation email follows. Choose a
-   username (one is suggested from your address) and a password, or select
+   your address, the email field is filled in and locked. Choose a
+   username (one is suggested from your address) and a password, then
+   [confirm the address](#confirming-your-email-address) with the code g1t
+   emails it, even though the invite came there: an invite link can be
+   forwarded, so it does not prove the inbox is yours. Or select
    **Continue with GitHub**: the invite rides along, and the account uses
-   the invited address when GitHub has verified it too.
+   the invited address when GitHub has verified it too, in which case no
+   confirmation is needed.
 2. **The address already has an account**: select **Sign in to accept**.
    After you sign in, the invite is accepted for you.
 3. **Signed in as someone else**: an invite sent to one address works only
    for an account that has confirmed that address. The page says so and
    offers **Sign out and continue**.
 
-Once the account exists or you have signed in, you land in the workspace
-(or the repository) the invite was for, already a member, with a one-time
-"You're in" banner, and it becomes the workspace your sidebar shows. A
+Once you have signed in, or your new account has confirmed its address,
+you land in the workspace (or the repository) the invite was for, already
+a member, with a one-time "You're in" banner, and it becomes the workspace
+your sidebar shows.
+
+Signing up spends the invite at once, so nobody else can use it while you
+confirm your address, but you join its workspace only when you confirm, in
+the same step. Until then the invite shows as **confirming their email** to
+whoever made it, and they can still revoke it. If the invite is revoked or
+expires, or its workspace is deleted, before you confirm, your address is
+confirmed all the same and g1t tells you the invite no longer applies: ask
+whoever invited you to add you again. A
 code typed at [g1t.sh/register](https://g1t.sh/register) goes to the
 same page.
 
@@ -155,7 +171,9 @@ can ask them for a new one; or ask for access from the same page.
 Each person can have **5** invites out at a time. Pending and used invites
 count; an invite you revoke, or one that expires before anyone uses it,
 comes back to you. The list under the form shows each invite's state:
-pending, joined (with the username of who joined), expired or revoked. You
+pending, confirming their email (used to sign up by someone who has not
+confirmed their address yet), joined (with the username of who joined),
+expired or revoked. You
 must confirm your email before you can make invites. An agent's token and
 a workspace's token cannot make them.
 
@@ -163,8 +181,9 @@ a workspace's token cannot make them.
 
 An owner can invite an email address straight into a workspace from its
 People page; see [members and roles](/guides/workspaces/#members-and-roles).
-When the address has no g1t account, accepting makes the account and joins
-the workspace in one step, and it uses one invite. Inviting someone who is
+When the address has no g1t account, the invite makes the account, which
+joins the workspace once it confirms its email address, and it uses one
+invite. Inviting someone who is
 already on g1t costs nothing.
 
 ### Need more invites?
@@ -193,17 +212,78 @@ does not move you down the list.
 | --- | --- | --- |
 | [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites and how many you have left |
 | [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email` |
-| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite |
+| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite, or one whose new account has not confirmed its address |
 | [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite an address into a workspace. Owners only. |
 
-## Confirming your email
+## Confirming your email address
 
-g1t sends a confirmation link from `noreply@g1t.sh`. It works for 24 hours.
+A new account confirms its email address before it can do anything else on
+g1t. Right after you sign up, g1t emails the address from `noreply@g1t.sh`
+with two ways to confirm it, either one enough:
 
-Until you follow it you can sign in and look around, but you cannot create
-repositories, push, or open issues and pull requests. Those requests fail with `403` and a
-message telling you to confirm your address. To get a new link, sign in and
-use the banner at the top of the site.
+- a **six-digit code**, shown large in the email (and in its subject, so a
+  phone's notification shows it). Type it on the **Confirm your email**
+  page g1t takes you to. On a phone, the keyboard offers it from the
+  message.
+- a **link**, for when you would rather click than type. It works whether
+  or not you are signed in, in any browser.
+
+The code and the link work for **60 minutes**, once. Using either ends the
+other. **Send a new code** on the confirmation page sends a fresh code and
+link, at most once a minute and 10 times an hour, and the ones before stop
+working.
+
+| On the confirmation page | What it does |
+| --- | --- |
+| **Confirm email** | Checks the code. A wrong, used or expired code gets the same answer. After 10 wrong codes in an hour, codes for the account are not checked for a while (a minute, then longer); the link in the email still works. Wrong codes from one network are limited the same way. |
+| **Send a new code** | A new code and link; the ones before stop working. |
+| **Wrong address? Change it** | Replaces the address you signed up with and sends the new one a code. Only while the account has no confirmed address. |
+| **Sign out** | Signs out. Sign in again to come back to the page. |
+
+### Until you confirm
+
+An account that has not confirmed its address can only confirm it:
+
+- **The site** sends every page to the confirmation page, and back to where
+  you were going once you confirm. Signing in and out, password resets,
+  the confirmation link, and g1t's [policies](https://g1t.sh/policies),
+  security, support, status and pricing pages stay open.
+- **The API** answers `403` with a message saying to confirm your address,
+  except for [`GET /user`](/reference/api/accounts/whoami/),
+  [`GET /user/emails`](/reference/api/accounts/list-emails/) and
+  [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/).
+- **The MCP server** answers `403` with the same message.
+- **Git** over HTTPS refuses pushes and fetches with your credentials, with
+  the same message. Package registries treat them as wrong credentials.
+- You cannot create a workspace, join the one your invite named, make
+  invites or tokens, or approve a tool's sign-in.
+
+You cannot make a token before you confirm, so the API and MCP refusals
+matter only for an account that made one before this rule existed.
+
+### Addresses GitHub has confirmed
+
+An account made with **Continue with GitHub** starts confirmed: its address
+is one GitHub has verified, so GitHub has already proved the inbox is
+yours, and no code is sent.
+
+### Accounts that never confirmed
+
+Accounts are confirmed once and stay confirmed. An account made before this
+rule that never confirmed its address, or whose address another account
+confirmed first, is held at the confirmation page the same way the next
+time it signs in; **Send a new code** gets it a code, and **Change it**
+gives it a new address.
+
+### Confirming through the API
+
+| Route | MCP tool and action | What it does |
+| --- | --- | --- |
+| [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/) | `account` `confirm_email` | Confirm an address with the `code` from its email |
+
+The answer says whether the account is now confirmed (`verified`), the
+workspace confirming joined it to (`joined`), or why its invite no longer
+applies (`invite_lapsed`).
 
 ## Email addresses
 
@@ -215,10 +295,10 @@ An account can have up to 10 email addresses. Manage them in
 | Primary | Get account mail and password reset links. Exactly one, always confirmed once any address is. |
 | Confirmed | Sign you in (type it instead of your username), ask for a password reset, and mark commits that carry it as yours. |
 | Backup | Get security notices as well as the primary. Optional, and a confirmed address other than the primary. |
-| Unconfirmed | Nothing yet. It is not yours until you follow the link g1t sent it. |
+| Unconfirmed | Nothing yet. It is not yours until you enter the code or follow the link g1t sent it. |
 
 A confirmed address belongs to one account. Anyone can add an address they
-have not confirmed; the first account to follow its link keeps it, and the
+have not confirmed; the first account to confirm it keeps it, and the
 address leaves every other account that added it. An address another
 account has confirmed cannot be added.
 
@@ -226,8 +306,9 @@ account has confirmed cannot be added.
 
 1. Open [Settings → Emails](https://g1t.sh/settings/emails).
 2. Enter the address under **Add an email address** and select **Add**.
-3. Follow the link g1t sends it. The link works for 24 hours; **Resend
-   link** sends a new one, at most once a minute and 10 times an hour.
+3. Enter the code g1t emails it, or follow the link in the same email.
+   Both work for 60 minutes; **Resend link** sends a new code and link, at
+   most once a minute and 10 times an hour, and ends the ones before.
 
 If your account had no confirmed address yet, the first one you confirm
 becomes your primary.
@@ -312,6 +393,7 @@ commit.
 | --- | --- | --- |
 | [`GET /user/emails`](/reference/api/accounts/list-emails/) | `account` `list_emails` | Your addresses and email settings |
 | [`POST /user/emails`](/reference/api/accounts/add-email/) | `account` `add_email` | Add an address; takes `email` and `password` |
+| [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/) | `account` `confirm_email` | Confirm an address with the `code` from its email |
 | [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/) | `account` `remove_email` | Remove an address; takes `password` |
 | [`PATCH /user/email-settings`](/reference/api/accounts/update-email-settings/) | `account` `update_email_settings` | Change `primary`, `backup`, `private_email` or `block_private_pushes` |
 

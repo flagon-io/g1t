@@ -114,6 +114,7 @@ pub enum Op {
     LeaveWorkspace,
     ListEmails,
     AddEmail,
+    ConfirmEmail,
     RemoveEmail,
     UpdateEmailSettings,
     ListInvites,
@@ -671,7 +672,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 308] = [
+    pub const ALL: [Op; 309] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -684,6 +685,7 @@ impl Op {
         Op::LeaveWorkspace,
         Op::ListEmails,
         Op::AddEmail,
+        Op::ConfirmEmail,
         Op::RemoveEmail,
         Op::UpdateEmailSettings,
         Op::ListInvites,
@@ -1001,6 +1003,7 @@ impl Op {
             Op::LeaveWorkspace => "leave_workspace",
             Op::ListEmails => "list_emails",
             Op::AddEmail => "add_email",
+            Op::ConfirmEmail => "confirm_email",
             Op::RemoveEmail => "remove_email",
             Op::UpdateEmailSettings => "update_email_settings",
             Op::ListInvites => "list_invites",
@@ -1199,6 +1202,9 @@ impl Op {
             }
             Op::AddEmail => {
                 "Add an email address to your account. g1t emails it a link to confirm it; until then it cannot be primary and does not sign you in. Adding an address you added before and have not confirmed sends the link again. An address another account has confirmed cannot be added. An account has at most 10. Needs your account `password`; your confirmed addresses are told. People only."
+            }
+            Op::ConfirmEmail => {
+                "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also joins the workspace its invite named, when the invite still applies: the answer's `joined` names it, or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only."
             }
             Op::RemoveEmail => {
                 "Remove an email address from your account. Never your primary address (make another primary first) and never your last confirmed one. Needs your account `password`; every confirmed address, the removed one included, is told. People only."
@@ -1744,6 +1750,15 @@ impl Op {
                 &[],
             ),
             Op::ListEmails => object(json!({}), &[]),
+            Op::ConfirmEmail => object(
+                json!({
+                    "code": {
+                        "type": "string",
+                        "description": "The six-digit code from the confirmation email. Spaces and hyphens are ignored.",
+                    },
+                }),
+                &["code"],
+            ),
             Op::AddEmail => object(
                 json!({
                     "email": { "type": "string", "description": "The address to add." },
@@ -3239,6 +3254,7 @@ impl Op {
                 | Op::LeaveWorkspace
                 | Op::ListEmails
                 | Op::AddEmail
+                | Op::ConfirmEmail
                 | Op::RemoveEmail
                 | Op::UpdateEmailSettings
                 | Op::ListInvites
@@ -3514,6 +3530,14 @@ impl Op {
             // A person's addresses: identity refuses anyone but a person, and
             // the password is the proof a sensitive change needs.
             Op::ListEmails => pass(identity, "list_emails", &json!({ "user": actor() })).await,
+            Op::ConfirmEmail => {
+                pass(
+                    identity,
+                    "confirm_email_code",
+                    &g1t_contracts::accounts::ConfirmEmailCodeArgs { user: actor(), code: text(input, "code"), client: None },
+                )
+                .await
+            }
             Op::AddEmail | Op::RemoveEmail => {
                 let method = if self == Op::AddEmail { "add_email" } else { "remove_email" };
                 pass(
