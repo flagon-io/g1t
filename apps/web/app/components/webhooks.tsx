@@ -11,6 +11,7 @@ import { EVENT_TYPES, type Hook, type HookDelivery } from "@g1t/contracts";
 import type { WebhooksAction, WebhooksData } from "../lib/webhooks.server";
 import { CopyLine, EmptyState, ErrorText, Field, Input, SubmitButton, TimeAgo } from "./ui";
 import { CheckboxOption } from "./ui/checkbox";
+import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 
 /** The events, in groups people recognise. */
@@ -177,17 +178,18 @@ function HookRow({ hook, open, deliveries, manage }: { hook: Hook; open: boolean
 /** One webhook's action, as an icon: a spinner in its place while that action goes. */
 function IconButton({ intent, id, label, children }: { intent: string; id: string; label: string; children: React.ReactNode }) {
   return (
-    <SubmitButton
-      icon
-      name="intent"
-      value={intent}
-      match={{ id }}
-      title={label}
-      aria-label={label}
-      className="rounded-md p-2 text-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
-    >
-      {children}
-    </SubmitButton>
+    <Hint label={label}>
+      <SubmitButton
+        icon
+        name="intent"
+        value={intent}
+        match={{ id }}
+        aria-label={label}
+        className="rounded-md p-2 text-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
+      >
+        {children}
+      </SubmitButton>
+    </Hint>
   );
 }
 

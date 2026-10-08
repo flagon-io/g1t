@@ -25,6 +25,7 @@ import { total, trendMax } from "../lib/security-suite";
 import { SeverityBadge } from "./security";
 import { TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
+import { Hint } from "./ui/hint";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -390,16 +391,17 @@ export function FixWithG1t({ id, action, issue, base }: { id: string; action: st
   }
   return (
     <span className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        disabled={fetcher.state !== "idle"}
-        onClick={() => fetcher.submit({ intent: "fix", id }, { method: "post", action })}
-        className={`${SMALL_BUTTON} inline-flex items-center gap-1.5`}
-        title="Opens an issue assigned to g1t; its run is charged as agent usage"
-      >
-        <Sparkles size={13} />
-        {fetcher.state !== "idle" ? "Opening…" : "Fix with g1t"}
-      </button>
+      <Hint label="Opens an issue assigned to g1t; its run is charged as agent usage">
+        <button
+          type="button"
+          disabled={fetcher.state !== "idle"}
+          onClick={() => fetcher.submit({ intent: "fix", id }, { method: "post", action })}
+          className={`${SMALL_BUTTON} inline-flex items-center gap-1.5`}
+        >
+          <Sparkles size={13} />
+          {fetcher.state !== "idle" ? "Opening…" : "Fix with g1t"}
+        </button>
+      </Hint>
       {fetcher.data?.error && <span className="text-xs text-danger">{fetcher.data.error}</span>}
     </span>
   );

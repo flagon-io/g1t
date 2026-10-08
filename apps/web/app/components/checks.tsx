@@ -2,6 +2,8 @@ import { CircleCheck, CircleX, LoaderCircle, TriangleAlert } from "lucide-react"
 
 import type { CheckStatus } from "@g1t/contracts";
 
+import { Hint } from "./ui/hint";
+
 /**
  * What a pull request's own check status says. A pull request's checks are
  * the workflows run on it (see the merge box); this is set when the merge
@@ -27,9 +29,11 @@ export function CheckIcon({ status, size = 15 }: { status: CheckStatus; size?: n
 export function CheckBadge({ status }: { status: CheckStatus | null }) {
   if (!status) return null;
   return (
-    <span className="flex shrink-0 items-center gap-1 text-xs text-muted" title={LABELS[status]}>
-      <CheckIcon status={status} size={13} />
-      <span className="sr-only">{LABELS[status]}</span>
-    </span>
+    <Hint label={LABELS[status]}>
+      <span className="flex shrink-0 items-center gap-1 text-xs text-muted">
+        <CheckIcon status={status} size={13} />
+        <span className="sr-only">{LABELS[status]}</span>
+      </span>
+    </Hint>
   );
 }

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import { cn } from "../lib/cn";
 import { usd } from "../lib/mission-control";
+import { Hint } from "./ui/hint";
 import {
   HEAT_LEVELS,
   type MixPart,
@@ -109,13 +110,15 @@ function Figures({ usage, usageHref }: { usage: TokenUsageView; usageHref: strin
 
 function Tile({ label, value, hint, title }: { label: string; value: string; hint?: string; title?: string }) {
   return (
-    <div className="rounded-lg border border-line bg-bg/40 px-3 py-2.5" title={title}>
-      <dt className="text-[0.6875rem] text-muted">{label}</dt>
-      <dd className="mt-0.5 text-lg font-semibold tracking-tight tabular-nums">
-        {value}
-        {hint && <span className="ml-1 text-xs font-normal text-faint">{hint}</span>}
-      </dd>
-    </div>
+    <Hint label={title}>
+      <div className="rounded-lg border border-line bg-bg/40 px-3 py-2.5">
+        <dt className="text-[0.6875rem] text-muted">{label}</dt>
+        <dd className="mt-0.5 text-lg font-semibold tracking-tight tabular-nums">
+          {value}
+          {hint && <span className="ml-1 text-xs font-normal text-faint">{hint}</span>}
+        </dd>
+      </div>
+    </Hint>
   );
 }
 
@@ -179,12 +182,12 @@ function Mix({ usage }: { usage: TokenUsageView }) {
       <h3 className="text-xs font-medium text-fg-soft">Token mix</h3>
       <div className="mt-2 flex h-2.5 gap-[2px] overflow-hidden rounded" role="img" aria-label={parts.map((p) => `${p.label} ${Math.round(p.share * 100)}%`).join(", ")}>
         {parts.map((part) => (
-          <span
-            key={part.key}
-            title={`${part.label}: ${compactTokens(part.tokens)} (${Math.round(part.share * 100)}%)`}
-            className="h-full first:rounded-l last:rounded-r"
-            style={{ width: `${part.share * 100}%`, minWidth: 3, background: MIX_COLOR[part.key] }}
-          />
+          <Hint key={part.key} label={`${part.label}: ${compactTokens(part.tokens)} (${Math.round(part.share * 100)}%)`}>
+            <span
+              className="h-full first:rounded-l last:rounded-r"
+              style={{ width: `${part.share * 100}%`, minWidth: 3, background: MIX_COLOR[part.key] }}
+            />
+          </Hint>
         ))}
       </div>
       <ul className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[0.6875rem]">

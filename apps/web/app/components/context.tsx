@@ -46,6 +46,7 @@ import {
 
 import { InlineMarkdown } from "./inline-markdown";
 import { SubmitButton, TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -204,16 +205,17 @@ function Candidate({ memory, action }: { memory: Memory; action: string }) {
           Keep
         </button>
         <EditAndKeep memory={memory} action={action} />
-        <button
-          type="button"
-          aria-label="Dismiss"
-          title="Dismiss: never suggested again in these words"
-          onClick={() => fetcher.submit({ intent: "dismiss", id: memory.id }, { method: "post", action })}
-          className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-line-strong hover:text-danger"
-        >
-          <X size={12} />
-          Dismiss
-        </button>
+        <Hint label="Dismiss: never suggested again in these words">
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => fetcher.submit({ intent: "dismiss", id: memory.id }, { method: "post", action })}
+            className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-line-strong hover:text-danger"
+          >
+            <X size={12} />
+            Dismiss
+          </button>
+        </Hint>
       </div>
     </li>
   );
@@ -498,15 +500,16 @@ function Rule({ rule, project, action }: { rule: RuleResult; project: string; ac
           <input type="hidden" name="intent" value="fix" />
           <input type="hidden" name="project" value={project} />
           <input type="hidden" name="rule" value={rule.rule} />
-          <SubmitButton
-            fetcher={fetcher}
-            pending="Opening…"
-            title={`Opens “${rule.fix.title}” and puts an agent on it`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-accent-dim hover:text-fg disabled:opacity-50"
-          >
-            <Bot size={12} />
-            Fix with an agent
-          </SubmitButton>
+          <Hint label={`Opens “${rule.fix.title}” and puts an agent on it`}>
+            <SubmitButton
+              fetcher={fetcher}
+              pending="Opening…"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-accent-dim hover:text-fg disabled:opacity-50"
+            >
+              <Bot size={12} />
+              Fix with an agent
+            </SubmitButton>
+          </Hint>
         </fetcher.Form>
       )}
     </li>

@@ -36,6 +36,7 @@ import { useLiveRefresh } from "./agents";
 import { Unavailable } from "./mission";
 import { TokenUsagePanel } from "./token-usage";
 import { Avatar, SubmitButton, TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import type { Loaded } from "../routes/home";
 
@@ -413,14 +414,16 @@ function Empty({ children, action }: { children: ReactNode; action?: ReactNode }
 
 function Stat({ label, value, hint, dot, title }: { label: string; value: string; hint: ReactNode; dot?: string; title?: string }) {
   return (
-    <div className="min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4" title={title}>
-      <p className="flex items-center gap-1.5 truncate text-xs text-muted">
-        {dot && <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />}
-        {label}
-      </p>
-      <p className="mt-1 font-display text-2xl font-semibold tracking-tight tabular-nums sm:text-[1.75rem]">{value}</p>
-      <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
-    </div>
+    <Hint label={title}>
+      <div className="min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4">
+        <p className="flex items-center gap-1.5 truncate text-xs text-muted">
+          {dot && <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />}
+          {label}
+        </p>
+        <p className="mt-1 font-display text-2xl font-semibold tracking-tight tabular-nums sm:text-[1.75rem]">{value}</p>
+        <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
+      </div>
+    </Hint>
   );
 }
 

@@ -11,6 +11,7 @@ import type { AuditEntry } from "@g1t/contracts";
 
 import { actionLabel, actorLabel, ruleLabel, targetLabel } from "../lib/audit";
 import { Avatar, TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 import { Loading, SkeletonRows } from "./ui/skeleton";
 
 function clock(at: string): string {
@@ -21,15 +22,16 @@ function clock(at: string): string {
 export function OutcomeMark({ entry }: { entry: AuditEntry }) {
   const denied = entry.outcome === "denied";
   return (
-    <span
-      title={`${entry.outcome}: ${ruleLabel(entry.rule)} (${entry.rule})`}
-      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-        denied ? "bg-danger/10 text-danger ring-1 ring-danger/30" : "bg-raised text-muted ring-1 ring-line"
-      }`}
-    >
-      {denied ? <ShieldAlert size={11} /> : <ShieldCheck size={11} />}
-      {entry.outcome}
-    </span>
+    <Hint label={`${entry.outcome}: ${ruleLabel(entry.rule)} (${entry.rule})`}>
+      <span
+        className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+          denied ? "bg-danger/10 text-danger ring-1 ring-danger/30" : "bg-raised text-muted ring-1 ring-line"
+        }`}
+      >
+        {denied ? <ShieldAlert size={11} /> : <ShieldCheck size={11} />}
+        {entry.outcome}
+      </span>
+    </Hint>
   );
 }
 
@@ -69,7 +71,9 @@ export function AuditTable({ entries, base }: { entries: AuditEntry[]; base: str
               <span className="truncate font-mono text-xs text-muted">{targetLabel(entry)}</span>
             </div>
             <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-faint">
-              <span title={entry.rule}>{ruleLabel(entry.rule)}</span>
+              <Hint label={entry.rule}>
+                <span>{ruleLabel(entry.rule)}</span>
+              </Hint>
               <span>{entry.surface.toUpperCase()}</span>
               {entry.result && entry.result !== "ok" && <span>result: {entry.result}</span>}
               {entry.runId && entry.repo && (
@@ -83,13 +87,19 @@ export function AuditTable({ entries, base }: { entries: AuditEntry[]; base: str
                 </Link>
               )}
               {entry.credentialId && (
-                <span className="font-mono" title="Credential">
-                  {entry.credentialId}
-                </span>
+                <Hint label="Credential">
+                  <span className="font-mono">
+                    <span className="sr-only">Credential </span>
+                    {entry.credentialId}
+                  </span>
+                </Hint>
               )}
-              <span className="font-mono" title="Request id">
-                {entry.requestId}
-              </span>
+              <Hint label="Request id">
+                <span className="font-mono">
+                  <span className="sr-only">Request id </span>
+                  {entry.requestId}
+                </span>
+              </Hint>
             </p>
             {entry.outcome === "denied" && entry.message && <p className="mt-1 text-xs text-danger">{entry.message}</p>}
           </div>

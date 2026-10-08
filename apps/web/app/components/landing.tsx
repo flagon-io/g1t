@@ -528,11 +528,7 @@ export function Landing() {
         <div className="space-y-6 lg:order-1">
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {STACK.map((provider) => (
-              <div
-                key={provider}
-                className="flex flex-col items-center gap-2 rounded-xl bg-surface px-2 py-3 ring-1 ring-line"
-                title={PROVIDERS[provider].label}
-              >
+              <div key={provider} className="flex flex-col items-center gap-2 rounded-xl bg-surface px-2 py-3 ring-1 ring-line">
                 <ProviderMark provider={provider} size={30} />
                 <span className="w-full text-center text-xs leading-tight text-muted">{PROVIDERS[provider].label}</span>
               </div>

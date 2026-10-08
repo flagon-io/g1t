@@ -54,6 +54,7 @@ import {
 } from "../lib/security-alerts";
 import { Avatar, TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
+import { Hint } from "./ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 
@@ -345,17 +346,29 @@ function SecretItem({
           <Link to={`${base}/security/secret-scanning/${finding.id}`} className="text-sm font-medium first-letter:uppercase hover:underline">
             {finding.label}
           </Link>
-          <Badge tone={badge.tone} title={badge.about}>
-            {badge.label}
-          </Badge>
-          {finding.testValue && <Badge title={finding.testValue}>Likely test value</Badge>}
-          {finding.validity === "active" && (
-            <Badge tone="danger" title="Its issuer says it still works">
-              Active
-            </Badge>
+          <Hint label={badge.about}>
+            <Badge tone={badge.tone}>{badge.label}</Badge>
+          </Hint>
+          {finding.testValue && (
+            <Hint label={finding.testValue}>
+              <Badge>Likely test value</Badge>
+            </Hint>
           )}
-          {finding.validity === "inactive" && <Badge title="Its issuer refused it: revoked or expired">Inactive</Badge>}
-          {finding.bypass && <Badge tone="warn" title={`Bypassed by ${finding.bypass.by}`}>Bypassed</Badge>}
+          {finding.validity === "active" && (
+            <Hint label="Its issuer says it still works">
+              <Badge tone="danger">Active</Badge>
+            </Hint>
+          )}
+          {finding.validity === "inactive" && (
+            <Hint label="Its issuer refused it: revoked or expired">
+              <Badge>Inactive</Badge>
+            </Hint>
+          )}
+          {finding.bypass && (
+            <Hint label={`Bypassed by ${finding.bypass.by}`}>
+              <Badge tone="warn">Bypassed</Badge>
+            </Hint>
+          )}
           {finding.state === "dismissed" && finding.dismissedReason && <Badge>{dismissLabel(finding.dismissedReason)}</Badge>}
         </div>
         <p className="mt-1 truncate font-mono text-xs">

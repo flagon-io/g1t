@@ -29,6 +29,7 @@ import { catchUpPhase, catchUpRun, catchUpTitle, catchUpWhy } from "../lib/catch
 import { duration } from "./actions";
 import { Elapsed, type Live, useRuns } from "./agents";
 import { Button, CopyLine, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import { Hint } from "./ui/hint";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { SkeletonLine } from "./ui/skeleton";
 
@@ -128,19 +129,20 @@ export function LogViewer({ text }: { text: string }) {
   }
   return (
     <div className="relative">
-      <button
-        type="button"
-        aria-label="Copy the output"
-        title="Copy the output"
-        className="absolute top-1.5 right-3 z-10 rounded-md border border-line bg-surface p-1.5 text-faint transition-colors hover:text-fg"
-        onClick={() => {
-          void navigator.clipboard.writeText(stripAnsi(body));
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}
-      >
-        {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
-      </button>
+      <Hint label="Copy the output">
+        <button
+          type="button"
+          aria-label="Copy the output"
+          className="absolute top-1.5 right-3 z-10 rounded-md border border-line bg-surface p-1.5 text-faint transition-colors hover:text-fg"
+          onClick={() => {
+            void navigator.clipboard.writeText(stripAnsi(body));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
+        </button>
+      </Hint>
       {cut && (
         <p className="border-b border-line px-3 py-1.5 text-xs text-faint">
           Showing the end of the output. Earlier lines were not kept.
@@ -416,15 +418,16 @@ export function ChecksSection({
               <Form method="post" key={status.context}>
                 <input type="hidden" name="action" value="rerun-workflow" />
                 <input type="hidden" name="run" value={runIdOf(status) ?? ""} />
-                <SubmitButton
-                  variant="quiet"
-                  match={{ action: "rerun-workflow", run: runIdOf(status) ?? "" }}
-                  pending="Re-running…"
-                  title={`Re-run the failed jobs of ${status.context}`}
-                >
-                  <RotateCw size={13} />
-                  Re-run failed jobs{failedRuns.length > 1 ? ` of ${status.context}` : ""}
-                </SubmitButton>
+                <Hint label={`Re-run the failed jobs of ${status.context}`}>
+                  <SubmitButton
+                    variant="quiet"
+                    match={{ action: "rerun-workflow", run: runIdOf(status) ?? "" }}
+                    pending="Re-running…"
+                  >
+                    <RotateCw size={13} />
+                    Re-run failed jobs{failedRuns.length > 1 ? ` of ${status.context}` : ""}
+                  </SubmitButton>
+                </Hint>
               </Form>
             ))}
         </div>
@@ -850,18 +853,19 @@ export function CatchUpProgress({
           is pushed.
         </p>
         {update.paths.length > 0 && (
-          <p className="mt-1 truncate font-mono text-xs text-faint" title={update.paths.join(", ")}>
-            {update.paths.slice(0, 5).join(", ")}
-            {update.paths.length > 5 && ` and ${update.paths.length - 5} more`}
-          </p>
+          <Hint label={update.paths.join(", ")}>
+            <p className="mt-1 truncate font-mono text-xs text-faint">
+              {update.paths.slice(0, 5).join(", ")}
+              {update.paths.length > 5 && ` and ${update.paths.length - 5} more`}
+            </p>
+          </Hint>
         )}
-        <p
-          className="mt-2 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line"
-          title={run?.step ?? undefined}
-        >
-          <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
-          {run?.step ?? (run ? "Starting a sandbox…" : "Waiting for a sandbox…")}
-        </p>
+        <Hint label={run?.step}>
+          <p className="mt-2 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line">
+            <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />
+            {run?.step ?? (run ? "Starting a sandbox…" : "Waiting for a sandbox…")}
+          </p>
+        </Hint>
         <p className="mt-2 flex flex-wrap items-center gap-x-3 text-xs text-muted">
           <Elapsed from={new Date(startedAt).toISOString()} />
           <Link to={session} className="hover:text-fg">

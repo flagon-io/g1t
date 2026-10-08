@@ -9,6 +9,8 @@ import { Link } from "react-router";
 
 import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/contracts";
 
+import { Hint } from "./ui/hint";
+
 type Standing = { status: string; conclusion: Conclusion | null };
 
 /** One icon for where a run, job or step stands. */
@@ -258,9 +260,11 @@ export function WorkflowStatuses({ statuses }: { statuses: CommitStatus[] }) {
           return (
             <li key={status.context}>
               {path ? (
-                <Link to={path} className="flex items-center gap-2 hover:text-fg" title={status.description ?? undefined}>
-                  {row}
-                </Link>
+                <Hint label={status.description}>
+                  <Link to={path} className="flex items-center gap-2 hover:text-fg">
+                    {row}
+                  </Link>
+                </Hint>
               ) : (
                 <span className="flex items-center gap-2">{row}</span>
               )}

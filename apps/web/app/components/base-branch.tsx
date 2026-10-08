@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useFetcher } from "react-router";
 
 import { ErrorText } from "./ui";
+import { Hint } from "./ui/hint";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
@@ -47,16 +48,18 @@ export function BaseBranch({
           if (next && names.state === "idle" && !names.data) names.load(branchesUrl);
         }}
       >
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            title="Change the branch it merges into"
-            className="group inline-flex items-center gap-1 rounded-md border border-transparent px-1 font-mono text-fg transition-colors hover:border-line hover:bg-raised"
-          >
-            {shown}
-            <Pencil size={12} className="text-faint group-hover:text-fg" />
-          </button>
-        </PopoverTrigger>
+        <Hint label="Change the branch it merges into">
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="group inline-flex items-center gap-1 rounded-md border border-transparent px-1 font-mono text-fg transition-colors hover:border-line hover:bg-raised"
+            >
+              {shown}
+              <Pencil size={12} className="text-faint group-hover:text-fg" />
+              <span className="sr-only">Change the branch it merges into</span>
+            </button>
+          </PopoverTrigger>
+        </Hint>
         <PopoverContent align="start" className="w-72 p-0">
           <Command>
             <CommandInput placeholder="Find a branch to merge into" />

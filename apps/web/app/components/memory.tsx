@@ -23,6 +23,7 @@ import {
 } from "./ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Hint } from "./ui/hint";
 import { Switch } from "./ui/switch";
 
 const KIND: Record<MemoryKind, { label: string; about: string; tone: string }> = {
@@ -167,16 +168,17 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
       </div>
       {editable && (
         <div className="flex shrink-0 items-start gap-0.5">
-          <button
-            type="button"
-            aria-label={pinned ? "Unpin" : "Pin"}
-            title={pinned ? "Unpin" : "Pin: given to every agent first"}
-            onClick={() => fetcher.submit({ intent: "update", id: memory.id, pinned: String(!pinned) }, { method: "post", action })}
-            disabled={fetcher.state !== "idle"}
-            className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
-          >
-            {pinned ? <PinOff size={13} /> : <Pin size={13} />}
-          </button>
+          <Hint label={pinned ? "Unpin" : "Pin: given to every agent first"}>
+            <button
+              type="button"
+              aria-label={pinned ? "Unpin" : "Pin"}
+              onClick={() => fetcher.submit({ intent: "update", id: memory.id, pinned: String(!pinned) }, { method: "post", action })}
+              disabled={fetcher.state !== "idle"}
+              className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
+            >
+              {pinned ? <PinOff size={13} /> : <Pin size={13} />}
+            </button>
+          </Hint>
           <EditMemory memory={memory} action={action} />
           <AlertDialog>
             <AlertDialogTrigger aria-label="Forget" className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-danger">
