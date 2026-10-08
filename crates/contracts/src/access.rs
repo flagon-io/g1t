@@ -28,9 +28,13 @@
 //! resolves them from credentials, so asking costs nothing: no call, and
 //! the answer is as fresh as the request.
 //!
-//! **Tokens.** A workspace's own token has Admin on its workspace's
-//! repositories, as it could do everything a member could before roles;
-//! what is for people only stays refused by the checks that say so. An
+//! **Tokens.** A workspace's own token has Write on its workspace's
+//! repositories, as a member would, and Admin only when an owner gave it
+//! Admin when making it ([`crate::scopes::TokenAccess::admin`]); what is
+//! for people only stays refused by the checks that say so. A
+//! fine-grained personal token has no role outside its resource owner and
+//! repository selection ([`crate::scopes::FineGrainedReach`]): there it
+//! reads public repositories, as anyone may, and nothing more. An
 //! agent's token carries the memberships and grants of the person it acts
 //! for, cut down to its repository's workspace
 //! (`credentials::intersect`), so it never has more than that person on
@@ -274,8 +278,16 @@ impl<'a> From<&'a Repo> for RepoRef<'a> {
 
 /// What a membership gives on each of the workspace's repositories.
 fn membership_role(user: &User, membership: &Membership) -> Option<RepoRole> {
-    // A workspace's own token, and g1t acting in the workspace, do what an
-    // owner can on its repositories.
+    // A workspace's own token has Write on its repositories, as a member
+    // would, unless an owner gave it Admin when making it. A workflow job's
+    // token and a deploy key resolve the same way, capped further by their
+    // scopes. g1t acting in the workspace, and a service acting as the
+    // workspace (no token), do what an owner can.
+    if user.kind == PrincipalKind::Workspace
+        && let Some(token) = user.token.as_deref()
+    {
+        return Some(if token.admin { RepoRole::Admin } else { RepoRole::Write });
+    }
     if matches!(user.kind, PrincipalKind::Workspace | PrincipalKind::System) {
         return Some(RepoRole::Admin);
     }
@@ -287,6 +299,11 @@ fn membership_role(user: &User, membership: &Membership) -> Option<RepoRole> {
 
 /// `user`'s role on the repository, not counting that it may be public.
 pub fn granted(user: &User, repo: RepoRef<'_>) -> Option<RepoRole> {
+    // A fine-grained token outside its resource owner, or its repository
+    // selection, has no role there: a public repository still reads.
+    if user.token.as_deref().is_some_and(|token| !token.covers_repo(repo.id, repo.namespace)) {
+        return None;
+    }
     let namespace = repo.namespace.to_lowercase();
     let from_membership = user
         .workspaces
@@ -321,6 +338,14 @@ pub fn can<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>, capability: 
     let Some(role) = permission(viewer, repo) else {
         return false;
     };
+    // Where a fine-grained token does not reach, it only reads.
+    if capability != Capability::Read
+        && viewer
+            .and_then(|user| user.token.as_deref())
+            .is_some_and(|token| !token.covers_repo(repo.id, repo.namespace))
+    {
+        return false;
+    }
     if !allows(role, capability) {
         return false;
     }

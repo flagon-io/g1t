@@ -34,6 +34,7 @@ pub enum Resource {
     PullRequests,
     Agents,
     Workflows,
+    WorkflowFiles,
     Checks,
     Deployments,
     Memory,
@@ -45,7 +46,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 20] = [
+    pub const ALL: [Resource; 21] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -54,6 +55,7 @@ impl Resource {
         Resource::PullRequests,
         Resource::Agents,
         Resource::Workflows,
+        Resource::WorkflowFiles,
         Resource::Checks,
         Resource::Deployments,
         Resource::Memory,
@@ -82,6 +84,7 @@ impl Resource {
             Resource::PullRequests => "pull_requests",
             Resource::Agents => "agents",
             Resource::Workflows => "workflows",
+            Resource::WorkflowFiles => "workflow_files",
             Resource::Checks => "checks",
             Resource::Deployments => "deployments",
             Resource::Memory => "memory",
@@ -108,6 +111,7 @@ impl Resource {
             Resource::PullRequests => "Pull requests",
             Resource::Agents => "g1t agents",
             Resource::Workflows => "Workflows",
+            Resource::WorkflowFiles => "Workflow files",
             Resource::Checks => "Checks and statuses",
             Resource::Deployments => "Deployments",
             Resource::Memory => "Memory and context",
@@ -165,6 +169,7 @@ pub enum Scope {
     AgentsRun,
     WorkflowsRead,
     WorkflowsWrite,
+    WorkflowFilesWrite,
     ChecksRead,
     ChecksWrite,
     DeploymentsRead,
@@ -193,7 +198,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 41] = [
+    pub const ALL: [Scope; 42] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -211,6 +216,7 @@ impl Scope {
         Scope::AgentsRun,
         Scope::WorkflowsRead,
         Scope::WorkflowsWrite,
+        Scope::WorkflowFilesWrite,
         Scope::ChecksRead,
         Scope::ChecksWrite,
         Scope::DeploymentsRead,
@@ -256,6 +262,7 @@ impl Scope {
             Scope::AgentsRun => "agents:run",
             Scope::WorkflowsRead => "workflows:read",
             Scope::WorkflowsWrite => "workflows:write",
+            Scope::WorkflowFilesWrite => "workflow_files:write",
             Scope::ChecksRead => "checks:read",
             Scope::ChecksWrite => "checks:write",
             Scope::DeploymentsRead => "deployments:read",
@@ -338,6 +345,7 @@ impl Scope {
             Scope::AgentsRun => "Put g1t agents to work and message them, which uses the workspace's money",
             Scope::WorkflowsRead => "Read workflows, runs and logs",
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
+            Scope::WorkflowFilesWrite => "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API",
             Scope::ChecksRead => "Read commits' statuses, check runs, check suites and annotations",
             Scope::ChecksWrite => "Report statuses and check runs on commits, and ask for checks to run again",
             Scope::DeploymentsRead => "See deployments, their statuses and environments",
@@ -512,6 +520,126 @@ pub struct TokenAccess {
     /// token made a request. Absent where whoever resolved it did not say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Set on a fine-grained personal access token: whose resources it
+    /// reaches, and which of their repositories. Absent on a classic token,
+    /// which reaches whatever its owner can.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fine_grained: Option<FineGrainedReach>,
+    /// Set on a workspace's own token that an owner gave Admin when making
+    /// it. Without it a workspace's token has Write on the workspace's
+    /// repositories, as a member would (see [`crate::access`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub admin: bool,
+    /// Set on what a repository's deploy key resolves to: the key's id. Its
+    /// `repo` is the one repository it reaches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deploy_key: Option<String>,
+}
+
+/// Which of the resource owner's repositories a fine-grained token reaches.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositorySelection {
+    /// Every repository of the workspace, ones made later included.
+    #[default]
+    All,
+    /// The repositories chosen, by id.
+    Selected,
+    /// None of the workspace's private repositories: public repositories,
+    /// read-only, and the workspace's own settings its permissions allow.
+    Public,
+}
+
+impl RepositorySelection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RepositorySelection::All => "all",
+            RepositorySelection::Selected => "selected",
+            RepositorySelection::Public => "public",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RepositorySelection> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "all" => Some(RepositorySelection::All),
+            "selected" => Some(RepositorySelection::Selected),
+            "public" | "public_only" | "none" => Some(RepositorySelection::Public),
+            _ => None,
+        }
+    }
+}
+
+/// What a fine-grained token reaches, as identity resolves it on each use.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FineGrainedReach {
+    /// The resource owner: the workspace whose repositories and settings it
+    /// reaches, by slug as it is now. Absent: the person's own account
+    /// only, with public repositories read-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub repositories: RepositorySelection,
+    /// With [`RepositorySelection::Selected`]: the repositories' ids.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repo_ids: Vec<String>,
+}
+
+impl FineGrainedReach {
+    /// Whether it reaches the repository with this id in the workspace
+    /// `namespace` for more than what anyone may do with a public one.
+    pub fn covers(&self, repo_id: &str, namespace: &str) -> bool {
+        let Some(workspace) = self.workspace.as_deref() else {
+            return false;
+        };
+        if !workspace.eq_ignore_ascii_case(namespace) {
+            return false;
+        }
+        match self.repositories {
+            RepositorySelection::All => true,
+            RepositorySelection::Selected => self.repo_ids.iter().any(|id| id == repo_id),
+            RepositorySelection::Public => false,
+        }
+    }
+
+    /// Whether the workspace `slug` is its resource owner.
+    pub fn owned_by(&self, slug: &str) -> bool {
+        self.workspace.as_deref().is_some_and(|workspace| workspace.eq_ignore_ascii_case(slug))
+    }
+}
+
+/// Where workflow files live. Adding, changing or deleting a file under
+/// one, with git or through g1t, needs [`Scope::WorkflowFilesWrite`] from a
+/// token: what GitHub's `workflow` scope and `workflows` permission do.
+pub const WORKFLOW_DIRS: [&str; 2] = [".g1t/workflows/", ".github/workflows/"];
+
+/// Whether `path` is a workflow file, or a file in one's directory.
+pub fn is_workflow_file(path: &str) -> bool {
+    let path = path.trim_start_matches('/');
+    WORKFLOW_DIRS.iter().any(|dir| {
+        path.len() >= dir.len() && path.is_char_boundary(dir.len()) && path[..dir.len()].eq_ignore_ascii_case(dir)
+    }) || WORKFLOW_DIRS.iter().any(|dir| path.eq_ignore_ascii_case(dir.trim_end_matches('/')))
+}
+
+/// Whether a token may add, change or delete the files at `paths`: a
+/// refusal naming the first workflow file it may not touch, else `None`.
+/// A signed-in person (no token) is never refused here; their role decides.
+pub fn decide_workflow_files<'a>(access: Option<&TokenAccess>, paths: impl IntoIterator<Item = &'a str>) -> Option<Decision> {
+    let access = access?;
+    if access.allows(Scope::WorkflowFilesWrite) && access.job.is_none() {
+        return None;
+    }
+    let path = paths.into_iter().find(|path| is_workflow_file(path))?;
+    let why = if access.job.is_some() {
+        "a workflow job's token can never add or change workflow files".to_owned()
+    } else if access.fine_grained.is_some() {
+        "it needs the Workflows permission (read and write), which maps to the workflow_files:write scope".to_owned()
+    } else {
+        format!("it needs the {} scope", Scope::WorkflowFilesWrite.as_str())
+    };
+    Some(Decision::deny(
+        "token:workflows",
+        format!("This access token cannot change the workflow file {path}: {why}."),
+    ))
 }
 
 /// The workflow job a token was made for.
@@ -556,6 +684,14 @@ impl TokenAccess {
             None => true,
             Some(granted) => granted.iter().any(|held| held.includes(needed)),
         }
+    }
+
+    /// Whether it reaches the repository with this id in `namespace` for
+    /// more than reading a public one: every token but a fine-grained one
+    /// outside its resource owner or repository selection. Its owner's role
+    /// still decides; see [`crate::access`].
+    pub fn covers_repo(&self, repo_id: &str, namespace: &str) -> bool {
+        self.fine_grained.as_ref().is_none_or(|reach| reach.covers(repo_id, namespace))
     }
 }
 
@@ -957,6 +1093,23 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
             None => {
                 return Decision::deny("token:repository", format!("This token is a workflow job's: it reaches only {only}, and {operation} is not about one repository."));
             }
+        }
+    }
+    // A fine-grained token only reads outside its resource owner: public
+    // repositories, as anyone may. Inside it, its repository selection is
+    // checked with its owner's role (`access::granted`).
+    if let Some(reach) = &access.fine_grained
+        && let Some(repo) = input["repo"].as_str()
+        && !NO_SCOPE.contains(&operation)
+    {
+        let namespace = repo.split('/').next().unwrap_or_default();
+        let changes = needed(operation, input).iter().any(|scope| scope.level() != Level::Read);
+        if changes && !reach.owned_by(namespace) {
+            let owner = reach.workspace.as_deref().map_or_else(|| "your account".to_owned(), |workspace| format!("the workspace {workspace}"));
+            return Decision::deny(
+                "token:resource-owner",
+                format!("This fine-grained token's resource owner is {owner}: it can only read public repositories elsewhere, and {repo} is not its owner's."),
+            );
         }
     }
     if access.scopes.is_some() {

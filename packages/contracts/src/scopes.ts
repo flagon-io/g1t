@@ -17,6 +17,7 @@ export type ScopeResource =
   | "pull_requests"
   | "agents"
   | "workflows"
+  | "workflow_files"
   | "checks"
   | "deployments"
   | "memory"
@@ -51,6 +52,7 @@ export const SCOPES = [
   { scope: "agents:run", description: "Put g1t agents to work and message them, which uses the workspace's money" },
   { scope: "workflows:read", description: "Read workflows, runs and logs" },
   { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
+  { scope: "workflow_files:write", description: "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API" },
   { scope: "checks:read", description: "Read commits' statuses, check runs, check suites and annotations" },
   { scope: "checks:write", description: "Report statuses and check runs on commits, and ask for checks to run again" },
   { scope: "deployments:read", description: "See deployments, their statuses and environments" },
@@ -89,6 +91,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "pull_requests", label: "Pull requests" },
   { resource: "agents", label: "g1t agents" },
   { resource: "workflows", label: "Workflows" },
+  { resource: "workflow_files", label: "Workflow files" },
   { resource: "checks", label: "Checks and statuses" },
   { resource: "deployments", label: "Deployments" },
   { resource: "memory", label: "Memory and context" },
@@ -500,7 +503,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "packages", label: "Packages", scopes: ["packages:read", "packages:write"] },
   { id: "work", label: "Issues & pull requests", scopes: ["issues:read", "issues:write", "pull_requests:read", "pull_requests:write"] },
   { id: "agents", label: "Agents", scopes: ["agents:run"] },
-  { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write"] },
+  { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write", "workflow_files:write"] },
   { id: "checks", label: "Checks", scopes: ["checks:read", "checks:write"] },
   { id: "deployments", label: "Deployments", scopes: ["deployments:read", "deployments:write"] },
   { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
