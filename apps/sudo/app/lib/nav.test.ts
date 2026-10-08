@@ -40,7 +40,7 @@ test("every item has its own path, a label and a line about it", () => {
 
 test("the built pages are not marked soon", () => {
   const built = navItems().filter((item) => !item.soon).map((item) => item.to);
-  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/requests", "/overages", "/velocity", "/invoices", "/credits", "/stripe", "/costs", "/abuse", "/incidents", "/audit"]);
+  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/enterprises", "/invites", "/aliases", "/requests", "/overages", "/velocity", "/invoices", "/credits", "/stripe", "/costs", "/abuse", "/incidents", "/audit"]);
 });
 
 test("every soon page says what it will do, why, and what it will have", () => {

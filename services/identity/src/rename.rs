@@ -56,6 +56,8 @@ pub struct Facts<'a> {
     pub last_renamed_at: Option<&'a str>,
     /// A deleted workspace had `wanted`; it is never given to another.
     pub deleted: bool,
+    /// Staff made `wanted` an alias (aliases.rs); it stays theirs.
+    pub aliased: bool,
     pub now_ms: u64,
 }
 
@@ -81,7 +83,7 @@ pub fn check(facts: &Facts) -> std::result::Result<(), (FailureCode, String)> {
             );
         }
     }
-    if facts.someone_elses_username || facts.another_workspace || facts.deleted {
+    if facts.someone_elses_username || facts.another_workspace || facts.deleted || facts.aliased {
         return refuse(FailureCode::Conflict, TAKEN);
     }
     if let Some((holder, created_at)) = facts.redirect
@@ -131,18 +133,26 @@ impl Identity {
     }
 
     /// Whether `slug` is an old slug still reserved for the workspace that
-    /// had it, so nobody else may register or create it.
+    /// had it, or an alias staff set, so nobody else may register or create
+    /// it.
     pub async fn slug_held(&self, slug: &str) -> Result<bool> {
-        Ok(resolve(self.redirect(slug).await?, now_ms()).is_some())
+        Ok(resolve(self.redirect(slug).await?, now_ms()).is_some() || self.is_alias(slug).await?)
     }
 
-    /// `resolve_slug`: the current slug for an old one still redirecting.
+    /// `resolve_slug`: the current slug for an old one still redirecting,
+    /// or for an alias (aliases.rs).
     pub async fn resolve_slug(&self, a: SlugArgs) -> Result<Option<String>> {
         let slug = a.slug.trim().to_lowercase();
-        if self.get_workspace(SlugArgs { slug: slug.clone() }).await?.is_some() {
+        let in_use = self.get_workspace(SlugArgs { slug: slug.clone() }).await?.is_some();
+        if in_use {
             return Ok(None);
         }
-        Ok(resolve(self.redirect(&slug).await?, now_ms()))
+        let alias = self.resolve_alias(SlugArgs { slug: slug.clone() }).await?;
+        let redirect = match alias {
+            Some(_) => None,
+            None => self.redirect(&slug).await?,
+        };
+        Ok(crate::aliases::resolve(in_use, alias, || resolve(redirect, now_ms())))
     }
 
     /// Checks a rename, returning the workspace's id when it is allowed.
@@ -203,6 +213,7 @@ impl Identity {
                 .map(|row| (row.workspace_id.as_str(), row.created_at.as_str())),
             last_renamed_at: last_renamed_at.as_deref(),
             deleted: self.slug_deleted(&wanted).await?,
+            aliased: self.is_alias(&wanted).await?,
             now_ms: now_ms(),
         };
         Ok(match check(&facts) {
@@ -364,6 +375,11 @@ mod tests {
             ..facts("acme", "initech")
         };
         assert_eq!(refused(&deleted), FailureCode::Conflict);
+        let aliased = Facts {
+            aliased: true,
+            ..facts("acme", "flagon")
+        };
+        assert_eq!(refused(&aliased), FailureCode::Conflict);
     }
 
     #[test]

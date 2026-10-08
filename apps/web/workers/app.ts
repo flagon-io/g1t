@@ -1,9 +1,11 @@
 import { createRequestHandler } from "react-router";
 
+import { identityClient, isNamespaceShaped } from "@g1t/contracts";
+
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
-import { servicePath } from "../app/lib/registry-paths";
+import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -162,14 +164,34 @@ async function proxyGit(env: Env, request: Request): Promise<Response> {
 /**
  * A registry request, answered by the packages service as it is: its
  * redirects (a large blob sent to storage) go back to the client, which
- * follows them itself.
+ * follows them itself. One that found nothing under a workspace's old name
+ * or an alias staff set (`g1t` for `flagon-io`) is sent to the same path
+ * under the workspace's name: only the not-found answer pays for the lookup.
  */
 async function proxyPackages(env: Env, request: Request): Promise<Response> {
   const started = Date.now();
   const answer = await env.PACKAGES.fetch(new Request(request, { redirect: "manual" }));
-  const response = new Response(answer.body, answer);
+  const moved = answer.status === 404 ? await registryMoved(env, request) : null;
+  const response = moved ?? new Response(answer.body, answer);
   response.headers.append("server-timing", `packages;dur=${Date.now() - started}`);
   return response;
+}
+
+/** Where a registry request under an alias or old name goes now, or null. */
+async function registryMoved(env: Env, request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  const named = registryWorkspace(url.pathname);
+  if (!named || !isNamespaceShaped(named.slug)) return null;
+  let current: string | null = null;
+  try {
+    current = await identityClient(env.IDENTITY).resolveSlug(named.slug);
+  } catch {
+    return null;
+  }
+  if (!current || current === named.slug) return null;
+  const get = request.method === "GET" || request.method === "HEAD";
+  // 308 keeps a publish a PUT, for the clients that follow it.
+  return new Response(null, { status: get ? 301 : 308, headers: { location: named.under(current) + url.search } });
 }
 
 /**

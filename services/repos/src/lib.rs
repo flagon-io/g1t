@@ -1568,8 +1568,25 @@ impl<S: GitStore> Repos<S> {
         };
         let (found, viewer) =
             futures_util::future::join(lookup, git_http::viewer(&request, &identity)).await;
-        let found = found?;
+        let mut found = found?;
         timing.mark("repo");
+        // A workspace alias staff set (identity's aliases.rs: `g1t` for
+        // `flagon-io`) is answered in place, as the repository under the
+        // workspace's slug: pushes and some clients do not follow
+        // redirects. Everything after this sees only the workspace's slug.
+        let aliased = match found {
+            Some(_) => None,
+            None => git_http::aliased(git, &identity).await?,
+        };
+        if let Some(aliased) = &aliased {
+            found = if write {
+                self.registry.by_path(&aliased.path).await?
+            } else {
+                self.registry.by_path_recent(&aliased.path).await?
+            };
+            timing.mark("alias");
+        }
+        let git = aliased.as_ref().unwrap_or(git);
         if found.is_none() {
             // A workspace that was renamed: git follows a redirect when it
             // first asks for refs, and uses the new address from then on.

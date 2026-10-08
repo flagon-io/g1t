@@ -608,6 +608,10 @@ impl Identity {
                 self.db
                     .prepare("DELETE FROM workspace_redirects WHERE workspace_id = ?")
                     .bind(&[id.into()])?,
+                // Aliases staff pointed at it lead nowhere now (aliases.rs).
+                self.db
+                    .prepare("DELETE FROM workspace_aliases WHERE workspace_id = ?")
+                    .bind(&[id.into()])?,
                 // Only while it is still deleted: a restore a moment ago wins.
                 self.db
                     .prepare("DELETE FROM workspaces WHERE id = ? AND deleted_at IS NOT NULL")
@@ -627,7 +631,7 @@ impl Identity {
     }
 
     /// An entry in the workspace's audit log, which outlives it.
-    async fn record_on_workspace(
+    pub(crate) async fn record_on_workspace(
         &self,
         slug: &str,
         actor: AuditActor,
@@ -668,7 +672,7 @@ impl Identity {
 
     /// A line in sudo's audit log (billing keeps it), naming the staff
     /// member.
-    async fn record_for_staff(&self, slug: &str, action: &str, detail: &str, staff: &str) {
+    pub(crate) async fn record_for_staff(&self, slug: &str, action: &str, detail: &str, staff: &str) {
         let Ok(billing) = self.env.service("BILLING") else {
             return;
         };

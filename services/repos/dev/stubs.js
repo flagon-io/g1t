@@ -2,7 +2,7 @@
 // service answers anonymous git requests with `wrangler dev` (repos.jsonc).
 //
 // - Identity knows nobody: credentials name no one, and no workspace was
-//   renamed. Public repositories can be cloned without signing in.
+//   renamed or aliased. Public repositories can be cloned without signing in.
 // - Events takes every event and audit entry and logs them.
 // - Security has allowed no secrets; billing says every workspace is free.
 
@@ -14,6 +14,7 @@ export default {
     switch (method) {
       case "user_for_git_credentials":
       case "resolve_slug":
+      case "resolve_alias":
         return json(null);
       case "is_free":
       case "plan":

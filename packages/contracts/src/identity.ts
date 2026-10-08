@@ -316,7 +316,37 @@ export interface IdentityAdminApi {
    * `workspace.deleted`.
    */
   purgeWorkspace(workspaceId: string, staff: string, confirm: string): Promise<Result<boolean>>;
+
+  /** Every workspace alias, by name. */
+  aliases(): Promise<WorkspaceAlias[]>;
+  /**
+   * Points `alias` at the workspace whose slug is `workspace`. Refused for
+   * one of the site's routes, anyone's username, a workspace's slug (deleted
+   * or held after a rename) and an existing alias. `note` says why.
+   */
+  setAlias(alias: string, workspace: string, note: string, staff: string): Promise<Result<WorkspaceAlias>>;
+  /** Removes an alias; `reason` goes in sudo's audit log. */
+  removeAlias(alias: string, reason: string, staff: string): Promise<Result<boolean>>;
 }
+
+/**
+ * A name g1t's staff point at a workspace, so its addresses lead there under
+ * the workspace's own name: `g1t`, the product, leads to `flagon-io`, Flagon,
+ * Inc. Staff-managed only; it follows the workspace through renames.
+ */
+export type WorkspaceAlias = {
+  alias: string;
+  workspaceId: string;
+  /** The workspace's slug and name now. */
+  workspace: string;
+  workspaceName: string;
+  /** Why it exists. */
+  note: string;
+  /** The staff member who set it, or `migration`. */
+  createdBy: string;
+  /** RFC 3339. */
+  createdAt: string;
+};
 
 /** Who is asking. Every read and write in every service takes one. */
 export type Viewer = User | null;
@@ -549,7 +579,8 @@ export interface IdentityApi extends AccessClient, TeamsClient {
   checkWorkspaceRename(actor: User, slug: string, newSlug: string): Promise<Result<boolean>>;
   /**
    * The workspace's current slug when `slug` is one it was renamed from
-   * within `SLUG_HOLD_DAYS`; null otherwise, including for a slug in use.
+   * within `SLUG_HOLD_DAYS`, or when `slug` is an alias staff set for it
+   * (`WorkspaceAlias`); null otherwise, including for a slug in use.
    */
   resolveSlug(slug: string): Promise<string | null>;
   /**

@@ -70,6 +70,29 @@ roadmap.
   protected workspace. Both go in the workspace's audit log, as g1t, and in
   sudo's (`workspace_restored`, `workspace_purged`), naming the staff
   member.
+- **Aliases** (`/aliases`, under Customers): names that lead to a
+  workspace, set by staff only; there is no way for a customer to make
+  one, and nothing user-facing mentions them. `g1t`, the product's name,
+  leads to `flagon-io`, Flagon, Inc. (seeded by identity's migration
+  `0029_workspace_aliases.sql`), so nobody mistakes the trading name for
+  the organization. Every address under an alias leads to the workspace:
+  pages answer with a 301 to the same page (`/g1t/g1t/issues` to
+  `/flagon-io/g1t/issues`), git over HTTPS is answered in place as the
+  workspace's repository (pushes do not follow redirects), the API and MCP
+  run the call again under the workspace's slug, and the package
+  registries answer a 301 (308 for a publish). An alias points at the
+  workspace's id, so it follows a rename; it goes when the workspace is
+  purged. Each row shows the workspace, why the alias exists, and who added
+  it and when. **Add** (`admin_set_alias`) takes the alias, the
+  workspace's slug and why: identity refuses the site's own routes
+  (`settings`, `api`…), anyone's username, a workspace's slug (deleted, or
+  held after a rename for another workspace) and an existing alias.
+  Reserved names such as `g1t` can be aliases, and an alias is nobody's to
+  register or rename a workspace to while it exists. **Remove**
+  (`admin_remove_alias`) needs a reason. Both go in sudo's audit log
+  (`alias_added`, `alias_removed`), naming the staff member. `@g1t` in
+  text still means g1t's agent: it links to how the agent works, never to
+  `/g1t`.
 - **Enterprises**: customers that pay for several workspaces with one
   bill, one limit and one set of terms. Each has its workspaces (add or
   remove them), combined usage, terms, credits, ledger and audit log, and

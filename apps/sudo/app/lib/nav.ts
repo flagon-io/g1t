@@ -32,6 +32,7 @@ export type NavIcon =
   | "overages"
   | "velocity"
   | "invites"
+  | "aliases"
   // Sections
   | "customers"
   | "spend"
@@ -101,6 +102,12 @@ export const NAV: NavGroup[] = [
         icon: "invites",
         about: "The waitlist, every invite, more invites for a person or workspace, and who invited whom.",
         count: "waitlist",
+      },
+      {
+        label: "Aliases",
+        to: "/aliases",
+        icon: "aliases",
+        about: "Names that lead to a workspace, such as g1t to flagon-io. Staff set them; customers cannot.",
       },
       {
         label: "People",

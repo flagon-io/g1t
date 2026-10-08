@@ -38,7 +38,10 @@ pub mod webhooks;
 pub mod work;
 
 pub use ids::new_id;
-pub use names::{claimable_namespace, is_reserved_name, is_valid_namespace, is_valid_repo_name};
+pub use names::{
+    aliasable_name, claimable_namespace, is_namespace_shaped, is_reserved_name, is_route_name, is_valid_namespace,
+    is_valid_repo_name,
+};
 pub use outcome::{Failure, FailureCode, Outcome};
 
 use serde::{Deserialize, Serialize};

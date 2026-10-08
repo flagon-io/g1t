@@ -121,6 +121,22 @@ export function pagePath(pathname: string): string {
 }
 
 /**
+ * The page at `pathname` under the workspace `slug` instead of its first
+ * segment, keeping its query: where an old name or an alias leads. A click
+ * asks for the page's data at `<path>.data?_routes=…`; the address given is
+ * the page's own, which the browser then asks for as usual.
+ */
+export function underWorkspace(pathname: string, search: string, slug: string): string {
+  const params = new URLSearchParams(search);
+  params.delete("_routes");
+  const query = params.toString();
+  const segments = pagePath(pathname).split("/");
+  // segments[0] is the empty string before the leading slash.
+  segments[1] = slug;
+  return `${segments.join("/")}${query ? `?${query}` : ""}`;
+}
+
+/**
  * Where an old address of a workspace's pages is now, keeping its query;
  * null when it has not moved. `/<workspace>?tab=projects` and the like
  * open that page.

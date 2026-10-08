@@ -560,7 +560,59 @@ pub const RENAME_COOLDOWN_HOURS: u64 = 24;
 // `resolve_slug` takes `SlugArgs` and returns `Option<String>`: the
 // workspace's current slug when `slug` is one it was renamed from within
 // the last `SLUG_HOLD_DAYS`, and null otherwise (including for a slug that
-// is in use).
+// is in use), or the workspace's slug when `slug` is one of its aliases.
+
+// `resolve_alias` takes `SlugArgs` and returns `Option<String>`: the slug
+// now of the workspace `slug` is an alias of, and null when it is none.
+// Aliases are set by g1t's staff only: `g1t` is Flagon, Inc.'s `flagon-io`.
+// An alias follows its workspace through renames.
+
+/// `admin_aliases` takes no arguments (`{}`) and returns
+/// `Vec<WorkspaceAlias>`, by alias. Staff only.
+///
+/// A name staff point at a workspace, so that its addresses (pages, git,
+/// the API, packages) lead to the workspace under its own name.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceAlias {
+    pub alias: String,
+    pub workspace_id: String,
+    /// The workspace's slug and name now.
+    pub workspace: String,
+    pub workspace_name: String,
+    /// Why it exists, as staff wrote it.
+    pub note: String,
+    /// The staff member who set it, or `migration`.
+    pub created_by: String,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
+/// `admin_set_alias`: points `alias` at the workspace whose slug is
+/// `workspace`. The alias must have a namespace's shape, must not be one of
+/// the site's routes, and must not be anyone's username, a workspace's slug
+/// (deleted, or held after a rename) or another alias. `note` is required:
+/// it is the reason, kept with the alias and in sudo's audit log. Staff
+/// only. Returns `Outcome<WorkspaceAlias>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminSetAliasArgs {
+    pub alias: String,
+    pub workspace: String,
+    pub note: String,
+    pub staff: String,
+}
+
+/// `admin_remove_alias`: the alias stops leading anywhere, and the name is
+/// nobody's again unless it is reserved. `reason` goes in sudo's audit log.
+/// Staff only. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminRemoveAliasArgs {
+    pub alias: String,
+    pub reason: String,
+    pub staff: String,
+}
 
 /// `set_workspace_avatar`: owners only. `image` is the file's bytes in
 /// base64: PNG, JPEG, WebP or GIF, at most `MAX_AVATAR_BYTES`. Null removes

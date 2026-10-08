@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { servicePath } from "./registry-paths.ts";
+import { registryWorkspace, servicePath } from "./registry-paths.ts";
 
 test("the container registry's paths go to the packages service", () => {
   for (const path of [
@@ -117,5 +117,28 @@ test("git goes to repos, and everything else is the site's", () => {
   assert.equal(servicePath("/v2/acme/info/refs"), "packages");
   for (const path of ["/", "/acme", "/acme/web", "/v2x", "/acme/v2", "/acme/-/packages"]) {
     assert.equal(servicePath(path), null, path);
+  }
+});
+
+test("a registry request names its workspace, and can be moved to another", () => {
+  const cases: [string, string, string][] = [
+    ["/-/cargo/g1t/index/config.json", "g1t", "/-/cargo/flagon-io/index/config.json"],
+    ["/-/composer/g1t/packages.json", "g1t", "/-/composer/flagon-io/packages.json"],
+    ["/-/maven/g1t/io/flagon/sdk/1.0/sdk-1.0.jar", "g1t", "/-/maven/flagon-io/io/flagon/sdk/1.0/sdk-1.0.jar"],
+    ["/-/nuget/g1t/v3/index.json", "g1t", "/-/nuget/flagon-io/v3/index.json"],
+    ["/-/rubygems/g1t/info/sdk", "g1t", "/-/rubygems/flagon-io/info/sdk"],
+    ["/-/npm/@g1t%2fcli", "g1t", "/-/npm/@flagon-io%2fcli"],
+    ["/-/npm/@g1t/cli/-/cli-1.0.0.tgz", "g1t", "/-/npm/@flagon-io/cli/-/cli-1.0.0.tgz"],
+    ["/-/npm/-/package/@g1t%2Fcli/dist-tags/next", "g1t", "/-/npm/-/package/@flagon-io%2Fcli/dist-tags/next"],
+    ["/v2/g1t/runner/manifests/latest", "g1t", "/v2/flagon-io/runner/manifests/latest"],
+    ["/v2/G1T/runner/blobs/uploads/upl_1", "g1t", "/v2/flagon-io/runner/blobs/uploads/upl_1"],
+  ];
+  for (const [path, slug, moved] of cases) {
+    const named = registryWorkspace(path);
+    assert.equal(named?.slug, slug, path);
+    assert.equal(named?.under("flagon-io"), moved, path);
+  }
+  for (const path of ["/v2", "/v2/", "/v2/token", "/-/npm", "/-/npm/-/whoami", "/-/npm/-/ping", "/-/npm/unscoped"]) {
+    assert.equal(registryWorkspace(path), null, path);
   }
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { SETTINGS_PAGES, WORKSPACE_PAGES, pagePath, sidebarCurrent, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
+import { SETTINGS_PAGES, WORKSPACE_PAGES, pagePath, sidebarCurrent, underWorkspace, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
 
 test("a path is one of the workspace's pages, or none", () => {
   assert.equal(workspacePage("/acme", "acme"), "overview");
@@ -72,4 +72,19 @@ test("a click's data request is for the same page as a full load", () => {
   assert.equal(pagePath("/acme/-/insights/"), "/acme/-/insights");
   assert.equal(workspaceRedirect("/acme/-/members.data", "?_routes=routes%2Fworkspace%2Fmoved-members"), "/acme/-/people");
   assert.equal(workspaceRedirect("/acme/-/members.data", "?_routes=x&q=ada"), "/acme/-/people?q=ada");
+});
+
+test("an alias or old name leads to the same page under the workspace", () => {
+  assert.equal(underWorkspace("/g1t", "", "flagon-io"), "/flagon-io");
+  assert.equal(underWorkspace("/g1t/g1t/issues", "?q=is%3Aopen", "flagon-io"), "/flagon-io/g1t/issues?q=is%3Aopen");
+  assert.equal(underWorkspace("/g1t/g1t/blob/main/README.md", "", "flagon-io"), "/flagon-io/g1t/blob/main/README.md");
+  assert.equal(underWorkspace("/g1t/-/people/", "", "flagon-io"), "/flagon-io/-/people");
+});
+
+test("a click's data request for an alias leads to the page, not its data", () => {
+  assert.equal(underWorkspace("/g1t.data", "?_routes=routes%2Fworkspace%2Flayout", "flagon-io"), "/flagon-io");
+  assert.equal(
+    underWorkspace("/g1t/g1t/pulls.data", "?_routes=routes%2Frepo%2Flayout&state=closed", "flagon-io"),
+    "/flagon-io/g1t/pulls?state=closed",
+  );
 });
