@@ -628,6 +628,7 @@ impl Job {
                 self.log.line("##[error]The step ran past its time limit and was stopped.");
                 false
             }
+            Ok(Ended::Cancelled) => false,
             Err(error) => {
                 self.log.line(&format!("##[error]docker could not be started: {error}"));
                 false
