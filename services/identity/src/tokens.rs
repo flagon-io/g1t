@@ -189,6 +189,7 @@ impl Identity {
                     }),
                     _ => None,
                 },
+                ..TokenAccess::default()
             }));
         }
         Ok(viewer)

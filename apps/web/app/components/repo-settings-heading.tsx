@@ -10,6 +10,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   guardrails: { title: "Guardrails", about: "What agents may reach, run and spend while they work here." },
   repository: { title: "Repository", about: "Its name, details and default branch, who can see it, and archiving, moving or deleting it." },
   access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
+  keys: { title: "Deploy keys", about: "SSH keys that let a machine clone this repository, or push to it, and reach nothing else." },
   branches: { title: "Branches and merging", about: "How pull requests merge, what g1t's agents do with theirs, and who owns which files." },
   rules: { title: "Rules", about: "Rulesets: what may happen to branches and tags, what a pull request needs before it merges, and how the rules judged each push and merge." },
   secrets: { title: "Secrets and variables", about: "Values workflows, builds and deployments read at run time." },

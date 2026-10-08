@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
+use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
@@ -142,7 +143,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Access",
-        "Who can do what in a repository: repository roles, people given a role on one repository (outside collaborators when they are not members), invitations, and a workspace's base permission.",
+        "Who can do what in a repository: repository roles, people given a role on one repository (outside collaborators when they are not members), invitations, a workspace's base permission, and deploy keys: SSH keys that reach one repository.",
         &[
             Op::ListCollaborators,
             Op::AddCollaborator,
@@ -156,6 +157,10 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::DeclineRepoInvitation,
             Op::SetBasePermission,
             Op::ListOutsideCollaborators,
+            Op::DeployKeys(DeployKeysOp::ListDeployKeys),
+            Op::DeployKeys(DeployKeysOp::GetDeployKey),
+            Op::DeployKeys(DeployKeysOp::CreateDeployKey),
+            Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
         ],
     ),
     (
@@ -662,6 +667,7 @@ fn title(op: Op) -> &'static str {
         Op::Deployments(op) => op.title(),
         Op::Protection(op) => op.title(),
         Op::Artifacts(op) => op.title(),
+        Op::DeployKeys(op) => op.title(),
     }
 }
 

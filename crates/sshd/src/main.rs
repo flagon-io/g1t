@@ -133,9 +133,11 @@ struct Connection {
 }
 
 impl Connection {
-    async fn lookup(&self, key: &PublicKey) -> Result<Option<User>> {
+    /// Who the key signs in as. `used` once the client has proved it holds
+    /// the private key: only then is the key's last use recorded.
+    async fn lookup(&self, key: &PublicKey, used: bool) -> Result<Option<User>> {
         let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
-        self.api.user_for_key(&fingerprint).await
+        self.api.user_for_key(&fingerprint, used).await
     }
 }
 
@@ -143,7 +145,7 @@ impl Handler for Connection {
     type Error = anyhow::Error;
 
     async fn auth_publickey_offered(&mut self, _: &str, key: &PublicKey) -> Result<Auth> {
-        Ok(match self.lookup(key).await? {
+        Ok(match self.lookup(key, false).await? {
             Some(_) => Auth::Accept,
             None => Auth::reject(),
         })
@@ -151,7 +153,7 @@ impl Handler for Connection {
 
     /// Called once the client has proven it holds the private key.
     async fn auth_publickey(&mut self, _: &str, key: &PublicKey) -> Result<Auth> {
-        self.user = self.lookup(key).await?;
+        self.user = self.lookup(key, true).await?;
         Ok(match self.user {
             Some(_) => Auth::Accept,
             None => Auth::reject(),
@@ -190,7 +192,7 @@ impl Handler for Connection {
         session.channel_success(id)?;
         let greeting = format!(
             "Hi {}! You've successfully authenticated, but g1t does not provide shell access.\r\n",
-            user.username
+            user.greeting_name()
         );
         tokio::spawn(async move {
             let _ = channel.data(greeting.as_bytes()).await;

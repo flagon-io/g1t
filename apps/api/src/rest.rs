@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
+use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
@@ -64,6 +65,11 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/invitations", Op::ListRepoInvitations, &[]),
     route("DELETE", "/repos/:owner/:name/invitations/:id", Op::RevokeRepoInvitation, &[]),
     route("GET", "/user/repository_invitations", Op::ListMyRepoInvitations, &[]),
+    // Deploy keys, at GitHub's addresses.
+    route("GET", "/repos/:owner/:name/keys", Op::DeployKeys(DeployKeysOp::ListDeployKeys), &[]),
+    route("POST", "/repos/:owner/:name/keys", Op::DeployKeys(DeployKeysOp::CreateDeployKey), &[]),
+    route("GET", "/repos/:owner/:name/keys/:id", Op::DeployKeys(DeployKeysOp::GetDeployKey), &[]),
+    route("DELETE", "/repos/:owner/:name/keys/:id", Op::DeployKeys(DeployKeysOp::DeleteDeployKey), &[]),
     // Your notifications: threads, marking them, and what you subscribe
     // to and watch. GitHub's addresses, with g1t's saved and snoozed.
     route("GET", "/notifications", Op::ListNotifications, &[("all", "all"), ("participating", "participating"), ("view", "view"), ("reason", "reason"), ("severity", "severity"), ("since", "since"), ("before", "before"), ("cursor", "cursor"), ("per_page", "per_page")]),

@@ -1,13 +1,39 @@
 //! Client for the g1t Worker's internal endpoints, which own all
 //! authentication and authorization decisions.
+//!
+//! Neither endpoint exists yet (docs/ARTIFACTS.md). What they are to do:
+//!
+//! - `POST /_internal/ssh/user` with `{ fingerprint, used }` resolves the key
+//!   through identity's `principal_for_ssh_key` (`used` once the client has
+//!   proved it holds the private key, so only then is its last use
+//!   recorded) and answers [`User`], or 404 for an unknown key.
+//! - `POST /_internal/ssh/access` with `{ fingerprint, owner, repo, service }`
+//!   resolves the key again, so a key deleted mid-session stops working,
+//!   and asks repos' `git_access` with that principal: a deploy key reaches
+//!   its one repository, and pushes only when it was given write access.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+/// Who a key signs in as.
 #[derive(Clone, Debug, Deserialize)]
 pub struct User {
-    pub id: u64,
+    /// `usr_…`, or for a deploy key its repository's workspace (`wsp_…`).
+    pub id: String,
     pub username: String,
+    /// Set for a deploy key: the one repository it reaches, `owner/name`.
+    #[serde(default)]
+    pub repo: Option<String>,
+    /// The key's fingerprint, as it was looked up with.
+    #[serde(skip)]
+    pub fingerprint: String,
+}
+
+impl User {
+    /// The name a greeting uses: the person, or a deploy key's repository.
+    pub fn greeting_name(&self) -> &str {
+        self.repo.as_deref().unwrap_or(&self.username)
+    }
 }
 
 /// An Artifacts remote and a short-lived token scoped to one repo.
@@ -54,20 +80,24 @@ impl Api {
         }
     }
 
-    /// The user who registered the key with this SHA-256 fingerprint.
-    pub async fn user_for_key(&self, fingerprint: &str) -> Result<Option<User>> {
+    /// Who the key with this SHA-256 fingerprint signs in as: the person
+    /// who registered it, or a repository's deploy key. `used` once the
+    /// client has proved it holds the private key.
+    pub async fn user_for_key(&self, fingerprint: &str, used: bool) -> Result<Option<User>> {
         let response = self
             .http
             .post(format!("{}/_internal/ssh/user", self.base))
             .bearer_auth(&self.secret)
-            .json(&serde_json::json!({ "fingerprint": fingerprint }))
+            .json(&serde_json::json!({ "fingerprint": fingerprint, "used": used }))
             .send()
             .await
             .context("key lookup failed")?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        Ok(Some(response.error_for_status()?.json().await?))
+        let mut user: User = response.error_for_status()?.json().await?;
+        user.fingerprint = fingerprint.to_owned();
+        Ok(Some(user))
     }
 
     /// `Ok(Err(message))` is a refusal to show the user.
@@ -84,6 +114,7 @@ impl Api {
             .bearer_auth(&self.secret)
             .json(&serde_json::json!({
                 "user_id": user.id,
+                "fingerprint": user.fingerprint,
                 "owner": owner,
                 "repo": repo,
                 "service": service,

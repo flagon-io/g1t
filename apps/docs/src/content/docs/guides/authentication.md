@@ -26,7 +26,7 @@ under **Your settings**; the sidebar then lists every page.
 | Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location and website. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
 | Invites | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites](#invites). |
-| SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/). |
+| SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens). |
 | GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
 | Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
@@ -596,8 +596,8 @@ GitHub sign-in are not affected.
 
 [Settings → Security log](https://g1t.sh/settings/security-log) lists what
 happened to your account: addresses added, confirmed, removed or made
-primary, your backup and privacy settings, password changes, and pauses
-after too many wrong passwords. Changes g1t staff made, such as removing an
+primary, your backup and privacy settings, password changes, SSH keys
+added and removed, and pauses after too many wrong passwords. Changes g1t staff made, such as removing an
 address someone else needed, say so and why.
 
 ## What g1t stores

@@ -13,6 +13,7 @@ mod billing;
 mod blobs;
 mod checks;
 mod deployments;
+mod deploy_keys;
 mod mcp;
 mod notifications;
 mod oauth;

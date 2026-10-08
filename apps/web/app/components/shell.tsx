@@ -1095,6 +1095,11 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             Access
           </SidebarLink>
         )}
+        {shows("keys") && (
+          <SidebarLink to={`${base}/settings/keys`} icon={<KeyRound size={15} />}>
+            Deploy keys
+          </SidebarLink>
+        )}
         {shows("branches") && (
           <SidebarLink to={`${base}/settings/branches`} icon={<GitBranch size={15} />}>
             Branches and merging

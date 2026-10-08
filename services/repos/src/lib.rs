@@ -1234,28 +1234,21 @@ impl<S: GitStore> Repos<S> {
         // anyone. Which repositories a token reaches is its owner's, checked
         // below as for anyone.
         if let Some(access) = a.viewer.as_ref().and_then(|user| user.token.as_deref()).cloned() {
-            // A workflow job's token reaches its own repository only, and
-            // the working copies of that repository's pull requests, where
-            // their heads are.
-            if let Some(refused) = g1t_contracts::scopes::decide_repo(&access, &format!("{}/{}", path.namespace, path.name)) {
-                let source = match found.as_ref().and_then(|repo| repo.fork_of.as_deref()) {
-                    Some(source_id) => self.registry.by_id(source_id).await?,
-                    None => None,
-                };
-                if !source.is_some_and(|source| access.reaches(&format!("{}/{}", source.namespace, source.name))) {
-                    return Ok(Outcome::fail(
-                        FailureCode::Forbidden,
-                        format!("{}\n", refused.reason.unwrap_or_default()),
-                    ));
-                }
-            }
+            // A workflow job's token, and a deploy key, reach their own
+            // repository only; a job's also the working copies of that
+            // repository's pull requests, where their heads are.
+            let name = format!("{}/{}", path.namespace, path.name);
+            let source = match found.as_ref().and_then(|repo| repo.fork_of.as_deref()) {
+                Some(source_id) if g1t_contracts::scopes::decide_repo(&access, &name).is_some() => self
+                    .registry
+                    .by_id(source_id)
+                    .await?
+                    .map(|source| format!("{}/{}", source.namespace, source.name)),
+                _ => None,
+            };
             let public = found.as_ref().is_some_and(|repo| !repo.is_private);
-            let decision = g1t_contracts::scopes::decide_git(&access, write, public);
-            if !decision.allowed {
-                return Ok(Outcome::fail(
-                    FailureCode::Forbidden,
-                    format!("{}\n", decision.reason.unwrap_or_default()),
-                ));
+            if let Some(why) = git_token_refusal(&access, &name, source.as_deref(), write, public, found.is_some()) {
+                return Ok(Outcome::fail(FailureCode::Forbidden, format!("{why}\n")));
             }
             if !write && !access.allows(g1t_contracts::scopes::Scope::CodeRead) {
                 a.viewer = None;
@@ -2592,6 +2585,39 @@ fn protected_workspaces(env: &Env) -> Vec<String> {
     g1t_contracts::identity::protected_names(configured.as_deref())
 }
 
+/// What a token's own limits say about git on the repository `repo`
+/// (`owner/name`), before anyone's role is asked: why it is refused, or
+/// `None`. `source` is the repository a pull request's working copy at
+/// `repo` belongs to, which a workflow job's token reaches too. `public`
+/// is whether anyone may read it, and `exists` whether there is one.
+///
+/// A job's token and a deploy key reach their own repository only. Its
+/// scopes decide the rest: `code:read` to read a private repository,
+/// `code:write` to push, which a read-only deploy key never has. A deploy
+/// key never makes a repository by pushing to an empty address.
+pub(crate) fn git_token_refusal(
+    access: &g1t_contracts::scopes::TokenAccess,
+    repo: &str,
+    source: Option<&str>,
+    write: bool,
+    public: bool,
+    exists: bool,
+) -> Option<String> {
+    if let Some(refused) = g1t_contracts::scopes::decide_repo(access, repo)
+        && !source.is_some_and(|source| access.reaches(source))
+    {
+        return Some(refused.reason.unwrap_or_default());
+    }
+    let decision = g1t_contracts::scopes::decide_git(access, write, public);
+    if !decision.allowed {
+        return Some(decision.reason.unwrap_or_default());
+    }
+    if access.deploy_key.is_some() && !exists {
+        return Some(format!("This deploy key is for {repo}, which is not there any more."));
+    }
+    None
+}
+
 /// The repository a push to a path that does not exist yet creates: private,
 /// so nothing pushed by mistake is published. An owner makes it public on
 /// purpose (`POST /repos/{owner}/{repo}/visibility`).
@@ -2617,5 +2643,71 @@ mod push_to_create_tests {
         let args = push_to_create(&owner, &RepoPath { namespace: "acme".into(), name: "site".into() });
         assert!(args.is_private);
         assert_eq!((args.namespace.as_str(), args.name.as_str()), ("acme", "site"));
+    }
+}
+
+#[cfg(test)]
+mod deploy_key_git_tests {
+    use super::*;
+    use g1t_contracts::deploy_keys;
+
+    fn key(read_only: bool) -> User {
+        deploy_keys::principal("wsp_acme", "acme", deploy_keys::access("dk_1", "CI", "acme/rocket", read_only))
+    }
+
+    fn rocket(private: bool) -> Repo {
+        serde_json::from_value(serde_json::json!({
+            "id": "rep_rocket",
+            "namespace": "acme",
+            "name": "rocket",
+            "description": null,
+            "isPrivate": private,
+            "ownerId": "usr_owner",
+            "defaultBranch": "main",
+            "forkOf": null,
+            "protected": false,
+            "createdAt": "",
+        }))
+        .unwrap()
+    }
+
+    fn refusal(user: &User, repo: &str, write: bool, exists: bool) -> Option<String> {
+        git_token_refusal(user.token.as_deref().unwrap(), repo, None, write, false, exists)
+    }
+
+    #[test]
+    fn a_read_only_deploy_key_clones_its_repository_and_never_pushes() {
+        let user = key(true);
+        assert_eq!(refusal(&user, "acme/rocket", false, true), None);
+        assert!(refusal(&user, "acme/rocket", true, true).unwrap().contains("read-only"));
+        // Its role is a workspace token's: it reads a private repository.
+        assert!(registry::can_read(&rocket(true), &Some(user)));
+    }
+
+    #[test]
+    fn a_deploy_key_with_write_access_pushes_to_its_repository() {
+        let user = key(false);
+        assert_eq!(refusal(&user, "acme/rocket", true, true), None);
+        assert!(registry::can_write(&rocket(true), &Some(user)));
+    }
+
+    #[test]
+    fn a_deploy_key_reaches_no_other_repository() {
+        let user = key(false);
+        for other in ["acme/booster", "other/rocket"] {
+            for write in [false, true] {
+                let why = refusal(&user, other, write, true).expect(other);
+                assert!(why.contains("deploy key is for acme/rocket"), "{why}");
+            }
+        }
+        // Not even a pull request's working copy of another repository.
+        let token = user.token.as_deref().unwrap();
+        assert!(git_token_refusal(token, "pulls/pr_1", Some("acme/booster"), false, false, true).is_some());
+    }
+
+    #[test]
+    fn a_deploy_key_never_creates_a_repository() {
+        let why = refusal(&key(false), "acme/rocket", true, false).unwrap();
+        assert!(why.contains("not there"), "{why}");
     }
 }

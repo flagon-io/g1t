@@ -548,8 +548,9 @@ a repository's webhooks, or `workspace` for a workspace's own. See
 
 Who can do what in a repository: its people and their
 [roles](/guides/access-and-roles/) (read, triage, write, maintain and
-admin), invitations, outside collaborators, and a workspace's base
-permission. An agent's token cannot use any of these.
+admin), invitations, outside collaborators, a workspace's base
+permission, and a repository's [deploy keys](/guides/git/#deploy-keys).
+An agent's token cannot use any of these.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -562,6 +563,10 @@ permission. An agent's token cannot use any of these.
 | [`revoke_invitation`](/reference/api/access/revoke-repo-invitation/) | Withdraw a pending invitation. Needs the Admin role. | `repo`, `id` | `access:admin` |
 | [`set_base_permission`](/reference/api/access/set-base-permission/) | What every member gets on each repository: `none`, `read`, `write` (the default) or `admin`. Owners only. | `workspace`, `base_permission` | `access:admin` |
 | [`list_outside_collaborators`](/reference/api/access/list-outside-collaborators/) | People with roles on its repositories who are not members, and what they can reach. Owners only. | `workspace` | `access:read` |
+| [`list_deploy_keys`](/reference/api/access/list-deploy-keys/) | Its deploy keys: SSH keys that reach this one repository, each with its `fingerprint`, `read_only`, who added it and `last_used_at`. Needs the Admin role. | `repo` | `access:read` |
+| [`get_deploy_key`](/reference/api/access/get-deploy-key/) | One deploy key. Needs the Admin role. | `repo`, `id` | `access:read` |
+| [`add_deploy_key`](/reference/api/access/create-deploy-key/) | Add a deploy key: `key` (an OpenSSH public key), `title`, and `read_only`, true unless you send false. A key registered anywhere already is refused. Needs the Admin role. | `repo`, `key` | `access:admin` |
+| [`remove_deploy_key`](/reference/api/access/delete-deploy-key/) | Delete a deploy key; anything using it stops at once. Needs the Admin role. | `repo`, `id` | `access:admin` |
 
 ## `team`
 

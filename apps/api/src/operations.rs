@@ -29,6 +29,7 @@ use crate::alerts::{AlertKind, SecurityAlert};
 use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
+use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
 use crate::rules::RulesOp;
@@ -290,6 +291,8 @@ pub enum Op {
     Protection(ProtectionOp),
     /// Workflow run artifacts, and how long they are kept: artifacts.rs.
     Artifacts(ArtifactsOp),
+    /// A repository's deploy keys: deploy_keys.rs.
+    DeployKeys(DeployKeysOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -652,7 +655,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 276] = [
+    pub const ALL: [Op; 280] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -917,6 +920,10 @@ impl Op {
         Op::Artifacts(ArtifactsOp::DeleteArtifact),
         Op::Artifacts(ArtifactsOp::GetArtifactRetention),
         Op::Artifacts(ArtifactsOp::SetArtifactRetention),
+        Op::DeployKeys(DeployKeysOp::ListDeployKeys),
+        Op::DeployKeys(DeployKeysOp::GetDeployKey),
+        Op::DeployKeys(DeployKeysOp::CreateDeployKey),
+        Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
         Op::Protection(ProtectionOp::UpdateEnvironment),
         Op::Protection(ProtectionOp::DeleteEnvironment),
         Op::Protection(ProtectionOp::GetPendingDeployments),
@@ -1124,6 +1131,7 @@ impl Op {
             Op::Deployments(op) => op.name(),
             Op::Protection(op) => op.name(),
             Op::Artifacts(op) => op.name(),
+            Op::DeployKeys(op) => op.name(),
         }
     }
 
@@ -1639,6 +1647,7 @@ impl Op {
             Op::Deployments(op) => op.description(),
             Op::Protection(op) => op.description(),
             Op::Artifacts(op) => op.description(),
+            Op::DeployKeys(op) => op.description(),
         }
     }
 
@@ -3012,6 +3021,7 @@ impl Op {
             Op::Deployments(op) => op.input(),
             Op::Protection(op) => op.input(),
             Op::Artifacts(op) => op.input(),
+            Op::DeployKeys(op) => op.input(),
         }
     }
 
@@ -5083,6 +5093,7 @@ impl Op {
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::artifacts::run(op, services, viewer, input).await,
+            Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,
@@ -5368,7 +5379,7 @@ mod tests {
         assert_eq!(integer(&json!({}), "number"), None);
     }
 
-    const ACCESS: [Op; 12] = [
+    const ACCESS: [Op; 16] = [
         Op::ListCollaborators,
         Op::AddCollaborator,
         Op::UpdateCollaborator,
@@ -5381,6 +5392,10 @@ mod tests {
         Op::DeclineRepoInvitation,
         Op::SetBasePermission,
         Op::ListOutsideCollaborators,
+        Op::DeployKeys(DeployKeysOp::ListDeployKeys),
+        Op::DeployKeys(DeployKeysOp::GetDeployKey),
+        Op::DeployKeys(DeployKeysOp::CreateDeployKey),
+        Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
     ];
 
     /// Who has access is for people: no run's scope lists these, and the
