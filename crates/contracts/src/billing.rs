@@ -1719,6 +1719,22 @@ pub struct AdminEnterpriseBillingArgs {
     pub by: String,
 }
 
+/// `admin_enterprise_address`: the enterprise's billing address and tax ID,
+/// saved on its Stripe customer (made by `admin_enterprise_billing`).
+/// Stripe Tax works its invoices' tax out from the address; an invoice is
+/// not sent without one. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminEnterpriseAddressArgs {
+    pub id: String,
+    pub address: PostalAddress,
+    #[serde(default, alias = "tax_id_type")]
+    pub tax_id_type: Option<String>,
+    #[serde(default, alias = "tax_id")]
+    pub tax_id: Option<String>,
+    pub by: String,
+}
+
 /// `admin_invoice_enterprise`: sends an enterprise its invoice now, for
 /// what its workspaces owe, rather than waiting for the month to close.
 /// Returns `Outcome<EnterpriseInvoice>`.
@@ -1768,6 +1784,13 @@ pub struct WorkspaceInvoice {
     pub pdf_url: Option<String>,
     pub lines: Vec<InvoiceItem>,
     pub created_at: String,
+    /// The card processing fee on top of `amount_micros`, when the invoice
+    /// is charged to a card; never part of the usage it pays for.
+    #[serde(default)]
+    pub fee_micros: i64,
+    /// The tax Stripe added on top, once it is known (after paying).
+    #[serde(default)]
+    pub tax_micros: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1855,6 +1878,11 @@ pub struct StatementLine {
     /// What the account's discount took off the line's price.
     #[serde(default)]
     pub discount_micros: i64,
+    /// On the `Tax` and `Card processing fees` lines: what was paid with
+    /// payments on top of what reached the balance (negative for what a
+    /// refund gave back). Never in `charged_micros` or the balance.
+    #[serde(default)]
+    pub passed_micros: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1881,6 +1909,12 @@ pub struct StatementTotals {
     /// carries over to the next invoice. Zero when nothing carried.
     #[serde(default)]
     pub carried_micros: i64,
+    /// Tax and card processing fees paid with the month's payments, on top
+    /// of `paid_micros`.
+    #[serde(default)]
+    pub tax_micros: i64,
+    #[serde(default)]
+    pub card_fee_micros: i64,
 }
 
 /// One source that paid for usage before it was charged.
@@ -2486,8 +2520,12 @@ pub struct AdminAction {
 pub struct Plan {
     pub feature: Feature,
     pub title: String,
-    /// Charged every month while the plan is on, in cents.
+    /// Charged every month while the plan is on, in cents, excluding tax.
     pub monthly_cents: u32,
+    /// The card processing fee on top each month, in cents (0 when the
+    /// fee is off). Excluding tax, like the price.
+    #[serde(default)]
+    pub card_fee_cents: u32,
     /// What the monthly price includes, one line each, for people to read.
     pub includes: Vec<String>,
     /// How usage past the allowance is charged, for people to read.
@@ -2624,6 +2662,17 @@ pub struct CancelSubscriptionArgs {
 pub struct HasFeatureArgs {
     pub workspace: String,
     pub feature: Feature,
+}
+
+/// `free_workspaces`: which of `workspaces` are free, that is on no paid
+/// plan. Paid is the g1t plan, an enterprise's terms, or a discount of
+/// 100% (g1t's own workspaces). Identity asks before a workspace is made
+/// (a person owns at most one free workspace) and before anyone is added
+/// to one (a free workspace cannot invite). Returns `Vec<String>`, the
+/// free ones, lower-cased; none where payments are not set up.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FreeWorkspacesArgs {
+    pub workspaces: Vec<String>,
 }
 
 /// `charge_feature`: usage of a feature past its plan's allowance, charged
@@ -2774,6 +2823,14 @@ pub struct OverallMargin {
     pub cloudflare_cost_micros: i64,
     #[serde(default)]
     pub models_cost_micros: i64,
+    /// Tax collected with payments over the range, net of refunds: owed to
+    /// the tax authorities, never in cash or revenue.
+    #[serde(default)]
+    pub tax_collected_micros: i64,
+    /// Card processing fees passed on with card payments, net of refunds:
+    /// they pay Stripe's fee, so they are not revenue either.
+    #[serde(default)]
+    pub card_fees_micros: i64,
 }
 
 /// A count, cost or leak that does not add up.
@@ -2919,8 +2976,11 @@ pub struct CostSettings {
     /// and at least `anomaly_floor_micros`, is flagged.
     pub anomaly_factor: f64,
     pub anomaly_floor_micros: i64,
-    /// Pass Stripe's card fee on as its own line when AI credit is bought
-    /// by card (`card_fee_percent` and `card_fee_fixed` in the price book).
+    /// Pass Stripe's card fee on as its own line on every card payment (the
+    /// plan, Security and quality, prepaying, AI credit, auto-reload and
+    /// invoices charged to a card), never on a bank transfer or an invoice
+    /// sent to be paid (`card_fee_percent` and `card_fee_fixed` in the
+    /// price book). On by default.
     #[serde(default = "yes")]
     pub card_fee: bool,
 }
@@ -3548,6 +3608,21 @@ pub struct BillingDetails {
     /// Stripe could not be read: what is shown is what g1t keeps.
     #[serde(default)]
     pub unavailable: Option<String>,
+    /// Whether Stripe Tax can place the customer from the address: tax
+    /// is worked out from it, and without it nothing is charged.
+    #[serde(default)]
+    pub tax_location: bool,
+    /// Set when g1t did not charge for want of an address (RFC 3339).
+    #[serde(default)]
+    pub tax_address_needed_at: Option<String>,
+    /// Stripe's check of the tax ID: `pending`, `verified`, `unverified` or
+    /// `unavailable`.
+    #[serde(default)]
+    pub tax_id_status: Option<String>,
+    /// `none`, `exempt` or `reverse`, as staff set it at Stripe; g1t never
+    /// changes it.
+    #[serde(default)]
+    pub tax_exempt: Option<String>,
 }
 
 /// `set_billing_details`: saves the invoice details on the Stripe customer.

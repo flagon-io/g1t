@@ -989,6 +989,36 @@ raises the limit, so paying users are never stopped. A declined card
 stops work until paid. The owner's own spend limit always means stop.
 Test-mode payments never lower exposure or raise trust.
 
+### Tax, card fees and free workspaces (built 2026-10-08)
+
+> **2026-10-08, decided:** Stripe Tax everywhere ("so I don't fuck up on
+> taxes"); Stripe's card fee passed to the customer with the 20% markup
+> kept; one free workspace per person; no invites on free workspaces.
+
+- **Stripe Tax on every payment.** `automatic_tax` on every Checkout page
+  (plan, Security and quality, prepaying, AI credit), every subscription
+  and every invoice g1t makes (month close, threshold, enterprise), and a
+  tax calculation and transaction for auto-reload's off-session charge.
+  Tax code `txcd_10103001` (SaaS, business use), every price
+  `tax_behavior=exclusive`. Checkout always collects the billing address
+  and tax ID and saves them on the customer. Prices on g1t are shown
+  excluding tax. Tax is never revenue: balances and plan payments are
+  credited without it, it is kept in `tax_and_fees`, shown as its own
+  statement line, and as **Tax collected** on sudo's Costs. Without an
+  address g1t does not charge: the owners are asked for one.
+- **The card fee** (2.9% + $0.30, grossed up) is its own line on every
+  card payment, the plan's and Security's as a monthly item; never on a
+  bank transfer or an enterprise's invoice. On by default
+  (`cost_settings.card_fee`). Not revenue either. Meters stay at cost +
+  20%; models at the provider's price plus the agent rate.
+- **One free workspace per person.** Identity asks billing
+  (`free_workspaces`) before creating one; a second is refused with the
+  way forward. Those who own several from before keep them.
+- **A free workspace adds no one**: no members, invites or outside
+  collaborators until it starts the plan; its members stay; @g1t never
+  counts. Enforced in identity for every path (site, API, MCP).
+- Details: docs/BILLING_OPERATIONS.md, *Tax and the card fee*.
+
 ### Promo codes (planned)
 
 Staff credits (promotional, goodwill, refund; `services/billing/src/grants.rs`,

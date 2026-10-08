@@ -462,6 +462,8 @@ impl Billing {
         let fee = i64::from(open.fee_cents.unwrap_or(0)) * 10_000;
         self.grant_purchased(&open.workspace, session_id, micros, fee, &open.created_by, session.customer.as_deref())
             .await?;
+        let extras = crate::tax::Extras { tax_cents: session.tax_cents(), fee_cents: fee / 10_000 };
+        self.record_extras(&open.workspace, session_id, session.payment_intent.as_deref(), extras, None).await?;
         Ok(Ok(format!("{}: {} of AI credit bought", open.workspace, cents(micros))))
     }
 
@@ -733,14 +735,31 @@ impl Billing {
             ])?
             .run()
             .await?;
-        let charge = crate::stripe::SavedCharge {
+        let untaxed = crate::stripe::SavedCharge {
             workspace,
             customer: &customer,
             payment_method: &method.id,
             credit_cents,
             fee_cents,
+            tax_cents: 0,
+            tax_calculation: None,
             key: &key,
         };
+        // No Checkout page or invoice works the tax out here: Stripe Tax's
+        // calculation does, for the customer's saved address. Without one,
+        // nothing is charged and the owners are asked for it.
+        let calculation = match stripe.tax_calculation(&untaxed).await {
+            Ok(calculation) => calculation,
+            Err(error) if crate::stripe::is_tax_location_error(&error) => {
+                self.tax_address_needed(workspace).await?;
+                self.reload_failed(workspace, Some(&key), amount, "Stripe needs the workspace's billing address to work out tax; add it under Invoice details")
+                    .await?;
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let tax_cents = u32::try_from(calculation.tax_amount_exclusive.max(0)).unwrap_or(0);
+        let charge = crate::stripe::SavedCharge { tax_cents, tax_calculation: Some(&calculation.id), ..untaxed };
         let paid = match stripe.charge_saved(&charge).await {
             Ok(intent) if intent["status"].as_str() == Some("succeeded") => intent["id"].as_str().map(str::to_owned),
             Ok(intent) => {
@@ -761,6 +780,18 @@ impl Billing {
             .run()
             .await?;
         self.grant_purchased(workspace, &intent, amount, i64::from(fee_cents) * 10_000, "g1t", Some(&customer)).await?;
+        // Recorded with Stripe Tax once paid, so it is reported and filed;
+        // a failure is logged and the payment stands.
+        let transaction = match stripe.record_tax(&calculation.id, &intent).await {
+            Ok(id) => Some(id),
+            Err(error) => {
+                worker::console_error!("{workspace}: the tax on auto-reload {intent} was not recorded with Stripe Tax: {error}");
+                None
+            }
+        };
+        let extras = crate::tax::Extras { tax_cents: i64::from(tax_cents), fee_cents: i64::from(fee_cents) };
+        self.record_extras(workspace, &intent, Some(&intent), extras, transaction.as_deref()).await?;
+        self.tax_address_given(workspace).await?;
         Ok(Some(amount))
     }
 

@@ -32,6 +32,14 @@ curl -X POST https://api.g1t.sh/workspaces \
 You can belong to up to ten workspaces. `GET /user`, or the `account` tool's `whoami` action, lists the
 ones you belong to.
 
+A new workspace is free, and **each person can own one free workspace**.
+While you own a free workspace, the page shows **You already own a free
+workspace** in place of the form, with **Start the plan** on it; the API
+answers `402` (`payment_required`). Start the plan on it, or delete it,
+then create the new one. Several free workspaces from before are kept, but
+each needs the plan (or deleting) before you can create another. See
+[one free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person).
+
 Usernames and workspaces share one set of names, so a name means the same
 thing wherever it appears. Your username is reserved for you: only you can
 create a workspace with that name, and nobody can register a username that
@@ -293,6 +301,13 @@ Pending invites are listed under the members, with a link to copy and
 
 To give someone a role on one repository without making them a member,
 add them as an [outside collaborator](/guides/access-and-roles/#outside-collaborators).
+
+**A free workspace cannot add people.** Until it starts the g1t plan, it
+cannot add members, send invites, or invite outside collaborators, and an
+invite sent before waits until the plan is on. Its members stay. People
+shows **Start the plan to invite people** with the button in place of the
+form, and the API and MCP answer `402` (`payment_required`). See
+[who a free workspace can add](/guides/usage-and-billing/#who-a-free-workspace-can-add).
 
 ## The workspace's page
 

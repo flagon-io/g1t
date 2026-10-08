@@ -353,6 +353,18 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
           Every credit
         </Link>
       </p>
+      <dl className="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-line bg-surface px-4 py-3 text-sm sm:px-5">
+        <div>
+          <dt className="text-xs text-muted">Tax collected</dt>
+          <dd className="tabular text-fg">{usd(o.taxCollectedMicros ?? 0, { cents: true })}</dd>
+          <dd className="text-xs text-faint">Owed to tax authorities; never in money in or margin. Filed from Stripe Tax.</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted">Card fees passed on</dt>
+          <dd className="tabular text-fg">{usd(o.cardFeesMicros ?? 0, { cents: true })}</dd>
+          <dd className="text-xs text-faint">Paid Stripe&apos;s card fees; not revenue either.</dd>
+        </div>
+      </dl>
     </>
   );
 }

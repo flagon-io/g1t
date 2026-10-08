@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, Mail, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Mail, MapPin, Plus, Send, Trash2 } from "lucide-react";
 import { data, Link, redirect, useLocation } from "react-router";
 
 import { type AdminOwner, type EnterpriseInvoice, type Limit, httpStatus } from "@g1t/contracts";
@@ -157,6 +157,7 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
             sent={sent}
             pathname={pathname}
             error={error("invoices")}
+            addressError={error("address")}
           />
           <TermsForm terms={account.terms} pathname={pathname} error={error("terms")} />
           <AllowancesForm
@@ -306,12 +307,14 @@ function InvoicesSection({
   sent,
   pathname,
   error,
+  addressError,
 }: {
   email: string | null;
   invoices: EnterpriseInvoice[];
   sent: EnterpriseInvoice | null;
   pathname: string;
   error: SectionError;
+  addressError: SectionError;
 }) {
   return (
     <Section id="invoices" title="Invoices" description="One Stripe invoice for every workspace it pays for, net 30, emailed by Stripe.">
@@ -331,6 +334,45 @@ function InvoicesSection({
           <Button type="submit" variant="quiet">
             <Mail size={14} />
             {email ? "Change" : "Set"}
+          </Button>
+        </form>
+
+        <form method="post" action={`${pathname}#invoices`} className="space-y-2 border-t border-line pt-4">
+          <input type="hidden" name="intent" value="billing-address" />
+          <p className="text-sm text-muted">
+            Billing address, saved on its Stripe customer. Stripe Tax works its invoices&apos; tax out from it, so no invoice goes out without
+            one. Leave the tax ID blank to keep the one there is.
+          </p>
+          {addressError && <Notice tone="error">{addressError.error}</Notice>}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="Street">
+              <Input name="line1" defaultValue={addressError?.values?.line1 ?? ""} autoComplete="off" />
+            </Field>
+            <Field label="Suite, floor">
+              <Input name="line2" defaultValue={addressError?.values?.line2 ?? ""} autoComplete="off" />
+            </Field>
+            <Field label="City">
+              <Input name="city" defaultValue={addressError?.values?.city ?? ""} autoComplete="off" />
+            </Field>
+            <Field label="State or region">
+              <Input name="state" defaultValue={addressError?.values?.state ?? ""} autoComplete="off" />
+            </Field>
+            <Field label="Postal code" hint="Needed in the US">
+              <Input name="postalCode" defaultValue={addressError?.values?.postalCode ?? ""} autoComplete="off" />
+            </Field>
+            <Field label="Country" hint="Two letters, such as US">
+              <Input name="country" required maxLength={2} defaultValue={addressError?.values?.country ?? ""} className="uppercase" autoComplete="off" />
+            </Field>
+            <Field label="Tax ID kind" hint="Stripe's name, such as eu_vat or us_ein">
+              <Input name="taxIdType" defaultValue={addressError?.values?.taxIdType ?? ""} autoComplete="off" />
+            </Field>
+            <Field label="Tax ID">
+              <Input name="taxId" defaultValue={addressError?.values?.taxId ?? ""} autoComplete="off" />
+            </Field>
+          </div>
+          <Button type="submit" variant="quiet">
+            <MapPin size={14} />
+            Save address
           </Button>
         </form>
 

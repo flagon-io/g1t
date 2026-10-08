@@ -66,10 +66,11 @@ pub(crate) fn is_decline(error: &str) -> bool {
     error.contains("answered 402") || error.contains("\"card_error\"")
 }
 
-/// A workspace invoice's draft: charged to the card, and holding only the
-/// lines put on it, never whatever is pending on the customer.
+/// A workspace invoice's draft: charged to the card, taxed by Stripe Tax,
+/// and holding only the lines put on it, never whatever is pending on the
+/// customer.
 fn draft_fields(customer: &str, workspace: &str, reason: &str, period: &str, description: String) -> Vec<(&'static str, String)> {
-    vec![
+    let mut fields = vec![
         ("customer", customer.to_owned()),
         ("collection_method", "charge_automatically".to_owned()),
         ("auto_advance", "false".to_owned()),
@@ -78,19 +79,29 @@ fn draft_fields(customer: &str, workspace: &str, reason: &str, period: &str, des
         ("metadata[g1t_workspace]", workspace.to_owned()),
         ("metadata[reason]", reason.to_owned()),
         ("metadata[period]", period.to_owned()),
-    ]
+    ];
+    fields.extend(crate::stripe::invoice_tax_fields());
+    fields
 }
 
-/// One line, on the draft `invoice`.
+/// One line, on the draft `invoice`, at g1t's tax code, excluding tax.
 fn item_fields(customer: &str, invoice: &str, workspace: &str, description: &str, cents: i64) -> Vec<(&'static str, String)> {
-    vec![
+    let mut fields = vec![
         ("customer", customer.to_owned()),
         ("invoice", invoice.to_owned()),
         ("amount", cents.to_string()),
         ("currency", "usd".to_owned()),
         ("description", description.to_owned()),
         ("metadata[workspace]", workspace.to_owned()),
-    ]
+    ];
+    fields.extend(crate::stripe::item_tax_fields());
+    fields
+}
+
+/// Whether Stripe left an invoice a draft because Stripe Tax could not
+/// place the customer.
+pub(crate) fn needs_tax_location(invoice: &Value) -> bool {
+    invoice["automatic_tax"]["status"].as_str() == Some("requires_location_inputs")
 }
 
 #[derive(Deserialize)]
@@ -104,6 +115,10 @@ struct InvoiceRow {
     hosted_url: Option<String>,
     pdf_url: Option<String>,
     created_at: String,
+    #[serde(default)]
+    fee_micros: i64,
+    #[serde(default)]
+    tax_micros: i64,
 }
 
 #[derive(Deserialize)]
@@ -126,6 +141,17 @@ struct StripeInvoice {
     amount_paid: i64,
     #[serde(default)]
     charge: Option<String>,
+    #[serde(default)]
+    payment_intent: Option<String>,
+    /// The tax Stripe added, in cents (`tax`, in this API version).
+    #[serde(default)]
+    tax: Option<i64>,
+}
+
+impl StripeInvoice {
+    fn tax_cents(&self) -> i64 {
+        self.tax.unwrap_or(0).max(0)
+    }
 }
 
 impl Billing {
@@ -199,7 +225,26 @@ impl Billing {
             .map(|u| (u.kind, u.charged.unwrap_or(0)))
             .collect();
         let lines = invoice_lines(&used, owed);
-        let key = format!("ws-invoice/{workspace}/{reason}/{period}/{}", owed / 10_000);
+        // Stripe Tax needs to know where the customer is. Without an
+        // address nothing is charged: the owners are asked for one, and the
+        // charge goes through once it is there.
+        match stripe.customer_placed(&customer).await {
+            Ok(true) => {}
+            Ok(false) => {
+                self.tax_address_needed(workspace).await?;
+                return Ok(Err(crate::tax::address_needed_message(workspace)));
+            }
+            Err(error) => return Ok(Err(crate::stripe::friendly(&error))),
+        }
+        let cents = line_cents(&lines);
+        // Charged to a card: Stripe's fee is its own line. A bank account
+        // set as the way to pay has no card fee.
+        let by_card = match stripe.default_payment_method(&customer).await {
+            Ok(method) => method.is_none_or(|m| m.kind == "card"),
+            Err(_) => true,
+        };
+        let fee_cents = if by_card { self.card_fee_on(cents.iter().sum::<i64>()).await? } else { 0 };
+        let key = format!("ws-invoice/{workspace}/{reason}/{period}/{}/{fee_cents}", owed / 10_000);
         let description = match reason {
             "month" => format!("g1t usage for {workspace}, {period}"),
             _ => format!("g1t usage for {workspace}, charged as it neared its limit"),
@@ -210,17 +255,36 @@ impl Billing {
         // total, or the plan's renewal) on top of their own new lines.
         let draft: StripeInvoice =
             stripe.post_idempotent("/invoices", &draft_fields(&customer, workspace, reason, period, description), &key).await?;
-        let cents = line_cents(&lines);
         for (position, (line, cents)) in lines.iter().zip(&cents).enumerate() {
             let fields = item_fields(&customer, &draft.id, workspace, &line.description, *cents);
             let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{position}")).await?;
         }
+        if fee_cents > 0 {
+            let fields = item_fields(&customer, &draft.id, workspace, crate::stripe::CARD_FEE_LINE, fee_cents);
+            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/card_fee")).await?;
+        }
         // A retry finds it finalized already; that is fine.
-        let _ = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
+        let finalized = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
+        if let Err(error) = &finalized
+            && crate::stripe::is_tax_location_error(error)
+        {
+            self.tax_address_needed(workspace).await?;
+            return Ok(Err(crate::tax::address_needed_message(workspace)));
+        }
+        if let Ok(left) = stripe.get::<Value>(&format!("/invoices/{}", draft.id)).await
+            && left["status"].as_str() == Some("draft")
+            && needs_tax_location(&left)
+        {
+            self.tax_address_needed(workspace).await?;
+            return Ok(Err(crate::tax::address_needed_message(workspace)));
+        }
+        self.tax_address_given(workspace).await?;
         // Charge the card now; a decline comes back as an error.
         let paid = stripe.post::<StripeInvoice>(&format!("/invoices/{}/pay", draft.id), &[("off_session", "true".to_owned())]).await;
         let invoice: StripeInvoice = stripe.get(&format!("/invoices/{}", draft.id)).await?;
         let total = lines.iter().map(|l| l.amount_micros).sum::<i64>();
+        let fee_micros = fee_cents * 10_000;
+        let tax_micros = invoice.tax_cents() * 10_000;
         let status = if invoice.status.as_deref() == Some("paid") { "paid" } else { "failed" };
         // Only the card saying no is a decline, which stops work until it
         // is paid. Stripe failing to answer, or answering busy, is g1t's
@@ -233,8 +297,9 @@ impl Billing {
             .db
             .prepare(
                 "INSERT OR REPLACE INTO workspace_invoices
-                   (invoice_id, workspace, reason, period, amount_micros, status, hosted_url, pdf_url, through_at, created_at, paid_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (invoice_id, workspace, reason, period, amount_micros, status, hosted_url, pdf_url, through_at, created_at, paid_at,
+                    fee_micros, tax_micros)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 invoice.id.as_str().into(),
@@ -248,6 +313,8 @@ impl Billing {
                 now.as_str().into(),
                 now.as_str().into(),
                 crate::optional((status == "paid").then_some(now.as_str())),
+                (fee_micros as f64).into(),
+                (tax_micros as f64).into(),
             ])?];
         for (position, line) in lines.iter().enumerate() {
             writes.push(
@@ -258,7 +325,7 @@ impl Billing {
         }
         self.db.batch(writes).await?;
         if status == "paid" {
-            self.credit_invoice(workspace, &invoice).await?;
+            self.credit_invoice(workspace, &invoice, fee_cents).await?;
         } else {
             let error = paid.err().map_or_else(|| "the card was declined".to_owned(), |e| e.to_string().chars().take(200).collect());
             self.mark_declined(workspace, &error).await?;
@@ -274,11 +341,15 @@ impl Billing {
             pdf_url: invoice.invoice_pdf,
             lines,
             created_at: now,
+            fee_micros,
+            tax_micros,
         }))
     }
 
-    /// Enters an invoice's payment once, with the kind of card that paid.
-    async fn credit_invoice(&self, workspace: &str, invoice: &StripeInvoice) -> Result<bool> {
+    /// Enters an invoice's payment once, with the kind of card that paid:
+    /// what it paid for usage, never its tax or card fee, which are kept
+    /// apart (`tax_and_fees`).
+    async fn credit_invoice(&self, workspace: &str, invoice: &StripeInvoice, fee_cents: i64) -> Result<bool> {
         let seen = self
             .db
             .prepare("SELECT id FROM ledger WHERE reference = ?")
@@ -288,12 +359,23 @@ impl Billing {
         if seen.is_some() {
             return Ok(false);
         }
-        let amount = invoice.amount_paid * 10_000;
+        let extras = crate::tax::Extras { tax_cents: invoice.tax_cents(), fee_cents };
+        let amount = (invoice.amount_paid - extras.tax_cents - extras.fee_cents).max(0) * 10_000;
         if amount <= 0 {
             return Ok(false);
         }
-        self.enter(workspace, EntryKind::TopUp, amount, &format!("Paid invoice {}", invoice.id), &invoice.id, None, None, None, None)
-            .await?;
+        let description = if extras == crate::tax::Extras::default() {
+            format!("Paid invoice {}", invoice.id)
+        } else {
+            format!(
+                "Paid invoice {} (tax {} and card fee {} paid with it)",
+                invoice.id,
+                crate::features::cents(extras.tax_cents * 10_000),
+                crate::features::cents(extras.fee_cents * 10_000)
+            )
+        };
+        self.enter(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None, None).await?;
+        self.record_extras(workspace, &invoice.id, invoice.payment_intent.as_deref(), extras, None).await?;
         // Prepaid cards pay, but never raise the limit.
         if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge)
             && let Ok(charge) = stripe.get::<Value>(&format!("/charges/{charge}")).await
@@ -325,10 +407,12 @@ impl Billing {
         #[derive(Deserialize)]
         struct Row {
             workspace: String,
+            #[serde(default)]
+            fee_micros: i64,
         }
         let Some(row) = self
             .db
-            .prepare("SELECT workspace FROM workspace_invoices WHERE invoice_id = ?")
+            .prepare("SELECT workspace, fee_micros FROM workspace_invoices WHERE invoice_id = ?")
             .bind(&[invoice_id.into()])?
             .first::<Row>(None)
             .await?
@@ -338,11 +422,11 @@ impl Billing {
         let Some(stripe) = &self.stripe else { return Ok(None) };
         let invoice: StripeInvoice = stripe.get(&format!("/invoices/{invoice_id}")).await?;
         self.db
-            .prepare("UPDATE workspace_invoices SET status = 'paid', paid_at = ? WHERE invoice_id = ?")
-            .bind(&[rfc3339(now_ms()).into(), invoice_id.into()])?
+            .prepare("UPDATE workspace_invoices SET status = 'paid', paid_at = ?, tax_micros = ? WHERE invoice_id = ?")
+            .bind(&[rfc3339(now_ms()).into(), ((invoice.tax_cents() * 10_000) as f64).into(), invoice_id.into()])?
             .run()
             .await?;
-        let credited = self.credit_invoice(&row.workspace, &invoice).await?;
+        let credited = self.credit_invoice(&row.workspace, &invoice, row.fee_micros / 10_000).await?;
         Ok(Some(format!(
             "invoice {invoice_id} for {} paid{}",
             row.workspace,
@@ -381,6 +465,8 @@ impl Billing {
                 pdf_url: row.pdf_url,
                 lines,
                 created_at: row.created_at,
+                fee_micros: row.fee_micros,
+                tax_micros: row.tax_micros,
             });
         }
         Ok(invoices)
@@ -419,6 +505,14 @@ mod tests {
     fn an_invoice_holds_only_its_own_lines() {
         let draft = draft_fields("cus_1", "acme", "month", "2026-09", "g1t usage".to_owned());
         assert!(draft.contains(&("pending_invoice_items_behavior", "exclude".to_owned())));
+        // Taxed by Stripe Tax, every line at g1t's tax code, excluding tax.
+        assert!(draft.contains(&("automatic_tax[enabled]", "true".to_owned())));
+        let line = item_fields("cus_1", "in_1", "acme", crate::stripe::CARD_FEE_LINE, 61);
+        assert!(line.contains(&("tax_code", crate::stripe::TAX_CODE.to_owned())));
+        assert!(line.contains(&("tax_behavior", "exclusive".to_owned())));
+        // Left a draft for want of an address: asked for, never charged.
+        assert!(needs_tax_location(&serde_json::json!({ "automatic_tax": { "status": "requires_location_inputs" } })));
+        assert!(!needs_tax_location(&serde_json::json!({ "automatic_tax": { "status": "complete" } })));
         let item = item_fields("cus_1", "in_1", "acme", "Sandbox time", 1_234);
         assert!(item.contains(&("invoice", "in_1".to_owned())));
         assert!(item.contains(&("amount", "1234".to_owned())));

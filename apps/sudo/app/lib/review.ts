@@ -33,6 +33,7 @@ export const DONE: Record<string, string> = {
   "reset-stale": "Billing reset. The workspace starts again as a new customer; the costs analysis did not finish, so press Run the analysis now on Costs & margin.",
   created: "Enterprise created.",
   "billing-email": "Saved where the enterprise's invoices go.",
+  "billing-address": "Billing address saved on its Stripe customer. Its invoices are taxed from it.",
   sales: "Sales record saved.",
   note: "Note added.",
   payment: "Payment recorded. It is on the workspace's statement and counts toward its limit.",

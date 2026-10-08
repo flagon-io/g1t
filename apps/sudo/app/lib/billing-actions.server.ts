@@ -201,6 +201,30 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     return back("billing-email");
   }
 
+  if (intent === "billing-address") {
+    // Where Stripe Tax places the enterprise: an invoice is not sent without it.
+    const values = fields(form, "line1", "line2", "city", "state", "postalCode", "country", "taxIdType", "taxId");
+    if (subject.kind !== "enterprise") return failed("top", "Only an enterprise's address is set here; a workspace's owners set their own.");
+    if (!subject.billingEmail) return failed("address", "Set where its invoices go first: that makes its Stripe customer.", values);
+    const country = values.country.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(country)) return failed("address", "The country is two letters, such as US or DE.", values);
+    if (country === "US" && !values.postalCode.trim()) return failed("address", "In the US, Stripe Tax needs the ZIP code.", values);
+    const taxIdType = values.taxIdType.trim();
+    const taxId = values.taxId.trim();
+    if (Boolean(taxIdType) !== Boolean(taxId)) return failed("address", "Give the tax ID's kind and its number together, or neither.", values);
+    const address = {
+      line1: values.line1.trim(),
+      line2: values.line2.trim(),
+      city: values.city.trim(),
+      state: values.state.trim(),
+      postalCode: values.postalCode.trim(),
+      country,
+    };
+    const result = await admin.enterpriseAddress(subject.accountId, address, taxIdType || null, taxId || null, staff.email);
+    if (!result.ok) return failed("address", result.error.message, values);
+    return back("billing-address");
+  }
+
   if (intent === "invoice") {
     if (subject.kind !== "enterprise") return failed("top", "Only an enterprise is invoiced from sudo.");
     if (!confirmed) {

@@ -123,6 +123,10 @@ impl Identity {
                 "You belong to the maximum number of workspaces.",
             ));
         }
+        // One free workspace per person (paid.rs): a new one starts free.
+        if let Some(refused) = self.second_free_workspace(&a.user.id).await? {
+            return Ok(refused);
+        }
         // Usernames and workspaces share one namespace: a person's username
         // is theirs to use for a workspace, and nobody else's.
         let someone_elses_username = self
@@ -311,6 +315,13 @@ impl Identity {
         // What the workspace asks of its members (security.rs); nothing yet.
         if let Some(why) = self.policy_refusal(&user.id, &a.slug.to_lowercase()).await? {
             return Ok(Outcome::fail(FailureCode::Forbidden, why));
+        }
+        // A free workspace adds no one until it starts the plan (paid.rs);
+        // g1t's agent is never someone added.
+        if !crate::paid::is_g1t(&user.username)
+            && let Some(refused) = self.free_workspace_refusal(&a.slug).await?
+        {
+            return Ok(refused);
         }
         self.db
             .prepare(

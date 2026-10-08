@@ -489,7 +489,7 @@ permission. An agent's token cannot use any of these.
 | --- | --- | --- | --- |
 | [`list_collaborators`](/reference/api/access/list-collaborators/) | Everyone with a role on it, with the role, where it comes from (`owner`, `base` or `direct`) and whether they are members; the base permission; and, with the Admin role, pending invitations. Needs the Write role. | `repo` | `access:read` |
 | [`get_permission`](/reference/api/access/get-collaborator-permission/) | Someone's role, where it comes from, and what it lets them do. Needs the Write role, or to be about yourself. | `repo`, `username` | `access:read` |
-| [`add_collaborator`](/reference/api/access/add-collaborator/) | Give someone a role by username or email address. A member gets it at once; anyone else is invited, and becomes an outside collaborator on accepting. Needs the Admin role. | `repo`, `invitee`, `role` | `access:admin` |
+| [`add_collaborator`](/reference/api/access/add-collaborator/) | Give someone a role by username or email address. A member gets it at once; anyone else is invited, and becomes an outside collaborator on accepting. Needs the Admin role. On a free workspace, only members: inviting anyone else is refused with `402` until it starts the plan. | `repo`, `invitee`, `role` | `access:admin` |
 | [`update_collaborator`](/reference/api/access/update-collaborator/) | Change someone's direct role, or their pending invitation's. Needs the Admin role. | `repo`, `username`, `role` | `access:admin` |
 | [`remove_collaborator`](/reference/api/access/remove-collaborator/) | Take away someone's direct role. Needs the Admin role, or to be your own. | `repo`, `username` | `access:admin` |
 | [`list_invitations`](/reference/api/access/list-repo-invitations/) | Its pending invitations. Needs the Admin role. | `repo` | `access:read` |
@@ -533,11 +533,11 @@ at the top of its sidebar. See [workspaces](/guides/workspaces/).
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`get`](/reference/api/workspaces/get-workspace/) | One workspace you belong to: its name, description and member count, its `base_permission` and `team_creation`. Members only. | `workspace` | `workspace:read` |
-| [`create`](/reference/api/workspaces/create-workspace/) | Create a workspace. | `slug` | `workspace:admin` |
+| [`create`](/reference/api/workspaces/create-workspace/) | Create a workspace. A new one is free, and each person owns at most one free workspace: refused with `402` while you own one, until it is on the plan or deleted. See [one free workspace per person](/guides/usage-and-billing/#one-free-workspace-per-person). | `slug` | `workspace:admin` |
 | [`update`](/reference/api/workspaces/update-workspace/) | Change its display name and description, who may create its teams (`team_creation`: `members` or `owners`), and with the `access:admin` scope too, its `base_permission`. Only the fields given change; the slug never does. Owners only. | `workspace` | `workspace:admin` |
 | [`delete`](/reference/api/workspaces/delete-workspace/) | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | `workspace`, `confirm` | `workspace:admin` |
 | [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
-| [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. | `workspace`, `email` | `workspace:admin` |
+| [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. A free workspace cannot invite: refused with `402` until it starts the plan. | `workspace`, `email` | `workspace:admin` |
 | [`revoke_invite`](/reference/api/invites/revoke-workspace-invite/) | Revoke a workspace's pending invite. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's connections. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
 | [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect a model provider (Anthropic, OpenAI, Gemini, or a compatible endpoint), Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |

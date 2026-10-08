@@ -123,6 +123,15 @@ impl Billing {
             return Ok(Ok("ignored: settled meanwhile".to_owned()));
         }
         let workspace = open.workspace;
+        // The address entered with the card, onto a customer that has none,
+        // so the plan and invoices that follow can be taxed.
+        if let (Some(customer), Some(address)) = (session.customer.as_deref(), card.address.as_ref()) {
+            match stripe.fill_address(customer, address).await {
+                Ok(true) => self.tax_address_given(&workspace).await?,
+                Ok(false) => {}
+                Err(error) => worker::console_error!("{workspace}: the card's billing address was not saved on the customer: {error}"),
+            }
+        }
         let now = rfc3339(now_ms());
         #[derive(Deserialize)]
         struct Count {

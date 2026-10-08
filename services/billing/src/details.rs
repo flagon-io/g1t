@@ -35,14 +35,8 @@ pub(crate) fn details_invalid(a: &SetBillingDetailsArgs) -> Option<&'static str>
     if a.name.as_deref().is_some_and(|n| n.trim().chars().count() > 200) {
         return Some("Keep the company name under 200 characters.");
     }
-    if let Some(address) = &a.address {
-        if !address.country.trim().is_empty() && (address.country.trim().len() != 2 || !address.country.trim().chars().all(|c| c.is_ascii_alphabetic())) {
-            return Some("The country is two letters, such as US or DE.");
-        }
-        let parts = [&address.line1, &address.line2, &address.city, &address.state, &address.postal_code];
-        if parts.iter().any(|p| p.chars().count() > 200) {
-            return Some("Keep each line of the address under 200 characters.");
-        }
+    if let Some(why) = a.address.as_ref().and_then(address_invalid) {
+        return Some(why);
     }
     if a.po_number.as_deref().is_some_and(|p| p.trim().chars().count() > 140) {
         return Some("Keep the purchase order under 140 characters.");
@@ -52,19 +46,70 @@ pub(crate) fn details_invalid(a: &SetBillingDetailsArgs) -> Option<&'static str>
     {
         return Some("Stripe does not write invoices in that language.");
     }
-    match (a.tax_id_type.as_deref().map(str::trim), a.tax_id.as_deref().map(str::trim)) {
-        (Some(kind), Some(value)) if !kind.is_empty() && !value.is_empty() => {
-            if kind.len() > 20 || !kind.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
-                return Some("Choose the kind of tax ID from the list.");
-            }
-            if value.chars().count() > 60 {
-                return Some("That tax ID is too long.");
-            }
+    tax_id_invalid(a.tax_id_type.as_deref(), a.tax_id.as_deref())
+}
+
+/// Puts a tax ID on the customer in place of the one there was; an empty
+/// value only takes the old one off. Stripe checks it (EU VAT numbers
+/// against VIES, for one) and Stripe Tax uses it, such as for a reverse
+/// charge. Why not, as a sentence, when Stripe refuses it.
+pub(crate) async fn replace_tax_id(
+    stripe: &crate::stripe::Stripe,
+    customer: &str,
+    owner: &str,
+    kind: &str,
+    value: &str,
+) -> std::result::Result<(), String> {
+    let (kind, value) = (kind.trim(), value.trim());
+    let existing: Result<Value> = stripe.get(&format!("/customers/{customer}/tax_ids?limit=10")).await;
+    let existing = existing.ok().and_then(|list| list["data"].as_array().cloned()).unwrap_or_default();
+    if existing.iter().any(|t| t["type"].as_str() == Some(kind) && t["value"].as_str() == Some(value)) {
+        return Ok(());
+    }
+    if !value.is_empty() {
+        let key = format!("tax_id/{owner}/{kind}/{value}");
+        let added: Result<Value> =
+            stripe.post_idempotent(&format!("/customers/{customer}/tax_ids"), &[("type", kind.to_owned()), ("value", value.to_owned())], &key).await;
+        if let Err(error) = added {
+            return Err(crate::stripe::friendly(&error));
         }
-        (Some(kind), Some(value)) if kind.is_empty() != value.is_empty() => return Some("Give the tax ID's kind and its number together."),
-        _ => {}
+    }
+    for old in existing {
+        if let Some(id) = old["id"].as_str() {
+            let _: Result<Value> = stripe.delete(&format!("/customers/{customer}/tax_ids/{id}")).await;
+        }
+    }
+    Ok(())
+}
+
+/// What is wrong with an address, if anything.
+pub(crate) fn address_invalid(address: &PostalAddress) -> Option<&'static str> {
+    if !address.country.trim().is_empty() && (address.country.trim().len() != 2 || !address.country.trim().chars().all(|c| c.is_ascii_alphabetic())) {
+        return Some("The country is two letters, such as US or DE.");
+    }
+    let parts = [&address.line1, &address.line2, &address.city, &address.state, &address.postal_code];
+    if parts.iter().any(|p| p.chars().count() > 200) {
+        return Some("Keep each line of the address under 200 characters.");
     }
     None
+}
+
+/// What is wrong with a tax ID, if anything: a kind Stripe takes, and a
+/// number of letters, digits and separators.
+pub(crate) fn tax_id_invalid(kind: Option<&str>, value: Option<&str>) -> Option<&'static str> {
+    match (kind.map(str::trim), value.map(str::trim)) {
+        (Some(kind), Some(value)) if !kind.is_empty() && !value.is_empty() => {
+            if !TAX_ID_TYPES.contains(&kind) {
+                return Some("Choose the kind of tax ID from the list.");
+            }
+            if value.chars().count() > 60 || !value.chars().all(|c| c.is_ascii_alphanumeric() || " .-/".contains(c)) {
+                return Some("That is not a tax ID: letters, digits, spaces, dots, hyphens and slashes, up to 60.");
+            }
+            None
+        }
+        (Some(kind), Some(value)) if kind.is_empty() != value.is_empty() => Some("Give the tax ID's kind and its number together."),
+        _ => None,
+    }
 }
 
 /// The customer's fields to send for the details given: absent ones left
@@ -145,11 +190,29 @@ pub(crate) fn details_from(customer: &Value) -> BillingDetails {
         }),
         tax_id_type: tax.and_then(|t| text(&t["type"])),
         tax_id: tax.and_then(|t| text(&t["value"])),
+        tax_id_status: tax.and_then(|t| text(&t["verification"]["status"])),
+        tax_exempt: text(&customer["tax_exempt"]),
+        tax_location: crate::stripe::address_places_customer(address)
+            || crate::stripe::address_places_customer(&customer["shipping"]["address"]),
         po_number: text(&customer["metadata"]["po_number"]),
         language: customer["preferred_locales"].as_array().and_then(|l| l.first()).and_then(text),
         ..BillingDetails::default()
     }
 }
+
+/// The kinds of tax ID Stripe takes on a customer (`tax_ids[type]`) in
+/// the API version billing is written for.
+pub(crate) const TAX_ID_TYPES: &[&str] = &[
+    "ad_nrt", "ae_trn", "al_tin", "am_tin", "ao_tin", "ar_cuit", "au_abn", "au_arn", "ba_tin", "bb_tin", "bg_uic", "bh_vat",
+    "bo_tin", "br_cnpj", "br_cpf", "bs_tin", "by_tin", "ca_bn", "ca_gst_hst", "ca_pst_bc", "ca_pst_mb", "ca_pst_sk", "ca_qst",
+    "cd_nif", "ch_uid", "ch_vat", "cl_tin", "cn_tin", "co_nit", "cr_tin", "de_stn", "do_rcn", "ec_ruc", "eg_tin", "es_cif",
+    "eu_oss_vat", "eu_vat", "gb_vat", "ge_vat", "gn_nif", "hk_br", "hr_oib", "hu_tin", "id_npwp", "il_vat", "in_gst", "is_vat",
+    "jp_cn", "jp_rn", "jp_trn", "ke_pin", "kh_tin", "kr_brn", "kz_bin", "li_uid", "li_vat", "ma_vat", "md_vat", "me_pib",
+    "mk_vat", "mr_nif", "mx_rfc", "my_frp", "my_itn", "my_sst", "ng_tin", "no_vat", "no_voec", "np_pan", "nz_gst", "om_vat",
+    "pe_ruc", "ph_tin", "ro_tin", "rs_pib", "ru_inn", "ru_kpp", "sa_vat", "sg_gst", "sg_uen", "si_tin", "sn_ninea", "sr_fin",
+    "sv_nit", "th_vat", "tj_tin", "tr_tin", "tw_vat", "tz_vat", "ua_vat", "ug_tin", "us_ein", "uy_ruc", "uz_tin", "uz_vat",
+    "ve_rif", "vn_tin", "za_vat", "zm_tin", "zw_tin",
+];
 
 impl Billing {
     /// `billing_details`: members only.
@@ -179,6 +242,7 @@ impl Billing {
                 });
                 details.invoices = invoices.iter().filter_map(invoice_from).collect();
                 details.upcoming = upcoming;
+                details.tax_address_needed_at = self.tax_address_needed_at(workspace).await?;
                 Ok(details)
             }
             Err(error) => {
@@ -209,7 +273,8 @@ impl Billing {
         let mut subscriptions = 0i64;
         for feature in [Feature::Plan, Feature::Security] {
             if self.plan_on(workspace, feature).await? {
-                subscriptions += i64::from(self.plan(feature).await?.monthly_cents) * 10_000;
+                let plan = self.plan(feature).await?;
+                subscriptions += i64::from(plan.monthly_cents + plan.card_fee_cents) * 10_000;
             }
         }
         let terms = self.terms_of(workspace).await?;
@@ -263,29 +328,19 @@ impl Billing {
             }
         }
         // A tax ID replaces the one there was.
-        if let (Some(kind), Some(value)) = (a.tax_id_type.as_deref().map(str::trim), a.tax_id.as_deref().map(str::trim)) {
-            let existing: Result<Value> = stripe.get(&format!("/customers/{customer}/tax_ids?limit=10")).await;
-            let existing = existing.ok().and_then(|list| list["data"].as_array().cloned()).unwrap_or_default();
-            let same = existing.iter().any(|t| t["type"].as_str() == Some(kind) && t["value"].as_str() == Some(value));
-            if !same {
-                if !value.is_empty() {
-                    let key = format!("tax_id/{workspace}/{kind}/{value}");
-                    let added: Result<Value> =
-                        stripe.post_idempotent(&format!("/customers/{customer}/tax_ids"), &[("type", kind.to_owned()), ("value", value.to_owned())], &key).await;
-                    if let Err(error) = added {
-                        return Ok(Outcome::fail(FailureCode::Invalid, crate::stripe::friendly(&error)));
-                    }
-                }
-                for old in existing {
-                    if let Some(id) = old["id"].as_str() {
-                        let _: Result<Value> = stripe.delete(&format!("/customers/{customer}/tax_ids/{id}")).await;
-                    }
-                }
-            }
+        if let (Some(kind), Some(value)) = (a.tax_id_type.as_deref(), a.tax_id.as_deref())
+            && let Err(why) = replace_tax_id(stripe, &customer, &workspace, kind, value).await
+        {
+            return Ok(Outcome::fail(FailureCode::Invalid, why));
         }
         let account = self.account_of(&workspace).await?;
         self.audit(&account.id, "billing_details", &format!("{workspace}: invoice details changed"), &a.actor.username).await?;
-        Ok(Outcome::Ok(self.details_of(&workspace).await?))
+        let details = self.details_of(&workspace).await?;
+        // An address Stripe Tax can use lifts the hold on charging.
+        if details.tax_location {
+            self.tax_address_given(&workspace).await?;
+        }
+        Ok(Outcome::Ok(BillingDetails { tax_address_needed_at: None, ..details }))
     }
 }
 

@@ -311,6 +311,25 @@ impl Billing {
         Ok(self.plan_kind(workspace).await? != PlanKind::Free)
     }
 
+    /// `free_workspaces`: those of the workspaces on no paid plan. With no
+    /// card processor nothing is free (`plan_kind_for` says paid), so a
+    /// g1t without payments limits no one.
+    pub(crate) async fn free_workspaces(&self, a: g1t_contracts::billing::FreeWorkspacesArgs) -> Result<Vec<String>> {
+        let mut free = vec![];
+        // A person belongs to a bounded number of workspaces; this caps the
+        // reads all the same.
+        for workspace in a.workspaces.iter().take(100) {
+            let workspace = workspace.trim().to_lowercase();
+            if workspace.is_empty() || free.contains(&workspace) {
+                continue;
+            }
+            if self.plan_kind(&workspace).await? == PlanKind::Free {
+                free.push(workspace);
+            }
+        }
+        Ok(free)
+    }
+
     /// What one monthly allowance has used.
     pub(crate) async fn allowance_used(&self, kind: &str, scope: &str, month: &str) -> Result<i64> {
         Ok(self

@@ -23,6 +23,51 @@ const API: &str = "https://api.stripe.com/v1";
 /// code change: read Stripe's upgrade notes for every field billing reads.
 pub(crate) const STRIPE_VERSION: &str = "2025-02-24.acacia";
 
+/// Stripe Tax's code for what g1t sells, on every product, price and
+/// invoice line: software as a service, for business use. A card fee line
+/// carries it too, since a fee for paying for a sale is taxed as the sale.
+pub(crate) const TAX_CODE: &str = "txcd_10103001";
+
+/// What every payment page (payment or subscription mode) asks of Stripe
+/// Tax: tax worked out on top of the price shown, from a billing address
+/// it always collects, with the buyer's tax ID if they have one. With a
+/// customer already, what was entered is saved on it, so invoices and
+/// off-session charges later find the address too. Checkout refuses
+/// `automatic_tax` for a customer with no address unless it may save one
+/// (`customer_update[address]`), and `tax_id_collection` unless it may save
+/// the name (`customer_update[name]`).
+pub(crate) fn checkout_tax_fields(customer: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut fields = vec![
+        ("automatic_tax[enabled]", "true".to_owned()),
+        ("billing_address_collection", "required".to_owned()),
+        ("tax_id_collection[enabled]", "true".to_owned()),
+    ];
+    if customer.is_some() {
+        fields.extend([("customer_update[address]", "auto".to_owned()), ("customer_update[name]", "auto".to_owned())]);
+    }
+    fields
+}
+
+/// Whether Stripe refused because it could not tell where the customer is
+/// for tax: no address, or not enough of one.
+pub(crate) fn is_tax_location_error(error: &Error) -> bool {
+    let text = error.to_string();
+    text.contains("customer_tax_location_invalid") || text.contains("requires_location_inputs")
+}
+
+/// Whether an address is enough for Stripe Tax to place the customer: a
+/// country, and in the United States a postal code (in Canada a postal
+/// code or a province).
+pub(crate) fn address_places_customer(address: &serde_json::Value) -> bool {
+    let text = |key: &str| address[key].as_str().map(str::trim).unwrap_or_default().to_owned();
+    match text("country").to_uppercase().as_str() {
+        "" => false,
+        "US" => !text("postal_code").is_empty(),
+        "CA" => !text("postal_code").is_empty() || !text("state").is_empty(),
+        _ => true,
+    }
+}
+
 /// What a Stripe failure says, for the person on the page: Stripe's own
 /// message when it gave one (never the request or any key), else that it
 /// could not be reached.
@@ -57,8 +102,17 @@ pub struct Session {
     pub url: Option<String>,
     /// `paid` once the money has been taken.
     pub payment_status: String,
-    /// What was paid, in cents.
+    /// What was paid, in cents, tax included.
     pub amount_total: Option<u32>,
+    /// What the lines came to before tax, in cents.
+    #[serde(default)]
+    pub amount_subtotal: Option<u32>,
+    /// The tax Stripe added (`amount_tax`), among other totals.
+    #[serde(default)]
+    pub total_details: Option<TotalDetails>,
+    /// For a payment page: the payment that took the money.
+    #[serde(default)]
+    pub payment_intent: Option<String>,
     pub customer: Option<String>,
     /// For a plan's page: the subscription it started.
     #[serde(default)]
@@ -66,6 +120,28 @@ pub struct Session {
     /// For a card check's page: the setup that saved and verified the card.
     #[serde(default)]
     pub setup_intent: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+pub struct TotalDetails {
+    #[serde(default)]
+    pub amount_tax: i64,
+}
+
+impl Session {
+    /// The tax Stripe added on the page, in cents.
+    pub fn tax_cents(&self) -> i64 {
+        self.total_details.as_ref().map_or(0, |t| t.amount_tax.max(0))
+    }
+
+    /// What the page's lines came to before tax, in cents: the total less
+    /// the tax when Stripe gives no subtotal.
+    pub fn before_tax_cents(&self) -> i64 {
+        match self.amount_subtotal {
+            Some(subtotal) => i64::from(subtotal),
+            None => (i64::from(self.amount_total.unwrap_or(0)) - self.tax_cents()).max(0),
+        }
+    }
 }
 
 /// A card saved and verified: what a card check found.
@@ -78,6 +154,9 @@ pub struct CheckedCard {
     /// `credit`, `debit`, `prepaid` or `unknown`.
     pub funding: Option<String>,
     pub country: Option<String>,
+    /// The billing address entered with the card, as Stripe keeps it.
+    #[serde(default)]
+    pub address: Option<serde_json::Value>,
 }
 
 /// g1t's settings for Stripe's hosted billing page.
@@ -325,27 +404,41 @@ impl Stripe {
         &self,
         workspace: &str,
         amount_cents: u32,
+        fee_cents: u32,
         customer: Option<&str>,
         return_url: &str,
         bank_transfer: bool,
     ) -> Result<Session> {
-        let fields = prepay_fields(workspace, amount_cents, customer, return_url, bank_transfer);
-        let key = page_key("prepay", workspace, &format!("{amount_cents}/{bank_transfer}"), g1t_kit::now_ms());
+        let fields = prepay_fields(workspace, amount_cents, fee_cents, customer, return_url, bank_transfer);
+        let key = page_key(
+            "prepay",
+            workspace,
+            &format!("{amount_cents}/{fee_cents}/{bank_transfer}/{}", customer.unwrap_or("new")),
+            g1t_kit::now_ms(),
+        );
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
     }
 
-    /// Starts a page on which a feature's monthly plan is paid for by card.
+    /// Starts a page on which a feature's monthly plan is paid for by card,
+    /// with the card fee as a monthly line of its own.
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_subscription(
         &self,
         workspace: &str,
         feature: &str,
         title: &str,
         monthly_cents: u32,
+        fee_cents: u32,
         customer: Option<&str>,
         return_url: &str,
     ) -> Result<Session> {
-        let fields = subscription_fields(workspace, feature, title, monthly_cents, customer, return_url);
-        let key = page_key("plan", workspace, &format!("{feature}/{monthly_cents}/{}", customer.unwrap_or("new")), g1t_kit::now_ms());
+        let fields = subscription_fields(workspace, feature, title, monthly_cents, fee_cents, customer, return_url);
+        let key = page_key(
+            "plan",
+            workspace,
+            &format!("{feature}/{monthly_cents}/{fee_cents}/{}", customer.unwrap_or("new")),
+            g1t_kit::now_ms(),
+        );
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
     }
 
@@ -406,6 +499,120 @@ impl Stripe {
     pub async fn charge_saved(&self, charge: &SavedCharge<'_>) -> Result<serde_json::Value> {
         self.send(Method::Post, "/payment_intents", Some(form(&saved_charge_fields(charge))), Some(charge.key)).await
     }
+
+    /// Stripe Tax's figure for an off-session charge, which no Checkout
+    /// page or invoice works out: the credit and the card fee, each at
+    /// g1t's tax code and excluding tax, for the customer's saved address.
+    /// A customer Stripe cannot place fails with
+    /// `customer_tax_location_invalid` (`is_tax_location_error`).
+    pub async fn tax_calculation(&self, charge: &SavedCharge<'_>) -> Result<TaxCalculation> {
+        let key = format!("{}/tax", charge.key);
+        self.send(Method::Post, "/tax/calculations", Some(form(&tax_calculation_fields(charge))), Some(&key)).await
+    }
+
+    /// Records a calculation as a tax transaction once its payment went
+    /// through, so Stripe Tax reports and files it; `reference` is the
+    /// PaymentIntent. Its id, for reversing it on a refund.
+    pub async fn record_tax(&self, calculation: &str, reference: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Transaction {
+            id: String,
+        }
+        let fields = [("calculation", calculation.to_owned()), ("reference", reference.to_owned())];
+        let made: Transaction = self
+            .send(Method::Post, "/tax/transactions/create_from_calculation", Some(form(&fields)), Some(&format!("tax/{reference}")))
+            .await?;
+        Ok(made.id)
+    }
+
+    /// Reverses a tax transaction in part for a refund: `refunded_cents` of
+    /// the payment, tax included, taken back across all of it.
+    pub async fn reverse_tax(&self, transaction: &str, reference: &str, refunded_cents: i64) -> Result<()> {
+        let _: serde_json::Value = self
+            .send(
+                Method::Post,
+                "/tax/transactions/create_reversal",
+                Some(form(&reversal_fields(transaction, reference, refunded_cents))),
+                Some(&format!("tax-reversal/{reference}")),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Copies the billing address entered with a card onto the customer
+    /// when the customer has none Stripe Tax can use, so later invoices and
+    /// charges can be taxed. Never replaces an address an owner gave.
+    pub async fn fill_address(&self, customer: &str, address: &serde_json::Value) -> Result<bool> {
+        if !address_places_customer(address) {
+            return Ok(false);
+        }
+        let found = self.customer(customer).await?;
+        if address_places_customer(&found["address"]) {
+            return Ok(false);
+        }
+        let _: serde_json::Value = self.post(&format!("/customers/{}", encode(customer)), &address_fields(address)).await?;
+        Ok(true)
+    }
+
+    /// Whether the customer's address is enough for Stripe Tax.
+    pub async fn customer_placed(&self, customer: &str) -> Result<bool> {
+        let found = self.customer(customer).await?;
+        Ok(address_places_customer(&found["address"]) || address_places_customer(&found["shipping"]["address"]))
+    }
+}
+
+/// Stripe Tax's answer for an off-session charge.
+#[derive(Debug, Deserialize)]
+pub struct TaxCalculation {
+    pub id: String,
+    /// The tax on top, in cents.
+    #[serde(default)]
+    pub tax_amount_exclusive: i64,
+}
+
+/// A customer's address from an address Stripe gave.
+pub(crate) fn address_fields(address: &serde_json::Value) -> Vec<(&'static str, String)> {
+    let text = |key: &str| address[key].as_str().unwrap_or_default().to_owned();
+    vec![
+        ("address[line1]", text("line1")),
+        ("address[line2]", text("line2")),
+        ("address[city]", text("city")),
+        ("address[state]", text("state")),
+        ("address[postal_code]", text("postal_code")),
+        ("address[country]", text("country")),
+    ]
+}
+
+/// A tax calculation's fields: the credit and the card fee as lines at
+/// g1t's tax code, prices excluding tax.
+pub(crate) fn tax_calculation_fields(c: &SavedCharge<'_>) -> Vec<(&'static str, String)> {
+    let mut fields = vec![
+        ("currency", "usd".to_owned()),
+        ("customer", c.customer.to_owned()),
+        ("line_items[0][amount]", c.credit_cents.to_string()),
+        ("line_items[0][reference]", "ai_credit".to_owned()),
+        ("line_items[0][tax_code]", TAX_CODE.to_owned()),
+        ("line_items[0][tax_behavior]", "exclusive".to_owned()),
+    ];
+    if c.fee_cents > 0 {
+        fields.extend([
+            ("line_items[1][amount]", c.fee_cents.to_string()),
+            ("line_items[1][reference]", "card_fee".to_owned()),
+            ("line_items[1][tax_code]", TAX_CODE.to_owned()),
+            ("line_items[1][tax_behavior]", "exclusive".to_owned()),
+        ]);
+    }
+    fields
+}
+
+/// A refund's tax reversal: a part of the payment, as a negative amount.
+pub(crate) fn reversal_fields(transaction: &str, reference: &str, refunded_cents: i64) -> Vec<(&'static str, String)> {
+    vec![
+        ("mode", "partial".to_owned()),
+        ("original_transaction", transaction.to_owned()),
+        ("reference", reference.to_owned()),
+        ("flat_amount", (-refunded_cents.abs()).to_string()),
+    ]
 }
 
 /// An AI credit purchase, as its payment page needs it.
@@ -424,6 +631,10 @@ pub struct SavedCharge<'a> {
     pub payment_method: &'a str,
     pub credit_cents: u32,
     pub fee_cents: u32,
+    /// Tax on top, from `tax_calculation`.
+    pub tax_cents: u32,
+    /// The calculation the tax came from, kept on the payment.
+    pub tax_calculation: Option<&'a str>,
     pub key: &'a str,
 }
 
@@ -468,10 +679,70 @@ fn back_to(return_url: &str, name: &str) -> String {
     format!("{return_url}{separator}{name}={{CHECKOUT_SESSION_ID}}")
 }
 
-/// A prepayment page's fields.
+/// The name of the card fee's line everywhere it appears: Checkout pages,
+/// subscriptions and invoices. Revenue figures find it by this name.
+pub(crate) const CARD_FEE_LINE: &str = "Card processing fee";
+
+/// The form keys of one line on a payment page, for the first two lines
+/// (what is bought, and the card fee).
+const LINE_KEYS: [[&str; 8]; 2] = [
+    [
+        "line_items[0][quantity]",
+        "line_items[0][price_data][currency]",
+        "line_items[0][price_data][unit_amount]",
+        "line_items[0][price_data][tax_behavior]",
+        "line_items[0][price_data][product_data][name]",
+        "line_items[0][price_data][product_data][tax_code]",
+        "line_items[0][price_data][product_data][description]",
+        "line_items[0][price_data][recurring][interval]",
+    ],
+    [
+        "line_items[1][quantity]",
+        "line_items[1][price_data][currency]",
+        "line_items[1][price_data][unit_amount]",
+        "line_items[1][price_data][tax_behavior]",
+        "line_items[1][price_data][product_data][name]",
+        "line_items[1][price_data][product_data][tax_code]",
+        "line_items[1][price_data][product_data][description]",
+        "line_items[1][price_data][recurring][interval]",
+    ],
+];
+
+/// One line on a payment page at g1t's tax code, its price excluding tax;
+/// monthly when `monthly`.
+fn page_line(index: usize, cents: u32, name: String, description: Option<String>, monthly: bool) -> Vec<(&'static str, String)> {
+    let keys = LINE_KEYS[index.min(1)];
+    let mut fields = vec![
+        (keys[0], "1".to_owned()),
+        (keys[1], "usd".to_owned()),
+        (keys[2], cents.to_string()),
+        (keys[3], "exclusive".to_owned()),
+        (keys[4], name),
+        (keys[5], TAX_CODE.to_owned()),
+    ];
+    if let Some(description) = description {
+        fields.push((keys[6], description));
+    }
+    if monthly {
+        fields.push((keys[7], "month".to_owned()));
+    }
+    fields
+}
+
+/// The card fee's line on a payment page, when there is a fee.
+fn fee_line(fee_cents: u32, monthly: bool) -> Vec<(&'static str, String)> {
+    if fee_cents == 0 {
+        return vec![];
+    }
+    page_line(1, fee_cents, CARD_FEE_LINE.to_owned(), Some("Stripe's fee for taking the payment by card, passed on at cost".to_owned()), monthly)
+}
+
+/// A prepayment page's fields. By card, the card fee is its own line; by
+/// bank transfer there is none.
 pub(crate) fn prepay_fields(
     workspace: &str,
     amount_cents: u32,
+    fee_cents: u32,
     customer: Option<&str>,
     return_url: &str,
     bank_transfer: bool,
@@ -495,11 +766,12 @@ pub(crate) fn prepay_fields(
         ("cancel_url", return_url.to_owned()),
         ("client_reference_id", workspace.to_owned()),
         ("metadata[workspace]", workspace.to_owned()),
-        ("line_items[0][quantity]", "1".to_owned()),
-        ("line_items[0][price_data][currency]", "usd".to_owned()),
-        ("line_items[0][price_data][unit_amount]", amount_cents.to_string()),
-        ("line_items[0][price_data][product_data][name]", format!("g1t usage paid in advance for {workspace}")),
     ]);
+    fields.extend(page_line(0, amount_cents, format!("g1t usage paid in advance for {workspace}"), None, false));
+    if !bank_transfer {
+        fields.extend(fee_line(fee_cents, false));
+    }
+    fields.extend(checkout_tax_fields(customer));
     match customer {
         Some(customer) => fields.push(("customer", customer.to_owned())),
         None => fields.push(("customer_creation", "always".to_owned())),
@@ -507,13 +779,16 @@ pub(crate) fn prepay_fields(
     fields
 }
 
-/// A plan's page's fields. In subscription mode Stripe makes the customer
-/// itself when there is none; `customer_creation` is for payment mode only.
+/// A plan's page's fields: the plan, and the card fee as a monthly line of
+/// its own. In subscription mode Stripe makes the customer itself when
+/// there is none; `customer_creation` is for payment mode only. The
+/// subscription it starts keeps `automatic_tax`, so every renewal is taxed.
 pub(crate) fn subscription_fields(
     workspace: &str,
     feature: &str,
     title: &str,
     monthly_cents: u32,
+    fee_cents: u32,
     customer: Option<&str>,
     return_url: &str,
 ) -> Vec<(&'static str, String)> {
@@ -527,26 +802,28 @@ pub(crate) fn subscription_fields(
         ("metadata[feature]", feature.to_owned()),
         ("subscription_data[metadata][workspace]", workspace.to_owned()),
         ("subscription_data[metadata][feature]", feature.to_owned()),
-        ("line_items[0][quantity]", "1".to_owned()),
-        ("line_items[0][price_data][currency]", "usd".to_owned()),
-        ("line_items[0][price_data][unit_amount]", monthly_cents.to_string()),
-        ("line_items[0][price_data][recurring][interval]", "month".to_owned()),
-        ("line_items[0][price_data][product_data][name]", format!("g1t {title} for {workspace}")),
     ];
+    fields.extend(page_line(0, monthly_cents, format!("g1t {title} for {workspace}"), None, true));
+    fields.extend(fee_line(fee_cents, true));
+    fields.extend(checkout_tax_fields(customer));
     if let Some(customer) = customer {
         fields.push(("customer", customer.to_owned()));
     }
     fields
 }
 
-/// A card check's page's fields: setup mode, nothing charged. Setup mode
-/// takes no line items and no amount.
+/// A card check's page's fields: setup mode, nothing charged, so nothing
+/// to tax. Setup mode takes no line items and no amount. The billing
+/// address is asked for all the same, and copied onto the customer once
+/// the card is checked (`fill_address`), so the plan and invoices that
+/// follow can be taxed.
 pub(crate) fn card_check_fields(workspace: &str, customer: &str, return_url: &str) -> Vec<(&'static str, String)> {
     vec![
         ("mode", "setup".to_owned()),
         ("customer", customer.to_owned()),
         ("payment_method_types[0]", "card".to_owned()),
         ("payment_method_options[card][request_three_d_secure]", "any".to_owned()),
+        ("billing_address_collection", "required".to_owned()),
         ("success_url", back_to(return_url, "card_check")),
         ("cancel_url", return_url.to_owned()),
         ("client_reference_id", workspace.to_owned()),
@@ -574,23 +851,16 @@ pub(crate) fn credit_fields(p: &CreditPurchase<'_>) -> Vec<(&'static str, String
         ("client_reference_id", p.workspace.to_owned()),
         ("metadata[workspace]", p.workspace.to_owned()),
         ("metadata[purpose]", "ai_credit".to_owned()),
-        ("line_items[0][quantity]", "1".to_owned()),
-        ("line_items[0][price_data][currency]", "usd".to_owned()),
-        ("line_items[0][price_data][unit_amount]", p.credit_cents.to_string()),
-        ("line_items[0][price_data][product_data][name]", "g1t AI credit".to_owned()),
-        (
-            "line_items[0][price_data][product_data][description]",
-            format!("Prepaid credit for Agent and AI Gateway usage in {}; expires a year after purchase", p.workspace),
-        ),
     ];
-    if p.fee_cents > 0 {
-        fields.extend([
-            ("line_items[1][quantity]", "1".to_owned()),
-            ("line_items[1][price_data][currency]", "usd".to_owned()),
-            ("line_items[1][price_data][unit_amount]", p.fee_cents.to_string()),
-            ("line_items[1][price_data][product_data][name]", "Card processing fee".to_owned()),
-        ]);
-    }
+    fields.extend(page_line(
+        0,
+        p.credit_cents,
+        "g1t AI credit".to_owned(),
+        Some(format!("Prepaid credit for Agent and AI Gateway usage in {}; expires a year after purchase", p.workspace)),
+        false,
+    ));
+    fields.extend(fee_line(p.fee_cents, false));
+    fields.extend(checkout_tax_fields(p.customer));
     match p.customer {
         Some(customer) => fields.push(("customer", customer.to_owned())),
         None => fields.push(("customer_creation", "always".to_owned())),
@@ -598,10 +868,11 @@ pub(crate) fn credit_fields(p: &CreditPurchase<'_>) -> Vec<(&'static str, String
     fields
 }
 
-/// An off-session charge's fields.
+/// An off-session charge's fields: the credit, the card fee and the tax
+/// Stripe Tax worked out for them, in one payment.
 pub(crate) fn saved_charge_fields(c: &SavedCharge<'_>) -> Vec<(&'static str, String)> {
-    vec![
-        ("amount", (c.credit_cents + c.fee_cents).to_string()),
+    let mut fields = vec![
+        ("amount", (c.credit_cents + c.fee_cents + c.tax_cents).to_string()),
         ("currency", "usd".to_owned()),
         ("customer", c.customer.to_owned()),
         ("payment_method", c.payment_method.to_owned()),
@@ -612,7 +883,90 @@ pub(crate) fn saved_charge_fields(c: &SavedCharge<'_>) -> Vec<(&'static str, Str
         ("metadata[purpose]", "ai_reload".to_owned()),
         ("metadata[credit_cents]", c.credit_cents.to_string()),
         ("metadata[fee_cents]", c.fee_cents.to_string()),
-    ]
+        ("metadata[tax_cents]", c.tax_cents.to_string()),
+    ];
+    if let Some(calculation) = c.tax_calculation {
+        fields.push(("metadata[tax_calculation]", calculation.to_owned()));
+    }
+    fields
+}
+
+/// A Stripe invoice's tax settings, for every invoice g1t makes: worked out
+/// by Stripe Tax.
+pub(crate) fn invoice_tax_fields() -> Vec<(&'static str, String)> {
+    vec![("automatic_tax[enabled]", "true".to_owned())]
+}
+
+/// An invoice item's tax settings: g1t's tax code, the amount excluding tax.
+pub(crate) fn item_tax_fields() -> Vec<(&'static str, String)> {
+    vec![("tax_behavior", "exclusive".to_owned()), ("tax_code", TAX_CODE.to_owned())]
+}
+
+/// What a paid Stripe invoice comes to, as billing counts it: the tax
+/// (`tax`, in this API version), the card fee (its lines, by name), and
+/// what is left for what was sold, all in cents.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct InvoiceSplit {
+    pub tax_cents: i64,
+    pub fee_cents: i64,
+    pub net_cents: i64,
+}
+
+/// A plan started on a saved card, as its subscription needs it.
+pub(crate) struct SavedPlan<'a> {
+    pub workspace: &'a str,
+    pub feature: &'a str,
+    pub title: &'a str,
+    pub monthly_cents: u32,
+    pub fee_cents: u32,
+    pub customer: &'a str,
+    pub payment_method: &'a str,
+}
+
+/// A subscription's fields, started on a saved card: the plan, the card
+/// fee as a monthly item when there is one, each excluding tax, and Stripe
+/// Tax on.
+pub(crate) fn saved_subscription_fields(p: &SavedPlan<'_>, product: &str, fee_product: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut fields = vec![
+        ("customer", p.customer.to_owned()),
+        ("default_payment_method", p.payment_method.to_owned()),
+        ("payment_behavior", "error_if_incomplete".to_owned()),
+        ("automatic_tax[enabled]", "true".to_owned()),
+        ("items[0][price_data][currency]", "usd".to_owned()),
+        ("items[0][price_data][product]", product.to_owned()),
+        ("items[0][price_data][unit_amount]", p.monthly_cents.to_string()),
+        ("items[0][price_data][recurring][interval]", "month".to_owned()),
+        ("items[0][price_data][tax_behavior]", "exclusive".to_owned()),
+        ("metadata[workspace]", p.workspace.to_owned()),
+        ("metadata[feature]", p.feature.to_owned()),
+        ("description", format!("{} plan for {}", p.title, p.workspace)),
+    ];
+    if let (Some(fee_product), true) = (fee_product, p.fee_cents > 0) {
+        fields.extend([
+            ("items[1][price_data][currency]", "usd".to_owned()),
+            ("items[1][price_data][product]", fee_product.to_owned()),
+            ("items[1][price_data][unit_amount]", p.fee_cents.to_string()),
+            ("items[1][price_data][recurring][interval]", "month".to_owned()),
+            ("items[1][price_data][tax_behavior]", "exclusive".to_owned()),
+        ]);
+    }
+    fields
+}
+
+pub(crate) fn invoice_split(invoice: &serde_json::Value, amount_paid: i64) -> InvoiceSplit {
+    let tax_cents = invoice["tax"].as_i64().unwrap_or(0).max(0);
+    let fee_cents: i64 = invoice["lines"]["data"]
+        .as_array()
+        .map(|lines| {
+            lines
+                .iter()
+                .filter(|line| line["description"].as_str().is_some_and(|d| d.contains(CARD_FEE_LINE)))
+                .map(|line| line["amount"].as_i64().unwrap_or(0))
+                .sum()
+        })
+        .unwrap_or(0);
+    let fee_cents = fee_cents.max(0);
+    InvoiceSplit { tax_cents, fee_cents, net_cents: (amount_paid - tax_cents - fee_cents).max(0) }
 }
 
 impl Stripe {
@@ -632,14 +986,23 @@ impl Stripe {
             country: Option<String>,
         }
         #[derive(Deserialize)]
+        struct Billing {
+            #[serde(default)]
+            address: Option<serde_json::Value>,
+        }
+        #[derive(Deserialize)]
         struct PaymentMethod {
             card: Option<Card>,
+            #[serde(default)]
+            billing_details: Option<Billing>,
         }
         let setup: Setup = self.call(Method::Get, &format!("/setup_intents/{}", encode(setup_intent)), None).await?;
         let (true, Some(method)) = (setup.status == "succeeded", setup.payment_method) else { return Ok(None) };
         let found: PaymentMethod = self.call(Method::Get, &format!("/payment_methods/{}", encode(&method)), None).await?;
         let card = found.card;
+        let address = found.billing_details.and_then(|b| b.address).filter(|a| a.is_object());
         Ok(Some(CheckedCard {
+            address,
             payment_method: method,
             fingerprint: card.as_ref().and_then(|c| c.fingerprint.clone()),
             brand: card.as_ref().and_then(|c| c.brand.clone()),
@@ -661,62 +1024,69 @@ impl Stripe {
         Ok(())
     }
 
-    /// A feature's product at Stripe (the plan's is tagged `plan`), made
-    /// the first time it is needed.
-    async fn plan_product(&self, feature: &str, title: &str) -> Result<String> {
+    /// One of g1t's products at Stripe, tagged `metadata[g1t]` (the plan's
+    /// is `plan`, the card fee's `card_fee`), made the first time it is
+    /// needed, with g1t's tax code. One made before Stripe Tax was on is
+    /// given the code when it is found.
+    async fn product(&self, tag: &str, name: &str) -> Result<String> {
         #[derive(Deserialize)]
         struct Product {
             id: String,
             #[serde(default)]
             metadata: Option<std::collections::HashMap<String, String>>,
+            #[serde(default)]
+            tax_code: Option<serde_json::Value>,
         }
         #[derive(Deserialize)]
         struct List {
             data: Vec<Product>,
         }
         let list: List = self.call(Method::Get, "/products?active=true&limit=100", None).await?;
-        let ours = |p: &Product| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some(feature);
+        let ours = |p: &Product| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some(tag);
         if let Some(found) = list.data.into_iter().find(ours) {
+            let coded = found.tax_code.as_ref().is_some_and(|code| code.as_str() == Some(TAX_CODE) || code["id"].as_str() == Some(TAX_CODE));
+            if !coded {
+                let _: serde_json::Value = self
+                    .call(Method::Post, &format!("/products/{}", encode(&found.id)), Some(form(&[("tax_code", TAX_CODE.to_owned())])))
+                    .await?;
+            }
             return Ok(found.id);
         }
         let created: Product = self
             .call(
                 Method::Post,
                 "/products",
-                Some(form(&[("name", format!("{title} plan")), ("metadata[g1t]", feature.to_owned())])),
+                Some(form(&[("name", name.to_owned()), ("metadata[g1t]", tag.to_owned()), ("tax_code", TAX_CODE.to_owned())])),
             )
             .await?;
         Ok(created.id)
     }
 
-    /// Starts the monthly plan on a saved card, at once. Fails rather than
-    /// leaving it half-started when the card's bank wants the person again;
-    /// the caller then sends them to Stripe's page.
+    /// Starts the monthly plan on a saved card, at once, with tax worked
+    /// out by Stripe Tax on every invoice and the card fee as a monthly item
+    /// of its own. Fails rather than leaving it half-started when the card's
+    /// bank wants the person again, or when Stripe Tax cannot place the
+    /// customer (no billing address yet); the caller then sends them to
+    /// Stripe's page, which asks for the address.
+    #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_with_card(
         &self,
         workspace: &str,
         feature: &str,
         title: &str,
         monthly_cents: u32,
+        fee_cents: u32,
         customer: &str,
         payment_method: &str,
     ) -> Result<StripeSubscription> {
-        let product = self.plan_product(feature, title).await?;
-        let fields = [
-            ("customer", customer.to_owned()),
-            ("default_payment_method", payment_method.to_owned()),
-            ("payment_behavior", "error_if_incomplete".to_owned()),
-            ("items[0][price_data][currency]", "usd".to_owned()),
-            ("items[0][price_data][product]", product),
-            ("items[0][price_data][unit_amount]", monthly_cents.to_string()),
-            ("items[0][price_data][recurring][interval]", "month".to_owned()),
-            ("metadata[workspace]", workspace.to_owned()),
-            ("metadata[feature]", feature.to_owned()),
-            ("description", format!("{title} plan for {workspace}")),
-        ];
-        let key = plan_key(workspace, feature, payment_method, g1t_kit::now_ms());
+        let product = self.product(feature, &format!("{title} plan")).await?;
+        let fee_product = if fee_cents > 0 { Some(self.product("card_fee", CARD_FEE_LINE).await?) } else { None };
+        let plan = SavedPlan { workspace, feature, title, monthly_cents, fee_cents, customer, payment_method };
+        let fields = saved_subscription_fields(&plan, &product, fee_product.as_deref());
+        let key = plan_key(workspace, feature, &format!("{payment_method}/{monthly_cents}/{fee_cents}"), g1t_kit::now_ms());
         self.send(Method::Post, "/subscriptions", Some(form(&fields)), Some(&key)).await
     }
+
 
     /// Ends a subscription now: one that never started properly.
     pub async fn cancel_now(&self, id: &str) -> Result<StripeSubscription> {
@@ -810,7 +1180,7 @@ mod tests {
     fn the_plans_page_is_a_subscription_without_payment_mode_fields() {
         let url = "https://g1t.sh/acme/-/billing?plan=plan";
         for customer in [None, Some("cus_1")] {
-            let fields = subscription_fields("acme", "plan", "g1t", 2_000, customer, url);
+            let fields = subscription_fields("acme", "plan", "g1t", 2_000, 92, customer, url);
             assert_eq!(has(&fields, "mode").as_deref(), Some("subscription"));
             // customer_creation is for payment mode; Stripe refuses it here.
             assert!(has(&fields, "customer_creation").is_none());
@@ -818,8 +1188,150 @@ mod tests {
             assert_eq!(has(&fields, "customer").as_deref(), customer);
             assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/billing?plan=plan&session={CHECKOUT_SESSION_ID}");
             assert_eq!(has(&fields, "line_items[0][price_data][recurring][interval]").as_deref(), Some("month"));
-            assert!(has(&fields, "automatic_tax[enabled]").is_none());
+            // The card fee is a monthly line of its own.
+            assert_eq!(has(&fields, "line_items[1][price_data][unit_amount]").as_deref(), Some("92"));
+            assert_eq!(has(&fields, "line_items[1][price_data][recurring][interval]").as_deref(), Some("month"));
+            assert_eq!(has(&fields, "line_items[1][price_data][product_data][name]").as_deref(), Some(CARD_FEE_LINE));
         }
+        let fields = subscription_fields("acme", "plan", "g1t", 2_000, 0, None, url);
+        assert!(has(&fields, "line_items[1][quantity]").is_none());
+    }
+
+    /// Every field a page must carry for Stripe Tax: tax on top of the
+    /// price, an address always asked for, the buyer's tax ID, and each
+    /// line at g1t's tax code, excluding tax. With a customer, what is
+    /// entered is saved on it (Checkout refuses `automatic_tax` and
+    /// `tax_id_collection` for a customer otherwise).
+    fn assert_taxed_page(fields: &[(&str, String)], customer: Option<&str>, lines: usize) {
+        assert_eq!(has(fields, "automatic_tax[enabled]").as_deref(), Some("true"));
+        assert_eq!(has(fields, "billing_address_collection").as_deref(), Some("required"));
+        assert_eq!(has(fields, "tax_id_collection[enabled]").as_deref(), Some("true"));
+        let saved = if customer.is_some() { Some("auto") } else { None };
+        assert_eq!(has(fields, "customer_update[address]").as_deref(), saved);
+        assert_eq!(has(fields, "customer_update[name]").as_deref(), saved);
+        for (line, keys) in LINE_KEYS.iter().enumerate().take(lines) {
+            assert_eq!(has(fields, keys[3]).as_deref(), Some("exclusive"), "line {line}");
+            assert_eq!(has(fields, keys[5]).as_deref(), Some(TAX_CODE), "line {line}");
+        }
+        // No key twice: Stripe takes the last, silently.
+        let mut names: Vec<&str> = fields.iter().map(|(n, _)| *n).collect();
+        names.sort_unstable();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count);
+    }
+
+    #[test]
+    fn every_payment_page_is_taxed_by_stripe_tax() {
+        let url = "https://g1t.sh/acme/-/billing";
+        for customer in [None, Some("cus_1")] {
+            // The plan and Security and quality.
+            assert_taxed_page(&subscription_fields("acme", "plan", "g1t", 2_000, 92, customer, url), customer, 2);
+            assert_taxed_page(&subscription_fields("acme", "security", "Security and quality", 1_000, 61, customer, url), customer, 2);
+            // Prepaying by card, with its fee, and by bank transfer, without.
+            assert_taxed_page(&prepay_fields("acme", 5_000, 185, customer, url, false), customer, 2);
+            assert_taxed_page(&prepay_fields("acme", 100_000, 0, customer, url, true), customer, 1);
+            // AI credit.
+            let purchase = CreditPurchase { workspace: "acme", credit_cents: 2_500, fee_cents: 106, customer, return_url: url };
+            assert_taxed_page(&credit_fields(&purchase), customer, 2);
+        }
+        // tax_id_collection and customer_update are for payment and
+        // subscription mode; a card check charges nothing, so it is not
+        // taxed, but it asks for the address the plan will be taxed at.
+        let check = card_check_fields("acme", "cus_1", url);
+        assert!(has(&check, "automatic_tax[enabled]").is_none());
+        assert_eq!(has(&check, "billing_address_collection").as_deref(), Some("required"));
+    }
+
+    #[test]
+    fn a_bank_transfer_has_no_card_fee() {
+        let fields = prepay_fields("acme", 100_000, 3_100, Some("cus_1"), "https://g1t.sh/acme/-/billing", true);
+        assert!(has(&fields, "line_items[1][quantity]").is_none());
+        let fields = prepay_fields("acme", 5_000, 185, None, "https://g1t.sh/acme/-/billing", false);
+        assert_eq!(has(&fields, "line_items[1][price_data][unit_amount]").as_deref(), Some("185"));
+        assert_eq!(has(&fields, "line_items[1][price_data][product_data][name]").as_deref(), Some(CARD_FEE_LINE));
+    }
+
+    #[test]
+    fn a_plan_on_a_saved_card_is_taxed_with_its_card_fee() {
+        let plan = SavedPlan { workspace: "acme", feature: "plan", title: "g1t", monthly_cents: 2_000, fee_cents: 92, customer: "cus_1", payment_method: "pm_1" };
+        let fields = saved_subscription_fields(&plan, "prod_plan", Some("prod_fee"));
+        assert_eq!(has(&fields, "automatic_tax[enabled]").as_deref(), Some("true"));
+        assert_eq!(has(&fields, "items[0][price_data][tax_behavior]").as_deref(), Some("exclusive"));
+        assert_eq!(has(&fields, "items[1][price_data][product]").as_deref(), Some("prod_fee"));
+        assert_eq!(has(&fields, "items[1][price_data][unit_amount]").as_deref(), Some("92"));
+        assert_eq!(has(&fields, "items[1][price_data][tax_behavior]").as_deref(), Some("exclusive"));
+        let fields = saved_subscription_fields(&SavedPlan { fee_cents: 0, ..plan }, "prod_plan", None);
+        assert!(has(&fields, "items[1][price_data][product]").is_none());
+    }
+
+    #[test]
+    fn invoices_and_their_lines_are_taxed() {
+        assert_eq!(has(&invoice_tax_fields(), "automatic_tax[enabled]").as_deref(), Some("true"));
+        let item = item_tax_fields();
+        assert_eq!(has(&item, "tax_behavior").as_deref(), Some("exclusive"));
+        assert_eq!(has(&item, "tax_code").as_deref(), Some(TAX_CODE));
+    }
+
+    #[test]
+    fn an_off_session_charge_is_its_credit_fee_and_tax() {
+        let charge = SavedCharge {
+            workspace: "acme",
+            customer: "cus_1",
+            payment_method: "pm_1",
+            credit_cents: 1_600,
+            fee_cents: 78,
+            tax_cents: 134,
+            tax_calculation: Some("taxcalc_1"),
+            key: "reload/acme/2026-10/1",
+        };
+        let calculation = tax_calculation_fields(&charge);
+        assert_eq!(has(&calculation, "customer").as_deref(), Some("cus_1"));
+        assert_eq!(has(&calculation, "line_items[0][amount]").as_deref(), Some("1600"));
+        assert_eq!(has(&calculation, "line_items[0][tax_behavior]").as_deref(), Some("exclusive"));
+        assert_eq!(has(&calculation, "line_items[0][tax_code]").as_deref(), Some(TAX_CODE));
+        assert_eq!(has(&calculation, "line_items[1][amount]").as_deref(), Some("78"));
+        assert_eq!(has(&calculation, "line_items[1][tax_code]").as_deref(), Some(TAX_CODE));
+        let fields = saved_charge_fields(&charge);
+        assert_eq!(has(&fields, "amount").as_deref(), Some("1812"));
+        assert_eq!(has(&fields, "metadata[tax_calculation]").as_deref(), Some("taxcalc_1"));
+        let reversal = reversal_fields("tax_1", "pi_1/re_1", 500);
+        assert_eq!(has(&reversal, "flat_amount").as_deref(), Some("-500"));
+        assert_eq!(has(&reversal, "mode").as_deref(), Some("partial"));
+    }
+
+    #[test]
+    fn a_paid_invoice_splits_into_tax_card_fee_and_what_was_sold() {
+        let invoice = serde_json::json!({
+            "tax": 180,
+            "lines": { "data": [
+                { "description": "1 × g1t plan (at $20.00 / month)", "amount": 2000 },
+                { "description": "1 × Card processing fee (at $0.92 / month)", "amount": 92 },
+            ] }
+        });
+        assert_eq!(invoice_split(&invoice, 2_272), InvoiceSplit { tax_cents: 180, fee_cents: 92, net_cents: 2_000 });
+        // Before Stripe Tax: no tax, no fee, all of it sold.
+        assert_eq!(invoice_split(&serde_json::json!({ "tax": null }), 2_000).net_cents, 2_000);
+        // A page's tax and what came before it.
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "cs_1", "payment_status": "paid", "amount_total": 5_585, "amount_subtotal": 5_185,
+            "total_details": { "amount_tax": 400 }, "customer": "cus_1", "payment_intent": "pi_1"
+        }))
+        .unwrap();
+        assert_eq!((session.tax_cents(), session.before_tax_cents()), (400, 5_185));
+    }
+
+    #[test]
+    fn an_address_places_a_customer_for_tax() {
+        use serde_json::json;
+        assert!(address_places_customer(&json!({ "country": "DE" })));
+        assert!(address_places_customer(&json!({ "country": "US", "postal_code": "94107" })));
+        assert!(!address_places_customer(&json!({ "country": "US", "postal_code": "" })));
+        assert!(address_places_customer(&json!({ "country": "CA", "state": "ON" })));
+        assert!(!address_places_customer(&json!({ "country": "" })));
+        assert!(!address_places_customer(&serde_json::Value::Null));
+        let error = Error::RustError(r#"the card processor answered 400: {"error":{"code":"customer_tax_location_invalid","message":"x"}}"#.into());
+        assert!(is_tax_location_error(&error));
     }
 
     #[test]
@@ -850,7 +1362,16 @@ mod tests {
 
     #[test]
     fn an_auto_reload_is_one_off_session_charge() {
-        let charge = SavedCharge { workspace: "acme", customer: "cus_1", payment_method: "pm_1", credit_cents: 1_600, fee_cents: 78, key: "reload/acme/2026-10/1" };
+        let charge = SavedCharge {
+            workspace: "acme",
+            customer: "cus_1",
+            payment_method: "pm_1",
+            credit_cents: 1_600,
+            fee_cents: 78,
+            tax_cents: 0,
+            tax_calculation: None,
+            key: "reload/acme/2026-10/1",
+        };
         let fields = saved_charge_fields(&charge);
         assert_eq!(has(&fields, "amount").as_deref(), Some("1678"));
         assert_eq!(has(&fields, "off_session").as_deref(), Some("true"));

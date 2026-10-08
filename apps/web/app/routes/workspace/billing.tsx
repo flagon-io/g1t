@@ -316,6 +316,28 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         {notice && <p className="mb-6 rounded-lg border border-accent/30 bg-accent/5 px-4 py-2.5 text-sm">{notice}</p>}
         {problem && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/5 px-4 py-2.5 text-sm">{problem}</p>}
 
+        <Suspense fallback={null}>
+          <Await resolve={details}>
+            {(loaded) =>
+              loaded?.taxAddressNeededAt ? (
+                <div role="alert" className="mb-6 rounded-xl border border-warn/40 bg-warn/5 p-4 text-sm">
+                  <p className="font-medium">Add a billing address</p>
+                  <p className="mt-1 text-muted">
+                    Stripe needs it to work out tax, so g1t did not charge the card. Nothing is lost: the charge goes through once the
+                    address is saved.{" "}
+                    {owner ? (
+                      <a href="#details" className="text-fg underline underline-offset-2">
+                        Add it under Invoice details
+                      </a>
+                    ) : (
+                      "An owner adds it under Invoice details."
+                    )}
+                  </p>
+                </div>
+              ) : null
+            }
+          </Await>
+        </Suspense>
         {entitlements && <SpikeBanner slug={slug} entitlements={entitlements} owner={owner} />}
         {err("spike") && <p className="mb-6 text-sm text-danger">{err("spike")}</p>}
         <Alerts alerts={entitlements?.alerts ?? []} />
@@ -335,7 +357,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             <SpendLimitCard limit={limit} owner={owner} error={err("limit")} />
             <BudgetAlerts limit={limit} owner={owner} error={err("budget")} />
             <RaiseCard requests={requests} owner={owner} error={err("raise")} />
-            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live || !staff} error={err("prepay")} />
+            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live || !staff} cardFee={ai?.cardFee ?? null} error={err("prepay")} />
           </>
         )}
 
@@ -395,7 +417,15 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               Each month closes with an itemised invoice. No card is charged less than{" "}
               {dollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR, 0)}; less carries over.
             </li>
-            <li>No seats: add as many people and agents as you like.</li>
+            <li>
+              Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address under Invoice details, and it
+              is its own line on every receipt and invoice.
+            </li>
+            <li>
+              Card payments carry Stripe's card processing fee as their own line, shown before you pay. Bank transfers and invoiced
+              billing have none.
+            </li>
+            <li>No seats: add as many people and agents as you like, once the workspace is on the plan.</li>
           </ul>
           <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
             <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
@@ -419,7 +449,10 @@ function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
   return (
     <section className="mb-10">
       <h2 className="font-medium">Usage invoices</h2>
-      <p className="mt-1 text-sm text-muted">One when each month closes, and one each time g1t charges the card near your limit.</p>
+      <p className="mt-1 text-sm text-muted">
+        One when each month closes, and one each time g1t charges the card near your limit. Amounts are for usage; the card fee
+        and tax are their own lines.
+      </p>
       <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line">
         {invoices.map((invoice) => (
           <li key={invoice.invoiceId} className="px-4 py-3 text-sm">
@@ -453,6 +486,18 @@ function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
                   <span className="font-mono tabular-nums">{dollars(line.amountMicros)}</span>
                 </li>
               ))}
+              {(invoice.feeMicros ?? 0) > 0 && (
+                <li className="flex justify-between gap-4">
+                  <span>Card processing fee</span>
+                  <span className="font-mono tabular-nums">{dollars(invoice.feeMicros ?? 0)}</span>
+                </li>
+              )}
+              {(invoice.taxMicros ?? 0) > 0 && (
+                <li className="flex justify-between gap-4">
+                  <span>Tax</span>
+                  <span className="font-mono tabular-nums">{dollars(invoice.taxMicros ?? 0)}</span>
+                </li>
+              )}
             </ul>
           </li>
         ))}

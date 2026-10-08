@@ -1738,6 +1738,10 @@ impl Billing {
         let (draws, refunds) = self.credit_effects(&since, &until).await?;
         overall.credits_used_micros = draws.iter().map(|(_, d)| d.micros).sum();
         overall.credits_refunded_micros = refunds.iter().map(|r| r.micros).sum();
+        // Tax and card fees came in with payments but are neither cash nor
+        // revenue: balances and plan payments are credited without them
+        // (tax.rs), so cash above never holds them. Shown apart.
+        (overall.tax_collected_micros, overall.card_fees_micros) = self.extras_between(&since, &until).await?;
         let mut products: Vec<ProductMargin> = products.into_values().collect();
         products.sort_by_key(|p| std::cmp::Reverse(p.cost_micros.max(p.value_micros)));
 

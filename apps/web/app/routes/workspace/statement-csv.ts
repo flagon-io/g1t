@@ -14,7 +14,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const month = new URL(request.url).searchParams.get("month");
   const statement = await billing.statement(params.owner, viewer, month, "day");
   if (!statement.ok) throw data(null, { status: 404 });
-  const kinds = [...new Set(statement.value.groups.flatMap((group) => group.lines.map((line) => line.kind)))];
+  // Tax and card fees are paid with payments, not ledger entries: a row a day each.
+  const passed = new Set(["Tax", "Card processing fees"]);
+  const kinds = [...new Set(statement.value.groups.flatMap((group) => group.lines.map((line) => line.kind)))].filter((kind) => !passed.has(kind));
   const rows: string[][] = [
     [
       "date",
@@ -45,6 +47,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       for (const entry of entries.value) rows.push(row(kind, entry));
       before = entries.value[entries.value.length - 1].id;
       if (entries.value.length < 50) break;
+    }
+  }
+  for (const group of statement.value.groups) {
+    for (const line of group.lines.filter((l) => passed.has(l.kind))) {
+      const amount = ((line.passedMicros ?? 0) / MICROS_PER_DOLLAR).toFixed(6);
+      rows.push([group.key, line.kind, "Paid with the day's payments, not from the balance", "", "", "", "", "", "", amount, "", "", "", ""]);
     }
   }
   const body = [rows[0], ...rows.slice(1).sort((a, b) => a[0].localeCompare(b[0]))].map((r) => r.map(cell).join(",")).join("\r\n");

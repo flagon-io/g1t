@@ -46,6 +46,7 @@ mod retention;
 mod stripe;
 mod stripe_sync;
 mod subscriptions;
+mod tax;
 mod tokens;
 
 use g1t_contracts::billing::*;
@@ -178,6 +179,8 @@ impl RunRow {
 struct CheckoutRow {
     workspace: String,
     created_by: String,
+    #[serde(default)]
+    fee_cents: Option<u32>,
 }
 
 /// A payment page started, as `checkouts` keeps it.
@@ -588,16 +591,18 @@ impl Billing {
         } else {
             self.row(&workspace).await?.and_then(|row| row.customer_id)
         };
-        let started = match stripe.start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer).await {
+        // By card, Stripe's fee is its own line; a bank transfer has none.
+        let fee = if bank_transfer { 0 } else { self.card_fee_on(i64::from(a.amount_cents)).await? as u32 };
+        let started = match stripe.start_checkout(&workspace, a.amount_cents, fee, customer.as_deref(), &a.return_url, bank_transfer).await {
             // A customer saved under another Stripe account: start afresh.
             Err(error) if customer.is_some() && stripe::is_missing(&error) => {
                 self.forget_customer(&workspace).await?;
                 let customer = if bank_transfer { self.customer_for(&workspace).await.ok() } else { None };
-                stripe.start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer).await
+                stripe.start_checkout(&workspace, a.amount_cents, fee, customer.as_deref(), &a.return_url, bank_transfer).await
             }
             other => other,
         };
-        self.page_opened(started, &workspace, a.amount_cents, 0, &a.actor.username, None).await
+        self.page_opened(started, &workspace, a.amount_cents, fee, &a.actor.username, None).await
     }
 
     /// A payment page Stripe started (or refused), recorded in `checkouts`
@@ -647,7 +652,7 @@ impl Billing {
                     // A prepayment only: a plan's or a card check's page is
                     // settled where it was started, never credited as money
                     // paid in advance.
-                    "SELECT workspace, created_by FROM checkouts
+                    "SELECT workspace, created_by, fee_cents FROM checkouts
                      WHERE id = ? AND workspace = ? AND status = 'open' AND feature IS NULL",
                 )
                 .bind(&[a.session.as_str().into(), workspace.as_str().into()])?
@@ -661,10 +666,7 @@ impl Billing {
             Ok(session) => session,
             Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         };
-        let paid = session
-            .amount_total
-            .filter(|_| session.payment_status == "paid");
-        if let Some(cents) = paid {
+        if session.payment_status == "paid" && session.amount_total.is_some() {
             // Only whoever flips it from open to paid enters the credit.
             let claimed = self
                 .db
@@ -676,21 +678,43 @@ impl Billing {
                 .first::<Touched>(None)
                 .await?;
             if claimed.is_some() {
-                self.enter(
-                    &checkout.workspace,
-                    EntryKind::TopUp,
-                    i64::from(cents) * MICROS_PER_DOLLAR / 100,
-                    "Paid in advance",
-                    &session.id,
-                    None,
-                    None,
-                    Some(&checkout.created_by),
-                    session.customer.as_deref(),
-                )
-                .await?;
+                self.credit_prepayment(&checkout.workspace, &session, checkout.fee_cents.unwrap_or(0), &checkout.created_by).await?;
             }
         }
         Ok(Outcome::Ok(self.standing(&workspace).await?))
+    }
+
+    /// Enters a paid prepayment page: what its lines came to before tax,
+    /// less the card fee, as credit; its tax and fee kept apart. Once the
+    /// page is claimed `open → paid`. The credit in cents.
+    pub(crate) async fn credit_prepayment(&self, workspace: &str, session: &stripe::Session, fee_cents: u32, by: &str) -> Result<i64> {
+        let fee = i64::from(fee_cents);
+        let cents = tax::prepay_credit_cents(session.before_tax_cents(), fee);
+        let tax_cents = session.tax_cents();
+        let description = if tax_cents > 0 || fee > 0 {
+            format!(
+                "Paid in advance (tax {} and card fee {} paid with it)",
+                features::cents(tax_cents * 10_000),
+                features::cents(fee * 10_000)
+            )
+        } else {
+            "Paid in advance".to_owned()
+        };
+        self.enter(
+            workspace,
+            EntryKind::TopUp,
+            cents * MICROS_PER_DOLLAR / 100,
+            &description,
+            &session.id,
+            None,
+            None,
+            Some(by),
+            session.customer.as_deref(),
+        )
+        .await?;
+        self.record_extras(workspace, &session.id, session.payment_intent.as_deref(), tax::Extras { tax_cents, fee_cents: fee }, None)
+            .await?;
+        Ok(cents)
     }
 
     /// Drops a saved customer the card processor no longer knows.
@@ -1289,6 +1313,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "cancel_subscription" => reply(&billing.cancel_subscription(args(body)?).await?),
         "close_workspace" => reply(&billing.close_workspace(args(body)?).await?),
         "has_feature" => reply(&billing.has_feature(args(body)?).await?),
+        "free_workspaces" => reply(&billing.free_workspaces(args(body)?).await?),
         "charge_feature" => reply(&billing.charge_feature(args(body)?).await?),
         "record_sandbox" => reply(&billing.record_sandbox(args(body)?).await?),
         "limit" => reply(&billing.limit(args(body)?).await?),
@@ -1299,6 +1324,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_billing_link" => reply(&billing.admin_billing_link(args(body)?).await?),
         "admin_stripe" => reply(&billing.admin_stripe(args(body)?).await?),
         "admin_enterprise_billing" => reply(&billing.admin_enterprise_billing(args(body)?).await?),
+        "admin_enterprise_address" => reply(&billing.admin_enterprise_address(args(body)?).await?),
         "admin_invoice_enterprise" => reply(&billing.admin_invoice_enterprise(args(body)?).await?),
         "stripe_webhook" => reply(&billing.stripe_webhook(args(body)?).await?),
         "invoices" => reply(&billing.invoices(args(body)?).await?),

@@ -658,6 +658,11 @@ impl Identity {
             let Invitee::Email(email) = invitee else {
                 return Ok(Outcome::fail(FailureCode::NotFound, NO_SUCH_USER));
             };
+            // An address is always someone from outside: a free workspace
+            // invites no one (paid.rs).
+            if let Some(refused) = self.free_workspace_refusal(&repo.namespace).await? {
+                return Ok(refused);
+            }
             return self.invite_address(&a.actor, &repo, &workspace_id, &email, a.role, surface).await;
         };
         // What the workspace asks of anyone with access to it (security.rs).
@@ -679,6 +684,14 @@ impl Identity {
                 FailureCode::Conflict,
                 format!("{username} already has access to {}. Change their role instead.", full_name(&repo)),
             ));
+        }
+        // An outside collaborator is someone added: a free workspace adds
+        // no one (paid.rs). Its members' roles above are its own business,
+        // and g1t's agent is never someone added.
+        if !crate::paid::is_g1t(&username)
+            && let Some(refused) = self.free_workspace_refusal(&repo.namespace).await?
+        {
+            return Ok(refused);
         }
         let pending = self
             .pending_invitations(
@@ -1038,6 +1051,11 @@ impl Identity {
         if let Some(why) = self.policy_refusal(&a.user.id, &row.workspace).await? {
             return Ok(Outcome::fail(FailureCode::Forbidden, why));
         }
+        // Sent before the workspace was free, or before this rule: it waits
+        // until the workspace starts the plan (paid.rs).
+        if let Some(refused) = self.free_workspace_refusal(&row.workspace).await? {
+            return Ok(refused);
+        }
         self.accept(&row, &a.user).await?;
         let mut shown = row.shown(&now, false);
         shown.status = RepoInvitationStatus::Accepted;
@@ -1100,6 +1118,11 @@ impl Identity {
             .await?;
         for row in rows {
             if self.policy_refusal(&user.id, &row.workspace).await?.is_some() {
+                continue;
+            }
+            // A free workspace adds no one (paid.rs): the invitation stays
+            // pending until it starts the plan.
+            if self.is_free_workspace(&row.workspace).await {
                 continue;
             }
             self.accept(&row, user).await?;

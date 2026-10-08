@@ -7,12 +7,12 @@
  * an `intent`.
  */
 import { ArrowUpRight, Bell, Bot, CreditCard, FileText, Mail, Plus, ReceiptText, Sparkles } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
 import type { AiCredit, BillingDetails, FeatureState, Limit, UsageReport } from "@g1t/contracts";
 
-import { type PlanStatus, dollars, wholeDollars } from "../lib/billing";
+import { PLUS_TAX, type PlanStatus, cardFeeCents, dollars, feeAndTax, wholeDollars } from "../lib/billing";
 import { money } from "../lib/usage";
 import { Card } from "./billing";
 import { ErrorText, SubmitButton } from "./ui";
@@ -102,6 +102,12 @@ export function PlanSummary({
           <span className="text-2xl font-semibold tabular-nums tracking-tight">${((plan?.monthlyCents ?? 2000) / 100).toFixed(0)}</span>
           <span className="text-sm text-muted"> / month</span>
           <span className="block text-xs text-faint">with {wholeDollars(report?.included?.of ?? 10_000_000)} of usage included</span>
+          {status.kind !== "comped" && status.kind !== "enterprise" && (
+            <span className="block text-xs text-faint">
+              {plan?.cardFeeCents ? `+ ${dollars(plan.cardFeeCents * 10_000)} card processing fee, ` : ""}
+              {plan?.cardFeeCents ? PLUS_TAX : "Plus tax where it applies"}
+            </span>
+          )}
         </p>
       }
     >
@@ -203,7 +209,21 @@ export function PlanSummary({
 export function AiCreditCard({ credit, owner, enabled, staff, error }: { credit: AiCredit; owner: boolean; enabled: boolean; staff: boolean; error?: string }) {
   const rate = credit.agentRateMicros;
   const fee = credit.cardFee;
-  const feeText = fee.on ? `Stripe's card fee (${(fee.percentMicros / 10_000).toFixed(1)}% + ${dollars(fee.fixedCents * 10_000)}) is its own line at checkout.` : "No card fee.";
+  // What is chosen, so the fee shows before Stripe's page does.
+  const [chosenCents, setChosenCents] = useState(2_500);
+  const chosenFee = cardFeeCents(chosenCents, fee);
+  const stripeFee = `Stripe's ${(fee.percentMicros / 10_000).toFixed(1)}% + ${dollars(fee.fixedCents * 10_000)}`;
+  const feeText = !fee.on
+    ? `${feeAndTax(0)}.`
+    : chosenCents > 0
+      ? `On $${(chosenCents / 100).toLocaleString("en-US")}: ${feeAndTax(chosenFee).replace(/^C/, "c")} (the fee is ${stripeFee}, its own line at checkout).`
+      : `A card processing fee (${stripeFee}) is its own line at checkout, ${PLUS_TAX}.`;
+  const choose = (form: HTMLFormElement) => {
+    const data = new FormData(form);
+    const amount = String(data.get("amount") ?? "");
+    const dollarsChosen = amount === "custom" ? Number(String(data.get("custom") ?? "").replace(/[$,\s]/g, "")) : Number(amount);
+    setChosenCents(Number.isFinite(dollarsChosen) && dollarsChosen > 0 ? Math.round(dollarsChosen * 100) : 0);
+  };
   return (
     <Card
       id="ai-credit"
@@ -235,7 +255,7 @@ export function AiCreditCard({ credit, owner, enabled, staff, error }: { credit:
       {!credit.freeViaDiscount && !credit.postpaid && (
         <>
           {credit.canBuy && owner && enabled ? (
-            <Form method="post" className="mt-4">
+            <Form method="post" className="mt-4" onChange={(event) => choose(event.currentTarget)}>
               <input type="hidden" name="intent" value="buy-ai-credit" />
               <fieldset className="flex flex-wrap items-center gap-2">
                 <legend className="mb-2 text-xs text-muted">Buy AI credit</legend>
@@ -453,7 +473,9 @@ export function AddOns({ plan, security, owner, enabled, error }: { plan: Featur
     rows.push({
       key: "security",
       name: security.plan.title,
-      about: "Custom patterns, validity checks, code scanning and dependency review on private repositories.",
+      about: `Custom patterns, validity checks, code scanning and dependency review on private repositories. ${
+        security.plan.cardFeeCents ? `Plus a ${dollars(security.plan.cardFeeCents * 10_000)} card processing fee a month, and tax where it applies.` : "Plus tax where it applies."
+      }`,
       price: `$${(security.plan.monthlyCents / 100).toFixed(security.plan.monthlyCents % 100 ? 2 : 0)} / month`,
       on: security.on,
       label: security.included ? "Included" : status === "canceling" ? "Ends at the period's end" : security.on ? "On" : "Off",
@@ -532,6 +554,14 @@ const TAX_IDS: [string, string][] = [
   ["za_vat", "South African VAT"],
 ];
 
+/** What Stripe's check of a tax ID found. */
+const TAX_ID_STATUS: Record<string, string> = {
+  verified: "Verified by Stripe.",
+  pending: "Stripe is checking it.",
+  unverified: "Stripe could not verify it. Check the number.",
+  unavailable: "Stripe cannot check this kind of ID.",
+};
+
 const LANGUAGES: [string, string][] = [
   ["", "Automatic"],
   ["en", "English"],
@@ -550,7 +580,24 @@ export function InvoiceDetailsCard({ details, owner, enabled, error }: { details
   const a = details?.address;
   const disabled = !owner || !enabled;
   return (
-    <Card id="details" icon={<ReceiptText size={16} />} title="Invoice details" about="Who invoices are for. Kept on the workspace's Stripe customer and printed on every invoice.">
+    <Card
+      id="details"
+      icon={<ReceiptText size={16} />}
+      title="Invoice details"
+      about="Who invoices are for. Kept on the workspace's Stripe customer and printed on every invoice. Tax is worked out from the address."
+    >
+      {details?.customer && !details.taxLocation && (
+        <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${details.taxAddressNeededAt ? "border-warn/40 bg-warn/5" : "border-line bg-bg/40 text-muted"}`}>
+          {details.taxAddressNeededAt
+            ? "Add the billing address: Stripe needs at least the country (and in the US the ZIP code) to work out tax, so g1t is not charging the card until it is here."
+            : "No billing address yet. Stripe needs at least the country (and in the US the ZIP code) to work out tax before g1t charges the card."}
+        </p>
+      )}
+      {(details?.taxExempt === "exempt" || details?.taxExempt === "reverse") && (
+        <p className="mt-3 text-xs text-muted">
+          {details.taxExempt === "exempt" ? "Tax exempt: no tax is added." : "Reverse charge: you account for the tax yourself, and invoices say so."}
+        </p>
+      )}
       <Form method="post" className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <input type="hidden" name="intent" value="details" />
         <fieldset disabled={disabled} className="contents">
@@ -585,6 +632,9 @@ export function InvoiceDetailsCard({ details, owner, enabled, error }: { details
               </select>
               <input name="taxId" defaultValue={details?.taxId ?? ""} aria-label="Tax ID" className={FIELD} />
             </span>
+            {details?.taxId && details.taxIdStatus && (
+              <span className="mt-1 block text-xs text-faint">{TAX_ID_STATUS[details.taxIdStatus] ?? `Stripe's check: ${details.taxIdStatus}`}</span>
+            )}
           </label>
           <label className="block">
             <span className="text-xs text-muted">Purchase order</span>
