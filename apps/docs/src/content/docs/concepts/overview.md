@@ -205,7 +205,8 @@ pull requests are in flight.
 
 Merging one pull request at a time keeps every merge clean as text, but two
 changes can merge without a conflict and still break each other. A
-repository that turns on **Merge through a queue** tests each pull request
+repository whose rules include **Require the merge queue** (**Settings →
+Rules**) tests each pull request
 together with the ones ahead of it, and `main` only moves to a state whose
 required checks passed.
 See [merge queue](/guides/merge-queue/).

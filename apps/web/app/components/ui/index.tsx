@@ -1,5 +1,5 @@
 import { Check, Copy, LoaderCircle } from "lucide-react";
-import { type ComponentProps, type ReactNode, useState } from "react";
+import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
 
 import { isWaitingMessage, linkPaths } from "../../lib/compute";
@@ -358,11 +358,17 @@ export function CopyLine({
   text,
   prompt,
   disabled,
+  breakAtSlashes,
 }: {
   text: string;
   prompt?: boolean;
   /** Shown, so it is clear what will be there, but not yet usable: dimmed, with no copy. */
   disabled?: boolean;
+  /**
+   * For a narrow box: an address longer than the line may wrap after a
+   * `/`, so all of it shows, rather than scroll.
+   */
+  breakAtSlashes?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -378,9 +384,21 @@ export function CopyLine({
         {prompt && <span className="mr-2 text-faint select-none">$</span>}
         {text.split(/(\s+)/).map((part, index) =>
           /\S/.test(part) ? (
-            <span key={index} className="whitespace-nowrap">
-              {part}
-            </span>
+            breakAtSlashes ? (
+              // Each piece whole, with a chance to wrap after each `/`.
+              <span key={index}>
+                {part.split(/(?<=\/)(?!\/)/).map((piece, at) => (
+                  <Fragment key={at}>
+                    {at > 0 && <wbr />}
+                    <span className="whitespace-nowrap">{piece}</span>
+                  </Fragment>
+                ))}
+              </span>
+            ) : (
+              <span key={index} className="whitespace-nowrap">
+                {part}
+              </span>
+            )
           ) : (
             part
           ),

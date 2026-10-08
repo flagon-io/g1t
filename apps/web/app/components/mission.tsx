@@ -12,6 +12,7 @@ import {
   CircleSlash,
   CreditCard,
   Eye,
+  GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
   Hand,
@@ -182,6 +183,7 @@ const VERB: Record<Verb, { icon: ReactNode; tone: string; text: (n: string) => s
   asked: { icon: <MessageCircleQuestion size={14} />, tone: "text-accent", text: (n) => `asked the agent on ${n}` },
   deployed: { icon: <Rocket size={14} />, tone: "text-success", text: () => "deployed production" },
   deploy_failed: { icon: <Rocket size={14} />, tone: "text-danger", text: () => "production build failed" },
+  pushed: { icon: <GitCommitHorizontal size={14} />, tone: "text-muted", text: () => "pushed to the default branch" },
   learned: { icon: <Brain size={14} />, tone: "text-accent", text: () => "learned" },
 };
 

@@ -61,7 +61,7 @@ else sees what the project shares publicly.
 | **Right now** | Agents at work, and open pull requests moving from working to landed. |
 | **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
 | **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
-| **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, everything that happened, and the previews that are up. |
+| **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, what happened (pull requests opened, readied and merged, issues opened and closed, checks, reviews, comments, pushes to the default branch and production deploys), and the previews that are up. |
 | **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
 | **Health**, **Dependencies**, **Clone** | How often checks pass, recent builds and open issues by age; what it uses and what uses it; the clone address. |
 

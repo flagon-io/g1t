@@ -8,18 +8,22 @@ import {
   Minus,
   X,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Suspense } from "react";
+import { Await, Link } from "react-router";
 
-import type { QueueEntry, QueueState } from "@g1t/contracts";
+import type { QueueEntry, QueueState, RepoPath, Viewer } from "@g1t/contracts";
 
 import type { Route } from "./+types/queue";
 import { page } from "../../lib/meta";
 import { Avatar, ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
-import { work } from "../../lib/services.server";
+import { actions, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { accessFor, repoFor } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
 
+
+/** A merge_group workflow run on a combined state. */
+type GroupRun = { id: string; name: string };
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Merge queue · ${params.owner}/${params.repo} · g1t` });
@@ -29,12 +33,29 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const [queue, repo] = await Promise.all([work.queue(path, viewer), repoFor(context, params)]);
+  const view = unwrap(queue);
   return {
-    queue: unwrap(queue),
+    queue: view,
+    // The merge_group runs on each combined state, to link its checks to:
+    // streamed, so the queue shows at once.
+    groupRuns: mergeGroupRuns(path, viewer, [...view.active, ...view.recent]),
     defaultBranch: unwrap(repo).defaultBranch,
     // Turning the queue on is a setting: Maintain and up.
     member: repo.ok && accessFor(viewer, repo.value).can.manage_settings,
   };
+}
+
+/** The merge_group runs on each entry's combined state, by commit; empty where none could be read. */
+function mergeGroupRuns(path: RepoPath, viewer: Viewer, entries: QueueEntry[]): Promise<Record<string, GroupRun[]>> {
+  const commits = [...new Set(entries.map((entry) => entry.combinedCommit).filter((sha) => sha != null))].slice(0, 20);
+  return Promise.all(
+    commits.map((sha) =>
+      actions
+        .runs(path, viewer, { sha, event: "merge_group", limit: 10 })
+        .then((found) => [sha, found.ok ? found.value.map((run) => ({ id: run.id, name: run.name })) : []] as const)
+        .catch(() => [sha, []] as const),
+    ),
+  ).then((found) => Object.fromEntries(found));
 }
 
 const STATE: Record<QueueState, { label: string; tone: string; icon: React.ReactNode }> = {
@@ -81,9 +102,50 @@ function TestedAs({ entry, branch }: { entry: QueueEntry; branch: string }) {
   );
 }
 
-function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: string; branch: string; position?: number }) {
+/**
+ * How an entry's checks went, linked to the merge_group run on its combined
+ * state; with several runs, each is named and linked after the count.
+ */
+function GroupChecks({ entry, base, runs }: { entry: QueueEntry; base: string; runs: GroupRun[] }) {
   const ran = entry.results.length;
   const passed = entry.results.filter((result) => result.passed).length;
+  const [first, ...more] = runs;
+  const tone = passed === ran ? "text-success" : "text-danger";
+  const count = ran > 0 ? `${passed}/${ran} checks passed` : first ? "merge_group run" : null;
+  if (!count) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2">
+      {first ? (
+        <Link to={`${base}/actions/runs/${first.id}`} className={`underline-offset-2 hover:underline ${ran > 0 ? tone : "text-muted"}`}>
+          {count}
+          {more.length > 0 && ` · ${first.name}`}
+        </Link>
+      ) : (
+        <span className={tone}>{count}</span>
+      )}
+      {more.map((run) => (
+        <Link key={run.id} to={`${base}/actions/runs/${run.id}`} className="text-muted underline-offset-2 hover:text-fg hover:underline">
+          {run.name}
+        </Link>
+      ))}
+    </span>
+  );
+}
+
+function Entry({
+  entry,
+  base,
+  branch,
+  position,
+  groupRuns,
+}: {
+  entry: QueueEntry;
+  base: string;
+  branch: string;
+  position?: number;
+  groupRuns: Promise<Record<string, GroupRun[]>>;
+}) {
+  const runsOf = (found: Record<string, GroupRun[]>) => (entry.combinedCommit ? (found[entry.combinedCommit] ?? []) : []);
   return (
     <li className="relative pl-10">
       {/* Its place on the rail. */}
@@ -110,11 +172,11 @@ function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: str
           {(entry.state === "testing" || entry.state === "passed" || entry.state === "failed") && (
             <TestedAs entry={entry} branch={branch} />
           )}
-          {ran > 0 && (
-            <span className={passed === ran ? "text-success" : "text-danger"}>
-              {passed}/{ran} checks passed
-            </span>
-          )}
+          <Suspense fallback={<GroupChecks entry={entry} base={base} runs={[]} />}>
+            <Await resolve={groupRuns} errorElement={<GroupChecks entry={entry} base={base} runs={[]} />}>
+              {(found) => <GroupChecks entry={entry} base={base} runs={runsOf(found)} />}
+            </Await>
+          </Suspense>
           <span className="flex items-center gap-1.5">
             <Avatar name={entry.agent} size={14} />
             {entry.agent}
@@ -146,7 +208,7 @@ function Entry({ entry, base, branch, position }: { entry: QueueEntry; base: str
 }
 
 export default function Queue({ loaderData, params }: Route.ComponentProps) {
-  const { queue, defaultBranch, member } = loaderData;
+  const { queue, defaultBranch, member, groupRuns } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const moving = queue.active.length > 0;
   useRefreshWhile(moving);
@@ -168,15 +230,22 @@ export default function Queue({ loaderData, params }: Route.ComponentProps) {
           </p>
         </div>
         {member && (
-          <ButtonLink to={`${base}/settings`}>{queue.enabled ? "Settings" : "Turn it on"}</ButtonLink>
+          <ButtonLink to={`${base}/settings/rules`}>{queue.enabled ? "Settings" : "Turn it on"}</ButtonLink>
         )}
       </div>
 
       {!queue.enabled && queue.active.length === 0 && queue.recent.length === 0 ? (
         <div className="mt-8">
           <EmptyState title="This repository merges directly">
-            Turn on <b>Merge through a queue</b> in the repository's settings, and merging a
-            pull request adds it here instead of changing {defaultBranch} at once.
+            Add the rule <b>Require the merge queue</b> for {defaultBranch} under{" "}
+            {member ? (
+              <Link to={`${base}/settings/rules`} className="text-fg underline underline-offset-2">
+                Settings → Rules
+              </Link>
+            ) : (
+              "Settings → Rules"
+            )}
+            , and merging a pull request adds it here instead of changing {defaultBranch} at once.
           </EmptyState>
         </div>
       ) : (
@@ -199,7 +268,7 @@ export default function Queue({ loaderData, params }: Route.ComponentProps) {
                 )}
               </li>
               {queue.active.map((entry, index) => (
-                <Entry key={entry.id} entry={entry} base={base} branch={defaultBranch} position={index + 1} />
+                <Entry key={entry.id} entry={entry} base={base} branch={defaultBranch} position={index + 1} groupRuns={groupRuns} />
               ))}
               {queue.active.length === 0 && (
                 <li className="pl-10 text-sm text-muted">Nothing is waiting. Merged pull requests appear here.</li>
@@ -212,7 +281,7 @@ export default function Queue({ loaderData, params }: Route.ComponentProps) {
               <h3 className="text-sm font-medium">Recently</h3>
               <ol className="mt-3 space-y-3">
                 {queue.recent.map((entry) => (
-                  <Entry key={entry.id} entry={entry} base={base} branch={defaultBranch} />
+                  <Entry key={entry.id} entry={entry} base={base} branch={defaultBranch} groupRuns={groupRuns} />
                 ))}
               </ol>
             </section>

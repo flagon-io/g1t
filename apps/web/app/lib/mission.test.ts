@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { G1tEvent } from "@g1t/contracts";
+
 import {
   type ActivityItem,
   type Need,
   DELETED_USER,
+  FEED_EVENT_TYPES,
+  PROJECT_FEED_EVENT_TYPES,
+  eventItem,
+  projectFeed,
+  pushItem,
   actorIds,
   ageBuckets,
   agentHours,
@@ -257,4 +264,55 @@ test("waits read in the largest whole unit", () => {
   assert.equal(waitedFor(1022), "17 h");
   assert.equal(waitedFor(24 * 60), "1 d");
   assert.equal(waitedFor(3 * 24 * 60 - 1), "2 d");
+});
+
+// --- A project's feed -----------------------------------------------------------
+
+const REPO = { namespace: "flagon-io", name: "g1t" };
+const event = (type: string, data: Record<string, unknown>, id = `evt_${type}`, actor: string | null = "usr_ada"): G1tEvent =>
+  ({ id, type, source: "test", time: "2026-10-08T12:00:00Z", repoId: "rep_1", actor, data }) as unknown as G1tEvent;
+const deployment = (state: string, production = true) =>
+  event("deployment_status.created", {
+    repoId: "rep_1",
+    deployment: { id: "dep_9", environment: production ? "production" : "preview", production_environment: production },
+    deploymentStatus: { state },
+  });
+
+test("the feed asks the log only for the kinds it shows, and pushes for one project", () => {
+  for (const type of ["session.appended", "queue.changed", "pull.updated", "pull.mergecheck", "workflow.completed"]) {
+    assert.ok(!(PROJECT_FEED_EVENT_TYPES as readonly string[]).includes(type), type);
+  }
+  assert.ok((PROJECT_FEED_EVENT_TYPES as readonly string[]).includes("git.push"));
+  assert.ok(!(FEED_EVENT_TYPES as readonly string[]).includes("git.push"));
+  // Every kind asked for makes a line of some events.
+  for (const type of FEED_EVENT_TYPES) assert.ok(type.includes("."), type);
+});
+
+test("a production deploy that finished is a line, linked to it on the current path", () => {
+  const up = eventItem(deployment("success"), REPO);
+  assert.equal(up?.verb, "deployed");
+  assert.equal(up?.to, "/flagon-io/g1t/deployments/dep_9");
+  assert.equal(eventItem(deployment("failure"), REPO)?.verb, "deploy_failed");
+  assert.equal(eventItem(deployment("in_progress"), REPO), null);
+  assert.equal(eventItem(deployment("success", false), REPO), null);
+});
+
+test("a project's feed has its pushes to the default branch, but not the ones that only landed a pull request", () => {
+  const events = [
+    event("pull.merged", { pullId: "pul_1", repoId: "rep_1", number: 5, commit: "aaaaaaa1111" }, "evt_1"),
+    event("git.push", { repoId: "rep_1", ref: "refs/heads/main", after: "aaaaaaa1111", defaultBranch: true }, "evt_2"),
+    event("git.push", { repoId: "rep_1", ref: "refs/heads/main", after: "bbbbbbb2222", defaultBranch: true }, "evt_3"),
+    event("git.push", { repoId: "rep_1", ref: "refs/heads/topic", after: "ccccccc3333", defaultBranch: false }, "evt_4"),
+    event("session.appended", { repoId: "rep_1", number: 5 }, "evt_5"),
+  ];
+  const feed = projectFeed(events, REPO);
+  assert.deepEqual(
+    feed.map((item) => [item.verb, item.text ?? item.number]),
+    [
+      ["landed", 5],
+      ["pushed", "bbbbbbb"],
+    ],
+  );
+  assert.equal(feed[1]?.to, "/flagon-io/g1t/commit/bbbbbbb2222");
+  assert.equal(pushItem(events[4]!, REPO, new Set()), null);
 });

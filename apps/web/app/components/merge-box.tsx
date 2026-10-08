@@ -321,6 +321,7 @@ export function ChecksSection({
   settingsUrl,
   error,
   loading = false,
+  settled = false,
 }: {
   /** Set when the merge queue took it out, or for a run from before checks were workflows. */
   run: CheckRun | null;
@@ -338,6 +339,11 @@ export function ChecksSection({
   error?: string | null;
   /** The workflow runs' jobs are still being read: their rows wait, busy. */
   loading?: boolean;
+  /**
+   * The pull request is closed or merged: its head's checks as they ended,
+   * to read only. Nothing is said of holding a merge.
+   */
+  settled?: boolean;
 }) {
   if (!run && statuses.length === 0 && required.length === 0) return null;
 
@@ -374,7 +380,9 @@ export function ChecksSection({
     .join(", ");
   const sub = summary
     ? [summary.sub, others && `all checks: ${others}`].filter(Boolean).join(" · ")
-    : [others, "none are required, so none hold the merge"].filter(Boolean).join(" · ");
+    : settled
+      ? [others, pull.headCommit && `on ${pull.headCommit.slice(0, 7)}`].filter(Boolean).join(" · ")
+      : [others, "none are required, so none hold the merge"].filter(Boolean).join(" · ");
   const standing: Standing = summary
     ? summary.standing
     : failed > 0
@@ -403,7 +411,7 @@ export function ChecksSection({
         <div className="min-w-0 grow">
           <p className="text-sm font-medium">{headline}</p>
           {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
-          {!summary && settingsUrl && (
+          {!summary && !settled && settingsUrl && (
             <p className="mt-0.5 text-xs text-muted">
               <Link to={settingsUrl} className="text-fg hover:underline">
                 Choose required checks
