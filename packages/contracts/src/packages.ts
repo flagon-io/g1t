@@ -7,10 +7,18 @@ import type { Result } from "./result";
  * installs from, beside its code (docs/PACKAGES.md). Container images
  * first, on `g1t.sh/v2/`. Mirrors `crates/contracts/src/packages.rs`.
  *
- * A package linked to a repository has its visibility and roles (Read
- * pulls, Write publishes, Admin deletes and changes settings); an unlinked
- * one is its workspace's: members by the base permission, owners delete.
+ * A package linked to a repository has its visibility and, unless its
+ * admins turned inheriting off, its roles (Read pulls, Write publishes,
+ * Admin deletes and changes settings); an unlinked one is its workspace's:
+ * members by the base permission, owners administer. Roles given on the
+ * package itself, to people and teams, add to those. A workflow job's
+ * token reaches it from its linked repository, or one listed under Manage
+ * Actions access. Deleted packages and versions can be restored for
+ * `PACKAGE_RESTORE_DAYS`.
  */
+
+/** How long a deleted package or version can be restored, in days. */
+export const PACKAGE_RESTORE_DAYS = 30;
 
 /** Which registry a package is in. */
 export const ECOSYSTEMS = ["container", "npm", "composer", "cargo", "go", "maven", "nuget", "rubygems"] as const;
@@ -42,6 +50,12 @@ export type PackageSummary = {
   downloads: number;
   created_at: string;
   updated_at: string;
+  /** For a linked package: whether it takes its repository's roles. */
+  inherit_access?: boolean;
+  /** Set on a deleted package: when, by whom, and when it is purged. */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  purge_at?: string | null;
 };
 
 /** One version: for a container image, one manifest, by digest. */
@@ -64,14 +78,56 @@ export type PackageVersion = {
   deprecated?: string | null;
   /** NuGet: whether a symbol package (`.snupkg`) was pushed for it. */
   symbols?: boolean;
-  /** NuGet: its own downloads, where they are counted by version. */
+  /** Its own pulls or downloads, counted approximately. */
   downloads?: number | null;
+  /** Set on a deleted version: when, by whom, and when it is purged. */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  purge_at?: string | null;
 };
 
 export type PackageTag = { tag: string; digest: string; updated_at: string };
 
-/** What the viewer may do with a package. `admin`: change its visibility and link. */
+/**
+ * What the viewer may do with a package. `delete`: delete and restore it
+ * and its versions; `admin`: change its settings (access, Actions access,
+ * visibility, link).
+ */
 export type PackagePermissions = { pull: boolean; push: boolean; delete: boolean; admin: boolean };
+
+/** A role on a package: read pulls, write publishes, admin deletes and changes settings. */
+export const PACKAGE_ROLES = ["read", "write", "admin"] as const;
+export type PackageRole = (typeof PACKAGE_ROLES)[number];
+
+/** A person or a team with a role on a package itself. */
+export type PackageAccess = {
+  kind: "user" | "team";
+  id: string;
+  /** A username, or a team as `workspace/slug`. */
+  name: string;
+  role: PackageRole;
+  created_at: string;
+};
+
+/** A repository whose workflows may use a package; `linked` is its own repository, always write. */
+export type ActionsAccess = {
+  repo_id: string;
+  /** `owner/name`. */
+  repo: string;
+  role: "read" | "write";
+  linked: boolean;
+  created_at: string | null;
+};
+
+/** `package_settings`: what a package's admins see on its Settings tab. */
+export type PackageSettings = {
+  package: PackageSummary;
+  access: PackageAccess[];
+  actions_access: ActionsAccess[];
+  /** Deleted versions that can still be restored, newest first. */
+  deleted_versions: PackageVersion[];
+  permissions: PackagePermissions;
+};
 
 export type PackageDetail = {
   package: PackageSummary;
@@ -97,7 +153,12 @@ export type PackageChange = {
   link?: string;
   /** Take the link away. */
   unlink?: boolean;
+  /** For a linked package: whether it takes its repository's roles. */
+  inheritAccess?: boolean;
 };
+
+/** Who a change of access is for: a person by username, or a team by slug. */
+export type PackageGrantee = { user: string } | { team: string };
 
 export type PackagesApi = {
   /** The workspace's packages the viewer may pull, newest first. */
@@ -109,6 +170,18 @@ export type PackagesApi = {
   deletePackage(actor: User, workspace: string, ecosystem: Ecosystem, name: string, surface?: AuditSurface): Promise<Result<null>>;
   /** Needs Admin. A linked package's visibility is its repository's. */
   set(actor: User, workspace: string, ecosystem: Ecosystem, name: string, change: PackageChange, surface?: AuditSurface): Promise<Result<PackageSummary>>;
+  /** Admins only: access, Actions access, deleted versions. Not found for anyone who may not pull it. */
+  settings(workspace: string, ecosystem: Ecosystem, name: string, viewer: Viewer): Promise<Result<PackageSettings>>;
+  /** A workspace's deleted packages the viewer administers that can still be restored. */
+  deleted(workspace: string, viewer: Viewer): Promise<Result<PackageSummary[]>>;
+  restorePackage(actor: User, workspace: string, ecosystem: Ecosystem, name: string, surface?: AuditSurface): Promise<Result<PackageSummary>>;
+  /** A deleted version, by its id or version. */
+  restoreVersion(actor: User, workspace: string, ecosystem: Ecosystem, name: string, version: string, surface?: AuditSurface): Promise<Result<PackageVersion>>;
+  setAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, who: PackageGrantee, role: PackageRole, surface?: AuditSurface): Promise<Result<PackageAccess[]>>;
+  removeAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, who: PackageGrantee, surface?: AuditSurface): Promise<Result<PackageAccess[]>>;
+  /** A repository of the workspace, by name or `owner/name`. */
+  setActionsAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, repo: string, role: "read" | "write", surface?: AuditSurface): Promise<Result<ActionsAccess[]>>;
+  removeActionsAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, repo: string, surface?: AuditSurface): Promise<Result<ActionsAccess[]>>;
   /** For billing. */
   storage(workspace: string): Promise<PackageStorage>;
   /** For billing: every workspace with packages, from one query. */
@@ -118,4 +191,23 @@ export type PackagesApi = {
 };
 
 /** The RPC method behind each call, as the Rust service names them. */
-export const PACKAGES_METHODS = ["list_packages", "get_package", "delete_version", "delete_package", "set_package", "storage", "storage_all", "sync_composer"] as const;
+export const PACKAGES_METHODS = [
+  "list_packages",
+  "get_package",
+  "list_versions",
+  "get_version",
+  "delete_version",
+  "delete_package",
+  "restore_version",
+  "restore_package",
+  "deleted_packages",
+  "set_package",
+  "package_settings",
+  "set_package_access",
+  "remove_package_access",
+  "set_actions_access",
+  "remove_actions_access",
+  "storage",
+  "storage_all",
+  "sync_composer",
+] as const;

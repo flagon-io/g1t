@@ -535,11 +535,22 @@ beside classic ones, with workspaces (organizations) governing both.
 - **Deploy keys** (identity/0035): per repository, read-only unless write
   is ticked; resolved to a principal bound to the one repository.
   Serving git over SSH is still to come, so nothing uses them yet.
-- **Packages**: per-package roles with "inherit access from the linked
-  repository", "Manage Actions access" enforced against job tokens, linking
-  by `org.opencontainers.image.source`, 30-day soft delete with restore and
-  a purge, a settings tab, public REST and MCP, and download counts per
-  version in every registry.
+- **Packages** (packages/0006, `services/packages/src/access.rs` and
+  `settings.rs`): per-package roles (read, write, admin) for people and
+  teams, with "inherit access from the linked repository" (on by default);
+  "Manage Actions access", which a job's token is held to (its own linked
+  repository writes; any other repository needs an entry, added
+  automatically for the repository whose job first publishes an unlinked
+  package); linking by `org.opencontainers.image.source` (manifest
+  annotation or image label, same workspace, pusher may push there); 30-day
+  soft delete of packages and versions, registry deletes included (the name
+  and version stay reserved), restore, and a purge in the hourly cron; a
+  settings tab and a "Deleted packages" view; 17 REST operations and one
+  `package` MCP tool (reads `packages:read`; settings and access
+  `packages:write` with the package's Admin role; delete and restore
+  `packages:delete`); and download counts per version in every registry.
+  Existing unlinked packages have no Actions access entries, so workflows
+  that used them through `G1T_TOKEN` need one added.
 
 ### Keeping workflow runs safe (built 2026-10-08)
 

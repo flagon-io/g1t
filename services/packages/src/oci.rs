@@ -16,7 +16,7 @@ use g1t_kit::now_ms;
 use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result, Url};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::limits;
 use crate::db::{NewFile, NewVersion, PackageRow, UploadRow};
 use crate::digest::{Digest, Sha256};
@@ -201,17 +201,18 @@ impl Packages {
             Err(message) => return error(400, "NAME_INVALID", message),
         };
         let found = self.db.package(&name.workspace, CONTAINER, &name.name).await?;
-        // A deleted workspace's images are gone for everyone until it is
-        // restored: pulls find nothing, and nothing new is pushed to it.
+        // A deleted image, and a deleted workspace's images, are gone for
+        // everyone until restored: pulls find nothing, and nothing new is
+        // pushed to them (a deleted image's name is kept meanwhile).
         let hidden = match &found {
             Some(package) => package.hidden(),
             None => action == Action::Push && self.db.workspace_hidden(&name.workspace).await?,
         };
         if hidden {
-            return if action == Action::Pull {
-                error(404, "NAME_UNKNOWN", format!("There is no image {}.", name.full()))
-            } else {
-                error(403, "DENIED", format!("The workspace {} is deleted; nothing can be pushed to it or deleted from it.", name.workspace))
+            return match &found {
+                _ if action == Action::Pull => error(404, "NAME_UNKNOWN", format!("There is no image {}.", name.full())),
+                Some(package) => error(403, "DENIED", Packages::hidden_refusal(package)),
+                None => error(403, "DENIED", format!("The workspace {} is deleted; nothing can be pushed to it or deleted from it.", name.workspace)),
             };
         }
         let caller = match self.authorize(url, &credentials, &name, found.as_ref(), action).await? {
@@ -338,19 +339,20 @@ impl Packages {
         let scope = Some(format!("repository:{}:{}", name.full(), match action {
             Action::Pull => "pull",
             Action::Push => "pull,push",
-            Action::Delete => "delete",
+            Action::Delete | Action::Admin | Action::Settings => "delete",
         }));
         let viewer = match credentials {
             Credentials::Bad => {
                 return Ok(Err(unauthorized(url, scope, "The token or password is not right, or has expired. Sign in again with `docker login`.")?));
             }
             Credentials::Token(claims) => {
+                let caller = || Caller { actor: claims.actor.clone(), viewer: claims.viewer.as_deref().cloned() };
                 if claims.allows(&name.full(), action) {
-                    return Ok(Ok(Caller { actor: claims.actor.clone() }));
+                    return Ok(Ok(caller()));
                 }
                 // A token for something else still pulls a public image.
                 if action == Action::Pull && found.is_some_and(|package| package.public()) {
-                    return Ok(Ok(Caller { actor: claims.actor.clone() }));
+                    return Ok(Ok(caller()));
                 }
                 if credentials.anonymous() {
                     return Ok(Err(unauthorized(url, scope, "Sign in with `docker login` to do that.")?));
@@ -360,10 +362,10 @@ impl Packages {
             Credentials::Viewer(viewer) => viewer.clone(),
             Credentials::None => None,
         };
-        let target = self.target(name, found).await?;
-        let decision = access::decide(viewer.as_ref(), &target.view(), action);
+        let mut target = self.target(name, found).await?;
+        let decision = self.decide(viewer.as_ref(), &mut target, action).await?;
         if decision.allowed {
-            return Ok(Ok(Caller { actor: viewer.as_ref().map(AuditActor::of) }));
+            return Ok(Ok(Caller::of(viewer.as_ref())));
         }
         let reason = decision.reason.unwrap_or_else(|| "Not allowed.".to_owned());
         if viewer.is_none() {
@@ -393,11 +395,13 @@ impl Packages {
             if found.as_ref().is_some_and(|package| package.hidden()) {
                 continue;
             }
-            let target = self.target(&name, found.as_ref()).await?;
-            let actions: Vec<Action> = wanted
-                .into_iter()
-                .filter(|action| access::decide(viewer.as_ref(), &target.view(), *action).allowed)
-                .collect();
+            let mut target = self.target(&name, found.as_ref()).await?;
+            let mut actions: Vec<Action> = Vec::new();
+            for action in wanted {
+                if self.decide(viewer.as_ref(), &mut target, action).await?.allowed {
+                    actions.push(action);
+                }
+            }
             if let Some(grant) = access.iter_mut().find(|grant| grant.name == full) {
                 for action in actions {
                     if !grant.actions.contains(&action) {
@@ -409,8 +413,17 @@ impl Packages {
             }
         }
         let now = now_ms();
+        // A push's token carries who pushes, cut down to the workspaces it
+        // pushes to, so a manifest's source label can be checked against
+        // their role on the repository it names.
+        let pushes: Vec<String> = access
+            .iter()
+            .filter(|grant| grant.actions.contains(&Action::Push))
+            .filter_map(|grant| grant.name.split('/').next().map(str::to_owned))
+            .collect();
         let claims = Claims {
             actor: viewer.as_ref().map(AuditActor::of),
+            viewer: viewer.as_ref().filter(|_| !pushes.is_empty()).map(|user| Box::new(token::slim(user, &pushes))),
             access,
             iat: now / 1000,
             exp: now / 1000 + token::TTL_SECONDS,
@@ -431,17 +444,37 @@ impl Packages {
             return Ok(found);
         }
         let repo = self.repo_by_name(&name.workspace, name.repo_name()).await?;
-        self.db
-            .create_package(
-                &new_id("pkg", now_ms()),
-                &name.workspace,
-                CONTAINER,
-                &name.name,
-                repo.as_ref().map(|repo| (repo.id.as_str(), repo.name.as_str(), repo.is_private)),
-                caller.actor.as_ref().map_or("", |actor| actor.actor_id.as_str()),
-                now_ms(),
-            )
-            .await
+        self.make_package(
+            &name.workspace,
+            CONTAINER,
+            &name.name,
+            repo.as_ref().map(|repo| (repo.id.as_str(), repo.name.as_str(), repo.is_private)),
+            caller,
+            now_ms(),
+        )
+        .await
+    }
+
+    /// The source label an image's manifest or config names, if any.
+    async fn source_of(&self, parsed: &manifest::Manifest) -> Result<Option<String>> {
+        if let Some(label) = crate::settings::source_label(parsed.annotations.as_ref(), None) {
+            return Ok(Some(label));
+        }
+        let Some(config) = parsed.blobs.iter().find(|blob| blob.role == "config") else {
+            return Ok(None);
+        };
+        // An image config is small; anything larger is not one to read.
+        if config.size > 1024 * 1024 {
+            return Ok(None);
+        }
+        let Some(blob) = self.db.blob(&config.digest).await? else {
+            return Ok(None);
+        };
+        let Some(bytes) = self.store.read(&blob.object_key).await? else {
+            return Ok(None);
+        };
+        let parsed: Option<Value> = serde_json::from_slice(&bytes).ok();
+        Ok(parsed.and_then(|config| crate::settings::source_label(None, Some(&config))))
     }
 
     async fn get_manifest(
@@ -479,7 +512,7 @@ impl Packages {
         let Some(bytes) = self.store.read(&blob.object_key).await? else {
             return error(404, "MANIFEST_UNKNOWN", format!("{}:{reference} is not there.", name.full()));
         };
-        self.count_download(&package.id, ctx);
+        self.count_version_download(&package.id, &version.id, ctx);
         respond(200, &headers, ResponseBody::Body(bytes))
     }
 
@@ -512,6 +545,16 @@ impl Packages {
             Err(manifest::Refused::Unsupported(message)) => return error(415, "UNSUPPORTED", message),
         };
         let package = self.package_for_push(name, found, caller).await?;
+        if let Some(refused) = self.reserved_refusal(&package, digest.as_str()).await? {
+            return error(403, "DENIED", refused);
+        }
+        // The repository `org.opencontainers.image.source` names, on the
+        // image's first manifest or while it is unlinked.
+        let first = !self.db.has_any_version(&package.id).await?;
+        let package = match self.source_of(&parsed).await? {
+            Some(label) => self.link_by_source(&package, &label, caller, first).await?.unwrap_or(package),
+            None => package,
+        };
         let mut files = vec![NewFile {
             name: "manifest".to_owned(),
             digest: digest.to_string(),
@@ -753,8 +796,8 @@ impl Packages {
         Ok(match credentials {
             Credentials::Token(claims) => claims.allows(&name.full(), Action::Pull) || package.public(),
             Credentials::Viewer(viewer) => {
-                let target = TargetOf::package(package);
-                access::decide(viewer.as_ref(), &target.view(), Action::Pull).allowed
+                let mut target = TargetOf::package(package);
+                self.decide(viewer.as_ref(), &mut target, Action::Pull).await?.allowed
             }
             Credentials::None | Credentials::Bad => package.public(),
         })
@@ -965,27 +1008,10 @@ impl Packages {
         Ok(response)
     }
 
-    /// Deletes a version of a package, with its tags, and says so.
+    /// Deletes a version of a package, and says so: hidden with its tags,
+    /// restorable for 30 days (see settings.rs).
     pub(crate) async fn remove_version(&self, package: &PackageRow, version: &crate::db::VersionRow, caller: &Caller) -> Result<()> {
-        self.db.delete_version(&version.id).await?;
-        self.db.measure(&package.workspace).await?;
-        let event = PackageEvent {
-            version: Some(version.version.clone()),
-            digest: Some(version.digest.clone()),
-            ..self.event_of(package)
-        };
-        self.announce("package.version_deleted", package, event, caller).await;
-        // An image (and a Composer version, by its commit) is named by its
-        // digest; every other package by its version.
-        let path = if package.ecosystem == "npm" {
-            format!("@{}/{}@{}", package.workspace, package.name, version.version)
-        } else if !matches!(package.ecosystem.as_str(), "container" | "composer") {
-            format!("{}/{}@{}", package.workspace, package.name, version.version)
-        } else {
-            format!("{}/{}@{}", package.workspace, package.name, version.digest)
-        };
-        self.audit(caller, "package.delete_version", package, Some(&path), None).await;
-        Ok(())
+        self.remove_version_from(package, version, caller, None).await
     }
 
     pub(crate) fn event_of(&self, package: &PackageRow) -> PackageEvent {

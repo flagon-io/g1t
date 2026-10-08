@@ -53,6 +53,8 @@ use access::{Action, LinkedTo, Target};
 use db::{Db, PackageRow};
 use store::{BlobStore, Store};
 
+mod settings;
+
 pub(crate) const SOURCE: &str = "packages";
 /// How large a request body may be: Cloudflare's limit on the zone's plan.
 const DEFAULT_MAX_REQUEST_BYTES: u64 = 100_000_000;
@@ -83,32 +85,82 @@ const ALLOWANCE_TTL_MS: u64 = 5 * 60 * 1000;
 /// Who made a registry request, as its audit entries and versions name them.
 pub struct Caller {
     pub actor: Option<AuditActor>,
+    /// Who it is, where that is known: what linking a package to the
+    /// repository its source label names checks.
+    pub viewer: Option<User>,
 }
 
-/// What access decisions need about a package, owned.
+impl Caller {
+    pub fn of(viewer: Option<&User>) -> Caller {
+        Caller { actor: viewer.map(AuditActor::of), viewer: viewer.cloned() }
+    }
+
+    pub fn system() -> Caller {
+        Caller { actor: Some(AuditActor::system()), viewer: None }
+    }
+}
+
+/// What access decisions need about a package, owned. Its own grants and
+/// Actions access are read only when a decision needs them (`loaded`).
 pub struct TargetOf {
-    workspace: String,
-    repo: Option<(String, String, bool)>,
-    public: bool,
+    pub(crate) workspace: String,
+    pub(crate) name: String,
+    pub(crate) repo: Option<(String, String, bool)>,
+    pub(crate) public: bool,
+    pub(crate) package_id: Option<String>,
+    pub(crate) inherit: bool,
+    pub(crate) grants: Vec<access::Grant>,
+    pub(crate) actions: Vec<access::RepoAccess>,
+    pub(crate) teams: Vec<String>,
+    pub(crate) loaded: bool,
 }
 
 impl TargetOf {
     pub fn package(row: &PackageRow) -> TargetOf {
         TargetOf {
             workspace: row.workspace.clone(),
+            name: row.name.clone(),
             repo: row
                 .repo_id
                 .as_ref()
                 .map(|id| (id.clone(), row.repo_name.clone().unwrap_or_default(), !row.public())),
             public: row.public(),
+            package_id: Some(row.id.clone()),
+            inherit: row.inherits(),
+            grants: Vec::new(),
+            actions: Vec::new(),
+            teams: Vec::new(),
+            loaded: false,
+        }
+    }
+
+    /// A package not made yet, which its first push would link to `repo`.
+    pub fn unmade(workspace: &str, name: &str, repo: Option<(String, String, bool)>) -> TargetOf {
+        TargetOf {
+            workspace: workspace.to_owned(),
+            name: name.to_owned(),
+            repo,
+            public: false,
+            package_id: None,
+            inherit: true,
+            grants: Vec::new(),
+            actions: Vec::new(),
+            teams: Vec::new(),
+            loaded: true,
         }
     }
 
     pub fn view(&self) -> Target<'_> {
         Target {
             workspace: &self.workspace,
+            name: &self.name,
             repo: self.repo.as_ref().map(|(id, name, private)| LinkedTo { id, name, private: *private }),
             public: self.public,
+            exists: self.package_id.is_some(),
+            inherit: self.inherit,
+            grants: &self.grants,
+            actions: &self.actions,
+            teams: &self.teams,
         }
     }
 }
@@ -156,6 +208,17 @@ pub(crate) fn workspace_mark(event: &Event, protected: &[String], now: &str) -> 
         "workspace.restored" => Some(WorkspaceMark::Show { workspace }),
         _ => None,
     }
+}
+
+/// Adds one download to the counts kept since the last write, and answers
+/// with all of them to write when the last write was long enough ago.
+pub(crate) fn tally(counts: &mut (HashMap<DownloadKey, u64>, u64), key: DownloadKey, now: u64) -> Option<Vec<(DownloadKey, u64)>> {
+    *counts.0.entry(key).or_default() += 1;
+    if now.saturating_sub(counts.1) < DOWNLOADS_FLUSH_MS {
+        return None;
+    }
+    counts.1 = now;
+    Some(counts.0.drain().collect())
 }
 
 fn not_found<T>() -> Outcome<T> {
@@ -222,11 +285,7 @@ impl Packages {
             return Ok(TargetOf::package(found));
         }
         let repo = self.repo_by_name(&name.workspace, name.repo_name()).await?;
-        Ok(TargetOf {
-            workspace: name.workspace.clone(),
-            repo: repo.map(|repo| (repo.id, repo.name, repo.is_private)),
-            public: false,
-        })
+        Ok(TargetOf::unmade(&name.workspace, &name.name, repo.map(|repo| (repo.id, repo.name, repo.is_private))))
     }
 
     /// What billing allows the workspace, kept for five minutes unless
@@ -307,16 +366,8 @@ impl Packages {
     }
 
     fn count_downloads(&self, package_id: &str, version_id: Option<&str>, ctx: &Context) {
-        let due = DOWNLOADS.with(|counts| {
-            let mut counts = counts.borrow_mut();
-            *counts.0.entry((package_id.to_owned(), version_id.map(str::to_owned))).or_default() += 1;
-            let now = now_ms();
-            if now.saturating_sub(counts.1) < DOWNLOADS_FLUSH_MS {
-                return None;
-            }
-            counts.1 = now;
-            Some(counts.0.drain().collect::<Vec<_>>())
-        });
+        let key = (package_id.to_owned(), version_id.map(str::to_owned));
+        let due = DOWNLOADS.with(|counts| tally(&mut counts.borrow_mut(), key, now_ms()));
         if let Some(due) = due {
             let env = self.env.clone();
             ctx.wait_until(async move {
@@ -346,6 +397,20 @@ impl Packages {
     }
 
     async fn audit(&self, caller: &Caller, action: &str, package: &PackageRow, path: Option<&str>, surface: Option<Surface>) {
+        self.audit_with(caller, action, package, path, surface, None).await;
+    }
+
+    /// An audit entry, with what changed in words (`message`), as identity
+    /// writes its access entries.
+    async fn audit_with(
+        &self,
+        caller: &Caller,
+        action: &str,
+        package: &PackageRow,
+        path: Option<&str>,
+        surface: Option<Surface>,
+        message: Option<String>,
+    ) {
         let Some(actor) = caller.actor.clone() else {
             return;
         };
@@ -364,6 +429,7 @@ impl Packages {
             new_id("req", now_ms()),
         );
         entry.result = Some("ok".to_owned());
+        entry.message = message;
         let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries: vec![entry] }).await;
         if let Err(error) = recorded {
             worker::console_error!("packages: audit entry not recorded: {error}");
@@ -399,6 +465,10 @@ impl Packages {
             downloads: p.downloads,
             created_at: p.created_at.clone(),
             updated_at: p.updated_at.clone(),
+            inherit_access: p.inherits(),
+            deleted_at: p.deleted_at.clone(),
+            deleted_by: p.deleted_by.clone(),
+            purge_at: p.deleted_at.as_deref().and_then(settings::purge_at),
         }
     }
 
@@ -424,10 +494,13 @@ impl Packages {
             .db
             .list(&workspace, a.ecosystem.map(Ecosystem::as_str), a.repo_id.as_deref(), a.query.as_deref(), LIST_LIMIT)
             .await?;
+        let packages: Vec<&PackageRow> = rows.iter().map(|row| &row.package).collect();
+        let may = self.may_all(a.viewer.as_ref(), &packages, Action::Pull).await?;
         let visible = rows
             .iter()
-            .filter(|row| access::decide(a.viewer.as_ref(), &TargetOf::package(&row.package).view(), Action::Pull).allowed)
-            .map(|row| self.summary(row))
+            .zip(may)
+            .filter(|(_, may)| *may)
+            .map(|(row, _)| self.summary(row))
             .collect();
         Ok(Outcome::Ok(visible))
     }
@@ -437,51 +510,18 @@ impl Packages {
         let Some(row) = self.listed(&workspace, a.ecosystem, &a.name).await? else {
             return Ok(not_found());
         };
-        let target = TargetOf::package(&row.package);
-        let permissions = access::permissions(a.viewer.as_ref(), &target.view());
+        let mut target = TargetOf::package(&row.package);
+        let permissions = self.permissions(a.viewer.as_ref(), &mut target).await?;
         if !permissions.pull {
             return Ok(not_found());
         }
         let tags = self.db.tags(&row.package.id).await?;
-        // A yanked or unlisted version reads as deprecated: still there
-        // for lockfiles that name it, no longer picked for new ones.
-        let withdrawn = match row.package.ecosystem.as_str() {
-            "nuget" => "Unlisted: still restored by projects that name it, no longer shown in search.",
-            "rubygems" => "Yanked: Bundler no longer picks this version for new lockfiles.",
-            _ => "Yanked: Cargo no longer picks this version for new lockfiles.",
-        };
         let versions = self
             .db
             .versions(&row.package.id, VERSIONS_SHOWN)
             .await?
             .into_iter()
-            .map(|version| {
-                let meta = version.meta();
-                let text = |key: &str| meta[key].as_str().map(str::to_owned);
-                PackageVersion {
-                    tags: tags.iter().filter(|tag| tag.version_id == version.id).map(|tag| tag.tag.clone()).collect(),
-                    media_type: text("media_type"),
-                    artifact_type: text("artifact_type"),
-                    platforms: meta["platforms"]
-                        .as_array()
-                        .map(|list| list.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect())
-                        .unwrap_or_default(),
-                    id: version.id,
-                    version: version.version,
-                    digest: version.digest,
-                    size: version.size,
-                    subject: version.subject,
-                    published_by: version.published_by,
-                    published_at: version.published_at,
-                    deprecated: if version.yanked != 0 {
-                        Some(withdrawn.to_owned())
-                    } else {
-                        version.deprecated
-                    },
-                    symbols: meta["symbols"] == true,
-                    downloads: (row.package.ecosystem == "nuget").then_some(version.downloads),
-                }
-            })
+            .map(|version| settings::version_of(&row.package, version, &tags))
             .collect();
         // The README its page shows: npm's, from the latest version.
         let readme = match self.db.readme_digest(&row.package.id).await?.and_then(|d| digest::Digest::parse(&d)) {
@@ -504,16 +544,25 @@ impl Packages {
     }
 
     /// The package `actor` asks to change, if they may `action` it.
-    async fn for_change(&self, actor: &User, workspace: &str, ecosystem: Ecosystem, name: &str, action: Action) -> Result<Outcome<PackageRow>> {
+    pub(crate) async fn for_change(&self, actor: &User, workspace: &str, ecosystem: Ecosystem, name: &str, action: Action) -> Result<Outcome<PackageRow>> {
         let Some(package) = self.db.package(&workspace.to_lowercase(), ecosystem.as_str(), name).await?.filter(|p| !p.hidden()) else {
             return Ok(not_found());
         };
-        let target = TargetOf::package(&package);
-        let decision = access::decide(Some(actor), &target.view(), action);
-        if decision.allowed {
-            return Ok(Outcome::Ok(package));
+        match self.allowed(actor, &package, action).await? {
+            Outcome::Ok(()) => Ok(Outcome::Ok(package)),
+            Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
         }
-        if !access::decide(Some(actor), &target.view(), Action::Pull).allowed {
+    }
+
+    /// Whether `actor` may `action` the package: not found for one who may
+    /// not pull it, forbidden with the reason for one who may.
+    pub(crate) async fn allowed(&self, actor: &User, package: &PackageRow, action: Action) -> Result<Outcome<()>> {
+        let mut target = TargetOf::package(package);
+        let decision = self.decide(Some(actor), &mut target, action).await?;
+        if decision.allowed {
+            return Ok(Outcome::Ok(()));
+        }
+        if !self.decide(Some(actor), &mut target, Action::Pull).await?.allowed {
             return Ok(not_found());
         }
         Ok(Outcome::fail(FailureCode::Forbidden, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned())))
@@ -524,11 +573,17 @@ impl Packages {
             Outcome::Ok(package) => package,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
+        if package.ecosystem == "composer" {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "A Composer package's versions are its repository's tags and branches: delete the tag or branch instead.",
+            ));
+        }
         let Some(version) = self.db.find_version(&package.id, &a.version).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Version not found."));
         };
-        let caller = Caller { actor: Some(AuditActor::of(&a.actor)) };
-        self.remove_version(&package, &version, &caller).await?;
+        let caller = Caller::of(Some(&a.actor));
+        self.remove_version_from(&package, &version, &caller, a.surface).await?;
         Ok(Outcome::Ok(()))
     }
 
@@ -537,27 +592,71 @@ impl Packages {
             Outcome::Ok(package) => package,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        self.db.delete_package(&package.id).await?;
-        self.db.measure(&package.workspace).await?;
-        let caller = Caller { actor: Some(AuditActor::of(&a.actor)) };
-        self.announce("package.deleted", &package, self.event_of(&package), &caller).await;
-        self.audit(&caller, "package.delete", &package, None, a.surface).await;
+        let caller = Caller::of(Some(&a.actor));
+        self.remove_package(&package, &caller, a.surface).await?;
         Ok(Outcome::Ok(()))
     }
 
+    /// Deletes a package: hidden at once, restorable for 30 days, its name
+    /// kept until then. Its files go with the purge.
+    pub(crate) async fn remove_package(&self, package: &PackageRow, caller: &Caller, surface: Option<Surface>) -> Result<()> {
+        let by = caller.actor.as_ref().map_or("", |actor| actor.actor.as_str());
+        self.db.soft_delete_package(&package.id, by, now_ms()).await?;
+        self.db.measure(&package.workspace).await?;
+        self.announce("package.deleted", package, self.event_of(package), caller).await;
+        self.audit_with(
+            caller,
+            "package.delete",
+            package,
+            None,
+            surface,
+            Some(format!("Deleted the package; it can be restored for {RESTORE_DAYS} days")),
+        )
+        .await;
+        Ok(())
+    }
+
     async fn set_package(&self, a: SetPackageArgs) -> Result<Outcome<PackageSummary>> {
-        let package = match self.for_change(&a.actor, &a.workspace, a.ecosystem, &a.name, Action::Delete).await? {
+        let package = match self.for_change(&a.actor, &a.workspace, a.ecosystem, &a.name, Action::Admin).await? {
             Outcome::Ok(package) => package,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        let caller = Caller { actor: Some(AuditActor::of(&a.actor)) };
+        let caller = Caller::of(Some(&a.actor));
         let now = now_ms();
         let before = package.visibility.clone();
+        let linked = if a.unlink { false } else { a.link.is_some() || package.repo_id.is_some() };
+        if a.visibility.is_some_and(|visibility| visibility.as_str() != package.visibility) && linked {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "A linked package has its repository's visibility. Change the repository's, or unlink the package.",
+            ));
+        }
+        if a.inherit_access.is_some() && !linked {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "Only a package linked to a repository inherits access. Link it to a repository first.",
+            ));
+        }
+        let path = |repo: &str| format!("{}/{repo}", package.workspace);
         if a.unlink {
-            self.db.set_link(&package.id, None, "private", now).await?;
+            if let Some(name) = package.repo_name.as_deref() {
+                self.db.set_link(&package.id, None, "private", now).await?;
+                self.audit_with(&caller, "package.unlinked", &package, None, a.surface, Some(format!("Unlinked from {}", path(name)))).await;
+            }
         } else if let Some(link) = a.link.as_deref() {
-            let Some(repo) = self.repo_by_name(&package.workspace, link).await? else {
-                return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no repository {}/{link}.", package.workspace)));
+            let link = link.trim().trim_end_matches(".git");
+            let name = match link.split_once('/') {
+                Some((owner, name)) if owner.eq_ignore_ascii_case(&package.workspace) => name,
+                Some(_) => {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("A package can only be linked to a repository of its own workspace, {}.", package.workspace),
+                    ));
+                }
+                None => link,
+            };
+            let Some(repo) = self.repo_by_name(&package.workspace, name).await? else {
+                return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no repository {}.", path(name))));
             };
             // Linking hands the package to the repository's roles: only
             // someone who administers that repository may.
@@ -568,20 +667,29 @@ impl Packages {
                     format!("You need the Admin role on {}/{} to link a package to it.", repo.namespace, repo.name),
                 ));
             }
-            let visibility = if repo.is_private { "private" } else { "public" };
-            self.db.set_link(&package.id, Some((&repo.id, &repo.name)), visibility, now).await?;
-        }
-        if let Some(visibility) = a.visibility {
-            let linked = if a.unlink { false } else { a.link.is_some() || package.repo_id.is_some() };
-            if linked {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    "A linked package has its repository's visibility. Change the repository's, or unlink the package.",
-                ));
+            if package.repo_id.as_deref() != Some(repo.id.as_str()) {
+                let visibility = if repo.is_private { "private" } else { "public" };
+                self.db.set_link(&package.id, Some((&repo.id, &repo.name)), visibility, now).await?;
+                self.audit_with(&caller, "package.linked", &package, None, a.surface, Some(format!("Linked to {}", path(&repo.name)))).await;
             }
+        }
+        if let Some(visibility) = a.visibility
+            && !linked
+            && visibility.as_str() != package.visibility
+        {
             self.db.set_visibility(&package.id, visibility.as_str(), now).await?;
         }
-        self.audit(&caller, "package.update", &package, None, a.surface).await;
+        if let Some(inherit) = a.inherit_access
+            && inherit != package.inherits()
+        {
+            self.db.set_inherit(&package.id, inherit, now).await?;
+            let message = if inherit {
+                "Turned on inheriting access from the linked repository"
+            } else {
+                "Turned off inheriting access from the linked repository"
+            };
+            self.audit_with(&caller, "package.inherit_access_changed", &package, None, a.surface, Some(message.to_owned())).await;
+        }
         let Some(row) = self.listed(&package.workspace, a.ecosystem, &package.name).await? else {
             return Ok(not_found());
         };
@@ -589,6 +697,15 @@ impl Packages {
             self.db.measure(&package.workspace).await?;
             let event = PackageEvent { visibility: Some(row.package.visibility.clone()), ..self.event_of(&row.package) };
             self.announce("package.visibility_changed", &row.package, event, &caller).await;
+            self.audit_with(
+                &caller,
+                "package.visibility_changed",
+                &row.package,
+                None,
+                a.surface,
+                Some(format!("Made the package {}", row.package.visibility)),
+            )
+            .await;
         }
         Ok(Outcome::Ok(self.summary(&row)))
     }
@@ -665,6 +782,8 @@ impl Packages {
             "DELETE FROM version_files WHERE version_id IN (SELECT v.id FROM versions v JOIN packages p ON p.id = v.package_id WHERE p.workspace = ?1)",
             "DELETE FROM versions WHERE package_id IN (SELECT id FROM packages WHERE workspace = ?1)",
             "DELETE FROM package_blobs WHERE package_id IN (SELECT id FROM packages WHERE workspace = ?1)",
+            "DELETE FROM package_access WHERE package_id IN (SELECT id FROM packages WHERE workspace = ?1)",
+            "DELETE FROM package_actions_access WHERE package_id IN (SELECT id FROM packages WHERE workspace = ?1)",
             "DELETE FROM uploads WHERE workspace = ?1",
             "DELETE FROM workspace_blobs WHERE workspace = ?1",
             "DELETE FROM packages WHERE workspace = ?1",
@@ -675,17 +794,38 @@ impl Packages {
         }
         // A repository renamed keeps its packages linked under its new
         // name; one moved to another workspace leaves them behind, unlinked.
+        // Manage Actions access follows a rename, and lets go of a
+        // repository that left the package's workspace.
         if g1t_kit::transfer::on_event(env, db, event, &[
             "UPDATE packages SET repo_name = ?6 WHERE repo_id = ?5 AND workspace = ?3",
             "UPDATE packages SET repo_id = NULL, repo_name = NULL WHERE repo_id = ?5 AND workspace <> ?3",
+            "UPDATE package_actions_access SET repo_name = ?6 WHERE repo_id = ?5",
+            "DELETE FROM package_actions_access WHERE repo_id = ?5 AND package_id IN (SELECT id FROM packages WHERE workspace <> ?3)",
         ])
         .await?
         {
             return Ok(());
         }
-        if g1t_kit::lifecycle::on_purged(db, event, &["UPDATE packages SET repo_id = NULL, repo_name = NULL, visibility = 'private' WHERE repo_id = ?1"])
-            .await?
+        if g1t_kit::lifecycle::on_purged(db, event, &[
+            "UPDATE packages SET repo_id = NULL, repo_name = NULL, visibility = 'private' WHERE repo_id = ?1",
+            "DELETE FROM package_actions_access WHERE repo_id = ?1",
+        ])
+        .await?
         {
+            return Ok(());
+        }
+        // A team renamed or deleted: its roles on packages follow.
+        if matches!(event.kind.as_str(), "team.edited" | "team.deleted") {
+            let field = |snake: &str, camel: &str| {
+                event.data[snake].as_str().or_else(|| event.data[camel].as_str()).map(str::to_owned)
+            };
+            if let Some(team_id) = field("team_id", "teamId") {
+                let slug = field("team", "team");
+                let renamed = (event.kind == "team.edited").then_some(slug.as_deref()).flatten();
+                if event.kind == "team.deleted" || renamed.is_some() {
+                    self.db.follow_team(&team_id, renamed).await?;
+                }
+            }
             return Ok(());
         }
         if event.kind == "repo.visibility_changed" {
@@ -740,6 +880,17 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "delete_version" => reply(&packages.delete_version(args(body)?).await?),
         "delete_package" => reply(&packages.delete_package(args(body)?).await?),
         "set_package" => reply(&packages.set_package(args(body)?).await?),
+        // A package's settings, deleted packages and versions: settings.rs.
+        "list_versions" => reply(&packages.list_versions(args(body)?).await?),
+        "get_version" => reply(&packages.get_version(args(body)?).await?),
+        "restore_version" => reply(&packages.restore_version(args(body)?).await?),
+        "restore_package" => reply(&packages.restore_package(args(body)?).await?),
+        "deleted_packages" => reply(&packages.deleted_packages(args(body)?).await?),
+        "package_settings" => reply(&packages.package_settings(args(body)?).await?),
+        "set_package_access" => reply(&packages.set_package_access(args(body)?).await?),
+        "remove_package_access" => reply(&packages.remove_package_access(args(body)?).await?),
+        "set_actions_access" => reply(&packages.set_actions_access(args(body)?).await?),
+        "remove_actions_access" => reply(&packages.remove_actions_access(args(body)?).await?),
         // For billing: what a workspace's packages hold.
         "storage_all" => reply(&packages.db.storage_all().await?),
         // Read a repository's Composer package again now, as a push would.
@@ -756,8 +907,9 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     }
 }
 
-/// Every hour: expired uploads are let go, and blobs no version has used
-/// for a day are deleted from the store.
+/// Every hour: expired uploads are let go, packages and versions deleted
+/// more than 30 days ago are purged, and blobs no version has used for a
+/// day are deleted from the store.
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let packages = match Packages::from_env(&env) {
@@ -767,6 +919,12 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             return;
         }
     };
+    // Before the sweep, so the files of what is purged go with it a day on.
+    match packages.purge(now_ms()).await {
+        Ok((0, 0)) => {}
+        Ok((purged, versions)) => worker::console_log!("packages: purged {purged} deleted packages and {versions} deleted versions"),
+        Err(error) => worker::console_error!("packages: the purge failed: {error}"),
+    }
     match packages.sweep().await {
         Ok((0, 0)) => {}
         Ok((uploads, blobs)) => worker::console_log!("packages: let go of {uploads} uploads and {blobs} blobs"),
@@ -804,6 +962,70 @@ mod tests {
             actor: None,
             data,
         }
+    }
+
+    #[test]
+    fn downloads_are_counted_by_version_and_written_in_batches() {
+        let mut counts = (HashMap::new(), 0);
+        let version = |v: &str| ("pkg_1".to_owned(), Some(v.to_owned()));
+        // The first is written at once (nothing was written before).
+        let first = tally(&mut counts, version("ver_1"), 100_000).unwrap();
+        assert_eq!(first, vec![(version("ver_1"), 1)]);
+        // Then they are kept until the flush is due, each version apart.
+        assert!(tally(&mut counts, version("ver_1"), 101_000).is_none());
+        assert!(tally(&mut counts, version("ver_1"), 102_000).is_none());
+        assert!(tally(&mut counts, version("ver_2"), 103_000).is_none());
+        let mut due = tally(&mut counts, ("pkg_1".to_owned(), None), 100_000 + DOWNLOADS_FLUSH_MS).unwrap();
+        due.sort();
+        assert_eq!(due, vec![(("pkg_1".to_owned(), None), 1), (version("ver_1"), 2), (version("ver_2"), 1)]);
+        assert!(counts.0.is_empty());
+    }
+
+    fn package(deleted_at: Option<&str>, workspace_deleted_at: Option<&str>) -> PackageRow {
+        PackageRow {
+            id: "pkg_1".into(),
+            workspace: "acme".into(),
+            ecosystem: "npm".into(),
+            name: "web".into(),
+            repo_id: None,
+            repo_name: None,
+            visibility: "private".into(),
+            description: None,
+            created_by: "usr_1".into(),
+            created_at: "2026-10-01T00:00:00.000Z".into(),
+            updated_at: "2026-10-01T00:00:00.000Z".into(),
+            downloads: 0,
+            workspace_deleted_at: workspace_deleted_at.map(str::to_owned),
+            inherit_access: 1,
+            deleted_at: deleted_at.map(str::to_owned),
+            deleted_by: deleted_at.map(|_| "ana".to_owned()),
+        }
+    }
+
+    #[test]
+    fn a_deleted_package_is_hidden_and_keeps_its_name_until_the_purge() {
+        let deleted = package(Some("2026-10-02T09:00:00.000Z"), None);
+        assert!(deleted.hidden());
+        let refusal = Packages::hidden_refusal(&deleted);
+        assert!(refusal.contains("was deleted"), "{refusal}");
+        assert!(refusal.contains("2026-11-01"), "kept 30 days: {refusal}");
+        let workspace_gone = package(None, Some("2026-10-02T09:00:00.000Z"));
+        assert!(workspace_gone.hidden());
+        assert!(Packages::hidden_refusal(&workspace_gone).contains("workspace acme is deleted"));
+        assert!(!package(None, None).hidden());
+    }
+
+    #[test]
+    fn the_purge_takes_what_was_deleted_more_than_thirty_days_ago() {
+        let now = g1t_contracts::time::parse_rfc3339("2026-11-01T12:00:00.000Z").unwrap();
+        let before = settings::purge_cutoff(now);
+        assert_eq!(before, "2026-10-02T12:00:00.000Z");
+        // Rows are purged when deleted_at < before: a day older goes, a
+        // second newer stays restorable.
+        assert!("2026-10-01T12:00:00.000Z" < before.as_str());
+        assert!("2026-10-02T12:00:01.000Z" > before.as_str());
+        assert!(settings::restorable("2026-10-02T12:00:01.000Z", now));
+        assert!(!settings::restorable("2026-10-01T12:00:00.000Z", now));
     }
 
     #[test]

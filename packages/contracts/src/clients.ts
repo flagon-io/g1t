@@ -859,8 +859,40 @@ export function packagesClient(service: ServiceBinding): PackagesApi {
         visibility: change.visibility ?? null,
         link: change.link ?? null,
         unlink: change.unlink ?? false,
+        inherit_access: change.inheritAccess ?? null,
         surface: surface ?? null,
       }),
+    settings: (workspace, ecosystem, name, viewer) => call("package_settings", { workspace, ecosystem, name, viewer }),
+    deleted: (workspace, viewer) => call("deleted_packages", { workspace, viewer }),
+    restorePackage: (actor, workspace, ecosystem, name, surface) =>
+      call("restore_package", { actor, workspace, ecosystem, name, surface: surface ?? null }),
+    restoreVersion: (actor, workspace, ecosystem, name, version, surface) =>
+      call("restore_version", { actor, workspace, ecosystem, name, version, surface: surface ?? null }),
+    setAccess: (actor, workspace, ecosystem, name, who, role, surface) =>
+      call("set_package_access", {
+        actor,
+        workspace,
+        ecosystem,
+        name,
+        user: "user" in who ? who.user : null,
+        team: "team" in who ? who.team : null,
+        role,
+        surface: surface ?? null,
+      }),
+    removeAccess: (actor, workspace, ecosystem, name, who, surface) =>
+      call("remove_package_access", {
+        actor,
+        workspace,
+        ecosystem,
+        name,
+        user: "user" in who ? who.user : null,
+        team: "team" in who ? who.team : null,
+        surface: surface ?? null,
+      }),
+    setActionsAccess: (actor, workspace, ecosystem, name, repo, role, surface) =>
+      call("set_actions_access", { actor, workspace, ecosystem, name, repo, role, surface: surface ?? null }),
+    removeActionsAccess: (actor, workspace, ecosystem, name, repo, surface) =>
+      call("remove_actions_access", { actor, workspace, ecosystem, name, repo, surface: surface ?? null }),
     storage: (workspace) => call("storage", { workspace }),
     storageAll: () => call("storage_all", {}),
     syncComposer: (repoId) => call("sync_composer", { repo_id: repoId }),

@@ -12,14 +12,13 @@
 //! is stored once, by its SHA-256, which is also its index `cksum`.
 
 use g1t_contracts::User;
-use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_kit::now_ms;
 use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result, Url};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::cargo::{self, CargoRoute};
 use crate::db::{NewFile, NewVersion, PackageRow, VersionRow};
 use crate::digest::Digest;
@@ -139,20 +138,18 @@ impl Packages {
     /// Whether `viewer` may `action` the crate, as the answer when not: 401
     /// for someone not signed in who may not read it, 404 for anyone else
     /// who may not read it, and 403 with the reason for one who may.
-    fn cargo_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Option<Result<Response>> {
-        let target = TargetOf::package(package);
-        let decision = access::decide(viewer, &target.view(), action);
+    async fn cargo_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Result<Option<Result<Response>>> {
+        let (decision, readable) = self.check(viewer, package, action).await?;
         if decision.allowed {
-            return None;
+            return Ok(None);
         }
-        let readable = action != Action::Pull && access::decide(viewer, &target.view(), Action::Pull).allowed;
         if !readable && viewer.is_none() {
-            return Some(error(401, sign_in(&package.workspace)));
+            return Ok(Some(error(401, sign_in(&package.workspace))));
         }
         if !readable {
-            return Some(not_found());
+            return Ok(Some(not_found()));
         }
-        Some(error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned())))
+        Ok(Some(error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned()))))
     }
 
     /// `index/config.json`. Signed in, cargo is told to send its token with
@@ -174,7 +171,7 @@ impl Packages {
         let Some(package) = self.crate_package(workspace, name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.cargo_check(viewer, &package, Action::Pull) {
+        if let Some(refusal) = self.cargo_check(viewer, &package, Action::Pull).await? {
             return refusal;
         }
         let mut versions = self.db.versions(&package.id, MAX_VERSIONS).await?;
@@ -202,7 +199,7 @@ impl Packages {
         let Some(package) = self.crate_package(workspace, name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.cargo_check(viewer, &package, Action::Pull) {
+        if let Some(refusal) = self.cargo_check(viewer, &package, Action::Pull).await? {
             return refusal;
         }
         let gone = || error(404, format!("{name}@{version} is not there."));
@@ -225,7 +222,7 @@ impl Packages {
         let Some(got) = self.store.get(&blob.object_key, None).await? else {
             return gone();
         };
-        self.count_download(&package.id, ctx);
+        self.count_version_download(&package.id, &row.id, ctx);
         Ok(Response::from_body(got.body)?.with_headers(headers))
     }
 
@@ -239,10 +236,9 @@ impl Packages {
             .unwrap_or(10)
             .clamp(1, MAX_SEARCH);
         let rows = self.db.list(workspace, Some(CARGO), None, Some(&query), MAX_SEARCH).await?;
-        let visible: Vec<_> = rows
-            .iter()
-            .filter(|row| access::decide(viewer, &TargetOf::package(&row.package).view(), Action::Pull).allowed)
-            .collect();
+        let packages: Vec<&PackageRow> = rows.iter().map(|row| &row.package).collect();
+        let may = self.may_all(viewer, &packages, Action::Pull).await?;
+        let visible: Vec<_> = rows.iter().zip(may).filter(|(_, may)| *may).map(|(row, _)| row).collect();
         let crates: Vec<Value> = visible
             .iter()
             .take(per_page as usize)
@@ -272,11 +268,7 @@ impl Packages {
                 break;
             }
         }
-        Ok(TargetOf {
-            workspace: workspace.to_owned(),
-            repo: repo.map(|r| (r.id, r.name, r.is_private)),
-            public: false,
-        })
+        Ok(TargetOf::unmade(workspace, name, repo.map(|r| (r.id, r.name, r.is_private))))
     }
 
     /// `cargo publish`: the metadata and the `.crate` in one body.
@@ -318,7 +310,7 @@ impl Packages {
         let found = self.db.package_folded(workspace, CARGO, &cargo::folded(&name)).await?;
         if let Some(found) = &found {
             if found.hidden() {
-                return error(403, format!("The workspace {workspace} is deleted; nothing can be published to it."));
+                return error(403, Packages::hidden_refusal(found));
             }
             if found.name != name {
                 return error(400, format!("The name {name} is taken by the crate {}. Publish it under that name.", found.name));
@@ -326,36 +318,34 @@ impl Packages {
         } else if self.db.workspace_hidden(workspace).await? {
             return error(403, format!("The workspace {workspace} is deleted; nothing can be published to it."));
         }
-        let target = match &found {
+        let mut target = match &found {
             Some(package) => TargetOf::package(package),
             None => self.cargo_target(workspace, &name, &metadata).await?,
         };
-        let decision = access::decide(viewer, &target.view(), Action::Push);
+        let decision = self.decide(viewer, &mut target, Action::Push).await?;
         if !decision.allowed {
             if viewer.is_none() {
                 return error(401, sign_in(workspace));
             }
-            let readable = found.is_none() || access::decide(viewer, &target.view(), Action::Pull).allowed;
+            let readable = found.is_none() || self.decide(viewer, &mut target, Action::Pull).await?.allowed;
             if !readable {
                 return not_found();
             }
             return error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned()));
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         let package = match found {
             Some(package) => package,
             None => {
-                self.db
-                    .create_package(
-                        &new_id("pkg", now_ms()),
-                        workspace,
-                        CARGO,
-                        &name,
-                        target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
-                        caller.actor.as_ref().map_or("", |actor| actor.actor_id.as_str()),
-                        now_ms(),
-                    )
-                    .await?
+                self.make_package(
+                    workspace,
+                    CARGO,
+                    &name,
+                    target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
+                    &caller,
+                    now_ms(),
+                )
+                .await?
             }
         };
         let existing = self.db.versions(&package.id, MAX_VERSIONS).await?;
@@ -364,6 +354,13 @@ impl Packages {
                 400,
                 format!("{name}@{} is already published, and a version is published once. Bump the version in Cargo.toml.", taken.version),
             );
+        }
+        // A deleted version's number is not published again until it is purged.
+        let deleted = self.db.deleted_versions(&package.id, MAX_VERSIONS).await?;
+        if let Some(taken) = deleted.iter().find(|v| cargo::without_build(&v.version) == cargo::without_build(&version))
+            && let Some(refused) = self.reserved_refusal(&package, &taken.version).await?
+        {
+            return error(400, refused);
         }
 
         let size = krate.len() as u64;
@@ -444,7 +441,7 @@ impl Packages {
         let Some(package) = self.crate_package(workspace, name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.cargo_check(viewer, &package, Action::Push) {
+        if let Some(refusal) = self.cargo_check(viewer, &package, Action::Push).await? {
             return refusal;
         }
         let Some(row): Option<VersionRow> = self.db.version_named(&package.id, version).await? else {
@@ -453,7 +450,7 @@ impl Packages {
         if row.is_yanked() != yank {
             self.db.set_yanked(&row.id, yank).await?;
             self.db.touch_package(&package.id, now_ms()).await?;
-            let caller = Caller { actor: viewer.map(AuditActor::of) };
+            let caller = Caller::of(viewer);
             let action = if yank { "package.yank" } else { "package.unyank" };
             self.audit(&caller, action, &package, Some(&format!("{workspace}/{}@{version}", package.name)), None).await;
         }

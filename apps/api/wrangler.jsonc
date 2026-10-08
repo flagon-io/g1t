@@ -31,7 +31,9 @@
 		// Secret and dependency alerts: list_security_alerts and dismissing them.
 		{ "binding": "SECURITY", "service": "g1t-security" },
 		// A person's pinned projects: list_pinned_projects and changing them.
-		{ "binding": "PROJECTS", "service": "g1t-projects" }
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		// Packages: list_packages, their settings, deleting and restoring them.
+		{ "binding": "PACKAGES", "service": "g1t-packages" }
 	],
 	// GitHub Actions artifacts older runners kept, in chunks, with KV's own
 	// expiry, read until it passes (and cache

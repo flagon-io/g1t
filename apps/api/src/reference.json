@@ -11388,5 +11388,466 @@
       "maximum_allowed_days": 90
     },
     "notes": "Only artifacts uploaded afterwards are kept the new number of days. A workflow's `retention-days` asks for fewer, never more."
+  },
+  "list_packages": {
+    "params": {
+      "workspace": "acme"
+    },
+    "query": {
+      "package_type": "container"
+    },
+    "response": [
+      {
+        "id": "pkg_01kq7b3d5f7h9k1m3p5r7t9v1x",
+        "name": "web",
+        "package_type": "container",
+        "workspace": "acme",
+        "address": "g1t.sh/acme/web",
+        "visibility": "private",
+        "repository": {
+          "id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+          "name": "web",
+          "full_name": "acme/web"
+        },
+        "description": null,
+        "version_count": 12,
+        "latest": "latest",
+        "size_in_bytes": 48211932,
+        "download_count": 1840,
+        "inherit_access": true,
+        "created_at": "2026-09-14T10:02:11.000Z",
+        "updated_at": "2026-10-08T14:05:20.000Z",
+        "deleted_at": null,
+        "deleted_by": null,
+        "purge_at": null,
+        "html_url": "https://g1t.sh/acme/-/packages/container/web"
+      }
+    ],
+    "notes": "Only packages you may pull are listed. With `state=deleted`, the workspace's deleted packages you administer that can still be restored, each with `deleted_at`, `deleted_by` and `purge_at`."
+  },
+  "get_package": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "npm",
+      "package_name": "ui"
+    },
+    "response": {
+      "id": "pkg_01kq7b4e6g8j0m2p4r6t8v0x2z",
+      "name": "ui",
+      "package_type": "npm",
+      "workspace": "acme",
+      "address": "g1t.sh/-/npm/@acme/ui",
+      "visibility": "public",
+      "repository": {
+        "id": "rep_01kpw0b3d5f7h9k1m3p5r7t9v1",
+        "name": "ui",
+        "full_name": "acme/ui"
+      },
+      "description": "Acme's design system components.",
+      "version_count": 4,
+      "latest": "2.1.0",
+      "size_in_bytes": 391204,
+      "download_count": 9213,
+      "inherit_access": true,
+      "created_at": "2026-08-02T09:30:00.000Z",
+      "updated_at": "2026-10-07T16:44:02.000Z",
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null,
+      "html_url": "https://g1t.sh/acme/-/packages/npm/ui"
+    },
+    "notes": "A name with a slash is one URL-encoded path segment: `/workspaces/acme/packages/container/web%2Fworker`. Not found when you may not pull it."
+  },
+  "update_package": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "request": {
+      "inherit_access": false
+    },
+    "response": {
+      "id": "pkg_01kq7b3d5f7h9k1m3p5r7t9v1x",
+      "name": "web",
+      "package_type": "container",
+      "workspace": "acme",
+      "address": "g1t.sh/acme/web",
+      "visibility": "private",
+      "repository": {
+        "id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+        "name": "web",
+        "full_name": "acme/web"
+      },
+      "description": null,
+      "version_count": 12,
+      "latest": "latest",
+      "size_in_bytes": 48211932,
+      "download_count": 1840,
+      "inherit_access": false,
+      "created_at": "2026-09-14T10:02:11.000Z",
+      "updated_at": "2026-10-08T15:01:40.000Z",
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null,
+      "html_url": "https://g1t.sh/acme/-/packages/container/web"
+    },
+    "notes": "With `inherit_access` off, the repository's roles no longer reach the package: only the roles given on it (`set_package_access`) and the workspace's owners. `visibility` is for an unlinked package; a linked one has its repository's."
+  },
+  "delete_package": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web-old"
+    },
+    "response": {
+      "deleted": true
+    },
+    "notes": "The package and every version are gone from the registry at once. Restore it with `restore_package` within 30 days; until then nobody can publish a package of its name."
+  },
+  "restore_package": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web-old"
+    },
+    "response": {
+      "id": "pkg_01kq7b5f7h9k1m3p5r7t9v1x3z",
+      "name": "web-old",
+      "package_type": "container",
+      "workspace": "acme",
+      "address": "g1t.sh/acme/web-old",
+      "visibility": "private",
+      "repository": null,
+      "description": null,
+      "version_count": 3,
+      "latest": "latest",
+      "size_in_bytes": 20112840,
+      "download_count": 112,
+      "inherit_access": true,
+      "created_at": "2026-07-01T08:00:00.000Z",
+      "updated_at": "2026-10-08T15:10:00.000Z",
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null,
+      "html_url": "https://g1t.sh/acme/-/packages/container/web-old"
+    }
+  },
+  "list_package_versions": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "response": [
+      {
+        "id": "ver_01kq9c5f7h9k1m3p5r7t9v1x3z",
+        "name": "sha256:9b2e4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b",
+        "digest": "sha256:9b2e4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b",
+        "size_in_bytes": 48211932,
+        "download_count": 611,
+        "tags": [
+          "latest",
+          "v1.4.0"
+        ],
+        "media_type": "application/vnd.oci.image.index.v1+json",
+        "artifact_type": null,
+        "subject": null,
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ],
+        "published_by": "ana",
+        "created_at": "2026-10-08T14:05:20.000Z",
+        "deprecated": null,
+        "deleted_at": null,
+        "deleted_by": null,
+        "purge_at": null
+      }
+    ],
+    "notes": "A container image's versions are its manifests, named by digest; every other package's by version. `download_count` counts pulls and downloads of the version itself, approximately. With `state=deleted`, the deleted versions that can still be restored, for the package's admins."
+  },
+  "get_package_version": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "npm",
+      "package_name": "ui",
+      "version_id": "2.1.0"
+    },
+    "response": {
+      "id": "ver_01kq9c6g8j0m2p4r6t8v0x2z4b",
+      "name": "2.1.0",
+      "digest": "sha256:3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e",
+      "size_in_bytes": 97412,
+      "download_count": 2204,
+      "tags": [
+        "latest"
+      ],
+      "media_type": null,
+      "artifact_type": null,
+      "subject": null,
+      "platforms": [],
+      "published_by": "bo",
+      "created_at": "2026-10-07T16:44:02.000Z",
+      "deprecated": null,
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null
+    },
+    "notes": "`version_id` is the version's id (`ver_…`), its version, its digest, or a tag that points to it."
+  },
+  "delete_package_version": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "npm",
+      "package_name": "ui",
+      "version_id": "2.0.0-beta.1"
+    },
+    "response": {
+      "deleted": true
+    },
+    "notes": "The version and its tags are gone from the registry at once. It can be restored for 30 days, and its version cannot be published again until it is purged."
+  },
+  "restore_package_version": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "npm",
+      "package_name": "ui",
+      "version_id": "2.0.0-beta.1"
+    },
+    "response": {
+      "id": "ver_01kq9c7h9k1m3p5r7t9v1x3z5c",
+      "name": "2.0.0-beta.1",
+      "digest": "sha256:7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f",
+      "size_in_bytes": 96880,
+      "download_count": 41,
+      "tags": [
+        "beta"
+      ],
+      "media_type": null,
+      "artifact_type": null,
+      "subject": null,
+      "platforms": [],
+      "published_by": "bo",
+      "created_at": "2026-09-30T11:20:00.000Z",
+      "deprecated": null,
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null
+    },
+    "notes": "Tags that pointed to it come back with it, unless one was moved to another version meanwhile."
+  },
+  "link_package": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "tools"
+    },
+    "request": {
+      "repository": "acme/infra"
+    },
+    "response": {
+      "id": "pkg_01kq7b6g8j0m2p4r6t8v0x2z4b",
+      "name": "tools",
+      "package_type": "container",
+      "workspace": "acme",
+      "address": "g1t.sh/acme/tools",
+      "visibility": "private",
+      "repository": {
+        "id": "rep_01kpw0c4e6g8j0m2p4r6t8v0x2",
+        "name": "infra",
+        "full_name": "acme/infra"
+      },
+      "description": null,
+      "version_count": 2,
+      "latest": "latest",
+      "size_in_bytes": 7340032,
+      "download_count": 88,
+      "inherit_access": true,
+      "created_at": "2026-09-20T12:00:00.000Z",
+      "updated_at": "2026-10-08T15:20:00.000Z",
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null,
+      "html_url": "https://g1t.sh/acme/-/packages/container/tools"
+    },
+    "notes": "The package takes the repository's visibility. You need the Admin role on the package and on the repository."
+  },
+  "unlink_package": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "tools"
+    },
+    "response": {
+      "id": "pkg_01kq7b6g8j0m2p4r6t8v0x2z4b",
+      "name": "tools",
+      "package_type": "container",
+      "workspace": "acme",
+      "address": "g1t.sh/acme/tools",
+      "visibility": "private",
+      "repository": null,
+      "description": null,
+      "version_count": 2,
+      "latest": "latest",
+      "size_in_bytes": 7340032,
+      "download_count": 88,
+      "inherit_access": true,
+      "created_at": "2026-09-20T12:00:00.000Z",
+      "updated_at": "2026-10-08T15:22:00.000Z",
+      "deleted_at": null,
+      "deleted_by": null,
+      "purge_at": null,
+      "html_url": "https://g1t.sh/acme/-/packages/container/tools"
+    }
+  },
+  "list_package_access": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "response": {
+      "inherit_access": true,
+      "access": [
+        {
+          "type": "team",
+          "id": "team_01kq1a3c5e7g9j1l3n5q7s9u1w",
+          "name": "acme/platform",
+          "role": "admin",
+          "created_at": "2026-10-01T09:00:00.000Z"
+        },
+        {
+          "type": "user",
+          "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+          "name": "dana",
+          "role": "read",
+          "created_at": "2026-10-02T13:30:00.000Z"
+        }
+      ]
+    },
+    "notes": "Only the roles given on the package itself. With `inherit_access` on, a linked package's repository roles count too, and the workspace's owners administer every package."
+  },
+  "set_package_access": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "request": {
+      "username": "dana",
+      "role": "write"
+    },
+    "response": [
+      {
+        "type": "team",
+        "id": "team_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "name": "acme/platform",
+        "role": "admin",
+        "created_at": "2026-10-01T09:00:00.000Z"
+      },
+      {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "name": "dana",
+        "role": "write",
+        "created_at": "2026-10-02T13:30:00.000Z"
+      }
+    ],
+    "notes": "Give `username` or `team` (a team of the workspace, by slug). The role adds to what the repository or workspace already gives."
+  },
+  "remove_package_access": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "query": {
+      "username": "dana"
+    },
+    "response": [
+      {
+        "type": "team",
+        "id": "team_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "name": "acme/platform",
+        "role": "admin",
+        "created_at": "2026-10-01T09:00:00.000Z"
+      }
+    ],
+    "notes": "Over REST, name who in the query: `?username=dana` or `?team=platform`."
+  },
+  "list_package_actions_access": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "response": {
+      "repositories": [
+        {
+          "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+          "repository": "acme/web",
+          "role": "write",
+          "linked": true,
+          "created_at": null
+        },
+        {
+          "repository_id": "rep_01kpw0d5f7h9k1m3p5r7t9v1x3",
+          "repository": "acme/deploy",
+          "role": "read",
+          "linked": false,
+          "created_at": "2026-10-03T10:00:00.000Z"
+        }
+      ]
+    },
+    "notes": "A workflow job's `G1T_TOKEN` reaches the package only from these repositories. The linked repository is always listed, with write."
+  },
+  "set_package_actions_access": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web"
+    },
+    "request": {
+      "repository": "deploy",
+      "role": "read"
+    },
+    "response": {
+      "repositories": [
+        {
+          "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+          "repository": "acme/web",
+          "role": "write",
+          "linked": true,
+          "created_at": null
+        },
+        {
+          "repository_id": "rep_01kpw0d5f7h9k1m3p5r7t9v1x3",
+          "repository": "acme/deploy",
+          "role": "read",
+          "linked": false,
+          "created_at": "2026-10-03T10:00:00.000Z"
+        }
+      ]
+    }
+  },
+  "remove_package_actions_access": {
+    "params": {
+      "workspace": "acme",
+      "package_type": "container",
+      "package_name": "web",
+      "repository": "deploy"
+    },
+    "response": {
+      "repositories": [
+        {
+          "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+          "repository": "acme/web",
+          "role": "write",
+          "linked": true,
+          "created_at": null
+        }
+      ]
+    }
   }
 }

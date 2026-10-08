@@ -337,7 +337,7 @@ impl Scope {
             Scope::SecurityWrite => "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings",
             Scope::PackagesRead => "Pull container images and install private packages",
             Scope::PackagesWrite => "Push container images and publish packages",
-            Scope::PackagesDelete => "Delete packages and their versions",
+            Scope::PackagesDelete => "Delete and restore packages and their versions",
             Scope::IssuesRead => "Read issues, comments and plans",
             Scope::IssuesWrite => "Open, edit, close and comment on issues",
             Scope::PullRequestsRead => "Read pull requests, their changes, sessions and merge queues",
@@ -1026,6 +1026,28 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_runner_group", Scope::RunnersAdmin),
     ("delete_runner_group", Scope::RunnersAdmin),
     ("update_runner_settings", Scope::RunnersAdmin),
+    // Packages: reading them, their versions and who may use them needs
+    // `packages:read`; changing their settings, access and Manage Actions
+    // access `packages:write` (and the Admin role on the package, which the
+    // packages service checks); deleting and restoring packages and
+    // versions `packages:delete`, as the registries' own deletes do.
+    ("list_packages", Scope::PackagesRead),
+    ("get_package", Scope::PackagesRead),
+    ("list_package_versions", Scope::PackagesRead),
+    ("get_package_version", Scope::PackagesRead),
+    ("list_package_access", Scope::PackagesRead),
+    ("list_package_actions_access", Scope::PackagesRead),
+    ("update_package", Scope::PackagesWrite),
+    ("link_package", Scope::PackagesWrite),
+    ("unlink_package", Scope::PackagesWrite),
+    ("set_package_access", Scope::PackagesWrite),
+    ("remove_package_access", Scope::PackagesWrite),
+    ("set_package_actions_access", Scope::PackagesWrite),
+    ("remove_package_actions_access", Scope::PackagesWrite),
+    ("delete_package", Scope::PackagesDelete),
+    ("restore_package", Scope::PackagesDelete),
+    ("delete_package_version", Scope::PackagesDelete),
+    ("restore_package_version", Scope::PackagesDelete),
     // The AI Gateway. Sending a request to a model needs `models:write`,
     // checked by the model proxy at models.g1t.sh, not here.
     ("list_gateway_requests", Scope::ModelsRead),

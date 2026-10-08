@@ -10,6 +10,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use g1t_contracts::User;
 use g1t_contracts::audit::AuditActor;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -31,16 +32,39 @@ pub struct Grant {
 }
 
 /// What a token says.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Claims {
     /// Who it was given to, as audit entries name them; absent for an
     /// anonymous one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor: Option<AuditActor>,
+    /// On a token that pushes: who it was given to, cut down to the
+    /// workspaces it pushes to ([`slim`]), so the repository an image's
+    /// source label names can be checked against their role there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer: Option<Box<User>>,
     pub access: Vec<Grant>,
     /// Seconds since the epoch.
     pub iat: u64,
     pub exp: u64,
+}
+
+impl PartialEq for Claims {
+    fn eq(&self, other: &Self) -> bool {
+        serde_json::to_value(self).ok() == serde_json::to_value(other).ok()
+    }
+}
+
+/// `user` with only what decisions in `workspaces` read: its memberships
+/// and repository grants there, and its token's limits.
+pub fn slim(user: &User, workspaces: &[String]) -> User {
+    let within = |slug: &str| workspaces.iter().any(|workspace| workspace.eq_ignore_ascii_case(slug));
+    User {
+        avatar: None,
+        workspaces: user.workspaces.iter().filter(|membership| within(&membership.slug)).cloned().collect(),
+        grants: user.grants.iter().filter(|grant| within(&grant.workspace)).cloned().collect(),
+        ..user.clone()
+    }
 }
 
 impl Claims {
@@ -127,6 +151,7 @@ mod tests {
     fn claims(exp: u64) -> Claims {
         Claims {
             actor: Some(AuditActor { actor: "ana".into(), actor_id: "usr_1".into(), ..AuditActor::default() }),
+            viewer: None,
             access: vec![Grant { name: "acme/web".into(), actions: vec![Action::Pull, Action::Push] }],
             iat: 100,
             exp,
@@ -144,6 +169,30 @@ mod tests {
         assert!(!read.allows("acme/other", Action::Pull));
         assert!(verify(&token, b"secret", 1000).is_none(), "expired");
         assert!(verify(&token, b"other", 999).is_none(), "another key");
+    }
+
+    #[test]
+    fn a_pushs_token_carries_who_pushes_cut_down_to_its_workspaces() {
+        use g1t_contracts::Membership;
+        use g1t_contracts::access::{RepoGrant, RepoRole};
+        let user = User {
+            id: "usr_1".into(),
+            username: "ana".into(),
+            workspaces: vec![Membership::member("acme"), Membership::member("other")],
+            grants: vec![
+                RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Write, team: None },
+                RepoGrant { repo_id: "rep_9".into(), workspace: "elsewhere".into(), role: RepoRole::Admin, team: None },
+            ],
+            ..User::default()
+        };
+        let slim = slim(&user, &["acme".to_owned()]);
+        assert_eq!(slim.workspaces.len(), 1);
+        assert_eq!(slim.grants.len(), 1);
+        let mut with = claims(1000);
+        with.viewer = Some(Box::new(slim));
+        let token = sign(&with, b"secret");
+        let read = verify(&token, b"secret", 0).unwrap();
+        assert_eq!(read.viewer.unwrap().workspaces[0].slug, "acme");
     }
 
     #[test]

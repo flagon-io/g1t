@@ -38,6 +38,33 @@ of the workspace, here `acme/web`, it is linked to that repository and
 follows its visibility and roles; pushing needs Write on it. Otherwise it is
 the workspace's, private, and needs the workspace's Write base permission.
 
+### Link an image with its source label
+
+An image can name the repository it is built from, whatever the image is
+called, with the `org.opencontainers.image.source` label:
+
+```dockerfile
+LABEL org.opencontainers.image.source=https://g1t.sh/acme/web
+```
+
+or as an annotation on the manifest
+(`docker buildx build --annotation "org.opencontainers.image.source=https://g1t.sh/acme/web"`).
+g1t reads the manifest's annotations first, then the image config's labels.
+When the address is a repository of the image's own workspace
+(`https://g1t.sh/<workspace>/<repo>`, with or without `.git`) and whoever
+pushes has the Write role on that repository, the image is linked to it:
+
+| When | What happens |
+| --- | --- |
+| The image's first push | It is linked to the repository the label names, in place of the one its name starts with. |
+| A later push of an image that is not linked | It is linked to the repository the label names. |
+| A later push of a linked image | Nothing changes. Link it elsewhere from its [settings](/guides/packages/#package-settings). |
+| The label names another workspace's repository, another host, or a repository you cannot write to | It is ignored, and the image is linked by its name, as above. |
+
+Linking gives the image the repository's visibility and, unless its
+admins turn inheriting off, its roles. The link is recorded in the
+[audit log](/guides/audit-log/) as `package.linked`.
+
 Pushing a tag again moves it to the new image. Layers already on g1t are
 not uploaded again, and images in the same workspace share them.
 
@@ -55,8 +82,12 @@ docker pull g1t.sh/acme/web@sha256:…
 
 ## In workflows
 
-A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can pull the workspace's images, and
-push them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token):
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), pulls and pushes the images
+linked to its own repository, and with `packages: write` in its
+[`permissions:`](/guides/actions/#the-jobs-token) pushes new ones. An image
+linked to another repository, or one of the workspace's own that the job
+did not make, needs that job's repository added under the image's
+[Manage Actions access](/guides/packages/#manage-actions-access):
 
 ```yaml
 jobs:
@@ -201,11 +232,14 @@ Past the limit, requests are answered `429` with `TOOMANYREQUESTS` and a
 
 ## Delete
 
-Deleting needs Admin on the linked repository, or for an unlinked image, an
-owner of the workspace; a token needs `packages:delete`.
+Deleting needs the Admin role on the image (Admin on the linked repository
+while it inherits access, a role given on the image itself, or an owner of
+the workspace); a token needs `packages:delete`.
 
 The registry protocol's `DELETE` removes a tag, or a whole version by its
-digest (with every tag that points to it):
+digest (with every tag that points to it). A deleted version can be
+[restored](/guides/packages/#delete-and-restore) for 30 days, and until
+then a manifest with its digest cannot be pushed again:
 
 ```sh
 TOKEN=$(curl -s -u <you>:<token> "https://g1t.sh/v2/token?scope=repository:acme/web:delete" | jq -r .token)
@@ -213,7 +247,8 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" https://g1t.sh/v2/acme/web/mani
 curl -X DELETE -H "Authorization: Bearer $TOKEN" https://g1t.sh/v2/acme/web/manifests/sha256:…
 ```
 
-Layers no version uses any more are deleted from storage a day later.
+A deleted version keeps its layers until it is purged. Layers no version
+uses any more are deleted from storage a day later.
 
 ## Errors
 

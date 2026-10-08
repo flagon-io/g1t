@@ -125,6 +125,8 @@ fn sample(op: Op, example: &Value) -> Value {
             return through::<g1t_contracts::deploy_keys::DeployKey>(op, as_is);
         }
         Op::DeployKeys(DeployKeysOp::DeleteDeployKey) => return through::<bool>(op, as_is),
+        // Packages are shaped by the API itself, in `snake_case`.
+        Op::Packages(_) => return as_is,
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {

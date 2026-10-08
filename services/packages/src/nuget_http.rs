@@ -16,14 +16,13 @@
 //! Simple Symbol Query Protocol names it: `<file>/<guid>ffffffff/<file>`.
 
 use g1t_contracts::User;
-use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_kit::now_ms;
 use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result, Url};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::db::{NewFile, NewVersion, PackageRow, VersionRow};
 use crate::digest::Digest;
 use crate::npm;
@@ -158,12 +157,10 @@ impl Packages {
     }
 
     async fn nuget_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Result<Option<Response>> {
-        let target = TargetOf::package(package);
-        let decision = access::decide(viewer, &target.view(), action);
+        let (decision, readable) = self.check(viewer, package, action).await?;
         if decision.allowed {
             return Ok(None);
         }
-        let readable = action != Action::Pull && access::decide(viewer, &target.view(), Action::Pull).allowed;
         if !readable && viewer.is_none() {
             return Ok(Some(error(401, sign_in())?));
         }
@@ -273,8 +270,9 @@ impl Packages {
         let packages = self.db.packages_of(workspace, NUGET, 1000).await?;
         let versions = self.db.ecosystem_versions(workspace, NUGET, 20_000).await?;
         let mut found = Vec::new();
-        for package in &packages {
-            if !access::decide(viewer, &TargetOf::package(package).view(), Action::Pull).allowed {
+        let may = self.may_all(viewer, &packages.iter().collect::<Vec<_>>(), Action::Pull).await?;
+        for (package, may) in packages.iter().zip(may) {
+            if !may {
                 continue;
             }
             let rows: Vec<&VersionRow> = versions
@@ -320,7 +318,7 @@ impl Packages {
                 break;
             }
         }
-        Ok(TargetOf { workspace: workspace.to_owned(), repo: repo.map(|r| (r.id, r.name, r.is_private)), public: false })
+        Ok(TargetOf::unmade(workspace, id, repo.map(|r| (r.id, r.name, r.is_private))))
     }
 
     /// `dotnet nuget push`: a `PUT` of the `.nupkg`, in a multipart body.
@@ -358,41 +356,48 @@ impl Packages {
         };
 
         let found = self.db.package_any_case(workspace, NUGET, &spec.id).await?;
-        if found.as_ref().is_some_and(PackageRow::hidden) || (found.is_none() && self.db.workspace_hidden(workspace).await?) {
+        if let Some(hidden) = found.as_ref().filter(|package| package.hidden()) {
+            return error(403, Packages::hidden_refusal(hidden));
+        }
+        if found.is_none() && self.db.workspace_hidden(workspace).await? {
             return error(403, format!("The workspace {workspace} is deleted; nothing can be pushed to it."));
         }
-        let target = match &found {
+        let mut target = match &found {
             Some(package) => TargetOf::package(package),
             None => self.nuget_target(workspace, &spec.id, spec.repository_url.as_deref()).await?,
         };
-        let decision = access::decide(viewer, &target.view(), Action::Push);
+        let decision = self.decide(viewer, &mut target, Action::Push).await?;
         if !decision.allowed {
-            let readable = found.is_none() || access::decide(viewer, &target.view(), Action::Pull).allowed;
+            let readable = found.is_none() || self.decide(viewer, &mut target, Action::Pull).await?.allowed;
             if !readable {
                 return error(404, "Not found: no such package, or you cannot see it.");
             }
             return error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned()));
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         let package = match found {
             Some(package) => package,
             None => {
-                self.db
-                    .create_package(
-                        &new_id("pkg", now_ms()),
-                        workspace,
-                        NUGET,
-                        &spec.id,
-                        target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
-                        caller.actor.as_ref().map_or("", |actor| actor.actor_id.as_str()),
-                        now_ms(),
-                    )
-                    .await?
+                self.make_package(
+                    workspace,
+                    NUGET,
+                    &spec.id,
+                    target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
+                    &caller,
+                    now_ms(),
+                )
+                .await?
             }
         };
         let existing = self.db.versions(&package.id, MAX_VERSIONS).await?;
         if let Some(taken) = existing.iter().find(|v| v.version.eq_ignore_ascii_case(&version)) {
             return error(409, format!("{} {} is already pushed, and a version is pushed once. Bump the version.", package.name, taken.version));
+        }
+        let deleted = self.db.deleted_versions(&package.id, MAX_VERSIONS).await?;
+        if let Some(taken) = deleted.iter().find(|v| v.version.eq_ignore_ascii_case(&version))
+            && let Some(refused) = self.reserved_refusal(&package, &taken.version).await?
+        {
+            return error(409, refused);
         }
 
         let nupkg = nupkg.to_vec();
@@ -556,7 +561,7 @@ impl Packages {
             self.db.set_version(&row.id, &row.digest, &metadata.to_string()).await?;
         }
         self.db.measure(&package.workspace).await?;
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         self.audit(&caller, "package.publish_symbols", &package, Some(&format!("{workspace}/{}@{}", package.name, row.version)), None).await;
         error(201, format!("The symbols of {} {} were pushed.", package.name, row.version))
     }
@@ -568,7 +573,7 @@ impl Packages {
             let Some(package) = self.db.package_by_id(&found.package_id).await?.filter(|p| !p.hidden()) else {
                 continue;
             };
-            if !access::decide(viewer, &TargetOf::package(&package).view(), Action::Pull).allowed {
+            if !self.check(viewer, &package, Action::Pull).await?.0.allowed {
                 continue;
             }
             let Some(digest) = Digest::parse(&found.digest) else { continue };
@@ -602,7 +607,7 @@ impl Packages {
         if row.is_yanked() == listed {
             self.db.set_yanked(&row.id, !listed).await?;
             self.db.touch_package(&package.id, now_ms()).await?;
-            let caller = Caller { actor: viewer.map(AuditActor::of) };
+            let caller = Caller::of(viewer);
             let action = if listed { "package.relist" } else { "package.unlist" };
             self.audit(&caller, action, &package, Some(&format!("{workspace}/{}@{}", package.name, row.version)), None).await;
         }

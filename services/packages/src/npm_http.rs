@@ -18,7 +18,6 @@ use std::collections::{HashMap, HashSet};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use g1t_contracts::User;
-use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_contracts::time::parse_rfc3339;
@@ -26,7 +25,7 @@ use g1t_kit::now_ms;
 use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result, Url};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::db::{NewFile, NewVersion, PackageRow, VersionRow};
 use crate::digest::Digest;
 use crate::npm::{self, NpmName, NpmRoute, Packument, StoredVersion};
@@ -172,17 +171,15 @@ impl Packages {
     /// 401 for someone not signed in who may not read it (npm then says to
     /// log in), 404 for anyone else who may not read it, and 403 with the
     /// reason for one who may read it but not do this.
-    fn npm_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Option<Result<Response>> {
-        let target = TargetOf::package(package);
-        let decision = access::decide(viewer, &target.view(), action);
+    async fn npm_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Result<Option<Result<Response>>> {
+        let (decision, readable) = self.check(viewer, package, action).await?;
         if decision.allowed {
-            return None;
+            return Ok(None);
         }
-        let readable = action != Action::Pull && access::decide(viewer, &target.view(), Action::Pull).allowed;
         if !readable && viewer.is_none() {
-            return Some(error(401, "Sign in to use this package: put a g1t access token in .npmrc (//g1t.sh/-/npm/:_authToken=<token>)."));
+            return Ok(Some(error(401, "Sign in to use this package: put a g1t access token in .npmrc (//g1t.sh/-/npm/:_authToken=<token>).")));
         }
-        Some(refused(decision, readable))
+        Ok(Some(refused(decision, readable)))
     }
 
     async fn stored_versions(&self, package: &PackageRow) -> Result<Vec<(VersionRow, StoredVersion)>> {
@@ -217,7 +214,7 @@ impl Packages {
         let Some(package) = self.npm_package(name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.npm_check(viewer, &package, Action::Pull) {
+        if let Some(refusal) = self.npm_check(viewer, &package, Action::Pull).await? {
             return refusal;
         }
         let versions = self.stored_versions(&package).await?;
@@ -257,7 +254,7 @@ impl Packages {
         let Some(package) = self.npm_package(name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.npm_check(viewer, &package, Action::Pull) {
+        if let Some(refusal) = self.npm_check(viewer, &package, Action::Pull).await? {
             return refusal;
         }
         let Some(row) = self.db.version_named(&package.id, version).await? else {
@@ -279,7 +276,7 @@ impl Packages {
         let Some(got) = self.store.get(&blob.object_key, None).await? else {
             return error(404, format!("{}@{version} is not there.", name.full()));
         };
-        self.count_download(&package.id, ctx);
+        self.count_version_download(&package.id, &row.id, ctx);
         Ok(Response::from_body(got.body)?.with_headers(headers))
     }
 
@@ -296,11 +293,7 @@ impl Packages {
                 break;
             }
         }
-        Ok(TargetOf {
-            workspace: name.workspace.clone(),
-            repo: repo.map(|r| (r.id, r.name, r.is_private)),
-            public: false,
-        })
+        Ok(TargetOf::unmade(&name.workspace, &name.name, repo.map(|r| (r.id, r.name, r.is_private))))
     }
 
     /// A `PUT` of the packument: a publish when a tarball is attached,
@@ -356,38 +349,43 @@ impl Packages {
             return error(400, "The tarball's integrity is not what the publish says. Publish again.");
         }
 
+        // A deleted package keeps its name until it is purged.
+        if let Some(hidden) = self.db.package(&name.workspace, NPM, &name.name).await?.filter(|p| p.hidden()) {
+            return error(403, Packages::hidden_refusal(&hidden));
+        }
         let found = self.npm_package(name).await?;
         if found.is_none() && self.db.workspace_hidden(&name.workspace).await? {
             return error(403, format!("The workspace {} is deleted; nothing can be published to it.", name.workspace));
         }
-        let target = match &found {
+        let mut target = match &found {
             Some(package) => TargetOf::package(package),
             None => self.npm_target(name, &manifest).await?,
         };
-        let decision = access::decide(viewer, &target.view(), Action::Push);
+        let decision = self.decide(viewer, &mut target, Action::Push).await?;
         if !decision.allowed {
-            let readable = access::decide(viewer, &target.view(), Action::Pull).allowed || found.is_none();
+            let readable = found.is_none() || self.decide(viewer, &mut target, Action::Pull).await?.allowed;
             return refused(decision, readable);
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         let package = match found {
             Some(package) => package,
             None => {
-                self.db
-                    .create_package(
-                        &new_id("pkg", now_ms()),
-                        &name.workspace,
-                        NPM,
-                        &name.name,
-                        target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
-                        caller.actor.as_ref().map_or("", |actor| actor.actor_id.as_str()),
-                        now_ms(),
-                    )
-                    .await?
+                self.make_package(
+                    &name.workspace,
+                    NPM,
+                    &name.name,
+                    target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
+                    &caller,
+                    now_ms(),
+                )
+                .await?
             }
         };
         if self.db.version_named(&package.id, &version).await?.is_some() {
             return error(403, format!("You cannot publish over the previously published version {version}. Bump the version in package.json."));
+        }
+        if let Some(refused) = self.reserved_refusal(&package, &version).await? {
+            return error(403, refused);
         }
 
         let digest = Digest::of(&tarball);
@@ -484,14 +482,14 @@ impl Packages {
         let Some(package) = self.npm_package(name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.npm_check(viewer, &package, Action::Push) {
+        if let Some(refusal) = self.npm_check(viewer, &package, Action::Push).await? {
             return refusal;
         }
         let Some(sent) = body["versions"].as_object() else {
             return error(400, "The packument names no versions.");
         };
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
-        let admin = access::decide(viewer, &TargetOf::package(&package).view(), Action::Delete).allowed;
+        let caller = Caller::of(viewer);
+        let admin = self.check(viewer, &package, Action::Delete).await?.0.allowed;
         let now = now_ms();
         let versions = self.stored_versions(&package).await?;
         let removed: Vec<&VersionRow> = versions.iter().map(|(row, _)| row).filter(|row| !sent.contains_key(&row.version)).collect();
@@ -541,10 +539,10 @@ impl Packages {
         let Some(package) = self.npm_package(name).await? else {
             return not_found();
         };
-        if let Some(refusal) = self.npm_check(viewer, &package, Action::Push) {
+        if let Some(refusal) = self.npm_check(viewer, &package, Action::Push).await? {
             return refusal;
         }
-        let admin = access::decide(viewer, &TargetOf::package(&package).view(), Action::Delete).allowed;
+        let admin = self.check(viewer, &package, Action::Delete).await?.0.allowed;
         let now = now_ms();
         let versions = self.db.versions(&package.id, MAX_VERSIONS).await?;
         if let Some(late) = versions.iter().find(|row| !npm::may_unpublish(published_ms(row), now, admin)) {
@@ -553,11 +551,8 @@ impl Packages {
                 format!("{}@{} was published more than 72 hours ago: unpublishing the package needs the Admin role.", name.full(), late.version),
             );
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
-        self.db.delete_package(&package.id).await?;
-        self.db.measure(&package.workspace).await?;
-        self.announce("package.deleted", &package, self.event_of(&package), &caller).await;
-        self.audit(&caller, "package.delete", &package, Some(&name.full()), None).await;
+        let caller = Caller::of(viewer);
+        self.remove_package(&package, &caller, None).await?;
         ok()
     }
 
@@ -567,17 +562,17 @@ impl Packages {
         let Some(package) = self.npm_package(name).await? else {
             return ok();
         };
-        if let Some(refusal) = self.npm_check(viewer, &package, Action::Push) {
+        if let Some(refusal) = self.npm_check(viewer, &package, Action::Push).await? {
             return refusal;
         }
         let Some(row) = self.db.version_named(&package.id, version).await? else {
             return ok();
         };
-        let admin = access::decide(viewer, &TargetOf::package(&package).view(), Action::Delete).allowed;
+        let admin = self.check(viewer, &package, Action::Delete).await?.0.allowed;
         if !npm::may_unpublish(published_ms(&row), now_ms(), admin) {
             return error(403, format!("{}@{version} was published more than 72 hours ago: unpublishing it needs the Admin role.", name.full()));
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         self.remove_version(&package, &row, &caller).await?;
         ok()
     }
@@ -587,7 +582,7 @@ impl Packages {
             return not_found();
         };
         let action = if matches!(method, Method::Get | Method::Head) { Action::Pull } else { Action::Push };
-        if let Some(refusal) = self.npm_check(viewer, &package, action) {
+        if let Some(refusal) = self.npm_check(viewer, &package, action).await? {
             return refusal;
         }
         let versions = self.stored_versions(&package).await?;

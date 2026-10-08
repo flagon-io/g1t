@@ -41,6 +41,18 @@ pub struct PackageRow {
     /// Set while its workspace is deleted and may still be restored.
     #[serde(default)]
     pub workspace_deleted_at: Option<String>,
+    /// For a linked package: 1 when it takes its repository's roles.
+    #[serde(default = "one")]
+    pub inherit_access: u32,
+    /// Set while the package is deleted and may still be restored.
+    #[serde(default)]
+    pub deleted_at: Option<String>,
+    #[serde(default)]
+    pub deleted_by: Option<String>,
+}
+
+fn one() -> u32 {
+    1
 }
 
 impl PackageRow {
@@ -48,9 +60,13 @@ impl PackageRow {
         self.visibility == "public"
     }
 
-    /// Whether its workspace is deleted: hidden from everyone.
+    /// Whether it is deleted, or its workspace is: hidden from everyone.
     pub fn hidden(&self) -> bool {
-        self.workspace_deleted_at.is_some()
+        self.workspace_deleted_at.is_some() || self.deleted_at.is_some()
+    }
+
+    pub fn inherits(&self) -> bool {
+        self.inherit_access != 0
     }
 }
 
@@ -124,6 +140,9 @@ mod newest_tests {
                 updated_at: "2026-10-06T00:00:00.000Z".into(),
                 downloads: 0,
                 workspace_deleted_at: None,
+                inherit_access: 1,
+                deleted_at: None,
+                deleted_by: None,
             },
             version_count: 2,
             bytes: 0,
@@ -188,9 +207,14 @@ pub struct VersionRow {
     /// Cargo: 1 when the version is yanked.
     #[serde(default)]
     pub yanked: u32,
-    /// Its own downloads, counted for NuGet's.
+    /// Its own downloads, counted in every registry.
     #[serde(default)]
     pub downloads: u64,
+    /// Set while the version is deleted and may still be restored.
+    #[serde(default)]
+    pub deleted_at: Option<String>,
+    #[serde(default)]
+    pub deleted_by: Option<String>,
 }
 
 impl VersionRow {
@@ -300,11 +324,35 @@ pub struct NewVersion {
     pub files: Vec<NewFile>,
 }
 
-const PACKAGE_COLUMNS: &str =
-    "id, workspace, ecosystem, name, repo_id, repo_name, visibility, description, created_by, created_at, updated_at, downloads, workspace_deleted_at";
+const PACKAGE_COLUMNS: &str = "id, workspace, ecosystem, name, repo_id, repo_name, visibility, description, created_by, created_at, updated_at, \
+     downloads, workspace_deleted_at, inherit_access, deleted_at, deleted_by";
 /// Workspaces that are deleted, waiting to be purged or restored.
 const DELETED_WORKSPACES: &str = "SELECT workspace FROM packages WHERE workspace_deleted_at IS NOT NULL";
-const VERSION_COLUMNS: &str = "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked, downloads";
+const VERSION_COLUMNS: &str =
+    "id, package_id, version, digest, size, metadata, subject, published_by, published_at, deprecated, yanked, downloads, deleted_at, deleted_by";
+/// A version that is not deleted: what every registry and listing sees.
+const LIVE: &str = "deleted_at IS NULL";
+
+/// A role given on a package, as kept.
+#[derive(Clone, Debug, Deserialize)]
+pub struct AccessRow {
+    pub package_id: String,
+    pub grantee_kind: String,
+    pub grantee_id: String,
+    pub grantee_name: String,
+    pub role: String,
+    pub created_at: String,
+}
+
+/// A repository given access under Manage Actions access, as kept.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ActionsRow {
+    pub package_id: String,
+    pub repo_id: String,
+    pub repo_name: String,
+    pub role: String,
+    pub created_at: String,
+}
 
 pub struct Db {
     pub db: D1Database,
@@ -352,7 +400,7 @@ impl Db {
     pub async fn has_private(&self, workspace: &str, ecosystem: &str) -> Result<bool> {
         let row: Option<serde_json::Value> = self
             .prepare(
-                "SELECT 1 AS private FROM packages WHERE workspace = ? AND ecosystem = ? AND visibility = 'private' AND workspace_deleted_at IS NULL LIMIT 1",
+                "SELECT 1 AS private FROM packages WHERE workspace = ? AND ecosystem = ? AND visibility = 'private' AND workspace_deleted_at IS NULL AND deleted_at IS NULL LIMIT 1",
                 &[text(workspace), text(ecosystem)],
             )?
             .first(None)
@@ -417,18 +465,40 @@ impl Db {
         query: Option<&str>,
         limit: u32,
     ) -> Result<Vec<ListedRow>> {
+        self.listing(workspace, ecosystem, repo_id, query, limit, false).await
+    }
+
+    /// A workspace's deleted packages, newest deletion first, with what
+    /// they held when they were deleted.
+    pub async fn deleted_packages(&self, workspace: &str, limit: u32) -> Result<Vec<ListedRow>> {
+        self.listing(workspace, None, None, None, limit, true).await
+    }
+
+    async fn listing(
+        &self,
+        workspace: &str,
+        ecosystem: Option<&str>,
+        repo_id: Option<&str>,
+        query: Option<&str>,
+        limit: u32,
+        deleted: bool,
+    ) -> Result<Vec<ListedRow>> {
         let mut sql = format!(
             "SELECT {}, \
-               (SELECT COUNT(*) FROM versions v WHERE v.package_id = p.id) AS version_count, \
+               (SELECT COUNT(*) FROM versions v WHERE v.package_id = p.id AND v.deleted_at IS NULL) AS version_count, \
                (SELECT COALESCE(SUM(b.size), 0) FROM blobs b WHERE b.digest IN \
-                  (SELECT vf.digest FROM version_files vf JOIN versions v ON v.id = vf.version_id WHERE v.package_id = p.id)) AS bytes, \
-               (SELECT t.tag FROM tags t WHERE t.package_id = p.id ORDER BY t.tag = 'latest' DESC, t.updated_at DESC LIMIT 1) AS latest_tag, \
-               (SELECT v.version FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = p.id \
+                  (SELECT vf.digest FROM version_files vf JOIN versions v ON v.id = vf.version_id \
+                   WHERE v.package_id = p.id AND v.deleted_at IS NULL)) AS bytes, \
+               (SELECT t.tag FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = p.id AND v.deleted_at IS NULL \
+                  ORDER BY t.tag = 'latest' DESC, t.updated_at DESC LIMIT 1) AS latest_tag, \
+               (SELECT v.version FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = p.id AND v.deleted_at IS NULL \
                   ORDER BY t.tag = 'latest' DESC, t.updated_at DESC LIMIT 1) AS latest_tag_version, \
                (SELECT GROUP_CONCAT(version, char(10)) FROM \
-                  (SELECT v.version FROM versions v WHERE v.package_id = p.id AND v.yanked = 0 ORDER BY v.published_at DESC)) AS latest_version \
-             FROM packages p WHERE p.workspace = ? AND p.workspace_deleted_at IS NULL",
-            PACKAGE_COLUMNS.split(", ").map(|c| format!("p.{c}")).collect::<Vec<_>>().join(", ")
+                  (SELECT v.version FROM versions v WHERE v.package_id = p.id AND v.yanked = 0 AND v.deleted_at IS NULL \
+                   ORDER BY v.published_at DESC)) AS latest_version \
+             FROM packages p WHERE p.workspace = ? AND p.workspace_deleted_at IS NULL AND p.deleted_at IS {}",
+            PACKAGE_COLUMNS.split(", ").map(|c| format!("p.{c}")).collect::<Vec<_>>().join(", "),
+            if deleted { "NOT NULL" } else { "NULL" }
         );
         let mut values = vec![text(workspace)];
         if let Some(ecosystem) = ecosystem {
@@ -444,7 +514,8 @@ impl Db {
             let escaped = query.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
             values.push(text(&format!("%{}%", escaped.to_lowercase())));
         }
-        sql.push_str(&format!(" ORDER BY p.updated_at DESC LIMIT {limit}"));
+        let order = if deleted { "p.deleted_at" } else { "p.updated_at" };
+        sql.push_str(&format!(" ORDER BY {order} DESC LIMIT {limit}"));
         self.prepare(&sql, &values)?.all().await?.results()
     }
 
@@ -484,7 +555,9 @@ impl Db {
         Ok(())
     }
 
-    /// A package and everything it holds. Its blobs are left to the sweep.
+    /// A package and everything it holds, for good: the purge, and a
+    /// Composer package whose repository went. Its blobs are left to the
+    /// sweep.
     pub async fn delete_package(&self, package_id: &str) -> Result<()> {
         let id = [text(package_id)];
         self.db
@@ -494,6 +567,8 @@ impl Db {
                 self.prepare("DELETE FROM versions WHERE package_id = ?", &id)?,
                 self.prepare("DELETE FROM package_blobs WHERE package_id = ?", &id)?,
                 self.prepare("DELETE FROM uploads WHERE package_id = ?", &id)?,
+                self.prepare("DELETE FROM package_access WHERE package_id = ?", &id)?,
+                self.prepare("DELETE FROM package_actions_access WHERE package_id = ?", &id)?,
                 self.prepare("DELETE FROM packages WHERE id = ?", &id)?,
             ])
             .await?;
@@ -638,7 +713,7 @@ impl Db {
 
     pub async fn version_by_digest(&self, package_id: &str, digest: &str) -> Result<Option<VersionRow>> {
         self.prepare(
-            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND digest = ? LIMIT 1"),
+            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND digest = ? AND {LIVE} LIMIT 1"),
             &[text(package_id), text(digest)],
         )?
         .first(None)
@@ -648,7 +723,7 @@ impl Db {
     pub async fn version_by_tag(&self, package_id: &str, tag: &str) -> Result<Option<VersionRow>> {
         self.prepare(
             &format!(
-                "SELECT {} FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = ? AND t.tag = ?",
+                "SELECT {} FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = ? AND t.tag = ? AND v.deleted_at IS NULL",
                 VERSION_COLUMNS.split(", ").map(|c| format!("v.{c}")).collect::<Vec<_>>().join(", ")
             ),
             &[text(package_id), text(tag)],
@@ -659,12 +734,24 @@ impl Db {
 
     /// A version by its version, digest, or a tag that points to it.
     pub async fn find_version(&self, package_id: &str, reference: &str) -> Result<Option<VersionRow>> {
+        if reference.starts_with("ver_") {
+            let by_id: Option<VersionRow> = self
+                .prepare(
+                    &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND id = ? AND {LIVE}"),
+                    &[text(package_id), text(reference)],
+                )?
+                .first(None)
+                .await?;
+            if by_id.is_some() {
+                return Ok(by_id);
+            }
+        }
         if let Some(found) = self.version_by_digest(package_id, reference).await? {
             return Ok(Some(found));
         }
         let by_version: Option<VersionRow> = self
             .prepare(
-                &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND version = ?"),
+                &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND version = ? AND {LIVE}"),
                 &[text(package_id), text(reference)],
             )?
             .first(None)
@@ -677,7 +764,7 @@ impl Db {
 
     pub async fn versions(&self, package_id: &str, limit: u32) -> Result<Vec<VersionRow>> {
         self.prepare(
-            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? ORDER BY published_at DESC, id DESC LIMIT {limit}"),
+            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND {LIVE} ORDER BY published_at DESC, id DESC LIMIT {limit}"),
             &[text(package_id)],
         )?
         .all()
@@ -745,7 +832,7 @@ impl Db {
     pub async fn tags(&self, package_id: &str) -> Result<Vec<TagRow>> {
         self.prepare(
             "SELECT t.tag, t.version_id, v.digest, t.updated_at FROM tags t JOIN versions v ON v.id = t.version_id
-             WHERE t.package_id = ? ORDER BY t.tag",
+             WHERE t.package_id = ? AND v.deleted_at IS NULL ORDER BY t.tag",
             &[text(package_id)],
         )?
         .all()
@@ -761,7 +848,7 @@ impl Db {
         }
         let rows: Vec<Name> = self
             .prepare(
-                &format!("SELECT tag FROM tags WHERE package_id = ? AND tag > ? ORDER BY tag LIMIT {n}"),
+                &format!("SELECT t.tag FROM tags t JOIN versions v ON v.id = t.version_id WHERE t.package_id = ? AND t.tag > ? AND v.deleted_at IS NULL ORDER BY t.tag LIMIT {n}"),
                 &[text(package_id), text(last.unwrap_or(""))],
             )?
             .all()
@@ -772,7 +859,7 @@ impl Db {
 
     pub async fn referrers(&self, package_id: &str, subject: &str) -> Result<Vec<VersionRow>> {
         self.prepare(
-            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND subject = ? ORDER BY published_at"),
+            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND subject = ? AND {LIVE} ORDER BY published_at"),
             &[text(package_id), text(subject)],
         )?
         .all()
@@ -906,7 +993,7 @@ impl Db {
     /// A version by its version string alone.
     pub async fn version_named(&self, package_id: &str, version: &str) -> Result<Option<VersionRow>> {
         self.prepare(
-            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND version = ?"),
+            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ? AND version = ? AND {LIVE}"),
             &[text(package_id), text(version)],
         )?
         .first(None)
@@ -957,7 +1044,8 @@ impl Db {
         Ok(())
     }
 
-    /// A version, its tags and its files. Blobs are left to the sweep.
+    /// A version, its tags and its files, for good: the purge, and Composer's
+    /// versions, which follow git. Blobs are left to the sweep.
     pub async fn delete_version(&self, version_id: &str) -> Result<()> {
         let id = [text(version_id)];
         self.db
@@ -981,7 +1069,7 @@ impl Db {
                     "INSERT INTO workspace_blobs (workspace, digest, size, public)
                      SELECT p.workspace, vf.digest, MAX(vf.size), MAX(p.visibility = 'public')
                      FROM version_files vf JOIN versions v ON v.id = vf.version_id JOIN packages p ON p.id = v.package_id
-                     WHERE p.workspace = ? GROUP BY vf.digest",
+                     WHERE p.workspace = ? AND p.deleted_at IS NULL AND v.deleted_at IS NULL GROUP BY vf.digest",
                     &ws,
                 )?,
             ])
@@ -1183,7 +1271,7 @@ impl Db {
         self.prepare(
             &format!(
                 "SELECT {} FROM versions v JOIN packages p ON p.id = v.package_id
-                 WHERE p.workspace = ? AND p.ecosystem = ? AND p.workspace_deleted_at IS NULL
+                 WHERE p.workspace = ? AND p.ecosystem = ? AND p.workspace_deleted_at IS NULL AND p.deleted_at IS NULL AND v.deleted_at IS NULL
                  ORDER BY v.published_at, v.id LIMIT {limit}",
                 VERSION_COLUMNS.split(", ").map(|c| format!("v.{c}")).collect::<Vec<_>>().join(", ")
             ),
@@ -1198,7 +1286,7 @@ impl Db {
     pub async fn packages_of(&self, workspace: &str, ecosystem: &str, limit: u32) -> Result<Vec<PackageRow>> {
         self.prepare(
             &format!(
-                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = ? AND workspace_deleted_at IS NULL ORDER BY name LIMIT {limit}"
+                "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = ? AND workspace_deleted_at IS NULL AND deleted_at IS NULL ORDER BY name LIMIT {limit}"
             ),
             &[text(workspace), text(ecosystem)],
         )?
@@ -1220,7 +1308,7 @@ impl Db {
             &format!(
                 "SELECT v.package_id, f.digest, f.size FROM version_files f
                  JOIN versions v ON v.id = f.version_id JOIN packages p ON p.id = v.package_id
-                 WHERE f.name = ? AND p.workspace = ? AND p.ecosystem = ? AND p.workspace_deleted_at IS NULL
+                 WHERE f.name = ? AND p.workspace = ? AND p.ecosystem = ? AND p.workspace_deleted_at IS NULL AND p.deleted_at IS NULL AND v.deleted_at IS NULL
                  ORDER BY v.published_at DESC LIMIT {limit}"
             ),
             &[text(name), text(workspace), text(ecosystem)],
@@ -1237,7 +1325,7 @@ impl Db {
         self.prepare(
             &format!(
                 "SELECT {PACKAGE_COLUMNS} FROM packages WHERE workspace = ? AND ecosystem = 'maven' AND name >= ? AND name < ?
-                 AND workspace_deleted_at IS NULL ORDER BY name LIMIT {limit}"
+                 AND workspace_deleted_at IS NULL AND deleted_at IS NULL ORDER BY name LIMIT {limit}"
             ),
             &[text(workspace), text(&format!("{group}:")), text(&format!("{group};"))],
         )?
@@ -1280,6 +1368,226 @@ impl Db {
         )?
         .run()
         .await?;
+        Ok(())
+    }
+
+    /// Whether the package has ever had a version that is still kept,
+    /// deleted ones included.
+    pub async fn has_any_version(&self, package_id: &str) -> Result<bool> {
+        let row: Option<serde_json::Value> = self
+            .prepare("SELECT 1 AS found FROM versions WHERE package_id = ? LIMIT 1", &[text(package_id)])?
+            .first(None)
+            .await?;
+        Ok(row.is_some())
+    }
+
+    /// A deleted version by its id, version or digest: what a restore names,
+    /// and what keeps a version string from being published again.
+    pub async fn deleted_version(&self, package_id: &str, reference: &str) -> Result<Option<VersionRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ?1 AND deleted_at IS NOT NULL
+                 AND (id = ?2 OR version = ?2 OR digest = ?2) ORDER BY deleted_at DESC LIMIT 1"
+            ),
+            &[text(package_id), text(reference)],
+        )?
+        .first(None)
+        .await
+    }
+
+    /// A package's deleted versions, newest deletion first.
+    pub async fn deleted_versions(&self, package_id: &str, limit: u32) -> Result<Vec<VersionRow>> {
+        self.prepare(
+            &format!(
+                "SELECT {VERSION_COLUMNS} FROM versions WHERE package_id = ?1 AND deleted_at IS NOT NULL
+                 ORDER BY deleted_at DESC, id DESC LIMIT {limit}"
+            ),
+            &[text(package_id)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
+    /// Hides a version until it is restored or purged. Its files and tags
+    /// stay, so a restore brings it back whole.
+    pub async fn soft_delete_version(&self, version_id: &str, by: &str, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "UPDATE versions SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL",
+            &[text(&rfc3339(now_ms)), text(by), text(version_id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    pub async fn restore_version(&self, package_id: &str, version_id: &str, now_ms: u64) -> Result<()> {
+        let now = rfc3339(now_ms);
+        self.db
+            .batch(vec![
+                self.prepare("UPDATE versions SET deleted_at = NULL, deleted_by = NULL WHERE id = ?", &[text(version_id)])?,
+                self.prepare("UPDATE packages SET updated_at = ? WHERE id = ?", &[text(&now), text(package_id)])?,
+            ])
+            .await?;
+        Ok(())
+    }
+
+    /// Hides a package and everything in it until it is restored or purged;
+    /// its name stays taken meanwhile.
+    pub async fn soft_delete_package(&self, package_id: &str, by: &str, now_ms: u64) -> Result<()> {
+        self.db
+            .batch(vec![
+                self.prepare(
+                    "UPDATE packages SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL",
+                    &[text(&rfc3339(now_ms)), text(by), text(package_id)],
+                )?,
+                // Uploads in progress are not finished into a deleted package.
+                self.prepare("DELETE FROM uploads WHERE package_id = ?", &[text(package_id)])?,
+            ])
+            .await?;
+        Ok(())
+    }
+
+    pub async fn restore_package(&self, package_id: &str, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "UPDATE packages SET deleted_at = NULL, deleted_by = NULL, updated_at = ? WHERE id = ?",
+            &[text(&rfc3339(now_ms)), text(package_id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    /// Packages deleted before `before`, for the purge.
+    pub async fn expired_packages(&self, before: &str, limit: u32) -> Result<Vec<PackageRow>> {
+        self.prepare(
+            &format!("SELECT {PACKAGE_COLUMNS} FROM packages WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT {limit}"),
+            &[text(before)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
+    /// Versions deleted before `before`, for the purge.
+    pub async fn expired_versions(&self, before: &str, limit: u32) -> Result<Vec<VersionRow>> {
+        self.prepare(
+            &format!("SELECT {VERSION_COLUMNS} FROM versions WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at LIMIT {limit}"),
+            &[text(before)],
+        )?
+        .all()
+        .await?
+        .results()
+    }
+
+    pub async fn set_inherit(&self, package_id: &str, inherit: bool, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "UPDATE packages SET inherit_access = ?, updated_at = ? WHERE id = ?",
+            &[num(u64::from(inherit)), text(&rfc3339(now_ms)), text(package_id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    /// The roles given on these packages, people first, then teams, by name.
+    pub async fn access(&self, package_ids: &[String]) -> Result<Vec<AccessRow>> {
+        let mut rows = Vec::new();
+        for chunk in package_ids.chunks(50) {
+            let marks = vec!["?"; chunk.len()].join(", ");
+            let values: Vec<JsValue> = chunk.iter().map(|id| text(id)).collect();
+            let found: Vec<AccessRow> = self
+                .prepare(
+                    &format!(
+                        "SELECT package_id, grantee_kind, grantee_id, grantee_name, role, created_at FROM package_access
+                         WHERE package_id IN ({marks}) ORDER BY grantee_kind DESC, grantee_name"
+                    ),
+                    &values,
+                )?
+                .all()
+                .await?
+                .results()?;
+            rows.extend(found);
+        }
+        Ok(rows)
+    }
+
+    /// The repositories given access to these packages, by name.
+    pub async fn actions_access(&self, package_ids: &[String]) -> Result<Vec<ActionsRow>> {
+        let mut rows = Vec::new();
+        for chunk in package_ids.chunks(50) {
+            let marks = vec!["?"; chunk.len()].join(", ");
+            let values: Vec<JsValue> = chunk.iter().map(|id| text(id)).collect();
+            let found: Vec<ActionsRow> = self
+                .prepare(
+                    &format!(
+                        "SELECT package_id, repo_id, repo_name, role, created_at FROM package_actions_access
+                         WHERE package_id IN ({marks}) ORDER BY repo_name"
+                    ),
+                    &values,
+                )?
+                .all()
+                .await?
+                .results()?;
+            rows.extend(found);
+        }
+        Ok(rows)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_access(&self, package_id: &str, kind: &str, id: &str, name: &str, role: &str, by: &str, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "INSERT INTO package_access (package_id, grantee_kind, grantee_id, grantee_name, role, created_by, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (package_id, grantee_kind, grantee_id) DO UPDATE SET role = excluded.role, grantee_name = excluded.grantee_name",
+            &[text(package_id), text(kind), text(id), text(name), text(role), text(by), text(&rfc3339(now_ms))],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    pub async fn remove_access(&self, package_id: &str, kind: &str, id: &str) -> Result<()> {
+        self.prepare(
+            "DELETE FROM package_access WHERE package_id = ? AND grantee_kind = ? AND grantee_id = ?",
+            &[text(package_id), text(kind), text(id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_actions(&self, package_id: &str, repo_id: &str, repo_name: &str, role: &str, by: &str, now_ms: u64) -> Result<()> {
+        self.prepare(
+            "INSERT INTO package_actions_access (package_id, repo_id, repo_name, role, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (package_id, repo_id) DO UPDATE SET role = excluded.role, repo_name = excluded.repo_name",
+            &[text(package_id), text(repo_id), text(repo_name), text(role), text(by), text(&rfc3339(now_ms))],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    pub async fn remove_actions(&self, package_id: &str, repo_id: &str) -> Result<()> {
+        self.prepare(
+            "DELETE FROM package_actions_access WHERE package_id = ? AND repo_id = ?",
+            &[text(package_id), text(repo_id)],
+        )?
+        .run()
+        .await?;
+        Ok(())
+    }
+
+    /// A team renamed (`slug` given) or deleted (`None`): its grants follow.
+    pub async fn follow_team(&self, team_id: &str, slug: Option<&str>) -> Result<()> {
+        let statement = match slug {
+            Some(slug) => self.prepare(
+                "UPDATE package_access SET grantee_name = ? WHERE grantee_kind = 'team' AND grantee_id = ?",
+                &[text(slug), text(team_id)],
+            )?,
+            None => self.prepare("DELETE FROM package_access WHERE grantee_kind = 'team' AND grantee_id = ?", &[text(team_id)])?,
+        };
+        statement.run().await?;
         Ok(())
     }
 }

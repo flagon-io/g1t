@@ -529,8 +529,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `security:read` | See [secret scanning](/guides/security/secret-protection/), [code scanning](/guides/security/code-scanning/) and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings |
 | `security:write` | Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings |
 | `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
-| `packages:write` | Push container images and publish packages |
-| `packages:delete` | Delete packages and their versions |
+| `packages:write` | Push container images and publish packages; with the Admin role on a package, change its settings |
+| `packages:delete` | Delete and restore packages and their versions |
 | `issues:read` | Read issues, comments and plans |
 | `issues:write` | Open, edit, close and comment on issues |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |

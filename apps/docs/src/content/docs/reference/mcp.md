@@ -3,9 +3,9 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 17 tools, one per kind of
+The MCP server at `https://mcp.g1t.sh` exposes 18 tools, one per kind of
 thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
-`plan`, `memory`, `workflow`, `secret`, `security`, `webhook`, `access`,
+`plan`, `memory`, `workflow`, `package`, `secret`, `security`, `webhook`, `access`,
 `team`, `workspace`, `billing`, `notifications` and `account`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
@@ -465,6 +465,36 @@ deployments; and the self-hosted runners workflows run on. See
 | [`delete_runner_group`](/reference/api/runners/delete-runner-group/) | Delete a group; its runners join the default. Owners. | `workspace`, `id` | `runners:admin` |
 | [`get_runner_settings`](/reference/api/runners/get-runner-settings-for-workspace/) | Whether agent work runs on self-hosted runners and on which labels, and whether pull requests from forks may use them. | `workspace` or `repo` | `runners:read` |
 | [`update_runner_settings`](/reference/api/runners/update-runner-settings-for-workspace/) | Change them: `agents_on_self_hosted`, `agent_labels`, `fork_pull_requests`, or `inherit` for a repository. | `workspace` or `repo` | `runners:admin` |
+
+## `package`
+
+A workspace's [packages](/guides/packages/) in every registry: their
+versions and downloads, deleting and restoring them within 30 days, their
+visibility and repository, the people and teams with a role on them, and
+which repositories' workflows may use them. Every action takes
+`workspace`; all but `list` also take `package_type` (`container`, `npm`,
+`cargo`, `maven`, `nuget`, `rubygems` or `composer`) and `package_name`.
+Reading access and every change also need the Admin role on the package.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/packages/list-packages/) | The workspace's packages you may pull, by `package_type` and `q`; with `state` `deleted`, its deleted ones you administer. | `workspace` | `packages:read` |
+| [`get`](/reference/api/packages/get-package/) | One package: address, visibility, repository, versions, downloads. | `package_type`, `package_name` | `packages:read` |
+| [`versions`](/reference/api/packages/list-package-versions/) | Its versions with tags and downloads, newest first; `state` `deleted` for deleted ones. | `package_type`, `package_name` | `packages:read` |
+| [`get_version`](/reference/api/packages/get-package-version/) | One version by id, version, digest or tag. | `version_id` | `packages:read` |
+| [`update`](/reference/api/packages/update-package/) | Set `visibility` (unlinked packages), or `inherit_access` (linked ones). | `package_type`, `package_name` | `packages:write` |
+| [`link`](/reference/api/packages/link-package/) | Link it to a `repository` of its workspace; Admin on the repository too. | `repository` | `packages:write` |
+| [`unlink`](/reference/api/packages/unlink-package/) | Unlink it: the workspace's, private. | `package_type`, `package_name` | `packages:write` |
+| [`access`](/reference/api/packages/list-package-access/) | People and teams with a role on it, and `inherit_access`. | `package_type`, `package_name` | `packages:read` |
+| [`set_access`](/reference/api/packages/set-package-access/) | Give `username` or `team` a `role`: `read`, `write` or `admin`. | `role` | `packages:write` |
+| [`remove_access`](/reference/api/packages/remove-package-access/) | Take `username`'s or `team`'s role away. | `package_type`, `package_name` | `packages:write` |
+| [`actions_access`](/reference/api/packages/list-package-actions-access/) | Repositories whose workflows may use it; the linked one is always listed. | `package_type`, `package_name` | `packages:read` |
+| [`set_actions_access`](/reference/api/packages/set-package-actions-access/) | Let a `repository`'s workflows use it with `role` `read` or `write`. | `repository`, `role` | `packages:write` |
+| [`remove_actions_access`](/reference/api/packages/remove-package-actions-access/) | Stop a `repository`'s workflows using it. | `repository` | `packages:write` |
+| [`delete`](/reference/api/packages/delete-package/) | Delete it, restorable for 30 days; its name stays taken until then. | `package_type`, `package_name` | `packages:delete` |
+| [`restore`](/reference/api/packages/restore-package/) | Restore a deleted package. | `package_type`, `package_name` | `packages:delete` |
+| [`delete_version`](/reference/api/packages/delete-package-version/) | Delete a version, restorable for 30 days. | `version_id` | `packages:delete` |
+| [`restore_version`](/reference/api/packages/restore-package-version/) | Restore a deleted version. | `version_id` | `packages:delete` |
 
 ## `secret`
 

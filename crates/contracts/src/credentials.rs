@@ -455,6 +455,19 @@ pub const NEVER: &[&str] = &[
     "pin_project",
     "unpin_project",
     "reorder_pinned_projects",
+    // Deleting packages and deciding who may use them is for people: an
+    // agent publishes its repository's packages and never deletes them.
+    "update_package",
+    "link_package",
+    "unlink_package",
+    "set_package_access",
+    "remove_package_access",
+    "set_package_actions_access",
+    "remove_package_actions_access",
+    "delete_package",
+    "restore_package",
+    "delete_package_version",
+    "restore_package_version",
 ];
 
 /// Reading what an agent needs to know about its repository.

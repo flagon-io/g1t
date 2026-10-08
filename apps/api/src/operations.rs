@@ -31,6 +31,7 @@ use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
+use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::rules::RulesOp;
@@ -64,6 +65,8 @@ pub struct Services {
     pub projects: Fetcher,
     /// Deployments wherever they run, and environments.
     pub deployments: Fetcher,
+    /// Packages: their settings, versions, deleting and restoring them.
+    pub packages: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -89,6 +92,7 @@ impl Services {
             security: env.service("SECURITY")?,
             projects: env.service("PROJECTS")?,
             deployments: env.service("DEPLOYMENTS")?,
+            packages: env.service("PACKAGES")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -302,6 +306,9 @@ pub enum Op {
     Artifacts(ArtifactsOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
+    /// A workspace's packages, their versions, deleting and restoring
+    /// them, and who may use them: packages.rs.
+    Packages(PackagesOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -664,7 +671,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 291] = [
+    pub const ALL: [Op; 308] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -956,6 +963,23 @@ impl Op {
         Op::Tokens(TokenOp::ListTokenRequests),
         Op::Tokens(TokenOp::ReviewTokenRequest),
         Op::Tokens(TokenOp::RevokeMemberToken),
+        Op::Packages(PackagesOp::ListPackages),
+        Op::Packages(PackagesOp::GetPackage),
+        Op::Packages(PackagesOp::ListVersions),
+        Op::Packages(PackagesOp::GetVersion),
+        Op::Packages(PackagesOp::ListAccess),
+        Op::Packages(PackagesOp::ListActionsAccess),
+        Op::Packages(PackagesOp::UpdatePackage),
+        Op::Packages(PackagesOp::LinkPackage),
+        Op::Packages(PackagesOp::UnlinkPackage),
+        Op::Packages(PackagesOp::SetAccess),
+        Op::Packages(PackagesOp::RemoveAccess),
+        Op::Packages(PackagesOp::SetActionsAccess),
+        Op::Packages(PackagesOp::RemoveActionsAccess),
+        Op::Packages(PackagesOp::DeletePackage),
+        Op::Packages(PackagesOp::RestorePackage),
+        Op::Packages(PackagesOp::DeleteVersion),
+        Op::Packages(PackagesOp::RestoreVersion),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1158,6 +1182,7 @@ impl Op {
             Op::Tokens(op) => op.name(),
             Op::Artifacts(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
+            Op::Packages(op) => op.name(),
         }
     }
 
@@ -1690,6 +1715,7 @@ impl Op {
             Op::Tokens(op) => op.description(),
             Op::Artifacts(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
+            Op::Packages(op) => op.description(),
         }
     }
 
@@ -3114,6 +3140,7 @@ impl Op {
             Op::Tokens(op) => op.input(),
             Op::Artifacts(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
+            Op::Packages(op) => op.input(),
         }
     }
 
@@ -3129,6 +3156,10 @@ impl Op {
         // A public repository's artifacts are anyone's to read.
         if let Op::Artifacts(op) = self {
             return op.writes();
+        }
+        // So are public packages.
+        if let Op::Packages(op) = self {
+            return !op.anonymous();
         }
         !matches!(
             self,
@@ -3175,6 +3206,11 @@ impl Op {
     pub(crate) fn needs_repo(self) -> bool {
         if let Op::Rules(op) = self {
             return op.needs_repo();
+        }
+        // A package belongs to its workspace; its repository is in `repo`
+        // only for Manage Actions access, checked by the packages service.
+        if let Op::Packages(_) = self {
+            return false;
         }
         if let Op::About(op) = self {
             return op.needs_repo();
@@ -5322,6 +5358,7 @@ impl Op {
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::artifacts::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
+            Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,
