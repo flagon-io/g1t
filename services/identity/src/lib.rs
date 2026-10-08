@@ -5,6 +5,7 @@
 
 mod access;
 mod admin;
+mod aliases;
 mod avatars;
 mod crypto;
 mod deletion;
@@ -736,6 +737,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "rename_workspace" => reply(&identity.rename_workspace(args(body)?).await?),
         "check_workspace_rename" => reply(&identity.check_workspace_rename(args(body)?).await?),
         "resolve_slug" => reply(&identity.resolve_slug(args(body)?).await?),
+        "resolve_alias" => reply(&identity.resolve_alias(args(body)?).await?),
         "check_workspace_deletion" => reply(&identity.check_workspace_deletion(args(body)?).await?),
         "delete_workspace" => reply(&identity.delete_workspace(args(body)?).await?),
         "transfer_repo_scopes" => reply(&identity.transfer_repo_scopes(args(body)?).await?),
@@ -891,6 +893,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_deleted_workspaces" => reply(&identity.admin_deleted_workspaces().await?),
         "admin_restore_workspace" => reply(&identity.admin_restore_workspace(args(body)?).await?),
         "admin_purge_workspace" => reply(&identity.admin_purge_workspace(args(body)?).await?),
+        // Workspace aliases, set by staff only; see aliases.rs.
+        "admin_aliases" => reply(&identity.admin_aliases().await?),
+        "admin_set_alias" => reply(&identity.admin_set_alias(args(body)?).await?),
+        "admin_remove_alias" => reply(&identity.admin_remove_alias(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     };
     served.finish(answered)
