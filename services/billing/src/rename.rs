@@ -37,6 +37,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE credit_grants SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE checkouts SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE ai_reloads SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE gateway_requests SET workspace = ?1 WHERE workspace = ?2",
     // Auto-reload's settings: the stale slug's, when the current has none.
     "INSERT OR IGNORE INTO ai_reload (workspace, enabled, threshold_micros, target_micros, monthly_max_micros, updated_by, updated_at, failed_at, error)
      SELECT ?1, enabled, threshold_micros, target_micros, monthly_max_micros, updated_by, updated_at, failed_at, error FROM ai_reload WHERE workspace = ?2",

@@ -292,7 +292,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "billing",
         title: "Billing",
-        description: "A workspace's billing: its usage by product, project and day, its budget (the monthly spend limit, alerts and whether usage pauses at it), its AI credit, and its invoices. Amounts are whole millionths of a dollar (`_micros`), or cents (`_cents`) where named. Members read it; changing the budget and buying credit are for owners, as people, and never for g1t's agents.",
+        description: "A workspace's billing: its usage by product, project and day, its budget (the monthly spend limit, alerts and whether usage pauses at it), its AI credit, its invoices, and its AI Gateway requests. Amounts are whole millionths of a dollar (`_micros`), or cents (`_cents`) where named. Members read it; changing the budget and buying credit are for owners, as people, and never for g1t's agents.",
         default_action: Some("usage"),
         actions: &[
             a("usage", Op::GetUsage, "Usage over a range of days, by product, meter, project and day, and what paid for it"),
@@ -302,6 +302,7 @@ pub const TOOLS: &[Tool] = &[
             a("buy_ai_credit", Op::BuyAiCredit, "A payment page to buy AI credit, for a person to open"),
             a("invoices", Op::ListInvoices, "Every invoice, the itemised usage invoices, and the next one so far"),
             a("billing_details", Op::GetBillingDetails, "Who invoices are made out to and the payment method on file"),
+            a("gateway_requests", Op::ListGatewayRequests, "Recent AI Gateway requests: model, tokens, cost, status and token"),
         ],
     },
     Tool {
@@ -640,6 +641,7 @@ mod tests {
             token_id: "tok_1".to_owned(),
             scopes: scopes.map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
+            name: None,
         }
     }
 

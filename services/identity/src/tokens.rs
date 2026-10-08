@@ -100,6 +100,8 @@ struct Presented {
     /// Set on an agent's token: what it may do, as JSON `AgentScope`.
     agent_scope: Option<String>,
     scopes: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -120,7 +122,7 @@ impl Identity {
         let Some(presented) = self
             .db
             .prepare(format!(
-                "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes
+                "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
@@ -166,6 +168,7 @@ impl Identity {
                 token_id: presented.id.clone(),
                 scopes,
                 legacy,
+                name: presented.name.clone(),
             }));
         }
         Ok(viewer)

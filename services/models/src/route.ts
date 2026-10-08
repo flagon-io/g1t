@@ -32,6 +32,21 @@ export function presentedToken(headers: Headers): string | null {
 }
 
 /**
+ * The caller's headers, less its token and anything that never goes
+ * further. Every `cf-aig-` header is the proxy's to set: one from a caller
+ * could change how Cloudflare's AI Gateway logs, caches or prices a
+ * request (`cf-aig-custom-cost`), which billing settles by.
+ */
+export function passedHeaders(incoming: Headers): Headers {
+  const headers = new Headers();
+  for (const [name, value] of incoming) {
+    const lower = name.toLowerCase();
+    if (!DROPPED.has(lower) && !lower.startsWith("cf-aig-")) headers.set(name, value);
+  }
+  return headers;
+}
+
+/**
  * Where one request goes and what it carries: the sandbox's request,
  * stripped of its token, with the credentials for the run's route.
  * `path` is what follows `/anthropic`, such as `/v1/messages?beta=true`.
@@ -42,10 +57,7 @@ export function upstreamRequest(
   path: string,
   incoming: Headers,
 ): { url: string; headers: Headers } {
-  const headers = new Headers();
-  for (const [name, value] of incoming) {
-    if (!DROPPED.has(name.toLowerCase())) headers.set(name, value);
-  }
+  const headers = passedHeaders(incoming);
   if (upstream.route === "g1t") {
     if (!hosted.AI_GATEWAY_ID) {
       if (hosted.ANTHROPIC_API_KEY) headers.set("x-api-key", hosted.ANTHROPIC_API_KEY);

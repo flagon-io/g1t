@@ -328,6 +328,7 @@ On the form, scopes are a checklist grouped by area:
 | Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
 | Billing | `billing:read`, `billing:write` |
 | Runners | `runners:read` |
+| AI Gateway | `models:read`, `models:write` |
 | Dangerous | `repo:admin`, `packages:delete`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
 
 Ticking a higher level ticks the lower ones of its resource and greys
@@ -371,6 +372,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `secrets:admin` | Set and delete secrets and variables |
 | `runners:read` | See [self-hosted runners](/guides/self-hosted-runners/), their groups and where agents run. Not in the Agent preset. |
 | `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
+| `models:read` | See the workspace's [AI Gateway](/guides/ai-gateway/) requests: their models, tokens, cost and status |
+| `models:write` | Send model requests through the [AI Gateway](/guides/ai-gateway/), which uses the workspace's AI credit. Only a workspace's own token can send them. Not in any preset but full access. |
 
 Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page

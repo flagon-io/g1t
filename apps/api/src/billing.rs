@@ -412,6 +412,25 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
             })
         }
         Op::GetBillingDetails => shaped(g1t_kit::call(billing, "billing_details", &account).await?, &details_json),
+        Op::ListGatewayRequests => {
+            let limit = match &input["limit"] {
+                Value::Null => None,
+                Value::Number(number) => number.as_u64(),
+                Value::String(digits) => digits.trim().parse().ok(),
+                _ => Some(0),
+            };
+            if limit.is_some_and(|limit| !(1..=200).contains(&limit)) {
+                return failed(FailureCode::Invalid, "limit is a number from 1 to 200.");
+            }
+            let before = input["before"].as_str().map(str::trim).filter(|id| !id.is_empty());
+            let page: Outcome<Value> = g1t_kit::call(
+                billing,
+                "gateway_requests",
+                &json!({ "workspace": workspace, "viewer": viewer, "limit": limit, "before": before }),
+            )
+            .await?;
+            shaped(page, &snake)
+        }
         _ => failed(FailureCode::Invalid, "Not a billing operation."),
     }
 }
@@ -559,8 +578,16 @@ mod tests {
         assert!(shown.get("invoices").is_none() && shown.get("upcoming").is_none());
     }
 
-    const OPS: [Op; 7] =
-        [Op::GetUsage, Op::GetBudget, Op::SetBudget, Op::GetAiCredit, Op::BuyAiCredit, Op::ListInvoices, Op::GetBillingDetails];
+    const OPS: [Op; 8] = [
+        Op::GetUsage,
+        Op::GetBudget,
+        Op::SetBudget,
+        Op::GetAiCredit,
+        Op::BuyAiCredit,
+        Op::ListInvoices,
+        Op::GetBillingDetails,
+        Op::ListGatewayRequests,
+    ];
 
     /// Billing belongs to a workspace, needs someone signed in, and is one
     /// MCP tool whose writes no preset but full access reaches.
@@ -579,12 +606,17 @@ mod tests {
             token_id: "tok_1".into(),
             scopes: preset.scopes().map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
+            name: None,
         };
         for preset in [Preset::ReadOnly, Preset::Agent] {
             let access = token(preset);
             let seen: Vec<&str> = tool.visible(&Gate::Token(&access)).iter().map(|action| action.name).collect();
-            assert_eq!(seen, ["usage", "budget", "ai_credit", "invoices", "billing_details"], "{}", preset.as_str());
+            assert_eq!(seen, ["usage", "budget", "ai_credit", "invoices", "billing_details", "gateway_requests"], "{}", preset.as_str());
         }
+        // The AI Gateway's log needs models:read, and nothing of billing's.
+        let models = TokenAccess { scopes: Some(vec!["models:read".into()]), ..token(Preset::Ci) };
+        let seen: Vec<&str> = tool.visible(&Gate::Token(&models)).iter().map(|action| action.name).collect();
+        assert_eq!(seen, ["gateway_requests"]);
         let full = TokenAccess::full();
         assert_eq!(tool.visible(&Gate::Token(&full)).len(), OPS.len());
     }

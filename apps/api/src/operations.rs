@@ -258,6 +258,7 @@ pub enum Op {
     BuyAiCredit,
     ListInvoices,
     GetBillingDetails,
+    ListGatewayRequests,
     RequestReviewers,
     RemoveRequestedReviewers,
     GetCodeownersErrors,
@@ -625,7 +626,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 205] = [
+    pub const ALL: [Op; 206] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -797,6 +798,7 @@ impl Op {
         Op::BuyAiCredit,
         Op::ListInvoices,
         Op::GetBillingDetails,
+        Op::ListGatewayRequests,
         Op::RequestReviewers,
         Op::RemoveRequestedReviewers,
         Op::GetCodeownersErrors,
@@ -1011,6 +1013,7 @@ impl Op {
             Op::BuyAiCredit => "buy_ai_credit",
             Op::ListInvoices => "list_invoices",
             Op::GetBillingDetails => "get_billing_details",
+            Op::ListGatewayRequests => "list_gateway_requests",
             Op::RequestReviewers => "request_reviewers",
             Op::RemoveRequestedReviewers => "remove_requested_reviewers",
             Op::GetCodeownersErrors => "get_codeowners_errors",
@@ -1495,6 +1498,9 @@ impl Op {
             }
             Op::GetBillingDetails => {
                 "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Tax is worked out from the address: `tax_location` says whether it is enough for that (a country, and in the US a ZIP code), `tax_address_needed_at` is set while g1t is holding a charge for want of one, `tax_id_status` is Stripe's check of the tax ID (`pending`, `verified`, `unverified` or `unavailable`), and `tax_exempt` is `none`, `exempt` or `reverse`. Members of the workspace only."
+            }
+            Op::ListGatewayRequests => {
+                "A workspace's recent AI Gateway requests, newest first: each with its `id`, `created_at`, `model`, the access token that sent it (`token_id`, `token_name`), its tokens by kind (`input`, `output`, `cache_read`, `cache_write`), what they cost at the model's price (`cost_micros`) and what the workspace was charged (`charged_micros`, before included usage and AI credit paid for it; 0 on the workspace's own provider key, `own_key`), the HTTP `status` it was answered with, whether it was `streamed`, `duration_ms`, and `error` for one that was refused or failed. Prompts and answers are never kept. `limit` is how many, 50 unless given and 200 at most; pass `next` from one page as `before` for the next. Requests are kept `retention_days` (30). Members of the workspace only."
             }
             Op::ListUserTeams => {
                 "The teams someone is in within a workspace, as list_teams describes them, leaving out secret teams you cannot see. Members of the workspace only."
@@ -2754,6 +2760,14 @@ impl Op {
             Op::GetBudget | Op::GetAiCredit | Op::ListInvoices | Op::GetBillingDetails => {
                 object(json!({ "workspace": workspace_schema() }), &["workspace"])
             }
+            Op::ListGatewayRequests => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "How many requests, newest first. 50 if not given." },
+                    "before": { "type": "string", "description": "Only requests older than this one: the `next` of the page before." },
+                }),
+                &["workspace"],
+            ),
             Op::SetBudget => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -2936,6 +2950,7 @@ impl Op {
                 | Op::BuyAiCredit
                 | Op::ListInvoices
                 | Op::GetBillingDetails
+                | Op::ListGatewayRequests
         )
     }
 
@@ -4729,7 +4744,8 @@ impl Op {
             | Op::GetAiCredit
             | Op::BuyAiCredit
             | Op::ListInvoices
-            | Op::GetBillingDetails => crate::billing::run(self, services, viewer, input).await,
+            | Op::GetBillingDetails
+            | Op::ListGatewayRequests => crate::billing::run(self, services, viewer, input).await,
             Op::ListUserTeams => {
                 pass(
                     identity,

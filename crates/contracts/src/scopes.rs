@@ -39,10 +39,11 @@ pub enum Resource {
     Webhooks,
     Secrets,
     Runners,
+    Models,
 }
 
 impl Resource {
-    pub const ALL: [Resource; 17] = [
+    pub const ALL: [Resource; 18] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -60,6 +61,7 @@ impl Resource {
         Resource::Webhooks,
         Resource::Secrets,
         Resource::Runners,
+        Resource::Models,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -81,6 +83,7 @@ impl Resource {
             Resource::Webhooks => "webhooks",
             Resource::Secrets => "secrets",
             Resource::Runners => "runners",
+            Resource::Models => "models",
         }
     }
 
@@ -104,6 +107,7 @@ impl Resource {
             Resource::Webhooks => "Webhooks",
             Resource::Secrets => "Secrets and variables",
             Resource::Runners => "Self-hosted runners",
+            Resource::Models => "AI Gateway",
         }
     }
 }
@@ -171,11 +175,13 @@ pub enum Scope {
     SecretsAdmin,
     RunnersRead,
     RunnersAdmin,
+    ModelsRead,
+    ModelsWrite,
 }
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 35] = [
+    pub const ALL: [Scope; 37] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -211,6 +217,8 @@ impl Scope {
         Scope::SecretsAdmin,
         Scope::RunnersRead,
         Scope::RunnersAdmin,
+        Scope::ModelsRead,
+        Scope::ModelsWrite,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -250,6 +258,8 @@ impl Scope {
             Scope::SecretsAdmin => "secrets:admin",
             Scope::RunnersRead => "runners:read",
             Scope::RunnersAdmin => "runners:admin",
+            Scope::ModelsRead => "models:read",
+            Scope::ModelsWrite => "models:write",
         }
     }
 
@@ -326,6 +336,8 @@ impl Scope {
             Scope::SecretsAdmin => "Set and delete secrets and variables",
             Scope::RunnersRead => "See self-hosted runners, their groups and where agents run",
             Scope::RunnersAdmin => "Register and remove self-hosted runners, change their groups and settings",
+            Scope::ModelsRead => "See the workspace's AI Gateway requests: their models, tokens, cost and status",
+            Scope::ModelsWrite => "Send model requests through the AI Gateway, which uses the workspace's AI credit",
         }
     }
 }
@@ -457,6 +469,10 @@ pub struct TokenAccess {
     /// Made before tokens had scopes: full access until someone narrows it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub legacy: bool,
+    /// The token's name, as its owner gave it, so a log can say which
+    /// token made a request. Absent where whoever resolved it did not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl TokenAccess {
@@ -712,6 +728,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_runner_group", Scope::RunnersAdmin),
     ("delete_runner_group", Scope::RunnersAdmin),
     ("update_runner_settings", Scope::RunnersAdmin),
+    // The AI Gateway. Sending a request to a model needs `models:write`,
+    // checked by the model proxy at models.g1t.sh, not here.
+    ("list_gateway_requests", Scope::ModelsRead),
 ];
 
 /// Operations any token may use: saying who it is.
@@ -825,6 +844,7 @@ mod tests {
             token_id: "tok_1".to_owned(),
             scopes: Some(scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
+            name: None,
         }
     }
 
@@ -894,6 +914,22 @@ mod tests {
         let reader = token(&[Scope::BillingRead]);
         assert!(decide(&reader, "list_invoices", &json!({})).allowed);
         assert!(decide(&reader, "set_budget", &json!({})).reason.unwrap().contains("billing:write"));
+    }
+
+    #[test]
+    fn the_ai_gateway_spends_only_with_models_write_which_no_preset_gives() {
+        // Reading the log is a read like any other.
+        assert_eq!(scope_for("list_gateway_requests"), Some(Scope::ModelsRead));
+        assert!(Preset::ReadOnly.scopes().unwrap().contains(&Scope::ModelsRead));
+        // Sending requests spends the workspace's AI credit: chosen on purpose.
+        for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
+            assert!(!preset.scopes().unwrap().contains(&Scope::ModelsWrite), "{}", preset.as_str());
+        }
+        assert!(Scope::ModelsWrite.includes(Scope::ModelsRead));
+        assert!(!Scope::ModelsWrite.dangerous());
+        assert!(token(&[Scope::ModelsWrite]).allows(Scope::ModelsWrite));
+        assert!(!token(&[Scope::BillingWrite]).allows(Scope::ModelsWrite));
+        assert!(TokenAccess::full().allows(Scope::ModelsWrite));
     }
 
     #[test]

@@ -269,6 +269,7 @@ mod tests {
                 token_id: "tok_1".to_owned(),
                 scopes: scopes.map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
                 legacy,
+                name: None,
             })),
             ..User::default()
         }

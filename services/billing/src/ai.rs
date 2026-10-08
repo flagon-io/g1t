@@ -568,6 +568,14 @@ impl Billing {
         if !needs_credit(self.plan_kind_for(workspace, &account).await?) {
             return Ok(None);
         }
+        Ok(self.credit_exhausted(workspace).await?.map(|failed| out_of_credit_message(workspace, failed)))
+    }
+
+    /// For a workspace on the plan: whether it has no AI credit and none of
+    /// this month's included usage left, after auto-reload (when on) was
+    /// tried. Some with whether auto-reload has been turned off by a failed
+    /// charge; None while there is something to spend.
+    pub(crate) async fn credit_exhausted(&self, workspace: &str) -> Result<Option<bool>> {
         if self.included_left(workspace).await? > 0 {
             return Ok(None);
         }
@@ -578,14 +586,13 @@ impl Billing {
         let reload = self.reload_settings(workspace).await?;
         if reload.enabled && reload.failed_at.is_none() {
             if let Err(error) = self.reload_now(workspace).await {
-                worker::console_error!("{workspace}: auto-reload at a run's start failed: {error}");
+                worker::console_error!("{workspace}: auto-reload at $0 failed: {error}");
             }
             if self.ai_balance(workspace).await?.0 > 0 {
                 return Ok(None);
             }
         }
-        let failed = self.reload_settings(workspace).await?.failed_at.is_some();
-        Ok(Some(out_of_credit_message(workspace, failed)))
+        Ok(Some(self.reload_settings(workspace).await?.failed_at.is_some()))
     }
 
     // --- Auto-reload ---------------------------------------------------------

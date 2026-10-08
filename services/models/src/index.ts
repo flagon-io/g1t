@@ -14,17 +14,43 @@
  * Responses stream through. What each answer used is read from a copy as
  * it passes and reported to billing afterwards, counted per run for usage
  * views.
+ *
+ * The same address is the AI Gateway for a workspace's own code: a request
+ * with one of the workspace's access tokens (`g1t_…`) instead of a run's
+ * goes to `gateway.ts`, and is logged and charged to the workspace.
  */
-import { type ModelUpstream, type ServiceBinding, billingClient, integrationsClient } from "@g1t/contracts";
+import {
+  type GatewayModel,
+  type ModelUpstream,
+  type ServiceBinding,
+  type User,
+  billingClient,
+  identityClient,
+  integrationsClient,
+} from "@g1t/contracts";
 
 import { type AnthropicRequest, StreamTranslator, errorFromChat, estimateTokens, fromChat, toChat } from "./openai";
 import { isAnswer, tokenReport } from "./report";
+import {
+  type Caller,
+  anthropicError,
+  callerOf,
+  errorMessage,
+  gatewayRecord,
+  gatewayRoute,
+  hostedRequest,
+  requestId,
+  sessionOf,
+  unoffered,
+  unpriced,
+} from "./gateway";
 import { type HostedRouting, presentedToken, upstreamRequest } from "./route";
-import { measure } from "./usage";
+import { NO_TOKENS, type Tokens, measure } from "./usage";
 
 interface Env extends HostedRouting {
   INTEGRATIONS: ServiceBinding;
   BILLING: ServiceBinding;
+  IDENTITY: ServiceBinding;
 }
 
 /**
@@ -115,15 +141,120 @@ async function viaChat(upstream: ModelUpstream, path: string, request: Request):
   });
 }
 
+// --- The AI Gateway ------------------------------------------------------------
+
+/**
+ * What gateway requests look up, remembered as briefly as a run's token
+ * is: a deleted token, a key added under Integrations or credit just bought
+ * takes effect within `REMEMBER_MS`. The catalogue changes rarely.
+ */
+const CATALOGUE_MS = 5 * 60_000;
+const callers = new Map<string, { value: User | null; until: number }>();
+const ownKeys = new Map<string, { value: ModelUpstream | null; until: number }>();
+const admitted = new Map<string, { value: string | null; until: number }>();
+let catalogue: { models: GatewayModel[]; until: number } | null = null;
+
+async function cached<T>(cache: Map<string, { value: T; until: number }>, key: string, read: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = cache.get(key);
+  if (hit && hit.until > now) return hit.value;
+  const value = await read();
+  if (cache.size > 5_000) cache.clear();
+  cache.set(key, { value, until: now + REMEMBER_MS });
+  return value;
+}
+
+async function offered(env: Env): Promise<GatewayModel[]> {
+  if (catalogue && catalogue.until > Date.now()) return catalogue.models;
+  const models = await billingClient(env.BILLING).gatewayModels();
+  catalogue = { models, until: Date.now() + CATALOGUE_MS };
+  return models;
+}
+
+/** A workspace's own request, sent with one of its access tokens. */
+async function gateway(request: Request, env: Env, ctx: ExecutionContext, token: string, path: string): Promise<Response> {
+  const started = Date.now();
+  const who = callerOf(await cached(callers, token, () => identityClient(env.IDENTITY).userForAccessToken(token)));
+  if (!("caller" in who)) return anthropicError(who.status, who.type, who.message);
+  const caller: Caller = who.caller;
+  const route = gatewayRoute(path);
+  if (!route || request.method !== "POST") {
+    return anthropicError(404, "not_found_error", "The AI Gateway answers POST /v1/messages and POST /v1/messages/count_tokens.");
+  }
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return anthropicError(400, "invalid_request_error", "The request body is not JSON.");
+  }
+  const model = typeof body.model === "string" ? body.model : "";
+  const streamed = body.stream === true;
+  const id = requestId();
+  // Every request is logged once it is known whose it is. Counting tokens
+  // is a question about a request, not one, and is not.
+  const log = (status: number, ownKey: boolean, tokens: Tokens = NO_TOKENS, answeredBy: string | null = null, error: string | null = null) => {
+    if (route !== "messages") return Promise.resolve();
+    const record = gatewayRecord({ id, caller, model: answeredBy ?? model, tokens, status, ownKey, streamed, durationMs: Date.now() - started, error });
+    return billingClient(env.BILLING)
+      .recordGateway(record)
+      .then(() => undefined)
+      .catch(() => undefined);
+  };
+
+  const own = await cached(ownKeys, caller.workspace, () => integrationsClient(env.INTEGRATIONS).gatewayUpstream(caller.workspace));
+  let target: { url: string; headers: Headers };
+  if (own) {
+    // The workspace's own key: nothing to admit or charge.
+    target = upstreamRequest(own, env, path, request.headers);
+  } else {
+    const why = unoffered(body.model, await offered(env)) ?? unpriced(body);
+    if (why) {
+      ctx.waitUntil(log(400, false, NO_TOKENS, null, why));
+      return anthropicError(400, "invalid_request_error", why);
+    }
+    const refusal = await cached(admitted, caller.workspace, async () => {
+      const answer = await billingClient(env.BILLING).gatewayAdmit(caller.workspace);
+      return answer.ok ? null : answer.error.message;
+    });
+    if (refusal) {
+      ctx.waitUntil(log(402, false, NO_TOKENS, null, refusal));
+      return anthropicError(402, "billing_error", refusal);
+    }
+    target = hostedRequest(env, path, request.headers, caller, sessionOf(caller.tokenId, new Date()));
+  }
+  target.headers.delete("content-length");
+  const answer = await fetch(target.url, { method: "POST", headers: target.headers, body: JSON.stringify(body) });
+  if (route === "count_tokens") return answer;
+  if (!answer.ok) {
+    const text = await answer.clone().text();
+    ctx.waitUntil(log(answer.status, own != null, NO_TOKENS, null, errorMessage(answer.status, text)));
+    return answer;
+  }
+  const { response, tokens, model: answered } = measure(answer);
+  ctx.waitUntil(
+    (async () => {
+      const used = await tokens;
+      const by = await answered;
+      // On g1t's key the model asked for is the one priced, whatever dated
+      // name the provider answers with; on the workspace's own, the one
+      // that answered.
+      await log(answer.status, own != null, used, own ? by : null);
+    })().catch(() => undefined),
+  );
+  return response;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "") {
-      return new Response("g1t's model proxy, for g1t's sandboxes. See https://docs.g1t.sh/guides/models/\n");
+      return new Response("g1t's model proxy and AI Gateway. See https://docs.g1t.sh/guides/ai-gateway/\n");
     }
     if (!url.pathname.startsWith("/anthropic/")) return refuse(404, "Requests go to /anthropic/v1/….");
     const token = presentedToken(request.headers);
-    if (!token?.startsWith("g1tm_")) return refuse(401, "This needs a g1t run's model token.");
+    // A workspace's own access token: the AI Gateway.
+    if (token?.startsWith("g1t_")) return gateway(request, env, ctx, token, url.pathname.slice("/anthropic".length) + url.search);
+    if (!token?.startsWith("g1tm_")) return refuse(401, "This needs a g1t run's model token, or a workspace's access token for the AI Gateway.");
     const upstream = await lookUp(env, token);
     if (!upstream) return refuse(401, "This run's model token has expired, or its model connection was removed.");
 

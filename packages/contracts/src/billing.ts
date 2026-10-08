@@ -921,6 +921,18 @@ export interface BillingApi {
    * model proxy sends it; for usage views only, as runs are priced from AI
    * Gateway. False when there was nothing to count.
    */
+  /** What the AI Gateway offers on g1t's key, with prices per million tokens. */
+  gatewayModels(): Promise<GatewayModel[]>;
+  /**
+   * Whether a workspace's next AI Gateway request may go to g1t's models:
+   * fails with `payment_required` and what to do when it is over its spend
+   * limit, out of AI credit, or not on the plan.
+   */
+  gatewayAdmit(workspace: string): Promise<Result<boolean>>;
+  /** Logs one AI Gateway request, and charges it when it used tokens on g1t's models. */
+  recordGateway(record: GatewayRecord): Promise<Result<boolean>>;
+  /** A workspace's recent AI Gateway requests, newest first. Members only. */
+  gatewayRequests(workspace: string, viewer: Viewer, options?: { limit?: number; before?: string | null }): Promise<Result<GatewayRequests>>;
   recordTokens(usage: {
     workspace: string;
     /** The model session's id, one per run. */
@@ -1158,6 +1170,73 @@ export type TokenUsage = {
   activeDays: number;
   /** Every day in the window, oldest first, zeros included. */
   byDay: { day: string; tokens: number }[];
+};
+
+// --- AI Gateway -------------------------------------------------------------
+
+/** A model the AI Gateway offers on g1t's key, with its prices per million tokens. */
+export type GatewayModel = {
+  /** The id a request names, such as `claude-sonnet-5-5`. */
+  model: string;
+  /** For people: `Claude Sonnet 5.5`. */
+  name: string;
+  provider: string;
+  inputMicros: number;
+  outputMicros: number;
+  cacheReadMicros: number;
+  cacheWriteMicros: number;
+};
+
+/** One AI Gateway request, as the model proxy reports it to billing. */
+export type GatewayRecord = {
+  /** `gw_…`, chosen by the proxy; recording it twice records it once. */
+  id: string;
+  workspace: string;
+  tokenId: string;
+  tokenName?: string | null;
+  model: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  /** The HTTP status the caller was answered with. */
+  status: number;
+  /** On the workspace's own provider key: counted, never charged. */
+  ownKey: boolean;
+  streamed: boolean;
+  durationMs: number;
+  error?: string | null;
+};
+
+/** One AI Gateway request, as its log keeps it. */
+export type GatewayRequest = {
+  id: string;
+  createdAt: string;
+  model: string;
+  tokenId: string;
+  tokenName: string | null;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  /** What the tokens cost at the model's price. */
+  costMicros: number;
+  /** What the workspace was charged, before included usage and credit paid for it; 0 on its own key. */
+  chargedMicros: number;
+  status: number;
+  ownKey: boolean;
+  streamed: boolean;
+  durationMs: number;
+  error: string | null;
+};
+
+/** A page of AI Gateway requests, newest first. */
+export type GatewayRequests = {
+  requests: GatewayRequest[];
+  /** The `before` for the next page, when there is one. */
+  next: string | null;
+  /** How many days requests are kept. */
+  retentionDays: number;
 };
 
 /** What a workspace's agents cost over a period. */
