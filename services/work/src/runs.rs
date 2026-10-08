@@ -223,22 +223,33 @@ impl Work {
 
     pub(crate) async fn open_run(&self, a: OpenRunArgs) -> Result<Outcome<AgentRunTicket>> {
         // The runner is trusted: it names the repository it is starting a
-        // sandbox in, whoever the sandbox acts as.
-        let (repo_id, namespace) = match &a.pull_id {
+        // sandbox in, whoever the sandbox acts as. The run records where
+        // the repository is now, looked up by its id, not the path it was
+        // named by, which may be from before a transfer or a rename.
+        let (repo_id, path) = match &a.pull_id {
             Some(pull_id) => match self.pull_by_id(pull_id).await? {
-                Some(pull) => (pull.repo_id, a.repo.namespace.to_lowercase()),
+                Some(pull) => {
+                    let now: Option<RepoPath> = g1t_kit::call(
+                        &self.repos,
+                        "path_by_id",
+                        &g1t_contracts::repos::PathByIdArgs { id: pull.repo_id.clone() },
+                    )
+                    .await?;
+                    (pull.repo_id, now.unwrap_or_else(|| a.repo.clone()))
+                }
                 None => return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found.")),
             },
             None => match self.repo(&a.repo, &member_of(&a.actor, &a.repo.namespace)).await? {
-                Outcome::Ok(repo) => (repo.id, repo.namespace.to_lowercase()),
+                Outcome::Ok(repo) => (repo.id, RepoPath { namespace: repo.namespace, name: repo.name }),
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
             },
         };
+        let namespace = path.namespace.to_lowercase();
         // Nothing new starts on an archived or deleted repository.
         if !self.repo_active(&repo_id).await? {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
-                format!("{}/{} is archived or deleted, so nothing new starts on it.", a.repo.namespace, a.repo.name),
+                format!("{}/{} is archived or deleted, so nothing new starts on it.", path.namespace, path.name),
             ));
         }
         let now = now_ms();
@@ -260,7 +271,7 @@ impl Work {
                 id.as_str().into(),
                 namespace.into(),
                 repo_id.into(),
-                format!("{}/{}", a.repo.namespace, a.repo.name).into(),
+                format!("{}/{}", path.namespace, path.name).into(),
                 a.number.filter(|n| *n > 0).map_or(JsValue::NULL, JsValue::from),
                 optional(&a.pull_id),
                 optional(&a.title.map(|title| one_line(&title, 200))),

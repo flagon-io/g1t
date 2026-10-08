@@ -46,6 +46,22 @@ shown, but never holds a merge.
 A workflow job's **Details** opens its log on the run's page, where every
 step's output is kept.
 
+A closed or merged pull request keeps a checks section in its conversation:
+its head commit's workflow runs, job by job, as they ended, each with
+**Details** to its log. It is there to read; nothing in it can be re-run,
+and it says nothing about merging.
+
+### Other attempts at the same issue
+
+When an issue has more than one pull request, for example because two
+agents each tried it, every one of them shows **Other attempts at #N**: the
+pull requests for that issue side by side, this one first. Each row has its
+state (open, merged, or closed because another was merged instead), its
+head commit's checks, where its review stands, its size, and the files it
+changes that this one changes too. Pull requests for the same issue are
+alternatives, so they are not listed under **Other work is changing the
+same files**; that box is for work on other issues, which will collide.
+
 ### Running them again
 
 People with the Write [role](/guides/access-and-roles/) or higher can press

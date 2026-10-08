@@ -76,7 +76,7 @@ export default function Plans({ loaderData, actionData, params }: Route.Componen
             rows={7}
             required
             placeholder={
-              "The outcome, in your own words. For example:\n\nThe greeter should support a --lang flag for Spanish and French, a --shout flag that upper-cases the greeting, and a --version flag. Each should be documented in the README and covered by tests."
+              "The outcome, in your own words. For example:\n\nThe greeter should greet in Italian with --lang it and in Portuguese with --lang pt. Each language should be documented in the README and covered by tests."
             }
           />
           <div className="flex flex-wrap items-center gap-3">

@@ -104,7 +104,30 @@ export type Verb =
   | "asked"
   | "deployed"
   | "deploy_failed"
+  | "pushed"
   | "learned";
+
+/**
+ * The event types `eventItem` makes a line of. Ask the log for these only:
+ * a repository's newest events are mostly ones no line is made of (session
+ * steps, queue and merge-check changes), which would otherwise fill the
+ * page and leave nothing to show.
+ */
+export const FEED_EVENT_TYPES = [
+  "pull.merged",
+  "issue.opened",
+  "issue.closed",
+  "pull.opened",
+  "pull.ready",
+  "checks.completed",
+  "review.completed",
+  "comment.created",
+  "agent.asked",
+  "deployment_status.created",
+] as const satisfies readonly G1tEvent["type"][];
+
+/** With pushes to the default branch too, for one project's feed. */
+export const PROJECT_FEED_EVENT_TYPES = [...FEED_EVENT_TYPES, "git.push"] as const satisfies readonly G1tEvent["type"][];
 
 /** One thing that moved, as the feed shows it. */
 export type ActivityItem = {
@@ -148,9 +171,50 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
       return { ...base, verb: "commented", number: event.data.number };
     case "agent.asked":
       return { ...base, verb: "asked", number: event.data.number };
+    case "deployment_status.created": {
+      // Production, once it is up or has failed: g1t.page builds, g1t
+      // Actions jobs and deployments reported through the API alike.
+      const { deployment, deploymentStatus } = event.data;
+      if (!deployment.production_environment) return null;
+      const state = deploymentStatus.state;
+      if (state !== "success" && state !== "failure" && state !== "error") return null;
+      return {
+        ...base,
+        verb: state === "success" ? "deployed" : "deploy_failed",
+        number: null,
+        to: `/${repo.namespace}/${repo.name}/deployments/${deployment.id}`,
+      };
+    }
     default:
       return null;
   }
+}
+
+/**
+ * A push to the default branch as a feed line, or null for any other push
+ * and for one that only landed a pull request (`merged`: the commits pull
+ * requests' merges made), which already has its own line.
+ */
+export function pushItem(event: G1tEvent, repo: RepoPath, merged: ReadonlySet<string>): ActivityItem | null {
+  if (event.type !== "git.push" || !event.data.defaultBranch || !event.data.ref.startsWith("refs/heads/")) return null;
+  const after = event.data.after;
+  if (!after || /^0+$/.test(after) || merged.has(after)) return null;
+  return {
+    id: event.id,
+    at: Date.parse(event.time),
+    repo,
+    actor: event.actor,
+    verb: "pushed",
+    number: null,
+    text: after.slice(0, 7),
+    to: `/${repo.namespace}/${repo.name}/commit/${after}`,
+  };
+}
+
+/** One project's events as its feed: every line `eventItem` makes, and its people's pushes. */
+export function projectFeed(events: G1tEvent[], repo: RepoPath): ActivityItem[] {
+  const merged = new Set(events.flatMap((event) => (event.type === "pull.merged" ? [event.data.commit] : [])));
+  return events.flatMap((event) => eventItem(event, repo) ?? pushItem(event, repo, merged) ?? []);
 }
 
 /** Accounts that act for g1t itself, named in the log by fixed ids. */

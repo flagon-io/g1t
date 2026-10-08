@@ -576,6 +576,7 @@ const VERB: Record<Verb, string> = {
   asked: "was asked about",
   deployed: "deployed production",
   deploy_failed: "production build failed",
+  pushed: "pushed to the default branch",
   learned: "learned",
 };
 

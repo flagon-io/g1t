@@ -64,12 +64,13 @@ import {
   TIME,
   actorIds,
   ageBuckets,
-  eventItem,
   firstPassRate,
   groupActivity,
   nameActor,
   passRate,
   pipelineStage,
+  PROJECT_FEED_EVENT_TYPES,
+  projectFeed,
   queuedNumbers,
   rankNeeds,
   stuckMinutes,
@@ -159,7 +160,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const libraryRepoP = Promise.all([planP, repoP]).then(([plan, repo]) => (plan === "release" && repo?.ok ? repo.value : null));
   const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
   const workflowsP = planP.then((plan) => (plan && plan !== "production" ? forMembers(() => actions.workflows(path, viewer)) : null));
-  const eventsP = repoP.then((repo) => (repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, limit: 150 })) : null));
+  // Only the kinds the feed shows: the newest events are mostly session
+  // steps and merge checks, which would otherwise crowd out everything.
+  const eventsP = repoP.then((repo) =>
+    repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, types: [...PROJECT_FEED_EVENT_TYPES], limit: 150 })) : null,
+  );
   const minePullsP = repoP.then((repo) =>
     repo?.ok && viewer
       ? soft(work.listActivePulls(viewer)).then((list) => (list ?? []).filter((item) => item.pull.repoId === repo.value.id))
@@ -337,9 +342,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
 
   // --- Activity and health -------------------------------------------------------
   const eventList: G1tEvent[] = recent ?? [];
-  const logged = eventList
-    .map((event) => eventItem(event, path))
-    .filter((item): item is ActivityItem => item != null);
+  const logged: ActivityItem[] = projectFeed(eventList, path);
   // The log names people by account id: their usernames, in one lookup.
   const ids = actorIds(logged.map((item) => item.actor));
   const names = ids.length > 0 ? await soft(identity.usernames(ids)) : {};
@@ -1496,7 +1499,7 @@ function Overview({
             <section className="rounded-xl border border-line bg-surface p-5">
               <h2 className="text-sm font-semibold">Clone</h2>
               <div className="mt-3">
-                <CopyLine text={`git clone ${cloneUrl(addresses, `${source.repo.namespace}/${source.repo.name}`)}`} />
+                <CopyLine breakAtSlashes text={`git clone ${cloneUrl(addresses, `${source.repo.namespace}/${source.repo.name}`)}`} />
               </div>
             </section>
           )}

@@ -26,6 +26,7 @@ import {
   agentHours,
   dailyBuckets,
   eventItem,
+  FEED_EVENT_TYPES,
   greetingFor,
   groupActivity,
   hourIn,
@@ -233,7 +234,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       .slice(0, MAX_PROJECTS);
     const [batch, logs, pushes] = await Promise.all([
       work.pullsForRepos(chosen.map((repo) => repo.id), viewer, PULL_PAGE).catch(() => []),
-      Promise.all(chosen.map((repo) => eventLog.list({ repoId: repo.id, limit: EVENTS_PER_PROJECT }).catch(() => null))),
+      Promise.all(chosen.map((repo) => eventLog.list({ repoId: repo.id, types: [...FEED_EVENT_TYPES], limit: EVENTS_PER_PROJECT }).catch(() => null))),
       // People's pushes straight to the default branch, which no pull
       // request counts: the commits each brought, for the week.
       Promise.all(chosen.map((repo) => directCommits(repo, viewer).catch(() => []))),
@@ -599,20 +600,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       if (item) items.push(item);
     }
   }
-  for (const entry of overviewList ?? []) {
-    const latest = entry.latest;
-    const served = latest?.status === "ready" || latest?.status === "replaced";
-    if (!slug || latest?.kind !== "production" || (!served && latest.status !== "failed")) continue;
-    items.push({
-      id: `deploy:${latest.id}`,
-      at: Date.parse(latest.finishedAt ?? latest.createdAt),
-      repo: { namespace: slug, name: entry.slug },
-      actor: latest.createdBy,
-      verb: served ? "deployed" : "deploy_failed",
-      number: null,
-      to: `/${slug}/${entry.slug}/deployments/${latest.id}`,
-    });
-  }
+  // Production deploys come from the log too (deployment_status.created),
+  // wherever they ran: g1t.page, g1t Actions or the API.
   for (const memory of okOr(memories ?? null)?.workspace ?? []) {
     const repo = memory.repo ?? memory.source.repo;
     if (!repo || !slug) continue;

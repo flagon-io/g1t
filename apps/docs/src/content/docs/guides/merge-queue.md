@@ -164,7 +164,7 @@ Each shows:
 | --- | --- |
 | State | **Waiting**, **Testing** or **Passed**. |
 | Tested as | `main` and the pull requests merged into it, such as `main + #41 + #44`. |
-| Checks | How its state's checks stand. |
+| Checks | How its state's checks stand, linked to the `merge_group` workflow run on the tested commit (each run by name when there are several). |
 | Who | The agent or person who made the pull request, and who queued it. |
 | Commit | The tested state's commit. |
 

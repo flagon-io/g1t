@@ -30,10 +30,13 @@ import { Await, Form, Link, redirect } from "react-router";
 
 import {
   type Capability,
+  type Comment,
   type Comparison,
   type Deployment,
   type Job,
   type LiveApp,
+  type Pull,
+  type RepoPath,
   type SessionEntry,
   type Viewer,
   pullComparison,
@@ -69,6 +72,8 @@ import { Loading, SkeletonLine } from "../../components/ui/skeleton";
 import { TabStrip } from "../../components/ui/tab-strip";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
+import { AttemptsBox } from "../../components/attempts";
+import { type Attempt, attemptReview, otherAttempts, sharedPaths, splitOverlaps } from "../../lib/attempts";
 import {
   CommentForm,
   CommentList,
@@ -176,9 +181,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // The jobs of each workflow run on its head, to list checks job by job.
   // Read as the viewer: a run they cannot see is listed by its status alone.
   // Streamed: the checks show by status first, then job by job.
+  // A closed or merged one lists its head's checks too, to read only.
   const runIds = [...new Set((found.value.statuses ?? []).map(runIdOf).filter((id) => id != null))].slice(0, 10);
   const workflowJobs =
-    tab === "conversation" && pull.status === "open" && runIds.length > 0
+    tab === "conversation" && pull.status !== "draft" && runIds.length > 0
       ? Promise.all(runIds.map((id) => actions.run(path, viewer, id).catch(() => null))).then((runs) => {
           const jobs: Record<string, Job[]> = {};
           for (const run of runs) if (run?.ok) jobs[run.value.run.id] = run.value.jobs;
@@ -209,6 +215,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       : false,
   ]);
   const affects = used.ok ? used.value.usedBy : [];
+  // Every pull request for its issue, to compare: streamed, and read only
+  // when there is more than this one.
+  const attempts =
+    tab === "conversation" && pull.issue != null && (found.value.issue?.pullCount ?? 0) > 1
+      ? attemptsFor(path, viewer, pull, found.value.comments).catch(() => [] as Attempt[])
+      : null;
   const [labels, milestones] = await Promise.all([labelsFound, milestonesFound]);
   const repoDefault = repo.ok ? repo.value.defaultBranch : "main";
   // The default branch's protection covers pull requests into it only.
@@ -226,6 +238,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // The branch it merges into: Write and up.
     canChangeBase: can.push,
     workflowJobs,
+    attempts,
     tab,
     session: session?.ok ? session.value : [],
     // An empty comparison if it could not be made.
@@ -272,6 +285,43 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Streamed: the conversation shows first, the preview card after.
     ...deploymentOf(deployed?.ok ? deployed.value : null, number, params.owner, affects, viewer),
   };
+}
+
+/**
+ * This pull request and the latest few others for its issue, each with its
+ * head's checks and where its review stands, this one first.
+ */
+async function attemptsFor(path: RepoPath, viewer: Viewer, pull: Pull, comments: Comment[]): Promise<Attempt[]> {
+  const found = await work.getIssue(path, pull.issue!, viewer);
+  if (!found.ok) return [];
+  const others = otherAttempts(found.value.pulls, pull.number).flatMap(
+    (number) => found.value.pulls.find((other) => other.number === number) ?? [],
+  );
+  const [details, checks] = await Promise.all([
+    Promise.all(others.map((other) => work.getPull(path, other.number, viewer).catch(() => null))),
+    commitChecksFor(path, viewer, [pull.headCommit, ...others.map((other) => other.headCommit)]),
+  ]);
+  const attempt = (one: Pull, said: Comment[], current: boolean): Attempt => ({
+    number: one.number,
+    title: one.title,
+    status: one.status,
+    supersededBy: one.supersededBy,
+    author: openedBy(one).name,
+    headCommit: one.headCommit,
+    files: one.files,
+    updatedAt: one.updatedAt,
+    current,
+    shared: current ? [] : sharedPaths(one.files, pull.files),
+    checks: (one.headCommit && checks?.[one.headCommit]) || null,
+    review: attemptReview(said, one.reviewers),
+  });
+  return [
+    attempt(pull, comments, true),
+    ...others.map((other, index) => {
+      const detail = details[index];
+      return attempt(other, detail?.ok ? detail.value.comments : [], false);
+    }),
+  ];
 }
 
 /**
@@ -612,6 +662,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     conflicts = [],
     earlierChecks = [],
     workflowJobs,
+    attempts,
     affects,
     preview,
     build,
@@ -660,6 +711,22 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       loading={loading}
     />
   );
+  // A closed or merged pull request's checks, as they ended: to read, with
+  // nothing to re-run and nothing that holds a merge.
+  const settledChecks = (jobs: Record<string, Job[]>, loading = false) => (
+    <ChecksSection
+      run={null}
+      required={[]}
+      statuses={statuses}
+      jobs={jobs}
+      pull={pull}
+      base={base}
+      earlier={[]}
+      canRerunWorkflows={false}
+      settled
+      loading={loading}
+    />
+  );
   const addresses = useAddresses();
   const remote = pull.fork
     ? cloneUrl(addresses, `${pull.fork.namespace}/${pull.fork.name}`)
@@ -675,8 +742,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const unchecked = requiredChecks.some((check) => check.state !== "success") || checks?.status === "failed";
   const requiredFailed = requiredChecks.some((check) => check.state === "failure") || checks?.status === "failed";
   // Pull requests for other issues changing the same files will conflict;
-  // ones for the same issue are alternatives, and expected to.
-  const collisions = overlaps.filter((other) => other.issue == null || other.issue !== pull.issue);
+  // ones for the same issue are alternatives, and expected to: those are
+  // compared under their own heading.
+  const { collisions } = splitOverlaps(overlaps, pull.issue);
   const review = {
     changesUrl: here + "?tab=changes",
     // Nobody reviews their own pull request, nor one g1t made for them.
@@ -962,6 +1030,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   ))}
                 </ul>
               )}
+              {attempts && pull.issue != null && <AttemptsBox attempts={attempts} issue={pull.issue} base={base} />}
               {collisions.length > 0 && active && (
                 <div className="mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
                   <p className="flex items-center gap-2.5 font-medium">
@@ -1104,6 +1173,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       />
                     </div>
                   </div>
+                )}
+
+                {(pull.status === "merged" || pull.status === "closed") && statuses.length > 0 && (
+                  <StatusBox>
+                    <Suspense fallback={settledChecks({}, true)}>
+                      <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
+                    </Suspense>
+                  </StatusBox>
                 )}
 
                 {pull.status === "open" && (
@@ -1381,8 +1458,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         </div>
 
         <aside className={tab === "changes" ? "hidden" : "space-y-6"}>
-          {/* An open pull request shows its checks in full in the merge box. */}
-          {pull.status !== "open" && <WorkflowStatuses statuses={statuses} />}
+          {/* Other than a draft, a pull request shows its checks in full in the conversation. */}
+          {pull.status === "draft" && <WorkflowStatuses statuses={statuses} />}
           {affects.length > 0 && (
             <section>
               <h3 className="flex items-center gap-1.5 text-sm font-medium">

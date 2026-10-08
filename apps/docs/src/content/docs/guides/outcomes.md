@@ -27,9 +27,9 @@ read it can see its plans.
 3. Choose **Plan it**.
 
 ```text
-The greeter should support a --lang flag for Spanish and French, a --shout
-flag that upper-cases the greeting, and a --version flag. Each should be
-documented in the README and covered by tests.
+The greeter should greet in Italian with --lang it and in Portuguese with
+--lang pt. Each language should be documented in the README and covered by
+tests.
 ```
 
 An agent reads the repository in a sandbox and writes the plan. This takes
@@ -145,7 +145,7 @@ The same flow is three operations, the actions of the MCP `plan` tool.
 curl -X POST https://api.g1t.sh/repos/acme/greeter/plans \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"brief": "The greeter should support a --shout flag, documented and tested."}'
+  -d '{"brief": "The greeter should greet in Italian with --lang it, documented and tested."}'
 
 # 2. Read it until status is "ready".
 curl https://api.g1t.sh/repos/acme/greeter/plans/pln_01… \
