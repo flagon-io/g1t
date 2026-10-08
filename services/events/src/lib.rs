@@ -28,6 +28,17 @@ use worker::{Context, D1Database, Env, MessageBatch, Request, Response, Result, 
 
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
+/// Statuses and check runs reported on commits: delivered to webhooks, and
+/// left out of a timeline unless asked for by type.
+const REPORTING: [&str; 7] = [
+    "status.created",
+    "check_run.created",
+    "check_run.completed",
+    "check_run.rerequested",
+    "check_run.requested_action",
+    "check_suite.completed",
+    "check_suite.rerequested",
+];
 /// Every binding whose name starts with this is a queue that receives all
 /// events: one per subscribing service.
 const SUBSCRIBER_PREFIX: &str = "SUBSCRIBER_";
@@ -116,6 +127,13 @@ impl Events {
             let marks = vec!["?"; a.types.len()].join(", ");
             conditions.push(format!("type IN ({marks})"));
             values.extend(a.types.iter().map(|kind| JsValue::from(kind.as_str())));
+        } else {
+            // What CI and integrations report on commits goes to webhooks,
+            // and is read from each commit's checks; a timeline asked for
+            // everything would be little else on a busy repository.
+            let marks = vec!["?"; REPORTING.len()].join(", ");
+            conditions.push(format!("type NOT IN ({marks})"));
+            values.extend(REPORTING.iter().map(|kind| JsValue::from(*kind)));
         }
         if let Some(before) = &a.before {
             conditions.push("id < ?".to_owned());

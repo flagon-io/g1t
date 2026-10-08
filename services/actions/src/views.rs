@@ -2,6 +2,7 @@
 
 use g1t_actions::workflow::{self, Severity};
 use g1t_contracts::access::Capability;
+use g1t_contracts::checks::{ActionsChecksArgs, MAX_COMMITS};
 use g1t_contracts::actions::{
     Annotation, Job, JobLog, LogChunk, LogsArgs, RunArgs, RunDetail, RunsArgs, SetWorkflowEnabledArgs, StepState, Workflow, WorkflowNote,
     WorkflowRun, WorkflowsArgs,
@@ -223,4 +224,62 @@ impl Actions {
         let row = WorkflowRow { state: state.to_owned(), ..row };
         Ok(Outcome::Ok(self.summary(&row).await?))
     }
+
+    /// `check_runs`: workflow runs with their jobs, by commits, by a run's
+    /// id or by one of its jobs' ids, newest first, for the work service to
+    /// show as check suites and check runs. It decides who may see them.
+    pub async fn check_runs(&self, a: ActionsChecksArgs) -> Result<Vec<RunDetail>> {
+        let runs: Vec<RunRow> = if let Some(job) = &a.job_id {
+            self.db
+                .prepare("SELECT runs.* FROM runs JOIN jobs ON jobs.run_id = runs.id WHERE jobs.id = ? AND runs.repo_id = ?")
+                .bind(&[job.as_str().into(), a.repo_id.as_str().into()])?
+                .all()
+                .await?
+                .results::<RunRow>()?
+        } else if let Some(run) = &a.run_id {
+            self.db
+                .prepare("SELECT * FROM runs WHERE id = ? AND repo_id = ?")
+                .bind(&[run.as_str().into(), a.repo_id.as_str().into()])?
+                .all()
+                .await?
+                .results::<RunRow>()?
+        } else if a.shas.is_empty() {
+            Vec::new()
+        } else {
+            let shas: Vec<&String> = a.shas.iter().take(MAX_COMMITS).collect();
+            let marks = vec!["?"; shas.len()].join(", ");
+            let mut binds: Vec<worker::wasm_bindgen::JsValue> = vec![a.repo_id.as_str().into()];
+            binds.extend(shas.iter().map(|sha| sha.as_str().into()));
+            binds.push(CHECK_RUNS_LIMIT.into());
+            self.db
+                .prepare(format!("SELECT * FROM runs WHERE repo_id = ? AND sha IN ({marks}) ORDER BY id DESC LIMIT ?"))
+                .bind(&binds)?
+                .all()
+                .await?
+                .results::<RunRow>()?
+        };
+        if runs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let marks = vec!["?"; runs.len()].join(", ");
+        let ids: Vec<worker::wasm_bindgen::JsValue> = runs.iter().map(|run| run.id.as_str().into()).collect();
+        let jobs = self
+            .db
+            .prepare(format!("SELECT * FROM jobs WHERE run_id IN ({marks}) ORDER BY rowid"))
+            .bind(&ids)?
+            .all()
+            .await?
+            .results::<JobRow>()?;
+        let mut by_run: std::collections::HashMap<String, Vec<Job>> = std::collections::HashMap::new();
+        for job in jobs {
+            by_run.entry(job.run_id.clone()).or_default().push(job_view(job));
+        }
+        Ok(runs
+            .iter()
+            .map(|run| RunDetail { run: run.summary(), jobs: by_run.remove(&run.id).unwrap_or_default(), notes: Vec::new() })
+            .collect())
+    }
 }
+
+/// The most runs `check_runs` reads for a set of commits.
+const CHECK_RUNS_LIMIT: u32 = 200;

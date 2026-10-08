@@ -70,7 +70,7 @@ test("full access ticks the top level of everything", () => {
 
 test("presets are recognised however their scopes are written", () => {
   assert.equal(matchingPreset(null), "full");
-  assert.equal(matchingPreset(["repo:read", "code:write", "packages:write", "workflows:write"]), "ci");
+  assert.equal(matchingPreset(["repo:read", "code:write", "packages:write", "workflows:write", "checks:write"]), "ci");
   assert.equal(matchingPreset([...OAUTH_DEFAULT_SCOPES]), "agent");
   assert.equal(matchingPreset(["issues:read"]), null);
 });
@@ -78,7 +78,7 @@ test("presets are recognised however their scopes are written", () => {
 test("a token's access reads plainly", () => {
   assert.equal(accessSummary({ scopes: null, legacy: true }), "Legacy · full access");
   assert.equal(accessSummary({ scopes: null, legacy: false }), "Full access");
-  assert.equal(accessSummary({ scopes: ["code:read", "code:write", "packages:write", "workflows:write", "repo:read"], legacy: false }), "CI");
+  assert.equal(accessSummary({ scopes: ["code:read", "code:write", "packages:write", "workflows:write", "checks:write", "repo:read"], legacy: false }), "CI");
   assert.equal(accessSummary({ scopes: ["issues:read", "issues:write", "memory:read"], legacy: false }), "2 scopes");
   assert.equal(accessSummary({ scopes: [], legacy: false }), "No scopes");
 });

@@ -8,6 +8,7 @@ use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
+use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use crate::rest::{ROUTES, Route};
@@ -216,6 +217,24 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Rules(RulesOp::UpdateWorkspaceRuleset),
             Op::Rules(RulesOp::DeleteWorkspaceRuleset),
             Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
+        ],
+    ),
+    (
+        "Checks",
+        "What CI, integrations and g1t Actions say about a commit, in the shapes CI tools already send: statuses (a state per context) and check runs (a lifecycle, a conclusion, a Markdown report, annotations on lines and buttons), grouped per reporter into check suites. g1t Actions jobs are check runs too. Required checks are met by either.",
+        &[
+            Op::Checks(ChecksOp::CreateCommitStatus),
+            Op::Checks(ChecksOp::ListCommitStatuses),
+            Op::Checks(ChecksOp::GetCombinedStatus),
+            Op::Checks(ChecksOp::CreateCheckRun),
+            Op::Checks(ChecksOp::UpdateCheckRun),
+            Op::Checks(ChecksOp::GetCheckRun),
+            Op::Checks(ChecksOp::ListCheckRunAnnotations),
+            Op::Checks(ChecksOp::RerequestCheckRun),
+            Op::Checks(ChecksOp::ListCheckRunsForRef),
+            Op::Checks(ChecksOp::ListCheckSuitesForRef),
+            Op::Checks(ChecksOp::GetCheckSuite),
+            Op::Checks(ChecksOp::RerequestCheckSuite),
         ],
     ),
     (
@@ -557,6 +576,7 @@ fn title(op: Op) -> &'static str {
         Op::GetCodeownersErrors => "List CODEOWNERS errors",
         Op::Security(op) => op.title(),
         Op::Rules(op) => op.title(),
+        Op::Checks(op) => op.title(),
     }
 }
 
@@ -692,8 +712,11 @@ fn summary(route: &Route, id: &str) -> String {
 fn operation(route: &Route) -> Value {
     let op = route.op;
     let path_params: Vec<&str> = route.params().collect();
-    // `owner` and `name` in the path stand for the operation's `repo` input.
-    let covered = |name: &str| name == "repo" || path_params.contains(&name);
+    // `owner` and `name` in the path stand for the operation's `repo` input,
+    // so a `name` in the body, such as a check run's, is the body's own.
+    let stands_for_repo =
+        |name: &str| matches!(name, "owner" | "name") && path_params.contains(&"owner") && path_params.contains(&"name");
+    let covered = |name: &str| name == "repo" || (path_params.contains(&name) && !stands_for_repo(name));
     let all_properties = op.properties();
     let mut properties = all_properties.clone();
     properties.retain(|name, _| !covered(name));
@@ -705,7 +728,7 @@ fn operation(route: &Route) -> Value {
 
     let mut parameters: Vec<Value> = path_params
         .iter()
-        .map(|name| parameter(name, "path", true, all_properties.get(*name)))
+        .map(|name| parameter(name, "path", true, if stands_for_repo(name) { None } else { all_properties.get(*name) }))
         .collect();
     let mut body = Value::Null;
     if route.method == "GET" {

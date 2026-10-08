@@ -2,6 +2,7 @@ import type { Route } from "./+types/tree";
 import { page } from "../../lib/meta";
 import { TreeView } from "../../components/repo-view";
 import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
+import { commitChecksFor } from "../../lib/commit-checks.server";
 import { lastCommitsFor } from "../../lib/last-commits.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -23,9 +24,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   // Each entry's last commit walks history: streamed in after the list.
   const lastCommits = lastCommitsFor(path, viewer, params.ref, params["*"] ?? "");
-  return { tree: unwrap(tree), branches: branches?.ok ? branches.value : null, lastCommits };
+  const found = unwrap(tree);
+  // The latest commit's checks: streamed in beside it.
+  const checks = commitChecksFor(path, viewer, [found.head?.hash]);
+  return { tree: found, branches: branches?.ok ? branches.value : null, lastCommits, checks };
 }
 
 export default function Tree({ loaderData }: Route.ComponentProps) {
-  return <TreeView tree={loaderData.tree} branches={loaderData.branches} lastCommits={loaderData.lastCommits} />;
+  return <TreeView tree={loaderData.tree} branches={loaderData.branches} lastCommits={loaderData.lastCommits} checks={loaderData.checks} />;
 }

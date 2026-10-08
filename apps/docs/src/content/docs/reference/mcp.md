@@ -383,8 +383,10 @@ one short fact at a time, never a secret. See
 ## `workflow`
 
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
-cancelling or rerunning them, and the self-hosted runners they run on. See
-[GitHub Actions](/guides/actions/) and
+cancelling or rerunning them; checks on commits (statuses, check runs and
+check suites, a workflow job being a check run); and the self-hosted
+runners they run on. See [GitHub Actions](/guides/actions/),
+[Checks](/guides/checks/) and
 [self-hosted runners](/guides/self-hosted-runners/).
 
 | Action | What it does | Required | Scope |
@@ -397,6 +399,18 @@ cancelling or rerunning them, and the self-hosted runners they run on. See
 | [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
 | [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
 | [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
+| [`combined_status`](/reference/api/checks/get-combined-status/) | A commit's statuses, one per context, and the `state` they add up to. `ref` is a SHA, branch or tag. | `repo`, `ref` | `checks:read` |
+| [`list_statuses`](/reference/api/checks/list-commit-statuses/) | A commit's statuses, newest first. | `repo`, `ref` | `checks:read` |
+| [`set_status`](/reference/api/checks/create-commit-status/) | Set a status: `state`, `context`, `description`, `target_url`. Write role. | `repo`, `sha`, `state` | `checks:write` |
+| [`list_check_runs`](/reference/api/checks/list-check-runs-for-ref/) | A commit's check runs, workflow jobs included; `check_name`, `status`, `app`, `filter` (`latest` or `all`). | `repo`, `ref` | `checks:read` |
+| [`get_check_run`](/reference/api/checks/get-check-run/) | One check run with its report: `cr_…`, or a job's `job_…`. | `repo`, `id` | `checks:read` |
+| [`check_run_annotations`](/reference/api/checks/list-check-run-annotations/) | What a check run says about lines of files. | `repo`, `id` | `checks:read` |
+| [`create_check_run`](/reference/api/checks/create-check-run/) | Report a check run: `status`, `conclusion`, `output` with `annotations`, `actions`, `app`. Write role. | `repo`, `name`, `head_sha` | `checks:write` |
+| [`update_check_run`](/reference/api/checks/update-check-run/) | Move a check run on or complete it; annotations are added. Write role. | `repo`, `id` | `checks:write` |
+| [`rerequest_check_run`](/reference/api/checks/rerequest-check-run/) | Ask its reporter to run it again; a job's run runs again (also `workflows:write`). Write role. | `repo`, `id` | `checks:write` |
+| [`list_check_suites`](/reference/api/checks/list-check-suites-for-ref/) | A commit's check suites: one per reporter, and one per workflow run. | `repo`, `ref` | `checks:read` |
+| [`get_check_suite`](/reference/api/checks/get-check-suite/) | One check suite: `cs_…`, or a workflow run's `run_…`. | `repo`, `id` | `checks:read` |
+| [`rerequest_check_suite`](/reference/api/checks/rerequest-check-suite/) | Ask its reporter to run it again; a workflow run runs again (also `workflows:write`). Write role. | `repo`, `id` | `checks:write` |
 | [`list_runners`](/reference/api/runners/list-runners-for-workspace/) | [Self-hosted runners](/guides/self-hosted-runners/): a workspace's (`workspace`), or a repository's own and the workspace's it may use (`repo`), with status, labels and what each is running. | `workspace` or `repo` | `runners:read` |
 | [`create_runner_token`](/reference/api/runners/create-runner-registration-token-for-workspace/) | A registration token for `g1t-runner register`, an hour long; `group` for a workspace's. Owners, or a repository's admins; not workspace tokens. | `workspace` or `repo` | `runners:admin` |
 | [`remove_runner`](/reference/api/runners/remove-runner-for-workspace/) | Remove a runner; a job it is running fails. | `workspace` or `repo`, `id` | `runners:admin` |

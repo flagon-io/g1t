@@ -271,6 +271,13 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_workflow_runs",
     "get_workflow_run",
     "get_job_logs",
+    "list_commit_statuses",
+    "get_combined_status",
+    "list_check_runs_for_ref",
+    "get_check_run",
+    "list_check_run_annotations",
+    "list_check_suites_for_ref",
+    "get_check_suite",
     "list_integrations",
     "get_model_routes",
     "list_webhooks",
@@ -349,6 +356,13 @@ pub const NEVER: &[&str] = &[
     "cancel_workflow_run",
     "rerun_workflow_run",
     "update_workflow",
+    // An agent never reports checks on its own work, nor asks for them
+    // to run again: what checks say is the integrations' to say.
+    "create_commit_status",
+    "create_check_run",
+    "update_check_run",
+    "rerequest_check_run",
+    "rerequest_check_suite",
     "list_actions_secrets",
     "set_actions_secret",
     "delete_actions_secret",
@@ -439,6 +453,13 @@ const TOOLS_READ: &[&str] = &[
     "list_workflow_runs",
     "get_workflow_run",
     "get_job_logs",
+    "list_commit_statuses",
+    "get_combined_status",
+    "list_check_runs_for_ref",
+    "get_check_run",
+    "list_check_run_annotations",
+    "list_check_suites_for_ref",
+    "get_check_suite",
 ];
 
 pub fn is_read(operation: &str) -> bool {

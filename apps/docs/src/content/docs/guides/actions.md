@@ -207,7 +207,9 @@ A pull request's checks are its workflows. Each workflow that runs on
 `pull_request` runs on every pull request's head, whoever opened it, a
 person or an agent, and its runs report a check named after the workflow:
 a workflow with `name: CI` reports `CI`, with the status context
-`CI / pull_request` (the workflow's name and the event).
+`CI / pull_request` (the workflow's name and the event). Each of its jobs
+is a [check run](/guides/checks/) on the commit, shown as
+`CI / test (pull_request)` beside it wherever it appears.
 
 - **Which checks a merge needs** is up to the [rules](/guides/rules/) of the branch it merges into,
   their [required status checks](/guides/pull-requests/#required-status-checks),

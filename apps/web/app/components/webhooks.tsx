@@ -26,6 +26,18 @@ const GROUPS: { title: string; events: string[] }[] = [
     events: ["pull.opened", "pull.ready", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed"],
   },
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
+  {
+    title: "Statuses and check runs",
+    events: [
+      "status.created",
+      "check_run.created",
+      "check_run.completed",
+      "check_run.rerequested",
+      "check_run.requested_action",
+      "check_suite.completed",
+      "check_suite.rerequested",
+    ],
+  },
   { title: "Agents", events: ["session.appended", "agent.asked"] },
   { title: "Access", events: ["repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
   {

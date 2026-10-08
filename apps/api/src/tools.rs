@@ -19,6 +19,7 @@ use g1t_contracts::scopes::{Level, NO_SCOPE, TokenAccess, scope_for};
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
+use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 
@@ -182,7 +183,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -193,6 +194,18 @@ pub const TOOLS: &[Tool] = &[
             a("cancel", Op::CancelWorkflowRun, "Cancel a run"),
             a("rerun", Op::RerunWorkflowRun, "Run a finished run again"),
             a("update", Op::UpdateWorkflow, "Turn a workflow on or off"),
+            a("combined_status", Op::Checks(ChecksOp::GetCombinedStatus), "A commit's statuses and the state they add up to"),
+            a("list_statuses", Op::Checks(ChecksOp::ListCommitStatuses), "A commit's statuses, newest first"),
+            a("set_status", Op::Checks(ChecksOp::CreateCommitStatus), "Set a status on a commit"),
+            a("list_check_runs", Op::Checks(ChecksOp::ListCheckRunsForRef), "A commit's check runs, g1t Actions jobs included"),
+            a("get_check_run", Op::Checks(ChecksOp::GetCheckRun), "One check run with its report"),
+            a("check_run_annotations", Op::Checks(ChecksOp::ListCheckRunAnnotations), "What a check run says about lines of files"),
+            a("create_check_run", Op::Checks(ChecksOp::CreateCheckRun), "Report a check run on a commit"),
+            a("update_check_run", Op::Checks(ChecksOp::UpdateCheckRun), "Move a check run on, complete it, add annotations"),
+            a("rerequest_check_run", Op::Checks(ChecksOp::RerequestCheckRun), "Ask for a check run to run again"),
+            a("list_check_suites", Op::Checks(ChecksOp::ListCheckSuitesForRef), "A commit's check suites, one per reporter or workflow run"),
+            a("get_check_suite", Op::Checks(ChecksOp::GetCheckSuite), "One check suite"),
+            a("rerequest_check_suite", Op::Checks(ChecksOp::RerequestCheckSuite), "Ask for a check suite to run again"),
             a("list_runners", Op::ListRunners, "Self-hosted runners, with status, labels and what each is doing"),
             a("create_runner_token", Op::CreateRunnerRegistrationToken, "A one-hour token for g1t-runner register"),
             a("remove_runner", Op::RemoveRunner, "Remove a self-hosted runner"),

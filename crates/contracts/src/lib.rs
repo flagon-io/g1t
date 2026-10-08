@@ -12,6 +12,7 @@ pub mod audit;
 pub mod backups;
 pub mod billing;
 pub mod capture;
+pub mod checks;
 pub mod codeowners;
 pub mod credentials;
 pub mod events;

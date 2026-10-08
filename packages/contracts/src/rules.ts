@@ -26,7 +26,7 @@ export type AppliesTo = "everyone" | "agents" | "people";
 export type BypassActorKind = "role" | "team" | "user" | "token" | "g1t";
 export type BypassMode = "always" | "pull_requests";
 export type MergeMethod = "merge" | "squash" | "rebase";
-export type Integration = "actions" | "deployments" | "security" | "g1t";
+export type Integration = "actions" | "deployments" | "security" | "g1t" | "api";
 export type PatternOperator = "starts_with" | "ends_with" | "contains" | "regex";
 
 export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";

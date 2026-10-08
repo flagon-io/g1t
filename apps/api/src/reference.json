@@ -9278,5 +9278,403 @@
         ]
       }
     }
+  },
+  "create_commit_status": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e"
+    },
+    "request": {
+      "state": "success",
+      "context": "ci/build",
+      "description": "Build #4821 passed",
+      "target_url": "https://ci.example.com/builds/4821"
+    },
+    "response": {
+      "context": "ci/build",
+      "state": "success",
+      "description": "Build #4821 passed",
+      "target_url": "https://ci.example.com/builds/4821",
+      "updated_at": "2026-10-07T14:03:02.118Z",
+      "source": "api"
+    },
+    "notes": "Setting a context again replaces its status on that commit. A status counts as a check: a required check named `ci/build`, in branch protection or a ruleset's `required_status_checks`, is met by it, and a ruleset check pinned to the `api` integration only by statuses and check runs reported through the API. See the [Checks guide](/guides/checks/)."
+  },
+  "list_commit_statuses": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "main"
+    },
+    "response": [
+      {
+        "context": "ci/build",
+        "state": "success",
+        "description": "Build #4821 passed",
+        "target_url": "https://ci.example.com/builds/4821",
+        "updated_at": "2026-10-07T14:03:02.118Z",
+        "source": "api"
+      }
+    ]
+  },
+  "get_combined_status": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "main"
+    },
+    "response": {
+      "state": "success",
+      "sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+      "total_count": 1,
+      "statuses": [
+        {
+          "context": "ci/build",
+          "state": "success",
+          "description": "Build #4821 passed",
+          "target_url": "https://ci.example.com/builds/4821",
+          "updated_at": "2026-10-07T14:03:02.118Z",
+          "source": "api"
+        }
+      ]
+    }
+  },
+  "create_check_run": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello"
+    },
+    "request": {
+      "name": "lint",
+      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+      "status": "completed",
+      "conclusion": "failure",
+      "details_url": "https://ci.example.com/builds/4821",
+      "external_id": "4821",
+      "output": {
+        "title": "2 problems",
+        "summary": "**2** problems in 1 file.",
+        "annotations": [
+          {
+            "path": "src/parse.rs",
+            "start_line": 42,
+            "end_line": 42,
+            "annotation_level": "warning",
+            "message": "unused variable: `depth`"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "label": "Fix this",
+          "description": "Apply the suggested fixes",
+          "identifier": "fix"
+        }
+      ]
+    },
+    "response": {
+      "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+      "name": "lint",
+      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-10-07T14:02:11.000Z",
+      "completed_at": "2026-10-07T14:02:36.000Z",
+      "details_url": "https://ci.example.com/builds/4821",
+      "external_id": "4821",
+      "html_url": "https://g1t.sh/flagon-io/hello/checks/cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+      "output": {
+        "title": "2 problems",
+        "summary": "**2** problems in 1 file.",
+        "text": null,
+        "annotations_count": 2
+      },
+      "actions": [
+        {
+          "label": "Fix this",
+          "description": "Apply the suggested fixes",
+          "identifier": "fix"
+        }
+      ],
+      "check_suite": {
+        "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+      },
+      "app": {
+        "slug": "buildkite",
+        "name": "Buildkite"
+      },
+      "created_at": "2026-10-07T14:02:11.318Z"
+    },
+    "notes": "Start a run as `queued` or `in_progress` and complete it later with [`update_check_run`](/reference/api/checks/update-check-run/), or create it completed. `app` names who reports it; by default it is your token's name, and a g1t Actions job's `G1T_TOKEN` reports as g1t Actions. Each reporter's runs on a commit form one check suite. The run also stands as a status of its name, so a required check `lint` is met by it: `success`, `neutral` and `skipped` pass, any other conclusion fails. See the [Checks guide](/guides/checks/)."
+  },
+  "update_check_run": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n"
+    },
+    "request": {
+      "conclusion": "success",
+      "output": {
+        "title": "No problems",
+        "summary": "All clear."
+      }
+    },
+    "response": {
+      "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+      "name": "lint",
+      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-07T14:02:11.000Z",
+      "completed_at": "2026-10-07T14:02:36.000Z",
+      "details_url": "https://ci.example.com/builds/4821",
+      "external_id": "4821",
+      "html_url": "https://g1t.sh/flagon-io/hello/checks/cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+      "output": {
+        "title": "No problems",
+        "summary": "All clear.",
+        "text": null,
+        "annotations_count": 2
+      },
+      "actions": [
+        {
+          "label": "Fix this",
+          "description": "Apply the suggested fixes",
+          "identifier": "fix"
+        }
+      ],
+      "check_suite": {
+        "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+      },
+      "app": {
+        "slug": "buildkite",
+        "name": "Buildkite"
+      },
+      "created_at": "2026-10-07T14:02:11.318Z"
+    },
+    "notes": "Annotations given here are added to the ones the run has, at most 50 a request and 1000 in all."
+  },
+  "get_check_run": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "job_01kq4b6a7b8c9d0e1f2g3h4j5k"
+    },
+    "response": {
+      "id": "job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+      "name": "Test",
+      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-10-07T14:01:02.000Z",
+      "completed_at": "2026-10-07T14:01:27.000Z",
+      "details_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+      "external_id": null,
+      "html_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+      "output": {
+        "title": null,
+        "summary": null,
+        "text": null,
+        "annotations_count": 0
+      },
+      "actions": [],
+      "check_suite": {
+        "id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m"
+      },
+      "app": {
+        "slug": "actions",
+        "name": "g1t Actions"
+      },
+      "workflow": {
+        "run_id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m",
+        "name": "CI",
+        "event": "push"
+      },
+      "created_at": "2026-10-07T14:01:00.512Z"
+    }
+  },
+  "list_check_run_annotations": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n"
+    },
+    "response": [
+      {
+        "path": "src/parse.rs",
+        "start_line": 42,
+        "end_line": 42,
+        "start_column": 9,
+        "end_column": 14,
+        "annotation_level": "warning",
+        "message": "unused variable: `depth`",
+        "title": "unused_variables",
+        "raw_details": "#[warn(unused_variables)] on by default"
+      }
+    ]
+  },
+  "rerequest_check_run": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n"
+    },
+    "response": {
+      "rerequested": true
+    }
+  },
+  "list_check_runs_for_ref": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "main"
+    },
+    "query": {
+      "filter": "latest"
+    },
+    "response": {
+      "total_count": 2,
+      "check_runs": [
+        {
+          "id": "cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+          "name": "lint",
+          "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-10-07T14:02:11.000Z",
+          "completed_at": "2026-10-07T14:02:36.000Z",
+          "details_url": "https://ci.example.com/builds/4821",
+          "external_id": "4821",
+          "html_url": "https://g1t.sh/flagon-io/hello/checks/cr_01kq4b7c8d9e0f1g2h3j4k5m6n",
+          "output": {
+            "title": "2 problems",
+            "summary": "**2** problems in 1 file.",
+            "text": null,
+            "annotations_count": 2
+          },
+          "actions": [
+            {
+              "label": "Fix this",
+              "description": "Apply the suggested fixes",
+              "identifier": "fix"
+            }
+          ],
+          "check_suite": {
+            "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+          },
+          "app": {
+            "slug": "buildkite",
+            "name": "Buildkite"
+          },
+          "created_at": "2026-10-07T14:02:11.318Z"
+        },
+        {
+          "id": "job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+          "name": "Test",
+          "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+          "status": "completed",
+          "conclusion": "success",
+          "started_at": "2026-10-07T14:01:02.000Z",
+          "completed_at": "2026-10-07T14:01:27.000Z",
+          "details_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+          "external_id": null,
+          "html_url": "https://g1t.sh/flagon-io/hello/actions/runs/run_01kq4b6a7b8c9d0e1f2g3h4j5m?job=job_01kq4b6a7b8c9d0e1f2g3h4j5k",
+          "output": {
+            "title": null,
+            "summary": null,
+            "text": null,
+            "annotations_count": 0
+          },
+          "actions": [],
+          "check_suite": {
+            "id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m"
+          },
+          "app": {
+            "slug": "actions",
+            "name": "g1t Actions"
+          },
+          "workflow": {
+            "run_id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m",
+            "name": "CI",
+            "event": "push"
+          },
+          "created_at": "2026-10-07T14:01:00.512Z"
+        }
+      ]
+    }
+  },
+  "list_check_suites_for_ref": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "main"
+    },
+    "response": {
+      "total_count": 2,
+      "check_suites": [
+        {
+          "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p",
+          "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+          "head_branch": "main",
+          "status": "completed",
+          "conclusion": "failure",
+          "app": {
+            "slug": "buildkite",
+            "name": "Buildkite"
+          },
+          "latest_check_runs_count": 1,
+          "created_at": "2026-10-07T14:02:11.318Z",
+          "updated_at": "2026-10-07T14:02:36.502Z"
+        },
+        {
+          "id": "run_01kq4b6a7b8c9d0e1f2g3h4j5m",
+          "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+          "head_branch": "main",
+          "status": "completed",
+          "conclusion": "success",
+          "app": {
+            "slug": "actions",
+            "name": "g1t Actions"
+          },
+          "name": "CI",
+          "latest_check_runs_count": 1,
+          "created_at": "2026-10-07T14:01:00.512Z",
+          "updated_at": "2026-10-07T14:01:28.040Z"
+        }
+      ]
+    }
+  },
+  "get_check_suite": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+    },
+    "response": {
+      "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p",
+      "head_sha": "9f3c2a1b7e6d5c4b3a2918f7e6d5c4b3a2918f7e",
+      "head_branch": "main",
+      "status": "completed",
+      "conclusion": "failure",
+      "app": {
+        "slug": "buildkite",
+        "name": "Buildkite"
+      },
+      "latest_check_runs_count": 1,
+      "created_at": "2026-10-07T14:02:11.318Z",
+      "updated_at": "2026-10-07T14:02:36.502Z"
+    }
+  },
+  "rerequest_check_suite": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "id": "cs_01kq4b7c8d9e0f1g2h3j4k5m6p"
+    },
+    "response": {
+      "rerequested": true
+    }
   }
 }

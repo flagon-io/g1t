@@ -1,3 +1,4 @@
+import type { ChecksApi } from "./checks";
 import type { CodeownersReport, PullCodeOwners } from "./codeowners";
 import type { User, Viewer } from "./identity";
 import type { PullBranchUpdate, RepoPath } from "./repos";
@@ -560,6 +561,10 @@ export type CommitStatus = {
   description: string | null;
   targetUrl: string | null;
   updatedAt: string;
+  /** The integration that reported it: `actions`, `deployments`, `security`, `g1t` or `api`. */
+  source?: string;
+  /** Set on the status a check run stands as: the check run's id. */
+  checkRunId?: string;
 };
 
 /**
@@ -828,7 +833,7 @@ export type RepoPulls = {
 };
 
 /** Issues, pull requests, comments and sessions. */
-export interface WorkApi extends RulesApi {
+export interface WorkApi extends RulesApi, ChecksApi {
   openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
   /**
    * Opens an issue to put g1t on at once: refused, with nothing

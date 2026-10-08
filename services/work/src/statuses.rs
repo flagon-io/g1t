@@ -32,6 +32,8 @@ struct StatusRow {
     updated_at: String,
     #[serde(default)]
     source: Option<String>,
+    #[serde(default)]
+    check_run_id: Option<String>,
 }
 
 impl From<StatusRow> for CommitStatus {
@@ -43,6 +45,7 @@ impl From<StatusRow> for CommitStatus {
             target_url: row.target_url,
             updated_at: row.updated_at,
             source: row.source,
+            check_run_id: row.check_run_id,
         }
     }
 }
@@ -171,7 +174,7 @@ impl Work {
         }
         Ok(self
             .db
-            .prepare("SELECT context, state, description, target_url, updated_at, source FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")
+            .prepare("SELECT context, state, description, target_url, updated_at, source, check_run_id FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")
             .bind(&[repo_id.into(), sha.into()])?
             .all()
             .await?
@@ -182,17 +185,23 @@ impl Work {
     }
 
     pub(crate) async fn set_commit_status(&self, a: SetCommitStatusArgs) -> Result<Outcome<bool>> {
+        self.store_status(a, None).await
+    }
+
+    /// Sets a status, standing for check run `check_run_id` if it does,
+    /// and moves on what was waiting for the commit's checks.
+    pub(crate) async fn store_status(&self, a: SetCommitStatusArgs, check_run_id: Option<&str>) -> Result<Outcome<bool>> {
         if !matches!(a.state.as_str(), "pending" | "success" | "failure" | "error") {
             return Ok(Outcome::fail(FailureCode::Invalid, "`state` is pending, success, failure or error."));
         }
         self.db
             .prepare(
-                "INSERT INTO commit_statuses (repo_id, sha, context, state, description, target_url, updated_at, source)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO commit_statuses (repo_id, sha, context, state, description, target_url, updated_at, source, check_run_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id, sha, context) DO UPDATE SET
                    state = excluded.state, description = excluded.description,
                    target_url = excluded.target_url, updated_at = excluded.updated_at,
-                   source = excluded.source",
+                   source = excluded.source, check_run_id = excluded.check_run_id",
             )
             .bind(&[
                 a.repo_id.as_str().into(),
@@ -203,6 +212,7 @@ impl Work {
                 a.target_url.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 rfc3339(now_ms()).into(),
                 a.source.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
+                check_run_id.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
             ])?
             .run()
             .await?;
@@ -279,6 +289,7 @@ mod tests {
             target_url: None,
             updated_at: String::new(),
             source: None,
+            check_run_id: None,
         }
     }
 

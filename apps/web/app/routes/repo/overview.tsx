@@ -77,6 +77,8 @@ import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { readBranches } from "../../lib/branches.server";
+import { commitChecksFor } from "../../lib/commit-checks.server";
+import { CommitChecksBadge } from "../../components/commit-checks";
 
 const MAX_LANDED = 6;
 /** Branches read for the Active branches list, and shown. */
@@ -337,6 +339,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
           liveApps.some((app) => app.kind === "preview") || builds.some((build) => build.kind === "preview" && wentLive(build.status)),
       });
 
+  // The checks on the latest commit and each active branch's head, in
+  // one call once the branches are read: streamed in beside them.
+  const checks = branches.then((found) =>
+    commitChecksFor(path, viewer, [commitNow?.hash, ...(found?.shown ?? []).map((branch) => branch.commit?.hash)]),
+  );
   const github = await githubP;
   return {
     member,
@@ -371,6 +378,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
       ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false }
       : null,
     branches,
+    checks,
   };
 }
 
@@ -686,7 +694,7 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library } =
+  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library, checks } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const production = live.find((app) => app.kind === "production") ?? null;
@@ -828,17 +836,20 @@ function Overview({
           />
           <Stat
             label="Latest commit"
-            to={commit ? `${base}/commit/${commit.hash}` : undefined}
             value={
               commit ? (
-                <Hint label={commit.message.split("\n")[0]}>
-                  <span>
-                    <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
-                    <span className="font-normal text-muted">
-                      <TimeAgo at={commit.authoredAt} />
-                    </span>
-                  </span>
-                </Hint>
+                <span className="flex min-w-0 items-center gap-1">
+                  <Hint label={commit.message.split("\n")[0]}>
+                    <Link to={`${base}/commit/${commit.hash}`} className="min-w-0 truncate hover:text-accent">
+                      <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
+                      <span className="font-normal text-muted">
+                        <TimeAgo at={commit.authoredAt} />
+                      </span>
+                    </Link>
+                  </Hint>
+                  {/* A button, so beside the link rather than in it. */}
+                  <CommitChecksBadge checks={checks} sha={commit.hash} className="size-5" />
+                </span>
               ) : (
                 "No commits yet"
               )
@@ -971,7 +982,7 @@ function Overview({
                     </Quiet>
                   ) : (
                     <>
-                      <ActiveBranches branches={branches.shown} base={base} main={branches.main} />
+                      <ActiveBranches branches={branches.shown} base={base} main={branches.main} checks={checks} />
                       {branches.total > branches.shown.length && (
                         <p className="mt-2 px-1 text-xs text-faint">
                           The {branches.shown.length} most recently changed of {branches.total} branches.

@@ -157,7 +157,7 @@ opens on the site, or through the API without naming an agent, is a person's.
 
 | Parameter | Default | What it does |
 | --- | --- | --- |
-| `checks` | None | Each check has a `context`, such as `CI` (a workflow's name) or `g1t / deploy`, and an optional `integration`: `actions`, `deployments`, `security` or `g1t`. A check with an `integration` counts only when that integration reported it, so a workflow cannot stand in for a deployment. |
+| `checks` | None | Each check has a `context`, such as `CI` (a workflow's name) or `g1t / deploy`, and an optional `integration`: `actions`, `deployments`, `security`, `g1t` or `api` (a status or [check run](/guides/checks/) reported through the API). A check with an `integration` counts only when that integration reported it, so a workflow cannot stand in for a deployment. A check is met by a status or a check run of its name alike. |
 | `strict` | `false` | The pull request must contain the branch's latest commits, so what merges is exactly what was checked. |
 | `paths` | Always | The checks are required only when the pull request changes a file matching one of these patterns. |
 | `allow_bypass_on_merge` | `false` | Someone who may merge can merge past checks that have not passed by ticking **Bypass the required checks**. |

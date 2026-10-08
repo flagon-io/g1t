@@ -7,7 +7,7 @@
 //! encoded again, so that every field the type has is sent, not only the
 //! ones an example shows.
 
-use g1t_contracts::{access, actions, codeowners, integrations, repos, rules, search, teams, webhooks, work};
+use g1t_contracts::{access, actions, checks, codeowners, integrations, repos, rules, search, teams, webhooks, work};
 use g1t_kit::wire::{self, USER_KEYED};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -15,6 +15,7 @@ use serde_json::{Map, Value, json};
 
 use crate::openapi::document;
 use crate::operations::Op;
+use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
 
 /// A key as `#[serde(rename_all = "camelCase")]` writes it.
@@ -196,6 +197,16 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::GetThreadSubscription | Op::SetThreadSubscription | Op::DeleteThreadSubscription => {
             through::<g1t_contracts::inbox::ThreadSubscription>(op, sent)
         }
+        Op::Checks(ChecksOp::CreateCommitStatus) => through::<work::CommitStatus>(op, sent),
+        Op::Checks(ChecksOp::ListCommitStatuses) => through::<Vec<work::CommitStatus>>(op, sent),
+        Op::Checks(ChecksOp::GetCombinedStatus) => through::<checks::CombinedStatus>(op, sent),
+        Op::Checks(ChecksOp::CreateCheckRun | ChecksOp::UpdateCheckRun | ChecksOp::GetCheckRun) => {
+            through::<checks::CommitCheckRun>(op, sent)
+        }
+        Op::Checks(ChecksOp::ListCheckRunAnnotations) => through::<Vec<checks::CheckAnnotation>>(op, sent),
+        Op::Checks(ChecksOp::ListCheckRunsForRef) => through::<checks::CheckRunList>(op, sent),
+        Op::Checks(ChecksOp::ListCheckSuitesForRef) => through::<checks::CheckSuiteList>(op, sent),
+        Op::Checks(ChecksOp::GetCheckSuite) => through::<checks::CommitCheckSuite>(op, sent),
         _ => sent,
     }
 }

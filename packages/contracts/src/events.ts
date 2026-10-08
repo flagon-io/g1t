@@ -8,6 +8,7 @@
  */
 
 import type { RepoRole } from "./access";
+import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { TeamRole, TeamVisibility } from "./teams";
 import type { Confidence, Verdict } from "./work";
 
@@ -238,6 +239,16 @@ export type EventPayloads = {
     status: "passed" | "failed" | "errored";
     commit: string;
   };
+  /** A status was set on a commit through the API. */
+  "status.created": StatusEventData;
+  /** A check run was reported on a commit through the API, completed, asked to run again, or had one of its buttons pressed (`requestedAction`). */
+  "check_run.created": CheckRunEventData;
+  "check_run.completed": CheckRunEventData;
+  "check_run.rerequested": CheckRunEventData;
+  "check_run.requested_action": CheckRunEventData;
+  /** A reporter's check runs on a commit all completed, or it was asked to run them again. */
+  "check_suite.completed": CheckSuiteEventData;
+  "check_suite.rerequested": CheckSuiteEventData;
   /** A g1t agent finished reviewing a pull request; no verdict if it could not. */
   "review.completed": {
     pullId: string;

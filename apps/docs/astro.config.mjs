@@ -125,6 +125,7 @@ export default defineConfig({
 					label: 'Landing changes',
 					items: [
 						{ label: 'Pull requests and checks', slug: 'guides/pull-requests' },
+						{ label: 'Checks', slug: 'guides/checks' },
 						{ label: 'Pull requests into other branches', slug: 'guides/base-branches' },
 						{ label: 'Labels', slug: 'guides/labels' },
 						{ label: 'Milestones', slug: 'guides/milestones' },

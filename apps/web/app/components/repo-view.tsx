@@ -10,6 +10,7 @@ import { CodeLines } from "./code-lines";
 import { AgentSetup } from "./agent-setup";
 import { useAddresses } from "../lib/addresses";
 import { CloneBox } from "./clone-box";
+import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { Markdown } from "./markdown";
 import { Topics } from "./topics";
 import { Avatar, CopyLine, TimeAgo, notACredential } from "./ui";
@@ -63,8 +64,8 @@ function Breadcrumbs({
   );
 }
 
-/** The bar above a file listing: the latest commit, and the way to the history. */
-function CommitBar({ commit, base }: { commit: Commit; base: string }) {
+/** The bar above a file listing: the latest commit, its checks, and the way to the history. */
+function CommitBar({ commit, base, checks }: { commit: Commit; base: string; checks?: ChecksSource }) {
   return (
     <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-sm">
       <Avatar name={commit.author.name} />
@@ -72,8 +73,9 @@ function CommitBar({ commit, base }: { commit: Commit; base: string }) {
       <Link to={`${base}/commit/${commit.hash}`} className="truncate text-muted hover:text-fg hover:underline">
         {commit.message.split("\n")[0]}
       </Link>
+      <CommitChecksBadge checks={checks} sha={commit.hash} className="-ml-1.5" />
       <span className="ml-auto flex shrink-0 items-center gap-4 text-xs text-faint">
-        <Link to={`${base}/commit/${commit.hash}`} className="font-mono hover:text-fg">
+        <Link to={`${base}/commit/${commit.hash}`} className="hidden font-mono hover:text-fg sm:inline">
           {commit.hash.slice(0, 7)}
         </Link>
         <TimeAgo at={commit.authoredAt} />
@@ -280,11 +282,14 @@ export function TreeView({
   tree,
   branches = null,
   lastCommits = null,
+  checks = null,
 }: {
   tree: Tree;
   branches?: Branch[] | null;
   /** Each entry's last commit, streamed in after the list. */
   lastCommits?: Promise<LastCommits | null> | null;
+  /** The latest commit's checks, streamed in. */
+  checks?: ChecksSource;
 }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -319,7 +324,7 @@ export function TreeView({
       <div className="min-w-0">
         <CodeBar base={base} repo={repo} gitRef={ref} path={path} branches={branches} />
         <div className="overflow-hidden rounded-xl border border-line">
-          <CommitBar commit={head} base={base} />
+          <CommitBar commit={head} base={base} checks={checks} />
           {lastCommits ? (
             <Suspense fallback={<FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={undefined} />}>
               <Await resolve={lastCommits} errorElement={<FileRows base={base} gitRef={ref} prefix={prefix} entries={entries} last={null} />}>

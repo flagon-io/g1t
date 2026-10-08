@@ -408,6 +408,11 @@ export function workClient(service: ServiceBinding): WorkApi {
     effectiveRules: (repo, name, viewer, target = "branch") => call("effective_rules", { viewer, repo, name, target }),
     ruleEvaluations: (owner, viewer, filter = {}) => call("rule_evaluations", { viewer, ...owner, ...filter }),
     seenChecks: (repo, viewer) => call("seen_checks", { repo, viewer }),
+    commitChecks: (repo, viewer, shas) => call("commit_checks", { repo, viewer, shas }),
+    getCheckRun: (repo, id, viewer) => call("get_check_run", { repo, id, viewer }),
+    checkRunAnnotations: (repo, id, viewer) => call("check_run_annotations", { repo, id, viewer }),
+    requestCheckAction: (actor, repo, id, identifier) => call("request_check_action", { actor, repo, id, identifier }),
+    rerequestCheckRun: (actor, repo, id) => call("rerequest_check_run", { actor, repo, id }),
     codeownersErrors: (repo, viewer, ref) => call("codeowners_errors", { repo, viewer, ref: ref ?? null }),
     updateSettings: (actor, repo, settings) =>
       call("update_settings", { actor, repo, settings }),

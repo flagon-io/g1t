@@ -5,6 +5,7 @@ import type { Pull } from "@g1t/contracts";
 
 import type { Drift } from "../lib/branches";
 import { CheckBadge } from "./checks";
+import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { host } from "./deploy";
 import { Avatar, TimeAgo } from "./ui";
 import { Hint } from "./ui/hint";
@@ -22,8 +23,19 @@ export type ActiveBranch = {
   preview: string | null;
 };
 
-/** Branches other than the default, newest first, with how far each has moved and what is open on it. */
-export function ActiveBranches({ branches, base, main }: { branches: ActiveBranch[]; base: string; main: string }) {
+/** Branches other than the default, newest first, with how far each has moved, its head's checks and what is open on it. */
+export function ActiveBranches({
+  branches,
+  base,
+  main,
+  checks,
+}: {
+  branches: ActiveBranch[];
+  base: string;
+  main: string;
+  /** The checks on each branch's head, streamed in. */
+  checks?: ChecksSource;
+}) {
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
       {branches.map((branch) => (
@@ -46,6 +58,7 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                     {branch.commit.message}
                   </Link>
                 </Hint>
+                <CommitChecksBadge checks={checks} sha={branch.commit.hash} className="size-5" />
                 <span className="shrink-0 text-faint">
                   · <TimeAgo at={branch.commit.at} />
                 </span>

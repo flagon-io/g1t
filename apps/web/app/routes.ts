@@ -140,6 +140,8 @@ export default [
     route("compare/*", "routes/repo/compare.tsx", { id: "routes/repo/compare-range" }),
     route("compare", "routes/repo/compare.tsx"),
     route("commit/:hash", "routes/repo/commit.tsx"),
+    // A check run reported on a commit: its report, annotations and buttons.
+    route("checks/:id", "routes/repo/check-run.tsx"),
     route("labels", "routes/repo/labels.tsx"),
     route("milestones", "routes/repo/milestones.tsx"),
     route("milestones/:number", "routes/repo/milestone.tsx"),
