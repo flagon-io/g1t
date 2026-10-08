@@ -325,7 +325,13 @@ and repository its owner can (a workspace's token, that workspace only);
 what a call may do is the owner's role and the token's scopes together.
 A token sees only the MCP tools and actions its scopes allow. A missing scope answers `403` with
 `{"error": {"code": "forbidden", "message": "This access token needs the issues:write scope to use create_issue.", "needed_scope": "issues:write"}}`.
-Pushing needs `code:write`; cloning a private repository `code:read`. For
+Pushing needs `code:write`; cloning a private repository `code:read`.
+Pushing commits that add, change or delete files under `.g1t/workflows/`
+or `.github/workflows/` also needs `workflow_files:write` (in no preset
+but full access); a workflow job's token never has it. A fine-grained
+token reaches one workspace (or only its owner's account), all, chosen or
+only public repositories of it, with permissions (`contents`, `issues`,
+`workflows`, …) mapped to these scopes; a workspace may require an owner to approve one first. For
 an agent, use the Agent preset (every read scope but `runners:read`, plus `code:write`,
 `issues:write`, `pull_requests:write`, `agents:run`, `memory:write`,
 `notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
