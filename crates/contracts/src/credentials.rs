@@ -376,6 +376,7 @@ pub const NEVER: &[&str] = &[
     "delete_environment",
     "set_workflow_permissions",
     "set_fork_pr_approval",
+    "set_actions_access",
     "create_repository_dispatch",
     "set_workspace_workflow_permissions",
     // An agent never reports checks on its own work, nor asks for them

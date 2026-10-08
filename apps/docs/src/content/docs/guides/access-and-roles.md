@@ -43,6 +43,10 @@ Each role has everything the one above it has.
 | Change visibility | | | | | Yes, if the [member privileges](/guides/workspaces/#member-privileges) allow |
 | Transfer or delete the repository | | | | | Owners, or Admins if the member privileges allow |
 
+Everyone can edit and delete their own comments. Maintain and Admin can
+edit and delete anyone's; see
+[editing and deleting comments](/guides/pull-requests/#editing-and-deleting-comments).
+
 Changing a repository's visibility, transferring it and deleting it also
 depend on its workspace's [member privileges](/guides/workspaces/#member-privileges).
 By default, a member with Admin can change visibility, and only an owner

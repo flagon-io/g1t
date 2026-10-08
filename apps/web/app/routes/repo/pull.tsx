@@ -238,6 +238,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     canManage: can.triage || (viewer != null && viewer.id === workOwner(pull).id),
     // Telling its agent things, and re-running checks, spend compute: Write and up.
     canRun: can.run,
+    // Maintain and up edit and delete anyone's comments; everyone, their own.
+    canModerate: can.manage_settings,
     // A catch-up is pushed as the viewer: a fork takes pushes only from
     // whoever it is for (who asked g1t for it, or its author), a branch
     // from anyone who can push.
@@ -402,6 +404,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const refused = reruns.find((rerun) => !rerun.ok);
     return refused && !refused.ok ? { error: refused.error.message, action } : null;
   }
+  // A comment's own text, changed or taken away: its author's to do, or a
+  // maintainer's, which work checks.
+  if (action === "edit-comment" || action === "delete-comment") {
+    const id = String(form.get("comment") ?? "");
+    const changed =
+      action === "edit-comment"
+        ? await work.editComment(user, path, id, String(form.get("body") ?? ""))
+        : await work.deleteComment(user, path, id);
+    return changed.ok ? null : { error: changed.error.message, action, comment: id };
+  }
   const result =
     action === "merge"
       ? await work.mergePull(user, path, number, {
@@ -415,6 +427,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         ? await work.messageAgent(user, path, number, String(form.get("body") ?? ""))
       : action === "close"
         ? await work.closePull(user, path, number)
+      : action === "reopen"
+        ? await work.reopenPull(user, path, number)
+      : action === "draft"
+        ? await work.convertPullToDraft(user, path, number)
         : action === "agent-review"
             ? await env.RUNNER.review(user, path, number)
           : action === "reviewers"
@@ -620,6 +636,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canMerge,
     canManage,
     canRun,
+    canModerate,
     defaultBranch: repoDefault,
   } = loaderData;
   // The branch it merges into: what every line below names.
@@ -1046,7 +1063,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   )}
                 </TimelineItem>
 
-                <CommentList comments={comments} review={review} base={base} />
+                <CommentList
+                  comments={comments}
+                  review={review}
+                  base={base}
+                  viewerId={viewer?.id ?? null}
+                  canModerate={canModerate}
+                  failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
+                />
 
                 {(preview || build) && <DeploymentCard preview={preview} build={build} stacked={stacked} stacking={affects.length > 0} base={base} />}
 
@@ -1324,15 +1348,26 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   review={review}
                   handles={teams.map((team) => `@${team.ref}`)}
                 />
-                {canManage && active && (
-                  <Form method="post" className="flex justify-end">
-                    <SubmitButton variant="quiet" name="action" value="close" pending="Closing…">
-                      Close pull request
-                    </SubmitButton>
+                {canManage && (active || pull.status === "closed") && (
+                  <Form method="post" className="flex flex-wrap justify-end gap-2">
+                    {pull.status === "open" && (
+                      <SubmitButton variant="quiet" name="action" value="draft" pending="Converting…">
+                        Convert to draft
+                      </SubmitButton>
+                    )}
+                    {active ? (
+                      <SubmitButton variant="quiet" name="action" value="close" pending="Closing…">
+                        Close pull request
+                      </SubmitButton>
+                    ) : (
+                      <SubmitButton variant="quiet" name="action" value="reopen" pending="Reopening…">
+                        Reopen pull request
+                      </SubmitButton>
+                    )}
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "stack", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign"].includes(
+                  !["merge", "comment", "stack", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>

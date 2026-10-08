@@ -1472,6 +1472,43 @@
       "created_at": "2026-10-01T18:12:30.551Z"
     }
   },
+  "edit_comment": {
+    "params": {
+      "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+    },
+    "request": {
+      "body": "Should an empty name fall back to \"world\", or print the usage?"
+    },
+    "response": {
+      "id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+      "kind": "comment",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "kind": "user",
+        "verified": true,
+        "workspaces": [
+          {
+            "slug": "flagon-io",
+            "role": "owner"
+          }
+        ]
+      },
+      "body": "Should an empty name fall back to \"world\", or print the usage?",
+      "path": null,
+      "line": null,
+      "verdict": null,
+      "created_at": "2026-10-01T18:12:30.551Z",
+      "edited_at": "2026-10-01T18:30:04.210Z"
+    },
+    "notes": "Its author, or someone with the Maintain role or higher. A note of something that happened answers `409`."
+  },
+  "delete_comment": {
+    "params": {
+      "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+    },
+    "notes": "Answers `204` with no body. Its author, or someone with the Maintain role or higher. A review that approved or requested changes answers `409`: edit it instead."
+  },
   "list_labels": {
     "response": [
       {
@@ -2251,6 +2288,102 @@
       "created_at": "2026-10-01T18:20:02.117Z",
       "updated_at": "2026-10-01T19:02:48.760Z"
     }
+  },
+  "reopen_pull_request": {
+    "response": {
+      "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "number": 14,
+      "issue": 12,
+      "title": "Greeting should name the caller",
+      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "agent": "claude-code",
+      "runtime": "external",
+      "status": "open",
+      "fork": {
+        "namespace": "pulls",
+        "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+      },
+      "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+      "branch": null,
+      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "merge_base": null,
+      "merged_by": null,
+      "merged_at": null,
+      "superseded_by": null,
+      "check_status": null,
+      "files": [
+        {
+          "path": "src/main.rs",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "assignees": [],
+      "reviewers": [],
+      "labels": [],
+      "milestone": null,
+      "base": "main",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:20:02.117Z",
+      "updated_at": "2026-10-01T19:14:05.322Z"
+    },
+    "notes": "A merged pull request, or one that is not closed, answers `409`. A pull request closed as a draft comes back as a draft; any other comes back ready for review. A pull request from a branch of the repository whose branch was deleted answers `409` until the branch is pushed again. The same as `PATCH /repos/{owner}/{repo}/pulls/{number}` with `state` `open`."
+  },
+  "convert_pull_request_to_draft": {
+    "response": {
+      "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "number": 14,
+      "issue": 12,
+      "title": "Greeting should name the caller",
+      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "agent": "claude-code",
+      "runtime": "external",
+      "status": "draft",
+      "fork": {
+        "namespace": "pulls",
+        "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+      },
+      "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+      "branch": null,
+      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "merge_base": null,
+      "merged_by": null,
+      "merged_at": null,
+      "superseded_by": null,
+      "check_status": null,
+      "files": [
+        {
+          "path": "src/main.rs",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "assignees": [],
+      "reviewers": [],
+      "labels": [],
+      "milestone": null,
+      "base": "main",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:20:02.117Z",
+      "updated_at": "2026-10-01T19:20:41.908Z"
+    },
+    "notes": "Only a pull request that is open and ready for review can be made a draft; any other answers `409`. It leaves the [merge queue](/guides/merge-queue/)."
   },
   "get_merge_queue": {
     "response": {
@@ -10329,6 +10462,27 @@
     },
     "response": {
       "approval_policy": "all_external_contributors"
+    }
+  },
+  "get_actions_access": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "shared-workflows"
+    },
+    "response": {
+      "access_level": "none"
+    }
+  },
+  "set_actions_access": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "shared-workflows"
+    },
+    "request": {
+      "access_level": "organization"
+    },
+    "response": {
+      "access_level": "organization"
     }
   },
   "create_repository_dispatch": {

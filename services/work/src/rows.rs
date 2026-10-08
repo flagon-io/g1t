@@ -247,6 +247,11 @@ pub struct CommentRow {
     pub line: Option<u32>,
     pub verdict: Option<Verdict>,
     pub created_at: String,
+    #[serde(default)]
+    pub edited_at: Option<String>,
+    /// The issue or pull request it is on, where the query reads it.
+    #[serde(default)]
+    pub number: u32,
 }
 
 impl From<CommentRow> for Comment {
@@ -260,6 +265,7 @@ impl From<CommentRow> for Comment {
             line: row.line,
             verdict: row.verdict,
             created_at: row.created_at,
+            edited_at: row.edited_at,
         }
     }
 }

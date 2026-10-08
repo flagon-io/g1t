@@ -344,6 +344,8 @@
         "assign_issue",
         "delegate",
         "add_comment",
+        "edit_comment",
+        "delete_comment",
         "list_issue_labels",
         "add_issue_labels",
         "set_issue_labels",
@@ -385,11 +387,13 @@
         "update_pull_request",
         "get_pull_request_changes",
         "mark_pull_request_ready",
+        "convert_pull_request_to_draft",
         "request_reviewers",
         "remove_requested_reviewers",
         "review_pull_request",
         "merge_pull_request",
         "close_pull_request",
+        "reopen_pull_request",
         "get_merge_queue",
         "message_agent",
         "answer_message",
@@ -497,6 +501,8 @@
         "set_workflow_permissions",
         "get_fork_pr_approval",
         "set_fork_pr_approval",
+        "get_actions_access",
+        "set_actions_access",
         "create_repository_dispatch",
         "get_workspace_workflow_permissions",
         "set_workspace_workflow_permissions"
@@ -31735,6 +31741,237 @@
         }
       }
     },
+    "/repos/{owner}/{name}/actions/permissions/access": {
+      "get": {
+        "operationId": "get_actions_access",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Get who may use a repository's actions and workflows",
+        "description": "Which other repositories' workflows may use this private repository's actions (uses: owner/repo@ref) and reusable workflows (jobs.<id>.uses: owner/repo/.g1t/workflows/build.yml@ref): access_level is none (the default: only this repository) or organization (private repositories in the same workspace). A public repository's actions and workflows are anyone's, whatever this says, and a public repository's workflows never use a private one's. Needs the Read role.",
+        "x-operation": "get_actions_access",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_access",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "access_level": "none"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "shared-workflows"
+        }
+      },
+      "put": {
+        "operationId": "set_actions_access",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Set who may use a repository's actions and workflows",
+        "description": "Set access_level: none, or organization to let the workspace's other private repositories use this repository's actions and reusable workflows (user is read as organization). Needs the Admin role.",
+        "x-operation": "set_actions_access",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_access",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "access_level": "organization"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "access_level": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "organization",
+                      "user"
+                    ]
+                  }
+                },
+                "required": [
+                  "access_level"
+                ]
+              },
+              "example": {
+                "access_level": "organization"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "shared-workflows"
+        }
+      }
+    },
     "/repos/{owner}/{name}/dispatches": {
       "post": {
         "operationId": "create_repository_dispatch",
@@ -37851,12 +38088,16 @@
                         "issue.closed",
                         "issue.reopened",
                         "comment.created",
+                        "comment.edited",
+                        "comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.reopened",
+                        "pull.converted_to_draft",
                         "pull.assigned",
                         "pull.review_requested",
                         "pull.review_request_removed",
@@ -37867,6 +38108,13 @@
                         "pull.base_changed",
                         "pull.stalled",
                         "pull.resumed",
+                        "release.created",
+                        "release.published",
+                        "release.released",
+                        "release.prereleased",
+                        "release.edited",
+                        "release.unpublished",
+                        "release.deleted",
                         "agent.asked",
                         "checks.completed",
                         "status.created",
@@ -38110,12 +38358,16 @@
                         "issue.closed",
                         "issue.reopened",
                         "comment.created",
+                        "comment.edited",
+                        "comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.reopened",
+                        "pull.converted_to_draft",
                         "pull.assigned",
                         "pull.review_requested",
                         "pull.review_request_removed",
@@ -38126,6 +38378,13 @@
                         "pull.base_changed",
                         "pull.stalled",
                         "pull.resumed",
+                        "release.created",
+                        "release.published",
+                        "release.released",
+                        "release.prereleased",
+                        "release.edited",
+                        "release.unpublished",
+                        "release.deleted",
                         "agent.asked",
                         "checks.completed",
                         "status.created",
@@ -39015,12 +39274,16 @@
                         "issue.closed",
                         "issue.reopened",
                         "comment.created",
+                        "comment.edited",
+                        "comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.reopened",
+                        "pull.converted_to_draft",
                         "pull.assigned",
                         "pull.review_requested",
                         "pull.review_request_removed",
@@ -39031,6 +39294,13 @@
                         "pull.base_changed",
                         "pull.stalled",
                         "pull.resumed",
+                        "release.created",
+                        "release.published",
+                        "release.released",
+                        "release.prereleased",
+                        "release.edited",
+                        "release.unpublished",
+                        "release.deleted",
                         "agent.asked",
                         "checks.completed",
                         "status.created",
@@ -39260,12 +39530,16 @@
                         "issue.closed",
                         "issue.reopened",
                         "comment.created",
+                        "comment.edited",
+                        "comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
                         "pull.merge_requested",
                         "pull.merged",
                         "pull.closed",
+                        "pull.reopened",
+                        "pull.converted_to_draft",
                         "pull.assigned",
                         "pull.review_requested",
                         "pull.review_request_removed",
@@ -39276,6 +39550,13 @@
                         "pull.base_changed",
                         "pull.stalled",
                         "pull.resumed",
+                        "release.created",
+                        "release.published",
+                        "release.released",
+                        "release.prereleased",
+                        "release.edited",
+                        "release.unpublished",
+                        "release.deleted",
                         "agent.asked",
                         "checks.completed",
                         "status.created",
@@ -50187,6 +50468,269 @@
         }
       }
     },
+    "/repos/{owner}/{name}/issues/comments/{comment_id}": {
+      "patch": {
+        "operationId": "edit_comment",
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Edit a comment",
+        "description": "Change the text of a comment on an issue or a pull request, named by comment_id (the id get_issue and get_pull_request give each comment). Its author may edit it, and so may anyone with the Maintain role or higher. Notes of what happened, such as \"closed this\", cannot be edited. Publishes comment.edited with what it said before.\n\nIts author, or someone with the Maintain role or higher. A note of something that happened answers `409`.",
+        "x-operation": "edit_comment",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "edit_comment",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The comment's id, such as \"cmt_01J9Z8\": each comment's id in get_issue or get_pull_request."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+                  "kind": "comment",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "kind": "user",
+                    "verified": true,
+                    "workspaces": [
+                      {
+                        "slug": "flagon-io",
+                        "role": "owner"
+                      }
+                    ]
+                  },
+                  "body": "Should an empty name fall back to \"world\", or print the usage?",
+                  "path": null,
+                  "line": null,
+                  "verdict": null,
+                  "created_at": "2026-10-01T18:12:30.551Z",
+                  "edited_at": "2026-10-01T18:30:04.210Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "description": "The new text, in Markdown."
+                  }
+                },
+                "required": [
+                  "body"
+                ]
+              },
+              "example": {
+                "body": "Should an empty name fall back to \"world\", or print the usage?"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+        }
+      },
+      "delete": {
+        "operationId": "delete_comment",
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Delete a comment",
+        "description": "Delete a comment on an issue or a pull request, named by comment_id. Its author may delete it, and so may anyone with the Maintain role or higher. A review that approved or requested changes cannot be deleted, only edited, and notes of what happened cannot be deleted. This cannot be undone. Publishes comment.deleted with the comment as it was.\n\nAnswers `204` with no body. Its author, or someone with the Maintain role or higher. A review that approved or requested changes answers `409`: edit it instead.",
+        "x-operation": "delete_comment",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "delete_comment",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The comment's id, such as \"cmt_01J9Z8\": each comment's id in get_issue or get_pull_request."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success. There is no body."
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+        }
+      }
+    },
     "/repos/{owner}/{name}/pulls": {
       "get": {
         "operationId": "list_pull_requests",
@@ -50826,7 +51370,7 @@
           "Pull requests"
         ],
         "summary": "Update a pull request",
-        "description": "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base.\n\nA new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base.",
+        "description": "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after.\n\nA new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base.",
         "x-operation": "update_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "update",
@@ -50984,6 +51528,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "closed"
+                    ],
+                    "description": "open reopens it if it is closed (never once merged); closed closes it without merging. Either is left as it is when it already is."
+                  },
                   "base": {
                     "type": "string",
                     "description": "The branch it merges into: an existing branch other than its own. Needs the Write role."
@@ -52200,6 +52752,161 @@
         }
       }
     },
+    "/repos/{owner}/{name}/pulls/{number}/draft": {
+      "post": {
+        "operationId": "convert_pull_request_to_draft",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Convert a pull request to a draft",
+        "description": "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft.\n\nOnly a pull request that is open and ready for review can be made a draft; any other answers `409`. It leaves the [merge queue](/guides/merge-queue/).",
+        "x-operation": "convert_pull_request_to_draft",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "draft",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "number": 14,
+                  "issue": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "agent": "claude-code",
+                  "runtime": "external",
+                  "status": "draft",
+                  "fork": {
+                    "namespace": "pulls",
+                    "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+                  },
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "branch": null,
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": null,
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": null,
+                  "files": [
+                    {
+                      "path": "src/main.rs",
+                      "additions": 6,
+                      "deletions": 2
+                    }
+                  ],
+                  "assignees": [],
+                  "reviewers": [],
+                  "labels": [],
+                  "milestone": null,
+                  "base": "main",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T19:20:41.908Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/repos/{owner}/{name}/pulls/{number}/close": {
       "post": {
         "operationId": "close_pull_request",
@@ -52298,6 +53005,161 @@
                   "requested_by": null,
                   "created_at": "2026-10-01T18:20:02.117Z",
                   "updated_at": "2026-10-01T19:02:48.760Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/reopen": {
+      "post": {
+        "operationId": "reopen_pull_request",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Reopen a pull request",
+        "description": "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit.\n\nA merged pull request, or one that is not closed, answers `409`. A pull request closed as a draft comes back as a draft; any other comes back ready for review. A pull request from a branch of the repository whose branch was deleted answers `409` until the branch is pushed again. The same as `PATCH /repos/{owner}/{repo}/pulls/{number}` with `state` `open`.",
+        "x-operation": "reopen_pull_request",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "reopen",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "number": 14,
+                  "issue": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "agent": "claude-code",
+                  "runtime": "external",
+                  "status": "open",
+                  "fork": {
+                    "namespace": "pulls",
+                    "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+                  },
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "branch": null,
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": null,
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": null,
+                  "files": [
+                    {
+                      "path": "src/main.rs",
+                      "additions": 6,
+                      "deletions": 2
+                    }
+                  ],
+                  "assignees": [],
+                  "reviewers": [],
+                  "labels": [],
+                  "milestone": null,
+                  "base": "main",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T19:14:05.322Z"
                 }
               }
             }

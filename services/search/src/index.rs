@@ -776,7 +776,8 @@ impl Search {
                     self.index_item(false, &item.repo_id, item.number).await?;
                 }
             }
-            "pull.opened" | "pull.ready" | "pull.updated" | "pull.closed" | "pull.merged" => {
+            "pull.opened" | "pull.ready" | "pull.updated" | "pull.closed" | "pull.reopened"
+            | "pull.converted_to_draft" | "pull.merged" => {
                 if let Ok(item) = serde_json::from_value::<NumberEvent>(data.clone()) {
                     self.index_item(true, &item.repo_id, item.number).await?;
                 }

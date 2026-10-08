@@ -1387,6 +1387,7 @@ class Deployments {
       case "pull.opened":
       case "pull.ready":
       case "pull.updated":
+      case "pull.reopened":
         for (const project of await this.projects.byRepo(event.data.repoId)) {
           await this.deployPreview(project, event.data.number, "g1t");
         }

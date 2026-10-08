@@ -114,6 +114,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // The author can close and reopen their own issue, and whoever g1t's
     // agent filed one for, that one; Triage and up, anyone's.
     canManage: viewer != null && (viewer.id === workOwner(issue).id || can.triage),
+    // Maintain and up edit and delete anyone's comments; everyone, their own.
+    canModerate: can.manage_settings,
     can,
   };
 }
@@ -178,6 +180,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     case "reopen": {
       const result = await work.reopenIssue(user, path, number);
       return result.ok ? null : { error: result.error.message };
+    }
+    // A comment's own text, changed or taken away: its author's to do, or
+    // a maintainer's, which work checks.
+    case "edit-comment":
+    case "delete-comment": {
+      const action = String(form.get("action"));
+      const id = String(form.get("comment") ?? "");
+      const result =
+        action === "edit-comment"
+          ? await work.editComment(user, path, id, String(form.get("body") ?? ""))
+          : await work.deleteComment(user, path, id);
+      return result.ok ? null : { error: result.error.message, action, comment: id };
     }
     default: {
       const result = await work.closeIssue(
@@ -370,7 +384,13 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         <h3 className="mt-10 font-semibold tracking-tight">Discussion</h3>
         <div className="mt-3">
           <div className="space-y-4">
-            <CommentList comments={comments} base={base} />
+            <CommentList
+              comments={comments}
+              base={base}
+              viewerId={viewer?.id ?? null}
+              canModerate={loaderData.canModerate}
+              failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
+            />
             <CommentForm author={viewer?.username ?? null} resetKey={comments.length} handles={loaderData.handles} />
             {canManage && (
               <Form method="post" className="flex flex-wrap justify-end gap-2">
@@ -393,7 +413,8 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </div>
         </div>
         <div className="mt-2">
-          {!runError && <ErrorText>{actionData?.error}</ErrorText>}
+          {/* A refused comment edit says so under the comment. */}
+          {!runError && !(actionData && "comment" in actionData) && <ErrorText>{actionData?.error}</ErrorText>}
         </div>
       </div>
 

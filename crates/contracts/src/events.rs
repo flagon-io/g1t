@@ -161,7 +161,8 @@ pub struct EventLabel {
 }
 
 /// The payload of `pull.opened`, `pull.ready`, `pull.updated` (its head
-/// moved), `pull.closed`, `pull.merged`, `pull.assigned`,
+/// moved), `pull.closed`, `pull.reopened`, `pull.converted_to_draft`,
+/// `pull.merged`, `pull.assigned`,
 /// `pull.review_requested` and `pull.review_request_removed` (reviewers
 /// asked, or no longer), `pull.labeled` and `pull.unlabeled`,
 /// `pull.milestoned` and `pull.demilestoned`, `pull.base_changed` (the
@@ -185,8 +186,8 @@ pub struct PullEvent {
     pub issue: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
-    /// On merge: the commit the branch now points to. On update and when
-    /// marked ready: the head of the change.
+    /// On merge: the commit the branch now points to. On update, when
+    /// marked ready and when reopened: the head of the change.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     /// On close: the pull request that was merged instead.
@@ -373,6 +374,122 @@ pub struct CommentCreated {
     /// Set when the comment is a review: approve or request changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<crate::work::Verdict>,
+}
+
+/// `comment.edited`: a comment's text changed. `changes.body.from` is what
+/// it said before; the comment as it is now is read by `commentId`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentEdited {
+    pub comment_id: String,
+    pub repo_id: String,
+    pub number: u32,
+    /// Set when the comment is on a pull request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull_id: Option<String>,
+    pub changes: CommentChanges,
+}
+
+/// What an edit changed, as `comment.edited` says it.
+#[derive(Debug, Serialize)]
+pub struct CommentChanges {
+    pub body: ChangedFrom,
+}
+
+/// A field's value before a change.
+#[derive(Debug, Serialize)]
+pub struct ChangedFrom {
+    pub from: String,
+}
+
+/// `comment.deleted`: a comment was deleted. It no longer exists when the
+/// event is read, so `comment` is the comment as it was.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentDeleted {
+    pub comment_id: String,
+    pub repo_id: String,
+    pub number: u32,
+    /// Set when the comment was on a pull request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull_id: Option<String>,
+    pub comment: DeletedComment,
+}
+
+/// A deleted comment, as it was.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedComment {
+    pub id: String,
+    pub body: String,
+    pub author: crate::credentials::Principal,
+    /// RFC 3339.
+    pub created_at: String,
+    /// For a comment on one line of a pull request's change: the file.
+    pub path: Option<String>,
+    /// And the line, as numbered after the change.
+    pub line: Option<u32>,
+}
+
+/// The payload of every `release.*` event: `release.created`,
+/// `release.published`, `release.released`, `release.prereleased`,
+/// `release.edited`, `release.unpublished` and `release.deleted`. One change
+/// to a release can be several of them (see [`release_actions`]).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseEvent {
+    pub release_id: String,
+    pub repo_id: String,
+    pub tag_name: String,
+    /// As it is now; as it was, for `release.deleted`.
+    pub release: crate::about::Release,
+    /// On `release.edited`: `{ "name": { "from" }, "body": { "from" } }`
+    /// for what changed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<serde_json::Value>,
+}
+
+/// A release's state, for [`release_actions`]: whether it is a draft, and
+/// whether it is a prerelease.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReleaseState {
+    pub draft: bool,
+    pub prerelease: bool,
+}
+
+/// What a change to a release is, as GitHub's release activity types, in
+/// the order they are sent: from `before` (None: it did not exist) to
+/// `after` (None: deleted). A release made published is `created`,
+/// `published` and `released` (or `prereleased`); a draft published is
+/// `published` and `released` (or `prereleased`); made a draft again,
+/// `unpublished`; anything else `edited`, and a prerelease made a full
+/// release is `released` too.
+pub fn release_actions(before: Option<ReleaseState>, after: Option<ReleaseState>) -> Vec<&'static str> {
+    let published = |state: ReleaseState| if state.prerelease { "prereleased" } else { "released" };
+    match (before, after) {
+        (None, None) => Vec::new(),
+        (None, Some(after)) if after.draft => vec!["created"],
+        (None, Some(after)) => vec!["created", "published", published(after)],
+        (Some(_), None) => vec!["deleted"],
+        (Some(before), Some(after)) if before.draft && !after.draft => vec!["published", published(after)],
+        (Some(before), Some(after)) if !before.draft && after.draft => vec!["unpublished"],
+        (Some(before), Some(after)) if !after.draft && before.prerelease && !after.prerelease => vec!["edited", "released"],
+        (Some(_), Some(_)) => vec!["edited"],
+    }
+}
+
+/// The event kind for a release activity type from [`release_actions`].
+pub fn release_kind(action: &str) -> Option<&'static str> {
+    Some(match action {
+        "created" => "release.created",
+        "published" => "release.published",
+        "released" => "release.released",
+        "prereleased" => "release.prereleased",
+        "edited" => "release.edited",
+        "unpublished" => "release.unpublished",
+        "deleted" => "release.deleted",
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -795,6 +912,66 @@ pub struct QueueChanged {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comment_edits_and_deletes_say_what_it_was() {
+        let edited = CommentEdited {
+            comment_id: "cmt_1".into(),
+            repo_id: "rep_1".into(),
+            number: 7,
+            pull_id: Some("pr_1".into()),
+            changes: CommentChanges { body: ChangedFrom { from: "Before".into() } },
+        };
+        assert_eq!(
+            serde_json::to_value(edited).unwrap(),
+            serde_json::json!({
+                "commentId": "cmt_1", "repoId": "rep_1", "number": 7, "pullId": "pr_1",
+                "changes": { "body": { "from": "Before" } },
+            })
+        );
+        let deleted = CommentDeleted {
+            comment_id: "cmt_1".into(),
+            repo_id: "rep_1".into(),
+            number: 7,
+            pull_id: None,
+            comment: DeletedComment {
+                id: "cmt_1".into(),
+                body: "Gone".into(),
+                author: crate::credentials::Principal { id: "usr_1".into(), username: "ana".into() },
+                created_at: "2026-10-08T00:00:00Z".into(),
+                path: None,
+                line: None,
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(deleted).unwrap(),
+            serde_json::json!({
+                "commentId": "cmt_1", "repoId": "rep_1", "number": 7,
+                "comment": {
+                    "id": "cmt_1", "body": "Gone", "author": { "id": "usr_1", "username": "ana" },
+                    "createdAt": "2026-10-08T00:00:00Z", "path": null, "line": null,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn a_release_change_is_githubs_activity_types() {
+        let state = |draft, prerelease| Some(ReleaseState { draft, prerelease });
+        assert_eq!(release_actions(None, state(true, false)), ["created"]);
+        assert_eq!(release_actions(None, state(false, false)), ["created", "published", "released"]);
+        assert_eq!(release_actions(None, state(false, true)), ["created", "published", "prereleased"]);
+        assert_eq!(release_actions(state(true, true), state(false, true)), ["published", "prereleased"]);
+        assert_eq!(release_actions(state(false, false), state(true, false)), ["unpublished"]);
+        assert_eq!(release_actions(state(false, true), state(false, false)), ["edited", "released"]);
+        assert_eq!(release_actions(state(false, false), state(false, true)), ["edited"]);
+        assert_eq!(release_actions(state(true, false), state(true, false)), ["edited"]);
+        assert_eq!(release_actions(state(false, false), None), ["deleted"]);
+        for action in ["created", "published", "released", "prereleased", "edited", "unpublished", "deleted"] {
+            assert_eq!(release_kind(action).map(|kind| kind.trim_start_matches("release.")), Some(action));
+        }
+        assert_eq!(release_kind("archived"), None);
+    }
 
     #[test]
     fn what_a_job_token_did_is_marked_and_carried_on() {

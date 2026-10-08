@@ -776,6 +776,9 @@ pub struct Comment {
     pub verdict: Option<Verdict>,
     /// RFC 3339.
     pub created_at: String,
+    /// When its text was last edited, RFC 3339; absent if it never was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited_at: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1703,6 +1706,52 @@ pub struct AddCommentArgs {
     pub verdict: Option<Verdict>,
 }
 
+/// `edit_comment` and `delete_comment`: change the text of a comment on an
+/// issue or a pull request, or delete it. Its author may, and so may anyone
+/// with the Maintain role or higher ([`may_change_comment`]). Notes of what
+/// happened (`CommentKind::Event`) cannot be changed, and a review that
+/// gave a verdict cannot be deleted, only edited. `edit_comment` returns
+/// `Outcome<Comment>`; `delete_comment` returns `Outcome<()>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentActionArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub comment_id: String,
+    /// For `edit_comment`: the new text, in Markdown.
+    #[serde(default)]
+    pub body: String,
+}
+
+/// Why `actor_id` may not edit (or, with `deleting`, delete) a comment by
+/// `author_id`, or none when they may: its author may, and so may someone
+/// who `maintains` the repository (the Maintain role or higher). A note of
+/// something that happened is never changed, and a review's verdict stays,
+/// so a comment that gave one can be edited but not deleted.
+pub fn may_change_comment(
+    kind: CommentKind,
+    has_verdict: bool,
+    author_id: &str,
+    actor_id: &str,
+    maintains: bool,
+    deleting: bool,
+) -> Result<(), &'static str> {
+    if kind == CommentKind::Event {
+        return Err("That is a record of something that happened, not a comment; it cannot be changed.");
+    }
+    if author_id != actor_id && !maintains {
+        return Err(if deleting {
+            "Only its author, or someone with the Maintain role or higher, can delete this comment."
+        } else {
+            "Only its author, or someone with the Maintain role or higher, can edit this comment."
+        });
+    }
+    if deleting && has_verdict {
+        return Err("A review cannot be deleted. Edit its text instead.");
+    }
+    Ok(())
+}
+
 /// `open_pull`. Without `branch`, forks the repo and returns a draft pull
 /// request to push to. With it, opens a pull request, ready for review,
 /// for a branch already pushed to the repo. Returns `Outcome<Pull>`.
@@ -1730,7 +1779,11 @@ pub struct OpenPullArgs {
     pub base: Option<String>,
 }
 
-/// `ready_pull`, `close_pull` and `merge_pull`. Each returns `Outcome<Pull>`.
+/// `ready_pull`, `close_pull`, `reopen_pull`, `convert_pull_to_draft` and
+/// `merge_pull`. Each returns `Outcome<Pull>`. `reopen_pull` opens a closed
+/// pull request again (never a merged one), as the draft it was if it was
+/// closed as one; `convert_pull_to_draft` turns one that is open back into
+/// a draft, which leaves the merge queue.
 ///
 /// Also `catch_up_pull`: brings the pull request up to date with the
 /// default branch without a sandbox where that is safe, as the repos
@@ -2679,5 +2732,23 @@ mod authorship_tests {
         older.as_object_mut().unwrap().remove("requestedBy");
         let read: Pull = serde_json::from_value(older).unwrap();
         assert!(read.requested_by.is_none());
+    }
+
+    #[test]
+    fn a_comment_is_changed_by_its_author_or_a_maintainer() {
+        use CommentKind::{Comment, Event};
+        // Its author edits and deletes it; someone else needs Maintain.
+        assert!(may_change_comment(Comment, false, "usr_1", "usr_1", false, false).is_ok());
+        assert!(may_change_comment(Comment, false, "usr_1", "usr_1", false, true).is_ok());
+        assert!(may_change_comment(Comment, false, "usr_1", "usr_2", false, false).is_err());
+        assert!(may_change_comment(Comment, false, "usr_1", "usr_2", false, true).is_err());
+        assert!(may_change_comment(Comment, false, "usr_1", "usr_2", true, false).is_ok());
+        assert!(may_change_comment(Comment, false, "usr_1", "usr_2", true, true).is_ok());
+        // A review's text can be edited, but its verdict stays.
+        assert!(may_change_comment(Comment, true, "usr_1", "usr_1", false, false).is_ok());
+        assert!(may_change_comment(Comment, true, "usr_1", "usr_1", true, true).is_err());
+        // A note of what happened is nobody's to change.
+        assert!(may_change_comment(Event, false, "usr_1", "usr_1", true, false).is_err());
+        assert!(may_change_comment(Event, false, "usr_1", "usr_1", true, true).is_err());
     }
 }

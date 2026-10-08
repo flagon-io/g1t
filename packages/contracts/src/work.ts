@@ -364,6 +364,8 @@ export type Comment = {
   verdict: Verdict | null;
   /** RFC 3339. */
   createdAt: string;
+  /** When its text was last edited, RFC 3339; absent if it never was. */
+  editedAt?: string;
 };
 
 export type NewComment = {
@@ -897,6 +899,16 @@ export interface WorkApi extends RulesApi, ChecksApi {
    * the change and carry a verdict; nobody can give a verdict on their own.
    */
   addComment(actor: User, repo: RepoPath, number: number, comment: NewComment): Promise<Result<Comment>>;
+  /**
+   * Changes a comment's text. Its author may, and so may anyone with the
+   * Maintain role or higher; notes of what happened cannot be changed.
+   */
+  editComment(actor: User, repo: RepoPath, commentId: string, body: string): Promise<Result<Comment>>;
+  /**
+   * Deletes a comment: its author, or anyone with the Maintain role or
+   * higher. A review that gave a verdict cannot be deleted, only edited.
+   */
+  deleteComment(actor: User, repo: RepoPath, commentId: string): Promise<Result<boolean>>;
 
   /**
    * Always refused now: a pull request's checks are the workflows run on
@@ -1015,6 +1027,10 @@ export interface WorkApi extends RulesApi, ChecksApi {
   /** Marks a draft ready for review and sets its description. */
   readyPull(actor: User, repo: RepoPath, number: number, summary: string): Promise<Result<Pull>>;
   closePull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
+  /** Opens a closed pull request again, as the draft it was if it was closed as one. Never a merged one. */
+  reopenPull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
+  /** Turns an open pull request back into a draft; it leaves the merge queue. */
+  convertPullToDraft(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
   /**
    * Lands the pull request on the repository's default branch. Unless
    * `keepIssueOpen`, that resolves the issue it was for: the issue closes

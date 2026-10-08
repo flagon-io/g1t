@@ -1,15 +1,27 @@
-import { Bot, CircleCheck, CircleSlash } from "lucide-react";
+import { Bot, CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Form, Link } from "react-router";
 
 import type { Comment, Issue, Pull, State } from "@g1t/contracts";
 
+import { mayChangeComment } from "../lib/comments";
 import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
-import { Avatar, SubmitButton, TimeAgo } from "./ui";
+import { Avatar, ErrorText, SubmitButton, TimeAgo } from "./ui";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog";
 import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 
@@ -223,6 +235,7 @@ export function TimelineItem({
   author,
   action,
   at,
+  edited,
   aside,
   children,
 }: {
@@ -230,6 +243,8 @@ export function TimelineItem({
   /** What they did, after their name: "commented", "opened this". */
   action: ReactNode;
   at?: string;
+  /** When what they wrote was last edited, if it was. */
+  edited?: string | null;
   /** Shown at the right of the header. */
   aside?: ReactNode;
   children?: ReactNode;
@@ -249,6 +264,19 @@ export function TimelineItem({
           <PersonLink name={author} className="font-medium text-fg hover:underline" />
           {action}
           {at && <TimeAgo at={at} />}
+          {edited && (
+            <Hint
+              label={
+                <>
+                  Edited <TimeAgo at={edited} />
+                </>
+              }
+            >
+              <span tabIndex={0} className="text-xs text-faint">
+                edited
+              </span>
+            </Hint>
+          )}
           {aside && <span className="ml-auto min-w-0">{aside}</span>}
         </header>
         {children && <div className="px-4 py-3">{children}</div>}
@@ -321,6 +349,73 @@ function TimelineEvent({ comment, base, filesUrl }: { comment: Comment; base?: s
   );
 }
 
+/** Edit and Delete, under a comment the viewer may change. */
+function CommentActions({
+  comment,
+  can,
+  error,
+}: {
+  comment: Comment;
+  can: { edit: boolean; delete: boolean };
+  error?: string | null;
+}) {
+  return (
+    <div className="mt-3 border-t border-line pt-2 text-sm">
+      <div className="flex flex-wrap items-center gap-1">
+        {can.edit && (
+          <details className="open:order-last open:w-full">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-xs text-faint hover:text-fg">
+              <Pencil size={12} />
+              Edit
+            </summary>
+            <Form method="post" className="mt-2 space-y-2">
+              <input type="hidden" name="action" value="edit-comment" />
+              <input type="hidden" name="comment" value={comment.id} />
+              <MentionTextarea name="body" rows={4} defaultValue={comment.body} />
+              <SubmitButton match={{ action: "edit-comment", comment: comment.id }} pending="Saving…">
+                Save
+              </SubmitButton>
+            </Form>
+          </details>
+        )}
+        {can.delete && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-faint hover:text-danger"
+              >
+                <Trash2 size={12} />
+                Delete
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <Form method="post" className="grid gap-4">
+                <input type="hidden" name="action" value="delete-comment" />
+                <input type="hidden" name="comment" value={comment.id} />
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this comment?</AlertDialogTitle>
+                  <AlertDialogDescription>It is removed from the conversation for everyone. This cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction asChild>
+                    <button type="submit">
+                      <Trash2 size={14} />
+                      Delete comment
+                    </button>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </Form>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
+      {error && <ErrorText>{error}</ErrorText>}
+    </div>
+  );
+}
+
 /**
  * The conversation of an issue or a pull request, oldest first: what
  * people and agents wrote, and between those, what happened.
@@ -329,11 +424,20 @@ export function CommentList({
   comments,
   review,
   base,
+  viewerId,
+  canModerate = false,
+  failed,
 }: {
   comments: Comment[];
   review?: Review;
   /** The repository's path, so that `#12` in an event can be linked. */
   base?: string;
+  /** The signed-in viewer, who may edit and delete their own comments. */
+  viewerId?: string | null;
+  /** Maintain and up: may edit and delete anyone's comments. */
+  canModerate?: boolean;
+  /** Why editing or deleting a comment was refused, under that comment. */
+  failed?: { comment: string; error?: string | null } | null;
 }) {
   return (
     <>
@@ -342,6 +446,7 @@ export function CommentList({
           return <TimelineEvent key={comment.id} comment={comment} base={base} filesUrl={review?.changesUrl} />;
         }
         const verdict = comment.verdict && VERDICTS[comment.verdict];
+        const can = mayChangeComment(comment, viewerId, canModerate);
         return (
           <TimelineItem
             key={comment.id}
@@ -361,6 +466,7 @@ export function CommentList({
                 <span>commented</span>
               )
             }
+            edited={comment.editedAt}
             aside={
               comment.path &&
               review && (
@@ -375,6 +481,9 @@ export function CommentList({
             }
           >
             {comment.body && <Markdown source={comment.body} repo={repoAt(base)} />}
+            {(can.edit || can.delete) && (
+              <CommentActions comment={comment} can={can} error={failed?.comment === comment.id ? failed.error : null} />
+            )}
           </TimelineItem>
         );
       })}

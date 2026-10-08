@@ -19,11 +19,41 @@ const GROUPS: { title: string; events: string[] }[] = [
   { title: "Code", events: ["git.push", "repo.created", "repo.forked"] },
   {
     title: "Issues",
-    events: ["issue.opened", "issue.updated", "issue.assigned", "issue.closed", "issue.reopened", "comment.created"],
+    events: [
+      "issue.opened",
+      "issue.updated",
+      "issue.assigned",
+      "issue.closed",
+      "issue.reopened",
+      "comment.created",
+      "comment.edited",
+      "comment.deleted",
+    ],
   },
   {
     title: "Pull requests",
-    events: ["pull.opened", "pull.ready", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed"],
+    events: [
+      "pull.opened",
+      "pull.ready",
+      "pull.converted_to_draft",
+      "pull.updated",
+      "pull.merge_requested",
+      "pull.merged",
+      "pull.closed",
+      "pull.reopened",
+    ],
+  },
+  {
+    title: "Releases",
+    events: [
+      "release.created",
+      "release.published",
+      "release.released",
+      "release.prereleased",
+      "release.edited",
+      "release.unpublished",
+      "release.deleted",
+    ],
   },
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
   {

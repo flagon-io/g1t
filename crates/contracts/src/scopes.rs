@@ -891,6 +891,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("close_issue", Scope::IssuesWrite),
     ("reopen_issue", Scope::IssuesWrite),
     ("add_comment", Scope::IssuesWrite),
+    ("edit_comment", Scope::IssuesWrite),
+    ("delete_comment", Scope::IssuesWrite),
     ("import_issue", Scope::IssuesWrite),
     ("apply_plan", Scope::IssuesWrite),
     // Pull requests.
@@ -904,6 +906,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("record_session", Scope::PullRequestsWrite),
     ("mark_pull_request_ready", Scope::PullRequestsWrite),
     ("close_pull_request", Scope::PullRequestsWrite),
+    ("reopen_pull_request", Scope::PullRequestsWrite),
+    ("convert_pull_request_to_draft", Scope::PullRequestsWrite),
     ("review_pull_request", Scope::PullRequestsWrite),
     ("merge_pull_request", Scope::PullRequestsWrite),
     ("request_reviewers", Scope::PullRequestsWrite),
@@ -960,10 +964,12 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("approve_workflow_run", Scope::WorkflowsWrite),
     ("get_workflow_permissions", Scope::RepoRead),
     ("get_fork_pr_approval", Scope::RepoRead),
+    ("get_actions_access", Scope::RepoRead),
     ("update_environment", Scope::RepoAdmin),
     ("delete_environment", Scope::RepoAdmin),
     ("set_workflow_permissions", Scope::RepoAdmin),
     ("set_fork_pr_approval", Scope::RepoAdmin),
+    ("set_actions_access", Scope::RepoAdmin),
     // Starting workflows from outside, as a push would.
     ("create_repository_dispatch", Scope::CodeWrite),
     // A workspace's policy for its repositories' tokens.
