@@ -845,7 +845,7 @@ impl Work {
         let rerun: Outcome<Value> = g1t_kit::call(
             &self.actions,
             "rerun",
-            &RunActionArgs { actor: actor.clone(), repo: repo.clone(), id: run_id.to_owned(), failed_only: false },
+            &RunActionArgs { actor: actor.clone(), repo: repo.clone(), id: run_id.to_owned(), failed_only: false, job: None, debug: false, force: false },
         )
         .await?;
         Ok(match rerun {

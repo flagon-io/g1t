@@ -138,6 +138,10 @@ pub struct Job {
     /// The self-hosted runner that took it, by name.
     #[serde(default)]
     pub runner: Option<String>,
+    /// It was cancelled and is running its `if: always()` and `cancelled()`
+    /// steps and its post steps before it ends.
+    #[serde(default)]
+    pub cancelling: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -154,6 +158,62 @@ pub struct RunDetail {
     /// The environments whose protection rules hold its jobs, this attempt.
     #[serde(default)]
     pub pending_deployments: Vec<PendingDeployment>,
+    /// Every attempt of the run, oldest first, the one shown included.
+    /// `run.attempt` says which one `jobs` belong to.
+    #[serde(default)]
+    pub attempts: Vec<RunAttempt>,
+}
+
+/// One attempt of a run: the first, or a re-run.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunAttempt {
+    /// From 1.
+    pub attempt: u64,
+    /// `queued`, `in_progress` or `completed`; earlier attempts are completed.
+    pub status: String,
+    pub conclusion: Option<String>,
+    /// Who started it: whoever caused the run for the first, whoever re-ran
+    /// it for the rest.
+    pub actor: Option<String>,
+    /// It ran with debug logging (`RUNNER_DEBUG=1`).
+    pub debug: bool,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+}
+
+/// One job's summary: what its steps wrote to `$GITHUB_STEP_SUMMARY`, in
+/// Markdown, masked.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobSummary {
+    /// The job's id, as `RunDetail.jobs` gives it for the attempt.
+    pub job_id: String,
+    pub name: String,
+    pub steps: Vec<StepSummary>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepSummary {
+    /// The step, from 1 (post steps follow the job's own).
+    pub step: u32,
+    pub markdown: String,
+}
+
+/// A job's whole log, for downloading: its steps, to split the text by.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobLogText {
+    pub job_id: String,
+    pub name: String,
+    pub steps: Vec<StepState>,
+    pub chunks: Vec<LogChunk>,
+    /// Whether the job has finished.
+    pub done: bool,
+    /// Its log was left out: the run's logs reached `MAX_RUN_LOG_BYTES`.
+    #[serde(default)]
+    pub omitted: bool,
 }
 
 /// A run that needed approval before it started.
@@ -518,7 +578,47 @@ pub struct RunArgs {
     pub repo: RepoPath,
     pub viewer: Viewer,
     pub id: String,
+    /// An earlier attempt; the latest when absent.
+    #[serde(default)]
+    pub attempt: Option<u64>,
 }
+
+/// `summaries`: the job summaries of a run's attempt (the latest when
+/// `attempt` is absent), jobs in the run's order, those with none left
+/// out. Returns `Outcome<Vec<JobSummary>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SummariesArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    pub id: String,
+    #[serde(default)]
+    pub attempt: Option<u64>,
+}
+
+/// `job_log_text`: one job's whole log, any attempt's (by the id the run
+/// gave the job). Returns `Outcome<JobLogText>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobLogTextArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    pub job: String,
+}
+
+/// `run_logs`: every job's whole log for an attempt of a run (the latest
+/// when `attempt` is absent), until they add up to `MAX_RUN_LOG_BYTES`;
+/// jobs past it come `omitted`, with no chunks. Returns
+/// `Outcome<Vec<JobLogText>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunLogsArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    pub id: String,
+    #[serde(default)]
+    pub attempt: Option<u64>,
+}
+
+/// The most log `run_logs` returns at once, in bytes.
+pub const MAX_RUN_LOG_BYTES: usize = 24 * 1024 * 1024;
 
 /// `logs`: a job's log after `after`. Returns `Outcome<JobLog>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -545,8 +645,10 @@ pub struct DispatchArgs {
     pub inputs: serde_json::Map<String, Value>,
 }
 
-/// `cancel` and `rerun` (all jobs, or with `failed_only` the ones that did
-/// not succeed). Members only. Returns `Outcome<WorkflowRun>`.
+/// `cancel` and `rerun`: every job, with `failed_only` the ones that did
+/// not succeed, or with `job` that one job (by its id in the run's latest
+/// attempt); each with the jobs that need them. `debug` runs the new
+/// attempt with debug logging. Members only. Returns `Outcome<WorkflowRun>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunActionArgs {
     pub actor: User,
@@ -554,6 +656,13 @@ pub struct RunActionArgs {
     pub id: String,
     #[serde(default)]
     pub failed_only: bool,
+    #[serde(default)]
+    pub job: Option<String>,
+    #[serde(default)]
+    pub debug: bool,
+    /// `cancel`: stop running jobs outright, without their cleanup steps.
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// `set_workflow_enabled`. Members only. Returns `Outcome<Workflow>`.
