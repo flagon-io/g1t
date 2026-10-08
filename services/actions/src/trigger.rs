@@ -44,6 +44,12 @@ struct Subject {
     approval: Option<String>,
 }
 
+/// Whether a deployment's `ref` is a commit's full hash rather than a
+/// branch or tag.
+fn is_commit(name: &str) -> bool {
+    name.len() == 40 && name.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 /// Whether whoever a pull request is for is trusted without asking
 /// identity: g1t's agent in work nobody asked it for, or someone whose
 /// role here is known to allow pushing.
@@ -142,6 +148,20 @@ impl Actions {
             },
         )
         .await
+    }
+
+    /// Whether `name` is one of the repository's branches.
+    async fn is_branch(&self, repo: &Repo, ws: &User, name: &str) -> Result<bool> {
+        let branches: Outcome<Vec<g1t_contracts::repos::Branch>> = g1t_kit::call(
+            &self.repos,
+            "branches",
+            &g1t_contracts::repos::BranchesArgs {
+                path: Self::repo_path(repo),
+                viewer: Some(ws.clone()),
+            },
+        )
+        .await?;
+        Ok(branches.into_result().unwrap_or_default().iter().any(|branch| branch.name == name))
     }
 
     fn repo_path(repo: &Repo) -> RepoPath {
@@ -380,13 +400,112 @@ impl Actions {
                 payload::changed(&mut payload, data);
                 if event_name == "issue_comment" {
                     let comment_id = data["commentId"].as_str();
-                    let comment = comments.iter().find(|c| Some(c.id.as_str()) == comment_id).or(comments.last());
-                    match comment {
-                        Some(comment) => payload["comment"] = payload::comment(repo, number, comment, on_pull),
-                        None => return Ok(None),
+                    if action == Some("deleted") {
+                        // Gone by now: as the event kept it.
+                        match data.get("comment").filter(|kept| kept.is_object()) {
+                            Some(kept) => payload["comment"] = payload::deleted_comment(repo, number, kept, on_pull),
+                            None => return Ok(None),
+                        }
+                    } else {
+                        let comment = comments.iter().find(|c| Some(c.id.as_str()) == comment_id);
+                        // A new comment is the newest; an edited one must be found.
+                        let comment = if action == Some("created") { comment.or(comments.last()) } else { comment };
+                        match comment {
+                            Some(comment) => payload["comment"] = payload::comment(repo, number, comment, on_pull),
+                            None => return Ok(None),
+                        }
+                    }
+                    // `edited`: what the body was before.
+                    if let Some(changes) = data.get("changes").filter(|changes| changes.is_object()) {
+                        payload["changes"] = changes.clone();
                     }
                 }
                 Some(on_default(sha, payload, title, on_pull.then_some(number)))
+            }
+            // A release: on its tag, at the commit the tag named.
+            "release" => {
+                let release = &data["release"];
+                let Some(tag) = data["tagName"].as_str().or_else(|| release["tagName"].as_str()) else { return Ok(None) };
+                let sha = match release["target"].as_str().filter(|target| !target.is_empty()) {
+                    Some(target) => target.to_owned(),
+                    None => match self.default_head(repo).await? {
+                        Some(head) => head,
+                        None => return Ok(None),
+                    },
+                };
+                let git_ref = format!("refs/tags/{tag}");
+                let mut payload = json!({
+                    "action": action,
+                    "release": payload::release(repo, release),
+                    "repository": payload::repository(repo),
+                    "sender": payload::user(sender),
+                });
+                if let Some(changes) = data.get("changes").filter(|changes| changes.is_object()) {
+                    payload["changes"] = changes.clone();
+                }
+                let name = release["name"].as_str().filter(|name| !name.is_empty()).unwrap_or(tag);
+                Some(Subject {
+                    source: path.clone(),
+                    source_ref: Some(sha.clone()),
+                    git_ref: git_ref.clone(),
+                    sha,
+                    head_ref: None,
+                    base_ref: None,
+                    pull: None,
+                    filter_ref: git_ref,
+                    paths: None,
+                    compare: None,
+                    payload,
+                    title: format!("Release {name} {}", action.unwrap_or("changed")),
+                    trusted: true,
+                    approval: None,
+                })
+            }
+            // A deployment, or a new status of one: at the commit deployed,
+            // on the branch or tag it names (none for a bare commit).
+            "deployment" | "deployment_status" => {
+                let deployment = &data["deployment"];
+                let Some(sha) = deployment["sha"].as_str().filter(|sha| !sha.is_empty()).map(str::to_owned) else { return Ok(None) };
+                let named = deployment["ref"].as_str().unwrap_or_default();
+                let git_ref = if named.is_empty() || named == sha || is_commit(named) {
+                    String::new()
+                } else if named.starts_with("refs/") {
+                    named.to_owned()
+                } else if self.is_branch(repo, ws, named).await? {
+                    format!("refs/heads/{named}")
+                } else {
+                    format!("refs/tags/{named}")
+                };
+                let environment = deployment["environment"].as_str().unwrap_or_default();
+                let mut payload = json!({
+                    "action": "created",
+                    "deployment": payload::deployment(repo, deployment),
+                    "repository": payload::repository(repo),
+                    "sender": payload::user(sender),
+                });
+                let title = if event_name == "deployment_status" {
+                    let status = &data["deploymentStatus"];
+                    payload["deployment_status"] = payload::deployment_status(repo, status, deployment);
+                    format!("Deployment to {environment}: {}", status["state"].as_str().unwrap_or("changed"))
+                } else {
+                    format!("Deployment to {environment}")
+                };
+                Some(Subject {
+                    source: path.clone(),
+                    source_ref: Some(sha.clone()),
+                    filter_ref: git_ref.clone(),
+                    git_ref,
+                    sha,
+                    head_ref: None,
+                    base_ref: None,
+                    pull: None,
+                    paths: None,
+                    compare: None,
+                    payload,
+                    title,
+                    trusted: true,
+                    approval: None,
+                })
             }
             _ => None,
         })
@@ -419,7 +538,11 @@ impl Actions {
             // Issues and comments start the default branch's workflows,
             // which the synced table lists: when none listens, nothing is
             // read from git. Agents make many of these events.
-            if matches!(event_name, "issues" | "issue_comment") && self.listens(repo_id, event_name).await? == Some(false) {
+            // Deployments' statuses are as frequent (every g1t.page build
+            // reports several), so they look there first too.
+            if matches!(event_name, "issues" | "issue_comment" | "deployment" | "deployment_status")
+                && self.listens(repo_id, event_name).await? == Some(false)
+            {
                 continue;
             }
             let Some(mut subject) = self.subject(event, event_name, action, &repo, &ws, &sender).await? else {
@@ -430,7 +553,13 @@ impl Actions {
             // events say it is there (marked ready, and pushed).
             let key = match subject.pull {
                 Some(number) if event_name.starts_with("pull_request") && event_name != "pull_request_review" => {
-                    let phase = if action == Some("closed") { "closed" } else { "open" };
+                    // Reopened or made a draft again runs anew, at a head
+                    // that may have run before.
+                    let phase = match action {
+                        Some("closed") => "closed".to_owned(),
+                        Some(again @ ("reopened" | "converted_to_draft")) => format!("{again}:{}", event.id),
+                        _ => "open".to_owned(),
+                    };
                     format!("{event_name}:{number}:{}:{phase}", subject.sha)
                 }
                 _ if event_name == "create" => format!("{}:create", event.id),
@@ -1036,6 +1165,32 @@ mod tests {
         let as_issue = payload::pull_as_issue(&repo(), &pull);
         assert_eq!(as_issue["user"]["login"], "g1t");
         assert_eq!(as_issue["requested_by"]["login"], "syntaqx");
+    }
+
+    #[test]
+    fn releases_deployments_and_deleted_comments_read_as_githubs() {
+        let release = payload::release(
+            &repo(),
+            &json!({ "id": "rel_1", "tagName": "v1.2.0", "target": "abc", "name": null, "body": "Notes", "draft": false,
+                     "prerelease": true, "author": "ana", "createdAt": "2026-10-08T00:00:00Z", "publishedAt": "2026-10-08T00:00:00Z" }),
+        );
+        assert_eq!(release["tag_name"], "v1.2.0");
+        assert_eq!(release["name"], "v1.2.0");
+        assert_eq!(release["prerelease"], true);
+        assert_eq!(release["author"]["login"], "ana");
+        assert_eq!(release["html_url"], "https://g1t.sh/acme/web/releases/tag/v1.2.0");
+        let deployment = json!({ "id": "dep_1", "sha": "abc", "ref": "main", "environment": "staging", "creator": "ana",
+                                 "production_environment": false, "created_at": "t", "updated_at": "t" });
+        let status = payload::deployment_status(&repo(), &json!({ "id": "dst_1", "state": "success", "environment_url": "https://s.example", "log_url": null, "creator": "g1t", "created_at": "t" }), &deployment);
+        assert_eq!(status["state"], "success");
+        assert_eq!(status["environment"], "staging");
+        assert_eq!(status["environment_url"], "https://s.example");
+        assert_eq!(payload::deployment(&repo(), &deployment)["payload"], json!({}));
+        let gone = payload::deleted_comment(&repo(), 7, &json!({ "id": "cmt_1", "body": "hi", "author": { "id": "usr_1", "username": "bo" }, "createdAt": "t" }), true);
+        assert_eq!(gone["user"]["login"], "bo");
+        assert_eq!(gone["html_url"], "https://g1t.sh/acme/web/pull/7#cmt_1");
+        assert!(is_commit("0123456789abcdef0123456789abcdef01234567"));
+        assert!(!is_commit("main"));
     }
 
     #[test]

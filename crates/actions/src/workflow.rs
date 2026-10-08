@@ -28,6 +28,9 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
     "workflow_run",
     "merge_group",
     "create",
+    "release",
+    "deployment",
+    "deployment_status",
 ];
 
 /// Events GitHub has that g1t knows of but never sends: a workflow on one
@@ -467,11 +470,13 @@ pub fn parse(source: &str) -> Result<Workflow, String> {
             ),
             _ => (None, true, None),
         };
-        if uses.as_deref().is_some_and(|uses| !uses.starts_with("./")) {
+        if let Some(called) = uses.as_deref().filter(|uses| !uses.starts_with("./")) {
             note(
-                Severity::Unsupported,
+                Severity::Info,
                 Some(id),
-                "Reusable workflows from other repositories are not called on g1t yet, so this job fails; ones in this repository (`./.g1t/workflows/…`) are.".to_owned(),
+                format!(
+                    "`{called}` is read from that repository on g1t when it is there and this repository may use it (a private one allows it under Settings, Actions, Access), and otherwise from a public repository on GitHub."
+                ),
             );
         }
         jobs.push(Job {
@@ -645,12 +650,17 @@ jobs:
     #[test]
     fn notes_say_what_runs_differently() {
         let workflow = parse(
-            "on: [push, release]\njobs:\n  win:\n    runs-on: windows-latest\n    services:\n      db: { image: postgres }\n    steps:\n      - uses: actions/cache@v6\n      - uses: actions/setup-node@v7\n        with: { cache: npm }\n      - uses: docker://alpine\n      - run: dir\n        shell: pwsh",
+            "on: [push, watch]\njobs:\n  win:\n    runs-on: windows-latest\n    services:\n      db: { image: postgres }\n    steps:\n      - uses: actions/cache@v6\n      - uses: actions/setup-node@v7\n        with: { cache: npm }\n      - uses: docker://alpine\n      - run: dir\n        shell: pwsh",
         )
         .unwrap();
         let unsupported: Vec<&str> =
             workflow.notes.iter().filter(|n| n.severity == Severity::Unsupported).map(|n| n.message.as_str()).collect();
-        assert!(unsupported.iter().any(|m| m.contains("`release`")));
+        assert!(unsupported.iter().any(|m| m.contains("`watch`")));
+        let released = parse("on:\n  release:\n    types: [published]\n  deployment_status:\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ run: 'true' }]").unwrap();
+        assert!(!released.notes.iter().any(|n| n.severity == Severity::Unsupported));
+        assert!(released.trigger("release").unwrap().wants_type(Some("published")));
+        assert!(!released.trigger("release").unwrap().wants_type(Some("created")));
+        assert!(released.trigger("deployment_status").unwrap().wants_type(Some("created")));
         assert!(unsupported.iter().any(|m| m.contains("windows-latest")));
         assert!(!unsupported.iter().any(|m| m.contains("services")));
         assert!(!unsupported.iter().any(|m| m.contains("docker://alpine")));
