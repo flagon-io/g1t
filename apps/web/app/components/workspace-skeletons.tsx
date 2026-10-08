@@ -1,8 +1,8 @@
 /**
- * The shapes of a workspace's tabs while they load: the same layout as
+ * The shapes of a workspace's pages while they load: the same layout as
  * the real thing, so nothing moves when it arrives (components/ui/skeleton.tsx).
  */
-import type { WorkspaceTabKey } from "../lib/workspace-nav";
+import type { WorkspacePageKey } from "../lib/workspace-nav";
 import { Skeleton, SkeletonRows, SkeletonText } from "./ui/skeleton";
 
 /** A project card, as the Overview and the Projects grid show them. */
@@ -85,10 +85,10 @@ export function OverviewSkeleton() {
   );
 }
 
-/** Whichever tab is on its way. */
-export function WorkspaceTabSkeleton({ tab }: { tab: WorkspaceTabKey }) {
-  if (tab === "overview") return <OverviewSkeleton />;
-  if (tab === "projects") return <ProjectsSkeleton />;
+/** Whichever page is on its way. */
+export function WorkspacePageSkeleton({ page }: { page: WorkspacePageKey }) {
+  if (page === "overview") return <OverviewSkeleton />;
+  if (page === "projects") return <ProjectsSkeleton />;
   return (
     <div aria-busy="true" aria-label="Loading" className="space-y-4">
       <Skeleton className="h-3.5 w-2/3 max-w-xl" />

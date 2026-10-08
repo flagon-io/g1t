@@ -17,8 +17,7 @@ workspace leaves all of its teams with it.
 Any member of the workspace with a confirmed email address can create a
 team, and becomes its first maintainer.
 
-1. Open **Teams** in the sidebar, or the **Teams** tab of the workspace's
-   page: `g1t.sh/<workspace>/-/teams`.
+1. Open **Teams** in the sidebar: `g1t.sh/<workspace>/-/teams`.
 2. Choose **New team**, or go to `g1t.sh/<workspace>/-/teams/new`. The
    **+** menu in the top bar has **New team** too, for the workspace the
    sidebar is on.
@@ -39,9 +38,9 @@ mentioned as `@<workspace>/<team>`.
 | Description | Up to 280 characters. |
 | Teams in one workspace | Up to 500. |
 
-The **Teams** tab lists the teams you can see, yours first, then by
+The **Teams** page lists the teams you can see, yours first, then by
 name, with a search box that matches names and slugs. A person's teams
-also show beside them on the workspace's **People** tab.
+also show beside them on the workspace's **People** page.
 
 ## Visibility
 

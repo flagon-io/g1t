@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, TrendingUp, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -22,7 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { type RoadmapItem, roadmapIn } from "../lib/roadmap";
+import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
+import { SETTINGS_PAGES, sidebarCurrent } from "../lib/workspace-nav";
 import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
 import { VISITOR_LINKS, projectPages } from "../lib/chrome";
 import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
@@ -82,6 +83,7 @@ function SidebarLink({
   count,
   also,
   drill,
+  current: lit,
   children,
 }: {
   to: string;
@@ -92,6 +94,8 @@ function SidebarLink({
   also?: string | string[];
   /** It opens a list of its own: a chevron says so, always or on hover. */
   drill?: boolean | "hover";
+  /** Whether it is the current row, when the list works that out itself. */
+  current?: boolean;
   children: ReactNode;
 }) {
   const { pathname } = useLocation();
@@ -102,7 +106,8 @@ function SidebarLink({
       prefetch="intent"
       className={({ isActive, isPending }) => {
         const current =
-          isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+          lit ??
+          (isActive || [also ?? []].flat().some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/")));
         return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
           current
             ? "bg-raised font-medium text-fg"
@@ -157,12 +162,15 @@ function SidebarSoonLink({
   also,
   icon,
   about,
+  current: lit,
   children,
 }: {
   to: string;
   also?: string[];
   icon: ReactNode;
   about: string;
+  /** Whether it is the current row, when the list works that out itself. */
+  current?: boolean;
   children: ReactNode;
 }) {
   const { pathname } = useLocation();
@@ -172,7 +180,7 @@ function SidebarSoonLink({
       title={about}
       prefetch="intent"
       className={({ isActive }) => {
-        const current = isActive || (also ?? []).some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+        const current = lit ?? (isActive || (also ?? []).some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/")));
         return `group flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${
           current ? "bg-raised font-medium text-fg" : "text-faint hover:bg-raised/60 hover:text-muted"
         }`;
@@ -471,7 +479,7 @@ function AccountMenu({ user }: { user: User }) {
  * still open these.
  */
 const SETTINGS_PAGE =
-  /^\/([^/]+)\/-\/(settings|repositories|tokens|guardrails|secrets|runners|integrations|webhooks|billing|audit)(\/|$)/;
+  new RegExp(`^/([^/]+)/-/(${SETTINGS_PAGES.join("|")})(/|$)`);
 /** A project's settings pages, which the project's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
@@ -583,7 +591,7 @@ function SidebarSubhead({ children }: { children: ReactNode }) {
  * way to all of them. Pins move by dragging, or with Alt and the arrow
  * keys; the projects service keeps the order.
  */
-function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
+function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellData; current: boolean }) {
   const reorder = useFetcher({ key: `pins:${slug}` });
   const saved = shell.pinned ?? [];
   // While a new order is on its way, it shows as made.
@@ -680,7 +688,7 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
         </>
       )}
       <div className="pt-1">
-        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid size={15} />} count={shell.repos.length}>
+        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid size={15} />} count={shell.repos.length} current={current}>
           All projects
         </SidebarLink>
       </div>
@@ -689,11 +697,19 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
 }
 
 /**
- * The main list: where you go, the projects, what the workspace builds and
- * runs with across them, then its usage, support and settings.
+ * The main list, in two parts a rule apart. Above it, what is yours
+ * whichever workspace you are in: Mission control, your inbox, and what
+ * others have shared with you. Below it, under the workspace's name, the
+ * workspace: its overview, its projects, what it builds and runs with
+ * across them, then its people, usage, support and settings. One row is
+ * lit wherever you are (lib/workspace-nav.ts).
  */
 function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
   const ws = shell.workspace;
+  const { pathname } = useLocation();
+  const going = useNavigation().location?.pathname;
+  // The row lights as the link is followed, not once the page arrives.
+  const here = sidebarCurrent(going ?? pathname, ws?.slug ?? null);
   // A visitor browses: no workspace, no projects of their own.
   if (!user) {
     return (
@@ -708,28 +724,21 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
       </nav>
     );
   }
+  const shared = shell.shared ?? [];
   return (
     <nav aria-label="g1t" className={PANEL}>
-      {/* Everything here is the workspace the switcher names: its home first.
-          The workspace's own page is the switcher's; Explore, all of g1t,
-          is in the top bar. */}
+      {/* Yours, in every workspace. Explore, all of g1t, is in the top bar. */}
       <div className="mt-3 space-y-px">
-        <SidebarLink to="/" end icon={<House size={15} />}>
+        <SidebarLink to="/" end icon={<House size={15} />} current={here === "mission"}>
           Mission control
         </SidebarLink>
+        <SidebarLink to="/inbox" icon={<Inbox size={15} />} count={shell.inbox?.unread ?? undefined} current={here === "inbox"}>
+          Inbox
+        </SidebarLink>
       </div>
-
-      <Rule />
-      {ws ? (
-        <SidebarProjects slug={ws.slug} shell={shell} />
-      ) : (
-        <SidebarGroup title="Projects">
-          <p className="px-2 py-1 text-xs text-faint">None yet.</p>
-        </SidebarGroup>
-      )}
-      {(shell.shared ?? []).length > 0 && (
+      {shared.length > 0 && (
         <SidebarGroup title="Shared with you" className="mt-3">
-          {(shell.shared ?? []).map((repo) => (
+          {shared.map((repo) => (
             <SidebarLink
               key={`${repo.namespace}/${repo.name}`}
               to={`/${repo.namespace}/${repo.name}`}
@@ -743,25 +752,46 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
         </SidebarGroup>
       )}
 
-      {ws && (
+      <Rule />
+      {ws ? (
         <>
+          {/* The workspace the switcher names: its own page first. */}
+          <SidebarGroup title={displayName(ws)}>
+            <SidebarLink to={`/${ws.slug}`} end icon={<LayoutDashboard size={15} />} current={here === "overview"}>
+              Overview
+            </SidebarLink>
+          </SidebarGroup>
+          <div className="mt-3">
+            <SidebarProjects slug={ws.slug} shell={shell} current={here === "projects"} />
+          </div>
+
           <Rule />
-          <SidebarGroup title="Workspace">
-            <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />}>
+          <div className="space-y-px">
+            <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />} current={here === "agents"}>
               Agent fleet
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/context`} icon={<Network size={15} />}>
+            <SidebarLink to={`/${ws.slug}/-/context`} icon={<Network size={15} />} current={here === "context"}>
               Context
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/memory`} icon={<Brain size={15} />}>
+            <SidebarLink to={`/${ws.slug}/-/memory`} icon={<Brain size={15} />} current={here === "memory"}>
               Memory
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/security`} icon={<ShieldCheck size={15} />}>
+            <SidebarLink to={`/${ws.slug}/-/security`} icon={<ShieldCheck size={15} />} current={here === "security"}>
               Security
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/packages`} icon={<Package size={15} />}>
+            <SidebarLink to={`/${ws.slug}/-/packages`} icon={<Package size={15} />} current={here === "packages"}>
               Packages
             </SidebarLink>
+            {INSIGHTS && (
+              <SidebarSoonLink
+                to={`/${ws.slug}/-/insights`}
+                icon={<TrendingUp size={15} />}
+                about={INSIGHTS.summary}
+                current={here === "insights"}
+              >
+                {INSIGHTS.title}
+              </SidebarSoonLink>
+            )}
             {roadmapIn("Workspace").filter((item) => item.key !== "insights").map((item) => (
               <SidebarSoonLink
                 key={item.key}
@@ -772,21 +802,21 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
                 {item.title === "Board" ? "Boards" : item.title}
               </SidebarSoonLink>
             ))}
-          </SidebarGroup>
+          </div>
 
           <Rule />
           <div className="space-y-px">
             {/* Who belongs, for every member to see; owners invite and manage there. */}
-            <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
+            <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />} current={here === "people"}>
               People
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/teams`} icon={WORKSPACE_ICONS.teams}>
+            <SidebarLink to={`/${ws.slug}/-/teams`} icon={WORKSPACE_ICONS.teams} current={here === "teams"}>
               Teams
             </SidebarLink>
-            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
+            <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />} current={here === "usage"}>
               Usage
             </SidebarLink>
-            <SidebarLink to="/support" icon={<LifeBuoy size={15} />}>
+            <SidebarLink to="/support" icon={<LifeBuoy size={15} />} current={here === "support"}>
               Support
             </SidebarLink>
             {/* How it is set up and connected, what it pays and its record: a list of their own. */}
@@ -794,15 +824,23 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
               to={ws.role === "owner" ? `/${ws.slug}/-/settings` : `/${ws.slug}/-/repositories`}
               icon={<Settings size={15} />}
               drill
+              current={here === "settings"}
             >
               Settings
             </SidebarLink>
           </div>
         </>
+      ) : (
+        <SidebarGroup title="Projects">
+          <p className="px-2 py-1 text-xs text-faint">None yet.</p>
+        </SidebarGroup>
       )}
     </nav>
   );
 }
+
+/** Insights, coming: the workspace's own page says what it will be. */
+const INSIGHTS = roadmapItem("insights");
 
 /** A workspace's settings, drilled into from Settings in the main list. */
 function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {

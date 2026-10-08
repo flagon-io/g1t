@@ -1,37 +1,50 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { pagePath, workspaceRedirect, workspaceTab, workspaceTabs } from "./workspace-nav.ts";
+import { SETTINGS_PAGES, WORKSPACE_PAGES, pagePath, sidebarCurrent, workspacePage, workspaceRedirect } from "./workspace-nav.ts";
 
-test("everyone sees Overview, Projects and Packages; members and owners see more", () => {
-  const keys = (member: boolean, owner: boolean) => workspaceTabs("acme", { member, owner }).map((tab) => tab.key);
-  assert.deepEqual(keys(false, false), ["overview", "projects", "packages"]);
-  assert.deepEqual(keys(true, false), ["overview", "projects", "packages", "teams", "people", "insights"]);
-  assert.deepEqual(keys(true, true), ["overview", "projects", "packages", "teams", "people", "insights", "settings"]);
+test("a path is one of the workspace's pages, or none", () => {
+  assert.equal(workspacePage("/acme", "acme"), "overview");
+  assert.equal(workspacePage("/Acme/", "acme"), "overview");
+  assert.equal(workspacePage("/acme.data", "acme"), "overview");
+  assert.equal(workspacePage("/acme/-/projects", "acme"), "projects");
+  assert.equal(workspacePage("/acme/-/people", "acme"), "people");
+  assert.equal(workspacePage("/acme/-/packages", "acme"), "packages");
+  assert.equal(workspacePage("/acme/-/teams", "acme"), "teams");
+  assert.equal(workspacePage("/acme/-/insights", "acme"), "insights");
+  // One package or team has a page of its own; settings and the rest have headings.
+  assert.equal(workspacePage("/acme/-/packages/npm/web", "acme"), null);
+  assert.equal(workspacePage("/acme/-/teams/web", "acme"), null);
+  assert.equal(workspacePage("/acme/-/settings", "acme"), null);
+  assert.equal(workspacePage("/acme/-/agents", "acme"), null);
+  assert.equal(workspacePage("/acme/web", "acme"), null);
+  assert.equal(workspacePage("/other", "acme"), null);
 });
 
-test("tabs carry counts, and say which are coming", () => {
-  const tabs = workspaceTabs("acme", { member: true, owner: false, projects: 412, people: 7 });
-  assert.equal(tabs.find((tab) => tab.key === "projects")?.count, 412);
-  assert.equal(tabs.find((tab) => tab.key === "people")?.count, 7);
-  assert.equal(tabs.find((tab) => tab.key === "teams")?.soon, undefined);
-  assert.equal(tabs.find((tab) => tab.key === "insights")?.soon, true);
-  assert.equal(tabs.find((tab) => tab.key === "overview")?.to, "/acme");
-  assert.equal(tabs.find((tab) => tab.key === "projects")?.to, "/acme/-/projects");
+test("every page that once had a tab has a sidebar row", () => {
+  for (const page of ["overview", ...WORKSPACE_PAGES] as const) {
+    const path = page === "overview" ? "/acme" : `/acme/-/${page}`;
+    assert.equal(sidebarCurrent(path, "acme"), page, path);
+  }
 });
 
-test("a path is a tab, or one of the workspace's other pages", () => {
-  assert.equal(workspaceTab("/acme", "acme"), "overview");
-  assert.equal(workspaceTab("/Acme/", "acme"), "overview");
-  assert.equal(workspaceTab("/acme/-/projects", "acme"), "projects");
-  assert.equal(workspaceTab("/acme/-/people", "acme"), "people");
-  assert.equal(workspaceTab("/acme/-/packages", "acme"), "packages");
-  // One package has a page of its own; settings and the rest have headings.
-  assert.equal(workspaceTab("/acme/-/packages/npm/web", "acme"), null);
-  assert.equal(workspaceTab("/acme/-/settings", "acme"), null);
-  assert.equal(workspaceTab("/acme/-/agents", "acme"), null);
-  assert.equal(workspaceTab("/acme/web", "acme"), null);
-  assert.equal(workspaceTab("/other", "acme"), null);
+test("one sidebar row is current wherever you are in the workspace", () => {
+  assert.equal(sidebarCurrent("/", "acme"), "mission");
+  assert.equal(sidebarCurrent("/inbox", "acme"), "inbox");
+  assert.equal(sidebarCurrent("/support", "acme"), "support");
+  assert.equal(sidebarCurrent("/acme/-/projects.data", "acme"), "projects");
+  // Within a team or a package, its row stays lit.
+  assert.equal(sidebarCurrent("/acme/-/teams/web/settings", "acme"), "teams");
+  assert.equal(sidebarCurrent("/acme/-/packages/npm/web", "acme"), "packages");
+  assert.equal(sidebarCurrent("/acme/-/agents", "acme"), "agents");
+  assert.equal(sidebarCurrent("/acme/-/usage", "acme"), "usage");
+  // Every page the Settings row drills into.
+  for (const page of SETTINGS_PAGES) assert.equal(sidebarCurrent(`/acme/-/${page}`, "acme"), "settings", page);
+  // Another workspace's pages, a project and a person light nothing here.
+  assert.equal(sidebarCurrent("/other/-/projects", "acme"), null);
+  assert.equal(sidebarCurrent("/acme/web", "acme"), null);
+  assert.equal(sidebarCurrent("/u/ada", "acme"), null);
+  assert.equal(sidebarCurrent("/acme", null), null);
 });
 
 test("old addresses go to where their pages are now", () => {
@@ -44,11 +57,12 @@ test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/web"), null);
 });
 
-test("?tab= opens that tab, keeping the rest of the query", () => {
+test("?tab= opens that page, keeping the rest of the query", () => {
   assert.equal(workspaceRedirect("/acme", "?tab=repositories"), "/acme/-/projects");
   assert.equal(workspaceRedirect("/acme", "?tab=projects&q=api"), "/acme/-/projects?q=api");
   assert.equal(workspaceRedirect("/acme", "?tab=members"), "/acme/-/people");
   assert.equal(workspaceRedirect("/acme", "?tab=overview"), "/acme");
+  assert.equal(workspaceRedirect("/acme", "?tab=settings"), "/acme/-/settings");
   assert.equal(workspaceRedirect("/acme", "?tab=nonsense"), null);
   assert.equal(workspaceRedirect("/acme", ""), null);
 });

@@ -26,9 +26,9 @@ first time their workspace was opened.
 
 A workspace's page, `g1t.sh/<workspace>`, shows your pinned projects and
 its most active ones, each with where it is deployed, its latest build, and
-its open issues and pull requests. Its **Projects** tab lists every one,
-with search, filters and sorting; see
-[the Projects tab](/guides/workspaces/#the-projects-tab). The sidebar keeps
+its open issues and pull requests. **All projects** in the sidebar lists
+every one, with search, filters and sorting; see
+[the Projects page](/guides/workspaces/#the-projects-page). The sidebar keeps
 your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects).
 
 ## A project's pages

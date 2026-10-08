@@ -62,7 +62,7 @@ export default [
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),
-    // Its tabs: Overview (above), Projects, Packages, Teams, People, Insights.
+    // Its pages, each in the sidebar: Overview (above), Projects, People, Insights; Teams and Packages below.
     route("-/projects", "routes/workspace/projects.tsx"),
     route("-/people", "routes/workspace/people.tsx"),
     route("-/insights", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/insights" }),

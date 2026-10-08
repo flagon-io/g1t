@@ -270,8 +270,7 @@ and a repository made in it at an old address ends that address's redirect.
 | Owner | Everything a member can, and manage members, the base permission, the workspace's access tokens, its details, and billing: the plan, card checks, prepayment and limits. Admin on every repository, and the only ones who can transfer and delete them; see [access and roles](/guides/access-and-roles/). |
 
 Whoever creates a workspace is its owner. An owner adds people on the
-workspace's **People**, `g1t.sh/<workspace>/-/people` (a tab of the
-workspace's page, and in the sidebar):
+workspace's **People**, `g1t.sh/<workspace>/-/people` (in the sidebar):
 
 - **By username**: someone already on g1t joins at once, as a member.
 - **By email address**: g1t emails an invite that only that address can
@@ -298,15 +297,22 @@ add them as an [outside collaborator](/guides/access-and-roles/#outside-collabor
 ## The workspace's page
 
 A workspace's own page, `g1t.sh/<workspace>`, has its icon, name, address
-and description at the top, and tabs under them:
+and description at the top, then its overview: your
+[pinned projects](#pinned-and-recent-projects), then the most active ones,
+the pull requests in progress across them, and **All projects**. Members
+also see a **Usage** card with this month's spend, and who belongs.
 
-| Tab | Address | Who | |
+The workspace's other pages each have a heading of their own and a row in
+[the sidebar](#the-sidebar), lit while you are on them. The trail in the
+top bar, such as *acme / Projects*, leads back to the workspace's page.
+
+| Page | Address | Who | |
 | --- | --- | --- | --- |
-| **Overview** | `g1t.sh/<workspace>` | Everyone | Your [pinned projects](#pinned-and-recent-projects), then the most active ones, the pull requests in progress across them, and **All projects**. Members also see a **Usage** card with this month's spend, and who belongs. |
-| **Projects** | `/-/projects` | Everyone | Every project you can see, with their count. See [the Projects tab](#the-projects-tab). |
-| [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. |
+| **Overview** | `g1t.sh/<workspace>` | Everyone | The page above. |
+| **Projects** | `/-/projects` | Everyone | Every project you can see. See [the Projects page](#the-projects-page). |
+| [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page. |
 | [**Teams**](/guides/teams/) | `/-/teams` | Members | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
-| **People** | `/-/people` | Members | Who belongs, with their count. Owners add and remove people here. |
+| **People** | `/-/people` | Members | Who belongs. Owners add and remove people here. |
 | **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
 | **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
 
@@ -317,11 +323,11 @@ workspace's people, deployments or settings.
 
 Older addresses still work: `/-/members` opens People, and
 `g1t.sh/<workspace>?tab=projects` (or `repositories`, `packages`,
-`people`) opens that tab.
+`teams`, `people`, `insights` or `settings`) opens that page.
 
-### The Projects tab
+### The Projects page
 
-The Projects tab is made for workspaces with hundreds of projects:
+The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with hundreds of projects:
 
 - **Find a project** matches every word you type in a project's name, its
   address or its description. Press <kbd>/</kbd> anywhere on the page to
@@ -353,13 +359,22 @@ overview** and **All projects**.
 [Explore](https://g1t.sh/explore), public projects from all of g1t, is in
 the top bar, beside **Docs**.
 
-In order, it lists **Mission control**; the workspace's
-[projects](#pinned-and-recent-projects); under **Workspace**, the places work
-happens across them (**Agent fleet**, **Context**, **Memory**, **Security**
-and [**Packages**](/guides/packages/), with **Boards** and **Roadmap**
-soon); then **People**, [**Teams**](/guides/teams/), **Usage**, what g1t's runs have
-cost (see [usage and billing](/guides/usage-and-billing/)), **Support** and
-**Settings**. An item with an arrow opens a list of its own in the sidebar:
+It has two parts, a rule apart. Above the rule is what is yours in every
+workspace: **Mission control**, your **Inbox** with how many items are
+unread, and the repositories **Shared with you** in workspaces you do not
+belong to. Below it, under the workspace's name, is the workspace:
+
+1. **Overview**, the [workspace's page](#the-workspaces-page).
+2. Its [projects](#pinned-and-recent-projects), ending with **All projects**.
+3. The places work happens across them: **Agent fleet**, **Context**,
+   **Memory**, **Security** and [**Packages**](/guides/packages/), with
+   **Insights**, **Boards** and **Roadmap** soon.
+4. **People**, [**Teams**](/guides/teams/), **Usage**, what g1t's runs have
+   cost (see [usage and billing](/guides/usage-and-billing/)), **Support**
+   and **Settings**.
+
+One row is lit wherever you are: **Teams** on a team's pages, **Packages**
+on a package's, and **Settings** on every page it opens. An item with an arrow opens a list of its own in the sidebar:
 **Settings** slides over to how the workspace is set up and connected, and
 the row at the top, **‹ Settings**, slides back:
 
@@ -396,11 +411,11 @@ However many projects a workspace has, its sidebar lists a few:
 
 - **Pinned**: the projects you pinned, in your order, up to eight a
   workspace. Pin one with **Pin** on its page, or the pin on its row of the
-  Projects tab or its card on the Overview. Drag a pinned project to move
+  Projects page or its card on the Overview. Drag a pinned project to move
   it, or hold <kbd>Alt</kbd> and press the up or down arrow.
 - **Recent**: the projects you opened last that you have not pinned, up to
   five.
-- **All projects**, with how many there are, opens the Projects tab.
+- **All projects**, with how many there are, opens the Projects page.
 
 Pins and recent projects are yours: nobody else sees them, and each
 workspace has its own. ⌘K finds any project in the workspace, pinned or not.
