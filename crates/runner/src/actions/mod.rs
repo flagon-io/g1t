@@ -864,7 +864,7 @@ pub(crate) fn main() -> i32 {
 mod tests {
     use serde_json::{Map, Value, json};
 
-    use super::step_debug;
+    use super::*;
 
     #[test]
     fn debug_logging_comes_from_a_secret_a_variable_or_a_debug_rerun() {
@@ -879,11 +879,6 @@ mod tests {
         assert!(step_debug(&contexts(json!({})), &json!({ "ACTIONS_STEP_DEBUG": "true" })));
         assert!(!step_debug(&contexts(json!({})), &json!({ "RUNNER_DEBUG": "0" })));
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 
     #[test]
     fn a_steps_timeout_is_its_own_or_the_nearer_one_around_it() {
