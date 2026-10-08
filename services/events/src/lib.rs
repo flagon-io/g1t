@@ -117,33 +117,14 @@ impl Events {
     /// Newest first. Callers must have checked that the viewer may see the
     /// repository asked about.
     async fn list(&self, a: ListArgs) -> Result<Vec<Event>> {
-        let mut conditions = Vec::new();
-        let mut values: Vec<JsValue> = Vec::new();
-        if let Some(repo_id) = &a.repo_id {
-            conditions.push("repo_id = ?".to_owned());
-            values.push(repo_id.as_str().into());
-        }
-        if !a.types.is_empty() {
-            let marks = vec!["?"; a.types.len()].join(", ");
-            conditions.push(format!("type IN ({marks})"));
-            values.extend(a.types.iter().map(|kind| JsValue::from(kind.as_str())));
-        } else {
-            // What CI and integrations report on commits goes to webhooks,
-            // and is read from each commit's checks; a timeline asked for
-            // everything would be little else on a busy repository.
-            let marks = vec!["?"; REPORTING.len()].join(", ");
-            conditions.push(format!("type NOT IN ({marks})"));
-            values.extend(REPORTING.iter().map(|kind| JsValue::from(*kind)));
-        }
-        if let Some(before) = &a.before {
-            conditions.push("id < ?".to_owned());
-            values.push(before.as_str().into());
-        }
-        let filter = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
+        let (filter, binds) = list_filter(&a);
+        let mut values: Vec<JsValue> = binds
+            .into_iter()
+            .map(|bind| match bind {
+                Bind::Text(text) => JsValue::from(text),
+                Bind::Number(number) => JsValue::from(number),
+            })
+            .collect();
         values.push(a.limit.unwrap_or(DEFAULT_PAGE).min(MAX_PAGE).into());
         let rows = self
             .db
@@ -317,5 +298,106 @@ async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::Sched
         }
         Ok(_) => {}
         Err(error) => worker::console_error!("audit entries kept past their plan's days: {error}"),
+    }
+}
+
+/// A value bound to a `?` in [`list_filter`]'s clause.
+#[derive(Debug, PartialEq)]
+enum Bind {
+    Text(String),
+    Number(f64),
+}
+
+/// The `WHERE` clause `list` reads with, and what it binds, in order.
+fn list_filter(a: &ListArgs) -> (String, Vec<Bind>) {
+    let mut conditions = Vec::new();
+    let mut values = Vec::new();
+    if let Some(repo_id) = &a.repo_id {
+        conditions.push("repo_id = ?".to_owned());
+        values.push(Bind::Text(repo_id.clone()));
+    }
+    if !a.types.is_empty() {
+        let marks = vec!["?"; a.types.len()].join(", ");
+        conditions.push(format!("type IN ({marks})"));
+        values.extend(a.types.iter().map(|kind| Bind::Text(kind.clone())));
+    } else {
+        // What CI and integrations report on commits goes to webhooks,
+        // and is read from each commit's checks; a timeline asked for
+        // everything would be little else on a busy repository.
+        let marks = vec!["?"; REPORTING.len()].join(", ");
+        conditions.push(format!("type NOT IN ({marks})"));
+        values.extend(REPORTING.iter().map(|kind| Bind::Text((*kind).to_owned())));
+    }
+    if let Some(actor) = &a.actor {
+        conditions.push("actor = ?".to_owned());
+        values.push(Bind::Text(actor.clone()));
+    }
+    if !a.numbers.is_empty() {
+        // An issue or pull request's own events name it as `number`; a
+        // comment, review or link on it names it as `issue`.
+        let marks = vec!["?"; a.numbers.len()].join(", ");
+        conditions.push(format!(
+            "(json_extract(data, '$.number') IN ({marks}) OR json_extract(data, '$.issue') IN ({marks}))"
+        ));
+        for _ in 0..2 {
+            values.extend(a.numbers.iter().map(|number| Bind::Number(f64::from(*number))));
+        }
+    }
+    if let Some(since) = &a.since {
+        conditions.push("time >= ?".to_owned());
+        values.push(Bind::Text(since.clone()));
+    }
+    if let Some(before) = &a.before {
+        conditions.push("id < ?".to_owned());
+        values.push(Bind::Text(before.clone()));
+    }
+    let filter = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+    (filter, values)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_plain_list_leaves_out_what_is_reported_on_commits() {
+        let (filter, binds) = list_filter(&ListArgs { repo_id: Some("rep_1".into()), ..ListArgs::default() });
+        assert!(filter.starts_with("WHERE repo_id = ? AND type NOT IN ("));
+        assert_eq!(binds[0], Bind::Text("rep_1".into()));
+        assert_eq!(binds.len(), 1 + REPORTING.len());
+    }
+
+    #[test]
+    fn numbers_match_an_item_or_what_is_said_on_it_since_a_time() {
+        let (filter, binds) = list_filter(&ListArgs {
+            repo_id: Some("rep_1".into()),
+            types: vec!["issue.opened".into()],
+            numbers: vec![4, 9],
+            since: Some("2026-10-01T00:00:00Z".into()),
+            actor: Some("usr_g1t_agent".into()),
+            ..ListArgs::default()
+        });
+        assert_eq!(
+            filter,
+            "WHERE repo_id = ? AND type IN (?) AND actor = ? AND \
+             (json_extract(data, '$.number') IN (?, ?) OR json_extract(data, '$.issue') IN (?, ?)) AND time >= ?"
+        );
+        assert_eq!(
+            binds,
+            vec![
+                Bind::Text("rep_1".into()),
+                Bind::Text("issue.opened".into()),
+                Bind::Text("usr_g1t_agent".into()),
+                Bind::Number(4.0),
+                Bind::Number(9.0),
+                Bind::Number(4.0),
+                Bind::Number(9.0),
+                Bind::Text("2026-10-01T00:00:00Z".into()),
+            ]
+        );
     }
 }

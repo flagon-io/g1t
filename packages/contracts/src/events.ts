@@ -483,6 +483,12 @@ export type EventQuery = {
   types?: EventType[];
   /** Return events older than this event id. */
   before?: string;
+  /** Only events by this account id. */
+  actor?: string;
+  /** Only events about these issues or pull requests (`number`, or the `issue` a comment or review is on). */
+  numbers?: number[];
+  /** Only events at or after this RFC 3339 time. */
+  since?: string;
   limit?: number;
 };
 
