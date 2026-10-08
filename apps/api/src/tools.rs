@@ -500,6 +500,7 @@ pub const TOOLS: &[Tool] = &[
             a("whoami", Op::Whoami, "Who the token acts as, and its workspaces"),
             a("list_emails", Op::ListEmails, "Your addresses"),
             a("add_email", Op::AddEmail, "Add an address"),
+            a("confirm_email", Op::ConfirmEmail, "Confirm an address with the code from its email"),
             a("remove_email", Op::RemoveEmail, "Remove an address"),
             a("update_email_settings", Op::UpdateEmailSettings, "Primary, backup and privacy"),
             a("list_invites", Op::ListInvites, "Your invites to g1t"),

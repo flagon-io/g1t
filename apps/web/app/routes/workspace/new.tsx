@@ -56,11 +56,6 @@ export default function NewWorkspace({
         <OneFreeWorkspace free={free} />
       ) : (
         <>
-          {!user.verified && (
-            <p className="mt-4 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-sm">
-              Confirm your email address first. We sent you a link.
-            </p>
-          )}
           <Form method="post" className="mt-8 space-y-4">
             <Field
               label="Name in URLs"

@@ -41,7 +41,6 @@ use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 const SESSION_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
-const VERIFY_TTL_SECONDS: u64 = 24 * 60 * 60;
 const RESET_TTL_SECONDS: u64 = 60 * 60;
 const MIN_PASSWORD_LENGTH: usize = 10;
 const PASSWORD_TOO_SHORT: &str = "Use a password of at least 10 characters.";
@@ -151,25 +150,6 @@ impl Identity {
         self.with_workspaces(user).await
     }
 
-    /// Stores a one-time token of `kind` for the user and returns it.
-    async fn issue_email_token(&self, user_id: &str, kind: &str, ttl: u64) -> Result<String> {
-        let token = crypto::random_hex(32);
-        self.db
-            .prepare(format!(
-                "INSERT INTO email_tokens (id, user_id, kind, expires_at)
-                 VALUES (?, ?, ?, {})",
-                sql_after(ttl)
-            ))
-            .bind(&[
-                crypto::sha256_hex(&token).into(),
-                user_id.into(),
-                kind.into(),
-            ])?
-            .run()
-            .await?;
-        Ok(token)
-    }
-
     /// Consumes a token of `kind`, returning its owner if it was valid.
     async fn redeem_email_token(&self, token: &str, kind: &str) -> Result<Option<TokenOwner>> {
         let id = crypto::sha256_hex(token);
@@ -204,13 +184,6 @@ impl Identity {
         Ok(owner)
     }
 
-    async fn send_verification(&self, user: &User, email: &str) -> Result<()> {
-        let token = self
-            .issue_email_token(&user.id, "verify", VERIFY_TTL_SECONDS)
-            .await?;
-        email::send_verification(&self.env, email, &user.username, &token).await
-    }
-
     async fn resend_verification(&self, a: UserArgs) -> Result<Outcome<bool>> {
         if !self.allow(throttle::CONFIRM_ACCOUNT, &a.user.id).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, "Too many confirmation emails this hour. Check your inbox, or try again later."));
@@ -218,30 +191,16 @@ impl Identity {
         self.resend_primary(&a.user).await
     }
 
-    async fn verify_email(&self, a: EmailTokenArgs) -> Result<Outcome<User>> {
+    /// The link in a confirmation email, followed: signed in or not. It
+    /// ends the code sent with it (emails.rs).
+    async fn verify_email(&self, a: EmailTokenArgs) -> Result<Outcome<g1t_contracts::accounts::EmailConfirmed>> {
         let Some(owner) = self.redeem_email_token(&a.token, "verify").await? else {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
                 "This confirmation link is not valid or has expired.",
             ));
         };
-        if let Outcome::Fail(failure) = self.confirm_address(&owner.id, owner.email_id.as_deref()).await? {
-            return Ok(Outcome::Fail(failure));
-        }
-        // Whether the account is confirmed: whether its primary is.
-        let verified = self
-            .find_public_user(
-                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?",
-                &owner.id,
-            )
-            .await?
-            .is_some_and(|user| user.verified);
-        Ok(Outcome::Ok(User {
-            id: owner.id,
-            username: owner.username,
-            verified,
-            ..User::default()
-        }))
+        self.confirm_address(&owner.id, owner.email_id.as_deref()).await
     }
 
     /// Any confirmed address of an account can ask for a reset; so can the
@@ -472,12 +431,12 @@ impl Identity {
             Outcome::Ok(user) => user,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        // The account exists either way; the email can be sent again later.
-        // An invite sent to this address confirmed it already (invites.rs).
+        // The account exists either way; the email can be sent again from
+        // the confirmation page. It carries a code and a link (emails.rs).
         if !user.verified
-            && let Err(error) = self.send_verification(&user, &email).await
+            && let Err(error) = self.send_primary_confirmation(&user.id, &user.username).await
         {
-            worker::console_error!("verification email failed: {error}");
+            worker::console_error!("confirmation email failed: {error}");
         }
         self.start_session(user).await
     }
@@ -901,6 +860,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "device_claim" => reply(&identity.device_claim(args(body)?).await?),
         "resend_verification" => reply(&identity.resend_verification(args(body)?).await?),
         "verify_email" => reply(&identity.verify_email(args(body)?).await?),
+        "confirm_email_code" => reply(&identity.confirm_email_code(args(body)?).await?),
+        "change_pending_email" => reply(&identity.change_pending_email(args(body)?).await?),
         "request_password_reset" => reply(&identity.request_password_reset(args(body)?).await?),
         "reset_password" => reply(&identity.reset_password(args(body)?).await?),
         // A person's email addresses; see emails.rs and security.rs.

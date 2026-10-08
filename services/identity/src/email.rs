@@ -42,9 +42,20 @@ pub struct Letter {
     /// Quoted passages, each with who or what it is from: a note from the
     /// person who sent an invite, or what someone asking for access said.
     pub quotes: Vec<(String, String)>,
+    /// A code to type, shown large before the button, with the line that
+    /// leads from it to the button.
+    pub code: Option<Code>,
     /// The button: what it says, and where it goes.
     pub action: Option<(String, String)>,
     pub footer: String,
+}
+
+/// A code in a letter, and what joins it to the button after it.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Code {
+    pub code: String,
+    /// Said between the code and the button, such as "or follow the link".
+    pub then: String,
 }
 
 /// The plain text and HTML of a letter. Everything in it is escaped:
@@ -71,6 +82,15 @@ pub fn render(letter: &Letter, site: &str) -> (String, String) {
              <blockquote style=\"margin:0;padding:2px 0 2px 14px;border-left:3px solid #b9a6f2;font-size:15px;line-height:1.6;white-space:pre-line\">{}</blockquote>",
             escape(from),
             escape(quote)
+        ));
+    }
+    if let Some(code) = &letter.code {
+        text.push_str(&format!("    {}\n\n{}\n\n", code.code, code.then));
+        html.push_str(&format!(
+            "<p style=\"margin:24px 0;padding:16px 0;text-align:center;background:#f3f1ea;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;font-weight:600;letter-spacing:10px;color:#16150f\">{}</p>\
+             <p style=\"font-size:15px;line-height:1.6\">{}</p>",
+            escape(&code.code),
+            escape(&code.then)
         ));
     }
     if let Some((label, link)) = &letter.action {
@@ -119,6 +139,7 @@ pub async fn send_link(
     let letter = Letter {
         paragraphs: vec![intro.to_owned()],
         quotes: Vec::new(),
+        code: None,
         action: Some((action.to_owned(), link.to_owned())),
         footer: footer.to_owned(),
     };
@@ -141,17 +162,51 @@ fn escape(text: &str) -> String {
     escaped
 }
 
-pub async fn send_verification(env: &Env, to: &str, username: &str, token: &str) -> Result<()> {
-    send_link(
-        env,
-        to,
-        "Confirm your email for g1t",
-        &format!("Welcome to g1t, {username}. Confirm this address to finish creating your account."),
-        "Confirm email",
-        &format!("{}/verify?token={token}", site(env)),
-        "This link works for 24 hours. If you did not create a g1t account, you can ignore this message.",
-    )
-    .await
+/// What a confirmation email is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Confirming {
+    /// The address a new account signed up with (or changed to before
+    /// confirming any).
+    NewAccount,
+    /// An address added to an account in use.
+    AddedAddress,
+}
+
+/// A confirmation email: the code to type, large, and the link that does
+/// the same, either one enough. The code leads the subject, so a phone's
+/// notification shows it.
+pub fn confirmation_letter(confirming: Confirming, username: &str, code: &str, link: &str) -> (String, Letter) {
+    let minutes = g1t_contracts::accounts::CONFIRM_TTL_SECONDS / 60;
+    let (intro, ignore) = match confirming {
+        Confirming::NewAccount => (
+            format!("Welcome to g1t, {username}. To finish creating your account, enter this code on the confirmation page:"),
+            "If you did not create a g1t account, you can ignore this message.",
+        ),
+        Confirming::AddedAddress => (
+            format!("To add this address to the g1t account {username}, enter this code on the confirmation page:"),
+            "If you did not add this address to a g1t account, you can ignore this message.",
+        ),
+    };
+    let letter = Letter {
+        paragraphs: vec![intro],
+        quotes: Vec::new(),
+        code: Some(Code {
+            code: code.to_owned(),
+            then: "Or skip the code and confirm with this link instead. Either one works; you need only one.".to_owned(),
+        }),
+        action: Some(("Confirm email".to_owned(), link.to_owned())),
+        footer: format!(
+            "The code and the link work for {minutes} minutes, and only once. Asking for a new email ends them both. {ignore}"
+        ),
+    };
+    (format!("{code} is your g1t confirmation code"), letter)
+}
+
+/// Sends a confirmation email with `code` and the link for `token`.
+pub async fn send_confirmation(env: &Env, to: &str, username: &str, confirming: Confirming, token: &str, code: &str) -> Result<()> {
+    let link = format!("{}/verify?token={token}", site(env));
+    let (subject, letter) = confirmation_letter(confirming, username, code, &link);
+    send(env, to, &subject, &letter).await
 }
 
 pub async fn send_password_reset(env: &Env, to: &str, username: &str, token: &str) -> Result<()> {
@@ -163,20 +218,6 @@ pub async fn send_password_reset(env: &Env, to: &str, username: &str, token: &st
         "Choose a new password",
         &format!("{}/reset?token={token}", site(env)),
         "This link works for 1 hour. If this was not you, ignore this message and your password stays the same.",
-    )
-    .await
-}
-
-/// Confirms an address added to an existing account.
-pub async fn send_added_address(env: &Env, to: &str, username: &str, token: &str) -> Result<()> {
-    send_link(
-        env,
-        to,
-        "Confirm your email for g1t",
-        &format!("Confirm this address to add it to the g1t account {username}."),
-        "Confirm email",
-        &format!("{}/verify?token={token}", site(env)),
-        "This link works for 24 hours. If you did not add this address to a g1t account, you can ignore this message.",
     )
     .await
 }
@@ -242,6 +283,7 @@ pub fn invite_letter(invite: &InviteEmail, site: &str) -> (String, Letter) {
     let letter = Letter {
         paragraphs: vec![intro],
         quotes,
+        code: None,
         action: Some((action, format!("{site}/invite/{}", invite.code))),
         footer: format!(
             "This invite works for {} days, only for this address. If you were not expecting it, you can ignore this message.",
@@ -269,6 +311,7 @@ pub fn waitlist_confirmation(site: &str) -> (String, Letter) {
                 "g1t is invite-only while we open it up a few people at a time, so we can't say exactly when that will be. Someone already on g1t can also invite you sooner.".to_owned(),
             ],
             quotes: Vec::new(),
+            code: None,
             action: None,
             footer: format!("You're getting this because this address asked for access at {}/register. If that wasn't you, ignore this message; nothing more is sent unless you're invited.", bare(site)),
         },
@@ -327,6 +370,7 @@ pub fn waitlist_summary(new: &[Requested], waiting: u32) -> (String, Letter) {
     let letter = Letter {
         paragraphs: vec![format!("{asked}{in_all}")],
         quotes,
+        code: None,
         action: Some(("Review the waitlist".to_owned(), SUDO_WAITLIST.to_owned())),
         footer: "Sent to WAITLIST_NOTIFY_EMAIL at most once every 15 minutes. A request that arrives in between is in the next summary, and every request is in sudo straight away.".to_owned(),
     };
@@ -397,6 +441,7 @@ pub fn notification_letter(a: &g1t_contracts::inbox::NotifyByEmailArgs, site: &s
             .map(str::to_owned)
             .collect(),
         quotes: a.quote.iter().cloned().collect(),
+        code: None,
         action: Some(("Open on g1t".to_owned(), format!("{site}{path}"))),
         footer: format!(
             "You are getting this because {}. Choose what you are emailed for at {site}/settings/notifications.",
@@ -565,6 +610,27 @@ mod tests {
         assert!(letter.quotes.last().unwrap().1.starts_with("5 more"));
     }
 
+    #[test]
+    fn a_confirmation_email_shows_the_code_large_and_the_link_as_the_other_way() {
+        let (subject, letter) = confirmation_letter(Confirming::NewAccount, "ada", "482913", "https://g1t.sh/verify?token=ab12");
+        assert_eq!(subject, "482913 is your g1t confirmation code");
+        assert!(letter.paragraphs[0].starts_with("Welcome to g1t, ada."));
+        assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/verify?token=ab12");
+        assert!(letter.footer.contains("60 minutes, and only once"));
+        let (text, html) = render(&letter, SITE);
+        // The code comes before the link, and says either one works.
+        let code_at = text.find("    482913").unwrap();
+        let link_at = text.find("Confirm email: https://g1t.sh/verify?token=ab12").unwrap();
+        assert!(code_at < link_at);
+        assert!(text.contains("Either one works"));
+        assert!(html.contains("font-size:34px"));
+        assert!(html.contains(">482913</p>"));
+        assert!(html.find("482913").unwrap() < html.find("verify?token=ab12").unwrap());
+        let (_, added) = confirmation_letter(Confirming::AddedAddress, "ada", "000001", "x");
+        assert!(added.paragraphs[0].contains("add this address to the g1t account ada"));
+        assert!(added.footer.contains("did not add this address"));
+    }
+
     /// Writes each email as HTML for a look in a browser:
     /// `G1T_WRITE_EMAILS=<dir> cargo test -p g1t-identity write_emails`.
     #[test]
@@ -606,5 +672,8 @@ mod tests {
             note: Some("Thanks for waiting. We would love to see the compiler."),
         }, SITE);
         page("waitlist-approved", &subject, &letter);
+        let (subject, letter) =
+            confirmation_letter(Confirming::NewAccount, "ada", "482913", "https://g1t.sh/verify?token=4f9c2a7e0b13d5c8");
+        page("confirm-email", &subject, &letter);
     }
 }

@@ -12,6 +12,32 @@ export const MAX_EMAILS = 10;
 export const RECENT_AUTH_SECONDS = 10 * 60;
 /** The domain of each person's private commit address. */
 export const NOREPLY_DOMAIN = "users.noreply.g1t.sh";
+/** How many digits the code in a confirmation email has. */
+export const CONFIRM_CODE_DIGITS = 6;
+/** How long a confirmation email's code and link work, in seconds. */
+export const CONFIRM_TTL_SECONDS = 60 * 60;
+
+/**
+ * A confirmation code as typed or pasted, with spaces and hyphens taken
+ * out; null unless that leaves exactly six digits.
+ */
+export function tidyConfirmCode(code: string): string | null {
+  const digits = code.replace(/[\s-]/g, "");
+  return /^\d{6}$/.test(digits) ? digits : null;
+}
+
+/** What confirming an address did: by its link (`verifyEmail`) or its code (`confirmEmailCode`). */
+export type EmailConfirmed = {
+  username: string;
+  /** The address confirmed, as typed when it was added. */
+  email: string;
+  /** Whether the account is confirmed now: whether its primary is. */
+  verified: boolean;
+  /** The workspace the account's invite joined it to, by slug. */
+  joined?: string | null;
+  /** Why the invite the account signed up with no longer applies; the address is confirmed all the same. */
+  inviteLapsed?: string | null;
+};
 
 /**
  * Proof that the person making a sensitive change is the account's owner:
@@ -118,8 +144,18 @@ export interface AccountsApi {
   addEmail(user: User, email: string, reauth: Reauth): Promise<Result<AccountEmails>>;
   /** Removes an address; never the primary nor the last confirmed one. Needs `reauth`. */
   removeEmail(user: User, email: string, reauth: Reauth): Promise<Result<AccountEmails>>;
-  /** Sends a confirmation link again, at most once a minute. */
+  /** Sends a new confirmation code and link, at most once a minute; the ones before stop working. */
   resendEmailVerification(user: User, email: string): Promise<Result<boolean>>;
+  /**
+   * The code from a confirmation email, typed by the signed-in person it was
+   * sent to. Wrong codes are counted against the account and `client`.
+   */
+  confirmEmailCode(user: User, code: string, client?: string | null): Promise<Result<EmailConfirmed>>;
+  /**
+   * For an account with no confirmed address: replaces the address it signed
+   * up with, and sends a new code and link there.
+   */
+  changePendingEmail(user: User, email: string): Promise<Result<AccountEmails>>;
   /** Primary and backup need `reauth`; the privacy switches do not. */
   updateEmailSettings(user: User, settings: EmailSettings, reauth: Reauth): Promise<Result<AccountEmails>>;
   /** The person typed their password again for this session. */
@@ -163,6 +199,8 @@ export function accountsClient(identity: ServiceBinding): AccountsApi {
     addEmail: (user, email, reauth) => call(identity, "add_email", { user, email, reauth }),
     removeEmail: (user, email, reauth) => call(identity, "remove_email", { user, email, reauth }),
     resendEmailVerification: (user, email) => call(identity, "resend_email_verification", { user, email }),
+    confirmEmailCode: (user, code, client) => call(identity, "confirm_email_code", { user, code, client: client ?? null }),
+    changePendingEmail: (user, email) => call(identity, "change_pending_email", { user, email }),
     updateEmailSettings: (user, settings, reauth) => call(identity, "update_email_settings", { user, ...settings, reauth }),
     reauthenticate: (sessionToken, password, client) => call(identity, "reauthenticate", { sessionToken, password, client: client ?? null }),
     securityLog: (user) => call(identity, "security_log", { user }),
@@ -190,6 +228,8 @@ export function securityEventLabel(event: Pick<SecurityEvent, "kind" | "detail">
       return `Added ${detail}`;
     case "email_verified":
       return `Confirmed ${detail}`;
+    case "email_changed_before_confirming":
+      return `Changed the address to confirm to ${detail}`;
     case "email_removed":
       return `Removed ${detail}`;
     case "primary_email_changed":

@@ -83,7 +83,7 @@ export default {
  */
 const PUBLIC_TOP = /^\/(?:|_root\.data|pricing|explore|security|support|policies(?:\/[a-z-]+)?)(?:\.data)?$/;
 const PUBLIC_PROJECT =
-  /^\/(?!(?:settings|u|auth|oauth|integrations|new|invite|workspaces|device|verify|login|register|logout|forgot|reset|search|status|avatars|docs)\/)[^/]+\/(?!-\/|-$)[^/]+(?:\/(?:code|commits|issues|pulls|pull\/\d+|issues\/\d+|commit\/[0-9a-f]+|tree\/.+|blob\/.+))?(?:\.data)?$/;
+  /^\/(?!(?:settings|u|auth|oauth|integrations|new|invite|workspaces|device|verify|confirm-email|login|register|logout|forgot|reset|search|status|avatars|docs)\/)[^/]+\/(?!-\/|-$)[^/]+(?:\/(?:code|commits|issues|pulls|pull\/\d+|issues\/\d+|commit\/[0-9a-f]+|tree\/.+|blob\/.+))?(?:\.data)?$/;
 /** Fresh for this long; then served once more while a new copy is made. */
 const PUBLIC_FRESH_SECONDS = 30;
 const PUBLIC_STALE_SECONDS = 300;

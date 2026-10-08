@@ -306,7 +306,9 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
   const owners = members.filter((member) => member.role === "owner").length;
   const rowError = (username: string) =>
     actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
-  const pending = invites.filter((invite) => invite.status === "pending");
+  // Waiting to be used, or used by someone still confirming their email:
+  // either can be revoked.
+  const pending = invites.filter((invite) => invite.status === "pending" || invite.status === "awaiting_confirmation");
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
   const membersTab = (

@@ -31,6 +31,7 @@ const ROUTES: &[&str] = &[
     "status",
     "blog",
     "verify",
+    "confirm-email",
     "forgot",
     "reset",
     "device",

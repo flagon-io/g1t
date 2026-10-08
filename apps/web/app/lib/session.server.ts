@@ -8,6 +8,7 @@ import {
 
 import { type Result, type Role, type User, type Viewer, httpStatus } from "@g1t/contracts";
 
+import { confirmGate } from "./confirm-gate";
 import { safeNext } from "./next";
 import { identity } from "./services.server";
 
@@ -32,6 +33,9 @@ const BEFORE_WORKSPACE = ["/workspaces/new", "/settings", "/verify", "/logout", 
 /**
  * Root middleware: resolves the signed-in user once per request.
  *
+ * An account that has not confirmed its email address is sent to confirm
+ * it, from any page but the few that needs (lib/confirm-gate.ts).
+ *
  * Everything on g1t lives in a workspace, so a confirmed account with none
  * is sent to create one, from wherever it was going, and returned there
  * afterwards.
@@ -46,6 +50,10 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
   context.set(viewerContext, viewer);
 
   const { pathname, search } = new URL(request.url);
+  // An account that has not confirmed its email address does that first,
+  // from wherever it was going (lib/confirm-gate.ts).
+  const gated = confirmGate(pathname, search, viewer);
+  if (gated) throw redirect(gated);
   if (
     request.method === "GET" &&
     viewer?.verified &&

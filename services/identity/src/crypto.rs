@@ -16,6 +16,41 @@ pub fn random_hex(bytes: usize) -> String {
     hex::encode(buffer)
 }
 
+/// A confirmation code: `digits` decimal digits, each uniformly random
+/// (bytes of 250 and up are drawn again, so no digit is likelier).
+pub fn random_digits(digits: usize) -> String {
+    let mut code = String::with_capacity(digits);
+    let mut byte = [0u8; 1];
+    while code.len() < digits {
+        getrandom::getrandom(&mut byte).expect("no source of randomness");
+        if byte[0] < 250 {
+            code.push(char::from(b'0' + byte[0] % 10));
+        }
+    }
+    code
+}
+
+/// What is kept of a confirmation code: an HMAC-SHA256 under `key` of the
+/// code, bound to the link it was sent with (`token_id`, the hash of the
+/// link's token, which names the user and the address). Six digits are few
+/// enough to try every one, so a key nobody reading the database has is
+/// what keeps the hash from giving the code away. `key` is IDENTITY_KEY;
+/// without one (a development setup) the hash is unkeyed.
+pub fn code_hash(key: &[u8], token_id: &str, code: &str) -> String {
+    use hmac::{Hmac, Mac};
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC takes any key length");
+    mac.update(b"g1t email confirmation code\0");
+    mac.update(token_id.as_bytes());
+    mac.update(b"\0");
+    mac.update(code.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// Whether two strings are equal, in time that depends on their length only.
+pub fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
+}
+
 fn derive(password: &str, salt: &[u8], iterations: u32) -> [u8; 32] {
     let mut hash = [0u8; 32];
     pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, iterations, &mut hash);
@@ -93,4 +128,45 @@ pub fn parse_ssh_key(line: &str) -> Option<ParsedKey> {
         fingerprint: format!("SHA256:{}", STANDARD_NO_PAD.encode(Sha256::digest(&bytes))),
         comment: parts.collect::<Vec<_>>().join(" "),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confirmation_codes_are_six_digits_and_every_digit_turns_up() {
+        let mut seen = [0u32; 10];
+        for _ in 0..2000 {
+            let code = random_digits(6);
+            assert_eq!(code.len(), 6);
+            for digit in code.bytes() {
+                assert!(digit.is_ascii_digit());
+                seen[usize::from(digit - b'0')] += 1;
+            }
+        }
+        // 12,000 digits: each about 1,200 times.
+        assert!(seen.iter().all(|count| (900..1500).contains(count)), "{seen:?}");
+    }
+
+    #[test]
+    fn a_code_is_kept_as_a_keyed_hash_bound_to_its_link() {
+        let hash = code_hash(b"key", "link-a", "482913");
+        assert_eq!(hash.len(), 64);
+        assert!(!hash.contains("482913"));
+        assert_eq!(hash, code_hash(b"key", "link-a", "482913"));
+        assert_ne!(hash, code_hash(b"key", "link-b", "482913"));
+        assert_ne!(hash, code_hash(b"other", "link-a", "482913"));
+        assert_ne!(hash, code_hash(b"key", "link-a", "482914"));
+        // The separator keeps "link-a1" + "23456" apart from "link-a" + "123456".
+        assert_ne!(code_hash(b"key", "link-a1", "23456"), code_hash(b"key", "link-a", "123456"));
+    }
+
+    #[test]
+    fn same_compares_whole_strings() {
+        assert!(same("abc", "abc"));
+        assert!(!same("abc", "abd"));
+        assert!(!same("abc", "abcd"));
+        assert!(same("", ""));
+    }
 }

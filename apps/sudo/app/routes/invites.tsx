@@ -137,6 +137,8 @@ function statusBadge(invite: Invite) {
   switch (invite.status) {
     case "pending":
       return <Badge tone="lavender">Pending</Badge>;
+    case "awaiting_confirmation":
+      return <Badge tone="lavender">Used{invite.redeemedBy ? ` by ${invite.redeemedBy}` : ""}, email not confirmed</Badge>;
     case "redeemed":
       return <Badge tone="mint">Used{invite.redeemedBy ? ` by ${invite.redeemedBy}` : ""}</Badge>;
     case "expired":

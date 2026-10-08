@@ -10,6 +10,9 @@ export default [
   route("invite/:code", "routes/invite.tsx"),
   route("logout", "routes/logout.tsx"),
   route("verify", "routes/verify.tsx"),
+  // Where an account confirms its email address, with the code from the
+  // email; every other page sends it here until it has (lib/confirm-gate.ts).
+  route("confirm-email", "routes/confirm-email.tsx"),
   route("forgot", "routes/forgot.tsx"),
   route("reset", "routes/reset.tsx"),
   route("device", "routes/device.tsx"),

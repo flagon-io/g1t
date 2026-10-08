@@ -23,7 +23,7 @@ const NOUN: Record<MissingKind, string> = {
 /** Names that are pages of g1t itself, never a workspace. */
 const RESERVED = new Set([
   "settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout",
-  "register", "verify", "forgot", "reset", "device", "oauth", "invite",
+  "register", "verify", "confirm-email", "forgot", "reset", "device", "oauth", "invite",
 ]);
 
 /**

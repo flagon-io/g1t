@@ -45,7 +45,7 @@ use g1t_contracts::work::{
     ReportQueueArgs, ReportReviewArgs,
 };
 use g1t_contracts::identity::AgentScope;
-use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, Viewer};
+use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, User, Viewer};
 use g1t_kit::wire;
 use serde_json::{Value, json};
 use worker::{Context, Env, Method, Request, Response, Result, event};
@@ -92,6 +92,17 @@ fn with_runtime(spec: &mut Value, api: &str, oidc: bool) {
     if let Some(variables) = spec.get_mut("variables").and_then(Value::as_object_mut) {
         variables.extend(vars);
     }
+}
+
+/// What a person whose account has not confirmed its email address may
+/// call: who they are, their addresses, and confirming one with the code
+/// from the email. Nothing over MCP.
+fn pending_may(method: &str, path: &str, on_mcp: bool) -> bool {
+    !on_mcp
+        && matches!(
+            (method, path.trim_end_matches('/')),
+            ("GET", "/user") | ("GET", "/user/emails") | ("POST", "/user/emails/confirm")
+        )
 }
 
 /// An error in the shape every endpoint uses.
@@ -614,6 +625,14 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         Ok(viewer) => viewer,
         Err(refused) => return Ok(refused),
     };
+    // A person who has not confirmed their email address: who they are,
+    // their addresses, and confirming one, nothing else (REST or MCP).
+    if viewer.as_ref().is_some_and(User::awaits_confirmation) && !pending_may(method, &path, on_mcp) {
+        return fail(
+            FailureCode::Forbidden,
+            &g1t_contracts::accounts::confirm_email_first(&services.addresses.site),
+        );
+    }
     services.audit = audit::AuditContext::of(&request, on_mcp);
     // An agent's token: what it may do comes with it, on the composite
     // identity identity resolved it to.
@@ -866,6 +885,18 @@ fn snake_case_keys(body: Value) -> Value {
 mod tests {
     use super::snake_case_keys;
     use serde_json::json;
+
+    #[test]
+    fn an_unconfirmed_account_may_only_see_itself_and_confirm_its_address() {
+        assert!(super::pending_may("GET", "/user", false));
+        assert!(super::pending_may("GET", "/user/emails/", false));
+        assert!(super::pending_may("POST", "/user/emails/confirm", false));
+        assert!(!super::pending_may("POST", "/user/emails", false));
+        assert!(!super::pending_may("POST", "/workspaces", false));
+        assert!(!super::pending_may("GET", "/repos/acme/rocket", false));
+        assert!(!super::pending_may("POST", "/user/emails/confirm", true));
+        assert!(!super::pending_may("POST", "/", true));
+    }
 
     #[test]
     fn a_job_spec_gets_the_toolkits_variables() {

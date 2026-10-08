@@ -35,10 +35,10 @@ are created and approved only in their browser.
    should see there. On that page they sign in, or choose "Create an
    account" if they are new, and then approve the request. Wait for them.
 
-   A new account also gets a confirmation email from `noreply@g1t.sh`. Ask
-   them to open it and follow the link. Until they do, the account cannot
-   create repositories, push, or open issues: those calls return `403`
-   with a message saying to confirm the address.
+   A new account confirms its email address first: g1t emails it a
+   six-digit code (and a link that does the same) from `noreply@g1t.sh`,
+   and the site keeps the person on its confirmation page until they enter
+   the code or follow the link. Only then can they approve your request.
 
 3. **Collect the token.** Poll every `interval` seconds, not faster:
 
@@ -53,8 +53,10 @@ are created and approved only in their browser.
    `verified`. The token is returned once. It is the password for git and
    the bearer token for the API and the MCP server. Store it as `G1T_TOKEN`;
    never write it into a repository. Your person can see and delete it at
-   g1t.sh/settings/tokens. If `verified` is `false`, the
-   confirmation email has not been followed yet.
+   g1t.sh/settings/tokens. A token is only ever approved for a confirmed
+   account; if one answers `403` with a message saying to confirm the
+   email address, ask your person to enter the code from their email at
+   g1t.sh/confirm-email.
 
 4. **Connect the MCP server** (any MCP client with HTTP transport works).
    Claude Code:

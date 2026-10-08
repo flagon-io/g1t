@@ -282,7 +282,20 @@
       "commit_email": "6c1d0efg+ada@users.noreply.g1t.sh",
       "limit": 10
     },
-    "notes": "Answers `403` with code `reauth_required` when `password` is missing or wrong, and `409` when another account has confirmed the address. The new address stays unconfirmed until its link is followed."
+    "notes": "Answers `403` with code `reauth_required` when `password` is missing or wrong, and `409` when another account has confirmed the address. g1t emails the address a six-digit code and a link; it stays unconfirmed until the code is sent to [`confirm_email`](/reference/api/accounts/confirm-email/) or the link is followed."
+  },
+  "confirm_email": {
+    "request": {
+      "code": "482913"
+    },
+    "response": {
+      "username": "ada",
+      "email": "ada@example.com",
+      "verified": true,
+      "joined": "acme",
+      "invite_lapsed": null
+    },
+    "notes": "The code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `joined` is set when confirming a new account's address joined the workspace its invite named; when the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address)."
   },
   "remove_email": {
     "request": {

@@ -25,7 +25,7 @@ test("a visitor gets the sidebar on app pages", () => {
 });
 
 test("a visitor gets the marketing frame on the front, pricing and sign-in pages", () => {
-  for (const path of ["/", "/pricing", "/pricing/", "/login", "/register", "/verify", "/forgot", "/reset", "/device", "/oauth/authorize"]) {
+  for (const path of ["/", "/pricing", "/pricing/", "/login", "/register", "/verify", "/confirm-email", "/forgot", "/reset", "/device", "/oauth/authorize"]) {
     assert.equal(usesAppShell(path, false), false, path);
   }
 });

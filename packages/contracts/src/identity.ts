@@ -6,6 +6,7 @@ import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 import type { TeamCreation, TeamsClient } from "./teams";
 import type { DeployKeysClient } from "./deploy-keys";
+import type { EmailConfirmed } from "./accounts";
 
 export type User = {
   id: string;
@@ -19,7 +20,8 @@ export type User = {
   kind?: "user" | "workspace" | "agent" | "system";
   /**
    * Whether the account's email address is confirmed. Only set on users
-   * resolved from credentials; unverified accounts cannot change anything.
+   * resolved from credentials. An account that has not confirmed it can
+   * only confirm it: see `awaitsConfirmation`.
    */
   verified?: boolean;
   /**
@@ -195,7 +197,12 @@ export const INVITES_PER_USER = 5;
 export const INVITE_TTL_DAYS = 30;
 
 /** Only a pending invite can be used or revoked. Revoked and expired ones never used give the invite back. */
-export type InviteStatus = "pending" | "redeemed" | "expired" | "revoked";
+/**
+ * `awaiting_confirmation`: used to make an account that has not confirmed its
+ * email address yet; what it gives is joined when the address is confirmed,
+ * unless it is revoked first.
+ */
+export type InviteStatus = "pending" | "awaiting_confirmation" | "redeemed" | "expired" | "revoked";
 
 /** One invite. Mirrors `Invite` in `crates/contracts/src/identity.rs`. */
 export type Invite = {
@@ -385,6 +392,14 @@ export type WorkspaceAlias = {
 
 /** Who is asking. Every read and write in every service takes one. */
 export type Viewer = User | null;
+
+/**
+ * Whether this is a person whose account has not confirmed its email
+ * address. Such an account can only confirm it, change it, or sign out.
+ */
+export function awaitsConfirmation(user: Pick<User, "kind" | "verified"> | null | undefined): boolean {
+  return !!user && (user.kind ?? "user") === "user" && !user.verified;
+}
 
 export type SshKey = {
   id: string;
@@ -619,10 +634,13 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
   twoFactorSignIn(challenge: string, code: string, client?: string | null): Promise<Result<{ user: User; sessionToken: string }>>;
   signOut(sessionToken: string): Promise<void>;
 
-  /** Sends the confirmation email again. */
+  /**
+   * Sends a new confirmation code and link to the primary of an account
+   * that has not confirmed it, at most once a minute.
+   */
   resendVerification(user: User): Promise<Result<boolean>>;
-  /** Confirms the address the emailed token was sent to. */
-  verifyEmail(token: string): Promise<Result<User>>;
+  /** Confirms the address the emailed link was sent to, signed in or not; ends the code sent with it. */
+  verifyEmail(token: string): Promise<Result<EmailConfirmed>>;
   /** Emails a reset link if the address has an account. Always resolves. */
   /**
    * Any confirmed address of an account works; the link goes to it, and the

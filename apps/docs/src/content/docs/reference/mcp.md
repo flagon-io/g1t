@@ -735,13 +735,16 @@ Who the token acts as and its workspaces, your email addresses, your
 invites while g1t is [invite-only](/guides/authentication/#invites), and
 invitations to repositories waiting for you. `whoami` is the default
 action, and needs no scope. An agent's token and a workspace's token cannot
-use the email and invite actions.
+use the email and invite actions. An account that has not confirmed its
+email address gets `403` from every tool until it does; see
+[until you confirm](/guides/authentication/#until-you-confirm).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`whoami`](/reference/api/accounts/whoami/) | Who the access token acts as, and the workspaces it can work in. `kind` is `user`, `workspace` or `agent`. | None | None |
 | [`list_emails`](/reference/api/accounts/list-emails/) | Your email addresses and email settings. People only. | None | `account:read` |
-| [`add_email`](/reference/api/accounts/add-email/) | Add an address; g1t emails it a link to confirm it. | `email`, `password` | `account:write` |
+| [`add_email`](/reference/api/accounts/add-email/) | Add an address; g1t emails it a code and a link to confirm it. | `email`, `password` | `account:write` |
+| [`confirm_email`](/reference/api/accounts/confirm-email/) | Confirm an address with the six-digit code from its email. See [confirming your email address](/guides/authentication/#confirming-your-email-address). | `code` | `account:write` |
 | [`remove_email`](/reference/api/accounts/remove-email/) | Remove an address; never the primary or the last confirmed one. | `email`, `password` | `account:write` |
 | [`update_email_settings`](/reference/api/accounts/update-email-settings/) | Change `primary` or `backup` (with `password`), `private_email` or `block_private_pushes`. See [email addresses](/guides/authentication/#email-addresses). | None | `account:write` |
 | [`list_invites`](/reference/api/invites/list-invites/) | Your invites, newest first, and how many you have left. | None | `account:read` |

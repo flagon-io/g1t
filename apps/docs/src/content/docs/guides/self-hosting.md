@@ -62,7 +62,9 @@ What hosted g1t cannot do yet either is on
 3. Open [http://localhost:8787](http://localhost:8787) and create an
    account.
 4. Open the Mailpit inbox at [http://localhost:8025](http://localhost:8025)
-   and follow the link in the confirmation email.
+   and enter the code from the confirmation email on the page the site
+   shows you, or follow the link in the same email. Set `IDENTITY_KEY`
+   (the setup does) so codes are kept as keyed hashes.
 5. Create a workspace, then a repository.
 
 ## Push and clone

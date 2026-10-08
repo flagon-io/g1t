@@ -190,6 +190,7 @@ export const OAUTH_DEFAULT_SCOPES: Scope[] = [...PRESET_SCOPES.agent];
 export const OPERATION_SCOPES = [
   ["list_emails", "account:read"],
   ["add_email", "account:write"],
+  ["confirm_email", "account:write"],
   ["remove_email", "account:write"],
   ["update_email_settings", "account:write"],
   ["list_invites", "account:read"],

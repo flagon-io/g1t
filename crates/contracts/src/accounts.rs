@@ -184,6 +184,75 @@ pub struct AccountEmailArgs {
     pub reauth: Reauth,
 }
 
+// --- Confirming an address ---
+
+/// How many digits the code in a confirmation email has.
+pub const CONFIRM_CODE_DIGITS: usize = 6;
+
+/// How long the code and the link in a confirmation email work. Sending
+/// another email ends both at once.
+pub const CONFIRM_TTL_SECONDS: u64 = 60 * 60;
+
+/// What an account that has not confirmed its address hears from anything
+/// other than the pages that confirm it: the API, MCP and git. `site` is
+/// where the confirmation page is, such as `https://g1t.sh`.
+pub fn confirm_email_first(site: &str) -> String {
+    format!(
+        "Confirm your email address first: enter the code from the email g1t sent you at {}/confirm-email, or follow the link in it.",
+        site.trim_end_matches('/')
+    )
+}
+
+/// A confirmation code as typed or pasted, with spaces and hyphens taken
+/// out; None unless that leaves exactly [`CONFIRM_CODE_DIGITS`] digits.
+pub fn tidy_confirm_code(code: &str) -> Option<String> {
+    let digits: String = code.chars().filter(|c| !c.is_whitespace() && *c != '-').collect();
+    (digits.len() == CONFIRM_CODE_DIGITS && digits.chars().all(|c| c.is_ascii_digit())).then_some(digits)
+}
+
+/// `confirm_email_code`: the code from a confirmation email, typed by the
+/// signed-in person it was sent to. It confirms the address it was sent
+/// to. Wrong codes are counted against the account and `client`; past a
+/// limit nothing is checked for a while. Returns `Outcome<EmailConfirmed>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfirmEmailCodeArgs {
+    pub user: User,
+    pub code: String,
+    /// Who is asking, such as the visitor's IP address, for rate limits.
+    #[serde(default)]
+    pub client: Option<String>,
+}
+
+/// `change_pending_email`: for an account that has not confirmed any
+/// address, replaces the address it signed up with and sends a new code
+/// and link there. Returns `Outcome<AccountEmails>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PendingEmailArgs {
+    pub user: User,
+    pub email: String,
+}
+
+/// What confirming an address did. `verify_email` (the link) and
+/// `confirm_email_code` (the code) return it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmailConfirmed {
+    pub username: String,
+    /// The address confirmed, as typed when it was added.
+    pub email: String,
+    /// Whether the account is confirmed now: whether its primary is.
+    pub verified: bool,
+    /// The workspace the invite the account signed up with joined it to,
+    /// by slug, now that the account is confirmed.
+    #[serde(default)]
+    pub joined: Option<String>,
+    /// Why the invite the account signed up with no longer applies, when it
+    /// was revoked, expired or its workspace deleted while the account
+    /// waited. The address is confirmed all the same.
+    #[serde(default)]
+    pub invite_lapsed: Option<String>,
+}
+
 /// `update_email_settings`: each field given is changed. `primary` must be
 /// a confirmed address. `backup` is a confirmed address to get security
 /// notices too, or empty for the primary only. Changing either needs
@@ -542,6 +611,31 @@ impl WorkspacePolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_confirmation_code_is_six_digits_however_it_is_typed() {
+        assert_eq!(tidy_confirm_code("482913").as_deref(), Some("482913"));
+        assert_eq!(tidy_confirm_code(" 482 913 ").as_deref(), Some("482913"));
+        assert_eq!(tidy_confirm_code("482-913").as_deref(), Some("482913"));
+        assert_eq!(tidy_confirm_code("48291"), None);
+        assert_eq!(tidy_confirm_code("4829134"), None);
+        assert_eq!(tidy_confirm_code("48291a"), None);
+        assert_eq!(tidy_confirm_code(""), None);
+    }
+
+    #[test]
+    fn a_pending_account_is_a_person_without_a_confirmed_address() {
+        let person = User { id: "usr_1".into(), username: "ada".into(), ..User::default() };
+        assert!(person.awaits_confirmation());
+        assert!(!User { verified: true, ..person.clone() }.awaits_confirmation());
+        // A workspace's token, an agent and g1t itself are never pending.
+        assert!(!User { kind: crate::PrincipalKind::Workspace, ..person.clone() }.awaits_confirmation());
+        assert!(!User { kind: crate::PrincipalKind::Agent, ..person.clone() }.awaits_confirmation());
+        assert!(!User::system("acme").awaits_confirmation());
+        let said = confirm_email_first("https://git.example.com/");
+        assert!(said.contains("https://git.example.com/confirm-email"));
+        assert!(said.starts_with("Confirm your email address first"));
+    }
 
     #[test]
     fn a_push_guard_matches_the_persons_own_addresses_and_masks_them() {

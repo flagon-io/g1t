@@ -702,6 +702,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Your account.
     ("list_emails", Scope::AccountRead),
     ("add_email", Scope::AccountWrite),
+    ("confirm_email", Scope::AccountWrite),
     ("remove_email", Scope::AccountWrite),
     ("update_email_settings", Scope::AccountWrite),
     ("list_invites", Scope::AccountRead),

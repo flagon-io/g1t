@@ -16,6 +16,11 @@
 //! counted the same way, by address, account and client; past the limit
 //! they quietly send nothing.
 //!
+//! Confirmation codes typed to confirm an email address are counted the
+//! same way as passwords: wrong ones against the account and the client,
+//! locking them the same way, with [`CODE_THROTTLED`] as the one answer
+//! while locked. A right code clears the account's count.
+//!
 //! Counts live in `auth_throttle` (migration 0019), one row per key.
 
 use g1t_contracts::time::rfc3339;
@@ -49,8 +54,20 @@ pub const RESET_CLIENT: Rule = Rule { name: "reset.client", limit: 20, window_se
 /// Confirmation links one account asks for.
 pub const CONFIRM_ACCOUNT: Rule = Rule { name: "confirm.account", limit: 10, window_seconds: HOUR };
 
+/// Wrong confirmation codes typed for one account, from anywhere.
+pub const CODE_ACCOUNT: Rule = Rule { name: "code.account", limit: 10, window_seconds: HOUR };
+/// Wrong confirmation codes typed from one client, for any accounts.
+pub const CODE_CLIENT: Rule = Rule { name: "code.client", limit: 30, window_seconds: HOUR };
+
+/// What anyone hears while confirmation codes are locked for them.
+pub const CODE_THROTTLED: &str = "Too many wrong codes. Wait a few minutes and try again, or follow the link in the email.";
+
 // One account is held to less than one client, which may be an office.
-const _: () = assert!(PASSWORD_ACCOUNT.limit < PASSWORD_CLIENT.limit && RESET_EMAIL.limit < RESET_CLIENT.limit);
+const _: () = assert!(
+    PASSWORD_ACCOUNT.limit < PASSWORD_CLIENT.limit
+        && RESET_EMAIL.limit < RESET_CLIENT.limit
+        && CODE_ACCOUNT.limit < CODE_CLIENT.limit
+);
 
 /// How long a key with `hits` in its window is locked: not at all below
 /// the limit, a minute at it, doubling with each hit past it, up to an hour.
@@ -217,6 +234,26 @@ mod tests {
         assert_eq!(lockout_seconds(15, 10), 1920);
         assert_eq!(lockout_seconds(16, 10), 3600);
         assert_eq!(lockout_seconds(1000, 10), 3600);
+    }
+
+    #[test]
+    fn wrong_confirmation_codes_lock_the_account_after_ten_and_the_client_after_thirty() {
+        assert_eq!(lockout_seconds(CODE_ACCOUNT.limit - 1, CODE_ACCOUNT.limit), 0);
+        assert_eq!(lockout_seconds(CODE_ACCOUNT.limit, CODE_ACCOUNT.limit), 60);
+        assert_eq!(lockout_seconds(CODE_CLIENT.limit - 1, CODE_CLIENT.limit), 0);
+        assert_eq!(lockout_seconds(CODE_CLIENT.limit, CODE_CLIENT.limit), 60);
+        // With a code living an hour, an account gets about ten guesses
+        // and a few more as the lock backs off: far from a million.
+        let mut tries_in_an_hour = CODE_ACCOUNT.limit;
+        let mut waited = 0;
+        while waited < 3600 {
+            waited += lockout_seconds(tries_in_an_hour, CODE_ACCOUNT.limit);
+            tries_in_an_hour += 1;
+        }
+        assert!(tries_in_an_hour < 20, "{tries_in_an_hour}");
+        // Kept apart from passwords, so one cannot lock the other.
+        assert_ne!(key(CODE_ACCOUNT, "usr_1"), key(PASSWORD_ACCOUNT, "usr_1"));
+        assert!(key(CODE_CLIENT, "203.0.113.9").starts_with("code.client:"));
     }
 
     #[test]

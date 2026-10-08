@@ -103,6 +103,10 @@ impl Identity {
     }
 
     pub async fn device_resolve(&self, a: DeviceResolveArgs) -> Result<Outcome<bool>> {
+        // A token for an account that cannot use it yet (emails.rs).
+        if a.approve && a.user.awaits_confirmation() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before signing in to an application."));
+        }
         let Some(row) = self.pending_device(&a.user_code).await? else {
             return Ok(Outcome::fail(
                 FailureCode::NotFound,
