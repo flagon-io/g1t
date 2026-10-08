@@ -94,5 +94,11 @@ test("repos' answer, as its JSON reads, keeps every count (flagon-io/hello's far
   const measured = JSON.parse(wire) as BranchDrifts;
   const shown = activeBranches([{ name: "farewell", hash: "bab14ff" }], measured, { pulls: [], previews: [] });
   assert.deepEqual(shown[0]?.drift, { ahead: 1, behind: 41 });
-  assert.deepEqual(shown[0]?.commit, { hash: "bab14ff", message: "Add a farewell", author: "syntaqx", at: "2026-10-02T07:52:16.000Z" });
+  assert.deepEqual(shown[0]?.commit, {
+    hash: "bab14ff",
+    message: "Add a farewell",
+    author: { kind: "author", name: "syntaqx", username: null, avatar: null },
+    coAuthors: [],
+    at: "2026-10-02T07:52:16.000Z",
+  });
 });
