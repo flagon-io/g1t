@@ -530,6 +530,25 @@ Then `node scripts/deploy.mjs deploy --all`. A Worker bound to a service
 that does not exist yet may be refused; deploy that service first with
 `--only`.
 
+## Deployments on g1t
+
+Every deploy shows on the repository's Deployments page, so its production
+card says which commit runs.
+
+- **From the workflow**, the deploy jobs name `environment: {name:
+  production, url: https://g1t.sh}`, and g1t Actions records one production
+  deployment per run.
+- **By hand**, `deploy` reports one itself: in progress once migrations are
+  in, then success or failure. It needs a g1t token with `deployments:write`
+  in `G1T_DEPLOY_TOKEN` or the file `.credentials/g1t-deploy-token`; without
+  one, or from a dirty tree or a dry run, it sends nothing. It finds the
+  repository from the git remote on g1t.sh. A report that fails is one line
+  in the log and never fails the deploy.
+
+When CI cannot finish a deploy, for example a runner image that must be
+built (hosted runners have no Docker), deploy from a machine with Docker.
+The report records it, and production shows the commit that really runs.
+
 ## Rolling back
 
 - **One unit, at once:** `npx wrangler rollback` in its folder (or

@@ -577,3 +577,17 @@ test("decide: a commit older than what runs is never deployed by accident, even 
   assert.equal(meant[0].deploy, true);
   assert.match(meant[0].reason, /rolling back/);
 });
+
+test("a deploy by hand reports to the repository on g1t, and a workflow's does not", async () => {
+  const { g1tRemote, inWorkflow, deployToken, reportDeployment } = await import("./report.mjs");
+  assert.deepEqual(g1tRemote(["git@github.com:flagon-io/g1t.git", "https://g1t.sh/flagon-io/g1t.git"]), { api: "https://api.g1t.sh", repo: "flagon-io/g1t" });
+  assert.equal(g1tRemote(["git@github.com:flagon-io/g1t.git"]), null);
+  assert.equal(inWorkflow({ GITHUB_ACTIONS: "true" }), true);
+  assert.equal(inWorkflow({}), false);
+  assert.equal(deployToken({ G1T_DEPLOY_TOKEN: " g1t_x \n" }, "/nowhere"), "g1t_x");
+  assert.equal(deployToken({}, "/nowhere"), null);
+  let called = false;
+  const settle = await reportDeployment({ head: "abc", subject: "s", units: ["web"], log: () => {}, env: { GITHUB_ACTIONS: "true", G1T_DEPLOY_TOKEN: "t" }, fetchImpl: () => { called = true; } });
+  assert.equal(settle, null);
+  assert.equal(called, false);
+});

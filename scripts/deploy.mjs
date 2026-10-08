@@ -59,6 +59,7 @@ import {
   writeDeployConfig,
 } from "./deploy/image.mjs";
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
+import { reportDeployment } from "./deploy/report.mjs";
 import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack } from "./deploy/stack.mjs";
 
 const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
@@ -409,6 +410,9 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
   if (touched.some((u) => u.kind === "rust-worker")) ensureWorkerBuild();
   const docker = touched.some((u) => u.image) ? await dockerAvailable() : false;
   const context = { head, subject: git.subject(), dirty, dryRun, docker, rebuildImage: opts.rebuildImage, rebuildBase: opts.rebuildBase };
+  // A deploy run by hand shows on the repository's Deployments page; a
+  // dirty tree is not a commit anyone can look at, so it is left out.
+  const settle = dryRun || dirty ? null : await reportDeployment({ head, subject: context.subject, units: touched.map((u) => u.id), log });
 
   let failed = false;
   for (const { stage, units } of byStage(stack, touched)) {
@@ -422,6 +426,7 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
     failed = shipped.some((r) => !r.ok);
   }
   summary(results);
+  await settle?.(!failed);
   console.log(`\n${failed ? "Failed" : dryRun ? "Built" : "Deployed"} in ${seconds(Date.now() - started)}.`);
   return !failed;
 }
