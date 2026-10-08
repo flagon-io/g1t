@@ -24,6 +24,25 @@ export function signUpCopy(inviteOnly: boolean): { primary: string; secondary: s
 /** The /register address that opens on the invite-code field. */
 export const HAVE_AN_INVITE = "/register#invite";
 
+/** The address a shared invite link has: sign-up, with its code filled in. */
+export function sharedInviteLink(code: string, origin = "https://g1t.sh"): string {
+  return `${origin.replace(/\/+$/, "")}/register?invite=${encodeURIComponent(code)}`;
+}
+
+/** What sign-up says above the form for a shared invite link's group. Null for a one-person invite. */
+export function sharedInviteLine(label: string | null | undefined): string | null {
+  const group = (label ?? "").trim();
+  return group ? `Invited as part of ${group}` : null;
+}
+
+/** The email field's hint for a shared invite link limited to some domains. */
+export function sharedDomainsHint(domains: string[] | null | undefined): string | undefined {
+  const list = (domains ?? []).filter(Boolean);
+  if (list.length === 0) return undefined;
+  const named = list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} or ${list.at(-1)}`;
+  return `This invite is for addresses at ${named}. Use yours there.`;
+}
+
 /** The address an invite link has. */
 export function inviteLink(code: string, origin = "https://g1t.sh"): string {
   return `${origin.replace(/\/+$/, "")}/invite/${code}`;

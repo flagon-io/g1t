@@ -25,6 +25,7 @@ mod rename;
 mod job_tokens;
 mod run_credentials;
 mod security;
+mod shared_invites;
 mod teams;
 mod throttle;
 mod token_reach;
@@ -1012,6 +1013,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),
         "admin_invite_tree" => reply(&identity.admin_invite_tree(args(body)?).await?),
         "admin_workspace_invites" => reply(&identity.admin_workspace_invites(args(body)?).await?),
+        // Shared invite links for a group; see shared_invites.rs.
+        "admin_shared_invites" => reply(&identity.admin_shared_invites().await?),
+        "admin_create_shared_invite" => reply(&identity.admin_create_shared_invite(args(body)?).await?),
+        "admin_revoke_shared_invite" => reply(&identity.admin_revoke_shared_invite(args(body)?).await?),
         // Deleted workspaces, restored or purged by staff; see deletion.rs.
         "admin_deleted_workspaces" => reply(&identity.admin_deleted_workspaces().await?),
         "admin_restore_workspace" => reply(&identity.admin_restore_workspace(args(body)?).await?),

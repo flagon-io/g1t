@@ -18,6 +18,7 @@ import {
 } from "~/lib/deleted-accounts";
 import { confirmsPurge, daysLeft } from "~/lib/deleted-workspaces";
 import { text } from "~/lib/forms";
+import { joinedThrough } from "~/lib/invites";
 import { accountsAdmin, identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
@@ -148,6 +149,14 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
         description={
           <>
             Account <span className="font-mono">{user.id}</span>, made <When at={user.createdAt} />.{" "}
+            {user.joinedThrough && (
+              <>
+                <Link to={`/invites?tab=shared#${user.joinedThrough.id}`} className="text-accent hover:underline">
+                  {joinedThrough(user.joinedThrough.label)}
+                </Link>
+                .{" "}
+              </>
+            )}
             {user.privateEmail ? "Keeps its address private on commits." : "Shows its primary address on commits."}
           </>
         }

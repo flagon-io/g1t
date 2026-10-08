@@ -322,6 +322,16 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
       call("admin_grant_invites", { target, name, amount, note, staff }),
     inviteTree: (username) => call("admin_invite_tree", { username }),
     workspaceInvites: (slug) => call("admin_workspace_invites", { slug }),
+    sharedInvites: () => call("admin_shared_invites", {}),
+    createSharedInvite: (link, staff) =>
+      call("admin_create_shared_invite", {
+        label: link.label,
+        max_uses: link.maxUses,
+        expires_on: link.expiresOn,
+        domains: link.domains,
+        staff,
+      }),
+    revokeSharedInvite: (id, staff) => call("admin_revoke_shared_invite", { id, staff }),
     deletedWorkspaces: () => call("admin_deleted_workspaces", {}),
     restoreWorkspace: (workspaceId, staff) => call("admin_restore_workspace", { workspaceId, staff }),
     purgeWorkspace: (workspaceId, staff, confirm) => call("admin_purge_workspace", { workspaceId, staff, confirm }),

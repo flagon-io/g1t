@@ -161,6 +161,32 @@ same page.
 An expired, revoked or used invite says which, and who sent it, so you
 can ask them for a new one; or ask for access from the same page.
 
+### Invite links for a group
+
+g1t sometimes hands one link to a group: an event's judges, readers of a
+post, a community. It looks like
+`https://g1t.sh/register?invite=g1t-k7m2-…` and opens sign-up with the
+code filled in and the group named above the form, such as **Invited as
+part of Launch week judges**.
+
+- **It makes your own account.** Each person who uses it gets a new
+  account, and then makes their own workspace. It does not add you to
+  anyone else's workspace; once you are in, a workspace's owners can add
+  you from its People page.
+- **It may be for some email domains only.** When it is, the email field
+  says which, such as `example.com`, and sign-up takes only an address
+  there. Use your address at that organization; you confirm it like any
+  other.
+- **It works a set number of times, until a set day.** Once every place
+  is taken, or the day has passed, or g1t has stopped it, the link gets
+  the same answer as any invite that cannot be used. Ask whoever shared
+  it, or [ask for access](#asking-for-access).
+
+Using the link spends one place in the same step that makes your account,
+so two people signing up at the same moment can never take more places
+than it has. Anyone with an account can still [make invites](#making-invites)
+of their own; group links are made by g1t staff only.
+
 ### Making invites
 
 1. Open [Settings → Invites](https://g1t.sh/settings/invites).

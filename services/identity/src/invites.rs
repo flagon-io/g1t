@@ -21,6 +21,10 @@
 //! into a workspace always makes an invite bound to it, and costs one only
 //! when the address has no account, so the answer never says which.
 //!
+//! A code may instead be a shared invite link's, which staff hand to a
+//! group: it makes up to a set number of accounts, each its own, and is
+//! checked and spent here the same way (shared_invites.rs).
+//!
 //! Vars: REGISTRATION_MODE (`invite` | `open`), INVITES_PER_USER,
 //! INVITE_TTL_DAYS, INVITE_STAFF_WORKSPACES (comma separated slugs).
 
@@ -35,6 +39,7 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
+use crate::shared_invites::{SharedAdmits, shared_admits, wrong_domain};
 use crate::{Identity, crypto};
 
 /// Crockford base32, as ids use: no i, l, o or u.
@@ -200,6 +205,9 @@ pub enum Refusal {
     Invalid,
     /// It is bound to another address.
     WrongEmail,
+    /// A shared invite link limited to email domains the address is not
+    /// at (shared_invites.rs).
+    WrongDomain,
 }
 
 /// The parts of an invite that decide whether it admits someone.
@@ -486,7 +494,7 @@ impl Identity {
             .collect()
     }
 
-    fn invite_sealer(&self) -> Option<Sealer> {
+    pub(crate) fn invite_sealer(&self) -> Option<Sealer> {
         Sealer::new(&self.env.secret("IDENTITY_KEY").ok()?.to_string())
     }
 
@@ -692,6 +700,8 @@ impl Identity {
         let required = self.invites_required();
         let code = new.invite_code.map(str::trim).filter(|code| !code.is_empty());
         let mut invite = None;
+        // A shared invite link's code instead (shared_invites.rs).
+        let mut shared = None;
         match code {
             None if required => return Ok(Outcome::fail(FailureCode::Forbidden, MISSING)),
             None => {}
@@ -700,13 +710,29 @@ impl Identity {
                     return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
                 }
                 let row = self.invite_by_code(code).await?;
+                let link = match row {
+                    None => self.shared_by_code(code).await?,
+                    Some(_) => None,
+                };
                 let now = rfc3339(now_ms());
-                match admits(row.as_ref().map(|row| row.admits(&now)).as_ref(), new.email, true) {
-                    Ok(()) => invite = row,
+                let verdict = match &link {
+                    Some(link) => {
+                        let domains = link.domains();
+                        let admits = SharedAdmits { status: link.status(&now), domains: &domains };
+                        shared_admits(Some(&admits), new.email)
+                    }
+                    None => admits(row.as_ref().map(|row| row.admits(&now)).as_ref(), new.email, true),
+                };
+                match verdict {
+                    Ok(()) => (invite, shared) = (row, link),
                     Err(_) if !required => {}
                     Err(refusal) => {
                         self.count_failure(new.client).await?;
-                        let message = if refusal == Refusal::WrongEmail { WRONG_EMAIL } else { INVALID };
+                        let message = match refusal {
+                            Refusal::WrongEmail => WRONG_EMAIL.to_owned(),
+                            Refusal::WrongDomain => wrong_domain(&link.map(|link| link.domains()).unwrap_or_default()),
+                            Refusal::Invalid => INVALID.to_owned(),
+                        };
                         return Ok(Outcome::fail(FailureCode::Forbidden, message));
                     }
                 }
@@ -730,8 +756,17 @@ impl Identity {
             new.email.into(),
             new.password_hash.into(),
         ];
-        let made = match &invite {
-            None => {
+        let made = match (&invite, &shared) {
+            // Take a use of the shared link, then make the account only if
+            // this request took it: one transaction, counted in the
+            // statement that takes it, so racing past its uses is
+            // impossible.
+            (None, Some(link)) => self
+                .db
+                .batch(self.shared_account_statements(link, &values, verified_at)?)
+                .await
+                .map(|_| ()),
+            (None, None) => {
                 self.db
                     .prepare(format!(
                         "INSERT INTO users (id, username, email, password_hash, email_verified_at)
@@ -744,7 +779,7 @@ impl Identity {
             }
             // Spend the code, then make the account only if this request
             // spent it: one transaction, so a second use finds it gone.
-            Some(row) => {
+            (Some(row), _) => {
                 let mut insert = values.to_vec();
                 insert.extend([JsValue::from(row.id.as_str()), user.id.as_str().into()]);
                 self.db
@@ -794,6 +829,22 @@ impl Identity {
             && user.verified
         {
             self.after_redeemed(&row, &user, true).await?;
+        }
+        // A shared link gives nothing to wait for: the account makes its
+        // own workspace.
+        if let Some(link) = shared {
+            self.announce(
+                "invite.redeemed",
+                Some(&user.id),
+                InviteRedeemed {
+                    invite_id: link.id,
+                    user_id: user.id.clone(),
+                    inviter_id: None,
+                    workspace_id: None,
+                    created_account: true,
+                },
+            )
+            .await;
         }
         Ok(Outcome::Ok(user))
     }
@@ -1259,12 +1310,19 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
         }
         let now = rfc3339(now_ms());
+        let found = self.invite_by_code(&a.code).await?;
+        // A shared invite link's code, while it is live: its label and
+        // domains are for the sign-up page. Expired, revoked and used up
+        // get the one answer below, whatever `any_status` asks.
+        if found.is_none()
+            && let Some(link) = self.shared_by_code(&a.code).await?
+            && link.status(&now) == SharedInviteStatus::Live
+        {
+            return Ok(Outcome::Ok(self.shared_preview(&link)));
+        }
         // A spent code is still a real one (160 random bits): saying what
         // became of it tells a guesser nothing.
-        let row = self
-            .invite_by_code(&a.code)
-            .await?
-            .filter(|row| a.any_status || row.status(&now) == InviteStatus::Pending);
+        let row = found.filter(|row| a.any_status || row.status(&now) == InviteStatus::Pending);
         let Some(row) = row else {
             self.count_failure(a.client.as_deref()).await?;
             return Ok(Outcome::fail(FailureCode::NotFound, INVALID));
@@ -1331,6 +1389,8 @@ impl Identity {
             has_account,
             for_viewer,
             expires_at: row.expires_at,
+            shared_label: None,
+            shared_domains: Vec::new(),
         }))
     }
 
@@ -2060,6 +2120,7 @@ impl Identity {
             grants: self.grants(GrantTarget::User, &user.id).await?,
             invites,
             invited: self.invited_by_user(&user.id, TREE_DEPTH).await?,
+            shared: self.shared_source(&user.id).await?,
         }))
     }
 
@@ -2082,6 +2143,7 @@ impl Identity {
             grants: self.grants(GrantTarget::Workspace, &id).await?,
             invites,
             invited: Vec::new(),
+            shared: None,
         }))
     }
 

@@ -4,14 +4,23 @@ import { test } from "node:test";
 import {
   INVITES_DONE,
   MAX_BULK,
+  MAX_SHARED_USES,
+  dayAfter,
+  domainsLine,
   doneMessage,
   invitesHref,
+  joinedThrough,
+  normalizeDomain,
   parseGrant,
   parseIds,
   parseMintEmail,
   parseNote,
+  parseSharedInvite,
   parseTab,
   parseWaitlistStatus,
+  sharedInviteLink,
+  sharedStatus,
+  usesLine,
 } from "./invites.ts";
 
 const form = (fields: Record<string, string>) => ({ get: (name: string) => fields[name] ?? null });
@@ -77,4 +86,61 @@ test("the flash says how many were decided", () => {
   assert.equal(doneMessage("approved", "1"), INVITES_DONE.approved);
   assert.equal(doneMessage("nope", "4"), null);
   assert.equal(doneMessage(null, null), null);
+});
+
+// 2026-10-08T12:00:00Z.
+const NOW = Date.UTC(2026, 9, 8, 12);
+
+test("shared links have their own tab", () => {
+  assert.equal(parseTab("shared"), "shared");
+  assert.equal(invitesHref("shared"), "/invites?tab=shared");
+  assert.ok(INVITES_DONE["shared-created"]);
+  assert.match(INVITES_DONE["shared-revoked"]!, /ones it made stay/);
+});
+
+test("a shared link needs a label, 1 to 1000 uses, and a day within a year", () => {
+  const ok = parseSharedInvite(form({ label: "  Cloudflare   judges ", max_uses: "40", expires_on: "2026-10-14", domains: "" }), NOW);
+  assert.deepEqual(ok, { ok: true, value: { label: "Cloudflare judges", maxUses: 40, expiresOn: "2026-10-14", domains: [] } });
+  // No day: identity's 14 days.
+  const later = parseSharedInvite(form({ label: "Judges", max_uses: "1" }), NOW);
+  assert.ok(later.ok && later.value.expiresOn === null);
+  assert.ok(!parseSharedInvite(form({ label: "", max_uses: "10" }), NOW).ok);
+  assert.ok(!parseSharedInvite(form({ label: "x".repeat(81), max_uses: "10" }), NOW).ok);
+  for (const uses of ["0", "1001", "-3", "2.5", "ten", ""]) {
+    const parsed = parseSharedInvite(form({ label: "Judges", max_uses: uses }), NOW);
+    assert.ok(!parsed.ok && parsed.error.includes(String(MAX_SHARED_USES)), uses);
+  }
+  assert.ok(parseSharedInvite(form({ label: "Judges", max_uses: "1000" }), NOW).ok);
+  // Today works; yesterday, a day past a year, and days that do not exist do not.
+  assert.ok(parseSharedInvite(form({ label: "Judges", max_uses: "5", expires_on: "2026-10-08" }), NOW).ok);
+  assert.ok(parseSharedInvite(form({ label: "Judges", max_uses: "5", expires_on: "2027-10-08" }), NOW).ok);
+  for (const day of ["2026-10-07", "2027-10-09", "2026-02-30", "14/10/2026"]) {
+    assert.ok(!parseSharedInvite(form({ label: "Judges", max_uses: "5", expires_on: day }), NOW).ok, day);
+  }
+});
+
+test("a shared link's domains are tidied, checked and capped", () => {
+  const parsed = parseSharedInvite(form({ label: "Judges", max_uses: "5", domains: "@Cloudflare.com, flagon.io  cloudflare.com" }), NOW);
+  assert.ok(parsed.ok);
+  assert.deepEqual(parsed.value.domains, ["cloudflare.com", "flagon.io"]);
+  const bad = parseSharedInvite(form({ label: "Judges", max_uses: "5", domains: "localhost" }), NOW);
+  assert.ok(!bad.ok && bad.error.startsWith("localhost is not an email domain"));
+  const many = Array.from({ length: 11 }, (_, n) => `d${n}.com`).join(",");
+  assert.ok(!parseSharedInvite(form({ label: "Judges", max_uses: "5", domains: many }), NOW).ok);
+  assert.equal(normalizeDomain(" @EXAMPLE.com. "), "example.com");
+  assert.equal(normalizeDomain("-bad.com"), null);
+  assert.equal(domainsLine([]), "Any email address");
+  assert.equal(domainsLine(["cloudflare.com", "flagon.io"]), "Only addresses at cloudflare.com, flagon.io");
+});
+
+test("a shared link reads as its state, its uses and its address", () => {
+  assert.deepEqual(sharedStatus("live"), { label: "Live", tone: "lavender" });
+  assert.equal(sharedStatus("used_up").label, "Used up");
+  assert.equal(sharedStatus("expired").label, "Expired");
+  assert.equal(sharedStatus("revoked").tone, "danger");
+  assert.equal(usesLine({ uses: 3, maxUses: 40 }), "3 of 40 used");
+  assert.equal(sharedInviteLink("g1t-k7m2-q9xd"), "https://g1t.sh/register?invite=g1t-k7m2-q9xd");
+  assert.equal(joinedThrough("Cloudflare judges"), "Joined through Cloudflare judges");
+  assert.equal(dayAfter(NOW, 14), "2026-10-22");
+  assert.equal(dayAfter(NOW, 0), "2026-10-08");
 });

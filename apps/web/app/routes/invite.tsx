@@ -36,6 +36,8 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const accepting = new URL(request.url).searchParams.get("accept") === "1";
   const checked = await identity.checkInvite(code, clientKey(request), { viewer, anyStatus: true });
   const invite = checked.ok ? checked.value : null;
+  // A shared link for a group signs up on /register, which names the group.
+  if (invite?.sharedLabel) throw redirect(`/register?invite=${encodeURIComponent(code)}`);
   const lands = invite ? landingFor(invite) : null;
 
   if (viewer && invite) {

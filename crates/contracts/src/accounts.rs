@@ -508,6 +508,10 @@ pub struct AdminUser {
     /// Set while it is deleted and not yet purged.
     #[serde(default)]
     pub deleted: Option<crate::account_deletion::DeletedAccount>,
+    /// The shared invite link it was made with, if it was. Sudo shows
+    /// "Joined through <label>".
+    #[serde(default)]
+    pub joined_through: Option<crate::identity::SharedInviteSource>,
 }
 
 /// `admin_remove_email`: staff remove an address from an account, such as
