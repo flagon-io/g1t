@@ -571,12 +571,13 @@ fn check_out(secrets: &[String]) -> Result<()> {
     let commit = env("GIT_COMMIT")?;
     let auth = auth_option(&env("G1T_USER")?, &env("G1T_TOKEN")?);
     std::fs::create_dir_all("/work")?;
-    let cloned = crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR).and_then(|_| {
-        git(
-            Path::new(WORKDIR),
-            &["-c", "advice.detachedHead=false", "checkout", "--quiet", &commit],
-        )
-    });
+    let workdir = Path::new(WORKDIR);
+    // The clone is shallow and of the default branch; a preview's commit is
+    // often on another one, so it is fetched before checking out.
+    let cloned = crate::clone::clone(Path::new("/work"), &auth, &[], &remote, WORKDIR)
+        .and_then(|_| git(workdir, &["rev-parse", "--abbrev-ref", "HEAD"]))
+        .and_then(|branch| crate::clone::ensure(workdir, &auth, "origin", &branch, &commit))
+        .and_then(|_| git(workdir, &["-c", "advice.detachedHead=false", "checkout", "--quiet", &commit]));
     if let Err(error) = cloned {
         bail!("{}", redact(&format!("{error:#}"), secrets));
     }

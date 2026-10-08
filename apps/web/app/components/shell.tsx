@@ -5,7 +5,8 @@ import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderDa
 import type { Abilities, InboxCounts, Membership, Spike, User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
-import { AskAi, InboxBell } from "./inbox";
+import { AgentButton, InboxBell } from "./inbox";
+import { PinButton } from "./pin-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, Mark } from "./logo";
@@ -604,10 +605,22 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
     for (const project of next) form.append("slug", project.name);
     reorder.submit(form, { method: "post", action: `/${slug}/-/pins` });
   };
-  const row = (project: ShortcutProject) => (
-    <SidebarLink to={`/${project.namespace}/${project.name}`} icon={project.isPrivate ? <Lock size={15} /> : <Box size={15} />} drill="hover">
-      {project.title ?? project.name}
-    </SidebarLink>
+  // Each row pins or unpins in place: the pin shows on hover or focus, and
+  // stays shown on a pinned row's hover so it reads as "unpin".
+  const row = (project: ShortcutProject, isPinned: boolean) => (
+    <div className="group/row relative">
+      <SidebarLink to={`/${project.namespace}/${project.name}`} icon={project.isPrivate ? <Lock size={15} /> : <Box size={15} />} drill="hover">
+        <span className="block truncate pr-6">{project.title ?? project.name}</span>
+      </SidebarLink>
+      <PinButton
+        workspace={slug}
+        slug={project.name}
+        name={project.title ?? project.name}
+        pinned={isPinned}
+        small
+        className="absolute top-1/2 right-6 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+      />
+    </div>
   );
   return (
     <SidebarGroup
@@ -618,10 +631,10 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
         </Link>
       }
     >
-      <SidebarSubhead>Pinned</SidebarSubhead>
-      {pinned.length === 0 ? (
-        <p className="px-2 pb-1 text-xs text-faint">Pin projects to keep them here.</p>
-      ) : (
+      {/* Only there once something is pinned: each row below has its own pin. */}
+      {pinned.length > 0 && (
+        <>
+        <SidebarSubhead>Pinned</SidebarSubhead>
         <ul aria-label="Pinned projects" className="space-y-px">
           {pinned.map((project, index) => (
             <li
@@ -648,7 +661,7 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
               title={pinned.length > 1 ? "Drag, or Alt and an arrow key, to reorder" : undefined}
               className={`group/pin relative ${dragging === index ? "opacity-50" : ""}`}
             >
-              {row(project)}
+              {row(project, true)}
               {pinned.length > 1 && (
                 <GripVertical
                   size={12}
@@ -659,12 +672,13 @@ function SidebarProjects({ slug, shell }: { slug: string; shell: ShellData }) {
             </li>
           ))}
         </ul>
+        </>
       )}
       {recent.length > 0 && (
         <>
           <SidebarSubhead>Recent</SidebarSubhead>
           {recent.map((project) => (
-            <div key={`${project.namespace}/${project.name}`}>{row(project)}</div>
+            <div key={`${project.namespace}/${project.name}`}>{row(project, false)}</div>
           ))}
         </>
       )}
@@ -1695,7 +1709,7 @@ export function AppShell({
             </a>
             {user && (
               <>
-                <AskAi />
+                <AgentButton />
                 <InboxBell counts={shell.inbox ?? null} />
               </>
             )}

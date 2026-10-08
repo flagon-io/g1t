@@ -1130,9 +1130,9 @@ opening a sheet with tabs (All, Needs you, Errors, Success, Info), Done,
 Save, Snooze and Mark all read; `/inbox` with Saved, Done and a reason
 filter; reasons and update counts on each card; a Notifications box on
 issue and pull request pages; a Watch menu in the repository header;
-Settings → Notifications; a Needs you card on mission control. Ask AI sits
+Settings → Notifications; a Needs you card on mission control. Agent sits
 beside the bell, disabled. Still to come: security alerts (the security
-service publishes no event yet), email digests and push, Ask AI, and
+service publishes no event yet), email digests and push, Agent, and
 channels.
 
 **Channels** (working name): workspace channels, direct messages and

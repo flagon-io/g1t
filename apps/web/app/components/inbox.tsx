@@ -339,10 +339,10 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
 }
 
 /**
- * Ask AI: here to say it is coming, and not yet usable. A disabled button
+ * Agent: g1t's agent to talk to, here to say it is coming, and not yet usable. A disabled button
  * gets no pointer events, so the tooltip hangs on a span around it.
  */
-export function AskAi() {
+export function AgentButton() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -350,15 +350,15 @@ export function AskAi() {
           <button
             type="button"
             disabled
-            aria-label="Ask AI"
+            aria-label="Agent"
             className="pointer-events-none flex h-9 items-center gap-1.5 rounded-md border border-line px-2.5 text-sm text-muted opacity-60 sm:px-3"
           >
             <Sparkles size={15} className="text-merged" />
-            <span className="hidden sm:inline">Ask AI</span>
+            <span className="hidden sm:inline">Agent</span>
           </button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>Ask AI is coming later</TooltipContent>
+      <TooltipContent>Agent is coming later</TooltipContent>
     </Tooltip>
   );
 }

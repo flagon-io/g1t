@@ -12,7 +12,7 @@ import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { newTeamFromForm, parentChoices, teamPath } from "../../lib/teams";
 import { identity } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 /** The parent select's value for "no parent": Radix selects have no empty value. */
 const NO_PARENT = "-";

@@ -870,7 +870,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
         </div>
       </header>
 
-      {/* Asking g1t is not on yet; the actions under it do the work today. */}
+      {/* The agent is not on yet; the actions under it do the work today. */}
       <AskComposer>
         {newIssue}
         {repos.length > 0 && (

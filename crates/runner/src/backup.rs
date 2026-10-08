@@ -366,7 +366,7 @@ mod tests {
     fn commit(dir: &Path, file: &str, text: &str) {
         std::fs::write(dir.join(file), text).unwrap();
         git_in(dir, &["add", "--all"], None).unwrap();
-        git_in(dir, &["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", text], None).unwrap();
+        git_in(dir, &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", text], None).unwrap();
     }
 
     fn mirror_of(origin: &Path, into: &Path) {

@@ -15,6 +15,7 @@ export function PinButton({
   name,
   pinned,
   compact,
+  small,
   className,
 }: {
   workspace: string;
@@ -24,6 +25,8 @@ export function PinButton({
   pinned: boolean;
   /** Only the pin, as on a row; the header says it in words too. */
   compact?: boolean;
+  /** Row-sized, for the sidebar. */
+  small?: boolean;
   className?: string;
 }) {
   const fetcher = useFetcher<{ error: string | null }>({ key: `pin:${workspace}/${slug}` });
@@ -42,15 +45,17 @@ export function PinButton({
         title={error ?? (shown ? "Unpin from the sidebar" : "Pin to the sidebar")}
         className={cn(
           "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-[0.8125rem] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent",
-          compact
+          small
+            ? "relative z-10 size-6 hover:bg-raised"
+            : compact
             ? "relative z-10 size-8 hover:bg-raised"
             : "h-8 border border-line px-2.5 text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
-          shown ? "text-accent" : compact ? "text-faint hover:text-fg" : "",
+          shown ? "text-accent" : compact || small ? "text-faint hover:text-fg" : "",
           error && "text-danger",
         )}
       >
-        <Pin size={14} className={shown ? "fill-current" : undefined} />
-        {!compact && <span className="hidden sm:inline">{shown ? "Unpin" : "Pin"}</span>}
+        <Pin size={small ? 12 : 14} className={shown ? "fill-current" : undefined} />
+        {!compact && !small && <span className="hidden sm:inline">{shown ? "Unpin" : "Pin"}</span>}
       </button>
     </fetcher.Form>
   );

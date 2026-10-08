@@ -118,7 +118,9 @@ pub(crate) fn share_history(dir: &Path, auth: &str, sources: &[(&str, &str)], a:
 }
 
 /// Makes sure `commit` is in the clone: fetched by name, which servers
-/// allow for commits on their branches, else the whole of `branch`.
+/// allow for commits on their branches, else the whole of `branch`, else
+/// every branch (a preview's commit can be on a branch the clone never
+/// had, from a server that will not fetch a commit by name).
 pub(crate) fn ensure(dir: &Path, auth: &str, remote: &str, branch: &str, commit: &str) -> Result<()> {
     if has(dir, commit) {
         return Ok(());
@@ -129,7 +131,12 @@ pub(crate) fn ensure(dir: &Path, auth: &str, remote: &str, branch: &str, commit:
     }
     if is_shallow(dir) {
         let _ = git(dir, &["-c", auth, "fetch", "--quiet", "--unshallow", remote, branch]);
+        if has(dir, commit) {
+            return Ok(());
+        }
     }
+    let shallow = if is_shallow(dir) { "--unshallow" } else { "--quiet" };
+    let _ = git(dir, &["-c", auth, "fetch", "--quiet", shallow, remote, "+refs/heads/*:refs/remotes/everything/*"]);
     Ok(())
 }
 
@@ -162,6 +169,8 @@ mod tests {
         run(&origin, &["init", "--quiet", "-b", "main"]);
         run(&origin, &["config", "user.name", "t"]);
         run(&origin, &["config", "user.email", "t@example.com"]);
+        // A test repository of its own: never the machine's commit signing.
+        run(&origin, &["config", "commit.gpgsign", "false"]);
         run(&origin, &["config", "uploadpack.allowReachableSHA1InWant", "true"]);
         for i in 0..12 {
             std::fs::write(origin.join("f.txt"), format!("{i}\n")).unwrap();
@@ -187,6 +196,51 @@ mod tests {
         assert!(merge_base(&work, "HEAD", "FETCH_HEAD"));
         // FETCH_HEAD is still the side branch, the last source.
         assert_eq!(git(&work, &["log", "-1", "--format=%s", "FETCH_HEAD"]).unwrap(), "side");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A build of a commit that is only on another branch, from a server
+    /// that will not fetch a commit by name: a shallow clone of the default
+    /// branch, then `ensure` finds it (a preview of a branch, 2026-10-08:
+    /// "reference is not a tree").
+    #[test]
+    fn a_commit_only_on_another_branch_is_fetched_for_a_build() {
+        if Command::new("git").arg("--version").output().is_err() {
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("g1t-ensure-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let origin = root.join("origin");
+        std::fs::create_dir_all(&origin).unwrap();
+        let run = |dir: &Path, args: &[&str]| git(dir, args).unwrap();
+        run(&origin, &["init", "--quiet", "-b", "main"]);
+        run(&origin, &["config", "user.name", "t"]);
+        run(&origin, &["config", "user.email", "t@example.com"]);
+        // A test repository of its own: never the machine's commit signing.
+        run(&origin, &["config", "commit.gpgsign", "false"]);
+        run(&origin, &["config", "uploadpack.allowReachableSHA1InWant", "false"]);
+        run(&origin, &["config", "uploadpack.allowAnySHA1InWant", "false"]);
+        for i in 0..3 {
+            std::fs::write(origin.join("f.txt"), format!("{i}\n")).unwrap();
+            run(&origin, &["add", "f.txt"]);
+            run(&origin, &["commit", "--quiet", "-m", &format!("c{i}")]);
+        }
+        run(&origin, &["checkout", "--quiet", "-b", "v2"]);
+        std::fs::write(origin.join("g.txt"), "v2\n").unwrap();
+        run(&origin, &["add", "g.txt"]);
+        run(&origin, &["commit", "--quiet", "-m", "v2"]);
+        let preview = run(&origin, &["rev-parse", "HEAD"]);
+        run(&origin, &["checkout", "--quiet", "main"]);
+
+        let url = format!("file://{}", origin.display().to_string().replace('\\', "/"));
+        let auth = "http.extraHeader=X-Test: 1";
+        clone(&root, auth, &[], &url, "work").unwrap();
+        let work = root.join("work");
+        assert!(!has(&work, &preview));
+        ensure(&work, auth, "origin", "main", &preview).unwrap();
+        assert!(has(&work, &preview));
+        git(&work, &["-c", "advice.detachedHead=false", "checkout", "--quiet", &preview]).unwrap();
+        assert_eq!(std::fs::read_to_string(work.join("g.txt")).unwrap().trim(), "v2");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
