@@ -630,6 +630,12 @@ export function Breakdown({
                   {product.features.map((f) => `${f.label}${f.count ? ` (${f.count})` : ""} ${money(f.micros)}`).join(" · ")}
                 </p>
               )}
+              {product.key === "agent" && report.models && report.models.length > 0 && (
+                <p className="px-4 pt-1 text-xs text-faint">
+                  Tokens by model:{" "}
+                  {report.models.map((m) => `${m.model} ${quantity(m.input + m.output + m.cacheRead + m.cacheWrite, "tokens")}`).join(" · ")}
+                </p>
+              )}
               <ul className="divide-y divide-line/60">
                 {shownLines(product.meters).map((meter) => (
                   <MeterRow key={meter.key} meter={meter} color={color} projectHref={projectHref} />

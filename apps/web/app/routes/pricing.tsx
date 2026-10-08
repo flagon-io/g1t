@@ -43,7 +43,7 @@ function count(n: number): string {
 }
 
 /** Price-book rows the table shows in rows of their own, or not at all. */
-const SHOWN_APART = new Set(["app_month", "agent_models", "agent_tokens", "gateway_models", "card_fee_percent", "card_fee_fixed"]);
+const SHOWN_APART = new Set(["app_month", "agent_models", "agent_tokens", "agent_tokens_own", "gateway_models", "card_fee_percent", "card_fee_fixed"]);
 
 /** What the page says when billing cannot be reached: the published defaults. */
 const DEFAULT_FREE: Required<FreeTier> = {
@@ -450,7 +450,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <tr>
               <td className="px-4 py-3">
                 <p className="font-medium">Agent models</p>
-                <p className="text-xs text-faint">g1t's hosted models for agent runs, paid from AI credit</p>
+                <p className="text-xs text-faint">g1t's hosted models for agent runs, the cheapest that can do each job, paid from AI credit</p>
               </td>
               <td className="px-4 py-3 text-muted">What the provider charges, per request</td>
               <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{book?.modelMarginPercent ?? 0}%</td>
@@ -462,6 +462,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
               const feePercent = book?.prices.find((p) => p.meter === "card_fee_percent");
               const feeFixed = book?.prices.find((p) => p.meter === "card_fee_fixed");
               const coming = book?.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
+              const ownRate = book?.prices.find((p) => p.meter === "agent_tokens_own");
+              const ownComing = book?.changes.find((c) => c.meter === "agent_tokens_own" && c.effectiveAt);
               return (
                 <>
                   <tr>
@@ -473,6 +475,17 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                     <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
                     <td className="px-4 py-3 font-mono text-xs tabular-nums">
                       {rate && rate.priceMicros > 0 ? `${money(rate.priceMicros)} per million tokens` : coming ? `${money(coming.newCostMicros)} per million tokens from ${coming.effectiveAt!.slice(0, 10)}` : "$0.25 per million tokens"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">g1t agent rate, your own model key</p>
+                      <p className="text-xs text-faint">The same, on runs that use your own provider; its models are billed by your provider, not g1t</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted">A flat rate</td>
+                    <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
+                    <td className="px-4 py-3 font-mono text-xs tabular-nums">
+                      {ownRate && ownRate.priceMicros > 0 ? `${money(ownRate.priceMicros)} per million tokens` : ownComing ? `${money(ownComing.newCostMicros)} per million tokens from ${ownComing.effectiveAt!.slice(0, 10)}` : "$0.25 per million tokens"}
                     </td>
                   </tr>
                   <tr>

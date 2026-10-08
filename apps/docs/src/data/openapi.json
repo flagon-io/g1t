@@ -27051,7 +27051,7 @@
           "Integrations"
         ],
         "summary": "Get model routes",
-        "description": "Where each kind of work's model requests go in a workspace: g1t's hosted models (connection_id null) or one of the workspace's own model providers, with a model. Kinds of work are default, implement, review, plan and update; one without a route follows default. Members only.",
+        "description": "Where each kind of work's model requests go in a workspace: g1t's hosted models (connection_id null) or one of the workspace's own model providers, with a model. On g1t's hosted models, model is a tier the workspace chose (small, large or frontier) or null for Auto, which picks a model per job. Kinds of work are default, implement, review, plan and update; one without a route follows default. Members only.",
         "x-operation": "get_model_routes",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "get_model_routes",
@@ -27146,7 +27146,7 @@
           "Integrations"
         ],
         "summary": "Set model routes",
-        "description": "Replace a workspace's model routes. Each route names a task (default, implement, review, plan or update), a connection_id (null for g1t's hosted models) and a model at that provider. Providers that speak OpenAI's API need a model. Owners only.\n\nThe response is the routes as saved, ordered by task.",
+        "description": "Replace a workspace's model routes. Each route names a task (default, implement, review, plan or update), a connection_id (null for g1t's hosted models) and a model at that provider. On g1t's hosted models, model is small (fast), large (standard) or frontier (most capable), or null for Auto, which picks the cheapest model that can do each job. Providers that speak OpenAI's API need a model. Owners only.\n\nThe response is the routes as saved, ordered by task. On g1t's hosted models (`connection_id` null), `model` is `small`, `large` or `frontier`, or null for Auto, which picks the cheapest model that can do each job and says why on the run.",
         "x-operation": "set_model_routes",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "set_model_routes",
@@ -27180,6 +27180,11 @@
                     "task": "default",
                     "connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
                     "model": "claude-sonnet-4-5"
+                  },
+                  {
+                    "task": "plan",
+                    "connection_id": null,
+                    "model": "frontier"
                   },
                   {
                     "task": "review",
@@ -27275,7 +27280,7 @@
                             "string",
                             "null"
                           ],
-                          "description": "The model at that provider."
+                          "description": "The model at that provider. On g1t's hosted models: small, large or frontier, or null for Auto."
                         }
                       },
                       "required": [
@@ -27294,6 +27299,11 @@
                     "task": "default",
                     "connection_id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
                     "model": "claude-sonnet-4-5"
+                  },
+                  {
+                    "task": "plan",
+                    "connection_id": null,
+                    "model": "frontier"
                   },
                   {
                     "task": "review",
