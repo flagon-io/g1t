@@ -283,7 +283,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, set rulesets that hold across its repositories, and keep your own pinned projects at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -299,6 +299,9 @@ pub const TOOLS: &[Tool] = &[
             a("test_integration", Op::TestIntegration, "Check its credentials"),
             a("get_model_routes", Op::GetModelRoutes, "Where each kind of work's model requests go"),
             a("set_model_routes", Op::SetModelRoutes, "Replace them"),
+            a("list_projects", Op::ListProjects, "Its projects you can see: what each is, where it runs, its links"),
+            a("get_project", Op::GetProject, "One project"),
+            a("update_project", Op::UpdateProject, "Change a project's name, description, kind, where it runs or its links"),
             a("list_pinned_projects", Op::ListPinnedProjects, "Your pinned projects in it, in your order"),
             a("pin_project", Op::PinProject, "Pin a project, at a position or the end"),
             a("unpin_project", Op::UnpinProject, "Unpin a project"),

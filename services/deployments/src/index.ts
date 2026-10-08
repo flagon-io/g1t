@@ -483,8 +483,9 @@ class Deployments {
     const project = found.value;
     const before = await this.toSettings(project, await this.settingsRow(project.id));
     const next = { ...before, ...a.changes };
-    if (next.enabled && !before.enabled && project.deploys === "no") {
-      return fail("conflict", "This project is set not to deploy. Change that in its General settings first.");
+    // A library, a tool or other, as set in its settings, does not deploy.
+    if (next.enabled && !before.enabled && project.setting?.kind && project.setting.kind !== "app" && project.setting.kind !== "docs") {
+      return fail("conflict", "This project is set to be something that doesn't deploy. Change what it is in its General settings first.");
     }
     if (next.enabled && !before.enabled) {
       // Turning it on starts paid work: only with the workspace's plan.

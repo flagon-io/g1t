@@ -217,6 +217,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
     ["partial discounts", o.givenDiscountMicros ?? 0],
     ["promotional credit", o.givenCreditPromotionalMicros ?? 0],
     ["goodwill credit", o.givenCreditGoodwillMicros ?? 0],
+    ["testing resets", o.givenResetMicros ?? 0],
   ].filter(([, micros]) => (micros as number) > 0) as [string, number][];
   const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
     {

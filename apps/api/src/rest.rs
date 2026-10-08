@@ -91,6 +91,10 @@ pub const ROUTES: &[Route] = &[
     route("PATCH", "/user/repository_invitations/:id", Op::AcceptRepoInvitation, &[]),
     route("DELETE", "/user/repository_invitations/:id", Op::DeclineRepoInvitation, &[]),
     route("PATCH", "/workspaces/:workspace", Op::UpdateWorkspace, &[]),
+    // A workspace's projects: what each is, where it runs, its links.
+    route("GET", "/workspaces/:workspace/projects", Op::ListProjects, &[]),
+    route("GET", "/workspaces/:workspace/projects/:project", Op::GetProject, &[]),
+    route("PATCH", "/workspaces/:workspace/projects/:project", Op::UpdateProject, &[]),
     route("PUT", "/workspaces/:workspace/base_permission", Op::SetBasePermission, &[]),
     route(
         "GET",

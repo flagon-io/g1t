@@ -15,6 +15,7 @@ mod notifications;
 mod oauth;
 mod openapi;
 mod pins;
+mod projects;
 mod operations;
 mod renamed;
 #[cfg(test)]

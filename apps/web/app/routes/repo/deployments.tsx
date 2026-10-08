@@ -26,6 +26,7 @@ import { ButtonLink, ComputeNote, ErrorText, SubmitButton, TimeAgo } from "../..
 import { Badge } from "../../components/ui/badge";
 import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
+import { neverDeploys } from "../../lib/project-kind";
 import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { refusal, requireRepo } from "../../lib/access.server";
@@ -76,7 +77,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     soft(projects.get(params.owner, params.repo, viewer)),
   ]);
   // Set not to deploy, in General settings: turning them on waits for that to change.
-  const notDeploying = project?.ok ? project.value.deploys === "no" : false;
+  const notDeploying = project?.ok ? neverDeploys(project.value) : false;
   // Deployments come with the g1t plan. Someone outside the workspace does
   // not see its plans; the page works without, and the deployments service
   // refuses a deploy the plan does not cover.
@@ -696,9 +697,9 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
       </p>
       {pages.notDeploying ? (
         <p className="mt-4 max-w-2xl text-sm text-muted">
-          This project is set as one that doesn't deploy, a library or a tool. To host it, choose Deploys or Detect
-          automatically in{" "}
-          <Link to={`${base}/settings#deploys`} className="text-fg underline underline-offset-4">
+          This project is set to be something that doesn't deploy here, such as a library, a tool or an app deployed
+          elsewhere. To host it on g1t.page, choose App or site, deployed on g1t, in{" "}
+          <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
             its settings
           </Link>{" "}
           first.

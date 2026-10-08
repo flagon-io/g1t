@@ -25,7 +25,7 @@ export type ChecklistFacts = {
 };
 
 export type ChecklistItem = {
-  key: "code" | "deploy" | "domain" | "preview" | "checks" | "release" | "instructions" | "agent";
+  key: "code" | "deploy" | "domain" | "preview" | "checks" | "release" | "production" | "where" | "links" | "instructions" | "agent";
   title: string;
   detail: string;
   done: boolean;
@@ -127,6 +127,106 @@ export function releaseChecklist(facts: ReleaseFacts): ChecklistItem[] {
     step("instructions"),
     step("agent"),
   ];
+}
+
+export type StartFacts = Pick<ChecklistFacts, "base" | "hasCode" | "instructions" | "agentAssigned"> & {
+  /** It has a workflow, whose runs are its pull requests' checks; null when unknown. */
+  hasWorkflow: boolean | null;
+  /** Production's address, for an app deployed elsewhere. */
+  productionUrl: string | null;
+  /** Its homepage, docs or any other link is set. */
+  hasLinks: boolean;
+  /** Its docs address is set, or its homepage. */
+  hasDocsLink: boolean;
+};
+
+/** Where a project's own settings are, for the steps that are done there. */
+const settingsAt = (base: string, anchor: string) => `${base}/settings#${anchor}`;
+
+/**
+ * The steps for a project g1t does not deploy, by what it is. Every step
+ * applies to it and each is done from its own fact: nothing about turning
+ * on Deployments, domains or previews.
+ *
+ * - An app deployed elsewhere: its production address, then checks.
+ * - An app nobody has said where it runs: saying so, then checks.
+ * - Docs: where they are read.
+ * - Anything else: its links.
+ */
+export function startChecklist(kind: "elsewhere" | "unknown" | "docs" | "other", facts: StartFacts): ChecklistItem[] {
+  const shared = productionChecklist({ ...facts, deploysEnabled: false, productionDeployed: false, domains: null, previewOpened: false });
+  const step = (key: ChecklistItem["key"]) => shared.find((item) => item.key === key)!;
+  const checks: ChecklistItem = {
+    key: "checks",
+    title: "Add checks on pull requests",
+    detail: "A workflow that builds and tests it. Its runs are every pull request's checks.",
+    done: facts.hasWorkflow === true,
+    to: `${facts.base}/actions`,
+    action: "Add CI",
+  };
+  const middle: ChecklistItem[] =
+    kind === "elsewhere"
+      ? [
+          {
+            key: "production",
+            title: "Add production's address",
+            detail: "Where your own pipeline deploys it, so its overview links to production.",
+            done: facts.productionUrl != null,
+            to: settingsAt(facts.base, "kind"),
+            action: "Add",
+          },
+          checks,
+        ]
+      : kind === "unknown"
+        ? [
+            {
+              key: "where",
+              title: "Say where it runs",
+              detail: "Deployed on g1t, deployed elsewhere, or not deployed at all, such as a library.",
+              done: false,
+              to: settingsAt(facts.base, "kind"),
+              action: "Choose",
+            },
+            checks,
+          ]
+        : kind === "docs"
+          ? [
+              {
+                key: "links",
+                title: "Add where its docs are read",
+                detail: "A docs or homepage address, shown on its overview and wherever the project is listed.",
+                done: facts.hasDocsLink,
+                to: settingsAt(facts.base, "links"),
+                action: "Add",
+              },
+            ]
+          : [
+              {
+                key: "links",
+                title: "Add its links",
+                detail: "A homepage, docs, or any other address people go to for it.",
+                done: facts.hasLinks,
+                to: settingsAt(facts.base, "links"),
+                action: "Add",
+              },
+            ];
+  return [step("code"), ...middle, step("instructions"), step("agent")];
+}
+
+export type ChecklistPlan = "production" | "release" | "elsewhere" | "unknown" | "docs" | "other";
+
+/**
+ * Which steps a project gets, and their heading, from what it is and where
+ * it runs. Only what g1t deploys gets production's steps.
+ */
+export function checklistPlan(project: {
+  kind: "app" | "library" | "tool" | "docs" | "other";
+  runs: "g1t" | "elsewhere" | null;
+}): { plan: ChecklistPlan; title: string } {
+  if (project.runs === "g1t") return { plan: "production", title: "Get to production" };
+  if (project.kind === "library" || project.kind === "tool") return { plan: "release", title: "Ship a release" };
+  if (project.kind === "app") return { plan: project.runs === "elsewhere" ? "elsewhere" : "unknown", title: "Get started" };
+  return { plan: project.kind, title: "Get started" };
 }
 
 /** `3/6`, for the card's heading. */

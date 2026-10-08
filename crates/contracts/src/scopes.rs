@@ -594,6 +594,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
+    // Projects follow their repositories.
+    ("list_projects", Scope::RepoRead),
+    ("get_project", Scope::RepoRead),
     ("search", Scope::RepoRead),
     ("list_events", Scope::RepoRead),
     ("list_labels", Scope::RepoRead),
@@ -613,6 +616,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_codeowners_errors", Scope::RepoRead),
     ("create_repo", Scope::RepoWrite),
     ("update_repo", Scope::RepoWrite),
+    ("update_project", Scope::RepoWrite),
     ("update_repo_settings", Scope::RepoWrite),
     // Rulesets: reading them is reading the repository; changing them
     // changes what everyone, agents included, may do, so it is admin.
