@@ -32,6 +32,21 @@ pub struct GitRequest {
     pub service: GitService,
 }
 
+impl GitRequest {
+    /// The same request for the repository of the same name under
+    /// `namespace`: where a workspace alias leads.
+    pub fn under(&self, namespace: &str) -> GitRequest {
+        GitRequest {
+            path: RepoPath {
+                namespace: namespace.to_owned(),
+                name: self.path.name.clone(),
+            },
+            endpoint: self.endpoint,
+            service: self.service,
+        }
+    }
+}
+
 /// Parses `/<namespace>/<name>[.git]/<endpoint>`, or returns `None` if the
 /// request is not git's.
 pub fn parse(url: &Url) -> Option<GitRequest> {
@@ -214,6 +229,21 @@ pub async fn renamed(url: &Url, identity: &Fetcher) -> Result<Option<String>> {
     )
     .await?;
     Ok(current.and_then(|slug| with_namespace(url, &slug)))
+}
+
+/// The request under the workspace its first segment is an alias of
+/// (identity's aliases.rs: `g1t` for `flagon-io`), if it is one. Answered
+/// in place rather than redirected: a push does not follow a redirect.
+pub async fn aliased(git: &GitRequest, identity: &Fetcher) -> Result<Option<GitRequest>> {
+    let slug: Option<String> = g1t_kit::call(
+        identity,
+        "resolve_alias",
+        &g1t_contracts::identity::SlugArgs {
+            slug: git.path.namespace.clone(),
+        },
+    )
+    .await?;
+    Ok(slug.map(|slug| git.under(&slug)))
 }
 
 /// `url` with its repository, the first two path segments, replaced by
@@ -1050,7 +1080,7 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, Pushed, RepoPath, Url, ZERO_ID, acknowledged, framed, negotiating, pack_bytes, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace};
+    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace};
 
     #[test]
     fn server_timing_names_each_step_and_the_total() {
@@ -1156,6 +1186,29 @@ mod tests {
             transferred(&url, &to).as_deref(),
             Some("https://g1t.sh/flagon-io/g1t/git-upload-pack")
         );
+    }
+
+    #[test]
+    fn an_alias_is_answered_as_its_workspaces_repository() {
+        for (address, service) in [
+            ("https://g1t.sh/g1t/g1t.git/info/refs?service=git-upload-pack", GitService::UploadPack),
+            ("https://g1t.sh/g1t/g1t.git/git-receive-pack", GitService::ReceivePack),
+            ("https://g1t.sh/g1t/g1t/git-upload-pack", GitService::UploadPack),
+        ] {
+            let git = parse(&Url::parse(address).unwrap()).unwrap();
+            assert_eq!(git.path.namespace, "g1t", "{address}");
+            let canonical = git.under("flagon-io");
+            assert_eq!(
+                canonical.path,
+                RepoPath {
+                    namespace: "flagon-io".into(),
+                    name: "g1t".into(),
+                },
+                "{address}"
+            );
+            assert_eq!(canonical.service, service);
+            assert_eq!(canonical.endpoint, git.endpoint);
+        }
     }
 
     #[test]
