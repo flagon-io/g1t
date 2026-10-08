@@ -91,20 +91,25 @@ back to the page you were on.
 
 ## Protected branches
 
-A repository can protect its default branch under **Settings → Branches and
-merging**. Pushing to it is then refused for everyone, whatever their role, and for agents, and
-git says why:
+A repository protects its branches and tags with [rulesets](/guides/rules/),
+under **Settings → Rules**. A push that breaks a rule is refused for
+everyone, whatever their role, and for agents, unless a ruleset lists them
+as able to bypass it. Git prints which ruleset and rule refused it, and how
+to fix it:
 
 ```text
- ! [remote rejected] main -> main (main is protected: push a branch and open a pull request)
+remote: error: rules for refs/heads/main declined this push:
+remote: - Changes to main must be made through a pull request. [ruleset "Protect main", pull_request]
+remote:   Push a branch, open a pull request into main, and merge it.
+ ! [remote rejected] main -> main (declined by ruleset "Protect main" (pull_request))
 ```
 
-Changes reach a protected branch only by merging a pull request. The first
-push to an empty repository is still allowed.
-
-The same page sets what a merge needs: the
-[required status checks](/guides/pull-requests/#required-status-checks)
-and approvals.
+With **Require a pull request before merging**, changes reach a branch only
+by merging a pull request. Creating the branch, such as the first push to
+an empty repository, is still allowed. Rulesets also block force pushes and
+deletions, restrict who creates branches and tags, check commit messages,
+signatures and the files a push changes, and set what a merge needs. See
+[rules](/guides/rules/).
 
 ## Branches
 

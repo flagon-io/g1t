@@ -128,6 +128,7 @@ export default defineConfig({
 						{ label: 'Labels', slug: 'guides/labels' },
 						{ label: 'Milestones', slug: 'guides/milestones' },
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
+						{ label: 'Rules', slug: 'guides/rules' },
 						{ label: 'CODEOWNERS', slug: 'guides/codeowners' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
 						{ label: 'Forks and branches', slug: 'concepts/forks' },

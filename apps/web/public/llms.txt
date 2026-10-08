@@ -170,12 +170,16 @@ for `/repos/{owner}/{name}`.
   syntax) run on every pull request's head, and each reports a check named
   after the workflow, such as `CI`. Before you push, run the same tests and
   linters those workflows run. `GET {repo}/pulls/{number}` returns
-  `statuses` and `required_checks`: each check the default branch
+  `statuses`, `required_checks` and `rules`: each check the branch it merges into
   requires, as `success`, `failure`, `pending` or `expected` (not reported
   yet). If one failed, read why with `GET {repo}/actions/runs/{id}` and
   `GET {repo}/actions/jobs/{job}/logs`, push a fix, and the workflows run
   again. `GET {repo}/check-names` lists the check names seen in the last
-  30 days; `required_checks` on `PATCH {repo}/settings` sets which ones a
+  30 days. `rules.unmet` lists every rule of that branch not met yet, with
+  what to do; `GET {repo}/rules/branches/{branch}` lists every rule. Rules
+  hold for agents exactly as for people: a push that breaks one is refused
+  with the ruleset and rule named, so read the `remote:` lines and fix the
+  commits. `required_checks` on `PATCH {repo}/settings` sets which ones a
   merge needs.
 - **Comment** on an issue or a pull request:
   `POST {repo}/issues/{number}/comments` with `body`. On a pull request, add

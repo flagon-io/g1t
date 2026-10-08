@@ -33,19 +33,21 @@ the merge queue leaves it.
 
 ## What holds in another branch
 
+A pull request is held to the [rules](/guides/rules/) of the branch it
+merges into: every ruleset, the repository's and its workspace's, whose
+patterns cover that branch. A ruleset that targets `release/*` holds for
+pull requests into `release/1.x` just as one that targets
+`~DEFAULT_BRANCH` holds for those into the default branch.
+
 | | Into the default branch | Into another branch |
 | --- | --- | --- |
-| [Required status checks](/guides/pull-requests/#required-status-checks) | Must pass | Not required |
-| Required approvals | As the repository asks | Not required |
-| Must be up to date | As the repository asks | No |
-| [Merge queue](/guides/merge-queue/) | Joins it, when it is on | Never; it merges directly |
+| Required checks, approvals, being up to date | As the rules covering it ask | As the rules covering it ask; nothing when none cover it |
+| [Merge queue](/guides/merge-queue/) | Joins it, when a rule requires it | Never; it merges directly |
 | Catching up | Merges the default branch in | Merges its base in |
 | Its issue | Closes when it merges | Stays open |
 
-The repository's protection settings guard the default branch, so they do
-not hold for a pull request into another branch. Merging still needs the
-Write role, and the default branch takes the work only through a pull
-request into it, which is held to everything above.
+Merging still needs the Write role. Under **Settings → Rules**, **What holds
+for a branch** shows every rule that covers a branch.
 
 ## g1t's agent and other branches
 

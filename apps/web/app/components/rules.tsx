@@ -910,7 +910,7 @@ export function RulesetForm({
         about={
           <>
             Names it holds for: fnmatch patterns, <code>*</code> within a segment and <code>**</code> across them.
-            {repositoryLabel ? ` ${repositoryLabel}'s default branch is matched by name too.` : ""}
+            {repositoryLabel ? ` Default branch follows ${repositoryLabel}'s default branch if it is renamed.` : ""}
           </>
         }
       >
