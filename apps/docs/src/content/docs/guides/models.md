@@ -1,13 +1,14 @@
 ---
 title: Model providers
-description: Connect Anthropic, OpenAI, Gemini or any compatible endpoint, choose which model does which work, and pay for it where you choose.
+description: Let Auto choose the model for each job, or choose it yourself; connect Anthropic, OpenAI, Gemini or any compatible endpoint, and pay for models where you choose.
 ---
 
 Each workspace decides where its agents' model spend goes:
 
-- **g1t's hosted models.** g1t chooses the model for each kind of work, pays
-  the provider, and charges your workspace what it cost plus 20%. The
-  plan's included usage and [the trial](/guides/usage-and-billing/#the-trial)
+- **g1t's hosted models.** **Auto** chooses the model for each job, g1t pays
+  the provider, and your workspace is charged the provider's price, with no
+  markup, plus the [agent rate](/guides/usage-and-billing/#the-agent-rate).
+  The plan's included usage and [the trial](/guides/usage-and-billing/#the-trial)
   pay for it first. While payments are in test mode, they are open only
   to a few invited workspaces, g1t's own among them; a card check or a
   trial does not open them. Every other workspace connects its own
@@ -15,9 +16,32 @@ Each workspace decides where its agents' model spend goes:
   that says so. Once payments go live, they are open to all.
 - **Your own providers.** Connect as many as you use, then choose, for each
   kind of work, which provider and model it runs on. Each provider bills
-  you directly. Open to every workspace now.
+  you for the model directly. Open to every workspace now.
 
-g1t's own routing is fixed; yours is not.
+## Auto
+
+On g1t's models you do not have to pick a model. **Auto**, the default,
+sends each job to the least costly model that can do it, from three tiers:
+**fast** (Claude Haiku 4.5 today), **standard** (Claude Sonnet 5.5) and
+**most capable** (Claude Opus 5.5). It decides by the kind of job, the
+size of the change it reads, the issue's labels, whether the last attempt
+at the same work failed, and what has worked in the repository before:
+
+- Catching up, answering a question and reviewing a small change that
+  touches no sensitive path start on the fast model.
+- Making and revising changes, planning, and most reviews start on the
+  standard model.
+- A review of a very large change, work on an issue labelled
+  `architecture`, and work that failed twice in a row go to the most
+  capable model. One failure moves the next attempt up one tier.
+- When the cheaper model finished nearly all of a repository's recent runs
+  of the same kind, Auto moves that work down a tier there; when a model
+  keeps failing, up.
+
+Every run says which model it used and why, in one line on its run and in
+its pull request's session, such as *Used a fast model (Claude Haiku 4.5):
+small change, 3 files and 80 lines.* The full rules are in
+[which model runs](/guides/working-with-g1t/#which-model-runs).
 
 ## Providers
 
@@ -75,12 +99,19 @@ Under **Which model does which work**, each kind of work has a choice:
 | Catching up | Bringing a change up to date with `main`. |
 
 Each can go to g1t's models, or to any of your providers on any of its
-models. An Anthropic provider also offers **g1t's choice of Claude**,
-which runs g1t's large-tier model, Claude Sonnet 5.5 today, on your key.
-Routing between tiers by the size of the work is only for g1t's hosted
-models; see [which model runs](/guides/working-with-g1t/#which-model-runs). For example: make
-changes on Claude through your Anthropic key, review on GPT through your
-OpenAI key, and catch up on a small model through OpenRouter.
+models.
+
+- **On g1t's models**, choose **Auto** (the default), or a tier for every
+  run of that kind: **Fast**, **Standard** or **Most capable**. A run on a
+  chosen tier says the workspace chose it.
+- **On an Anthropic provider**, leave the model empty for g1t's choice of
+  Claude: Auto picks the tier's model for each job, as on g1t's models, on
+  your key. Name a model to run that one every time.
+- **On any other provider**, name the model.
+
+For example: make changes on Claude through your Anthropic key, review on
+GPT through your OpenAI key, catch up on g1t's models on Fast, and plan on
+Most capable.
 
 **Save routing**, and the next runs use it. Without any routing, work goes
 to g1t's models where they are open to the workspace, and otherwise to the
@@ -90,14 +121,26 @@ A pull request's session says which model ran, and through which provider.
 
 ## What it costs
 
-Your providers bill you for the models. g1t charges only each run's
-[sandbox time](/guides/usage-and-billing/#sandbox-time), at what it costs
-g1t plus 20%, by the second. A change, a review, a revision, a catch-up
-and a plan each run in a sandbox, and each sandbox is a line on the
-statement. See [Usage and billing](/guides/usage-and-billing/).
+On g1t's models, each run is charged the model at the provider's price
+(what AI Gateway priced its requests at, with no markup), the agent rate
+on its tokens, and its sandbox time. Auto keeps the first of those down:
+the fast model costs about half what the standard one does, and the most
+capable up to twice as much, so most of what it saves comes from sending small
+jobs to the fast model and from finishing hard ones instead of retrying
+them on the same model.
 
-That sandbox time counts toward the workspace's usage limit like any
-other.
+On your own providers, they bill you for the models. g1t charges each
+run's [sandbox time](/guides/usage-and-billing/#sandbox-time), at what it
+costs g1t plus 20%, by the second, and the
+[agent rate](/guides/usage-and-billing/#the-agent-rate) on the tokens the
+run used, from Oct 22, 2026: $0.25 per million, as on g1t's models. Tokens
+are counted by g1t's model proxy as answers pass, and by the agent in the
+sandbox; the more of the two is charged. On **Usage** it is the line
+**Agent rate, your own model key**, with its tokens weighted as the
+pricing page says.
+
+Both count toward the workspace's usage limit like any other charge.
+**Usage** also shows the agent's tokens by model.
 
 ## Your keys never reach a sandbox
 
@@ -114,8 +157,10 @@ printing its environment, so no key is ever in it:
 
 As each answer passes, the proxy reads how many tokens it used (input,
 output, and cache reads and writes) and counts them for the run, under the
-person it was for. Those counts are for usage views; they never change what
-a run is charged.
+person it was for. They show on **Usage** by model, and the
+[agent rate](/guides/usage-and-billing/#the-agent-rate) is charged on them.
+On g1t's models, the model itself is charged at what AI Gateway priced it
+at, never from these counts.
 
 The token stops working within seconds of the run finishing, however it
 ends, and within seconds if you disconnect the provider. A run whose end
@@ -142,3 +187,14 @@ curl -X PUT https://api.g1t.sh/workspaces/acme/model-routes \
 `task` is `default`, `implement`, `review`, `plan` or `update`.
 `connection_id` is null for g1t's hosted models. `model` is null for the
 provider's default, or for an Anthropic provider, g1t's choice of Claude.
+On g1t's hosted models, `model` is `small` (Fast), `large` (Standard) or
+`frontier` (Most capable), or null for Auto:
+
+```sh
+curl -X PUT https://api.g1t.sh/workspaces/acme/model-routes \
+  -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
+  -d '{"routes": [
+        {"task": "default", "connection_id": null, "model": null},
+        {"task": "plan", "connection_id": null, "model": "frontier"}
+      ]}'
+```

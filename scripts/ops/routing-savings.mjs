@@ -195,8 +195,9 @@ function print(result) {
     console.log(`${name.padEnd(9)} ${dollars(total.cost).padStart(10)}  merged ${total.merged}  per merged change ${dollars(total.perMerged)}`);
   }
   console.log("");
-  console.log(`Auto against routing before it: ${(savings.vsBefore * 100).toFixed(1)}% ${savings.vsBefore >= 0 ? "less" : "more"}`);
-  console.log(`Auto against the most capable model for everything: ${(savings.vsFrontier * 100).toFixed(1)}% less`);
+  const say = (share) => `${Math.abs(share * 100).toFixed(1)}% ${share >= 0 ? "less" : "more"}`;
+  console.log(`Auto against routing before it: ${say(savings.vsBefore)}`);
+  console.log(`Auto against the most capable model for everything: ${say(savings.vsFrontier)}`);
 }
 
 async function main() {
