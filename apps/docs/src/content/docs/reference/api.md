@@ -194,7 +194,7 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 
 | Resource | |
 | --- | --- |
-| [Accounts](/reference/api/accounts/whoami/) | Signing in from a tool, and who a token acts as. |
+| [Accounts](/reference/api/accounts/whoami/) | Signing in from a tool, and who a token acts as. Accounts are made and [deleted](/guides/authentication/#deleting-your-account) only in a browser: there is no route for either. |
 | [Workspaces](/reference/api/workspaces/create-workspace/) | Creating a workspace. |
 | [Notifications](/reference/api/notifications/list-notifications/) | Your inbox: its threads, why you were told of each, marking them read, done, saved or snoozed, and what you subscribe to and watch. See [your inbox](/guides/inbox/). |
 | [Billing](/reference/api/billing/get-usage/) | A workspace's usage by product, project and day, its budget, its AI credit, its invoices and its [AI Gateway](/guides/ai-gateway/) requests. See [usage and billing](/guides/usage-and-billing/). |

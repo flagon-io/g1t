@@ -356,7 +356,7 @@ impl Identity {
         let Some(user) = self
             .find_public_user(
                 "SELECT id, username, email_verified_at IS NOT NULL AS verified
-                 FROM users WHERE username = ?",
+                 FROM users WHERE username = ? AND deleted_at IS NULL",
                 &a.username.trim().to_lowercase(),
             )
             .await?

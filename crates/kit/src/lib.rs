@@ -489,6 +489,47 @@ pub mod lifecycle {
     }
 }
 
+/// What a service does when an account is purged (`user.deleted`): drop
+/// what it keeps for the account alone, and show what it wrote as `ghost`.
+pub mod user_deleted {
+    use g1t_contracts::events::{Event, UserDeleted};
+    use worker::wasm_bindgen::JsValue;
+    use worker::{D1Database, Result};
+
+    /// What each statement is given: the account's id as `?1`, and its
+    /// username (lowercase) as `?2` when the statement names `?2`.
+    pub fn binds<'a>(sql: &str, user_id: &'a str, username: &'a str) -> Vec<&'a str> {
+        let mut binds = vec![user_id];
+        if sql.contains("?2") {
+            binds.push(username);
+        }
+        binds
+    }
+
+    /// Handles `user.deleted` with `statements` in one batch; says whether
+    /// `event` was one. Running them again changes nothing.
+    pub async fn on_event(db: &D1Database, event: &Event, statements: &[&str]) -> Result<bool> {
+        if event.kind != "user.deleted" {
+            return Ok(false);
+        }
+        let Ok(deleted) = serde_json::from_value::<UserDeleted>(event.data.clone()) else {
+            worker::console_error!("user.deleted {} could not be read", event.id);
+            return Ok(true);
+        };
+        let username = deleted.username.to_lowercase();
+        if deleted.user_id.is_empty() || username.is_empty() || statements.is_empty() {
+            return Ok(true);
+        }
+        let mut batch = Vec::with_capacity(statements.len());
+        for sql in statements {
+            let values: Vec<JsValue> = binds(sql, &deleted.user_id, &username).into_iter().map(JsValue::from).collect();
+            batch.push(db.prepare(*sql).bind(&values)?);
+        }
+        db.batch(batch).await?;
+        Ok(true)
+    }
+}
+
 /// Dropping what a service keeps for a workspace alone when the workspace
 /// is deleted.
 pub mod deleted {

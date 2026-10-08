@@ -32,7 +32,7 @@ impl Identity {
         let sql = match a.kind.as_str() {
             "user" => {
                 "SELECT id, username AS slug, display_name AS name, bio, avatar, created_at
-                 FROM users WHERE username > ? ORDER BY username LIMIT ?"
+                 FROM users WHERE username > ? AND deleted_at IS NULL ORDER BY username LIMIT ?"
             }
             "workspace" => {
                 "SELECT id, slug, name, description AS bio, avatar, created_at

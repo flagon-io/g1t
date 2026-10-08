@@ -506,7 +506,7 @@ impl Identity {
 
     async fn user_by_id(&self, user_id: &str) -> Result<Option<User>> {
         self.find_user(
-            "SELECT id, username, email_verified_at IS NOT NULL AS verified, avatar FROM users WHERE id = ?",
+            "SELECT id, username, email_verified_at IS NOT NULL AS verified, avatar FROM users WHERE id = ? AND deleted_at IS NULL",
             user_id,
         )
         .await
@@ -671,10 +671,12 @@ impl Identity {
                 Outcome::Ok(GithubFinished::Linked { login: github.login, next })
             }
             Decision::SignIn(user_id) => {
-                self.link(&user_id, github.id, &github.login, Some(&tokens)).await?;
+                // A deleted account signs in to nothing, and g1t keeps no
+                // new GitHub token for it (account_deletion.rs).
                 let Some(user) = self.user_by_id(&user_id).await? else {
                     return Ok(Outcome::fail(FailureCode::NotFound, TRY_AGAIN));
                 };
+                self.link(&user_id, github.id, &github.login, Some(&tokens)).await?;
                 self.audit_github(&user, "github.sign_in", format!("Signed in with GitHub (@{})", github.login)).await;
                 self.signed_in(user, false, next).await?
             }
@@ -917,7 +919,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT github_accounts.github_id, users.username FROM github_accounts
-                 JOIN users ON users.id = github_accounts.user_id WHERE github_id IN ({marks})"
+                 JOIN users ON users.id = github_accounts.user_id WHERE github_id IN ({marks}) AND users.deleted_at IS NULL"
             ))
             .bind(&bind)?
             .all()

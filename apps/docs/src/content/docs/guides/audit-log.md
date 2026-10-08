@@ -58,6 +58,7 @@ Every workspace keeps an audit log. It records:
 | `package.visibility_changed` | A package was made public or private. |
 | `package.linked`, `package.unlinked` | A package was linked to a repository (from its settings, or by an image's source label), or unlinked. |
 | `workspace.residency_changed` | An owner changed where the workspace's new repositories are stored. See [data residency](/guides/workspaces/#data-residency). |
+| `account.deleted`, `account.deleted_by_staff` | A member [deleted their account](/guides/authentication/#deleting-your-account), or g1t's staff deleted it, and so left the workspace. Recorded in each of their workspaces. |
 | `workspace.deleted`, `workspace.restored`, `workspace.purged` | An owner deleted the workspace, g1t's support restored it, or it was removed for good. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). |
 
 Through the API and the MCP server, the call itself is recorded under its

@@ -113,6 +113,10 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   // From identity: deleted workspaces staff restored or purged.
   workspace_restored: "Workspace restored",
   workspace_purged: "Workspace purged",
+  // From identity: accounts staff deleted, restored or purged.
+  account_deleted: "Account deleted",
+  account_restored: "Account restored",
+  account_purged: "Account purged",
   // From identity: workspace aliases staff set or removed.
   alias_added: "Alias added",
   alias_removed: "Alias removed",

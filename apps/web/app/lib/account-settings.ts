@@ -13,7 +13,8 @@ export type AccountSettingsPage =
   | "github"
   | "applications"
   | "two-factor"
-  | "security-log";
+  | "security-log"
+  | "account";
 
 /** Each page's name and what it is for, in the sidebar's order. */
 export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; about: string }> = {
@@ -52,6 +53,10 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
     title: "Security log",
     about:
       "Changes to your addresses, password, two-factor authentication, keys, tokens and applications, by you or by g1t staff. If you do not recognise one, reset your password.",
+  },
+  account: {
+    title: "Account",
+    about: "Your username, and deleting your account.",
   },
 };
 

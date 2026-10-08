@@ -178,7 +178,7 @@ impl Identity {
             (Some(user_id), _) => {
                 self.find_user(
                     "SELECT id, username, email_verified_at IS NOT NULL AS verified
-                     FROM users WHERE id = ?",
+                     FROM users WHERE id = ? AND deleted_at IS NULL",
                     user_id,
                 )
                 .await?

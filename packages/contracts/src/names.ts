@@ -8,8 +8,9 @@ const RESERVED = new Set([
   "api", "mcp", "login", "logout", "register", "new", "settings", "search",
   "admin", "auth", "integrations", "pulls", "issues", "verify", "confirm-email", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets", "avatars", "docs", "explore", "about", "pricing",
   // g1t itself, and the name its agent once went by: everything g1t does is
-  // shown as `g1t`, so nobody else may be called either.
-  "g1t", "g1t-agent",
+  // shown as `g1t`, so nobody else may be called either. `ghost` wrote what
+  // a deleted account wrote (`GHOST_USERNAME`).
+  "g1t", "g1t-agent", "ghost",
   // Trust pages on g1t.sh, and names kept for them.
   "policies", "security", "support", "status", "terms", "privacy", "help", "blog",
   // Invite links, and the waitlist.

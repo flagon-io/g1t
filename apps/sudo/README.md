@@ -70,6 +70,42 @@ roadmap.
   protected workspace. Both go in the workspace's audit log, as g1t, and in
   sudo's (`workspace_restored`, `workspace_purged`), naming the staff
   member.
+- **A person's page** (`/users/<username>`, linked from a workspace's
+  members): their addresses (remove one, with a reason they see), their
+  security log, and **Delete account**. Delete only when the person asks
+  (from one of the account's confirmed addresses) or for abuse: give the
+  reason, which goes in sudo's audit log (`account_deleted`), and type the
+  username (`admin_delete_account`). It does what deleting their own
+  account from Settings does: signs them out everywhere, ends their tokens,
+  SSH keys, deploy keys they added and applications, takes them out of
+  every workspace, team and repository, and emails their addresses that
+  staff deleted it. It is refused while the account is the **only owner of
+  a live workspace**: the page lists those workspaces instead of the form,
+  each linking to its page. Each needs another owner first (an owner makes
+  one under People), or to be deleted by its owner, which settles its
+  billing; staff never delete a customer's workspace to get an account
+  out. Accounts that can never be deleted (`g1t`, `g1t-agent`, `ghost`,
+  and whatever identity's `PROTECTED_ACCOUNTS` names, by username or id)
+  are marked **Protected** and offer no form. A deleted account's page
+  says so, with who deleted it, why, when it is purged, and **Restore** and
+  **Purge now**, as on Deleted accounts.
+- **Deleted accounts** (`/users/deleted`, linked from Workspaces):
+  accounts deleted by the person or by staff, newest first
+  (`admin_deleted_accounts`), each with who deleted it (the person, or the
+  staff member and why), when it is purged, the days left and what it
+  left (workspaces, teams, repositories, tokens, SSH keys). Identity keeps
+  each 30 days (`ACCOUNT_RESTORE_DAYS`). **Restore**
+  (`admin_restore_account`) clears the deletion and puts back the
+  memberships, teams and repository roles it left where they still exist;
+  its sessions, tokens and keys stay ended, and the person signs in with
+  their password. Check that whoever asks owns one of its addresses first.
+  **Purge now** (`admin_purge_account`, the username typed) removes it at
+  once, as the sweep does every 15 minutes once its 30 days are up: its
+  row, addresses, keys, two-factor secret, GitHub link, profile and
+  security log go; its username is kept in `deleted_users` and never given
+  out again; what it wrote shows as `ghost`. Both go in sudo's audit log
+  (`account_restored`, `account_purged`), naming the staff member. There
+  is no API route for deleting an account; only the site and sudo can.
 - **Aliases** (`/aliases`, under Customers): names that lead to a
   workspace, set by staff only; there is no way for a customer to make
   one, and nothing user-facing mentions them. `g1t`, the product's name,

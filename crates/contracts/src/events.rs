@@ -810,6 +810,46 @@ pub struct WorkspaceRestored {
     pub slug: String,
 }
 
+/// `user.deleting`: an account was deleted, by the person or by g1t's
+/// staff, and can be restored by staff until `purge_after`. Its sessions,
+/// tokens and keys have ended and it has left every workspace; services
+/// stop what they do for it (search drops its profile, nothing more is
+/// sent to it) and keep their rows. `user.restored` undoes that; once
+/// `purge_after` passes, `user.deleted` follows.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserDeleting {
+    pub user_id: String,
+    pub username: String,
+    /// Whether g1t's staff deleted it rather than the person.
+    #[serde(default)]
+    pub by_staff: bool,
+    /// RFC 3339: when it is purged unless restored first.
+    pub purge_after: String,
+}
+
+/// `user.restored`: staff brought a deleted account back. It signs in
+/// again with its password; its old sessions and tokens stay ended.
+/// Services undo what they did on `user.deleting`.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserRestored {
+    pub user_id: String,
+    pub username: String,
+}
+
+/// `user.deleted`: an account is gone for good. Services drop what they
+/// keep for it alone (its inbox, subscriptions, settings) and show what it
+/// wrote as `ghost` (`account_deletion::GHOST_USERNAME`, id
+/// `account_deletion::GHOST_ID`). Ledgers, invoices and audit logs keep
+/// its username. The username is never given to anyone again.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserDeleted {
+    pub user_id: String,
+    pub username: String,
+}
+
 /// `user.updated`: an account was made, or changed what its profile shows
 /// (name, bio, avatar). Nothing private: ask identity for the profile.
 #[derive(Debug, Serialize, serde::Deserialize)]

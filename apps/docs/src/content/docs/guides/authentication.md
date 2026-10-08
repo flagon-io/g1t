@@ -1,6 +1,6 @@
 ---
 title: Accounts and authentication
-description: Accounts, invites, email addresses, confirming them, two-factor authentication and recovery codes, fine-grained and classic personal access tokens, scopes and permissions, a workspace's rules for tokens, OAuth, signing in from a tool, password reset and your security log.
+description: Accounts, invites, email addresses, confirming them, two-factor authentication and recovery codes, fine-grained and classic personal access tokens, scopes and permissions, a workspace's rules for tokens, OAuth, signing in from a tool, password reset, your security log and deleting your account.
 ---
 
 ## Creating an account
@@ -35,6 +35,7 @@ under **Your settings**; the sidebar then lists every page.
 | Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
 | Two-factor authentication | [`/settings/two-factor`](https://g1t.sh/settings/two-factor) | [An authenticator app and recovery codes](#two-factor-authentication). |
 | Security log | [`/settings/security-log`](https://g1t.sh/settings/security-log) | [What happened to your account](#security-log). |
+| Account | [`/settings/account`](https://g1t.sh/settings/account) | Your username, and [deleting your account](#deleting-your-account). |
 
 `g1t.sh/settings` opens Profile.
 
@@ -959,6 +960,67 @@ someone else needed, say so and why.
 Token, SSH key, application and two-factor changes are also recorded in the
 [audit log](/guides/audit-log/) of each workspace you belong to, where its
 owners see them.
+
+## Deleting your account
+
+You can delete your account from
+[Settings → Account](https://g1t.sh/settings/account), signed in as
+yourself. It is not gone at once: for **30 days** g1t keeps it, so that a
+deletion you did not mean, or did not make, can be undone through support.
+After 30 days it is removed for good.
+
+1. Open **Settings → Account** and go to **Danger zone**. If anything is
+   in the way, it says what, instead of offering the button.
+2. Choose **Delete account**. The dialog lists what goes with it: your
+   workspaces, the repositories you were added to, your access tokens, SSH
+   keys and connected applications.
+3. Type your username, and your password unless you signed in within the
+   last 10 minutes. An account that signs in with GitHub only signs out,
+   signs in with GitHub again, and deletes it within 10 minutes.
+4. Choose **Delete account** again. You are signed out, and g1t emails your
+   primary and backup addresses to say it was deleted.
+
+There is no API route or MCP tool for deleting an account, by design: like
+[creating one](#creating-an-account), it happens only in a browser, signed
+in as yourself, never with a token or as an agent.
+
+### What stands in the way
+
+| | |
+| --- | --- |
+| A workspace you own alone | Each live workspace where you are the only owner is listed. [Make someone else an owner](/guides/workspaces/#change-someones-role) of it, or [delete it](/guides/workspaces/#delete-a-workspace), first. Deleting a workspace settles its billing, which can ask for something first: the list says what. A workspace you own with someone else is not in the way. |
+| A protected account | `g1t` and the other names g1t uses for itself can never be deleted, by anyone. |
+
+Billing belongs to workspaces, not to accounts, so once no workspace
+depends on you alone there is nothing for billing to settle.
+
+### What happens
+
+At once, when you delete it:
+
+| | |
+| --- | --- |
+| Signing in | You are signed out everywhere. Signing in with your password, GitHub, a recovery code or from a tool fails, with the same answer a wrong password gets. |
+| Access tokens, SSH keys and applications | Your personal access tokens (classic and fine-grained), SSH keys, connected applications and sign-ins from a tool stop working and are removed, and so do the deploy keys you added to repositories. A workspace's own tokens are not affected, even ones you made. |
+| Workspaces, teams and repositories | You leave every workspace and team, and lose the roles you were given on single repositories. Repository invitations waiting for you are withdrawn, and invites you made that nobody used are revoked. |
+| Your profile | `g1t.sh/<username>` answers 404, and you drop out of search. Nobody can add you to a workspace, team or repository, and nothing more is emailed to you. |
+| What you wrote | Stays where it is, under your username for now. |
+| Your username | Held for your account. Nobody else can take it. |
+
+Within 30 days, support can restore it: write to support@g1t.sh from one
+of its addresses. You come back to the workspaces, teams and repositories
+you were in, where they are still there, and sign in again with your
+password. Your old sessions, tokens and keys stay ended: make new ones.
+
+After 30 days it is removed for good:
+
+| | |
+| --- | --- |
+| Your addresses, keys and profile | Removed: your email addresses, two-factor secret and recovery codes, GitHub link, picture, profile and security log, and your inbox and its settings. |
+| What you wrote | Issues, pull requests, comments and reviews keep their place and their words, and show as written by `ghost`. You are taken off issues and pull requests you were assigned to or asked to review. Commits keep the name and address git recorded in them; those made with your [noreply address](#keeping-your-address-private) show as `ghost`. |
+| Workspaces you made | Name `ghost` as their creator. |
+| Statements, invoices and audit logs | Kept with your username, for the workspaces they belong to. |
+| Your username | Never given to another account or workspace, so links, mentions and remotes that use it keep meaning what they meant. `ghost` is reserved for this, and nobody can register it. |
 
 ## What g1t stores
 

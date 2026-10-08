@@ -7,8 +7,8 @@
 	// and each would otherwise cross the distance to it.
 	"placement": { "mode": "off" },
 	"main": "build/index.js",
-	// Staff waitlist summaries, and purging deleted workspaces once their
-	// restore window passes (src/lib.rs `scheduled`).
+	// Staff waitlist summaries, and purging deleted workspaces and accounts
+	// once their restore window passes (src/lib.rs `scheduled`).
 	"triggers": { "crons": ["*/15 * * * *"] },
 	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	// Reached only through service bindings.
@@ -56,8 +56,13 @@
 	// PROTECTED_WORKSPACES: workspaces nobody can ever delete, by owner,
 	// token or staff, as comma-separated slugs or workspace ids. flagon-io
 	// is protected whatever this says (src/deletion.rs).
+	//
+	// PROTECTED_ACCOUNTS: accounts nobody can ever delete, by the person or
+	// staff, as comma-separated usernames or user ids. g1t, g1t-agent and
+	// ghost are protected whatever this says (src/account_deletion.rs).
 	"vars": {
 		"PROTECTED_WORKSPACES": "flagon-io",
+		"PROTECTED_ACCOUNTS": "",
 		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
 		"REGISTRATION_MODE": "invite",
 		"INVITES_PER_USER": "5",

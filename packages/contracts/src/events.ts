@@ -142,6 +142,23 @@ export type EventPayloads = {
   "branch.renamed": { repoId: string; from: string; to: string; defaultBranch: boolean };
   /** An account was made, or changed what its profile shows. Ask identity for the profile. */
   "user.updated": { username: string };
+  /**
+   * An account was deleted, by the person or by g1t's staff; staff can
+   * restore it until `purgeAfter`. Its sessions, tokens and keys have ended
+   * and it has left every workspace. Services stop what they do for it and
+   * keep their rows; `user.restored` undoes that, and `user.deleted` follows
+   * once `purgeAfter` passes.
+   */
+  "user.deleting": { userId: string; username: string; byStaff: boolean; purgeAfter: string };
+  /** Staff brought a deleted account back. Services undo what they did on `user.deleting`. */
+  "user.restored": { userId: string; username: string };
+  /**
+   * An account is gone for good. Services drop what they keep for it alone
+   * and show what it wrote as `ghost` (`GHOST_USERNAME`, `GHOST_ID`).
+   * Ledgers, invoices and audit logs keep its username, which is never given
+   * to anyone again.
+   */
+  "user.deleted": { userId: string; username: string };
   /** A workspace was made, or its name, description or icon changed. */
   "workspace.updated": { workspaceId: string; slug: string };
   /** Someone, or g1t staff, made an invite. Never the code or the address. */

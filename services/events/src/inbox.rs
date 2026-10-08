@@ -1559,7 +1559,7 @@ pub async fn thread(db: &D1Database, repos: &Fetcher, work: &Fetcher, a: ThreadA
 // --- Keeping up ------------------------------------------------------------------
 
 /// Moves rows with renamed workspaces and repositories, and drops those
-/// of purged repositories and deleted workspaces.
+/// of purged repositories, deleted workspaces and purged accounts.
 pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
     let mut statements = Vec::new();
     for event in events {
@@ -1625,6 +1625,23 @@ pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
                     db.prepare("DELETE FROM inbox_watching WHERE repo LIKE ? || '/%'")
                         .bind(&[text("slug").into()])?,
                 );
+            }
+            // An account purged: its inbox, what it watched and its
+            // settings go with it (identity's account_deletion.rs).
+            "user.deleted" => {
+                let username = text("username");
+                if username.is_empty() {
+                    continue;
+                }
+                for sql in [
+                    "DELETE FROM inbox_activity WHERE username = ?",
+                    "DELETE FROM inbox_items WHERE username = ?",
+                    "DELETE FROM inbox_subscriptions WHERE username = ?",
+                    "DELETE FROM inbox_watching WHERE username = ?",
+                    "DELETE FROM inbox_settings WHERE username = ?",
+                ] {
+                    statements.push(db.prepare(sql).bind(&[username.as_str().into()])?);
+                }
             }
             _ => {}
         }
