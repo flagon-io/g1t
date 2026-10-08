@@ -22,6 +22,7 @@ use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
+use crate::token_policy::TokenOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -363,6 +364,12 @@ pub const TOOLS: &[Tool] = &[
             a("update_ruleset", Op::Rules(RulesOp::UpdateWorkspaceRuleset), "Change one of its rulesets"),
             a("delete_ruleset", Op::Rules(RulesOp::DeleteWorkspaceRuleset), "Delete one of its rulesets"),
             a("rule_evaluations", Op::Rules(RulesOp::ListWorkspaceRuleEvaluations), "How rules judged changes across its repositories"),
+            a("get_token_policy", Op::Tokens(TokenOp::GetTokenPolicy), "Its rules for personal access tokens"),
+            a("set_token_policy", Op::Tokens(TokenOp::SetTokenPolicy), "Change them: kinds allowed, approval, lifetime"),
+            a("list_member_tokens", Op::Tokens(TokenOp::ListMemberTokens), "Members' personal access tokens that reach it"),
+            a("list_token_requests", Op::Tokens(TokenOp::ListTokenRequests), "Fine-grained tokens waiting for approval"),
+            a("review_token_request", Op::Tokens(TokenOp::ReviewTokenRequest), "Approve or deny one"),
+            a("revoke_member_token", Op::Tokens(TokenOp::RevokeMemberToken), "Revoke a member's token in it"),
         ],
     },
     Tool {
@@ -472,6 +479,7 @@ fn destructive(op: Op) -> bool {
             | Op::Rules(RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset)
             | Op::DeleteWorkspace
             | Op::UpdateWorkspace
+            | Op::Tokens(TokenOp::RevokeMemberToken | TokenOp::SetTokenPolicy)
             | Op::DeleteRepo
             | Op::PurgeRepo
             | Op::TransferRepo

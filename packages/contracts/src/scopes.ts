@@ -438,6 +438,13 @@ export const OPERATION_SCOPES = [
   // A workspace's policy for its repositories' tokens.
   ["get_workspace_workflow_permissions", "workspace:read"],
   ["set_workspace_workflow_permissions", "workspace:admin"],
+  // A workspace's rules for personal access tokens, and its members' tokens.
+  ["get_token_policy", "workspace:read"],
+  ["set_token_policy", "workspace:admin"],
+  ["list_member_tokens", "access:read"],
+  ["list_token_requests", "access:read"],
+  ["review_token_request", "access:admin"],
+  ["revoke_member_token", "access:admin"],
   ["recall", "memory:read"],
   ["search_context", "memory:read"],
   ["get_entity", "memory:read"],

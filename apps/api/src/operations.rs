@@ -31,6 +31,7 @@ use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
+use crate::token_policy::TokenOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -288,6 +289,9 @@ pub enum Op {
     /// Environments' protection rules, approving runs, the token's default
     /// permissions and repository dispatch: protection.rs.
     Protection(ProtectionOp),
+    /// A workspace's rules for personal access tokens, its members'
+    /// tokens and approving them: token_policy.rs.
+    Tokens(TokenOp),
     /// Workflow run artifacts, and how long they are kept: artifacts.rs.
     Artifacts(ArtifactsOp),
 }
@@ -652,7 +656,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 276] = [
+    pub const ALL: [Op; 282] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -929,6 +933,12 @@ impl Op {
         Op::Protection(ProtectionOp::CreateRepositoryDispatch),
         Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
         Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
+        Op::Tokens(TokenOp::GetTokenPolicy),
+        Op::Tokens(TokenOp::SetTokenPolicy),
+        Op::Tokens(TokenOp::ListMemberTokens),
+        Op::Tokens(TokenOp::ListTokenRequests),
+        Op::Tokens(TokenOp::ReviewTokenRequest),
+        Op::Tokens(TokenOp::RevokeMemberToken),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1123,6 +1133,7 @@ impl Op {
             Op::About(op) => op.name(),
             Op::Deployments(op) => op.name(),
             Op::Protection(op) => op.name(),
+            Op::Tokens(op) => op.name(),
             Op::Artifacts(op) => op.name(),
         }
     }
@@ -1638,6 +1649,7 @@ impl Op {
             Op::About(op) => op.description(),
             Op::Deployments(op) => op.description(),
             Op::Protection(op) => op.description(),
+            Op::Tokens(op) => op.description(),
             Op::Artifacts(op) => op.description(),
         }
     }
@@ -3011,6 +3023,7 @@ impl Op {
             Op::About(op) => op.input(),
             Op::Deployments(op) => op.input(),
             Op::Protection(op) => op.input(),
+            Op::Tokens(op) => op.input(),
             Op::Artifacts(op) => op.input(),
         }
     }
@@ -3082,6 +3095,10 @@ impl Op {
         }
         if let Op::Protection(op) = self {
             return op.needs_repo();
+        }
+        // A workspace's, never one repository's.
+        if let Op::Tokens(_) = self {
+            return false;
         }
         !matches!(
             self,
@@ -5082,6 +5099,7 @@ impl Op {
             Op::About(op) => crate::about::run(op, services, viewer, input).await,
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
+            Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::artifacts::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(

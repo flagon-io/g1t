@@ -6,6 +6,7 @@ use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
+use crate::token_policy::TokenOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -47,6 +48,13 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/user/invites", Op::CreateInvite, &[]),
     route("DELETE", "/user/invites/:id", Op::RevokeInvite, &[]),
     route("GET", "/workspaces/:workspace/invitations", Op::ListWorkspaceInvites, &[]),
+    // A workspace's rules for personal access tokens, and its members' tokens.
+    route("GET", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::GetTokenPolicy), &[]),
+    route("PATCH", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::SetTokenPolicy), &[]),
+    route("GET", "/workspaces/:workspace/personal-access-tokens", Op::Tokens(TokenOp::ListMemberTokens), &[("kind", "kind")]),
+    route("POST", "/workspaces/:workspace/personal-access-tokens/:id", Op::Tokens(TokenOp::RevokeMemberToken), &[]),
+    route("GET", "/workspaces/:workspace/personal-access-token-requests", Op::Tokens(TokenOp::ListTokenRequests), &[]),
+    route("POST", "/workspaces/:workspace/personal-access-token-requests/:id", Op::Tokens(TokenOp::ReviewTokenRequest), &[]),
     route("POST", "/workspaces/:workspace/invitations", Op::InviteMember, &[]),
     route("DELETE", "/workspaces/:workspace/invitations/:id", Op::RevokeWorkspaceInvite, &[]),
     // Who has access. GitHub's addresses, but for adding someone, which

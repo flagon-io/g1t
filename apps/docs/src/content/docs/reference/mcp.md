@@ -627,6 +627,12 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`update_ruleset`](/reference/api/rules/update-workspace-ruleset/) | Change one. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`delete_ruleset`](/reference/api/rules/delete-workspace-ruleset/) | Delete one. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`rule_evaluations`](/reference/api/rules/list-workspace-rule-evaluations/) | How rules judged changes across its repositories, with insights. Members only. | `workspace` | `workspace:read` |
+| [`get_token_policy`](/reference/api/personal-access-tokens/get-token-policy/) | Its [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens): `allow_classic`, `allow_fine_grained`, `require_approval`, `max_lifetime_days` and `forbid_no_expiry`. Members only. | `workspace` | `workspace:read` |
+| [`set_token_policy`](/reference/api/personal-access-tokens/set-token-policy/) | Change them; fields left out stay. `max_lifetime_days` of 0 removes the limit. Owners only, as people. | `workspace` | `workspace:admin` |
+| [`list_member_tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | The personal access tokens of its members and outside collaborators that can reach it, with their owner, permissions or scopes, last use, expiry, and whether each reaches it now (`reaches`, `blocked_by`). `kind` narrows to `classic` or `fine_grained`. Never the token itself. Owners only, as people. | `workspace` | `access:read` |
+| [`list_token_requests`](/reference/api/personal-access-tokens/list-token-requests/) | Fine-grained tokens naming it that wait for approval. Owners only, as people. | `workspace` | `access:read` |
+| [`review_token_request`](/reference/api/personal-access-tokens/review-token-request/) | Approve or deny one: `decision` is `approve` or `deny`, with an optional `reason` its owner is shown. Owners only, as people. | `workspace`, `id`, `decision` | `access:admin` |
+| [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A fine-grained token naming it stops reaching it; a classic one keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
 
 ## `billing`
 

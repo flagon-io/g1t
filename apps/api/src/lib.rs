@@ -30,6 +30,7 @@ mod rules;
 mod runners;
 mod security;
 mod tools;
+mod token_policy;
 mod toolkit;
 
 use g1t_contracts::billing::{FinishRunArgs, RunTokens};

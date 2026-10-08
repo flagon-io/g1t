@@ -82,6 +82,18 @@
       ]
     },
     {
+      "name": "Personal access tokens",
+      "description": "A workspace's rules for its members' personal access tokens: whether classic and fine-grained tokens reach it, whether fine-grained tokens wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
+      "x-tools": [
+        "get_token_policy",
+        "set_token_policy",
+        "list_member_tokens",
+        "list_token_requests",
+        "review_token_request",
+        "revoke_member_token"
+      ]
+    },
+    {
       "name": "Invites",
       "description": "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
       "x-tools": [
@@ -2345,6 +2357,777 @@
               }
             }
           }
+        }
+      }
+    },
+    "/workspaces/{workspace}/personal-access-token-policy": {
+      "get": {
+        "operationId": "get_token_policy",
+        "tags": [
+          "Personal access tokens"
+        ],
+        "summary": "Get a workspace's personal access token policy",
+        "description": "A workspace's rules for its members' personal access tokens: allow_classic (classic tokens reach it), allow_fine_grained (fine-grained tokens may name it as their resource owner), require_approval (a fine-grained token naming it waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a fine-grained token lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only.",
+        "x-operation": "get_token_policy",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "get_token_policy",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "allow_classic": true,
+                  "allow_fine_grained": true,
+                  "require_approval": true,
+                  "max_lifetime_days": null,
+                  "forbid_no_expiry": false,
+                  "updated_by": null,
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "patch": {
+        "operationId": "set_token_policy",
+        "tags": [
+          "Personal access tokens"
+        ],
+        "summary": "Set a workspace's personal access token policy",
+        "description": "Change a workspace's rules for personal access tokens; fields left out stay as they are. max_lifetime_days of 0 removes the limit. The rules apply from each token's next request, to tokens made before them too. Owners only, as people.\n\nFrom each token's next request, classic tokens no longer reach the workspace, and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else.",
+        "x-operation": "set_token_policy",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "set_token_policy",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "allow_classic": false,
+                  "allow_fine_grained": true,
+                  "require_approval": true,
+                  "max_lifetime_days": 90,
+                  "forbid_no_expiry": false,
+                  "updated_by": "ada",
+                  "updated_at": "2026-10-08T09:30:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "allow_classic": {
+                    "type": "boolean",
+                    "description": "Classic tokens reach the workspace."
+                  },
+                  "allow_fine_grained": {
+                    "type": "boolean",
+                    "description": "Fine-grained tokens may name the workspace as their resource owner."
+                  },
+                  "require_approval": {
+                    "type": "boolean",
+                    "description": "A fine-grained token naming the workspace waits for an owner's approval."
+                  },
+                  "max_lifetime_days": {
+                    "type": "integer",
+                    "description": "The longest a token reaching it may last, in days, 1 to 3650; 0 for no limit."
+                  },
+                  "forbid_no_expiry": {
+                    "type": "boolean",
+                    "description": "A token that never expires does not reach the workspace."
+                  }
+                }
+              },
+              "example": {
+                "allow_classic": false,
+                "max_lifetime_days": 90
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/personal-access-tokens": {
+      "get": {
+        "operationId": "list_member_tokens",
+        "tags": [
+          "Personal access tokens"
+        ],
+        "summary": "List the personal access tokens that reach a workspace",
+        "description": "The personal access tokens of the workspace's members and outside collaborators that can reach it: every fine-grained token naming it as its resource owner, whatever its status, and every classic token that has not expired. Each with its owner, kind, name, scopes, a fine-grained token's permissions, repository_selection, repositories and status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, classic tokens not allowed, lasts too long, never expires). Never the token itself. kind narrows it to classic or fine_grained. Owners only, as people.",
+        "x-operation": "list_member_tokens",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_member_tokens",
+        "x-scope": "access:read",
+        "security": [
+          {
+            "token": [
+              "access:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "classic",
+                "fine_grained"
+              ]
+            },
+            "description": "Only tokens of this kind."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
+                    "name": "release-bot",
+                    "owner": "ada",
+                    "kind": "fine_grained",
+                    "description": "Publishes releases from CI",
+                    "created_at": "2026-10-08T09:00:00.000Z",
+                    "created_by": null,
+                    "last_used_at": null,
+                    "expires_at": "2026-11-07T09:00:00.000Z",
+                    "scopes": [
+                      "repo:read",
+                      "repo:write",
+                      "code:read",
+                      "code:write"
+                    ],
+                    "resource_owner": "flagon-io",
+                    "repository_selection": "selected",
+                    "repositories": [
+                      "flagon-io/hello"
+                    ],
+                    "permissions": {
+                      "contents": "write",
+                      "metadata": "read"
+                    },
+                    "status": "pending",
+                    "review_reason": null,
+                    "reaches": false,
+                    "blocked_by": "pending approval"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/personal-access-tokens/{id}": {
+      "post": {
+        "operationId": "revoke_member_token",
+        "tags": [
+          "Personal access tokens"
+        ],
+        "summary": "Revoke a member's token in a workspace",
+        "description": "Take a member's token out of the workspace, with an optional reason its owner is shown. A fine-grained token naming the workspace stops reaching it for good; a classic token keeps working everywhere else but never reaches this workspace again. Recorded in the audit log as token.revoked. Owners only, as people.",
+        "x-operation": "revoke_member_token",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "revoke_member_token",
+        "x-scope": "access:admin",
+        "security": [
+          {
+            "token": [
+              "access:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The token's id, tok_…."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "revoked": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Why, shown to the token's owner."
+                  }
+                }
+              },
+              "example": {
+                "reason": "Rotated after the laptop was lost"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1"
+        }
+      }
+    },
+    "/workspaces/{workspace}/personal-access-token-requests": {
+      "get": {
+        "operationId": "list_token_requests",
+        "tags": [
+          "Personal access tokens"
+        ],
+        "summary": "List fine-grained tokens waiting for approval",
+        "description": "The fine-grained tokens naming the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people.",
+        "x-operation": "list_token_requests",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_token_requests",
+        "x-scope": "access:read",
+        "security": [
+          {
+            "token": [
+              "access:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
+                    "name": "release-bot",
+                    "owner": "ada",
+                    "kind": "fine_grained",
+                    "description": "Publishes releases from CI",
+                    "created_at": "2026-10-08T09:00:00.000Z",
+                    "created_by": null,
+                    "last_used_at": null,
+                    "expires_at": "2026-11-07T09:00:00.000Z",
+                    "scopes": [
+                      "repo:read",
+                      "repo:write",
+                      "code:read",
+                      "code:write"
+                    ],
+                    "resource_owner": "flagon-io",
+                    "repository_selection": "selected",
+                    "repositories": [
+                      "flagon-io/hello"
+                    ],
+                    "permissions": {
+                      "contents": "write",
+                      "metadata": "read"
+                    },
+                    "status": "pending",
+                    "review_reason": null,
+                    "reaches": false,
+                    "blocked_by": "pending approval"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/personal-access-token-requests/{id}": {
+      "post": {
+        "operationId": "review_token_request",
+        "tags": [
+          "Personal access tokens"
+        ],
+        "summary": "Approve or deny a fine-grained token",
+        "description": "Approve or deny a fine-grained token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people.\n\nThe token's owner hears of it in their inbox. A denied token reaches public repositories only.",
+        "x-operation": "review_token_request",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "review_token_request",
+        "x-scope": "access:admin",
+        "security": [
+          {
+            "token": [
+              "access:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The token's id, tok_…."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
+                  "name": "release-bot",
+                  "owner": "ada",
+                  "kind": "fine_grained",
+                  "description": "Publishes releases from CI",
+                  "created_at": "2026-10-08T09:00:00.000Z",
+                  "created_by": null,
+                  "last_used_at": null,
+                  "expires_at": "2026-11-07T09:00:00.000Z",
+                  "scopes": [
+                    "repo:read",
+                    "repo:write",
+                    "code:read",
+                    "code:write"
+                  ],
+                  "resource_owner": "flagon-io",
+                  "repository_selection": "selected",
+                  "repositories": [
+                    "flagon-io/hello"
+                  ],
+                  "permissions": {
+                    "contents": "write",
+                    "metadata": "read"
+                  },
+                  "status": "active",
+                  "review_reason": null,
+                  "reaches": true,
+                  "blocked_by": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "deny"
+                    ],
+                    "description": "approve or deny. A request body shaped as `{\"action\": \"approve\"}` is read the same way."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why, shown to the token's owner."
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              },
+              "example": {
+                "decision": "approve"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1"
         }
       }
     },

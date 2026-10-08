@@ -10192,6 +10192,135 @@
     },
     "notes": "A maximum of read holds every repository's default to read-only, and makes the workspace's default read too."
   },
+  "get_token_policy": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "allow_classic": true,
+      "allow_fine_grained": true,
+      "require_approval": true,
+      "max_lifetime_days": null,
+      "forbid_no_expiry": false,
+      "updated_by": null,
+      "updated_at": null
+    }
+  },
+  "set_token_policy": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "allow_classic": false,
+      "max_lifetime_days": 90
+    },
+    "response": {
+      "allow_classic": false,
+      "allow_fine_grained": true,
+      "require_approval": true,
+      "max_lifetime_days": 90,
+      "forbid_no_expiry": false,
+      "updated_by": "ada",
+      "updated_at": "2026-10-08T09:30:00.000Z"
+    },
+    "notes": "From each token's next request, classic tokens no longer reach the workspace, and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else."
+  },
+  "list_member_tokens": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
+        "name": "release-bot",
+        "owner": "ada",
+        "kind": "fine_grained",
+        "description": "Publishes releases from CI",
+        "created_at": "2026-10-08T09:00:00.000Z",
+        "created_by": null,
+        "last_used_at": null,
+        "expires_at": "2026-11-07T09:00:00.000Z",
+        "scopes": ["repo:read", "repo:write", "code:read", "code:write"],
+        "resource_owner": "flagon-io",
+        "repository_selection": "selected",
+        "repositories": ["flagon-io/hello"],
+        "permissions": { "contents": "write", "metadata": "read" },
+        "status": "pending",
+        "review_reason": null,
+        "reaches": false,
+        "blocked_by": "pending approval"
+      }
+    ]
+  },
+  "list_token_requests": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
+        "name": "release-bot",
+        "owner": "ada",
+        "kind": "fine_grained",
+        "description": "Publishes releases from CI",
+        "created_at": "2026-10-08T09:00:00.000Z",
+        "created_by": null,
+        "last_used_at": null,
+        "expires_at": "2026-11-07T09:00:00.000Z",
+        "scopes": ["repo:read", "repo:write", "code:read", "code:write"],
+        "resource_owner": "flagon-io",
+        "repository_selection": "selected",
+        "repositories": ["flagon-io/hello"],
+        "permissions": { "contents": "write", "metadata": "read" },
+        "status": "pending",
+        "review_reason": null,
+        "reaches": false,
+        "blocked_by": "pending approval"
+      }
+    ]
+  },
+  "review_token_request": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1"
+    },
+    "request": {
+      "decision": "approve"
+    },
+    "response": {
+      "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
+      "name": "release-bot",
+      "owner": "ada",
+      "kind": "fine_grained",
+      "description": "Publishes releases from CI",
+      "created_at": "2026-10-08T09:00:00.000Z",
+      "created_by": null,
+      "last_used_at": null,
+      "expires_at": "2026-11-07T09:00:00.000Z",
+      "scopes": ["repo:read", "repo:write", "code:read", "code:write"],
+      "resource_owner": "flagon-io",
+      "repository_selection": "selected",
+      "repositories": ["flagon-io/hello"],
+      "permissions": { "contents": "write", "metadata": "read" },
+      "status": "active",
+      "review_reason": null,
+      "reaches": true,
+      "blocked_by": null
+    },
+    "notes": "The token's owner hears of it in their inbox. A denied token reaches public repositories only."
+  },
+  "revoke_member_token": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1"
+    },
+    "request": {
+      "reason": "Rotated after the laptop was lost"
+    },
+    "response": {
+      "revoked": true
+    }
+  },
   "get_languages": {
     "response": {
       "head": "9f3c2a1b7e5d4c3b2a19f8e7d6c5b4a39281706f",

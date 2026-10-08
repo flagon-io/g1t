@@ -11,6 +11,7 @@ use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::protection::ProtectionOp;
+use crate::token_policy::TokenOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -59,6 +60,18 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
         &[Op::GetWorkspace, Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
+    ),
+    (
+        "Personal access tokens",
+        "A workspace's rules for its members' personal access tokens: whether classic and fine-grained tokens reach it, whether fine-grained tokens wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
+        &[
+            Op::Tokens(TokenOp::GetTokenPolicy),
+            Op::Tokens(TokenOp::SetTokenPolicy),
+            Op::Tokens(TokenOp::ListMemberTokens),
+            Op::Tokens(TokenOp::ListTokenRequests),
+            Op::Tokens(TokenOp::ReviewTokenRequest),
+            Op::Tokens(TokenOp::RevokeMemberToken),
+        ],
     ),
     (
         "Invites",
@@ -661,6 +674,7 @@ fn title(op: Op) -> &'static str {
         Op::About(op) => op.title(),
         Op::Deployments(op) => op.title(),
         Op::Protection(op) => op.title(),
+        Op::Tokens(op) => op.title(),
         Op::Artifacts(op) => op.title(),
     }
 }
