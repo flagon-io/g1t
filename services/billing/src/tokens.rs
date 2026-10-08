@@ -35,6 +35,11 @@ pub(crate) struct TokenRow {
     pub counts: [u64; 4],
 }
 
+/// Whether `tier` is one g1t routes to: `small`, `large` or `frontier`.
+pub(crate) fn is_tier(tier: &str) -> bool {
+    matches!(tier, "small" | "large" | "frontier")
+}
+
 /// The UTC day of a time, `YYYY-MM-DD`.
 fn day_of(ms: u64) -> String {
     rfc3339(ms)[..10].to_owned()
@@ -63,7 +68,7 @@ pub(crate) fn token_row(a: &RecordTokensArgs, now: u64) -> Option<TokenRow> {
         person: person_of(a.person.as_deref()),
         session: session.chars().take(64).collect(),
         model: if model.is_empty() { "unknown".to_owned() } else { model.chars().take(200).collect() },
-        tier: a.tier.as_deref().filter(|tier| matches!(*tier, "small" | "large")).map(str::to_owned),
+        tier: a.tier.as_deref().filter(|tier| is_tier(tier)).map(str::to_owned),
         counts,
     })
 }
@@ -276,6 +281,9 @@ mod tests {
         assert_eq!(row.tier, None);
         assert_eq!(row.model, "unknown");
         assert_eq!(person_of(None), "");
+        // The most capable tier is a tier too.
+        let frontier = token_row(&RecordTokensArgs { tier: Some("frontier".into()), ..args() }, NOW).unwrap();
+        assert_eq!(frontier.tier.as_deref(), Some("frontier"));
     }
 
     #[test]

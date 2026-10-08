@@ -35,6 +35,7 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN task = 'storage' THEN 'Private storage'
     WHEN task = 'cache' THEN 'Actions cache storage'
     WHEN task = 'git' THEN 'Git operations'
+    WHEN reference LIKE '%/agent-own%' THEN 'Agent rate, your own model key'
     WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
     WHEN reference LIKE '%/agent%' THEN 'Agent rate'
     WHEN task = 'gateway' THEN 'AI Gateway'
@@ -58,6 +59,7 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
     match kind {
         "Agent runs" => 0,
         "Agent rate" => 0,
+        "Agent rate, your own model key" => 0,
         "AI Gateway" => 1,
         "Runs on your own model provider" => 1,
         "Sandbox time" => 2,
