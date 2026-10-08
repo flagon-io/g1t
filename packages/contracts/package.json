@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "exports": { ".": "./src/index.ts", "./og": "./src/og.ts", "./status": "./src/status.ts", "./scopes": "./src/scopes.ts" },
+  "exports": { ".": "./src/index.ts", "./og": "./src/og.ts", "./status": "./src/status.ts", "./scopes": "./src/scopes.ts", "./fine-grained": "./src/fine-grained.ts" },
   "scripts": { "typecheck": "tsc -p tsconfig.json" }
 }

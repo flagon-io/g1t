@@ -974,7 +974,7 @@ impl Identity {
                 notify: owners,
                 title: format!("{} asks to use a fine-grained token in {slug}", requester.username),
                 body: format!("{}: {permissions}", token.name),
-                link: format!("/{slug}/-/settings/tokens"),
+                link: format!("/{slug}/-/personal-access-tokens"),
             },
         )
         .await;

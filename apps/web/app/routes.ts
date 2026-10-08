@@ -81,6 +81,8 @@ export default [
       route("settings", "routes/workspace/team/settings.tsx"),
     ]),
     route("-/tokens", "routes/workspace/tokens.tsx"),
+    // Its rules for members' personal access tokens, and approving them.
+    route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
     route("-/gateway", "routes/workspace/gateway.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),

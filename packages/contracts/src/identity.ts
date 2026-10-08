@@ -1,4 +1,5 @@
 import type { AccessClient, BasePermission, RepoGrant } from "./access";
+import type { PermissionAccess, RepositorySelection } from "./fine-grained";
 import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -379,6 +380,68 @@ export type AccessToken = {
   legacy: boolean;
   /** RFC 3339. Null: it does not expire. */
   expiresAt: string | null;
+  /** Classic, fine-grained, or a workspace's own. */
+  kind?: TokenKind;
+  /** What it is for, as its owner wrote it. */
+  description?: string | null;
+  /** A fine-grained token's resource owner, repositories, permissions and status. */
+  fineGrained?: FineGrainedDetails | null;
+  /** A workspace's own token an owner gave Admin when making it. */
+  admin?: boolean;
+};
+
+export type TokenKind = "classic" | "fine_grained" | "workspace";
+
+/** Whether a fine-grained token may be used on its resource owner. */
+export type TokenStatus = "active" | "pending" | "denied" | "revoked";
+
+export type FineGrainedDetails = {
+  /** The resource owner's slug; null for your own account. */
+  workspace: string | null;
+  repositorySelection: RepositorySelection;
+  /** With `selected`: the repositories, as `owner/name`, that you can see. */
+  repositories: string[];
+  permissions: Partial<Record<string, PermissionAccess>>;
+  status: TokenStatus;
+  /** Why an owner denied or revoked it. */
+  reviewReason?: string | null;
+};
+
+/** What a new fine-grained token is. */
+export type FineGrainedTokenInput = {
+  name: string;
+  description?: string | null;
+  /** Between 1 and 366 days, and no more than the workspace allows. */
+  ttlSeconds: number;
+  /** The resource owner: a workspace's slug, or null for your own account. */
+  workspace: string | null;
+  repositorySelection: RepositorySelection;
+  /** With `selected`: `owner/name` or names in the workspace. */
+  repositories: string[];
+  /** Each permission's level by name; names left out are none. */
+  permissions: Record<string, PermissionAccess>;
+};
+
+/** A workspace's rules for personal access tokens. */
+export type TokenPolicy = {
+  allowClassic: boolean;
+  allowFineGrained: boolean;
+  requireApproval: boolean;
+  /** Null: no limit. */
+  maxLifetimeDays: number | null;
+  forbidNoExpiry: boolean;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+};
+
+/** A member's personal token that reaches a workspace, as its owners see it. */
+export type MemberToken = {
+  owner: string;
+  token: AccessToken;
+  /** Whether it reaches the workspace now. */
+  reaches: boolean;
+  /** Why not: pending approval, denied, revoked, classic tokens not allowed, lasts too long, never expires. */
+  blockedBy?: string | null;
 };
 
 /** What a new or changed token may do. */
@@ -614,10 +677,41 @@ export interface IdentityApi extends AccessClient, TeamsClient {
     actor: User,
     slug: string,
     name: string,
-    grant?: TokenGrant & { ttlSeconds?: number },
+    grant?: TokenGrant & { ttlSeconds?: number; admin?: boolean },
   ): Promise<Result<{ token: string; info: AccessToken }>>;
   /** Owners only. */
   removeWorkspaceToken(actor: User, slug: string, id: string): Promise<Result<boolean>>;
+
+  /**
+   * A fine-grained personal access token: one resource owner, some of its
+   * repositories, a level for each permission. People only. It starts
+   * pending when its workspace asks for approval and you are not an owner.
+   */
+  createFineGrainedToken(user: User, input: FineGrainedTokenInput): Promise<Result<{ token: string; info: AccessToken }>>;
+  /** Its owner changes it; what is left out stays. Widening it asks for approval again. */
+  updateFineGrainedToken(
+    user: User,
+    id: string,
+    change: Partial<Omit<FineGrainedTokenInput, "ttlSeconds" | "workspace">>,
+  ): Promise<Result<AccessToken>>;
+  /** A workspace's rules for personal access tokens. Members only. */
+  getTokenPolicy(slug: string, viewer: Viewer): Promise<Result<TokenPolicy>>;
+  /** Owners only, as people. `maxLifetimeDays` of 0 removes the limit. */
+  setTokenPolicy(
+    actor: User,
+    slug: string,
+    change: Partial<Omit<TokenPolicy, "updatedBy" | "updatedAt">>,
+  ): Promise<Result<TokenPolicy>>;
+  /** The members' tokens that can reach a workspace. Owners only. */
+  listMemberTokens(
+    actor: User,
+    slug: string,
+    filter?: { status?: TokenStatus; kind?: TokenKind },
+  ): Promise<Result<MemberToken[]>>;
+  /** Approve or deny a fine-grained token waiting for approval. Owners only. */
+  reviewTokenRequest(actor: User, slug: string, id: string, approve: boolean, reason?: string | null): Promise<Result<MemberToken>>;
+  /** Take a member's token out of the workspace. Owners only. */
+  revokeMemberToken(actor: User, slug: string, id: string, reason?: string | null): Promise<Result<boolean>>;
 
   userForSession(sessionToken: string): Promise<Viewer>;
 

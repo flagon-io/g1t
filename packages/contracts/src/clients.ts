@@ -90,9 +90,49 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         name,
         scopes: grant?.scopes ?? null,
         ttl_seconds: grant?.ttlSeconds ?? null,
+        admin: grant?.admin ?? false,
       }),
     removeWorkspaceToken: (actor, slug, id) =>
       call("remove_workspace_token", { actor, slug, id }),
+    createFineGrainedToken: (user, input) =>
+      call("create_fine_grained_token", {
+        user,
+        name: input.name,
+        description: input.description ?? null,
+        ttl_seconds: input.ttlSeconds,
+        workspace: input.workspace,
+        repository_selection: input.repositorySelection,
+        repositories: input.repositories,
+        permissions: input.permissions,
+      }),
+    updateFineGrainedToken: (user, id, change) =>
+      call("update_fine_grained_token", {
+        user,
+        id,
+        name: change.name ?? null,
+        description: change.description ?? null,
+        repository_selection: change.repositorySelection ?? null,
+        repositories: change.repositories ?? null,
+        permissions: change.permissions ?? null,
+      }),
+    getTokenPolicy: (slug, viewer) => call("get_token_policy", { slug, viewer }),
+    setTokenPolicy: (actor, slug, change) =>
+      call("set_token_policy", {
+        actor,
+        slug,
+        allow_classic: change.allowClassic ?? null,
+        allow_fine_grained: change.allowFineGrained ?? null,
+        require_approval: change.requireApproval ?? null,
+        max_lifetime_days: change.maxLifetimeDays ?? null,
+        forbid_no_expiry: change.forbidNoExpiry ?? null,
+        surface: "web",
+      }),
+    listMemberTokens: (actor, slug, filter = {}) =>
+      call("list_member_tokens", { actor, slug, status: filter.status ?? null, kind: filter.kind ?? null }),
+    reviewTokenRequest: (actor, slug, id, approve, reason) =>
+      call("review_token_request", { actor, slug, id, approve, reason: reason ?? null, surface: "web" }),
+    revokeMemberToken: (actor, slug, id, reason) =>
+      call("revoke_member_token", { actor, slug, id, reason: reason ?? null, surface: "web" }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
     registration: () => call("registration", {}),
     listInvites: (user) => call("list_invites", { user }),

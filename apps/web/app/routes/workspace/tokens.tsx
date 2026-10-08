@@ -1,4 +1,5 @@
-import { Form } from "react-router";
+import { TriangleAlert } from "lucide-react";
+import { Form, Link } from "react-router";
 
 import { presetScopes } from "@g1t/contracts";
 
@@ -15,6 +16,7 @@ import {
   TimeAgo,
 } from "../../components/ui";
 import { AccessSummary, ExpiryField, ScopeChecklist } from "../../components/token-scopes";
+import { Badge } from "../../components/ui/badge";
 import { identity } from "../../lib/services.server";
 import { describeExpiry, expiryTtl, grantFromForm } from "../../lib/token-scopes";
 import {
@@ -56,7 +58,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     user,
     params.owner,
     String(form.get("label") ?? ""),
-    { ...grant.value, ttlSeconds: expiryTtl(form.get("expires")) },
+    { ...grant.value, ttlSeconds: expiryTtl(form.get("expires")), admin: form.get("admin") === "on" },
   );
   return created.ok
     ? { token: created.value, error: null }
@@ -99,7 +101,10 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
               {tokens.map((token) => (
                 <li key={token.id} className="flex items-start gap-4 px-4 py-3">
                   <div className="min-w-0 grow">
-                    <p className="truncate text-sm font-medium">{token.name}</p>
+                    <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                      <span className="truncate">{token.name}</span>
+                      <Badge tone={token.admin ? "danger" : "neutral"}>{token.admin ? "Admin" : "Write"}</Badge>
+                    </p>
                     <p className="mt-0.5 text-xs text-faint">
                       Created <TimeAgo at={token.createdAt} />
                       {token.createdBy ? (
@@ -158,6 +163,17 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
               <ExpiryField />
             </div>
             <ScopeChecklist initial={presetScopes("ci")} />
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-danger/30 px-3 py-2.5">
+              <input type="checkbox" name="admin" className="mt-0.5 size-4 shrink-0 accent-danger" />
+              <span className="min-w-0">
+                <span className="block text-sm text-fg">Admin on the workspace's repositories</span>
+                <span className="mt-0.5 flex items-start gap-1.5 text-xs text-faint">
+                  <TriangleAlert size={13} className="mt-px shrink-0 text-danger" />
+                  Without it the token has Write, as a member does. With it, the token can also manage webhooks,
+                  secrets, deploy keys and who has access, and act as an owner on teams, as far as its scopes allow.
+                </span>
+              </span>
+            </label>
             <SubmitButton match={{ action: "create" }} pending="Creating…">
               Create token
             </SubmitButton>
@@ -175,9 +191,9 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
           <h3 className="font-medium">What a token can do</h3>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
             <li>
-              What its scopes allow, in this workspace only, and never more
-              than a member can: push, open and merge pull requests, manage
-              issues.
+              What its scopes allow, in this workspace only, with Write on its
+              repositories, as a member: push, open and merge pull requests,
+              manage issues. Admin only when an owner gives it that.
             </li>
             <li>
               It acts as <span className="font-mono text-fg">{slug}</span>, so
@@ -187,6 +203,18 @@ export default function WorkspaceTokens({ loaderData, actionData }: Route.Compon
             <li>It cannot manage people, tokens or other workspaces.</li>
           </ul>
         </section>
+        {role === "owner" && (
+          <section className="rounded-xl border border-line p-5">
+            <h3 className="font-medium">Your members' own tokens</h3>
+            <p className="mt-2 text-muted">
+              Which personal tokens may reach {slug}, how long they may last, and approving fine-grained ones:{" "}
+              <Link to={`/${slug}/-/personal-access-tokens`} className="text-fg underline underline-offset-4">
+                Personal access tokens
+              </Link>
+              .
+            </p>
+          </section>
+        )}
         <section>
           <h3 className="font-medium">Using one</h3>
           <p className="mt-2 text-muted">With git, as the password:</p>

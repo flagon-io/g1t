@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Sparkles, Ticket, TrendingUp, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Sparkles, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -866,6 +866,11 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
         <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
           Access tokens
         </SidebarLink>
+        {owner && (
+          <SidebarLink to={`/${slug}/-/personal-access-tokens`} icon={<UserRoundKey size={15} />}>
+            Personal access tokens
+          </SidebarLink>
+        )}
         <SidebarLink to={`/${slug}/-/rules`} icon={<Scale size={15} />}>
           Rules
         </SidebarLink>
@@ -1401,6 +1406,7 @@ const SECTIONS: Record<string, string> = {
   projects: "Projects",
   teams: "Teams",
   tokens: "Access tokens",
+  "personal-access-tokens": "Personal access tokens",
   usage: "Usage",
   gateway: "AI Gateway",
   billing: "Billing and plans",
