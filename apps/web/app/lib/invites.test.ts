@@ -13,6 +13,9 @@ import {
   looksAutomated,
   moreInvitesMailto,
   remainingLine,
+  sharedDomainsHint,
+  sharedInviteLine,
+  sharedInviteLink,
   signUpCopy,
   suggestUsername,
   welcomeCookie,
@@ -109,4 +112,30 @@ test("the welcome is for one place, and ends", () => {
   assert.equal(welcomes("g1t_welcome=..%2F..%2Fx", "../../x"), false);
   assert.equal(welcomes(null, "flagon-io"), false);
   assert.match(clearWelcome(false), /^g1t_welcome=; Path=\/; Max-Age=0; HttpOnly; SameSite=Lax$/);
+});
+
+test("a shared invite link names its group above the sign-up form", () => {
+  assert.equal(sharedInviteLine("Cloudflare judges"), "Invited as part of Cloudflare judges");
+  assert.equal(sharedInviteLine("  Hacker News readers "), "Invited as part of Hacker News readers");
+  // A one-person invite has no group, and says nothing of the kind.
+  assert.equal(sharedInviteLine(null), null);
+  assert.equal(sharedInviteLine(undefined), null);
+  assert.equal(sharedInviteLine("   "), null);
+});
+
+test("a shared invite link is sign-up with its code filled in", () => {
+  assert.equal(sharedInviteLink(CODE), `https://g1t.sh/register?invite=${CODE}`);
+  assert.equal(sharedInviteLink(CODE, "http://localhost:5173/"), `http://localhost:5173/register?invite=${CODE}`);
+  // The register page reads the code back out of its own link.
+  assert.equal(cleanCode(sharedInviteLink(CODE)), CODE);
+});
+
+test("a shared link limited to domains says which, on the email field", () => {
+  assert.equal(sharedDomainsHint([]), undefined);
+  assert.equal(sharedDomainsHint(null), undefined);
+  assert.equal(sharedDomainsHint(["cloudflare.com"]), "This invite is for addresses at cloudflare.com. Use yours there.");
+  assert.equal(
+    sharedDomainsHint(["a.com", "b.com", "c.com"]),
+    "This invite is for addresses at a.com, b.com or c.com. Use yours there.",
+  );
 });

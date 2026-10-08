@@ -1,7 +1,7 @@
-import { Check, MessageSquareText, Search, Ticket, X } from "lucide-react";
+import { Check, Link2, MessageSquareText, Search, Ticket, X } from "lucide-react";
 import { Link, data, redirect, useLocation } from "react-router";
 
-import type { Invite, InviteTree, InviteTreeNode, WaitlistEntry } from "@g1t/contracts";
+import type { Invite, InviteTree, InviteTreeNode, SharedInvite, WaitlistEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/invites";
 import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Section, Select, Textarea, When } from "~/components/ui";
@@ -11,15 +11,27 @@ import {
   type InviteTab,
   MAX_BULK,
   MAX_NOTE,
+  MAX_SHARED_DOMAINS,
+  MAX_SHARED_LABEL,
+  MAX_SHARED_USES,
+  SHARED_MAX_DAYS,
+  SHARED_TTL_DAYS,
   TAB_LABEL,
+  dayAfter,
+  domainsLine,
   doneMessage,
   invitesHref,
+  joinedThrough,
   parseGrant,
   parseIds,
   parseMintEmail,
   parseNote,
+  parseSharedInvite,
   parseTab,
   parseWaitlistStatus,
+  sharedInviteLink,
+  sharedStatus,
+  usesLine,
 } from "~/lib/invites";
 import { identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
@@ -37,11 +49,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const kind = url.searchParams.get("kind") === "workspace" ? "workspace" : "user";
   const done = url.searchParams.get("done");
   const selectAll = url.searchParams.get("select") === "all";
-  const [waitlist, invites, tree] = await Promise.all([
+  const [waitlist, invites, tree, shared] = await Promise.all([
     tab === "waitlist" ? settle(identity.waitlist(query || null, status === "all" ? null : status)) : null,
     tab === "invites" ? settle(identity.invites(query || null)) : null,
     tab === "tree" && name ? settle(kind === "workspace" ? identity.workspaceInvites(name) : identity.inviteTree(name)) : null,
+    tab === "shared" ? settle(identity.sharedInvites()) : null,
   ]);
+  const now = Date.now();
   return {
     tab,
     query,
@@ -51,7 +65,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     waitlist: waitlist?.ok ? waitlist.value : [],
     invites: invites?.ok ? invites.value : [],
     tree: tree?.ok ? tree.value : null,
-    error: [waitlist, invites, tree].map((result) => (result && !result.ok ? result.error : null)).find(Boolean) ?? null,
+    shared: shared?.ok ? shared.value : [],
+    // The date inputs' default and bounds: 14 days, from today to a year ahead (UTC).
+    expiry: { default: dayAfter(now, SHARED_TTL_DAYS), min: dayAfter(now, 0), max: dayAfter(now, SHARED_MAX_DAYS) },
+    error: [waitlist, invites, tree, shared].map((result) => (result && !result.ok ? result.error : null)).find(Boolean) ?? null,
     done: doneMessage(done, url.searchParams.get("n")),
     selectAll,
   };
@@ -111,6 +128,20 @@ export async function action({ request, context }: Route.ActionArgs) {
       const result = await identity.grantInvites(target, name, amount, note, staff.email);
       if (!result.ok) return data({ error: result.error.message, section: "grant" }, { status: 422 });
       throw redirect(`${invitesHref("tree", { name, kind: target })}&done=granted`);
+    }
+    case "shared-create": {
+      const link = parseSharedInvite(form);
+      if (!link.ok) return data({ error: link.error, section: "shared" }, { status: 422 });
+      // Identity records it in the audit log, naming the staff member.
+      const result = await identity.createSharedInvite(link.value, staff.email);
+      if (!result.ok) return data({ error: result.error.message, section: "shared" }, { status: 422 });
+      throw redirect(`${invitesHref("shared")}&done=shared-created#${result.value.id}`);
+    }
+    case "shared-revoke": {
+      const id = text(form, "id");
+      const result = await identity.revokeSharedInvite(id, staff.email);
+      if (!result.ok) return data({ error: result.error.message, id }, { status: 422 });
+      throw back("shared-revoked");
     }
     case "mint": {
       const email = parseMintEmail(text(form, "email"));
@@ -524,7 +555,11 @@ function Tree({ tree, name, kind, actionData }: { tree: InviteTree | null; name:
                 <div>
                   <dt className="text-xs text-faint">Invited by</dt>
                   <dd className="font-mono">
-                    {tree.invitedBy.length > 0
+                    {tree.shared ? (
+                      <Link to={`${invitesHref("shared")}#${tree.shared.id}`} className="font-sans hover:underline">
+                        {joinedThrough(tree.shared.label)}
+                      </Link>
+                    ) : tree.invitedBy.length > 0
                       ? tree.invitedBy.map((username, index) => (
                           <span key={username}>
                             {index > 0 && <span className="text-faint"> ← </span>}
@@ -581,13 +616,150 @@ function Tree({ tree, name, kind, actionData }: { tree: InviteTree | null; name:
   );
 }
 
+/**
+ * Shared invite links: make one for a group, copy it while it is live,
+ * revoke it, and see who joined through it. Plain HTML, as all of sudo:
+ * the link sits in a read-only field to select and copy.
+ */
+function SharedLinks({
+  links,
+  expiry,
+  actionData,
+}: {
+  links: SharedInvite[];
+  expiry: { default: string; min: string; max: string };
+  actionData: ActionData;
+}) {
+  const { pathname, search } = useLocation();
+  const createError = errorFor(actionData, { section: "shared" });
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <Section
+        title="Make a shared link"
+        description="One link for a group, such as a conference's judges or a community. Each use makes a new account, which makes its own workspace; the link never joins anyone to an existing one, and uses nobody's invites."
+      >
+        <form method="post" action={`${pathname}${search}`} className="space-y-3">
+          <input type="hidden" name="intent" value="shared-create" />
+          <Field label="Label" hint="Not secret: the sign-up page says “Invited as part of …”.">
+            <Input name="label" required maxLength={MAX_SHARED_LABEL} placeholder="Cloudflare judges" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Accounts it makes" hint={`1 to ${MAX_SHARED_USES}.`}>
+              <Input name="max_uses" type="number" required min={1} max={MAX_SHARED_USES} step={1} defaultValue={25} inputMode="numeric" />
+            </Field>
+            <Field label="Last day" hint="Works until the end of it (UTC).">
+              <Input name="expires_on" type="date" required defaultValue={expiry.default} min={expiry.min} max={expiry.max} />
+            </Field>
+          </div>
+          <Field label="Email domains (optional)" hint={`Only addresses at these, up to ${MAX_SHARED_DOMAINS}. Empty for any address.`}>
+            <Input name="domains" maxLength={600} placeholder="cloudflare.com, example.org" spellCheck={false} autoCapitalize="none" />
+          </Field>
+          {createError && <Notice tone="error">{createError}</Notice>}
+          <div className="flex justify-end">
+            <Button type="submit" variant="lavender">
+              <Link2 size={14} />
+              Make link
+            </Button>
+          </div>
+        </form>
+      </Section>
+      <div className="min-w-0 space-y-3">
+        <h3 className="text-sm font-medium">Shared links</h3>
+        {links.length === 0 ? (
+          <EmptyState title="No shared links">Links you make appear here, newest first, with everyone who joined through each.</EmptyState>
+        ) : (
+          <ul className="space-y-3">
+            {links.map((link) => {
+              const state = sharedStatus(link.status);
+              const error = errorFor(actionData, { id: link.id });
+              return (
+                <li key={link.id} id={link.id} className="scroll-mt-20 space-y-3 rounded-lg border border-line bg-surface px-4 py-3 sm:px-5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-medium break-words">{link.label}</span>
+                    <Badge tone={state.tone}>{state.label}</Badge>
+                    <span className="text-xs text-muted tabular">{usesLine(link)}</span>
+                  </div>
+                  <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                    <div>
+                      <dt className="inline text-faint">Code </dt>
+                      <dd className="inline font-mono">{link.hint}…</dd>
+                    </div>
+                    <div>
+                      <dt className="inline text-faint">Expires </dt>
+                      <dd className="inline">
+                        <When at={link.expiresAt} />
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">{domainsLine(link.domains)}</div>
+                    <div className="sm:col-span-2 text-faint">
+                      Made by <span className="font-mono text-muted">{link.staff}</span> <When at={link.createdAt} />
+                      {link.revokedAt && (
+                        <>
+                          {" "}
+                          · revoked by <span className="font-mono text-muted">{link.revokedBy ?? "staff"}</span> <When at={link.revokedAt} />
+                        </>
+                      )}
+                    </div>
+                  </dl>
+                  {link.status === "live" &&
+                    (link.code ? (
+                      <Field label="Link (select it to copy)">
+                        <Input readOnly value={sharedInviteLink(link.code)} className="font-mono text-xs" aria-label={`Shared link for ${link.label}`} />
+                      </Field>
+                    ) : (
+                      <p className="text-xs text-faint">The link cannot be shown again here: identity keeps no copy without IDENTITY_KEY.</p>
+                    ))}
+                  {link.accounts.length > 0 ? (
+                    <details>
+                      <summary className="cursor-pointer text-xs text-muted select-none hover:text-fg">
+                        {link.accounts.length} joined through it
+                      </summary>
+                      <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                        {link.accounts.map((account, index) => (
+                          <li key={`${account.username ?? "purged"}-${index}`}>
+                            {account.username ? (
+                              <Link to={`/users/${encodeURIComponent(account.username)}`} className="font-mono hover:underline">
+                                {account.username}
+                              </Link>
+                            ) : (
+                              <span className="text-faint">a purged account</span>
+                            )}{" "}
+                            <span className="text-faint">
+                              <When at={account.joinedAt} />
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : (
+                    <p className="text-xs text-faint">Nobody has joined through it yet.</p>
+                  )}
+                  {link.status !== "revoked" && (
+                    <form method="post" action={`${pathname}${search}#${link.id}`} className="flex justify-end">
+                      <input type="hidden" name="id" value={link.id} />
+                      <Button type="submit" name="intent" value="shared-revoke" variant="danger">
+                        Revoke
+                      </Button>
+                    </form>
+                  )}
+                  {error && <Notice tone="error">{error}</Notice>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Invites({ loaderData, actionData }: Route.ComponentProps) {
-  const { tab, query, status, waitlist, invites, tree, name, kind, error, done, selectAll } = loaderData;
+  const { tab, query, status, waitlist, invites, tree, name, kind, error, done, selectAll, shared, expiry } = loaderData;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Invites"
-        description="g1t.sh is invite-only. Approve people from the waitlist, find and revoke invites, grant more to a person or a workspace, and trace who brought whom."
+        description="g1t.sh is invite-only. Approve people from the waitlist, find and revoke invites, hand a group one shared link, grant more to a person or a workspace, and trace who brought whom."
       />
       <nav aria-label="Invites" className="mt-5 flex flex-wrap gap-2">
         {INVITE_TABS.map((value) => (
@@ -617,6 +789,7 @@ export default function Invites({ loaderData, actionData }: Route.ComponentProps
             <InviteTable invites={invites} actionData={actionData} />
           </div>
         )}
+        {tab === "shared" && <SharedLinks links={shared} expiry={expiry} actionData={actionData} />}
         {tab === "grant" && <GrantAndMint actionData={actionData} />}
         {tab === "tree" && <Tree tree={tree} name={name} kind={kind} actionData={actionData} />}
       </div>

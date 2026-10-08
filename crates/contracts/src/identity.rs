@@ -1317,6 +1317,15 @@ pub struct InvitePreview {
     pub for_viewer: Option<bool>,
     /// RFC 3339.
     pub expires_at: String,
+    /// For a shared invite link ([`SharedInvite`]): the group it was made
+    /// for, such as `Cloudflare judges`. Not secret; the sign-up page shows
+    /// it. Null for a one-person invite.
+    #[serde(default)]
+    pub shared_label: Option<String>,
+    /// For a shared invite link limited to some email domains: those
+    /// domains, such as `["cloudflare.com"]`. Empty for any address.
+    #[serde(default)]
+    pub shared_domains: Vec<String>,
 }
 
 /// `accept_invite`: a signed-in person uses a workspace invite made for
@@ -1557,6 +1566,124 @@ pub struct InviteTree {
     pub invites: Vec<Invite>,
     /// Whom they invited, three levels down.
     pub invited: Vec<InviteTreeNode>,
+    /// The shared invite link the account was made with, if it was.
+    #[serde(default)]
+    pub shared: Option<SharedInviteSource>,
+}
+
+// --- Shared invite links, staff only ---
+//
+// One link for a group (a conference's judges, a post, a community): up
+// to `max_uses` new accounts, until it expires or staff revoke it,
+// optionally only for addresses at some domains. Each use makes a new
+// account, which then makes its own workspace; a shared link never joins
+// anyone to an existing workspace, and uses nobody's allowance. Its code
+// looks and is stored like any invite code (only a hash, and a sealed copy
+// staff can copy again while it is live); the link is
+// `https://g1t.sh/register?invite=<code>`. See
+// services/identity/src/shared_invites.rs.
+
+/// How long a shared invite link works when staff give no date.
+pub const SHARED_INVITE_TTL_DAYS: u64 = 14;
+/// The furthest ahead a shared invite link's last day may be set.
+pub const SHARED_INVITE_MAX_DAYS: u64 = 365;
+/// The most accounts one shared invite link makes.
+pub const MAX_SHARED_INVITE_USES: u32 = 1000;
+/// The most characters a shared invite link's label keeps.
+pub const MAX_SHARED_INVITE_LABEL: usize = 80;
+/// The most email domains one shared invite link may be limited to.
+pub const MAX_SHARED_INVITE_DOMAINS: usize = 10;
+
+/// Where a shared invite link stands. Only a live one makes accounts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SharedInviteStatus {
+    Live,
+    /// Every use is taken.
+    UsedUp,
+    Expired,
+    Revoked,
+}
+
+/// The shared invite link an account was made with.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedInviteSource {
+    pub id: String,
+    pub label: String,
+}
+
+/// An account made with a shared invite link.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedInviteAccount {
+    /// Null once the account is purged.
+    pub username: Option<String>,
+    /// When it was made with the link. RFC 3339.
+    pub joined_at: String,
+}
+
+/// One shared invite link, as staff see it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedInvite {
+    /// `sinv_…`.
+    pub id: String,
+    /// Whom it is for, such as `Cloudflare judges`.
+    pub label: String,
+    /// The code, while it is live (and IDENTITY_KEY is set).
+    pub code: Option<String>,
+    /// The code's first group, such as `g1t-k7m2`.
+    pub hint: String,
+    pub max_uses: u32,
+    /// Accounts made with it so far.
+    pub uses: u32,
+    /// Only addresses at these domains may use it; empty for any.
+    pub domains: Vec<String>,
+    pub status: SharedInviteStatus,
+    /// The staff member who made it, by email.
+    pub staff: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub expires_at: String,
+    pub revoked_at: Option<String>,
+    pub revoked_by: Option<String>,
+    /// The accounts made with it, oldest first.
+    pub accounts: Vec<SharedInviteAccount>,
+}
+
+/// `admin_shared_invites` takes `{}`: shared invite links, newest first,
+/// at most 200, each with the accounts it made. Returns
+/// `Vec<SharedInvite>`.
+///
+/// `admin_create_shared_invite`: staff make a shared invite link. Recorded
+/// in sudo's audit log. Returns `Outcome<SharedInvite>`, with the code.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminCreateSharedInviteArgs {
+    /// Required, up to [`MAX_SHARED_INVITE_LABEL`] characters.
+    pub label: String,
+    /// 1 to [`MAX_SHARED_INVITE_USES`].
+    pub max_uses: u32,
+    /// The last day it works, `YYYY-MM-DD` (UTC; it works until the end of
+    /// that day), at most [`SHARED_INVITE_MAX_DAYS`] ahead. Null for
+    /// [`SHARED_INVITE_TTL_DAYS`] from now.
+    #[serde(default)]
+    pub expires_on: Option<String>,
+    /// Email domains it is limited to, such as `cloudflare.com`; empty for
+    /// any address. Up to [`MAX_SHARED_INVITE_DOMAINS`].
+    #[serde(default)]
+    pub domains: Vec<String>,
+    /// The staff member, by email.
+    pub staff: String,
+}
+
+/// `admin_revoke_shared_invite`: stops a shared invite link making any
+/// more accounts. Those it made stay. Recorded in sudo's audit log.
+/// Returns `Outcome<SharedInvite>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRevokeSharedInviteArgs {
+    pub id: String,
+    pub staff: String,
 }
 
 #[cfg(test)]

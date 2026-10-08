@@ -898,6 +898,8 @@ pub struct InviteCreated {
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InviteRedeemed {
+    /// The invite's id, or a shared invite link's (`sinv_…`) when one made
+    /// the account.
     pub invite_id: String,
     pub user_id: String,
     pub inviter_id: Option<String>,

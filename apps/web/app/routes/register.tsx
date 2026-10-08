@@ -11,7 +11,7 @@ import { Honeypot } from "../components/honeypot";
 import { githubSignInEnabled } from "../lib/github.server";
 import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
-import { cleanCode, looksAutomated } from "../lib/invites";
+import { cleanCode, looksAutomated, sharedDomainsHint, sharedInviteLine } from "../lib/invites";
 import { clientKey, registrationMode } from "../lib/registration.server";
 import {
   assertSameOrigin,
@@ -33,8 +33,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const checked = code ? await identity.checkInvite(code, clientKey(request)) : null;
   const invite: InvitePreview | null = checked?.ok ? checked.value : null;
   // A good invite is used on its own page, which knows whom it is from and
-  // where it leads; it signs up, joins and lands in one go.
-  if (invite && code) throw redirect(`/invite/${encodeURIComponent(code)}`);
+  // where it leads; it signs up, joins and lands in one go. A shared link
+  // for a group signs up here: it joins nothing, and the form says which
+  // group it is for.
+  if (invite && code && !invite.sharedLabel) throw redirect(`/invite/${encodeURIComponent(code)}`);
   // Signing up with GitHub carries the invite code and `next` through it.
   const params = new URLSearchParams();
   if (code) params.set("invite", code);
@@ -92,9 +94,20 @@ export async function action({ request }: Route.ActionArgs) {
   });
 }
 
-/** Who sent the invite and what it joins, above the form. */
+/** Who sent the invite and what it joins, above the form; for a shared link, the group it is for. */
 function InvitedBy({ invite }: { invite: InvitePreview }) {
   const from = invite.invitedBy;
+  const group = sharedInviteLine(invite.sharedLabel);
+  if (group) {
+    return (
+      <div className="mb-6 flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 p-3" role="status">
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+          <Ticket size={18} />
+        </span>
+        <p className="min-w-0 text-sm leading-5 font-medium text-fg">{group}</p>
+      </div>
+    );
+  }
   return (
     <div className="mb-6 flex items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 p-3" role="status">
       {invite.workspace ? (
@@ -172,7 +185,7 @@ function SignUpForm({
         </Field>
         <Field
           label="Email"
-          hint={invite?.email ? `This invite is for ${invite.email}. Use that address.` : undefined}
+          hint={invite?.email ? `This invite is for ${invite.email}. Use that address.` : sharedDomainsHint(invite?.sharedDomains)}
         >
           <Input name="email" type="email" autoComplete="email" required />
         </Field>

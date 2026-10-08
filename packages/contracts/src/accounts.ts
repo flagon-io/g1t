@@ -123,6 +123,8 @@ export type AdminUser = {
   deletion: AccountDeletion;
   /** Set while it is deleted and not yet purged. */
   deleted: DeletedAccount | null;
+  /** The shared invite link it was made with, if it was: sudo shows "Joined through <label>". */
+  joinedThrough: { id: string; label: string } | null;
 };
 
 /** Where an account's two-factor authentication stands. */

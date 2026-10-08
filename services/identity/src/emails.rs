@@ -1145,6 +1145,7 @@ impl Identity {
             log,
             deletion,
             deleted,
+            joined_through: self.shared_source(user_id).await?,
         }))
     }
 

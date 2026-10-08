@@ -59,6 +59,9 @@ test("account ids link to their pages; anything else does not", () => {
   assert.equal(accountPath("ws_acme"), "/workspaces/acme");
   assert.equal(accountPath("ent_bigco"), "/enterprises/ent_bigco");
   assert.equal(accountPath("stripe"), null);
+  // Shared invite links are filed under `ws_invites`: a reserved name, never a workspace.
+  assert.equal(accountPath("ws_invites"), "/invites?tab=shared");
+  assert.equal(accountName("ws_invites"), "Shared invite links");
   assert.equal(accountPath("acme"), null);
   assert.equal(accountPath("ws_-bad"), null);
   assert.equal(accountPath(""), null);

@@ -264,6 +264,10 @@ export type InvitePreview = {
   /** With a viewer: whether it is theirs (for one of their confirmed addresses, or used by them). */
   forViewer: boolean | null;
   expiresAt: string;
+  /** A shared invite link's group, such as `Cloudflare judges`; null for a one-person invite. Not secret. */
+  sharedLabel: string | null;
+  /** The email domains a shared invite link is limited to; empty for any address. */
+  sharedDomains: string[];
 };
 
 export type WaitlistStatus = "waiting" | "invited" | "dismissed";
@@ -301,6 +305,71 @@ export type InviteTree = {
   invites: Invite[];
   /** Whom they invited, three levels down. */
   invited: InviteTreeNode[];
+  /** The shared invite link the account was made with, if it was. */
+  shared: SharedInviteSource | null;
+};
+
+// --- Shared invite links, staff only ---------------------------------------------------
+//
+// One link for a group (a conference's judges, a post, a community): up to
+// `maxUses` new accounts, until it expires or staff revoke it, optionally only
+// for addresses at some domains. Each use makes a new account, which makes its
+// own workspace; it never joins an existing one and uses nobody's allowance.
+// The link is `https://g1t.sh/register?invite=<code>`. Mirrors the shared
+// invite types in `crates/contracts/src/identity.rs`.
+
+/** How long a shared invite link works when staff give no date. */
+export const SHARED_INVITE_TTL_DAYS = 14;
+/** The furthest ahead a shared invite link's last day may be set. */
+export const SHARED_INVITE_MAX_DAYS = 365;
+/** The most accounts one shared invite link makes. */
+export const MAX_SHARED_INVITE_USES = 1000;
+/** The most characters a shared invite link's label keeps. */
+export const MAX_SHARED_INVITE_LABEL = 80;
+/** The most email domains one shared invite link may be limited to. */
+export const MAX_SHARED_INVITE_DOMAINS = 10;
+
+/** Only a live link makes accounts; `used_up`: every use is taken. */
+export type SharedInviteStatus = "live" | "used_up" | "expired" | "revoked";
+
+/** The shared invite link an account was made with. */
+export type SharedInviteSource = { id: string; label: string };
+
+/** One shared invite link, as staff see it. */
+export type SharedInvite = {
+  /** `sinv_…`. */
+  id: string;
+  /** Whom it is for, such as `Cloudflare judges`. */
+  label: string;
+  /** The code, while it is live. */
+  code: string | null;
+  /** The code's first group, such as `g1t-k7m2`. */
+  hint: string;
+  maxUses: number;
+  /** Accounts made with it so far. */
+  uses: number;
+  /** Only addresses at these domains may use it; empty for any. */
+  domains: string[];
+  status: SharedInviteStatus;
+  /** The staff member who made it, by email. */
+  staff: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  /** The accounts made with it, oldest first; `username` is null once one is purged. */
+  accounts: { username: string | null; joinedAt: string }[];
+};
+
+/** What staff make a shared invite link from. */
+export type NewSharedInvite = {
+  label: string;
+  /** 1 to 1000. */
+  maxUses: number;
+  /** The last day it works, `YYYY-MM-DD` (UTC); null for 14 days from now. */
+  expiresOn: string | null;
+  /** Email domains it is limited to, such as `cloudflare.com`; empty for any address. */
+  domains: string[];
 };
 
 /** The most rows one staff listing of invites or the waitlist returns. */
@@ -344,6 +413,12 @@ export interface IdentityAdminApi {
   inviteTree(username: string): Promise<InviteTree | null>;
   /** A workspace's granted invites and the invites made for it, or null. */
   workspaceInvites(slug: string): Promise<InviteTree | null>;
+  /** Shared invite links, newest first, each with the accounts it made. */
+  sharedInvites(): Promise<SharedInvite[]>;
+  /** Makes a shared invite link; the result carries its code. Recorded in the audit log. */
+  createSharedInvite(link: NewSharedInvite, staff: string): Promise<Result<SharedInvite>>;
+  /** Stops a shared invite link making more accounts; those it made stay. Recorded in the audit log. */
+  revokeSharedInvite(id: string, staff: string): Promise<Result<SharedInvite>>;
 
   /** Workspaces owners deleted that are not purged yet, newest first. */
   deletedWorkspaces(): Promise<DeletedWorkspace[]>;
