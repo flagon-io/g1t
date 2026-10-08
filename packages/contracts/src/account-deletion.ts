@@ -5,7 +5,9 @@
  * A person deletes their own account from Settings, typing their username
  * and proving it is them; g1t's staff can delete one from sudo with a
  * reason. Neither works while the account is the only owner of a live
- * workspace, or for a protected account. It is soft first: everything it
+ * workspace, or for a protected account; staff may instead delete those
+ * workspaces with it (`withSoleWorkspaces`), unless one is protected or its
+ * billing cannot settle. It is soft first: everything it
  * could sign in with ends at once and it leaves every workspace, and it is
  * kept for `ACCOUNT_RESTORE_DAYS` for staff to restore. Then it is purged,
  * its username is never given to anyone again, and what it wrote shows as
@@ -27,8 +29,16 @@ export type SoleOwnedWorkspace = {
   name: string;
   /** Everyone in it, the account included. */
   members: number;
-  /** What billing needs before the workspace itself can be deleted; null when nothing. Never asked for staff. */
+  /** What billing needs before the workspace itself can be deleted; null when nothing. */
   billing: string | null;
+  /** It can never be deleted, by anyone, so staff cannot delete it with the account either. */
+  protected: boolean;
+};
+
+/** A workspace staff deleted together with the account that alone owned it. */
+export type WorkspaceDeletedWith = {
+  workspaceId: string;
+  slug: string;
 };
 
 /** What deleting an account takes with it, and what stands in the way. */
@@ -58,6 +68,8 @@ export type AccountWent = {
   /** The staff member who deleted it; null when the person did. */
   staff: string | null;
   reason: string | null;
+  /** The workspaces it alone owned that staff deleted with it; each is restored or purged on its own. */
+  deletedWorkspaces: WorkspaceDeletedWith[];
 };
 
 /** An account deleted and kept until `purgeAfter` for staff to restore. */

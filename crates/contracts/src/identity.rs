@@ -601,7 +601,8 @@ pub struct DeletedWorkspace {
     pub name: String,
     /// RFC 3339.
     pub deleted_at: String,
-    /// The username of the owner who deleted it.
+    /// The username of the owner who deleted it, or the staff member (by
+    /// email) who deleted it with the account that was its only owner.
     pub deleted_by: String,
     /// RFC 3339: when it is purged unless restored first.
     pub purge_after: String,

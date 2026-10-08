@@ -14,7 +14,7 @@ const nothing = {
   protected: false,
 };
 
-const sole = (slug: string) => ({ slug, name: slug, members: 3, billing: null });
+const sole = (slug: string) => ({ slug, name: slug, members: 3, billing: null, protected: false });
 
 test("the dialog lists only what the account has", () => {
   assert.deepEqual(whatAccountDeletionTakes(nothing), []);

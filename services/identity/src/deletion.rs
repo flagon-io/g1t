@@ -35,6 +35,12 @@
 //!
 //! A person keeps their account whatever workspaces they lose: an account
 //! with no workspace, or with only other people's, works as any other.
+//!
+//! g1t's staff delete a workspace only together with the account that is
+//! its only owner (account_deletion.rs, `with_sole_workspaces`), through
+//! [`Identity::staff_delete_workspace`]: the same steps, the same refusals
+//! (protected, billing that cannot settle), with the staff member as
+//! `deleted_by` and a line in sudo's audit log with the reason.
 
 use g1t_contracts::audit::{
     AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface,
@@ -44,7 +50,8 @@ use g1t_contracts::events::{WorkspaceDeleted, WorkspaceDeleting, WorkspaceRestor
 use g1t_contracts::identity::*;
 use g1t_contracts::repos::NamespaceCountArgs;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, new_id};
+use g1t_contracts::account_deletion::WorkspaceDeletedWith;
+use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use serde_json::json;
@@ -143,6 +150,40 @@ pub fn may_purge(protected: bool, slug: &str, confirm: Option<&str>) -> std::res
         return Err((FailureCode::Invalid, format!("Type {slug} to confirm.")));
     }
     Ok(())
+}
+
+/// Who billing's `close_workspace` sees when staff delete a workspace with
+/// the account that is its only owner: the account, as owner of `slug`
+/// (billing closes only for an owner), named by the staff member so
+/// billing's record says who closed it.
+pub fn staff_billing_actor(owner_id: &str, staff: &str, slug: &str) -> User {
+    User {
+        id: owner_id.to_owned(),
+        username: staff.to_owned(),
+        kind: PrincipalKind::User,
+        verified: true,
+        workspaces: vec![Membership { role: Role::Owner, ..Membership::member(slug) }],
+        ..User::default()
+    }
+}
+
+/// Who deletes a workspace, for its row, its audit log and the event.
+struct Deleter<'a> {
+    /// Who billing closes it for: an owner.
+    billing: &'a User,
+    /// `deleted_by` on its row: the owner's id, or the staff member.
+    deleted_by: &'a str,
+    /// `by` on `workspace.deleting`: the owner's username, or the staff
+    /// member.
+    by: &'a str,
+    audit: AuditActor,
+    surface: Surface,
+    /// The audit log's rule: `owner` or `staff`.
+    rule: &'static str,
+    /// What the audit log says, given when it can be restored until.
+    message: Box<dyn Fn(&str) -> String + 'a>,
+    /// The event's actor.
+    actor_id: Option<&'a str>,
 }
 
 /// What `deleted_went` holds: what went with the workspace.
@@ -262,8 +303,28 @@ impl Identity {
         Ok(is_protected(&names, id, slug, flagged, &old))
     }
 
-    /// What would go with the workspace, and whether billing can close it.
-    async fn deletion_facts(&self, a: &DeleteWorkspaceArgs, slug: &str, target: &Target) -> Result<WorkspaceDeletion> {
+    /// Why billing could not close `slug` now for `actor` (an owner), or
+    /// `None` when it could. Changes nothing.
+    pub(crate) async fn billing_refusal(&self, actor: &User, slug: &str) -> Result<Option<String>> {
+        let closing: Outcome<bool> = g1t_kit::call(
+            &self.env.service("BILLING")?,
+            "close_workspace",
+            &CloseWorkspaceArgs {
+                actor: actor.clone(),
+                workspace: slug.to_owned(),
+                dry_run: true,
+            },
+        )
+        .await?;
+        Ok(match closing {
+            Outcome::Ok(_) => None,
+            Outcome::Fail(failure) => Some(failure.message),
+        })
+    }
+
+    /// What would go with the workspace, and whether billing can close it
+    /// for `actor`.
+    async fn deletion_facts(&self, actor: &User, slug: &str, target: &Target) -> Result<WorkspaceDeletion> {
         let repositories: u32 = g1t_kit::call(
             &self.env.service("REPOS")?,
             "namespace_count",
@@ -289,24 +350,11 @@ impl Identity {
             .first::<Count>(None)
             .await?
             .map_or(0, |count| count.n);
-        let closing: Outcome<bool> = g1t_kit::call(
-            &self.env.service("BILLING")?,
-            "close_workspace",
-            &CloseWorkspaceArgs {
-                actor: a.actor.clone(),
-                workspace: slug.to_owned(),
-                dry_run: true,
-            },
-        )
-        .await?;
         Ok(WorkspaceDeletion {
             repositories,
             projects,
             members,
-            billing: match closing {
-                Outcome::Ok(_) => None,
-                Outcome::Fail(failure) => Some(failure.message),
-            },
+            billing: self.billing_refusal(actor, slug).await?,
             protected: self.is_protected(&target.id, slug, target.protected != 0).await?,
         })
     }
@@ -345,7 +393,7 @@ impl Identity {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let slug = a.slug.trim().to_lowercase();
-        Ok(Outcome::Ok(self.deletion_facts(&a, &slug, &target).await?))
+        Ok(Outcome::Ok(self.deletion_facts(&a.actor, &slug, &target).await?))
     }
 
     pub async fn delete_workspace(&self, a: DeleteWorkspaceArgs) -> Result<Outcome<bool>> {
@@ -354,8 +402,78 @@ impl Identity {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let slug = a.slug.trim().to_lowercase();
-        let went = self.deletion_facts(&a, &slug, &workspace).await?;
-        if let Some(reason) = went.reason(&slug) {
+        let deleter = Deleter {
+            billing: &a.actor,
+            deleted_by: &a.actor.id,
+            by: &a.actor.username,
+            audit: AuditActor::of(&a.actor),
+            surface: a.surface.unwrap_or(Surface::Web),
+            rule: "owner",
+            message: Box::new(|purge| format!("Deleted {slug}; restorable by g1t's staff until {purge}")),
+            actor_id: Some(&a.actor.id),
+        };
+        self.soft_delete_workspace(&workspace, &slug, &deleter).await
+    }
+
+    /// g1t's staff delete a live workspace that `owner_id` (`owner`) is the
+    /// only owner of, as part of deleting that account (account_deletion.rs):
+    /// exactly as its owner would, refused the same way, with the staff
+    /// member as `deleted_by` and in sudo's audit log with `reason`.
+    pub(crate) async fn staff_delete_workspace(
+        &self,
+        slug: &str,
+        owner_id: &str,
+        owner: &str,
+        staff: &str,
+        reason: &str,
+    ) -> Result<Outcome<WorkspaceDeletedWith>> {
+        let slug = slug.trim().to_lowercase();
+        let Some(workspace) = self
+            .db
+            .prepare("SELECT id, protected FROM workspaces WHERE slug = ? AND deleted_at IS NULL")
+            .bind(&[slug.as_str().into()])?
+            .first::<Target>(None)
+            .await?
+        else {
+            return Ok(Outcome::fail(FailureCode::NotFound, format!("{slug} is not a live workspace any more.")));
+        };
+        let billing = staff_billing_actor(owner_id, staff, &slug);
+        let deleter = Deleter {
+            billing: &billing,
+            deleted_by: staff,
+            by: staff,
+            // The workspace's members read its audit log: it says g1t's
+            // staff did it, and sudo's log says who and why.
+            audit: AuditActor::system(),
+            surface: Surface::Web,
+            rule: "staff",
+            message: Box::new(|purge| {
+                format!("Deleted {slug} by g1t's staff, with the account {owner} that was its only owner; restorable by g1t's staff until {purge}")
+            }),
+            actor_id: None,
+        };
+        let id = workspace.id.clone();
+        match self.soft_delete_workspace(&workspace, &slug, &deleter).await? {
+            Outcome::Ok(_) => {}
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        }
+        self.record_for_staff(
+            &slug,
+            "workspace_deleted",
+            &format!("Deleted {slug} with the account {owner}, its only owner: {reason}"),
+            staff,
+        )
+        .await;
+        Ok(Outcome::Ok(WorkspaceDeletedWith { workspace_id: id, slug: slug.clone() }))
+    }
+
+    /// Deletes a live workspace softly, as every deletion does: refused if
+    /// it is protected or billing cannot settle it; billing closes it for
+    /// real first; then its row is marked, its audit log says so and
+    /// `workspace.deleting` tells every service.
+    async fn soft_delete_workspace(&self, workspace: &Target, slug: &str, deleter: &Deleter<'_>) -> Result<Outcome<bool>> {
+        let went = self.deletion_facts(deleter.billing, slug, workspace).await?;
+        if let Some(reason) = went.reason(slug) {
             let code = if went.protected { FailureCode::Forbidden } else { FailureCode::PaymentRequired };
             return Ok(Outcome::fail(code, reason));
         }
@@ -366,8 +484,8 @@ impl Identity {
             &self.env.service("BILLING")?,
             "close_workspace",
             &CloseWorkspaceArgs {
-                actor: a.actor.clone(),
-                workspace: slug.clone(),
+                actor: deleter.billing.clone(),
+                workspace: slug.to_owned(),
                 dry_run: false,
             },
         )
@@ -384,7 +502,7 @@ impl Identity {
             )
             .bind(&[
                 rfc3339(now).into(),
-                a.actor.id.as_str().into(),
+                deleter.deleted_by.into(),
                 purge.as_str().into(),
                 went_json(&went).into(),
                 workspace.id.as_str().into(),
@@ -392,21 +510,21 @@ impl Identity {
             .run()
             .await?;
         self.record_on_workspace(
-            &slug,
-            AuditActor::of(&a.actor),
-            a.surface.unwrap_or(Surface::Web),
+            slug,
+            deleter.audit.clone(),
+            deleter.surface,
             "workspace.deleted",
-            "owner",
-            format!("Deleted {slug}; restorable by g1t's staff until {purge}"),
+            deleter.rule,
+            (deleter.message)(&purge),
         )
         .await;
         self.announce(
             "workspace.deleting",
-            Some(&a.actor.id),
+            deleter.actor_id,
             WorkspaceDeleting {
-                workspace_id: workspace.id,
-                slug,
-                by: a.actor.username.clone(),
+                workspace_id: workspace.id.clone(),
+                slug: slug.to_owned(),
+                by: deleter.by.to_owned(),
                 purge_after: purge,
             },
         )
@@ -818,6 +936,16 @@ mod tests {
         assert_eq!(went_of(Some(&went_json(&went))), went);
         assert_eq!(went_of(None), WorkspaceDeletion::default());
         assert_eq!(went_of(Some("not json")), WorkspaceDeletion::default());
+    }
+
+    #[test]
+    fn billing_sees_staff_as_the_owner_closing_it_named_by_the_staff_member() {
+        let actor = staff_billing_actor("usr_ada", "staff@g1t.sh", "ada");
+        assert_eq!(actor.role_in("ada"), Some(Role::Owner));
+        assert_eq!(actor.role_in("globex"), None);
+        assert_eq!(actor.username, "staff@g1t.sh");
+        assert_eq!(actor.id, "usr_ada");
+        assert_eq!(actor.kind, PrincipalKind::User);
     }
 
     #[test]
