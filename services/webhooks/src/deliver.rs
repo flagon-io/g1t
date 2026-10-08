@@ -64,11 +64,13 @@ pub fn named_in(event: &Event) -> Option<(String, String)> {
 }
 
 /// The workspace an event belongs to when it is about no repository: a
-/// package of the workspace's own, unlinked from any repository. Such an
-/// event goes to the workspace's webhooks only. Events about a repository,
-/// and every other kind, are `None`: they are routed by their repository.
+/// package of the workspace's own, unlinked from any repository, or one of
+/// its teams. Such an event goes to the workspace's webhooks only. Events
+/// about a repository (a team given a role on one among them), and every
+/// other kind, are `None`: they are routed by their repository.
 pub fn workspace_scoped(event: &Event) -> Option<String> {
-    if event.repo_id.as_deref().is_some_and(|id| !id.is_empty()) || !event.kind.starts_with("package.") {
+    let own = event.kind.starts_with("package.") || event.kind.starts_with("team.");
+    if event.repo_id.as_deref().is_some_and(|id| !id.is_empty()) || !own {
         return None;
     }
     event.data["workspace"]
@@ -238,6 +240,12 @@ mod tests {
         // A linked package's events go by its repository.
         let linked = repo_event("package.published", json!({ "workspace": "acme", "repoId": "rep_1" }));
         assert_eq!(workspace_scoped(&linked), None);
+        // A team's events are the workspace's; one about a repository goes by it.
+        let mut team = repo_event("team.created", json!({ "workspace": "Acme", "team": "backend" }));
+        team.repo_id = None;
+        assert_eq!(workspace_scoped(&team).as_deref(), Some("acme"));
+        let granted = repo_event("team.repo_added", json!({ "workspace": "acme", "repoId": "rep_1" }));
+        assert_eq!(workspace_scoped(&granted), None);
         // Other events without a repository are not workspace events.
         let mut other = repo_event("issue.opened", json!({ "workspace": "acme" }));
         other.repo_id = None;

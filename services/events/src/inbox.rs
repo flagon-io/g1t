@@ -10,7 +10,7 @@
 //! | Event | Who | Reason | Severity |
 //! | --- | --- | --- | --- |
 //! | `agent.asked`, `pull.stalled` | the pull request's owner, and its issue's owner and assignees | agent | warning |
-//! | `pull.review_requested` | the reviewers asked | review_requested | warning |
+//! | `pull.review_requested` | the reviewers asked, and the people each team asked tells | review_requested | warning |
 //! | `issue.assigned`, `pull.assigned` | the people newly assigned | assign | info |
 //! | `checks.completed`, failed or errored | the pull request's owner | ci_activity | error |
 //! | `workflow.completed`, failed | the pull request's owner, or whoever pushed | ci_activity | error |
@@ -19,8 +19,8 @@
 //! | `review.completed` by g1t | the pull request's owner | author | success, or info for changes asked |
 //! | `pull.ready` for a change g1t made | whoever asked g1t for it | author | success |
 //! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
-//! | `comment.created` | everyone mentioned, then everyone subscribed | mention, or why they are subscribed | info (success for an approval) |
-//! | `issue.opened`, `pull.opened` | whoever was assigned or asked to review; watchers | assign, review_requested, subscribed | info |
+//! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
+//! | `issue.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
 //!
 //! Watchers of a repository at `all` (or `custom`, for the kinds they
 //! chose) hear of every issue and pull request opened, commented on,
@@ -144,9 +144,22 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         },
         "deployment.failed" | "deployment.succeeded" => on(number("number"), None),
         "comment.created" => on(Some(number("number")?), Some(text("commentId")?)),
+        // Security alerts are threads of their own, not of an issue.
+        kind if SECURITY_EVENTS.contains(&kind) => on(None, None),
         _ => None,
     }
 }
+
+/// The security service's events the inbox tells people of: new alerts,
+/// and push protection bypasses asked for and decided. Fixes and
+/// dismissals are on the Security page and in webhooks.
+pub const SECURITY_EVENTS: [&str; 5] = [
+    "secret_scanning_alert.created",
+    "code_scanning_alert.created",
+    "vulnerability_alert.created",
+    "secret_scanning.bypass_requested",
+    "secret_scanning.bypass_reviewed",
+];
 
 /// Where an event's items go: which thread, what it is, and where it is.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,6 +204,17 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 number: None,
                 run_id: text("runId"),
                 link: None,
+            }
+        }
+        // One alert, or one bypass request: its page is the link.
+        kind if SECURITY_EVENTS.contains(&kind) => {
+            let which = text("requestId").or_else(|| text("alertId")).unwrap_or_else(|| event.id.clone());
+            Thread {
+                key: format!("{}/security/{which}", wanted.repo_id),
+                kind: None,
+                number: None,
+                run_id: None,
+                link: text("link"),
             }
         }
         _ => match wanted.number {
@@ -313,6 +337,20 @@ fn activity_of(subject: &InboxSubject) -> &'static str {
 }
 
 /// The names in an event's list field, such as the reviewers just asked.
+/// The teams an event asked to review: each `workspace/slug` with the
+/// people it tells.
+fn teams_asked(data: &serde_json::Value) -> Vec<(String, Vec<String>)> {
+    data["teams"]
+        .as_array()
+        .map(|teams| {
+            teams
+                .iter()
+                .filter_map(|team| Some((team["team"].as_str()?.to_owned(), names(team, "notified"))))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn names(data: &serde_json::Value, key: &str) -> Vec<String> {
     data[key]
         .as_array()
@@ -342,7 +380,7 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             | "pull.stalled"
             | "deployment.failed"
             | "deployment.succeeded"
-    );
+    ) || SECURITY_EVENTS.contains(&event.kind.as_str());
     let mut told = Told {
         actor: if outcome { &nobody } else { actor },
         audience,
@@ -368,9 +406,25 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             }
         }
         ("pull.review_requested", Some(pull)) => {
-            let title = format!("{who} asked you to review {at}");
+            // Asked because the CODEOWNERS file says they own what changed.
+            let owned = data["codeOwners"].as_bool() == Some(true);
+            let title = if owned {
+                format!("{at} changes files you own")
+            } else {
+                format!("{who} asked you to review {at}")
+            };
             for name in names(data, "reviewers") {
                 told.tell(&name, Reason::ReviewRequested, Severity::Warning, &title, &pull.title, true);
+            }
+            for (team, people) in teams_asked(data) {
+                let title = if owned {
+                    format!("{at} changes files @{team} owns")
+                } else {
+                    format!("{who} asked @{team} to review {at}")
+                };
+                for name in people {
+                    told.tell(&name, Reason::ReviewRequested, Severity::Warning, &title, &pull.title, true);
+                }
             }
         }
         ("issue.assigned" | "pull.assigned", Some(on)) => {
@@ -386,6 +440,15 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             }
             for name in &on.reviewers {
                 told.tell(name, Reason::ReviewRequested, Severity::Warning, &format!("{who} asked you to review {at}"), &on.title, true);
+            }
+            for name in &on.mentions {
+                told.tell(name, Reason::Mention, Severity::Info, &format!("{who} mentioned you on {at}"), &on.title, true);
+            }
+            for team in &on.team_mentions {
+                let title = format!("{who} mentioned @{} on {at}", team.team);
+                for name in &team.members {
+                    told.tell(name, Reason::TeamMention, Severity::Info, &title, &on.title, true);
+                }
             }
             told.tell_watchers(activity_of(on), Severity::Info, &title, &on.title);
         }
@@ -485,6 +548,42 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             told.tell_subscribed(on, Some(Reason::StateChange), severity, &title, &on.title);
             told.tell_watchers(activity_of(on), severity, &title, &on.title);
         }
+        (kind, None) if SECURITY_EVENTS.contains(&kind) => {
+            let severity = match data["severity"].as_str() {
+                _ if kind == "secret_scanning.bypass_requested" => Severity::Warning,
+                _ if kind == "secret_scanning.bypass_reviewed" => Severity::Info,
+                Some("critical" | "high") => Severity::Error,
+                _ => Severity::Warning,
+            };
+            let what = data["title"].as_str().unwrap_or("A security alert");
+            let title = match kind {
+                "secret_scanning.bypass_requested" => format!("{who} asked to bypass push protection in {repo}"),
+                "secret_scanning.bypass_reviewed" => {
+                    let verdict = data["state"].as_str().unwrap_or("reviewed");
+                    format!("Your request to bypass push protection in {repo} was {verdict}")
+                }
+                _ if data["pusher"].is_string() => format!("A push to {repo} was blocked: it adds a secret"),
+                _ => format!("New security alert in {repo}"),
+            };
+            // Whoever pushed a blocked secret, and those the service names
+            // (the workspace's owners, or whoever asked for a bypass).
+            if let Some(pusher) = data["pusher"].as_str() {
+                told.tell(pusher, Reason::SecurityAlert, Severity::Error, &title, what, true);
+            }
+            for name in names(data, "notify") {
+                told.tell(&name, Reason::SecurityAlert, severity, &title, what, true);
+            }
+            // Watchers who chose security alerts, if they may see findings:
+            // the service lists who may (`members`), as findings are never
+            // shown to someone who cannot change the code.
+            if !kind.starts_with("secret_scanning.bypass") {
+                let members = names(data, "members");
+                let watching: Vec<String> = told.audience.watching("security").collect();
+                for name in watching.iter().filter(|name| members.iter().any(|member| member.eq_ignore_ascii_case(name))) {
+                    told.tell(name, Reason::SecurityAlert, severity, &title, what, false);
+                }
+            }
+        }
         ("comment.created", Some(on)) => {
             let Some(comment) = on.comment.as_ref().filter(|comment| !comment.event) else {
                 return Vec::new();
@@ -500,6 +599,12 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             for name in &comment.mentions {
                 let title = format!("{who} mentioned you on {at}");
                 told.tell(name, Reason::Mention, Severity::Info, &title, body, true);
+            }
+            for team in &comment.team_mentions {
+                let title = format!("{who} mentioned @{} on {at}", team.team);
+                for name in &team.members {
+                    told.tell(name, Reason::TeamMention, Severity::Info, &title, body, true);
+                }
             }
             let (severity, title) = match comment.verdict.as_deref() {
                 Some("approve") => (Severity::Success, format!("{who} approved {at}")),
@@ -540,6 +645,23 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
                 for name in &comment.mentions {
                     add(name, Reason::Mention);
                 }
+                for team in &comment.team_mentions {
+                    for name in &team.members {
+                        add(name, Reason::TeamMention);
+                    }
+                }
+            }
+        }
+        "issue.opened" | "pull.opened" => {
+            if let Some(on) = subject {
+                for name in &on.mentions {
+                    add(name, Reason::Mention);
+                }
+                for team in &on.team_mentions {
+                    for name in &team.members {
+                        add(name, Reason::TeamMention);
+                    }
+                }
             }
         }
         "issue.assigned" | "pull.assigned" => {
@@ -550,6 +672,11 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
         "pull.review_requested" => {
             for name in names(&event.data, "reviewers") {
                 add(&name, Reason::ReviewRequested);
+            }
+            for (_, people) in teams_asked(&event.data) {
+                for name in people {
+                    add(&name, Reason::ReviewRequested);
+                }
             }
         }
         _ => {}
@@ -1581,6 +1708,79 @@ mod tests {
     }
 
     #[test]
+    fn teams_asked_to_review_tell_the_people_they_name() {
+        let requested = event(
+            "pull.review_requested",
+            Some("usr_ana"),
+            json!({ "number": 7, "reviewers": ["cy"], "teams": [
+                { "team": "acme/backend", "notified": ["cy", "dee", "ana"], "assigned": ["cy"] }
+            ] }),
+        );
+        let notices_ = notices(&requested, "acme/rocket", &actor("usr_ana", "ana"), Some(&pull()), &nobody());
+        // cy was picked and is told as a reviewer; dee through the team;
+        // never whoever asked.
+        assert_eq!(
+            told(&notices_),
+            vec![("cy", Reason::ReviewRequested, Severity::Warning), ("dee", Reason::ReviewRequested, Severity::Warning)]
+        );
+        assert_eq!(notices_[0].title, "ana asked you to review acme/rocket#7");
+        assert_eq!(notices_[1].title, "ana asked @acme/backend to review acme/rocket#7");
+        assert_eq!(
+            subscribes(&requested, Some(&pull())),
+            vec![("cy".into(), Reason::ReviewRequested), ("dee".into(), Reason::ReviewRequested), ("ana".into(), Reason::ReviewRequested)]
+        );
+        // Asked by the CODEOWNERS file.
+        let owned = event(
+            "pull.review_requested",
+            None,
+            json!({ "number": 7, "reviewers": ["bo"], "codeOwners": true, "teams": [{ "team": "acme/docs", "notified": ["wren"], "assigned": [] }] }),
+        );
+        let notices_ = notices(&owned, "acme/rocket", &Actor::default(), Some(&pull()), &nobody());
+        assert_eq!(notices_[0].title, "acme/rocket#7 changes files you own");
+        assert_eq!(notices_[1].title, "acme/rocket#7 changes files @acme/docs owns");
+    }
+
+    #[test]
+    fn a_team_mention_tells_its_people_once_and_a_name_wins() {
+        let mut on = comment(person("usr_bo", "bo"), "cc @ana @acme/backend", &["ana"]);
+        if let Some(comment) = on.comment.as_mut() {
+            comment.team_mentions = vec![TeamMentioned {
+                team: "acme/backend".into(),
+                members: vec!["ana".into(), "cy".into(), "bo".into()],
+            }];
+        }
+        let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
+        let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &nobody());
+        let mentioned: Vec<(&str, Reason)> = notices_.iter().map(|n| (n.username.as_str(), n.reason)).filter(|(_, r)| matches!(r, Reason::Mention | Reason::TeamMention)).collect();
+        assert_eq!(mentioned, vec![("ana", Reason::Mention), ("cy", Reason::TeamMention)]);
+        assert_eq!(
+            notices_.iter().find(|n| n.username == "cy").unwrap().title,
+            "bo mentioned @acme/backend on acme/rocket#7"
+        );
+        let subscribed = subscribes(&created, Some(&on));
+        assert!(subscribed.contains(&("cy".into(), Reason::TeamMention)));
+        assert!(subscribed.contains(&("ana".into(), Reason::Mention)));
+    }
+
+    #[test]
+    fn a_description_tells_the_people_and_teams_it_mentions() {
+        let mut on = pull();
+        on.mentions = vec!["dee".into()];
+        on.team_mentions = vec![TeamMentioned {
+            team: "acme/web".into(),
+            members: vec!["eve".into()],
+        }];
+        let opened = event("pull.opened", Some("usr_ana"), json!({ "number": 7 }));
+        let notices_ = notices(&opened, "acme/rocket", &actor("usr_ana", "ana"), Some(&on), &nobody());
+        assert!(told(&notices_).contains(&("dee", Reason::Mention, Severity::Info)));
+        assert!(told(&notices_).contains(&("eve", Reason::TeamMention, Severity::Info)));
+        assert_eq!(
+            subscribes(&opened, Some(&on)),
+            vec![("dee".into(), Reason::Mention), ("eve".into(), Reason::TeamMention)]
+        );
+    }
+
+    #[test]
     fn reviewers_and_assignees_asked_are_told_never_whoever_asked() {
         let requested = event("pull.review_requested", Some("usr_ana"), json!({ "number": 7, "reviewers": ["bo", "g1t", "ana"] }));
         let notices_ = notices(&requested, "acme/rocket", &actor("usr_ana", "ana"), Some(&pull()), &nobody());
@@ -1670,6 +1870,52 @@ mod tests {
         let preview = event("deployment.failed", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
         assert_eq!(told(&notices(&preview, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())), vec![("ana", Reason::CiActivity, Severity::Error)]);
         assert_eq!(thread_of(&preview, &wants(&preview).unwrap(), Some(&pull())).key, "rep_1/deploy/prj_1/7");
+    }
+
+    #[test]
+    fn security_alerts_tell_the_pusher_the_owners_and_member_watchers() {
+        let blocked = event(
+            "secret_scanning_alert.created",
+            None,
+            json!({
+                "repoId": "rep_1", "alertId": "sec_1", "alertType": "secret_scanning", "severity": "critical",
+                "title": "An AWS access key in config/prod.env", "link": "/acme/rocket/security/secret-scanning/sec_1",
+                "state": "open", "pusher": "bo", "notify": ["ana"], "members": ["ana", "bo", "cy"]
+            }),
+        );
+        assert_eq!(wants(&blocked), Some(Wanted { repo_id: "rep_1".into(), number: None, comment_id: None }));
+        // cy watches for security alerts and is a member; eve watches
+        // everything but cannot see findings; dee watches issues only.
+        let audience = watched(&[
+            ("cy", WatchLevel::Custom, &["security"]),
+            ("dee", WatchLevel::Custom, &["issues"]),
+            ("eve", WatchLevel::All, &[]),
+        ]);
+        let notices_ = notices(&blocked, "acme/rocket", &Actor::default(), None, &audience);
+        assert_eq!(
+            told(&notices_),
+            vec![
+                ("bo", Reason::SecurityAlert, Severity::Error),
+                ("ana", Reason::SecurityAlert, Severity::Error),
+                ("cy", Reason::SecurityAlert, Severity::Error),
+            ]
+        );
+        assert_eq!(notices_[0].title, "A push to acme/rocket was blocked: it adds a secret");
+        assert_eq!(notices_[0].body, "An AWS access key in config/prod.env");
+        let thread = thread_of(&blocked, &wants(&blocked).unwrap(), None);
+        assert_eq!(thread.key, "rep_1/security/sec_1");
+        assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/security/secret-scanning/sec_1");
+        // A bypass request goes to the reviewers named, never to watchers.
+        let requested = event(
+            "secret_scanning.bypass_requested",
+            Some("usr_bo"),
+            json!({ "repoId": "rep_1", "alertId": "sec_1", "requestId": "byp_1", "title": "An AWS access key in a.env", "notify": ["ana"], "link": "/acme/-/security/bypass-requests" }),
+        );
+        let notices_ = notices(&requested, "acme/rocket", &actor("usr_bo", "bo"), None, &audience);
+        assert_eq!(told(&notices_), vec![("ana", Reason::SecurityAlert, Severity::Warning)]);
+        assert_eq!(notices_[0].title, "bo asked to bypass push protection in acme/rocket");
+        // Fixes and dismissals are not news to the inbox.
+        assert_eq!(wants(&event("code_scanning_alert.fixed", None, json!({ "repoId": "rep_1" }))), None);
     }
 
     #[test]

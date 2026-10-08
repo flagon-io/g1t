@@ -3,10 +3,10 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 14 tools, one per kind of
+The MCP server at `https://mcp.g1t.sh` exposes 16 tools, one per kind of
 thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
-`plan`, `memory`, `workflow`, `secret`, `webhook`, `access`, `workspace`,
-`notifications` and `account`. Each tool takes an `action` that says what to do. Every
+`plan`, `memory`, `workflow`, `secret`, `security`, `webhook`, `access`,
+`team`, `workspace`, `notifications` and `account`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
 
@@ -163,7 +163,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, merging a pull request, removing a self-hosted runner, deleting a runner group, and changing runner settings. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, merging a pull request, removing a self-hosted runner, deleting a runner group, and changing runner settings. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -225,8 +225,9 @@ repositories, code on default branches, issues, pull requests and people.
 
 ## `repository`
 
-Repositories: find, read and create them, change their settings, and see
-and dismiss their [security alerts](/guides/security/). Deleting, purging
+Repositories: find, read and create them, change their settings, manage
+their [labels](/guides/labels/) and [milestones](/guides/milestones/), and
+see and dismiss their [security alerts](/guides/security/). Deleting, purging
 and changing visibility need `confirm`, the repository's full name typed
 out.
 
@@ -239,7 +240,17 @@ out.
 | [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: the default branch's required checks, approvals, bypassing checks, being up to date, the merge queue, and how g1t's agents are reviewed, revised and merged. | `repo` | `repo:read` |
 | [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings, including `hold_low_confidence`, which holds g1t's [low-confidence](/guides/working-with-g1t/#how-sure-the-agent-is) change for a person. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
 | [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
-| [`list_labels`](/reference/api/issues/list-labels/) | The labels available on its issues. | `repo` | `repo:read` |
+| [`codeowners`](/reference/api/repositories/get-codeowners-errors/) | Its [CODEOWNERS file](/guides/codeowners/) checked as a linter would, on `ref` (the default branch unless you say): its `path`, `rules`, `sections`, and `errors`, each with `line`, `kind`, `token` and `message`. Read role. | `repo` | `repo:read` |
+| [`list_labels`](/reference/api/labels-and-milestones/list-labels/) | Its labels by name, each with `color`, `description`, and how many `issues` and `pulls` carry it. | `repo` | `repo:read` |
+| [`create_label`](/reference/api/labels-and-milestones/create-label/) | Create a label named `label`, with `color` (six hex digits; chosen from the name when left out) and `description`. Triage role. | `repo`, `label` | `issues:write` |
+| [`update_label`](/reference/api/labels-and-milestones/update-label/) | Change a label's `new_name`, `color` or `description`. Renaming renames it on everything that carries it. Triage role. | `repo`, `label` | `issues:write` |
+| [`delete_label`](/reference/api/labels-and-milestones/delete-label/) | Delete a label, from everything that carries it. Triage role. | `repo`, `label` | `issues:write` |
+| [`add_default_labels`](/reference/api/labels-and-milestones/add-default-labels/) | Add the default labels it is missing. Triage role. | `repo` | `issues:write` |
+| [`list_milestones`](/reference/api/labels-and-milestones/list-milestones/) | Its milestones, open ones soonest due first, each with `due_on`, `state`, `open_items` and `closed_items`. `state` filters them. | `repo` | `repo:read` |
+| [`get_milestone`](/reference/api/labels-and-milestones/get-milestone/) | One milestone with its issues and pull requests. | `repo`, `milestone` | `repo:read` |
+| [`create_milestone`](/reference/api/labels-and-milestones/create-milestone/) | Create a milestone with `title`, `description` and `due_on` (`YYYY-MM-DD`). Triage role. | `repo`, `title` | `issues:write` |
+| [`update_milestone`](/reference/api/labels-and-milestones/update-milestone/) | Change its `title`, `description`, `due_on` (`""` clears it) or `state` (`open` or `closed`). Triage role. | `repo`, `milestone` | `issues:write` |
+| [`delete_milestone`](/reference/api/labels-and-milestones/delete-milestone/) | Delete a milestone; what was in it is in none. Triage role. | `repo`, `milestone` | `issues:write` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first. `before` pages back. | `repo` | `repo:read` |
 | [`rename_branch`](/reference/api/repositories/rename-branch/) | Rename a branch; its pull requests follow, and web addresses that name the old branch redirect. Write role; the default branch needs Admin. | `repo`, `branch`, `new_name` | `repo:write` |
 | [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
@@ -258,7 +269,9 @@ out.
 `update_settings` takes `required_checks` (at most 20 names),
 `required_approvals`, `count_agent_approvals`,
 `allow_ignoring_checks`, `require_up_to_date`, `agent_review`,
-`max_revisions`, `auto_merge`, `merge_queue` and `hold_low_confidence`. See
+`max_revisions`, `auto_merge`, `merge_queue`, `hold_low_confidence` and
+`require_code_owner_review`, which holds a merge until the
+[code owners](/guides/codeowners/) of every file it changes approve. See
 [required status checks](/guides/pull-requests/#required-status-checks) and
 [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for).
 `update` with `private` or `default_branch` also needs `repo:admin`.
@@ -275,10 +288,14 @@ requests already made for it. Issues and pull requests share numbers, so
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`list`](/reference/api/issues/list-issues/) | Issues, newest first, by `state` and `label`. | `repo` | `issues:read` |
+| [`list`](/reference/api/issues/list-issues/) | Issues, newest first, by `state`, `label` and `milestone` (its number). | `repo` | `issues:read` |
 | [`get`](/reference/api/issues/get-issue/) | An issue: description (which may say what done means, under **Definition of done**), labels, comments, and every pull request made for it. | `repo`, `number` | `issues:read` |
-| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body` and `labels`. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `repo`, `title` | `issues:write` |
-| [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels or assignees. Labels and assignees each replace the whole set. | `repo`, `number` | `issues:write` |
+| [`create`](/reference/api/issues/create-issue/) | Open an issue, with `body`, `labels` and `milestone`. A label the repository lacks is created for someone with the Triage role. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `repo`, `title` | `issues:write` |
+| [`update`](/reference/api/issues/update-issue/) | Change its title, body, labels, milestone or assignees. Labels and assignees each replace the whole set; `milestone` `null` or `0` takes it out of its milestone. | `repo`, `number` | `issues:write` |
+| [`labels`](/reference/api/issues/list-issue-labels/) | The labels an issue or pull request carries, with their colors. | `repo`, `number` | `issues:read` |
+| [`add_labels`](/reference/api/issues/add-issue-labels/) | Add `labels` to an issue or pull request, keeping the ones it has. | `repo`, `number`, `labels` | `issues:write` |
+| [`set_labels`](/reference/api/issues/set-issue-labels/) | Replace an issue's or pull request's labels with `labels`. | `repo`, `number`, `labels` | `issues:write` |
+| [`remove_labels`](/reference/api/issues/remove-issue-labels/) | Take `label`, or several `labels`, off an issue or pull request; with neither, all of them. | `repo`, `number` | `issues:write` |
 | [`close`](/reference/api/issues/close-issue/) | Close it as `completed` or `not_planned`. | `repo`, `number` | `issues:write` |
 | [`reopen`](/reference/api/issues/reopen-issue/) | Reopen a closed issue. | `repo`, `number` | `issues:write` |
 | [`comment`](/reference/api/issues/add-comment/) | Comment on an issue or a pull request; with `path` and `line`, on one line of a pull request's change. | `repo`, `number`, `body` | `issues:write` |
@@ -295,16 +312,19 @@ far.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. | `repo` | `pull_requests:read` |
-| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
+| [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. `label`, `milestone` and `base` filter them. | `repo` | `pull_requests:read` |
+| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
 | [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
-| [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. | `repo` | `pull_requests:write` |
+| [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. It merges into the default branch unless `base` names another. | `repo` | `pull_requests:write` |
+| [`update`](/reference/api/pull-requests/update-pull-request/) | Change its `base` (the branch it merges into; Write role), `labels`, `milestone`, `assignees` or `reviewers`. | `repo`, `number` | `pull_requests:write` |
 | [`record_session`](/reference/api/sessions/record-session/) | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | `repo`, `number`, `entries` | `pull_requests:write` |
 | [`read_session`](/reference/api/sessions/read-session/) | The recorded session, oldest first. `after` skips to entries after a sequence number. | `repo`, `number` | `pull_requests:read` |
 | [`ready`](/reference/api/pull-requests/mark-pull-request-ready/) | Mark a draft ready for review. The summary becomes its description. | `repo`, `number`, `summary` | `pull_requests:write` |
+| [`request_reviewers`](/reference/api/pull-requests/request-reviewers/) | Ask more people (`reviewers`, by username; `g1t` for a g1t agent) or teams (`team_reviewers`, as `workspace/team` or a slug of the repository's workspace) to review it, added to whoever is asked already. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
+| [`remove_requested_reviewers`](/reference/api/pull-requests/remove-requested-reviewers/) | Stop asking them. Reviews they gave stay. | `repo`, `number` | `pull_requests:write` |
 | [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request, nor one g1t made for you. | `repo`, `number`, `verdict` | `pull_requests:write` |
 | [`close`](/reference/api/pull-requests/close-pull-request/) | Close it without merging. | `repo`, `number` | `pull_requests:write` |
-| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on `main` and resolve its issue, or add it to the [merge queue](/guides/merge-queue/), once every [required check](/guides/pull-requests/#required-status-checks) has passed on its head. `ignore_checks` bypasses them where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
+| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on its [base](/guides/base-branches/), or add it to the [merge queue](/guides/merge-queue/), once every [required check](/guides/pull-requests/#required-status-checks) has passed on its head. Into the default branch, it resolves its issue. `ignore_checks` bypasses required checks where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
 | [`merge_queue`](/reference/api/pull-requests/get-merge-queue/) | The pull requests waiting to land, in order, each with the state it is tested in and how that went; then those that recently landed or left. | `repo` | `pull_requests:read` |
 
 `record_session` takes a list of `entries`, each with a `kind` (`prompt`,
@@ -395,6 +415,53 @@ workspace's own. Secret values are never returned.
 | [`set_variable`](/reference/api/secrets-and-variables/set-actions-variable/) | Add or change a config row, as for secrets. | `setting` | `secrets:admin` |
 | [`delete_variable`](/reference/api/secrets-and-variables/delete-actions-variable/) | Remove one row (`id`) or every row of the key. | `setting` | `secrets:admin` |
 
+## `security`
+
+A repository's [security](/guides/security/): secret scanning alerts and
+push protection bypasses, [custom patterns](/guides/security/secret-protection/#custom-patterns),
+[code scanning](/guides/security/code-scanning/) and SARIF uploads,
+vulnerability alerts, the [dependency graph and its SBOM](/guides/security/supply-chain/),
+dependency review, settings, and a workspace's
+[overview](/guides/security/security-overview/). `secret_alerts` is the
+default action. Findings are shown only to those with Write on the
+repository; on private repositories, some actions need the
+[Security and quality activation](/guides/security/pricing/), and are
+refused with `402` without it.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`secret_alerts`](/reference/api/secret-scanning/list-secret-scanning-alerts/) | Secret scanning alerts, newest first: `repo`, or `workspace` for all of one. Filter with `state`, `secret_type`, `validity` and `bypassed`. Never the secret itself. | None | `security:read` |
+| [`secret_alert`](/reference/api/secret-scanning/get-secret-scanning-alert/) | One alert by `id`, with where it was found, its activity and bypass requests, and whether you may bypass it. | `repo`, `id` | `security:read` |
+| [`update_secret_alert`](/reference/api/secret-scanning/update-secret-scanning-alert/) | Dismiss (`state` `dismissed`, `reason` `false_positive`, `used_in_tests`, `revoked` or `wont_fix`, optional `comment`) or reopen (`state` `open`). Admin role. | `repo`, `id`, `state` | `security:write` |
+| [`secret_locations`](/reference/api/secret-scanning/list-secret-scanning-locations/) | Every file, line and commit a secret is in. | `repo`, `id` | `security:read` |
+| [`bypass`](/reference/api/secret-scanning/bypass-push-protection/) | Push past push protection for a blocked secret with a `reason` (`false_positive`, `used_in_tests`, `will_fix_later`), or ask to when the workspace delegates bypasses. | `repo`, `id`, `reason` | `security:write` |
+| [`check_validity`](/reference/api/secret-scanning/check-secret-validity/) | Ask a landed secret's issuer whether it still works. | `repo`, `id` | `security:write` |
+| [`bypass_requests`](/reference/api/secret-scanning/list-bypass-requests/) | A workspace's bypass requests, pending first; filter with `state` and `repo`. | `workspace` | `security:read` |
+| [`review_bypass`](/reference/api/secret-scanning/review-bypass-request/) | `decision` `approve` or `deny` (owners and the repository's admins), or `cancel` your own. | `workspace`, `id`, `decision` | `security:write` |
+| [`patterns`](/reference/api/secret-scanning/list-custom-patterns/) | Custom patterns: a repository's and its workspace's (`repo`), or a workspace's (`workspace`). | None | `security:read` |
+| [`create_pattern`](/reference/api/secret-scanning/create-custom-pattern/) | Create a pattern: `pattern_name`, `pattern`, optional `before`, `after`, `test_strings`, and `publish`. | `pattern_name`, `pattern` | `security:write` |
+| [`update_pattern`](/reference/api/secret-scanning/update-custom-pattern/) | Change, publish or unpublish one. | `id`, `pattern_name`, `pattern` | `security:write` |
+| [`delete_pattern`](/reference/api/secret-scanning/delete-custom-pattern/) | Delete one; its alerts stay. | `id` | `security:write` |
+| [`dry_run_pattern`](/reference/api/secret-scanning/dry-run-custom-pattern/) | Run a `pattern` over the default branch without saving it. | `pattern` | `security:write` |
+| [`code_alerts`](/reference/api/code-scanning/list-code-scanning-alerts/) | Code scanning alerts, open and worst first: `repo`, or `workspace`. Filter with `state`, `severity`, `tool`, `rule_id`. | None | `security:read` |
+| [`code_alert`](/reference/api/code-scanning/get-code-scanning-alert/) | One alert by `number`, with its activity and analyses. | `repo`, `number` | `security:read` |
+| [`update_code_alert`](/reference/api/code-scanning/update-code-scanning-alert/) | Dismiss (`state` `dismissed`, `dismissed_reason` `false_positive`, `wont_fix` or `used_in_tests`) or reopen. | `repo`, `number`, `state` | `security:write` |
+| [`analyses`](/reference/api/code-scanning/list-code-scanning-analyses/) | Analyses, newest first. | `repo` | `security:read` |
+| [`upload_sarif`](/reference/api/code-scanning/upload-sarif/) | Upload a SARIF 2.1.0 file, gzipped and base64-encoded, for a `commit_sha` and `ref`. | `repo`, `commit_sha`, `ref`, `sarif` | `security:write` |
+| [`sarif_upload`](/reference/api/code-scanning/get-sarif-upload/) | Whether an upload was read, its analyses and errors. | `repo`, `id` | `security:read` |
+| [`fix`](/reference/api/code-scanning/fix-security-alert/) | Put g1t on an issue to fix a code scanning, vulnerability or secret alert. Also needs `issues:write` and `agents:run`. | `repo`, `id` | `security:write` |
+| [`vulnerability_alerts`](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts: `repo`, or `workspace`. Filter with `state`, `severity`, `ecosystem`, `package`. | None | `security:read` |
+| [`vulnerability_alert`](/reference/api/supply-chain/get-vulnerability-alert/) | One alert by `id`. | `repo`, `id` | `security:read` |
+| [`update_vulnerability_alert`](/reference/api/supply-chain/update-vulnerability-alert/) | Dismiss (`state` `dismissed`, `reason` `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate` or `not_used`) or reopen. | `repo`, `id`, `state` | `security:write` |
+| [`dependency_graph`](/reference/api/supply-chain/get-dependency-graph/) | Every package the lockfiles resolve, direct or transitive, with licenses. | `repo` | `security:read` |
+| [`sbom`](/reference/api/supply-chain/get-sbom/) | The dependency graph as an SPDX 2.3 document, in `sbom`. | `repo` | `security:read` |
+| [`compare_dependencies`](/reference/api/supply-chain/compare-dependencies/) | What changes between `basehead` (`base...head`), and whether it passes dependency review. | `repo`, `basehead` | `security:read` |
+| [`settings`](/reference/api/security-settings/get-security-settings/) | A repository's security settings, and whether the paid features are on. | `repo` | `security:read` |
+| [`update_settings`](/reference/api/security-settings/update-security-settings/) | Change `code_scanning_gate`, `dependency_review`, `review_fail_on`, `review_deny_licenses`, `review_comment`. Maintain role. | `repo` | `security:write` |
+| [`workspace_settings`](/reference/api/security-settings/get-workspace-security-settings/) | A workspace's delegated bypass and validity checks. | `workspace` | `security:read` |
+| [`update_workspace_settings`](/reference/api/security-settings/update-workspace-security-settings/) | Turn `delegated_bypass` or `validity_checks` on or off. Owners only. | `workspace` | `security:write` |
+| [`overview`](/reference/api/security-settings/get-security-overview/) | A workspace's alerts by type and severity, trends and coverage. | `workspace` | `security:read` |
+
 ## `webhook`
 
 HTTPS addresses that are sent signed events as they happen. Give `repo` for
@@ -429,6 +496,32 @@ permission. An agent's token cannot use any of these.
 | [`revoke_invitation`](/reference/api/access/revoke-repo-invitation/) | Withdraw a pending invitation. Needs the Admin role. | `repo`, `id` | `access:admin` |
 | [`set_base_permission`](/reference/api/access/set-base-permission/) | What every member gets on each repository: `none`, `read`, `write` (the default) or `admin`. Owners only. | `workspace`, `base_permission` | `access:admin` |
 | [`list_outside_collaborators`](/reference/api/access/list-outside-collaborators/) | People with roles on its repositories who are not members, and what they can reach. Owners only. | `workspace` | `access:read` |
+
+## `team`
+
+[Teams](/guides/teams/): groups of a workspace's members, given roles on
+repositories together, mentioned as `@workspace/team` and asked to review
+together. Name a team by `workspace` and its slug, `team`. Any member may
+create one; the workspace's owners and the team's maintainers manage it. A
+`secret` team is seen only by its own people and the owners. Changes are
+for people: an agent's or a workspace's token cannot make them.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/teams/list-teams/) | The workspace's teams you can see, yours first; `query` narrows by name or slug. Members only. | `workspace` | `workspace:read` |
+| [`get`](/reference/api/teams/get-team/) | One team: its `visibility`, `parent`, `notify`, `review_assignment`, counts, your `viewer_role` and whether you may change it (`can_manage`). | `workspace`, `team` | `workspace:read` |
+| [`create`](/reference/api/teams/create-team/) | Create a team; you become its maintainer. `slug` is made from `name` unless given; `visibility`, `parent`, `notify`, and `members` to add by username. | `workspace`, `name` | `workspace:admin` |
+| [`update`](/reference/api/teams/update-team/) | Change its `name`, `slug`, `description`, `visibility`, `parent` (`""` for none), `notify` or `review_assignment`. Owners and its maintainers. | `workspace`, `team` | `workspace:admin` |
+| [`delete`](/reference/api/teams/delete-team/) | Delete it; its child teams move up to its parent, and the roles it gave go. Owners and its maintainers. | `workspace`, `team` | `workspace:admin` |
+| [`list_members`](/reference/api/teams/list-team-members/) | Its people and their `role` (`member` or `maintainer`); with `include_child_teams`, its child teams' people too, each with `via`. | `workspace`, `team` | `workspace:read` |
+| [`set_member`](/reference/api/teams/set-team-member/) | Add a member of the workspace, or change their `role`. Owners and its maintainers. | `workspace`, `team`, `username` | `workspace:admin` |
+| [`remove_member`](/reference/api/teams/remove-team-member/) | Take someone out. Owners and its maintainers; anyone may leave. | `workspace`, `team`, `username` | `workspace:admin` |
+| [`list_child_teams`](/reference/api/teams/list-child-teams/) | The teams nested directly under it. | `workspace`, `team` | `workspace:read` |
+| [`list_repos`](/reference/api/teams/list-team-repos/) | The repositories it has a role on, with `inherited_from` for one a parent gives it. | `workspace`, `team` | `workspace:read` |
+| [`set_repo`](/reference/api/teams/set-team-repo/) | Give it a `role` (read, triage, write, maintain or admin) on a repository of its workspace, named by `repo` (its name, or `owner/name`). Admin role on the repository. | `workspace`, `team`, `repo`, `role` | `access:admin` |
+| [`remove_repo`](/reference/api/teams/remove-team-repo/) | Take its role on a repository away. Admin role on the repository, an owner, or one of its maintainers. | `workspace`, `team`, `repo` | `access:admin` |
+| [`set_review_assignment`](/reference/api/teams/set-team-review-assignment/) | Whom it picks when asked to review: `enabled`, `algorithm` (`round_robin` or `load_balance`), `count` (1 to 10), `skip_busy` and `busy_at`, `include_child_teams`, `excluded` and `notify_team`. Fields left out keep their value. Owners and its maintainers. | `workspace`, `team` | `workspace:admin` |
+| [`list_user_teams`](/reference/api/teams/list-user-teams/) | The teams someone is in. Members only. | `workspace`, `username` | `workspace:read` |
 
 ## `workspace`
 
@@ -516,17 +609,20 @@ actions it may use depends on the kind of run.
 
 | Run | Actions |
 | --- | --- |
-| Implement, revise, answer | Reading: `repository` `get`, `list_labels` and `list_events`; `issue` `list` and `get`; `pull_request` `list`, `get`, `changes`, `read_session` and `merge_queue`; `memory` `recall`; `search` `code`, `context` and `entity`; `workflow` `list`, `list_runs`, `get_run` and `job_logs`. Then `issue` `create` and `comment`, `memory` `remember`, `agent` `message`, `answer` and `take_messages`, and `search` `ticket`. |
+| Implement, revise, answer | Reading: `repository` `get`, `list_labels`, `list_milestones`, `get_milestone` and `list_events`; `issue` `list`, `get` and `labels`; `pull_request` `list`, `get`, `changes`, `read_session` and `merge_queue`; `memory` `recall`; `search` `code`, `context` and `entity`; `workflow` `list`, `list_runs`, `get_run` and `job_logs`. Then `issue` `create` and `comment`, `memory` `remember`, `agent` `message`, `answer` and `take_messages`, and `search` `ticket`. |
 | Review | The same reading actions, and `issue` `comment`, `pull_request` `review` and `search` `ticket`. |
 | Plan | The same reading actions, and `issue` `create` and `search` `ticket`. |
 | Catch up | The reading actions only. |
 
-No agent's token can use the `workspace`, `access`, `secret`, `webhook` or
+No agent's token can use the `workspace`, `access`, `team`, `secret`, `webhook` or
 `notifications` tools (g1t acts as `g1t`, which has no inbox), the controls of `workflow`, or `pull_request` `merge`, `agent`
 `assign` and `delegate`, `plan` `create` and `apply`, `issue` `import`, or
 any `repository` action that creates, changes, renames, archives,
 transfers, deletes, restores or purges a repository, or dismisses or
-reopens a security alert. Every repository it
+reopens a security alert, or the `security` actions that decide about
+security: `update_secret_alert`, `bypass`, `review_bypass`, the pattern
+changes, `update_code_alert`, `update_vulnerability_alert`, `fix`,
+`update_settings` and `update_workspace_settings`. Every repository it
 names must be its own. `tools/list` shows such a token only the tools and
 actions it may use; a call to any other is refused with the rule that
 refused it, and recorded in the workspace's [audit log](/guides/audit-log/),

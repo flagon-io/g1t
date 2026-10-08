@@ -1,13 +1,14 @@
 ---
 title: Access and roles
-description: The five repository roles and what each can do, the base permission members get, outside collaborators and invitations, and what agents may do on a person's behalf.
+description: The five repository roles and what each can do, the base permission members get, roles through teams, outside collaborators and invitations, and what agents may do on a person's behalf.
 ---
 
 Everyone who can work in a repository has a role on it. The role says what
 they can do there, from reading it to managing who else has access. A
-workspace gives its members a role on every one of its repositories, and a
+workspace gives its members a role on every one of its repositories, a
 repository can give anyone a role of their own: a member who needs more
-there, or someone outside the workspace.
+there, or someone outside the workspace, and it can give a
+[team](/guides/teams/) a role that everyone in the team has.
 
 ## The roles
 
@@ -57,11 +58,16 @@ Your role on a repository is the highest of:
    in it.
 3. **A role given to you on that repository.** See
    [add someone to a repository](#add-someone-to-a-repository).
-4. **Public.** Anyone, signed in or not, can read a public repository.
+4. **Your teams.** The role each [team](/guides/teams/) you are in has on
+   that repository, and the roles of that team's parent teams, which child
+   teams inherit. See [repository access](/guides/teams/#repository-access).
+5. **Public.** Anyone, signed in or not, can read a public repository.
 
 The highest wins. A member whose base permission is Read and who is given
 Maintain on one repository has Maintain there and Read everywhere else. A
-role lower than what you already have changes nothing.
+role lower than what you already have changes nothing. When a role given to
+you and a team's role are the same, the one given to you is shown as where
+it comes from.
 
 A workspace's own [access token](/guides/workspaces/#workspace-access-tokens)
 has Admin on its workspace's repositories, and none on any other.
@@ -136,8 +142,14 @@ You need Admin on the repository and a confirmed email address.
 3. Pick their role and choose **Add**.
 
 Everyone with access is listed under **People with access**, with their
-role and where it comes from. People with Write or Maintain can see the
-list; changing it needs Admin.
+role and where it comes from: owner, the base permission, a role given to
+them, or **Through team** and the team's slug. **Teams with access** lists the
+teams given a role on it, with how many people each has. People with Write
+or Maintain can see the lists; changing them needs Admin.
+
+Someone with Admin can give a team a role under **Teams with access**:
+pick the team and its role, and add it. Only the workspace's own teams can
+be added. See [teams](/guides/teams/#repository-access).
 
 What happens depends on who they are:
 
@@ -153,7 +165,8 @@ granted invites, or else one of yours (see
 
 To change someone's role, pick another beside their name. To take it away,
 choose **Remove**. Removing takes away only the role given on this
-repository: an owner's Admin and a member's base permission stay. Anyone
+repository: an owner's Admin, a member's base permission and what their
+teams give them stay. Anyone
 can remove their own role from a repository. Each change is confirmed
 under the list; one that is refused says why on that person's row.
 
@@ -184,7 +197,7 @@ has, on the **Outside collaborators** tab of the workspace's
 roles they have stay, and the base permission adds to them.
 
 Removing a member from a workspace also removes the roles they were given
-on its repositories.
+on its repositories, and takes them out of its teams.
 
 ## Invitations
 
@@ -258,7 +271,11 @@ curl https://api.g1t.sh/repos/acme/rocket/collaborators/ada/permission \
 }
 ```
 
-`source` is `owner`, `base` or `direct`.
+`source` is `owner`, `base`, `direct` or `team`. In the list from
+`list_collaborators`, each person also has `direct`, the role given to them
+on the repository if any, and `team_role` and `team`: the highest role a
+team gives them there, and that team's slug. A team's own roles are managed
+through the [teams API](/guides/teams/#through-the-api).
 
 ## Webhooks and the audit log
 
@@ -276,3 +293,7 @@ Each has `data.username`, `data.role` and `data.previous_role`.
 The workspace's [audit log](/guides/audit-log/) records the same changes
 under those names, and also `repo.invitation_created`,
 `repo.invitation_revoked` and `workspace.base_permission_changed`.
+
+A team's role on a repository changing is sent as `team.repo_added`,
+`team.repo_role_changed` or `team.repo_removed`; see
+[teams](/guides/teams/#webhooks-and-the-audit-log).

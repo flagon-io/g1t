@@ -9,7 +9,6 @@ use g1t_contracts::security::{
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::new_id;
 use g1t_kit::now_ms;
-use g1t_scan::secrets::SecretKind;
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1Database, Result};
@@ -90,13 +89,54 @@ struct SecretRow {
     decided_at: Option<String>,
     dismiss_reason: Option<String>,
     test_value: Option<String>,
+    // The security suite's (migration 0004).
+    #[serde(default)]
+    validity: Option<String>,
+    #[serde(default)]
+    validity_checked_at: Option<String>,
+    #[serde(default)]
+    bypass_reason: Option<String>,
+    #[serde(default)]
+    bypass_comment: Option<String>,
+    #[serde(default)]
+    bypassed_by: Option<String>,
+    #[serde(default)]
+    bypassed_at: Option<String>,
+    #[serde(default)]
+    bypass_approved_by: Option<String>,
+    #[serde(default)]
+    pattern_id: Option<String>,
+    #[serde(default)]
+    pattern_name: Option<String>,
+    #[serde(default)]
+    location_count: Option<i64>,
 }
+
+/// Secrets with how many places each was found.
+const SECRET_SELECT: &str =
+    "SELECT s.*, (SELECT count(*) FROM secret_locations l WHERE l.secret_id = s.id) AS location_count FROM secrets s";
 
 impl From<SecretRow> for SecretFinding {
     fn from(row: SecretRow) -> Self {
         let status = SecretStatus::parse(&row.status).unwrap_or(SecretStatus::Open);
+        let bypass = match (row.bypass_reason.as_deref().and_then(g1t_contracts::security_suite::BypassReason::parse), row.bypassed_by, row.bypassed_at) {
+            (Some(reason), Some(by), Some(at)) => Some(g1t_contracts::security_suite::Bypass {
+                reason,
+                comment: row.bypass_comment,
+                by,
+                at,
+                approved_by: row.bypass_approved_by,
+            }),
+            _ => None,
+        };
         SecretFinding {
-            label: SecretKind::parse(&row.kind).map_or("a secret", |kind| kind.label()).to_owned(),
+            label: crate::secret_alerts::label_of(&row.kind, row.pattern_name.as_deref()),
+            validity: row.validity,
+            validity_checked_at: row.validity_checked_at,
+            bypass,
+            pattern_id: row.pattern_id,
+            pattern_name: row.pattern_name,
+            locations: row.location_count.unwrap_or(0).max(0) as u32,
             id: row.id,
             repo_id: row.repo_id,
             kind: row.kind,
@@ -373,7 +413,7 @@ impl Store {
     /// A repository purged: everything found in it goes. `?1` its id.
     pub async fn purge(&self, repo_id: &str) -> Result<()> {
         let mut batch = Vec::with_capacity(PURGED.len());
-        for sql in PURGED {
+        for sql in PURGED.iter().chain(crate::update_store::PURGED) {
             batch.push(self.db.prepare(*sql).bind(&[repo_id.into()])?);
         }
         self.db.batch(batch).await?;
@@ -478,11 +518,11 @@ impl Store {
     pub async fn secrets(&self, repo_id: &str) -> Result<Vec<SecretFinding>> {
         let rows = self
             .db
-            .prepare(
-                "SELECT * FROM secrets WHERE repo_id = ?
+            .prepare(format!(
+                "{SECRET_SELECT} WHERE s.repo_id = ?
                  ORDER BY CASE status WHEN 'open' THEN 0 WHEN 'blocked' THEN 1 WHEN 'allowed' THEN 2 ELSE 3 END,
-                   test_value IS NOT NULL, found_at DESC LIMIT 500",
-            )
+                   test_value IS NOT NULL, found_at DESC LIMIT 500"
+            ))
             .bind(&[repo_id.into()])?
             .all()
             .await?
@@ -493,7 +533,7 @@ impl Store {
     pub async fn secret(&self, repo_id: &str, id: &str) -> Result<Option<SecretFinding>> {
         Ok(self
             .db
-            .prepare("SELECT * FROM secrets WHERE repo_id = ? AND id = ?")
+            .prepare(format!("{SECRET_SELECT} WHERE s.repo_id = ? AND s.id = ?"))
             .bind(&[repo_id.into(), id.into()])?
             .first::<SecretRow>(None)
             .await?

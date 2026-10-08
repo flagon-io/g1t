@@ -12,3 +12,6 @@ miniz_oxide = "0.9"
 sha1 = "0.11"
 sha2 = "0.10"
 similar = "2"
+# Custom secret patterns: the regex crate's engines run in time linear in
+# the text, with no backtracking, so no pattern can stall a push.
+regex = { version = "1.13", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }

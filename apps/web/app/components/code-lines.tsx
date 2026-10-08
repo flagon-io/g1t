@@ -13,10 +13,13 @@ import { type LineRange, formatLineHash, inRange, parseLineHash, pickLine } from
 export function CodeLines({
   lines,
   html,
+  marked,
 }: {
   lines: string[];
   /** Highlighted HTML per line, when the language is known. */
   html: string[] | null;
+  /** Lines to mark as having a problem, 1-based. */
+  marked?: readonly number[];
 }) {
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -62,6 +65,7 @@ export function CodeLines({
               text={text}
               html={html?.[i] ?? null}
               selected={inRange(picked, i + 1)}
+              marked={marked?.includes(i + 1) ?? false}
               onPick={pick}
             />
           ))}
@@ -76,23 +80,25 @@ const Line = memo(function Line({
   text,
   html,
   selected,
+  marked,
   onPick,
 }: {
   n: number;
   text: string;
   html: string | null;
   selected: boolean;
+  marked?: boolean;
   onPick: (event: MouseEvent<HTMLAnchorElement>, line: number) => void;
 }) {
   return (
-    <tr id={`L${n}`} data-selected={selected || undefined} className={`scroll-mt-24 ${selected ? "bg-accent/10" : ""}`}>
+    <tr id={`L${n}`} data-selected={selected || undefined} className={`scroll-mt-24 ${selected ? "bg-accent/10" : marked ? "bg-danger/10" : ""}`}>
       <td className="w-px p-0 text-right align-top select-none">
         <a
           href={`#L${n}`}
           tabIndex={-1}
           onClick={(event) => onPick(event, n)}
           className={`block min-w-14 pr-5 pl-4 transition-colors ${
-            selected ? "text-accent" : "text-faint hover:text-fg"
+            selected ? "text-accent" : marked ? "text-danger" : "text-faint hover:text-fg"
           }`}
         >
           {n}

@@ -1,14 +1,15 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Form, Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
+import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
 import type { Abilities, InboxCounts, Membership, Spike, User } from "@g1t/contracts";
 
 import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
 import { AskAi, InboxBell } from "./inbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, Mark } from "./logo";
-import { Avatar, notACredential } from "./ui";
+import { Avatar } from "./ui";
 import { Skeleton } from "./ui/skeleton";
 import {
   DropdownMenu,
@@ -750,7 +751,7 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/packages`} icon={<Package size={15} />}>
               Packages
             </SidebarLink>
-            {roadmapIn("Workspace").filter((item) => item.key !== "teams" && item.key !== "insights").map((item) => (
+            {roadmapIn("Workspace").filter((item) => item.key !== "insights").map((item) => (
               <SidebarSoonLink
                 key={item.key}
                 to={`/${ws.slug}/-/soon/${item.key}`}
@@ -768,13 +769,9 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
             <SidebarLink to={`/${ws.slug}/-/people`} icon={<Users size={15} />}>
               People
             </SidebarLink>
-            {roadmapIn("Workspace")
-              .filter((item) => item.key === "teams")
-              .map((item) => (
-                <SidebarSoonLink key={item.key} to={`/${ws.slug}/-/teams`} icon={WORKSPACE_ICONS[item.key]} about={item.summary}>
-                  {item.title}
-                </SidebarSoonLink>
-              ))}
+            <SidebarLink to={`/${ws.slug}/-/teams`} icon={WORKSPACE_ICONS.teams}>
+              Teams
+            </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/usage`} icon={<BarChart3 size={15} />}>
               Usage
             </SidebarLink>
@@ -1280,7 +1277,7 @@ function Sidebar({
           className="flex h-9 w-full items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] text-faint ring-1 ring-line transition-colors hover:text-muted hover:ring-line-strong"
         >
           <Search size={14} />
-          <span className="grow text-left">Find…</span>
+          <span className="grow text-left">Search or jump to…</span>
           <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
         </button>
       </div>
@@ -1668,20 +1665,16 @@ export function AppShell({
             <Menu size={18} />
           </button>
           <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} />
-          <Form action="/search" role="search" className="relative ml-auto hidden w-full max-w-64 md:block">
-            <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-            <input
-              name="q"
-              {...notACredential()}
-              placeholder="Search g1t"
-              aria-label="Search g1t"
-              className="h-9 w-full rounded-md border border-line bg-surface pr-12 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
-            />
-            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">
-              ⌘K
-            </kbd>
-          </Form>
-          <div className="ml-auto flex items-center gap-1.5 md:ml-0">
+          <div className="ml-auto flex items-center gap-1.5">
+            {/* Search lives in the sidebar ("Search or jump to"); with the sidebar folded away, this opens the same palette. */}
+            <button
+              type="button"
+              aria-label="Search or jump to"
+              onClick={() => setPalette(true)}
+              className="flex size-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg lg:hidden"
+            >
+              <Search size={16} />
+            </button>
             {/* All of g1t's public projects: not any one workspace's, so here, not in the sidebar. */}
             <NavLink
               to="/explore"
@@ -1715,31 +1708,49 @@ export function AppShell({
                 Sign in
               </Link>
             ) : (
+            <>
+            {/* Room between what comes in (the inbox) and what you make. */}
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
             <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label="Create"
-                className="flex h-9 items-center gap-1.5 rounded-md bg-fg px-3 text-sm font-medium text-bg outline-none transition-colors hover:bg-white"
-              >
-                <Plus size={14} />
-                New
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger
+                    aria-label="Create new"
+                    className="flex h-9 items-center gap-1 rounded-md border border-line px-2 text-fg/90 outline-none transition-colors hover:border-line-strong hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised"
+                  >
+                    <Plus size={16} />
+                    <ChevronDown size={13} className="text-muted" />
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Create new…</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="min-w-52">
                 {shell.repo && (
-                  <DropdownMenuItem asChild>
-                    <Link to={`/${shell.repo.namespace}/${shell.repo.name}/issues/new`}>
-                      <CircleDot />
-                      New issue
-                    </Link>
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuLabel className="truncate">In {shell.repo.name}</DropdownMenuLabel>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/${shell.repo.namespace}/${shell.repo.name}/issues/new`}>
+                        <CircleDot />
+                        New issue
+                      </Link>
+                    </DropdownMenuItem>
+                    {shell.repo.member && (
+                      <DropdownMenuItem asChild>
+                        <Link to={`/${shell.repo.namespace}/${shell.repo.name}/plans`}>
+                          <ListTree />
+                          Plan work
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                  </>
                 )}
-                {shell.repo?.member && (
-                  <DropdownMenuItem asChild>
-                    <Link to={`/${shell.repo.namespace}/${shell.repo.name}/plans`}>
-                      <ListTree />
-                      Plan work
-                    </Link>
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem asChild>
+                  <Link to="/?agent=new">
+                    <Sparkles />
+                    Put an agent on it
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/new">
                     <Box />
@@ -1747,13 +1758,30 @@ export function AppShell({
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
+                  <Link to="/new/github">
+                    <GitBranch />
+                    Import from GitHub
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
                   <Link to="/workspaces/new">
                     <Users />
                     New workspace
                   </Link>
                 </DropdownMenuItem>
+                {/* A team in the workspace the sidebar is about. */}
+                {shell.workspace && (
+                  <DropdownMenuItem asChild>
+                    <Link to={`/${shell.workspace.slug}/-/teams/new`}>
+                      <UsersRound />
+                      New team
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
+            </>
             )}
           </div>
         </header>

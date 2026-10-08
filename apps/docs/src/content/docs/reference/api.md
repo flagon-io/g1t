@@ -200,6 +200,10 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | [Invites](/reference/api/invites/list-invites/) | Your invites while g1t is invite-only, and inviting people into a workspace by email. |
 | [Repositories](/reference/api/repositories/list-repos/) | A repository, how it handles pull requests, and its timeline. |
 | [Access](/reference/api/access/list-collaborators/) | Who has which role on a repository, invitations, outside collaborators, and a workspace's base permission. |
+| [Secret scanning](/reference/api/secret-scanning/list-secret-scanning-alerts/) | Secrets found in pushes and history, where each one is, bypassing push protection and reviewing bypass requests, validity checks, and custom patterns. See [secret protection](/guides/security/secret-protection/). |
+| [Code scanning](/reference/api/code-scanning/list-code-scanning-alerts/) | SARIF uploads, the alerts and analyses they make, and fixing an alert with g1t. See [code scanning](/guides/security/code-scanning/). |
+| [Supply chain](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts, the dependency graph, its SPDX SBOM, and comparing dependencies. See [supply chain](/guides/security/supply-chain/). |
+| [Security settings](/reference/api/security-settings/get-security-settings/) | When pull request checks fail, dependency review's policy, delegated bypass, validity checks and a workspace's overview. |
 | [Issues](/reference/api/issues/list-issues/) | What should change, with labels and comments, and assigning it to g1t. |
 | [Plans](/reference/api/plans/plan-work/) | An [outcome](/guides/outcomes/) turned into issues. |
 | [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging, the merge queue, and messages to the agent at work. |

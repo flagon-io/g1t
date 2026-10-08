@@ -18,11 +18,20 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "pull.assigned" => pull("assigned"),
         "pull.review_requested" => pull("review_requested"),
         "pull.review_request_removed" => pull("review_request_removed"),
+        "pull.labeled" => pull("labeled"),
+        "pull.unlabeled" => pull("unlabeled"),
+        "pull.milestoned" => pull("milestoned"),
+        "pull.demilestoned" => pull("demilestoned"),
+        "pull.base_changed" => pull("edited"),
         "issue.opened" => vec![("issues", Some("opened"))],
         "issue.updated" => vec![("issues", Some("edited"))],
         "issue.closed" => vec![("issues", Some("closed"))],
         "issue.reopened" => vec![("issues", Some("reopened"))],
         "issue.assigned" => vec![("issues", Some("assigned"))],
+        "issue.labeled" => vec![("issues", Some("labeled"))],
+        "issue.unlabeled" => vec![("issues", Some("unlabeled"))],
+        "issue.milestoned" => vec![("issues", Some("milestoned"))],
+        "issue.demilestoned" => vec![("issues", Some("demilestoned"))],
         "comment.created" => vec![("issue_comment", Some("created"))],
         "review.completed" => vec![("pull_request_review", Some("submitted"))],
         "workflow.completed" => vec![("workflow_run", Some("completed"))],
@@ -196,6 +205,10 @@ mod tests {
         assert_eq!(github_events("pull.updated")[0], ("pull_request", Some("synchronize")));
         assert_eq!(github_events("pull.merged")[1], ("pull_request_target", Some("closed")));
         assert_eq!(github_events("comment.created"), [("issue_comment", Some("created"))]);
+        assert_eq!(github_events("issue.labeled"), [("issues", Some("labeled"))]);
+        assert_eq!(github_events("pull.unlabeled")[0], ("pull_request", Some("unlabeled")));
+        assert_eq!(github_events("pull.milestoned")[1], ("pull_request_target", Some("milestoned")));
+        assert_eq!(github_events("pull.base_changed")[0], ("pull_request", Some("edited")));
         assert!(github_events("session.appended").is_empty());
     }
 

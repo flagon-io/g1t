@@ -60,9 +60,9 @@ export function rehypeAlerts() {
   };
 }
 
-/** `owner/repo#12`, `#12`, `@name` and commit hashes, in one pass. */
+/** `owner/repo#12`, `#12`, `@workspace/team`, `@name` and commit hashes, in one pass. */
 const REFERENCE =
-  /(?<![\w/@#])(?:([a-z0-9][a-z0-9-]*\/[a-z0-9._-]+)#(\d+)|#(\d+)|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})|([0-9a-f]{7,40}))(?![\w-])/gi;
+  /(?<![\w/@#])(?:([a-z0-9][a-z0-9-]*\/[a-z0-9._-]+)#(\d+)|#(\d+)|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})\/([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,59})|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})|([0-9a-f]{7,40}))(?![\w-])/gi;
 
 function link(href: string, text: string, kind: string): Element {
   return {
@@ -97,12 +97,14 @@ export function rehypeReferences(options: { repo?: MarkdownRepo }) {
         const parts: Node[] = [];
         let last = 0;
         for (const match of value.matchAll(REFERENCE)) {
-          const [whole, other, otherNumber, number, name, hash] = match;
+          const [whole, other, otherNumber, number, workspace, team, name, hash] = match;
           let replacement: Element | null = null;
           if (other && otherNumber) {
             replacement = link(`/${other}/issues/${otherNumber}`, whole, "issue");
           } else if (number && repo) {
             replacement = link(`/${repo.namespace}/${repo.name}/issues/${number}`, whole, "issue");
+          } else if (workspace && team) {
+            replacement = link(`/${workspace.toLowerCase()}/-/teams/${team.toLowerCase()}`, whole, "team");
           } else if (name) {
             replacement = link(`/${name.toLowerCase()}`, whole, "mention");
           } else if (hash && repo && /\d/.test(hash) && /[a-f]/i.test(hash)) {

@@ -490,3 +490,43 @@ again.
 or a card check; opening the billing portal; settling a page the person
 came back from; renaming a workspace (the customer's name). Nothing a page
 view reads.
+
+## The Security and quality activation
+
+A second monthly subscription a workspace can hold beside the plan
+(`Feature::Security`, `feature = 'security'` in `subscriptions`). It turns
+on the security suite's paid features for the workspace's private
+repositories: custom secret patterns, validity checks, delegated bypass,
+code scanning, dependency review and the security overview. Public
+repositories have them free; secret scanning, push protection,
+vulnerability alerts and security updates are free everywhere.
+
+- **Price.** The price book's `security_activation` meter (unit
+  `workspace-month`, `source` `list`, markup 0): 10,000,000 micros, $10,
+  from migration `0037_security_activation.sql` with its first
+  `price_versions` row and a public `price_changes` record. `plan()` and the
+  `prices` RPC read it (`features::security_plan_at`); if the price book
+  cannot be read, $10. Nothing in the web app hard-codes it. A change is a
+  new price version, like any other: noticed on the pricing page and
+  applied from its `effective_at` to new subscriptions. Subscriptions
+  already running keep the amount Stripe has until they are changed in
+  Stripe.
+- **Stripe.** Its own subscription and its own product, tagged
+  `metadata[g1t]=security` (the plan's is `plan`). Started from the Billing
+  page with `subscribe` (`feature: security`) on the checked card, or
+  through Checkout; ended with `cancel_subscription` (`feature: security`)
+  at the period's end. Its invoices count in `plan_payments` like the
+  plan's, as paid revenue.
+- **Who has it.** `has_feature(workspace, security)`: on with an active
+  subscription, with comped terms or as an enterprise's workspace, or when
+  Stripe is not configured. The plan's allowance (`allowances.plan`) does
+  not include it. Refusals are `PaymentRequired` with the price from the
+  price book and the Billing page's address.
+- **Where it is checked.** The security service, on each paid call for a
+  private repository (`suite::entitled`) and before using custom patterns
+  in a push (`patterns_for`). When billing cannot be reached it is taken
+  as off: a paid feature waits rather than running unpaid.
+- **Fixes.** "Fix with g1t" runs g1t's agent, charged as agent usage, never
+  to the activation.
+- **Sales figures.** MRR in sudo counts `feature = 'plan'` only; the
+  activation's subscriptions are not in it yet.

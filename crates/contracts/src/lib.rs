@@ -12,6 +12,7 @@ pub mod audit;
 pub mod backups;
 pub mod billing;
 pub mod capture;
+pub mod codeowners;
 pub mod credentials;
 pub mod events;
 pub mod github;
@@ -29,7 +30,10 @@ pub mod runners;
 pub mod scopes;
 pub mod search;
 pub mod security;
+pub mod teams;
+pub mod security_suite;
 pub mod time;
+pub mod updates;
 pub mod webhooks;
 pub mod work;
 

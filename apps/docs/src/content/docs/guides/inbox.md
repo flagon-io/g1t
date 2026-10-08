@@ -43,11 +43,12 @@ table is shown.
 | Reason | Shown as | Why you were told |
 | --- | --- | --- |
 | `agent` | agent waiting | An agent is waiting on you: it asked a question, or it stopped until a person steps in. |
-| `review_requested` | review requested | Someone asked you to review a pull request, or you are one of its reviewers. |
+| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. |
 | `assign` | assigned | You were assigned, or you are an assignee. |
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
+| `team_mention` | team mentioned | Someone mentioned a [team](/guides/teams/#mentions) you are in with `@workspace/team`, or a team you are in was mentioned on it before. |
 | `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly, or recovered. |
-| `security_alert` | security alert | A security alert on a repository you look after. g1t does not send these to the inbox yet. |
+| `security_alert` | security alert | A new secret, code scanning or vulnerability alert on a repository you look after, a push of yours that push protection blocked, or a [bypass request](/guides/security/secret-protection/#delegated-bypass) to review or its answer. The workspace's owners hear of new alerts; watchers who chose **Security alerts** do too, if they can see findings. |
 | `state_change` | state changed | It was closed, reopened or merged. |
 | `author` | your work | You opened it, or you asked g1t for it. |
 | `comment` | commented | You commented on it. |
@@ -64,6 +65,8 @@ what it was:
 | An agent asked a question of the agent on a pull request, or handed it work | The person the pull request belongs to, and its issue's author and assignees | `agent` | Needs you |
 | g1t stopped on a pull request until a person steps in | The same people | `agent` | Needs you |
 | Someone asked for reviews on a pull request, or opened one with reviewers | The reviewers asked | `review_requested` | Needs you |
+| Someone asked a team to review a pull request | Everyone in the team and its child teams, or, with [review assignment](/guides/teams/#review-assignment), the people picked | `review_requested` | Needs you |
+| A pull request changes files a [CODEOWNERS file](/guides/codeowners/) gives you or your team | The owners asked: "acme/api#42 changes files you own" | `review_requested` | Needs you |
 | Someone assigned people to an issue or pull request, or opened one with assignees | The people newly assigned | `assign` | Info |
 | Checks failed, or could not run, on a pull request | The person the pull request belongs to | `ci_activity` | Error |
 | A workflow failed on a pull request | The person the pull request belongs to | `ci_activity` | Error |
@@ -76,6 +79,7 @@ what it was:
 | A pull request was merged | Everyone subscribed to it, and people watching pull requests | `state_change`, or `subscribed` for watchers | Success |
 | An issue or pull request was closed, or an issue was reopened | Everyone subscribed to it, and people watching its kind | `state_change`, or `subscribed` for watchers | Info |
 | Someone mentioned you with `@username` in a comment | You | `mention` | Info |
+| Someone mentioned a team with `@workspace/team` in a comment, or in an issue or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
 | Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
 | An issue or pull request was opened | People watching its kind | `subscribed` | Info |
 
@@ -105,7 +109,7 @@ happens on it, without doing anything when you:
 - are assigned to it
 - are one of its reviewers
 - commented on it
-- were mentioned in it
+- were mentioned in it, by name or through a team
 
 You can also subscribe to any issue or pull request yourself, or
 unsubscribe from one.
@@ -113,7 +117,7 @@ unsubscribe from one.
 | You are | You hear of |
 | --- | --- |
 | Subscribed | Everything in [What lands there](#what-lands-there) that goes to everyone subscribed: comments, closes, reopens and merges. |
-| Unsubscribed | Only what is asked of you or is about your own work: an agent waiting on you, a review request, an assignment, a mention, and failed checks, workflows and deployments. Commenting on it, or being mentioned in it, subscribes you again. |
+| Unsubscribed | Only what is asked of you or is about your own work: an agent waiting on you, a review request, an assignment, a mention of you or your team, and failed checks, workflows and deployments. Commenting on it, or being mentioned in it, subscribes you again. |
 | Ignoring it | Nothing on it at all, not even a mention. Only you can undo this. |
 
 To subscribe to an issue or pull request, or unsubscribe:
@@ -143,7 +147,7 @@ you take part in.
 | **Participating and @mentions** | Only what you take part in or are mentioned in. The default. |
 | **All activity** | Also every issue and pull request opened, commented on, closed, reopened or merged, and every deployment. |
 | **Ignore** | Nothing on the repository at all, not even a mention or a review request. |
-| **Custom** | What you take part in, and the kinds you choose: **Issues**, **Pull requests**, **Deployments** and **Security alerts**. g1t does not send security alerts to the inbox yet. |
+| **Custom** | What you take part in, and the kinds you choose: **Issues**, **Pull requests**, **Deployments** and **Security alerts**. Security alerts reach only those with Write on the repository, who can see its findings. |
 
 To change how you watch a repository:
 

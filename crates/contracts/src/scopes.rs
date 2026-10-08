@@ -27,6 +27,7 @@ pub enum Resource {
     Workspace,
     Repo,
     Code,
+    Security,
     Packages,
     Issues,
     PullRequests,
@@ -40,9 +41,10 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 15] = [
+    pub const ALL: [Resource; 16] = [
         Resource::Repo,
         Resource::Code,
+        Resource::Security,
         Resource::Packages,
         Resource::Issues,
         Resource::PullRequests,
@@ -65,6 +67,7 @@ impl Resource {
             Resource::Workspace => "workspace",
             Resource::Repo => "repo",
             Resource::Code => "code",
+            Resource::Security => "security",
             Resource::Packages => "packages",
             Resource::Issues => "issues",
             Resource::PullRequests => "pull_requests",
@@ -86,6 +89,7 @@ impl Resource {
             Resource::Workspace => "Workspaces",
             Resource::Repo => "Repositories",
             Resource::Code => "Code",
+            Resource::Security => "Security",
             Resource::Packages => "Packages",
             Resource::Issues => "Issues",
             Resource::PullRequests => "Pull requests",
@@ -133,6 +137,8 @@ pub enum Scope {
     RepoAdmin,
     CodeRead,
     CodeWrite,
+    SecurityRead,
+    SecurityWrite,
     PackagesRead,
     PackagesWrite,
     PackagesDelete,
@@ -163,12 +169,14 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 31] = [
+    pub const ALL: [Scope; 33] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
         Scope::CodeRead,
         Scope::CodeWrite,
+        Scope::SecurityRead,
+        Scope::SecurityWrite,
         Scope::PackagesRead,
         Scope::PackagesWrite,
         Scope::PackagesDelete,
@@ -204,6 +212,8 @@ impl Scope {
             Scope::RepoAdmin => "repo:admin",
             Scope::CodeRead => "code:read",
             Scope::CodeWrite => "code:write",
+            Scope::SecurityRead => "security:read",
+            Scope::SecurityWrite => "security:write",
             Scope::PackagesRead => "packages:read",
             Scope::PackagesWrite => "packages:write",
             Scope::PackagesDelete => "packages:delete",
@@ -276,6 +286,8 @@ impl Scope {
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
             Scope::CodeWrite => "Push commits with git",
+            Scope::SecurityRead => "See secret scanning, code scanning and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings",
+            Scope::SecurityWrite => "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings",
             Scope::PackagesRead => "Pull container images and install private packages",
             Scope::PackagesWrite => "Push container images and publish packages",
             Scope::PackagesDelete => "Delete packages and their versions",
@@ -292,10 +304,10 @@ impl Scope {
             Scope::AccountWrite => "Change your email addresses, make invites, answer invitations and pin projects",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
-            Scope::WorkspaceRead => "Read workspace invites, integrations and model routes",
-            Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations",
+            Scope::WorkspaceRead => "Read workspace invites, integrations, model routes and teams",
+            Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, and create, change and delete teams",
             Scope::AccessRead => "See who has access to repositories",
-            Scope::AccessAdmin => "Give and take away access to repositories",
+            Scope::AccessAdmin => "Give and take away access to repositories, a team's included",
             Scope::WebhooksRead => "See webhooks and their deliveries",
             Scope::WebhooksAdmin => "Create, change and delete webhooks",
             Scope::SecretsRead => "List secrets (never their values) and read variables",
@@ -508,16 +520,40 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("test_integration", Scope::WorkspaceAdmin),
     ("get_model_routes", Scope::WorkspaceRead),
     ("set_model_routes", Scope::WorkspaceAdmin),
+    // Teams: reading them, and managing them. A team's role on a
+    // repository is who has access.
+    ("list_teams", Scope::WorkspaceRead),
+    ("get_team", Scope::WorkspaceRead),
+    ("list_team_members", Scope::WorkspaceRead),
+    ("list_child_teams", Scope::WorkspaceRead),
+    ("list_team_repos", Scope::WorkspaceRead),
+    ("list_user_teams", Scope::WorkspaceRead),
+    ("create_team", Scope::WorkspaceAdmin),
+    ("update_team", Scope::WorkspaceAdmin),
+    ("delete_team", Scope::WorkspaceAdmin),
+    ("set_team_member", Scope::WorkspaceAdmin),
+    ("remove_team_member", Scope::WorkspaceAdmin),
+    ("set_team_review_assignment", Scope::WorkspaceAdmin),
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
     ("search", Scope::RepoRead),
     ("list_events", Scope::RepoRead),
     ("list_labels", Scope::RepoRead),
+    ("list_milestones", Scope::RepoRead),
+    ("get_milestone", Scope::RepoRead),
+    ("create_label", Scope::IssuesWrite),
+    ("update_label", Scope::IssuesWrite),
+    ("delete_label", Scope::IssuesWrite),
+    ("add_default_labels", Scope::IssuesWrite),
+    ("create_milestone", Scope::IssuesWrite),
+    ("update_milestone", Scope::IssuesWrite),
+    ("delete_milestone", Scope::IssuesWrite),
     ("get_repo_settings", Scope::RepoRead),
     ("list_check_names", Scope::RepoRead),
     ("list_deleted_repos", Scope::RepoRead),
     ("list_security_alerts", Scope::RepoRead),
+    ("get_codeowners_errors", Scope::RepoRead),
     ("create_repo", Scope::RepoWrite),
     ("update_repo", Scope::RepoWrite),
     ("update_repo_settings", Scope::RepoWrite),
@@ -533,12 +569,49 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // A dismissed secret is let through push protection.
     ("dismiss_security_alert", Scope::RepoAdmin),
     ("reopen_security_alert", Scope::RepoAdmin),
+    // The security suite: alerts, push protection, patterns, code
+    // scanning, the supply chain and settings.
+    ("list_secret_scanning_alerts", Scope::SecurityRead),
+    ("get_secret_scanning_alert", Scope::SecurityRead),
+    ("list_secret_scanning_locations", Scope::SecurityRead),
+    ("list_bypass_requests", Scope::SecurityRead),
+    ("list_custom_patterns", Scope::SecurityRead),
+    ("list_code_scanning_alerts", Scope::SecurityRead),
+    ("get_code_scanning_alert", Scope::SecurityRead),
+    ("list_code_scanning_analyses", Scope::SecurityRead),
+    ("get_sarif_upload", Scope::SecurityRead),
+    ("list_vulnerability_alerts", Scope::SecurityRead),
+    ("get_vulnerability_alert", Scope::SecurityRead),
+    ("get_dependency_graph", Scope::SecurityRead),
+    ("get_sbom", Scope::SecurityRead),
+    ("compare_dependencies", Scope::SecurityRead),
+    ("get_security_settings", Scope::SecurityRead),
+    ("get_workspace_security_settings", Scope::SecurityRead),
+    ("get_security_overview", Scope::SecurityRead),
+    ("update_secret_scanning_alert", Scope::SecurityWrite),
+    ("bypass_push_protection", Scope::SecurityWrite),
+    ("check_secret_validity", Scope::SecurityWrite),
+    ("review_bypass_request", Scope::SecurityWrite),
+    ("create_custom_pattern", Scope::SecurityWrite),
+    ("update_custom_pattern", Scope::SecurityWrite),
+    ("delete_custom_pattern", Scope::SecurityWrite),
+    ("dry_run_custom_pattern", Scope::SecurityWrite),
+    ("update_code_scanning_alert", Scope::SecurityWrite),
+    ("upload_sarif", Scope::SecurityWrite),
+    ("update_vulnerability_alert", Scope::SecurityWrite),
+    ("fix_security_alert", Scope::SecurityWrite),
+    ("update_security_settings", Scope::SecurityWrite),
+    ("update_workspace_security_settings", Scope::SecurityWrite),
     // Issues and plans.
     ("list_issues", Scope::IssuesRead),
     ("get_issue", Scope::IssuesRead),
     ("get_plan", Scope::IssuesRead),
     ("create_issue", Scope::IssuesWrite),
     ("update_issue", Scope::IssuesWrite),
+    ("list_issue_labels", Scope::IssuesRead),
+    ("add_issue_labels", Scope::IssuesWrite),
+    ("set_issue_labels", Scope::IssuesWrite),
+    ("remove_issue_labels", Scope::IssuesWrite),
     ("close_issue", Scope::IssuesWrite),
     ("reopen_issue", Scope::IssuesWrite),
     ("add_comment", Scope::IssuesWrite),
@@ -551,11 +624,14 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("read_session", Scope::PullRequestsRead),
     ("get_merge_queue", Scope::PullRequestsRead),
     ("create_pull_request", Scope::PullRequestsWrite),
+    ("update_pull_request", Scope::PullRequestsWrite),
     ("record_session", Scope::PullRequestsWrite),
     ("mark_pull_request_ready", Scope::PullRequestsWrite),
     ("close_pull_request", Scope::PullRequestsWrite),
     ("review_pull_request", Scope::PullRequestsWrite),
     ("merge_pull_request", Scope::PullRequestsWrite),
+    ("request_reviewers", Scope::PullRequestsWrite),
+    ("remove_requested_reviewers", Scope::PullRequestsWrite),
     // g1t's agents.
     ("assign_issue", Scope::AgentsRun),
     ("delegate", Scope::AgentsRun),
@@ -588,6 +664,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("remove_collaborator", Scope::AccessAdmin),
     ("revoke_repo_invitation", Scope::AccessAdmin),
     ("set_base_permission", Scope::AccessAdmin),
+    ("set_team_repo", Scope::AccessAdmin),
+    ("remove_team_repo", Scope::AccessAdmin),
     // Webhooks.
     ("list_webhooks", Scope::WebhooksRead),
     ("list_webhook_deliveries", Scope::WebhooksRead),
@@ -637,6 +715,10 @@ pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
         || input["assign_agent"].as_bool() == Some(true);
     if assigns && matches!(operation, "apply_plan" | "import_issue" | "create_issue") {
         extra.push(Scope::AgentsRun);
+    }
+    // Fixing an alert opens an issue and puts g1t on it.
+    if operation == "fix_security_alert" {
+        extra.extend([Scope::IssuesWrite, Scope::AgentsRun]);
     }
     // Opening the issue an agent is put on.
     if operation == "delegate" {

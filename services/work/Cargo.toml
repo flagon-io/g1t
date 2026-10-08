@@ -16,6 +16,7 @@ serde_json.workspace = true
 worker.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.2", features = ["js"] }
+base64 = "0.22"
 hex = "0.4"
 sha2 = "0.10"
 

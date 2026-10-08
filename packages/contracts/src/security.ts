@@ -2,6 +2,9 @@ import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
+import type { BumpPackage, BumpRegistry, VersionUpdatesState } from "./updates";
+
+export * from "./updates";
 
 /**
  * The security service: secrets found in pushes and in history, vulnerable
@@ -89,6 +92,22 @@ export type SecretFinding = {
    */
   testValue?: string | null;
   state: AlertState;
+  /** What its issuer said when last asked: active, inactive, unknown or unsupported. */
+  validity?: "active" | "inactive" | "unknown" | "unsupported" | null;
+  validityCheckedAt?: string | null;
+  /** How it got past push protection, when someone bypassed it. */
+  bypass?: {
+    reason: "false_positive" | "used_in_tests" | "will_fix_later";
+    comment: string | null;
+    by: string;
+    at: string;
+    approvedBy: string | null;
+  } | null;
+  /** The custom pattern that found it, for a `custom_pattern` finding. */
+  patternId?: string | null;
+  patternName?: string | null;
+  /** How many places it was found in. */
+  locations?: number;
 };
 
 export type Severity = "critical" | "high" | "medium" | "low" | "unknown";
@@ -177,24 +196,6 @@ export type AlertActivity = {
   at: string;
 };
 
-/** One entry of `.g1t/dependencies.yml`'s `updates`. */
-export type VersionUpdateEntry = {
-  ecosystem: string;
-  directory: string;
-  interval: string;
-  groups: { name: string; patterns: string[] }[];
-  ignore: { dependency: string; versions: string[] }[];
-  openPullRequestsLimit: number;
-};
-
-/** What `.g1t/dependencies.yml` asks for. */
-export type VersionUpdatesState = {
-  found: boolean;
-  error: string | null;
-  updates: VersionUpdateEntry[];
-  readAt: string | null;
-};
-
 export type SeverityCounts = Record<Severity, number>;
 
 export type ScanState = {
@@ -254,6 +255,8 @@ export interface SecurityApi {
   rescan(actor: User, repo: RepoPath): Promise<Result<ScanState>>;
   setUpkeep(actor: User, repo: RepoPath, enabled: boolean): Promise<Result<boolean>>;
   workspace(workspace: string, viewer: Viewer): Promise<Result<RepoSecurity[]>>;
+  /** Checks one `updates` entry of the dependency update file for new versions now. Write and up. */
+  checkUpdates(actor: User, repo: RepoPath, entry: string): Promise<Result<VersionUpdatesState>>;
 }
 
 export function securityClient(service: ServiceBinding): SecurityApi {
@@ -273,6 +276,7 @@ export function securityClient(service: ServiceBinding): SecurityApi {
     rescan: (actor, repo) => call("rescan", { actor, repo }),
     setUpkeep: (actor, repo, enabled) => call("set_upkeep", { actor, repo, enabled }),
     workspace: (workspace, viewer) => call("workspace", { workspace, viewer }),
+    checkUpdates: (actor, repo, entry) => call("check_updates", { actor, repo, entry }),
   };
 }
 
@@ -294,6 +298,21 @@ export type BumpArgs = {
   branch: string;
   /** The commit's message. */
   message: string;
+  /** `version` for a version update, whose branch is any but the default one. */
+  kind?: "version";
+  /** Several packages raised in one commit, for a grouped update. */
+  packages?: BumpPackage[];
+  /** `increase` (default), `increase-if-necessary`, `widen` or `lockfile-only`. */
+  strategy?: string;
+  /** Replace the branch if it is there already: a rebase or a recreate. */
+  force?: boolean;
+  /** Private registries the tools may read, with their credentials. */
+  registries?: BumpRegistry[];
+  /**
+   * The branch to start from, which its pull request merges into
+   * (`target-branch`): the default branch when absent.
+   */
+  base?: string;
 };
 
 /** The prefix every security update's branch starts with. */

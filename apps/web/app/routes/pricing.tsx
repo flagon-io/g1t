@@ -147,7 +147,12 @@ function rows(tier: Required<FreeTier>): Row[] {
       plan: `${tier.planAuditRetentionDays} days, with export`,
       note: "Longer by arrangement. Older entries are deleted each day.",
     },
-    { what: "Secret push protection", free: "Included", plan: "Included" },
+    {
+      what: "Secret scanning, push protection, vulnerability alerts, security updates",
+      free: "Included",
+      plan: "Included",
+      note: "Custom patterns, validity checks, code scanning, dependency review and the security overview on private repositories are the Security and quality activation. On public repositories they are free.",
+    },
     { what: "Single sign-on", free: "On every plan, once it is built", plan: "On every plan, once it is built" },
     { what: "Members", free: "Unlimited", plan: "Unlimited" },
     {
@@ -164,6 +169,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
   const given = Object.fromEntries(Object.entries(book?.free ?? {}).filter(([, value]) => value != null));
   const tier: Required<FreeTier> = { ...DEFAULT_FREE, ...given };
   const plan = book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
+  // The Security and quality activation, as the price book prices it.
+  const securityPlan = book?.plans?.find((p) => p.feature === "security") ?? null;
   const price = plan.monthlyCents / 100;
   const dollars = wholeDollars;
   return (
@@ -220,8 +227,36 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         <p className="mt-5 text-sm text-muted">An owner starts the plan from the workspace's Billing page.</p>
       </section>
 
+      {securityPlan && (
+        <section id="security" className="mt-6 rounded-xl border border-line bg-surface p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-xl font-semibold tracking-tight">{securityPlan.title}</h2>
+            <p>
+              <span className="text-3xl font-semibold tabular-nums">${(securityPlan.monthlyCents / 100).toFixed(securityPlan.monthlyCents % 100 ? 2 : 0)}</span>{" "}
+              <span className="text-sm text-muted">a month per workspace</span>
+            </p>
+          </div>
+          <p className="mt-2 text-sm text-muted">
+            An activation, with or without the plan: the security suite's paid parts for a workspace's private repositories.
+          </p>
+          <ul className="mt-4 space-y-1.5 text-sm text-muted">
+            {securityPlan.includes.map((line) => (
+              <li key={line} className="flex gap-2">
+                <span aria-hidden className="text-accent">
+                  ✓
+                </span>
+                {line}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-faint">{securityPlan.overage}</p>
+        </section>
+      )}
+
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Free and the plan, side by side</h2>
-      <p className="mt-1 text-sm text-muted">No security feature is held back for a plan.</p>
+      <p className="mt-1 text-sm text-muted">
+        Secret scanning, push protection, vulnerability alerts and security updates are free everywhere, on every plan.
+      </p>
       {/* On a phone, one row at a time with both answers under it; a table that wide would scroll. */}
       <ul className="mt-4 divide-y divide-line rounded-xl border border-line text-sm sm:hidden">
         {rows(tier).map((row) => (

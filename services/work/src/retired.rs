@@ -57,6 +57,8 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM comments WHERE repo_id = ?1",
     "DELETE FROM pulls WHERE repo_id = ?1",
     "DELETE FROM issues WHERE repo_id = ?1",
+    "DELETE FROM labels WHERE repo_id = ?1",
+    "DELETE FROM milestones WHERE repo_id = ?1",
     "DELETE FROM counters WHERE repo_id = ?1",
     "DELETE FROM repo_settings WHERE repo_id = ?1",
     "DELETE FROM memories WHERE scope = 'project' AND scope_key = ?1",
@@ -141,6 +143,11 @@ const BRANCH_RENAMED: &str = "UPDATE pulls SET source_branch = ?3
      WHERE repo_id = ?1 AND source_branch = ?2 AND fork_repo_id IS NULL
        AND status IN ('draft', 'open')";
 
+/// `branch.renamed`: open pull requests into `?2` merge into `?3` now.
+/// Those into the default branch name none, and follow it as they are.
+const BASE_RENAMED: &str = "UPDATE pulls SET base_branch = ?3
+     WHERE repo_id = ?1 AND base_branch = ?2 AND status IN ('draft', 'open')";
+
 impl Work {
     /// Whether work may start on the repository: neither archived nor
     /// deleted. When repos cannot say, it is taken as active, and the
@@ -217,14 +224,16 @@ impl Work {
         if renamed.from == renamed.to {
             return Ok(true);
         }
+        let names = [
+            renamed.repo_id.as_str().into(),
+            renamed.from.as_str().into(),
+            renamed.to.as_str().into(),
+        ];
         self.db
-            .prepare(BRANCH_RENAMED)
-            .bind(&[
-                renamed.repo_id.as_str().into(),
-                renamed.from.as_str().into(),
-                renamed.to.as_str().into(),
-            ])?
-            .run()
+            .batch(vec![
+                self.db.prepare(BRANCH_RENAMED).bind(&names)?,
+                self.db.prepare(BASE_RENAMED).bind(&names)?,
+            ])
             .await?;
         Ok(true)
     }

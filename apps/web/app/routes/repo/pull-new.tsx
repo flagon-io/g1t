@@ -30,16 +30,22 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     work.listPulls(path, user, "open"),
   ]);
   const { defaultBranch } = unwrap(repo);
-  const all = unwrap(branches);
-  const mainHead = all.find((branch) => branch.name === defaultBranch)?.hash;
-  // A branch that already has an open pull request cannot have another.
-  const taken = new Set(open.ok ? open.value.map((pull) => pull.branch) : []);
+  const all = unwrap(branches).filter((branch) => !branch.name.startsWith("g1t-queue/"));
   const query = new URL(request.url).searchParams;
+  // Into the default branch unless another is asked for (Compare's base).
+  const asked = query.get("base") ?? "";
+  const base = all.some((branch) => branch.name === asked) ? asked : defaultBranch;
+  const baseHead = all.find((branch) => branch.name === base)?.hash;
+  // A branch that already has an open pull request into this base cannot
+  // have another.
+  const taken = new Set(open.ok ? open.value.filter((pull) => (pull.base ?? defaultBranch) === base).map((pull) => pull.branch) : []);
   return {
     defaultBranch,
+    base,
+    bases: all.map((branch) => branch.name),
     branches: all
-      // A branch at the same commit as the default branch has nothing to merge.
-      .filter((branch) => branch.name !== defaultBranch && branch.hash !== mainHead)
+      // A branch at the same commit as the base has nothing to merge.
+      .filter((branch) => branch.name !== base && branch.hash !== baseHead)
       .map((branch) => branch.name)
       .filter((name) => !taken.has(name)),
     selected: query.get("branch") ?? "",
@@ -62,6 +68,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       issue: issue > 0 ? issue : undefined,
       agent: user.username,
       runtime: "external",
+      base: String(form.get("base") ?? "") || undefined,
     },
   );
   if (!result.ok) return { error: result.error.message };
@@ -69,7 +76,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { defaultBranch, branches, selected, issue } = loaderData;
+  const { defaultBranch, base, bases, branches, selected, issue } = loaderData;
   const remote = cloneUrl(useAddresses(), `${params.owner}/${params.repo}`);
 
   if (branches.length === 0) {
@@ -105,7 +112,20 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
           className="h-8 w-auto max-w-full min-w-40 font-mono"
         />
         <span className="text-muted">into</span>
-        <span className="font-mono">{defaultBranch}</span>
+        <Combobox
+          name="base"
+          defaultValue={base}
+          aria-label="Branch to merge into"
+          searchPlaceholder="Find a branch"
+          emptyText="No branch by that name."
+          options={bases.map((name) => ({
+            value: name,
+            label: name,
+            icon: <GitBranch />,
+            description: name === defaultBranch ? "default" : undefined,
+          }))}
+          className="h-8 w-auto max-w-full min-w-32 font-mono"
+        />
       </div>
       <Field label="Title">
         <Input name="title" required autoFocus maxLength={200} />
@@ -115,7 +135,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
       </Field>
       <Field
         label="Issue (optional)"
-        hint="The number of the issue this resolves. Merging the pull request closes it."
+        hint={`The number of the issue this resolves. Merging the pull request into ${defaultBranch} closes it.`}
       >
         <Input name="issue" type="number" min={1} defaultValue={issue} placeholder="12" />
       </Field>

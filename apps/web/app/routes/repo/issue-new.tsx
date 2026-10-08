@@ -8,7 +8,7 @@ import type { Route } from "./+types/issue-new";
 import { page } from "../../lib/meta";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
-import { Label } from "../../components/work";
+import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 import { accessTo } from "../../lib/access.server";
@@ -24,8 +24,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   // Putting an agent on it needs Write (Run): Read cannot spend compute.
   const { can } = await accessTo(context, params);
-  const [labels, connections, agents, computeNote] = await Promise.all([
+  const [labels, milestones, connections, agents, computeNote] = await Promise.all([
     work.listLabels(path, user),
+    can.triage ? work.listMilestones(path, user, "open") : null,
     integrations.list(params.owner.toLowerCase(), user),
     can.run ? env.RUNNER.enabled(user, path) : false,
     can.run ? computeNoteFor(params.owner, "agent") : null,
@@ -34,7 +35,16 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const sources = connections.ok
     ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))]
     : [];
-  return { labels: unwrap(labels), sources, canAssign: can.run, agents, computeNote };
+  return {
+    labels: unwrap(labels),
+    milestones: milestones?.ok ? milestones.value : [],
+    // Making labels, and choosing a milestone, need Triage.
+    canTriage: can.triage,
+    sources,
+    canAssign: can.run,
+    agents,
+    computeNote,
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -71,6 +81,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         ...form.getAll("label").map(String),
         ...String(form.get("labels") ?? "").split(","),
       ],
+      milestone: Number(form.get("milestone")) || undefined,
     },
   );
   if (!result.ok) return { error: result.error.message };
@@ -130,18 +141,43 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium text-muted">Labels</legend>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {loaderData.labels.map((name) => (
-              <CheckboxOption key={name} name="label" value={name} label={<Label name={name} />} className="items-center gap-1.5" />
+            {loaderData.labels.map((label) => (
+              <CheckboxOption
+                key={label.name}
+                name="label"
+                value={label.name}
+                label={<LabelChip name={label.name} color={label.color} />}
+                className="items-center gap-1.5"
+              />
             ))}
           </div>
-          <div className="mt-2">
-            <Input
-              name="labels"
-              aria-label="Other labels"
-              placeholder="Others, separated by commas: performance, good first issue"
-            />
-          </div>
+          {loaderData.canTriage && (
+            <div className="mt-2">
+              <Input
+                name="labels"
+                aria-label="New labels"
+                placeholder="New labels, separated by commas: performance, area: cli"
+              />
+            </div>
+          )}
         </fieldset>
+        {loaderData.canTriage && loaderData.milestones.length > 0 && (
+          <Field label="Milestone">
+            <select
+              name="milestone"
+              defaultValue=""
+              className="h-9 w-full rounded-md border border-line bg-bg px-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
+            >
+              <option value="">None</option>
+              {loaderData.milestones.map((milestone) => (
+                <option key={milestone.number} value={milestone.number}>
+                  {milestone.title}
+                  {milestone.dueOn ? ` (due ${milestone.dueOn})` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {loaderData.canAssign && (
           <div className="rounded-xl border border-merged/25 bg-merged/[0.04] px-3.5 py-3">
             <CheckboxOption

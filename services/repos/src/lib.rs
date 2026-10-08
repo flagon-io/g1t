@@ -930,10 +930,11 @@ impl<S: GitStore> Repos<S> {
             return Ok(false);
         };
         let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
+        let target_branch = a.target_branch.unwrap_or_else(|| target.default_branch.clone());
         let target_head = self
             .read_git(&target)
             .await?
-            .log(&target.default_branch, 1)
+            .log(&target_branch, 1)
             .await?
             .into_iter()
             .next()
@@ -964,13 +965,14 @@ impl<S: GitStore> Repos<S> {
             return Ok(None);
         };
         let branch = a.branch.unwrap_or_else(|| target.default_branch.clone());
+        let target_branch = a.target_branch.unwrap_or_else(|| target.default_branch.clone());
         let source_git = self.read_git(&source).await?;
         let target_git = self.read_git(&target).await?;
         // The target's side is the same for every pull request into it, and
         // worked out once per head (coalesce.rs).
         let (history, side) = futures_util::future::try_join(
             source_git.log(&branch, MAX_ANCESTRY),
-            self.target_side(&target, &target_git),
+            self.target_side(&target, &target_git, &target_branch),
         )
         .await?;
         let target_history = &side.history;
@@ -1023,16 +1025,16 @@ impl<S: GitStore> Repos<S> {
     /// for every pull request asking about it (coalesce.rs). The head is
     /// read under the refs version; the history by its hash, which the
     /// object cache keeps for good.
-    async fn target_side<R: GitRepo>(&self, target: &Repo, git: &R) -> Result<Rc<coalesce::TargetSide>> {
+    async fn target_side<R: GitRepo>(&self, target: &Repo, git: &R, branch: &str) -> Result<Rc<coalesce::TargetSide>> {
         let now = now_ms();
         let key = refs_cache::usable(registry::refs_state(&target.id), now)
-            .map(|version| (target.id.clone(), target.default_branch.clone(), version));
+            .map(|version| (target.id.clone(), branch.to_owned(), version));
         if let Some(key) = &key
             && let Some(side) = TARGETS.with(|memo| memo.borrow().get(key, now))
         {
             return Ok(side);
         }
-        let history = match git.log(&target.default_branch, 1).await?.first() {
+        let history = match git.log(branch, 1).await?.first() {
             Some(head) => git.log(&head.hash, MAX_ANCESTRY).await?,
             None => Vec::new(),
         };
@@ -1323,7 +1325,7 @@ impl<S: GitStore> Repos<S> {
             (Err((code, message)), _) | (_, Err((code, message))) => return Ok(Outcome::fail(code, message)),
         };
 
-        let branch = &target.default_branch;
+        let branch = &a.target_branch.clone().unwrap_or_else(|| target.default_branch.clone());
         let from_fork = source.id != target.id;
         let source_branch = match a.branch {
             Some(name) if !from_fork && name == *branch => {
@@ -1419,6 +1421,9 @@ impl<S: GitStore> Repos<S> {
         };
         let git = self.read_git(&repo).await?;
         let head_ref = a.head.as_deref().unwrap_or(&repo.default_branch);
+        // A pull request into another branch is compared from where it
+        // left that branch.
+        let base_branch = a.base_branch.clone();
         // The head's history is only searched when the base is worked out
         // from another branch.
         let depth = if a.base.is_some() || is_commit_hash(head_ref) { 1 } else { MAX_ANCESTRY };
@@ -1430,11 +1435,13 @@ impl<S: GitStore> Repos<S> {
             ));
         };
 
-        // Where the head's history meets the default branch of `against`.
+        // Where the head's history meets the default branch of `against`,
+        // or the branch asked for.
         let shared_with = async |against: &Repo| -> Result<Option<String>> {
             let against_git = self.read_git(against).await?;
+            let branch = base_branch.as_deref().unwrap_or(&against.default_branch);
             let shared: HashSet<String> = against_git
-                .log(&against.default_branch, MAX_ANCESTRY)
+                .log(branch, MAX_ANCESTRY)
                 .await?
                 .into_iter()
                 .map(|commit| commit.hash)
@@ -1452,7 +1459,9 @@ impl<S: GitStore> Repos<S> {
             // A branch, with the point where it left the default branch.
             // A single commit, with its first parent.
             (None, None) if is_commit_hash(head_ref) => head.parents.first().cloned(),
-            (None, None) if head_ref != repo.default_branch => shared_with(&repo).await?,
+            (None, None) if head_ref != base_branch.as_deref().unwrap_or(&repo.default_branch) => {
+                shared_with(&repo).await?
+            }
             (None, None) => head.parents.first().cloned(),
         };
         let base_tree = match &base {
@@ -2231,6 +2240,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "compare" => reply(&repos.compare(args(body)?).await?),
         "scan_history" => reply(&repos.scan_history(args(body)?).await?),
         "find_lockfiles" => reply(&repos.find_lockfiles(args(body)?).await?),
+        "match_pattern" => reply(&repos.match_pattern(args(body)?).await?),
+        "check_secret" => reply(&repos.check_secret(args(body)?).await?),
         "list_files" => reply(&repos.list_files(args(body)?).await?),
         "changed_files" => reply(&repos.changed_files(args(body)?).await?),
         "read_blobs" => reply(&repos.read_blobs(args(body)?).await?),

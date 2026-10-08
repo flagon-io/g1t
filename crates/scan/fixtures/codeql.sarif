@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "organization": "GitHub",
+          "semanticVersion": "2.19.3",
+          "notifications": [],
+          "rules": [
+            {
+              "id": "js/sql-injection",
+              "name": "js/sql-injection",
+              "shortDescription": { "text": "Database query built from user-controlled sources" },
+              "fullDescription": { "text": "Building a database query from user-controlled sources is vulnerable to insertion of malicious code by the user." },
+              "defaultConfiguration": { "enabled": true, "level": "error" },
+              "help": {
+                "text": "# Database query built from user-controlled sources\nUse parameterized queries.",
+                "markdown": "# Database query built from user-controlled sources\nUse parameterized queries."
+              },
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-089", "external/cwe/cwe-090", "external/cwe/cwe-943"],
+                "description": "Building a database query from user-controlled sources is vulnerable to insertion of malicious code by the user.",
+                "id": "js/sql-injection",
+                "kind": "path-problem",
+                "name": "Database query built from user-controlled sources",
+                "precision": "high",
+                "problem.severity": "error",
+                "security-severity": "8.8"
+              }
+            },
+            {
+              "id": "js/unused-local-variable",
+              "name": "js/unused-local-variable",
+              "shortDescription": { "text": "Unused variable, import, function or class" },
+              "fullDescription": { "text": "Unused variables, imports, functions or classes may be a symptom of a bug and should be examined carefully." },
+              "defaultConfiguration": { "enabled": true, "level": "note" },
+              "properties": {
+                "tags": ["maintainability"],
+                "kind": "problem",
+                "precision": "very-high",
+                "problem.severity": "recommendation"
+              }
+            }
+          ]
+        },
+        "extensions": [
+          {
+            "name": "codeql/javascript-queries",
+            "semanticVersion": "1.2.3+de325133c7a95d84489acdf5a6ced07886ff5c6d",
+            "rules": [
+              {
+                "id": "js/clear-text-logging",
+                "name": "js/clear-text-logging",
+                "shortDescription": { "text": "Clear-text logging of sensitive information" },
+                "defaultConfiguration": { "enabled": true, "level": "error" },
+                "messageStrings": {
+                  "default": { "text": "This logs sensitive data returned by {0} as clear text." }
+                },
+                "properties": {
+                  "tags": ["security", "external/cwe/cwe-312"],
+                  "precision": "high",
+                  "security-severity": "7.5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "invocations": [{ "toolExecutionNotifications": [], "executionSuccessful": true }],
+      "artifacts": [
+        { "location": { "uri": "src/server.js", "uriBaseId": "%SRCROOT%", "index": 0 } },
+        { "location": { "uri": "src/log.js", "uriBaseId": "%SRCROOT%", "index": 1 } }
+      ],
+      "results": [
+        {
+          "ruleId": "js/sql-injection",
+          "ruleIndex": 0,
+          "rule": { "id": "js/sql-injection", "index": 0 },
+          "message": { "text": "This query string depends on a user-provided value." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/server.js", "uriBaseId": "%SRCROOT%", "index": 0 },
+                "region": { "startLine": 12, "startColumn": 19, "endColumn": 62 }
+              }
+            }
+          ],
+          "partialFingerprints": { "primaryLocationLineHash": "b4f5e2c3a8ae2c7d:1", "primaryLocationStartColumnFingerprint": "14" }
+        },
+        {
+          "ruleId": "js/unused-local-variable",
+          "ruleIndex": 1,
+          "rule": { "id": "js/unused-local-variable", "index": 1 },
+          "message": { "text": "Unused variable unused." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/server.js", "uriBaseId": "%SRCROOT%", "index": 0 },
+                "region": { "startLine": 17, "startColumn": 5, "endColumn": 15 }
+              }
+            }
+          ],
+          "partialFingerprints": { "primaryLocationLineHash": "1d4c1d7a1f4e0d55:1", "primaryLocationStartColumnFingerprint": "0" }
+        },
+        {
+          "ruleId": "js/clear-text-logging",
+          "rule": { "id": "js/clear-text-logging", "index": 0, "toolComponent": { "index": 0 } },
+          "message": { "id": "default", "arguments": ["password"] },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/log.js", "uriBaseId": "%SRCROOT%", "index": 1 },
+                "region": { "startLine": 4, "startColumn": 15, "endColumn": 23 }
+              }
+            }
+          ],
+          "partialFingerprints": { "primaryLocationLineHash": "8a1bd5ca7fd6e9f2:1", "primaryLocationStartColumnFingerprint": "10" }
+        }
+      ],
+      "automationDetails": { "id": "/language:javascript/" },
+      "columnKind": "utf16CodeUnits",
+      "properties": { "semmle.formatSpecifier": "sarif-latest" }
+    }
+  ]
+}

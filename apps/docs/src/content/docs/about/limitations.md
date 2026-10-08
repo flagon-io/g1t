@@ -157,6 +157,23 @@ reopening the pull request, makes the fork again from there.
   to a branch.
 - **Status.** Clear fork storage rules depend on Cloudflare.
 
+### Some dependency update options are not applied yet
+
+g1t reads and checks every option of a `dependabot.yml` file, but does not
+act on all of them yet:
+
+- Version update pull requests are opened for npm, Cargo, Go and pip only.
+  Entries for other ecosystems are checked and listed, and open nothing.
+
+- A multi-ecosystem group opens one pull request per ecosystem, not one
+  for the group.
+- Registries that sign in with OIDC are not used.
+
+- **Instead.** Keep a separate entry per ecosystem and directory, and
+  check the Security page, which lists what each entry reads but does not
+  act on. See [Dependency updates](/guides/dependency-updates/#options).
+- **Status.** Planned.
+
 ### No conflict resolution in the browser
 
 You can't resolve a merge conflict on the pull request's page.
@@ -349,6 +366,6 @@ not ready for the open internet. **Status.** Planned, in phases.
 
 ### Not built yet
 
-- **Milestones.** Planned.
+
 - **Releases and package registries.** Planned.
 - **Wikis.** Not scheduled. Keep docs in the repository.

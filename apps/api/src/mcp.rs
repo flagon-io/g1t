@@ -11,10 +11,11 @@ use crate::tools::{Gate, TOOLS, Tool};
 const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const INSTRUCTIONS: &str = "g1t is a git forge where people and agents work through issues and pull requests. Repositories are named \"owner/name\"; issues and pull requests in one share a sequence of numbers.
-Tools are resources, each with an `action`: search, repository, issue, pull_request, agent, plan, memory, workflow, secret, webhook, access, workspace, account. The `action` field lists each action and the fields it needs. You see only what your token's scopes allow; a refusal names the scope it needs.
+Tools are resources, each with an `action`: search, repository, issue, pull_request, agent, plan, memory, workflow, secret, security, webhook, access, workspace, account, notifications. The `action` field lists each action and the fields it needs. You see only what your token's scopes allow; a refusal names the scope it needs.
 Find a repository: account whoami lists your workspaces; repository list or search finds one.
 Work on an issue: issue get (read it and the pull requests already made for it), memory recall, then pull_request create with the issue's number: you get a draft with its own fork to clone and push to. Record your reasoning with pull_request record_session as you go, push, then pull_request ready with a summary. Watch `overlaps` and `behind` on pull_request get, and its checks there: `statuses` from the repository's workflows and `required_checks`, which must pass before it merges. If one fails, read why with workflow get_run and job_logs, push a fix, and the checks run again.
 Hand work to g1t's agent: agent delegate opens an issue and starts it in one step; agent assign starts it on an existing issue. Each costs the workspace money.
+Security: security code_alerts, vulnerability_alerts and secret_alerts show what to fix; fix it in your pull request, which the Code scanning and Dependency review checks judge.
 When you learn something the next agent needs, memory remember it (scope project or workspace). Never a secret.";
 
 fn result(id: &Value, value: Value) -> Value {

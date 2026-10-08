@@ -122,6 +122,7 @@ impl Actions {
                 viewer: Some(actor.clone()),
                 base,
                 head: Some(head),
+                base_branch: None,
             },
         )
         .await?;
@@ -209,14 +210,15 @@ impl Actions {
                 let detail: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
                 let Outcome::Ok(detail) = detail else { return Ok(None) };
                 let pull = &detail.pull;
-                let labels = detail.issue.as_ref().map(|i| i.labels.clone()).unwrap_or_default();
+                let base_ref = pull.base_branch(&repo.default_branch).to_owned();
                 let mut payload = json!({
                     "action": action,
                     "number": pull.number,
-                    "pull_request": payload::pull(repo, pull, &labels),
+                    "pull_request": payload::pull(repo, pull),
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
                 });
+                payload::changed(&mut payload, data);
                 if event_name == "pull_request_review" {
                     let review = detail.comments.iter().rev().find(|c| c.verdict.is_some());
                     payload["review"] = json!({
@@ -232,7 +234,8 @@ impl Actions {
                     let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
                     let mut subject = on_default(sha, payload, pull.title.clone(), Some(pull.number));
                     subject.head_ref = Some(head_ref);
-                    subject.base_ref = Some(repo.default_branch.clone());
+                    subject.base_ref = Some(base_ref.clone());
+                    subject.filter_ref = format!("refs/heads/{base_ref}");
                     subject.paths = Some(pull.files.iter().map(|f| f.path.clone()).collect());
                     return Ok(Some(subject));
                 }
@@ -258,9 +261,10 @@ impl Actions {
                     git_ref: format!("refs/pull/{}/merge", pull.number),
                     sha,
                     head_ref: Some(head_ref),
-                    base_ref: Some(repo.default_branch.clone()),
+                    base_ref: Some(base_ref.clone()),
                     pull: Some(pull.number),
-                    filter_ref: format!("refs/heads/{}", repo.default_branch),
+                    // `branches` filters on pull requests name the base.
+                    filter_ref: format!("refs/heads/{base_ref}"),
                     paths: Some(pull.files.iter().map(|f| f.path.clone()).collect()),
                     compare: None,
                     payload,
@@ -310,8 +314,7 @@ impl Actions {
                     Outcome::Fail(_) => {
                         let pull: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
                         let Outcome::Ok(detail) = pull else { return Ok(None) };
-                        let labels = detail.issue.as_ref().map(|i| i.labels.clone()).unwrap_or_default();
-                        (payload::pull_as_issue(repo, &detail.pull, &labels), detail.comments, detail.pull.title.clone(), true)
+                        (payload::pull_as_issue(repo, &detail.pull), detail.comments, detail.pull.title.clone(), true)
                     }
                 };
                 let mut payload = json!({
@@ -320,6 +323,7 @@ impl Actions {
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
                 });
+                payload::changed(&mut payload, data);
                 if event_name == "issue_comment" {
                     let comment_id = data["commentId"].as_str();
                     let comment = comments.iter().find(|c| Some(c.id.as_str()) == comment_id).or(comments.last());
@@ -864,13 +868,30 @@ mod tests {
     #[test]
     fn the_payload_names_g1t_as_its_user_and_who_asked_for_it() {
         let pull = made_for(person("usr_1", "syntaqx"));
-        let event = payload::pull(&repo(), &pull, &[]);
+        let event = payload::pull(&repo(), &pull);
         assert_eq!(event["user"]["login"], "g1t");
         assert_eq!(event["user"]["type"], "Bot");
         assert_eq!(event["requested_by"]["login"], "syntaqx");
         assert_eq!(event["requested_by"]["type"], "User");
-        let as_issue = payload::pull_as_issue(&repo(), &pull, &[]);
+        let as_issue = payload::pull_as_issue(&repo(), &pull);
         assert_eq!(as_issue["user"]["login"], "g1t");
         assert_eq!(as_issue["requested_by"]["login"], "syntaqx");
+    }
+
+    #[test]
+    fn a_pull_request_names_its_own_base_labels_and_milestone() {
+        let mut pull = made_for(person("usr_1", "syntaqx"));
+        let event = payload::pull(&repo(), &pull);
+        assert_eq!(event["base"]["ref"], repo().default_branch);
+        pull.base = Some("release/1.x".into());
+        pull.labels = vec!["bug".into()];
+        pull.milestone = Some(g1t_contracts::work::MilestoneRef { number: 2, title: "1.1".into() });
+        let event = payload::pull(&repo(), &pull);
+        assert_eq!(event["base"]["ref"], "release/1.x");
+        assert_eq!(event["labels"], serde_json::json!([{ "name": "bug" }]));
+        assert_eq!(event["milestone"]["title"], "1.1");
+        let mut labeled = serde_json::json!({ "action": "labeled" });
+        payload::changed(&mut labeled, &serde_json::json!({ "label": { "name": "bug", "color": "d73a4a" } }));
+        assert_eq!(labeled["label"]["color"], "d73a4a");
     }
 }

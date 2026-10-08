@@ -72,7 +72,9 @@ pub struct GitPush {
 }
 
 /// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
-/// `issue.closed` and `issue.reopened`; each uses the fields that apply to it.
+/// `issue.labeled`, `issue.unlabeled`, `issue.milestoned`,
+/// `issue.demilestoned`, `issue.closed` and `issue.reopened`; each uses
+/// the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueEvent {
@@ -99,14 +101,32 @@ pub struct IssueEvent {
     /// On `issue.assigned`: those of them who were not before.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub added: Option<Vec<String>>,
+    /// On `issue.labeled` and `issue.unlabeled`: the label put on or taken
+    /// off. One event for each.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<EventLabel>,
+    /// On `issue.milestoned`: the milestone it was put in; on
+    /// `issue.demilestoned`, the one it was taken out of.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<crate::work::MilestoneRef>,
+}
+
+/// A label, as `issue.labeled`, `pull.labeled` and their `unlabeled` say.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct EventLabel {
+    pub name: String,
+    /// Six hex digits.
+    pub color: String,
 }
 
 /// The payload of `pull.opened`, `pull.ready`, `pull.updated` (its head
 /// moved), `pull.closed`, `pull.merged`, `pull.assigned`,
 /// `pull.review_requested` and `pull.review_request_removed` (reviewers
-/// asked, or no longer), `pull.stalled` (g1t stopped seeing it through
-/// until a person steps in) and `pull.resumed` (it picked back up); each
-/// uses the fields that apply to it.
+/// asked, or no longer), `pull.labeled` and `pull.unlabeled`,
+/// `pull.milestoned` and `pull.demilestoned`, `pull.base_changed` (the
+/// branch it merges into changed), `pull.stalled` (g1t stopped seeing it
+/// through until a person steps in) and `pull.resumed` (it picked back
+/// up); each uses the fields that apply to it.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PullEvent {
@@ -144,9 +164,81 @@ pub struct PullEvent {
     /// `pull.review_request_removed`, those no longer asked.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reviewers: Option<Vec<String>>,
+    /// On `pull.review_requested` and `pull.review_request_removed`: the
+    /// teams newly asked, or no longer, each with the people it asks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teams: Option<Vec<TeamRequested>>,
+    /// On `pull.review_requested`: asked because they own files it changes
+    /// (its CODEOWNERS file), not by a person.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub code_owners: bool,
     /// On `pull.stalled`: why g1t stopped, and what would start it again.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// On `pull.labeled` and `pull.unlabeled`: the label put on or taken off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<EventLabel>,
+    /// On `pull.milestoned`: the milestone it was put in; on
+    /// `pull.demilestoned`, the one it was taken out of.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<crate::work::MilestoneRef>,
+    /// On `pull.opened` and `pull.base_changed`: the branch it merges into.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+}
+
+/// A team asked to review a pull request.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRequested {
+    /// `workspace/slug`.
+    pub team: String,
+    /// Everyone in it who is told: the whole team, or, with review
+    /// assignment, the people picked (and the rest when it says to tell
+    /// them). Never the pull request's author.
+    pub notified: Vec<String>,
+    /// With review assignment: the people picked, who are asked as
+    /// reviewers themselves.
+    #[serde(default)]
+    pub assigned: Vec<String>,
+}
+
+/// The payload of every `team.*` event: `team.created`, `team.edited`,
+/// `team.deleted`; `team.member_added`, `team.member_role_changed`,
+/// `team.member_removed` (with `username`, `role` and `previousRole`);
+/// and `team.repo_added`, `team.repo_role_changed`, `team.repo_removed`
+/// (with `repoId`, `repo`, `repoRole` and `previousRepoRole`), which also
+/// name the repository as the event's own.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamChanged {
+    pub workspace: String,
+    pub team_id: String,
+    /// The team's slug, as it is now.
+    pub team: String,
+    pub name: String,
+    pub visibility: Option<crate::teams::TeamVisibility>,
+    /// The parent's slug.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// On `team.edited`: what changed, such as `name` or `parent`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<crate::teams::TeamRole>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_role: Option<crate::teams::TeamRole>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_id: Option<String>,
+    /// `workspace/name`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_role: Option<crate::access::RepoRole>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_repo_role: Option<crate::access::RepoRole>,
 }
 
 /// `deployment.succeeded` and `deployment.failed`: a build of a project

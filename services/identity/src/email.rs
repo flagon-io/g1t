@@ -375,6 +375,7 @@ fn notified_because(reason: g1t_contracts::inbox::Reason) -> &'static str {
         Reason::ReviewRequested => "you were asked to review",
         Reason::Assign => "you were assigned",
         Reason::Mention => "you were mentioned",
+        Reason::TeamMention => "a team you are in was mentioned",
         Reason::CiActivity => "it is about your work",
         Reason::SecurityAlert => "you look after this repository's security",
         Reason::StateChange => "you are subscribed to it",

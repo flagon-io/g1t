@@ -45,7 +45,8 @@ adds it to the queue instead of changing `main`. Everything a merge needs
 is still checked first: the pull request must be ready for review, every
 [required check](/guides/pull-requests/#required-status-checks) must have
 passed on its head, and it must have the approvals the repository asks
-for. Only people with the Write [role](/guides/access-and-roles/) or higher can add to the
+for, including its [code owners'](/guides/codeowners/#require-review-from-code-owners)
+when it requires them. Only people with the Write [role](/guides/access-and-roles/) or higher can add to the
 queue. Merging a pull
 request that is already queued changes nothing.
 

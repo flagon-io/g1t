@@ -17,6 +17,7 @@ import {
   TrialCard,
 } from "../../components/billing";
 import { StatementView } from "../../components/statement";
+import { SecurityActivationCard } from "../../components/security-activation";
 import { SubmitButton } from "../../components/ui";
 import {
   cardCheckResult,
@@ -47,6 +48,9 @@ const DONE: Record<string, string> = {
   stop: "New compute stays paused until an owner chooses Keep going.",
   canceled: "The plan ends at the end of the period. Nothing more is charged for it.",
   resumed: "The plan continues.",
+  security_on: "Security and quality is on for every private repository in the workspace.",
+  security_canceled: "Security and quality ends at the end of the period. Nothing more is charged for it.",
+  security_resumed: "Security and quality continues.",
 };
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -72,13 +76,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (session) {
     if (url.searchParams.get("plan")) {
       const started = await billing.confirmSubscription(slug, viewer, session);
-      throw redirect(started.ok ? `${here}?done=subscribed` : `${here}?problem=${encodeURIComponent(started.error.message)}`);
+      const doneKey = url.searchParams.get("plan") === "security" ? "security_on" : "subscribed";
+      throw redirect(started.ok ? `${here}?done=${doneKey}` : `${here}?problem=${encodeURIComponent(started.error.message)}`);
     }
     const paid = await billing.confirm(slug, viewer, session);
     throw redirect(paid.ok ? `${here}?done=prepaid#prepay` : `${here}?problem=${encodeURIComponent(paid.error.message)}#prepay`);
   }
   // A plan started on the card already checked comes straight back.
-  if (url.searchParams.get("plan") === "started") throw redirect(`${here}?done=subscribed`);
+  const plans = url.searchParams.getAll("plan");
+  if (plans.includes("started")) throw redirect(`${here}?done=${plans.includes("security") ? "security_on" : "subscribed"}`);
 
   const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
   const [account, statement, features, meters, limit, invoices, entitlements, requests, book] = await Promise.all([
@@ -102,6 +108,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     statement: unwrap(statement),
     group,
     plan: featureStates.find((state) => state.plan.feature === "plan") ?? null,
+    securityPlan: featureStates.find((state) => state.plan.feature === "security") ?? null,
     meters: meters?.ok ? meters.value : null,
     limit: limit?.ok ? limit.value : null,
     invoices: invoices?.ok ? invoices.value : [],
@@ -137,15 +144,19 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       throw redirect(started.value.url);
     }
     case "subscribe": {
-      const started = await billing.subscribe(user, slug, "plan", `${here}?plan=plan`);
-      if (!started.ok) return fail("plan", started.error.message);
+      // The plan, or the Security and quality activation.
+      const feature = form.get("feature") === "security" ? "security" : "plan";
+      const started = await billing.subscribe(user, slug, feature, `${here}?plan=${feature}`);
+      if (!started.ok) return fail(feature, started.error.message);
       throw redirect(started.value.url);
     }
     case "cancel":
     case "resume": {
-      const changed = await billing.cancelSubscription(user, slug, "plan", intent === "resume");
-      if (!changed.ok) return fail("plan", changed.error.message);
-      throw done(intent === "resume" ? "resumed" : "canceled");
+      const feature = form.get("feature") === "security" ? "security" : "plan";
+      const changed = await billing.cancelSubscription(user, slug, feature, intent === "resume");
+      if (!changed.ok) return fail(feature, changed.error.message);
+      const prefix = feature === "security" ? "security_" : "";
+      throw done(`${prefix}${intent === "resume" ? "resumed" : "canceled"}`);
     }
     case "card-check": {
       const started = await billing.cardCheck(user, slug, here);
@@ -205,7 +216,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, statement, group, plan, meters, limit, invoices, entitlements, requests, trialMicros, notice, problem } =
+  const { slug, role, account, statement, group, plan, securityPlan, meters, limit, invoices, entitlements, requests, trialMicros, notice, problem } =
     loaderData;
   const { status } = account;
   const owner = role === "owner";
@@ -245,6 +256,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           meters={meters}
           error={err("plan")}
         />
+
+        <SecurityActivationCard state={securityPlan} owner={owner} enabled={status.enabled} error={err("security")} />
 
         {free && status.enabled && (
           <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} error={err("trial")} />

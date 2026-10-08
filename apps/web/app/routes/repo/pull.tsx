@@ -21,6 +21,7 @@ import {
   Network,
   StickyNote,
   User,
+  Users,
   Wrench,
 } from "lucide-react";
 import { Suspense } from "react";
@@ -45,6 +46,8 @@ import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
 import { LifecyclePanel } from "../../components/lifecycle";
 import { AgentPanel } from "../../components/agents";
+import { BaseBranch } from "../../components/base-branch";
+import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import { Markdown } from "../../components/markdown";
 import {
   Avatar,
@@ -73,6 +76,7 @@ import {
   verdicts,
 } from "../../components/work";
 import { CatchUpProgress, ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
 import { computeNoteFor } from "../../lib/compute.server";
@@ -125,7 +129,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const deps = projects.dependencies(params.owner, params.repo, viewer);
   // Awaited below, unless the pull request is missing first.
   deps.catch(() => null);
-  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed, subscription, runs] = await Promise.all([
+  // Its labels and milestone, with the repository's to choose from.
+  const labelsFound = work.listLabels(path, viewer);
+  const milestonesFound = work.listMilestones(path, viewer);
+  labelsFound.catch(() => null);
+  milestonesFound.catch(() => null);
+  const [{ can }, found, repo, settings, agentsEnabled, members, computeNote, session, deployed, subscription, runs, teamList] = await Promise.all([
     access,
     pullFound,
     repos.get(path, viewer),
@@ -146,6 +155,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       : null,
     // Its agent's latest runs, for the Agent panel: with the page, not after it.
     agents.listRuns(viewer, { repo: path, number, limit: 5 }).catch(() => null),
+    // A member asks the workspace's teams to review, and mentions them.
+    member ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -176,7 +187,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     (found.value.statuses ?? []).length === 0 &&
     (found.value.requiredChecks ?? []).length === 0;
   const [comparison, used, noChecks] = await Promise.all([
-    tab === "changes" ? repos.compare(range.repoId, viewer, range.base, range.head) : null,
+    tab === "changes" ? repos.compare(range.repoId, viewer, range.base, range.head, range.baseBranch) : null,
     deps,
     unchecked
       ? actions
@@ -186,8 +197,18 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       : false,
   ]);
   const affects = used.ok ? used.value.usedBy : [];
+  const [labels, milestones] = await Promise.all([labelsFound, milestonesFound]);
+  const repoDefault = repo.ok ? repo.value.defaultBranch : "main";
+  // The default branch's protection covers pull requests into it only.
+  const protectedBase = (pull.base ?? repoDefault) === repoDefault;
   return {
     ...found.value,
+    labels: labels.ok ? labels.value : [],
+    milestones: milestones.ok ? milestones.value : [],
+    // Labelling and milestones: Triage and up; its author, its labels.
+    canTriage: can.triage,
+    // The branch it merges into: Write and up.
+    canChangeBase: can.push,
     workflowJobs,
     tab,
     session: session?.ok ? session.value : [],
@@ -211,9 +232,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // As the project's agents.json has them; left out, the panel fetches them.
     agentRuns: runs?.ok ? { runs: runs.value, member: can.run } : undefined,
     members: members?.ok ? members.value.map((person) => person.username) : [],
-    requireUpToDate: settings.ok && settings.value.requireUpToDate,
-    mergeQueue: settings.ok && settings.value.mergeQueue,
-    requiredApprovals: settings.ok ? settings.value.requiredApprovals : 0,
+    // `workspace/slug` and name of each team the viewer can see.
+    teams: teamList?.ok ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name })) : [],
+    requireUpToDate: protectedBase && settings.ok && settings.value.requireUpToDate,
+    mergeQueue: protectedBase && settings.ok && settings.value.mergeQueue,
+    requiredApprovals: protectedBase && settings.ok ? settings.value.requiredApprovals : 0,
     canIgnoreChecks: !settings.ok || settings.value.allowIgnoringChecks,
     noChecks,
     // Who may open the pull request that adds CI: anyone who can push.
@@ -266,6 +289,8 @@ const PULL_NEEDS: Record<string, Capability> = {
   message: "run",
   merge: "merge",
   unqueue: "merge",
+  milestone: "triage",
+  base: "push",
 };
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -284,7 +309,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   /** Names ticked in a people picker, plus those typed beside it. */
   const picked = (field: string) => [
     ...form.getAll(field).map(String),
-    ...String(form.get("others") ?? "").split(/[\s,]+/),
+    // `@acme/backend` is asked as `acme/backend`.
+    ...String(form.get("others") ?? "").split(/[\s,]+/).map((name) => name.replace(/^@/, "")),
   ];
   // The projects that use this one, built against this pull request's preview.
   if (action === "stack") {
@@ -299,6 +325,22 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       reviewers: [...form.getAll("reviewer").map(String), "g1t"],
     });
     if (!asked.ok) return { error: asked.error.message, action };
+  }
+  // Its labels, milestone and base, from the sidebar's menus and the header.
+  if (action === "labels") {
+    const set = await work.setLabels(user, path, number, form.getAll("label").map(String));
+    return set.ok ? null : { error: set.error.message, action };
+  }
+  if (action === "milestone" || action === "base") {
+    const changed = await work.updatePull(
+      user,
+      path,
+      number,
+      action === "milestone"
+        ? { milestone: Number(form.get("milestone")) || 0 }
+        : { base: String(form.get("base") ?? "") },
+    );
+    return changed.ok ? null : { error: changed.error.message, action };
   }
   // Catching up: merged and pushed in seconds when the two sides changed
   // different files; otherwise handed to a sandbox, which takes a minute.
@@ -544,6 +586,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     agentsEnabled,
     agentRuns,
     members,
+    teams,
+    codeOwners,
     tab,
     session,
     comparison,
@@ -551,8 +595,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canMerge,
     canManage,
     canRun,
-    defaultBranch,
+    defaultBranch: repoDefault,
   } = loaderData;
+  // The branch it merges into: what every line below names.
+  const defaultBranch = pull.base ?? repoDefault;
   const base = `/${params.owner}/${params.repo}`;
   const here = `${base}/pull/${pull.number}`;
   // g1t, on a pull request it made: the person who asked for it is a line below.
@@ -598,6 +644,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const reviewerNames = [
     ...new Set([...pull.reviewers, ...reviews.map(({ reviewer }) => reviewer)]),
   ];
+  const teamReviewers = pull.teamReviewers ?? [];
+  // Teams to ask: the workspace's, and any asked already.
+  const teamChoices = [
+    ...teams,
+    ...teamReviewers.filter((ref) => !teams.some((team) => team.ref === ref)).map((ref) => ({ ref, name: ref })),
+  ];
+  // Branch protection wants code owners' approval it does not have yet.
+  const ownersMissing = codeOwners?.required && codeOwners.missing ? codeOwners.missing : null;
   // A catch-up: the click shows at once; the answer says whether it is
   // done already or a sandbox is on it.
   const catchUpPending = usePending({ action: "update" });
@@ -627,7 +681,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         ? `This repository requires it to be up to date with ${defaultBranch} first.`
         : unchecked && !canIgnoreChecks
           ? `The checks ${defaultBranch} requires have to pass first.`
-          : null;
+          : ownersMissing
+            ? "Code owners have to approve first."
+            : null;
 
   return (
     // The changes get the whole width; people and settings are a tab away.
@@ -657,9 +713,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <span className="font-mono text-fg">{pull.branch}</span>
                 </>
               )}{" "}
-              into <span className="font-mono text-fg">{defaultBranch}</span>
+              into{" "}
+              <BaseBranch
+                base={defaultBranch}
+                head={pull.fork ? null : pull.branch}
+                canChange={loaderData.canChangeBase && active}
+                branchesUrl={`${base}/branches.json`}
+              />
             </span>
           </span>
+          {(pull.labels ?? []).map((name) => (
+            <LabelChip key={name} name={name} color={loaderData.labels.find((label) => label.name === name)?.color} />
+          ))}
           {opener.requestedBy && (
             <span className="text-xs">
               requested by{" "}
@@ -968,6 +1033,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </StatusBox>
                 )}
 
+                {codeOwners && active && (
+                  <div className="flex gap-3">
+                    <span className="hidden w-8 shrink-0 sm:block" />
+                    <div className="min-w-0 grow">
+                      <PullCodeOwnersPanel
+                        owners={codeOwners}
+                        base={base}
+                        branch={defaultBranch}
+                        errorsHref={canProtect ? `${base}/settings/branches#codeowners` : `${base}/blob/${encodeURIComponent(defaultBranch)}/${codeOwners.path}`}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {pull.status === "open" && (
                   <StatusBox>
                     {/* Checks by status at once; job by job when the runs are read. */}
@@ -1002,6 +1081,21 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           requiredApprovals === 1 ? "review" : "reviews"
                         } before merging.`}
                     </StatusRow>
+                    {codeOwners?.required && (
+                      <StatusRow
+                        icon={
+                          ownersMissing ? (
+                            <CircleSlash size={16} className="text-warn" />
+                          ) : (
+                            <CircleCheck size={16} className="text-accent" />
+                          )
+                        }
+                        title={ownersMissing ? "Waiting for code owners" : "Code owners approved"}
+                      >
+                        {ownersMissing ?? `Every file it changes has its owners' approval.`}{" "}
+                        {ownersMissing && "This repository requires their review before merging."}
+                      </StatusRow>
+                    )}
                     {landing ? (
                       <StatusRow
                         icon={<Loader size={16} className="animate-spin text-accent" />}
@@ -1142,6 +1236,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   author={viewer?.username ?? null}
                   resetKey={comments.length}
                   review={review}
+                  handles={teams.map((team) => `@${team.ref}`)}
                 />
                 {canManage && active && (
                   <Form method="post" className="flex justify-end">
@@ -1239,7 +1334,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </li>
                 );
               })}
-              {reviewerNames.length === 0 && (
+              {teamReviewers.map((team) => (
+                <TeamReviewer key={team} team={team} />
+              ))}
+              {reviewerNames.length === 0 && teamReviewers.length === 0 && (
                 <li className="px-1 text-xs text-faint">No reviews requested yet.</li>
               )}
             </ul>
@@ -1248,7 +1346,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 {agentsEnabled && !reviewPending && (
                   <Form method="post">
                     <input type="hidden" name="action" value="agent-review" />
-                    {pull.reviewers.map((name) => (
+                    {[...pull.reviewers, ...teamReviewers].map((name) => (
                       <input key={name} type="hidden" name="reviewer" value={name} />
                     ))}
                     <div className="*:w-full">
@@ -1262,9 +1360,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 )}
                 <details>
                   <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                    Request review from people
+                    {teamChoices.length > 0 ? "Request review from people or teams" : "Request review from people"}
                   </summary>
-                  <Form method="post" className="mt-2 space-y-2" key={pull.reviewers.join()}>
+                  <Form method="post" className="mt-2 space-y-2" key={[...pull.reviewers, ...teamReviewers].join()}>
                     <input type="hidden" name="action" value="reviewers" />
                     {pull.reviewers.includes("g1t") && (
                       <input type="hidden" name="reviewer" value="g1t" />
@@ -1273,7 +1371,29 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       name="reviewer"
                       members={members.filter((name) => name !== workOwner(pull).username)}
                       chosen={pull.reviewers.filter((name) => name !== "g1t")}
+                      placeholder="Other usernames or teams (acme/backend)"
                     />
+                    {teamChoices.length > 0 && (
+                      <div className="space-y-1.5 border-t border-line pt-2">
+                        <p className="text-xs text-faint">Teams</p>
+                        {teamChoices.map((team) => (
+                          <CheckboxOption
+                            key={team.ref}
+                            name="reviewer"
+                            value={team.ref}
+                            defaultChecked={teamReviewers.includes(team.ref)}
+                            className="items-center"
+                            labelClassName="flex min-w-0 items-center gap-2"
+                            label={
+                              <>
+                                <Users size={14} className="shrink-0 text-faint" />
+                                <span className="truncate font-mono text-xs">@{team.ref}</span>
+                              </>
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
                     <SubmitButton variant="quiet" match={{ action: "reviewers" }} pending="Saving…">
                       Save reviewers
                     </SubmitButton>
@@ -1331,6 +1451,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             )}
             {actionData?.action === "assign" && <ErrorText>{actionData.error}</ErrorText>}
           </section>
+
+          <LabelsBox
+            labels={loaderData.labels}
+            chosen={pull.labels ?? []}
+            canEdit={canManage && active}
+            canCreate={loaderData.canTriage}
+            manageUrl={loaderData.canTriage ? `${base}/labels` : undefined}
+          />
+          <MilestoneBox
+            milestones={loaderData.milestones}
+            current={pull.milestone}
+            canEdit={loaderData.canTriage}
+            base={base}
+          />
 
           <section>
             <h3 className="text-sm font-medium">Working copy</h3>

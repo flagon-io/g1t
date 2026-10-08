@@ -61,8 +61,10 @@ has no checks**: nothing proves a change works, for people or for agents.
 
 ## Required status checks
 
-Rules for merging belong to the default branch, since every pull request
-merges into it. Someone with the Maintain [role](/guides/access-and-roles/)
+Rules for merging belong to the default branch, and hold for every pull
+request into it; a pull request into another branch is not held to them
+(see [pull requests into other branches](/guides/base-branches/)).
+Someone with the Maintain [role](/guides/access-and-roles/)
 or higher sets them under the repository's **Settings → Branches and
 merging**, in **Branch protection**:
 
@@ -72,6 +74,7 @@ merging**, in **Branch protection**:
 | Required status checks | None | The checks that must pass on a pull request's head before it merges. |
 | Required approvals | None | How many reviewers must approve before a merge, 0 to 3 on the page (up to 6 from the API). A reviewer who asked for changes blocks it. |
 | g1t's approval counts | On | Off means approvals have to come from people. |
+| Require review from code owners | Off | On means the owners of every file a pull request changes, as its [CODEOWNERS file](/guides/codeowners/) says, must approve before it merges. See [require review from code owners](/guides/codeowners/#require-review-from-code-owners). |
 | Require branches to be up to date before merging | Off | On means a pull request behind the default branch has to catch up, and its checks run again, before it merges. |
 | Merge through a queue | Off | See [merge queue](/guides/merge-queue/). |
 | Allow bypassing required checks | On | Lets someone who may merge tick **bypass** when merging, to merge without the required checks passing. Off means nobody can. |
@@ -125,10 +128,32 @@ curl -X PATCH https://api.g1t.sh/repos/<workspace>/<repo>/settings \
 [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)
 takes `required_checks`, which replaces the whole list, along with
 `required_approvals`, `count_agent_approvals`, `require_up_to_date`,
-`merge_queue` and `allow_ignoring_checks`;
+`merge_queue`, `allow_ignoring_checks` and `require_code_owner_review`;
 [`get_repo_settings`](/reference/api/repositories/get-repo-settings/)
 returns them. On the MCP server they are the `repository` tool's
 `check_names`, `get_settings` and `update_settings` actions.
+
+## Reviewers
+
+Ask people to review a pull request in the **Reviewers** box on its page,
+by username. You can also ask a [team](/guides/teams/), as
+`@workspace/team`: everyone in it is asked, or, with the team's
+[review assignment](/guides/teams/#review-assignment) on, g1t picks who,
+and they are listed beside the team. Asking needs the Triage
+[role](/guides/access-and-roles/) or higher, or being the pull request's
+author. Nobody is asked to review their own pull request.
+
+When the repository has a [CODEOWNERS file](/guides/codeowners/), the
+owners of the files a pull request changes are asked by themselves, and
+the pull request shows **Code owners**: who owns which files and whose
+approval is still needed.
+
+Through the API, `POST /repos/{owner}/{name}/pulls/{number}/requested_reviewers`
+takes `reviewers` (usernames) and `team_reviewers` (teams, as
+`workspace/team` or the team's slug), and adds them to whoever is asked
+already; `DELETE` on the same route takes requests away. On
+the MCP server they are the `pull_request` tool's `request_reviewers` and
+`remove_requested_reviewers` actions.
 
 ## Conflicts
 
@@ -232,5 +257,7 @@ is sent back to resolve it by itself, before it is ready.
 | `mergeable` | `clean`, `conflicting`, `checking` or `unknown`. |
 | `conflicts` | When conflicting, the files that conflict. |
 | `behind` | Whether its target has moved on without it. |
+| `reviewers`, `team_reviewers` | The people and the [teams](/guides/teams/#review-requests) asked to review it. |
+| `code_owners` | Who owns the files it changes and whose approval is still needed; see [CODEOWNERS](/guides/codeowners/#through-the-api). Absent when its target has no CODEOWNERS file. |
 
 An agent sees the same through the `pull_request` tool's `get` action.

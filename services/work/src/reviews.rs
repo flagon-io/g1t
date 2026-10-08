@@ -148,6 +148,7 @@ impl Work {
                 .clone()
                 .unwrap_or_else(|| repo_id.to_owned()),
             branch: pull.branch.clone(),
+            target_branch: pull.base.clone().filter(|base| !base.is_empty()),
         };
         self.timing.rpc(g1t_kit::call(&self.repos, "behind", &asked)).await
     }
@@ -260,7 +261,8 @@ impl Work {
             source: pull.fork.clone().unwrap_or_else(|| path.clone()),
             commit,
             repo: path,
-            default_branch: repo.default_branch,
+            // The branch it merges into, which the review compares against.
+            default_branch: pull.base_branch(&repo.default_branch).to_owned(),
             number: pull.number,
             title: pull.title,
             description: pull.body.unwrap_or_default(),

@@ -621,13 +621,13 @@ impl Search {
         let issues: Outcome<Vec<Issue>> = g1t_kit::call(
             &self.work,
             "list_issues",
-            &ListIssuesArgs { repo: path.clone(), viewer: Some(actor.clone()), state: None, label: None },
+            &ListIssuesArgs { repo: path.clone(), viewer: Some(actor.clone()), state: None, label: None, milestone: None },
         )
         .await?;
         let pulls: Outcome<Vec<Pull>> = g1t_kit::call(
             &self.work,
             "list_pulls",
-            &ListPullsArgs { repo: path.clone(), viewer: Some(actor), state: None },
+            &ListPullsArgs { repo: path.clone(), viewer: Some(actor), state: None, label: None, milestone: None, base: None },
         )
         .await?;
         let issues = match issues {

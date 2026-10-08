@@ -8,23 +8,21 @@ import { page } from "../../lib/meta";
 import {
   type PullInfo,
   ScanSummary,
-  SecretsList,
   SeverityCountsGrid,
   StateFilter,
   type UpgradeFix,
-  VersionUpdatesCard,
   VulnerabilityList,
 } from "../../components/security";
 import { Switch } from "../../components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { security, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
-import { alertCapability, countByState, parseAlertState, tabOf } from "../../lib/security-alerts";
+import { alertCapability, countByState, parseAlertState } from "../../lib/security-alerts";
+import { severityCounts } from "../../lib/security-suite";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Security · ${params.owner}/${params.repo} · g1t` });
+  return page(args, { title: `Vulnerabilities · ${params.owner}/${params.repo} · g1t` });
 }
 
 /** Upgrade issues and security update pull requests looked up per page, at most. */
@@ -114,28 +112,18 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   return set.ok ? { ok: true } : { ok: false, error: set.error.message };
 }
 
-function Count({ n }: { n: number }) {
-  return n > 0 ? <span className="ml-1.5 rounded-full bg-line px-1.5 py-px text-[0.6875rem] tabular-nums">{n}</span> : null;
-}
-
 export default function ProjectSecurity({ loaderData, params }: Route.ComponentProps) {
   const { overview, fixes, pulls, can } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
-  const action = `${base}/security`;
+  const action = `${base}/security/vulnerabilities`;
   const [search, setSearch] = useSearchParams();
   const rescan = useFetcher<{ ok: boolean; error?: string }>();
   const upkeep = useFetcher<{ ok: boolean; error?: string }>();
   const upkeepOn = upkeep.formData ? upkeep.formData.get("enabled") === "true" : overview.upkeep;
-  const secretCounts = countByState(overview.secrets);
   const vulnCounts = countByState(overview.vulnerabilities);
-  // A link to one alert (git's push refusal sends one) shows it wherever it stands.
+  // A link to one alert shows it wherever it stands.
   const focus = search.get("finding");
-  const focused = focus
-    ? (overview.secrets.find((secret) => secret.id === focus) ?? overview.vulnerabilities.find((vuln) => vuln.id === focus))
-    : undefined;
-  const tab =
-    search.get("tab") ??
-    (focus ? tabOf(focus) : secretCounts.open > 0 && vulnCounts.open === 0 ? "secrets" : vulnCounts.open > 0 ? "dependencies" : "secrets");
+  const focused = focus ? overview.vulnerabilities.find((vuln) => vuln.id === focus) : undefined;
   const state: AlertState = search.get("state") ? parseAlertState(search.get("state")) : (focused?.state ?? "open");
   const navigate = (change: (next: URLSearchParams) => void) => {
     const next = new URLSearchParams(search);
@@ -151,12 +139,11 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
         <div>
           <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             <ShieldCheck size={19} className="text-accent" />
-            Security
+            Vulnerabilities
           </h2>
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
-            Pushes that add a secret are refused before they land, and the history is scanned once. Every package the
-            lockfiles resolve is checked for known vulnerabilities, and with security updates on, g1t opens a pull request to
-            upgrade each one that has a fix.
+            Every package the lockfiles resolve is checked for known vulnerabilities, on every push to the default branch and
+            daily. With security updates on, g1t opens a pull request to upgrade each one that has a fix.
           </p>
         </div>
         {can.run && (
@@ -176,47 +163,16 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
       </div>
 
       <div className="mt-6">
-        <SeverityCountsGrid counts={overview.counts} />
-        <p className="mt-2 text-xs text-faint">
-          Open alerts by severity. A secret in the history that looks real counts as critical; blocked pushes and likely test
-          values do not.
-        </p>
+        <SeverityCountsGrid counts={severityCounts(overview.vulnerabilities)} />
+        <p className="mt-2 text-xs text-faint">Open vulnerability alerts by severity.</p>
       </div>
 
       <div className="mt-4">
         <ScanSummary scan={overview.scan} />
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => navigate((next) => next.set("tab", value))} className="mt-8">
-        <TabsList>
-          <TabsTrigger value="secrets">
-            Secrets
-            <Count n={secretCounts.open} />
-          </TabsTrigger>
-          <TabsTrigger value="dependencies">
-            Dependencies
-            <Count n={vulnCounts.open} />
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="secrets" className="mt-4">
-          <StateFilter counts={secretCounts} value={state} onChange={setState} />
-          <div className="mt-3">
-            <SecretsList
-              secrets={overview.secrets.filter((secret) => secret.state === state)}
-              state={state}
-              activity={overview.activity}
-              base={base}
-              action={action}
-              focus={focus}
-              canDismiss={can.manage_integrations}
-            />
-          </div>
-          <p className="mt-3 text-xs text-faint">
-            Not a real secret, such as a test fixture? Add <code>g1t:allow-secret</code> in a comment on its line, or dismiss the
-            alert here. Dismissing takes the Admin role and is recorded with your name and reason.
-          </p>
-        </TabsContent>
-        <TabsContent value="dependencies" className="mt-4">
+      <div className="mt-8">
+        <div>
           <StateFilter counts={vulnCounts} value={state} onChange={setState} />
           <div className="mt-3">
             <VulnerabilityList
@@ -232,8 +188,8 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
               canDismiss={can.push}
             />
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
 
       <section className="mt-10" aria-labelledby="security-settings">
         <h3 id="security-settings" className="text-base font-semibold tracking-tight">
@@ -257,7 +213,6 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
               onCheckedChange={(checked) => upkeep.submit({ intent: "upkeep", enabled: String(checked) }, { method: "post", action })}
             />
           </label>
-          <VersionUpdatesCard state={overview.versionUpdates} />
         </div>
       </section>
     </div>

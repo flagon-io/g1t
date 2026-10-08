@@ -368,9 +368,8 @@ These are counted through the month and charged once it is over, as one
 line dated the month's last day, so the limit counts them as they happen.
 The plan's included usage and the trial pay for them first.
 
-Security scans and search embeddings run on every workspace: no security
-feature is held back for the plan. On a free workspace g1t pays for them
-itself. They appear on the statement at $0, *covered by g1t*, never count
+Security scans and search embeddings run on every workspace, with or
+without the plan. On a free workspace g1t pays for them itself. They appear on the statement at $0, *covered by g1t*, never count
 toward the limit and never use the trial.
 
 | | What it costs g1t | What is counted |
@@ -594,9 +593,15 @@ Runs already under way finish, so usage can go slightly past a limit.
 
 ## Security on every plan
 
-Security is never a paid extra. Every workspace, free or on the plan, has
-the [audit log](/guides/audit-log/), with the same CSV and JSON export,
-and secret push protection. What the plan changes is how long the log is
+Every workspace, free or on the plan, has the [audit log](/guides/audit-log/),
+with the same CSV and JSON export, and secret scanning, push protection,
+vulnerability alerts and security updates. The rest of the security suite
+(custom patterns, validity checks, delegated bypass, code scanning,
+dependency review and the security overview) is free on public
+repositories and, on private ones, the **Security and quality**
+activation: a monthly price per workspace from the price book ($10 today),
+turned on from the Billing page, with or without the plan. See
+[what's free and what's paid](/guides/security/pricing/). What the plan changes is how long the log is
 kept: [7 days free, 90 on the plan](/guides/audit-log/#how-long-it-is-kept),
 and longer by arrangement. Single sign-on through your identity provider is not
 built yet; when it is, it will be on every plan.

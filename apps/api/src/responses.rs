@@ -7,7 +7,7 @@
 //! encoded again, so that every field the type has is sent, not only the
 //! ones an example shows.
 
-use g1t_contracts::{access, actions, integrations, repos, search, webhooks, work};
+use g1t_contracts::{access, actions, codeowners, integrations, repos, search, teams, webhooks, work};
 use g1t_kit::wire::{self, USER_KEYED};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -79,6 +79,17 @@ fn sample(op: Op, example: &Value) -> Value {
             return through::<access::RepoInvitation>(op, as_is);
         }
         Op::ListOutsideCollaborators => return through::<Vec<access::OutsideCollaborator>>(op, as_is),
+        // Teams and code owners, also `snake_case`.
+        Op::ListTeams | Op::ListChildTeams | Op::ListUserTeams => return through::<Vec<teams::Team>>(op, as_is),
+        Op::GetTeam | Op::CreateTeam | Op::UpdateTeam | Op::SetTeamReviewAssignment => {
+            return through::<teams::Team>(op, as_is);
+        }
+        Op::ListTeamMembers => return through::<Vec<teams::TeamMember>>(op, as_is),
+        Op::SetTeamMember => return through::<teams::TeamMember>(op, as_is),
+        Op::ListTeamRepos => return through::<Vec<teams::TeamRepo>>(op, as_is),
+        Op::SetTeamRepo => return through::<teams::TeamRepo>(op, as_is),
+        Op::DeleteTeam | Op::RemoveTeamMember | Op::RemoveTeamRepo => return through::<bool>(op, as_is),
+        Op::GetCodeownersErrors => return through::<codeowners::CodeOwnersReport>(op, as_is),
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {
@@ -86,7 +97,13 @@ fn sample(op: Op, example: &Value) -> Value {
         }
         _ => {}
     }
-    let sent = as_services_send(example);
+    let mut sent = as_services_send(example);
+    // A pull request's code owners are `snake_case` inside it.
+    if op == Op::GetPullRequest
+        && let Some(code_owners) = example.get("code_owners")
+    {
+        sent["codeOwners"] = code_owners.clone();
+    }
     match op {
         Op::CreateWorkspace | Op::UpdateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
         Op::ListRepos => through::<Vec<repos::Repo>>(op, sent),
@@ -113,8 +130,19 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::GetIssue => through::<work::IssueDetail>(op, sent),
         Op::Delegate => through::<work::Delegated>(op, sent),
         Op::ListPullRequests => through::<Vec<work::Pull>>(op, sent),
+        Op::UpdatePullRequest => through::<work::Pull>(op, sent),
+        Op::ListLabels | Op::AddDefaultLabels | Op::ListIssueLabels => through::<Vec<work::Label>>(op, sent),
+        Op::CreateLabel | Op::UpdateLabel => through::<work::Label>(op, sent),
+        Op::ListMilestones => through::<Vec<work::Milestone>>(op, sent),
+        Op::CreateMilestone | Op::UpdateMilestone => through::<work::Milestone>(op, sent),
+        Op::GetMilestone => through::<work::MilestoneDetail>(op, sent),
         Op::GetPullRequest => through::<work::PullDetail>(op, sent),
-        Op::MarkPullRequestReady | Op::ClosePullRequest | Op::MergePullRequest | Op::AssignIssue => {
+        Op::MarkPullRequestReady
+        | Op::ClosePullRequest
+        | Op::MergePullRequest
+        | Op::AssignIssue
+        | Op::RequestReviewers
+        | Op::RemoveRequestedReviewers => {
             through::<work::Pull>(op, sent)
         }
         Op::ListWorkflows => through::<Vec<actions::Workflow>>(op, sent),

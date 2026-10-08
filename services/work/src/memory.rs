@@ -707,7 +707,7 @@ mod tests {
             },
             grants: grants
                 .iter()
-                .map(|(id, role)| access::RepoGrant { repo_id: (*id).into(), workspace: "acme".into(), role: *role })
+                .map(|(id, role)| access::RepoGrant { repo_id: (*id).into(), workspace: "acme".into(), role: *role, team: None })
                 .collect(),
             ..User::default()
         }

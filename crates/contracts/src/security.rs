@@ -202,6 +202,23 @@ pub struct SecretFinding {
     pub test_value: Option<String>,
     /// Open, dismissed or fixed.
     pub state: AlertState,
+    /// What its issuer said when last asked: `active`, `inactive`,
+    /// `unknown` or `unsupported`; absent when never asked.
+    #[serde(default)]
+    pub validity: Option<String>,
+    #[serde(default)]
+    pub validity_checked_at: Option<String>,
+    /// How it got past push protection, when someone bypassed it.
+    #[serde(default)]
+    pub bypass: Option<crate::security_suite::Bypass>,
+    /// The custom pattern that found it, for a `custom_pattern` finding.
+    #[serde(default)]
+    pub pattern_id: Option<String>,
+    #[serde(default)]
+    pub pattern_name: Option<String>,
+    /// How many places it was found in.
+    #[serde(default)]
+    pub locations: u32,
 }
 
 impl SecretStatus {
@@ -229,6 +246,12 @@ pub struct NewSecret {
     /// Such a secret is recorded but never stops a push.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test_value: Option<String>,
+    /// For a custom pattern's finding (`kind` `custom_pattern`): which
+    /// pattern, and its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern_name: Option<String>,
 }
 
 /// `push_blocked`: the secrets a push would add. Those allowed before are
@@ -243,6 +266,9 @@ pub struct PushBlockedArgs {
     pub path: RepoPath,
     pub pusher: Option<String>,
     pub secrets: Vec<NewSecret>,
+    /// Whether the repository is private, as repos read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private: Option<bool>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -273,6 +299,9 @@ pub struct ScanHistoryArgs {
     /// scanned. The page ends there, with no next.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub until: Option<String>,
+    /// Custom patterns to look for too.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patterns: Vec<crate::security_suite::PatternSpec>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -292,6 +321,10 @@ pub struct HistoryPage {
 #[serde(rename_all = "camelCase")]
 pub struct FindLockfilesArgs {
     pub repo_id: String,
+    /// A commit, branch or tag to read them at; the default branch when
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -545,53 +578,11 @@ pub struct AlertActivity {
     pub at: String,
 }
 
-/// What `.g1t/dependencies.yml` asks for: version updates, which keep
-/// dependencies current whether or not they are vulnerable.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VersionUpdatesState {
-    /// Whether the file is on the default branch.
-    pub found: bool,
-    /// What is wrong with it, if anything.
-    pub error: Option<String>,
-    /// Each entry under `updates`, as read.
-    pub updates: Vec<VersionUpdateEntry>,
-    /// When it was last read, RFC 3339.
-    pub read_at: Option<String>,
-}
-
-/// One entry of `.g1t/dependencies.yml`'s `updates`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VersionUpdateEntry {
-    /// `npm`, `cargo`, `go` or `pip`.
-    pub ecosystem: String,
-    /// Where its manifest is, from the repository's root: `/`, `/web`.
-    pub directory: String,
-    /// `daily`, `weekly` or `monthly`.
-    pub interval: String,
-    /// Groups, each a name and the package patterns it gathers.
-    pub groups: Vec<UpdateGroup>,
-    /// Packages never updated, or not to these versions.
-    pub ignore: Vec<UpdateIgnore>,
-    /// Version update pull requests open at once, at most.
-    pub open_pull_requests_limit: u32,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UpdateGroup {
-    pub name: String,
-    /// Package names, with `*` for any run of characters.
-    pub patterns: Vec<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UpdateIgnore {
-    /// A package name, with `*` for any run of characters.
-    pub dependency: String,
-    /// Version requirements to skip, such as `>=5`; all when empty.
-    pub versions: Vec<String>,
-}
+/// Version updates, and what the dependency update file asks of security
+/// updates: see [`crate::updates`].
+pub use crate::updates::{
+    UpdateAllow, UpdateGroup, UpdateIgnore, VersionUpdateEntry, VersionUpdatesState,
+};
 
 /// Everything the Security page shows for one repository.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -691,7 +682,7 @@ pub struct RepoSecurity {
 }
 
 /// `bump` (runner): makes a security update in a sandbox. It clones the
-/// default branch, raises `package` to `version` in each lockfile with the
+/// default branch (or `base`), raises `package` to `version` in each lockfile with the
 /// ecosystem's own tool (`npm`, `cargo`, `go`, `pip`), commits that as g1t
 /// (`g1t <g1t@users.noreply.g1t.sh>`) and pushes it to `branch`, which must
 /// start with [`UPDATE_BRANCH_PREFIX`]. The push is what tells the security
@@ -710,4 +701,28 @@ pub struct BumpArgs {
     pub branch: String,
     /// The commit's message.
     pub message: String,
+    /// `version` for a version update, whose branch is named by the
+    /// dependency update file (any branch but the default one); a security
+    /// update when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// Several packages raised in one commit, for a grouped update. When
+    /// given, `package` and `version` are its first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub packages: Vec<crate::updates::BumpPackage>,
+    /// How a manifest's requirement changes (`versioning-strategy`):
+    /// `increase` (the default), `increase-if-necessary`, `widen` or
+    /// `lockfile-only`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
+    /// Replace the branch if it is there already: a rebase or a recreate.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
+    /// Private registries the tools may read, with their credentials.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub registries: Vec<crate::updates::BumpRegistry>,
+    /// The branch to start from, which its pull request merges into
+    /// (`target-branch`): the default branch when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
 }

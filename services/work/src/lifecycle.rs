@@ -567,7 +567,7 @@ impl Work {
                     .as_deref()
                     .is_none_or(|revised| review.finished_at.as_str() >= revised)
             });
-        let settings = self.settings(&pull.repo_id).await?;
+        let settings = self.settings_for(pull).await?;
         let workflows = WorkflowFacts::of(
             &self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?,
             &settings.required_checks,
@@ -767,7 +767,7 @@ impl Work {
             Feedback::FailedWorkflows => {
                 let (statuses, settings) = futures_util::future::try_join(
                     self.statuses(&pull.repo_id, pull.head_commit.as_deref()),
-                    self.settings(&pull.repo_id),
+                    self.settings_for(pull),
                 )
                 .await?;
                 let required = |context: &str| {
@@ -1002,6 +1002,8 @@ impl Work {
         let (Outcome::Ok(repo), Some(source)) = (crate::retired::unless_archived(repo), pull.fork.clone()) else {
             return Ok(Advance::None);
         };
+        // The branch it merges into: what it catches up with.
+        let base = pull.base_branch(&repo.default_branch).to_owned();
         let issue = match pull.issue {
             Some(number) => self.issue(&pull.repo_id, number).await?,
             None => None,
@@ -1023,7 +1025,7 @@ impl Work {
         };
         let feedback = match &next {
             Next::Revise(feedback) => self.feedback(&pull, feedback).await?,
-            Next::CatchUp => self.conflict_note(&pull, &repo.default_branch).await?,
+            Next::CatchUp => self.conflict_note(&pull, &base).await?,
             _ => String::new(),
         };
         if !self
@@ -1056,10 +1058,7 @@ impl Work {
             Next::Revise(Feedback::Review(_)) => {
                 "sent g1t back to address the review".to_owned()
             }
-            _ => format!(
-                "asked g1t to bring this up to date with {}",
-                repo.default_branch
-            ),
+            _ => format!("asked g1t to bring this up to date with {base}"),
         };
         self.note(
             &pull.repo_id,
@@ -1078,7 +1077,7 @@ impl Work {
             author: pull.requested_by.unwrap_or(pull.author),
             source,
             branch: None,
-            default_branch: repo.default_branch,
+            default_branch: base,
             title: pull.title,
             description: pull.body.unwrap_or_default(),
             issue,
@@ -1314,7 +1313,8 @@ impl Work {
             Some(number) => self.issue(&pull.repo_id, number).await?,
             None => None,
         };
-        let feedback = self.conflict_note(&pull, &repo.default_branch).await?;
+        let base = pull.base_branch(&repo.default_branch).to_owned();
+        let feedback = self.conflict_note(&pull, &base).await?;
         Ok(Some(LifecycleJob {
             pull_id: pull.id,
             source: pull.fork.unwrap_or_else(|| path.clone()),
@@ -1322,7 +1322,7 @@ impl Work {
             number: pull.number,
             author: pull.requested_by.unwrap_or(pull.author),
             branch: pull.branch,
-            default_branch: repo.default_branch,
+            default_branch: base,
             title: pull.title,
             description: pull.body.unwrap_or_default(),
             issue,

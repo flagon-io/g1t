@@ -19,8 +19,8 @@ import {
   Textarea,
   TimeAgo,
 } from "../../components/ui";
-import { CheckboxOption } from "../../components/ui/checkbox";
 import { CheckBadge } from "../../components/checks";
+import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import {
   Assignee,
   AssigneeStack,
@@ -29,7 +29,6 @@ import {
   CommentList,
   PeoplePicker,
   IssueState,
-  Label,
   PersonLink,
   PullIcon,
   plainText,
@@ -67,10 +66,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // At once: only the plan's note waits for the viewer's role. Putting an
   // agent on it needs Write: Read cannot spend compute.
   const access = accessTo(context, params);
-  const [{ can }, found, labels, agentsEnabled, members, links, computeNote, subscription, active] = await Promise.all([
+  const [{ can }, found, labels, milestones, agentsEnabled, members, links, computeNote, subscription, active, teams] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
+    // Open ones to choose from, and the one it is in, with its progress.
+    work.listMilestones(path, viewer),
     env.RUNNER.enabled(viewer, path),
     // A member picks assignees from the workspace's people.
     roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
@@ -87,6 +88,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // The project's agents at work, for the line under the pull request
     // one is on for this issue: with the page, not after it.
     agents.listRuns(viewer, { repo: path, active: true, limit: 50 }).catch(() => null),
+    // The teams a member can mention, for the comment box.
+    roleIn(viewer, params.owner) ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -99,6 +102,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     ...found.value,
     viewer,
     labels: labels.ok ? labels.value : [],
+    milestones: milestones.ok ? milestones.value : [],
     agentsEnabled,
     computeNote,
     links,
@@ -106,6 +110,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // As the project's agents.json has them; left out, the line fetches them.
     activeRuns: active?.ok ? { runs: active.value, member: can.run } : undefined,
     members: members?.ok ? members.value.map((member) => member.username) : [],
+    handles: teams?.ok ? teams.value.map((team) => `@${team.workspace}/${team.slug}`) : [],
     // The author can close and reopen their own issue, and whoever g1t's
     // agent filed one for, that one; Triage and up, anyone's.
     canManage: viewer != null && (viewer.id === workOwner(issue).id || can.triage),
@@ -120,7 +125,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   // What each form needs; closing your own issue is checked by work.
-  const needed = form.get("action") === "run-hosted" ? "run" : form.get("action") === "assign" || form.get("action") === "labels" ? "triage" : null;
+  // Labels: its author may use the repository's on their own issue, and
+  // work says so; anyone else, and every milestone, needs Triage.
+  const needed =
+    form.get("action") === "run-hosted"
+      ? "run"
+      : form.get("action") === "assign" || form.get("action") === "milestone"
+        ? "triage"
+        : null;
   const refused = needed ? await refusal(context, params, needed) : null;
   if (refused) return { error: refused, action: String(form.get("action")) };
 
@@ -156,13 +168,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return result.ok ? null : { error: result.error.message };
     }
     case "labels": {
-      const result = await work.updateIssue(user, path, number, {
-        labels: [
-          ...form.getAll("label").map(String),
-          ...String(form.get("labels") ?? "").split(","),
-        ],
-      });
-      return result.ok ? null : { error: result.error.message };
+      const result = await work.setLabels(user, path, number, form.getAll("label").map(String));
+      return result.ok ? null : { error: result.error.message, action: "labels" };
+    }
+    case "milestone": {
+      const result = await work.updateIssue(user, path, number, { milestone: Number(form.get("milestone")) || 0 });
+      return result.ok ? null : { error: result.error.message, action: "milestone" };
     }
     case "reopen": {
       const result = await work.reopenIssue(user, path, number);
@@ -299,7 +310,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             </span>
           </span>
           {issue.labels.map((name) => (
-            <Label key={name} name={name} />
+            <LabelChip key={name} name={name} color={labels.find((label) => label.name === name)?.color} />
           ))}
           {open && issue.agent && <Assignee agent={issue.agent} />}
         </div>
@@ -360,7 +371,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         <div className="mt-3">
           <div className="space-y-4">
             <CommentList comments={comments} base={base} />
-            <CommentForm author={viewer?.username ?? null} resetKey={comments.length} />
+            <CommentForm author={viewer?.username ?? null} resetKey={comments.length} handles={loaderData.handles} />
             {canManage && (
               <Form method="post" className="flex flex-wrap justify-end gap-2">
                 {open ? (
@@ -624,32 +635,19 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </section>
         )}
 
-        {can.triage && (
-          <details className="group">
-            <summary className="cursor-pointer list-none text-sm font-medium">
-              Labels <span className="text-xs font-normal text-faint group-open:hidden">Edit</span>
-            </summary>
-            <Form method="post" className="mt-3 space-y-3" key={issue.labels.join()}>
-              <input type="hidden" name="action" value="labels" />
-              <div className="flex flex-wrap gap-x-3 gap-y-2">
-                {labels.map((name) => (
-                  <CheckboxOption
-                    key={name}
-                    name="label"
-                    value={name}
-                    defaultChecked={issue.labels.includes(name)}
-                    label={<Label name={name} />}
-                    className="items-center gap-1.5"
-                  />
-                ))}
-              </div>
-              <Input name="labels" placeholder="New labels, comma separated" />
-              <SubmitButton variant="quiet" match={{ action: "labels" }} pending="Saving…">
-                Save labels
-              </SubmitButton>
-            </Form>
-          </details>
-        )}
+        <LabelsBox
+          labels={labels}
+          chosen={issue.labels}
+          canEdit={loaderData.canManage}
+          canCreate={can.triage}
+          manageUrl={can.triage ? `${base}/labels` : undefined}
+        />
+        <MilestoneBox
+          milestones={loaderData.milestones}
+          current={issue.milestone}
+          canEdit={can.triage}
+          base={base}
+        />
 
         {viewer && (
           <SubscriptionBox action={`${base}/notifications`} number={issue.number} kind="issue" subscription={loaderData.subscription} />

@@ -27,6 +27,20 @@ const GROUPS: { title: string; events: string[] }[] = [
   { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
   { title: "Agents", events: ["session.appended", "agent.asked"] },
   { title: "Access", events: ["repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
+  {
+    title: "Teams",
+    events: [
+      "team.created",
+      "team.edited",
+      "team.deleted",
+      "team.member_added",
+      "team.member_role_changed",
+      "team.member_removed",
+      "team.repo_added",
+      "team.repo_role_changed",
+      "team.repo_removed",
+    ],
+  },
 ];
 
 function StatusDot({ status }: { status: string | null }) {

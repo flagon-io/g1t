@@ -19,6 +19,7 @@ mod renamed;
 mod responses;
 mod rest;
 mod runners;
+mod security;
 mod tools;
 
 use g1t_contracts::billing::FinishRunArgs;

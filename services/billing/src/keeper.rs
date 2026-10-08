@@ -486,7 +486,13 @@ impl Billing {
             .iter()
             .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
             .collect();
-        let plans: Vec<_> = g1t_contracts::billing::Feature::ALL.iter().map(|_| self.plan_at(&book)).collect();
+        let plans: Vec<_> = g1t_contracts::billing::Feature::ALL
+            .iter()
+            .map(|feature| match feature {
+                g1t_contracts::billing::Feature::Security => crate::features::security_plan_at(&book),
+                _ => self.plan_at(&book),
+            })
+            .collect();
         Ok(PriceBook {
             prices: prices
                 .into_iter()

@@ -14,7 +14,8 @@ test("tabs carry counts, and say which are coming", () => {
   const tabs = workspaceTabs("acme", { member: true, owner: false, projects: 412, people: 7 });
   assert.equal(tabs.find((tab) => tab.key === "projects")?.count, 412);
   assert.equal(tabs.find((tab) => tab.key === "people")?.count, 7);
-  assert.equal(tabs.find((tab) => tab.key === "teams")?.soon, true);
+  assert.equal(tabs.find((tab) => tab.key === "teams")?.soon, undefined);
+  assert.equal(tabs.find((tab) => tab.key === "insights")?.soon, true);
   assert.equal(tabs.find((tab) => tab.key === "overview")?.to, "/acme");
   assert.equal(tabs.find((tab) => tab.key === "projects")?.to, "/acme/-/projects");
 });

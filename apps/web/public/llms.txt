@@ -134,10 +134,13 @@ Issues and pull requests are addressed by repository and number, and share
 one sequence of numbers: `#12` is one or the other. Below, `{repo}` stands
 for `/repos/{owner}/{name}`.
 
-- **Find work:** `GET {repo}/issues?state=open`, optionally `&label=bug`.
+- **Find work:** `GET {repo}/issues?state=open`, optionally `&label=bug`
+  or `&milestone=3`.
 - **Open an issue:** `POST {repo}/issues` with `title`, `body`, and
-  optional `labels` (such as `bug` or `feature`; a new name makes a new
-  label). Say what done means in the body, under `## Definition of done`
+  optional `labels` (the repository's, from `GET {repo}/labels`, such as
+  `bug` or `enhancement`; a new name makes a new label only for someone
+  with the Triage role) and `milestone` (a number from
+  `GET {repo}/milestones`). Say what done means in the body, under `## Definition of done`
   if you like; it guides whoever does the work but never gates a merge.
   The old `checks` field is deprecated: its commands are added to the body
   under "Definition of done" and the response has a `deprecation` note.
@@ -148,7 +151,8 @@ for `/repos/{owner}/{name}`.
   `agent` (a label such as `claude-code`). Without an issue, send `title`.
   The response has `pull.number` and `git.remote`, the pull request's own
   fork. Clone it, commit, and push to it with the token. It starts as a
-  draft. If the change is already on a branch pushed to the repository,
+  draft. It merges into the default branch; send `base` only when asked
+  to target another branch. If the change is already on a branch pushed to the repository,
   send `branch` (and `title`, `body`) instead: no fork is made and the pull
   request is ready at once.
 - **Record the session** as you work, so people can see why a change was
@@ -347,6 +351,22 @@ are answered at `g1t.sh/<owner>/<repo>/invitations`.
 `GET {repo}/collaborators/{username}/permission` gives a role and what it
 allows. Guide: https://docs.g1t.sh/guides/access-and-roles/
 
+Teams group a workspace's members (`GET /workspaces/{workspace}/teams`;
+the `team` MCP tool). A team given a role on a repository gives it to
+everyone in it and its child teams, and `source` is then `team`.
+`@workspace/team` in a comment tells the team's people; a pull request can
+ask a team to review (`POST {repo}/pulls/{number}/requested_reviewers` with
+`team_reviewers`), and the team may pick who. Guide:
+https://docs.g1t.sh/guides/teams/
+
+A CODEOWNERS file (`.g1t/CODEOWNERS`, `.github/CODEOWNERS`, `CODEOWNERS`,
+`docs/CODEOWNERS` or `.gitlab/CODEOWNERS`, the first found on the default
+branch) asks owners to review pull requests that change their files. With
+`require_code_owner_review` on (`PATCH {repo}/settings`), a merge waits for
+their approval; `code_owners` on `GET {repo}/pulls/{number}` says whose is
+missing, and `GET {repo}/codeowners/errors` checks the file. Guide:
+https://docs.g1t.sh/guides/codeowners/
+
 ## Manage a repository
 
 People with the admin role rename it (`POST {repo}/rename` with `name`; the
@@ -482,6 +502,25 @@ updates) is read and validated, but no version update pull requests are
 opened yet. `g1t` is not an account and cannot be signed in to.
 Guide: https://docs.g1t.sh/guides/security/
 
+The security suite (scopes `security:read`, `security:write`; MCP tool
+`security`). A push refused for a secret links to its alert, where anyone
+with `write` bypasses it with a reason (`false_positive`, `used_in_tests`,
+`will_fix_later`), or asks owners when the workspace delegates bypasses;
+an agent never bypasses: take the secret out and push again. Code
+scanning: upload SARIF 2.1.0 to `POST {repo}/code-scanning/sarifs`
+(`commit_sha`, `ref`, `sarif` gzipped then base64); default-branch results
+become alerts, pull request results (`refs/pull/<n>/head`) become line
+comments and the `Code scanning` status. `Dependency review` is a status on
+every pull request that changes a lockfile. Fix what either reports in your
+own pull request; both can be required checks. Also: custom patterns,
+validity checks, `GET {repo}/dependency-graph/sbom` (SPDX 2.3, in `sbom`),
+`GET {repo}/dependency-graph/compare/{base...head}`, and a workspace
+overview. On private repositories these need the Security and quality
+activation (`402` without it); public repositories have them free.
+Guides: https://docs.g1t.sh/guides/security/secret-protection/,
+https://docs.g1t.sh/guides/security/code-scanning/,
+https://docs.g1t.sh/guides/security/supply-chain/
+
 ## Deployments
 
 Part of the g1t plan ($20 a month per workspace, started by an owner
@@ -589,6 +628,8 @@ https://docs.g1t.sh/guides/search/
 - [Accounts and sign-in](https://docs.g1t.sh/guides/authentication/)
 - [Workspaces and tokens](https://docs.g1t.sh/guides/workspaces/)
 - [Access and roles](https://docs.g1t.sh/guides/access-and-roles/)
+- [Teams](https://docs.g1t.sh/guides/teams/)
+- [CODEOWNERS](https://docs.g1t.sh/guides/codeowners/)
 - [Managing a repository](https://docs.g1t.sh/guides/managing-repositories/)
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
 - [Model providers](https://docs.g1t.sh/guides/models/)

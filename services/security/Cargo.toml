@@ -9,12 +9,16 @@ description = "Secret scanning, push protection decisions, vulnerable dependenci
 crate-type = ["cdylib"]
 
 [dependencies]
+g1t-actions.workspace = true
 g1t-contracts.workspace = true
 g1t-kit.workspace = true
 g1t-scan.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
+# The dependency update file is read with its lines, so each problem says where it is.
+yaml-rust2 = { version = "0.13", default-features = false }
+toml = "0.8"
 worker.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.2", features = ["js"] }

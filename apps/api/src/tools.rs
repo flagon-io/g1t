@@ -19,6 +19,7 @@ use g1t_contracts::scopes::{Level, NO_SCOPE, TokenAccess, scope_for};
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
+use crate::security::SecurityOp;
 
 pub struct Action {
     pub name: &'static str,
@@ -57,7 +58,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings, and see and dismiss their security alerts (secrets and vulnerable dependencies). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings, check their CODEOWNERS file, manage their labels and milestones, and see and dismiss their security alerts (secrets and vulnerable dependencies). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
@@ -67,7 +68,17 @@ pub const TOOLS: &[Tool] = &[
             a("get_settings", Op::GetRepoSettings, "Branch protection: required checks, approvals, how pull requests merge"),
             a("update_settings", Op::UpdateRepoSettings, "Change branch protection and how pull requests merge"),
             a("check_names", Op::ListCheckNames, "Check names reported lately, to require on the default branch"),
-            a("list_labels", Op::ListLabels, "Labels in use"),
+            a("codeowners", Op::GetCodeownersErrors, "Problems in its CODEOWNERS file, by line"),
+            a("list_labels", Op::ListLabels, "Labels, with colors and how many issues and pull requests carry each"),
+            a("create_label", Op::CreateLabel, "Create a label"),
+            a("update_label", Op::UpdateLabel, "Rename a label or change its color or description"),
+            a("delete_label", Op::DeleteLabel, "Delete a label, from everything that carries it"),
+            a("add_default_labels", Op::AddDefaultLabels, "Add the default labels it is missing"),
+            a("list_milestones", Op::ListMilestones, "Milestones, with progress and due dates"),
+            a("get_milestone", Op::GetMilestone, "One milestone with its issues and pull requests"),
+            a("create_milestone", Op::CreateMilestone, "Create a milestone"),
+            a("update_milestone", Op::UpdateMilestone, "Change a milestone's title, description, due date or state"),
+            a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
             a("list_events", Op::ListEvents, "Timeline: pushes, issues, pull requests, comments"),
             a("rename_branch", Op::RenameBranch, "Rename a branch"),
             a("rename", Op::RenameRepo, "Rename it; old addresses redirect"),
@@ -93,7 +104,11 @@ pub const TOOLS: &[Tool] = &[
             a("list", Op::ListIssues, "Issues on a repository, newest first"),
             a("get", Op::GetIssue, "One issue with comments and its pull requests"),
             a("create", Op::CreateIssue, "Open an issue"),
-            a("update", Op::UpdateIssue, "Change title, body, labels or assignees"),
+            a("update", Op::UpdateIssue, "Change title, body, labels, milestone or assignees"),
+            a("labels", Op::ListIssueLabels, "The labels an issue or pull request carries"),
+            a("add_labels", Op::AddIssueLabels, "Add labels to an issue or pull request"),
+            a("set_labels", Op::SetIssueLabels, "Replace the labels of an issue or pull request"),
+            a("remove_labels", Op::RemoveIssueLabels, "Take labels off an issue or pull request"),
             a("close", Op::CloseIssue, "Close it without a pull request"),
             a("reopen", Op::ReopenIssue, "Reopen it"),
             a("comment", Op::AddComment, "Comment on an issue or pull request; path and line for one line of a change"),
@@ -103,16 +118,19 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "pull_request",
         title: "Pull requests",
-        description: "Pull requests: start a change for an issue, record your session, mark it ready, review and merge. Read `overlaps` and `behind` on `get` before going far.",
+        description: "Pull requests: start a change for an issue, record your session, mark it ready, ask people and teams to review, review and merge. Read `overlaps` and `behind` on `get` before going far, and `code_owners` for whose approval it needs.",
         default_action: None,
         actions: &[
             a("list", Op::ListPullRequests, "Pull requests on a repository, newest first"),
             a("get", Op::GetPullRequest, "Status, checks and required checks, reviews, overlaps, whether it is behind"),
             a("changes", Op::GetPullRequestChanges, "Files and line-by-line diff"),
             a("create", Op::CreatePullRequest, "Start a draft with its own fork to push to, or open one from a pushed branch"),
+            a("update", Op::UpdatePullRequest, "Change its base branch, labels, milestone, assignees or reviewers"),
             a("record_session", Op::RecordSession, "Append prompt, reasoning and tool entries to its session"),
             a("read_session", Op::ReadSession, "Its recorded session"),
             a("ready", Op::MarkPullRequestReady, "Mark a draft ready, with a summary"),
+            a("request_reviewers", Op::RequestReviewers, "Ask people or teams to review it"),
+            a("remove_requested_reviewers", Op::RemoveRequestedReviewers, "Stop asking people or teams to review it"),
             a("review", Op::ReviewPullRequest, "Approve or request changes"),
             a("close", Op::ClosePullRequest, "Close without merging"),
             a("merge", Op::MergePullRequest, "Land it, or join the merge queue"),
@@ -225,6 +243,28 @@ pub const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "team",
+        title: "Teams",
+        description: "Teams: groups of a workspace's members, given roles on repositories together, mentioned as @workspace/team and asked to review together. Name one by `workspace` and its slug (`team`). Any member may create a team; the workspace's owners and the team's maintainers manage it. A secret team is seen only by its people and the owners.",
+        default_action: None,
+        actions: &[
+            a("list", Op::ListTeams, "A workspace's teams you can see"),
+            a("get", Op::GetTeam, "One team"),
+            a("create", Op::CreateTeam, "Create a team; you become its maintainer"),
+            a("update", Op::UpdateTeam, "Change its name, slug, description, visibility, parent or notifications"),
+            a("delete", Op::DeleteTeam, "Delete it; its child teams move up"),
+            a("list_members", Op::ListTeamMembers, "Its people and their roles, child teams' with include_child_teams"),
+            a("set_member", Op::SetTeamMember, "Add a member of the workspace, or change their role"),
+            a("remove_member", Op::RemoveTeamMember, "Take someone out of it"),
+            a("list_child_teams", Op::ListChildTeams, "The teams nested under it"),
+            a("list_repos", Op::ListTeamRepos, "The repositories it has a role on"),
+            a("set_repo", Op::SetTeamRepo, "Give it a role on a repository"),
+            a("remove_repo", Op::RemoveTeamRepo, "Take its role on a repository away"),
+            a("set_review_assignment", Op::SetTeamReviewAssignment, "Whom it picks when asked to review"),
+            a("list_user_teams", Op::ListUserTeams, "The teams someone is in"),
+        ],
+    },
+    Tool {
         name: "workspace",
         title: "Workspaces",
         description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, and keep your own pinned projects at the top of its sidebar.",
@@ -246,6 +286,45 @@ pub const TOOLS: &[Tool] = &[
             a("pin_project", Op::PinProject, "Pin a project, at a position or the end"),
             a("unpin_project", Op::UnpinProject, "Unpin a project"),
             a("reorder_pinned_projects", Op::ReorderPinnedProjects, "Put your pins in a new order"),
+        ],
+    },
+    Tool {
+        name: "security",
+        title: "Security",
+        description: "A repository's security: secret scanning alerts and push protection bypasses, custom secret patterns, code scanning alerts and SARIF uploads, vulnerability alerts, the dependency graph and its SBOM, dependency review, settings, and a workspace's overview. Fix an alert with g1t. Findings are shown to those who can change the code only. Give `repo` (owner/name), or `workspace` for lists across one.",
+        default_action: Some("secret_alerts"),
+        actions: &[
+            a("secret_alerts", Op::Security(SecurityOp::ListSecretAlerts), "Secret scanning alerts; by state, secret_type, validity, bypassed"),
+            a("secret_alert", Op::Security(SecurityOp::GetSecretAlert), "One secret alert, with where it was found and its bypass requests"),
+            a("update_secret_alert", Op::Security(SecurityOp::UpdateSecretAlert), "Dismiss a secret alert with a reason, or reopen it"),
+            a("secret_locations", Op::Security(SecurityOp::ListSecretLocations), "Every file, line and commit a secret is in"),
+            a("bypass", Op::Security(SecurityOp::BypassPushProtection), "Push past push protection with a reason, or ask to"),
+            a("check_validity", Op::Security(SecurityOp::CheckSecretValidity), "Ask a secret's issuer whether it still works"),
+            a("bypass_requests", Op::Security(SecurityOp::ListBypassRequests), "A workspace's push protection bypass requests"),
+            a("review_bypass", Op::Security(SecurityOp::ReviewBypassRequest), "Approve, deny or cancel a bypass request"),
+            a("patterns", Op::Security(SecurityOp::ListCustomPatterns), "Custom secret patterns of a repository or workspace"),
+            a("create_pattern", Op::Security(SecurityOp::CreateCustomPattern), "Create a custom secret pattern, as a draft or published"),
+            a("update_pattern", Op::Security(SecurityOp::UpdateCustomPattern), "Change, publish or unpublish a custom pattern"),
+            a("delete_pattern", Op::Security(SecurityOp::DeleteCustomPattern), "Delete a custom pattern"),
+            a("dry_run_pattern", Op::Security(SecurityOp::DryRunCustomPattern), "Run a pattern over the default branch without saving it"),
+            a("code_alerts", Op::Security(SecurityOp::ListCodeAlerts), "Code scanning alerts; by state, severity, tool, rule_id"),
+            a("code_alert", Op::Security(SecurityOp::GetCodeAlert), "One code scanning alert by number"),
+            a("update_code_alert", Op::Security(SecurityOp::UpdateCodeAlert), "Dismiss a code scanning alert with a reason, or reopen it"),
+            a("analyses", Op::Security(SecurityOp::ListAnalyses), "Code scanning analyses, newest first"),
+            a("upload_sarif", Op::Security(SecurityOp::UploadSarif), "Upload a SARIF file, gzipped and base64-encoded"),
+            a("sarif_upload", Op::Security(SecurityOp::GetSarifUpload), "Whether a SARIF upload was read, and its analyses"),
+            a("vulnerability_alerts", Op::Security(SecurityOp::ListVulnerabilityAlerts), "Vulnerable dependencies; by state, severity, ecosystem, package"),
+            a("vulnerability_alert", Op::Security(SecurityOp::GetVulnerabilityAlert), "One vulnerability alert"),
+            a("update_vulnerability_alert", Op::Security(SecurityOp::UpdateVulnerabilityAlert), "Dismiss a vulnerability alert with a reason, or reopen it"),
+            a("fix", Op::Security(SecurityOp::FixAlert), "Put g1t on an issue to fix an alert"),
+            a("dependency_graph", Op::Security(SecurityOp::GetDependencyGraph), "Every package the lockfiles resolve, direct or transitive"),
+            a("sbom", Op::Security(SecurityOp::GetSbom), "The dependency graph as an SPDX 2.3 document"),
+            a("compare_dependencies", Op::Security(SecurityOp::CompareDependencies), "What changes in dependencies between base...head"),
+            a("settings", Op::Security(SecurityOp::GetSettings), "A repository's security settings"),
+            a("update_settings", Op::Security(SecurityOp::UpdateSettings), "Change when checks fail and dependency review's policy"),
+            a("workspace_settings", Op::Security(SecurityOp::GetWorkspaceSettings), "A workspace's delegated bypass and validity checks"),
+            a("update_workspace_settings", Op::Security(SecurityOp::UpdateWorkspaceSettings), "Turn delegated bypass or validity checks on or off"),
+            a("overview", Op::Security(SecurityOp::GetOverview), "A workspace's alerts, trends and coverage"),
         ],
     },
     Tool {
@@ -296,7 +375,8 @@ pub const TOOLS: &[Tool] = &[
 fn destructive(op: Op) -> bool {
     matches!(
         op,
-        Op::DeleteWorkspace
+        Op::Security(SecurityOp::DeleteCustomPattern | SecurityOp::BypassPushProtection)
+            | Op::DeleteWorkspace
             | Op::UpdateWorkspace
             | Op::DeleteRepo
             | Op::PurgeRepo
@@ -312,6 +392,8 @@ fn destructive(op: Op) -> bool {
             | Op::SetActionsVariable
             | Op::SetModelRoutes
             | Op::SetBasePermission
+            | Op::DeleteTeam
+            | Op::RemoveTeamRepo
             | Op::MergePullRequest
             | Op::RemoveRunner
             | Op::DeleteRunnerGroup
@@ -629,7 +711,7 @@ mod tests {
             assert_eq!(tool["annotations"]["destructiveHint"], false);
         }
         let issue = tools.iter().find(|tool| tool["name"] == "issue").unwrap();
-        assert_eq!(issue["inputSchema"]["properties"]["action"]["enum"], json!(["list", "get"]));
+        assert_eq!(issue["inputSchema"]["properties"]["action"]["enum"], json!(["list", "get", "labels"]));
         // Nothing of the agent tool is a read.
         assert!(!tools.iter().any(|tool| tool["name"] == "agent"));
     }
@@ -638,7 +720,8 @@ mod tests {
     fn a_narrow_token_sees_only_its_tools() {
         let access = token(Some(vec![Scope::IssuesWrite]));
         let names: Vec<Value> = listed(&Gate::Token(&access)).into_iter().map(|tool| tool["name"].clone()).collect();
-        assert_eq!(names, vec![json!("issue"), json!("plan"), json!("account")]);
+        // Labels and milestones are the repository's, managed with issues:write.
+        assert_eq!(names, vec![json!("repository"), json!("issue"), json!("plan"), json!("account")]);
         // Notifications are a resource of their own: reading them lists
         // only what reads.
         let reader = token(Some(vec![Scope::NotificationsRead]));
@@ -675,6 +758,73 @@ mod tests {
         assert_eq!(resolve(search, &json!({ "query": "x" })), Ok(Op::Search));
         let account = Tool::by_name("account").unwrap();
         assert_eq!(resolve(account, &json!({})), Ok(Op::Whoami));
+    }
+
+    #[test]
+    fn teams_are_one_tool_and_a_workspace_reader_sees_only_its_reads() {
+        let team = Tool::by_name("team").unwrap();
+        let names: Vec<&str> = team.actions.iter().map(|action| action.name).collect();
+        assert_eq!(
+            names,
+            [
+                "list",
+                "get",
+                "create",
+                "update",
+                "delete",
+                "list_members",
+                "set_member",
+                "remove_member",
+                "list_child_teams",
+                "list_repos",
+                "set_repo",
+                "remove_repo",
+                "set_review_assignment",
+                "list_user_teams",
+            ]
+        );
+        let reader = token(Some(vec![Scope::WorkspaceRead]));
+        let tools = listed(&Gate::Token(&reader));
+        let listed_team = tools.iter().find(|tool| tool["name"] == "team").unwrap();
+        assert_eq!(
+            listed_team["inputSchema"]["properties"]["action"]["enum"],
+            json!(["list", "get", "list_members", "list_child_teams", "list_repos", "list_user_teams"])
+        );
+        assert_eq!(listed_team["annotations"]["readOnlyHint"], true);
+        // A team's role on a repository is who has access.
+        let admin = token(Some(vec![Scope::WorkspaceAdmin]));
+        let tools = listed(&Gate::Token(&admin));
+        let listed_team = tools.iter().find(|tool| tool["name"] == "team").unwrap();
+        let actions = listed_team["inputSchema"]["properties"]["action"]["enum"].as_array().unwrap();
+        assert!(actions.contains(&json!("set_review_assignment")) && !actions.contains(&json!("set_repo")));
+        let access = token(Some(vec![Scope::AccessAdmin]));
+        let tools = listed(&Gate::Token(&access));
+        let listed_team = tools.iter().find(|tool| tool["name"] == "team").unwrap();
+        assert_eq!(listed_team["inputSchema"]["properties"]["action"]["enum"], json!(["set_repo", "remove_repo"]));
+        // Both kinds of role a schema names are offered.
+        let roles = &listed(&Gate::Everything).into_iter().find(|tool| tool["name"] == "team").unwrap()["inputSchema"]
+            ["properties"]["role"]["enum"];
+        for role in ["member", "maintainer", "read", "admin"] {
+            assert!(roles.as_array().unwrap().contains(&json!(role)), "{role}");
+        }
+        assert_eq!(
+            resolve(team, &json!({ "action": "set_repo", "workspace": "acme", "team": "backend", "repo": "rocket" })),
+            Err("team.set_repo needs role.".to_owned())
+        );
+    }
+
+    #[test]
+    fn reviewers_and_code_owners_are_actions_of_their_tools() {
+        let pull = Tool::by_name("pull_request").unwrap();
+        assert_eq!(
+            resolve(pull, &json!({ "action": "request_reviewers", "repo": "a/b", "number": 1, "team_reviewers": ["backend"] })),
+            Ok(Op::RequestReviewers)
+        );
+        assert_eq!(pull.action("remove_requested_reviewers").map(|action| action.op), Some(Op::RemoveRequestedReviewers));
+        let repository = Tool::by_name("repository").unwrap();
+        assert_eq!(resolve(repository, &json!({ "action": "codeowners", "repo": "a/b" })), Ok(Op::GetCodeownersErrors));
+        assert!(reads_only(Op::GetCodeownersErrors));
+        assert!(!reads_only(Op::RequestReviewers));
     }
 
     /// How much smaller `tools/list` is than one tool per operation. Run

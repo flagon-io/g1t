@@ -330,8 +330,9 @@ impl Identity {
             ));
         }
         // Leaving a workspace takes away every way into it: the person's
-        // roles on its repositories go too (access.rs). To keep someone on
-        // a repository, add them to it again as an outside collaborator.
+        // roles on its repositories go too (access.rs), and their place in
+        // its teams (teams.rs). To keep someone on a repository, add them
+        // to it again as an outside collaborator.
         self.db
             .batch(vec![
                 self.db
@@ -341,6 +342,12 @@ impl Identity {
                     .prepare(
                         "DELETE FROM repo_grants
                          WHERE workspace_id = ? AND principal_kind = 'user' AND principal_id = ?",
+                    )
+                    .bind(&[workspace_id.as_str().into(), user.id.as_str().into()])?,
+                self.db
+                    .prepare(
+                        "DELETE FROM team_members
+                         WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?) AND user_id = ?",
                     )
                     .bind(&[workspace_id.as_str().into(), user.id.as_str().into()])?,
             ])

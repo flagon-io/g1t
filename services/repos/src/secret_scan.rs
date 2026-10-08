@@ -5,6 +5,14 @@
 //!
 //! Push protection also keeps a person's private address out of what they
 //! push, when they asked g1t to (see [`exposed_address`]).
+//!
+//! Custom patterns (the security suite's) are looked for alongside the
+//! built-in formats, in pushes, history and files committed through g1t
+//! itself; the security service says which apply ([`Repos::patterns_for`]).
+//! It can also run a pattern over the default branch for a dry run
+//! ([`Repos::match_pattern`]), and ask a landed secret's issuer whether it
+//! still works ([`Repos::check_secret`]), without the value ever leaving
+//! this service except to that issuer.
 
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
@@ -17,6 +25,8 @@ use g1t_contracts::security::{
     FindLockfilesArgs, HistoryPage, LockfileText, Lockfiles, NewSecret, PushBlockedArgs, PushVerdict,
     ScanHistoryArgs,
 };
+use g1t_contracts::security_suite::{CheckSecretArgs, MatchPatternArgs, PatternMatch, PatternMatches, PatternSpec, PatternsForArgs, SecretValidity};
+use g1t_scan::custom::{self, Compiled};
 use g1t_scan::lockfiles::Lockfile;
 use g1t_scan::pack::{ObjectKind, Pack, TreeItem, encode_tree, pack_start};
 use g1t_scan::protection::{self, Blocked};
@@ -146,8 +156,68 @@ async fn changed_files<R: GitRepo>(objects: &Objects<'_, R>, old_root: Option<St
     Ok(changes)
 }
 
+/// The scanner's custom patterns, compiled; any that no longer compile are
+/// skipped.
+pub fn compiled(patterns: &[PatternSpec]) -> Vec<Compiled> {
+    let specs: Vec<custom::PatternSpec> = patterns
+        .iter()
+        .map(|spec| custom::PatternSpec {
+            id: spec.id.clone(),
+            name: spec.name.clone(),
+            pattern: spec.pattern.clone(),
+            before: spec.before.clone(),
+            after: spec.after.clone(),
+        })
+        .collect();
+    custom::compile_all(&specs)
+}
+
+/// What a custom pattern found, as the security service records it.
+fn custom_secret(hit: custom::CustomHit, path: &str, commit: &str) -> NewSecret {
+    NewSecret {
+        fingerprint: hit.fingerprint(),
+        kind: custom::KIND.to_owned(),
+        path: path.to_owned(),
+        line: hit.line,
+        commit: commit.to_owned(),
+        preview: hit.preview(),
+        test_value: None,
+        pattern_id: Some(hit.pattern_id),
+        pattern_name: Some(hit.pattern_name),
+    }
+}
+
+/// How a sentence names a secret found: its format, or its pattern.
+pub fn secret_label(secret: &NewSecret) -> Option<String> {
+    if secret.kind == custom::KIND {
+        return Some(custom::label(secret.pattern_name.as_deref().unwrap_or("custom")));
+    }
+    g1t_scan::secrets::SecretKind::parse(&secret.kind).map(|kind| kind.label().to_owned())
+}
+
+/// The secrets a new file holds, built-in and custom, for a commit made
+/// through g1t rather than pushed.
+pub fn scan_file(path: &str, bytes: &[u8], commit: &str, patterns: &[Compiled]) -> Vec<NewSecret> {
+    let mut found: Vec<NewSecret> = protection::scan_change(path, None, bytes)
+        .into_iter()
+        .map(|hit| NewSecret {
+            fingerprint: hit.fingerprint(),
+            kind: hit.kind.id().to_owned(),
+            path: path.to_owned(),
+            line: hit.line,
+            commit: commit.to_owned(),
+            preview: hit.preview(),
+            test_value: hit.test_value().map(str::to_owned),
+            pattern_id: None,
+            pattern_name: None,
+        })
+        .collect();
+    found.extend(protection::scan_change_custom(path, None, bytes, patterns).into_iter().map(|hit| custom_secret(hit, path, commit)));
+    found
+}
+
 /// The secrets each change adds, found `READS_AT_ONCE` files at a time.
-async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, changes: Vec<Change>) -> Result<Vec<NewSecret>> {
+async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, changes: Vec<Change>, patterns: &[Compiled]) -> Result<Vec<NewSecret>> {
     let mut found = Vec::new();
     let changes: Vec<Change> = changes
         .into_iter()
@@ -174,7 +244,12 @@ async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, change
                     commit: commit.to_owned(),
                     preview: hit.preview(),
                     test_value: hit.test_value().map(str::to_owned),
+                    pattern_id: None,
+                    pattern_name: None,
                 });
+            }
+            for hit in protection::scan_change_custom(&change.path, old.as_deref(), &new, patterns) {
+                found.push(custom_secret(hit, &change.path, commit));
             }
         }
     }
@@ -220,7 +295,7 @@ async fn supply_bases<R: GitRepo>(pack: &mut Pack, repo: &R) -> Result<()> {
 /// large to read is an error ([`unscannable`]): it is declined, never let
 /// through unread. A pack that cannot be read for another reason is let
 /// through, and said so in the logs; the store will judge it.
-pub async fn scan_push<R: GitRepo>(repo: &R, body: &[u8]) -> Result<Vec<NewSecret>> {
+pub async fn scan_push<R: GitRepo>(repo: &R, body: &[u8], patterns: &[Compiled]) -> Result<Vec<NewSecret>> {
     if body.len() > MAX_SCANNED_PUSH {
         return Err(worker::Error::RustError(format!("{UNSCANNABLE} {} bytes", body.len())));
     }
@@ -259,7 +334,7 @@ pub async fn scan_push<R: GitRepo>(repo: &R, body: &[u8]) -> Result<Vec<NewSecre
             .into_iter()
             .filter(|change| pack.contains(&change.new) && seen_blobs.insert((change.path.clone(), change.new.clone())))
             .collect();
-        for secret in scan_changes(&objects, &id, changes).await? {
+        for secret in scan_changes(&objects, &id, changes, patterns).await? {
             if seen_secrets.insert(secret.fingerprint.clone()) {
                 found.push(secret);
             }
@@ -321,11 +396,17 @@ impl<S: GitStore> crate::Repos<S> {
     /// address, or `None` to let it through.
     /// `repo` is the repository pushed to, as the request read it.
     pub(crate) async fn protect(&self, repo: &Repo, pusher: Option<&User>, body: &[u8]) -> Result<Option<Response>> {
+        // A pull request's findings belong to the repository it was made from.
+        let owner = match &repo.fork_of {
+            Some(id) => self.registry.by_id(id).await?.unwrap_or(repo.clone()),
+            None => repo.clone(),
+        };
         // Asking identity about the pusher's address and scanning the push
         // do not depend on each other, so they happen at once.
         let scan = async {
+            let patterns = compiled(&self.patterns_for(&owner).await);
             let git = self.store.open(&store_key(repo)).await?;
-            scan_push(&git, body).await
+            scan_push(&git, body, &patterns).await
         };
         let (guard, found) = futures_util::future::join(self.push_email_guard(pusher), scan).await;
         if let Some(guard) = guard
@@ -350,11 +431,36 @@ impl<S: GitStore> crate::Repos<S> {
         if found.is_empty() {
             return Ok(None);
         }
-        // A pull request's findings belong to the repository it was made from.
-        let owner = match &repo.fork_of {
-            Some(id) => self.registry.by_id(id).await?.unwrap_or(repo.clone()),
-            None => repo.clone(),
-        };
+        let blocked = self.blocked(&owner, pusher, found).await;
+        if blocked.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(crate::git_http::declined(
+            body,
+            &protection::reason(&blocked),
+            &protection::explain(&blocked),
+        )?))
+    }
+
+    /// The custom patterns the security service says `repo` is scanned
+    /// with; none when it cannot say.
+    pub(crate) async fn patterns_for(&self, repo: &Repo) -> Vec<PatternSpec> {
+        let Some(security) = &self.security else { return Vec::new() };
+        g1t_kit::call(
+            security,
+            "patterns_for",
+            &PatternsForArgs { repo_id: repo.id.clone(), namespace: repo.namespace.clone(), private: Some(repo.is_private) },
+        )
+        .await
+        .unwrap_or_else(|error| {
+            worker::console_error!("patterns_for failed: {error}");
+            Vec::new()
+        })
+    }
+
+    /// Of `found` in a change to `owner`, the secrets nobody let through:
+    /// the security service records them all and says which were allowed.
+    pub(crate) async fn blocked(&self, owner: &Repo, pusher: Option<&User>, found: Vec<NewSecret>) -> Vec<Blocked> {
         let owner_path = RepoPath { namespace: owner.namespace.clone(), name: owner.name.clone() };
         let verdict = match &self.security {
             Some(security) => g1t_kit::call::<_, PushVerdict>(
@@ -365,6 +471,7 @@ impl<S: GitStore> crate::Repos<S> {
                     path: owner_path.clone(),
                     pusher: pusher.map(|user| user.username.clone()),
                     secrets: found.clone(),
+                    private: Some(owner.is_private),
                 },
             )
             .await
@@ -374,33 +481,41 @@ impl<S: GitStore> crate::Repos<S> {
             }),
             None => PushVerdict::default(),
         };
-        let blocked: Vec<Blocked> = found
+        found
             .iter()
             .filter(|secret| !verdict.allowed.contains(&secret.fingerprint))
             // A likely test value is recorded, never a reason to refuse.
             .filter(|secret| secret.test_value.is_none())
             .filter_map(|secret| {
-                let kind = g1t_scan::secrets::SecretKind::parse(&secret.kind)?;
+                let label = secret_label(secret)?;
                 let id = verdict.ids.iter().find(|(fingerprint, _)| *fingerprint == secret.fingerprint);
                 Some(Blocked {
-                    kind,
+                    label,
                     path: secret.path.clone(),
                     line: secret.line,
                     commit: secret.commit.clone(),
+                    // Where it can be bypassed with a reason, or allowed.
                     allow_url: id.map(|(_, id)| {
-                        format!("{SITE}/{}/{}/security?tab=secrets&finding={id}", owner_path.namespace, owner_path.name)
+                        format!("{SITE}/{}/{}/security/secret-scanning/{id}", owner_path.namespace, owner_path.name)
                     }),
                 })
             })
-            .collect();
-        if blocked.is_empty() {
-            return Ok(None);
+            .collect()
+    }
+
+    /// Push protection for a file committed through g1t (`commit_file`):
+    /// the refusal, naming each secret and where to bypass it, or `None`.
+    pub(crate) async fn protect_file(&self, repo: &Repo, actor: &User, path: &str, content: &[u8], commit: &str) -> Option<String> {
+        let patterns = compiled(&self.patterns_for(repo).await);
+        let found = scan_file(path, content, commit, &patterns);
+        if found.is_empty() {
+            return None;
         }
-        Ok(Some(crate::git_http::declined(
-            body,
-            &protection::reason(&blocked),
-            &protection::explain(&blocked),
-        )?))
+        let blocked = self.blocked(repo, Some(actor), found).await;
+        if blocked.is_empty() {
+            return None;
+        }
+        Some(protection::explain(&blocked).join("\n"))
     }
 
     /// A page of the default branch's history, scanned for secrets.
@@ -427,6 +542,7 @@ impl<S: GitStore> crate::Repos<S> {
         }
         let empty = Pack::default();
         let objects = Objects { pack: &empty, repo: &git, reads: Cell::new(1) };
+        let patterns = compiled(&a.patterns);
         let mut page = HistoryPage { next, ..HistoryPage::default() };
         let mut seen = HashSet::new();
         for (index, commit) in commits.iter().enumerate() {
@@ -438,7 +554,7 @@ impl<S: GitStore> crate::Repos<S> {
                 None => None,
             };
             let changes = changed_files(&objects, old_tree, commit.tree_hash.clone()).await?;
-            for secret in scan_changes(&objects, &commit.hash, changes).await? {
+            for secret in scan_changes(&objects, &commit.hash, changes, &patterns).await? {
                 if seen.insert(secret.fingerprint.clone()) {
                     page.secrets.push(secret);
                 }
@@ -455,7 +571,8 @@ impl<S: GitStore> crate::Repos<S> {
             return Ok(Lockfiles::default());
         };
         let git = self.store.open(&store_key(&repo)).await?;
-        let Some(head) = git.log(&repo.default_branch, 1).await?.into_iter().next() else {
+        let at = a.git_ref.as_deref().unwrap_or(&repo.default_branch);
+        let Some(head) = git.log(at, 1).await?.into_iter().next() else {
             return Ok(Lockfiles::default());
         };
         let mut found = Vec::new();
@@ -484,7 +601,126 @@ impl<S: GitStore> crate::Repos<S> {
             .collect();
         Ok(Lockfiles { commit: Some(head.hash), files })
     }
+
+    /// A dry run of a custom pattern over the default branch's files, up to
+    /// [`MATCH_FILES`] files and [`MATCH_BYTES`] of text, skipping what
+    /// secret scanning skips. Nothing is recorded.
+    pub(crate) async fn match_pattern(&self, a: MatchPatternArgs) -> Result<PatternMatches> {
+        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
+            return Ok(PatternMatches::default());
+        };
+        let patterns = compiled(std::slice::from_ref(&a.pattern));
+        let Some(pattern) = patterns.first() else {
+            return Ok(PatternMatches::default());
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let Some(head) = git.log(&repo.default_branch, 1).await?.into_iter().next() else {
+            return Ok(PatternMatches::default());
+        };
+        let mut result = PatternMatches { commit: Some(head.hash.clone()), ..PatternMatches::default() };
+        let mut files = Vec::new();
+        let mut queue = VecDeque::from([(String::new(), head.tree_hash.clone())]);
+        while let Some((prefix, tree)) = queue.pop_front() {
+            for entry in git.read_tree(&tree).await?.unwrap_or_default() {
+                let path = format!("{prefix}{}", entry.name);
+                match entry.kind {
+                    EntryKind::Tree if !SKIPPED_DIRECTORIES.contains(&entry.name.as_str()) => queue.push_back((format!("{path}/"), entry.hash)),
+                    EntryKind::Blob | EntryKind::Exec if !g1t_scan::secrets::skipped_path(&path) => {
+                        if files.len() == MATCH_FILES {
+                            result.truncated = true;
+                        } else {
+                            files.push((path, entry.hash));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut bytes = 0usize;
+        let limit = a.limit.clamp(1, 200) as usize;
+        for batch in files.chunks(READS_AT_ONCE) {
+            if bytes > MATCH_BYTES || result.matches.len() >= limit {
+                result.truncated = true;
+                break;
+            }
+            let read = try_join_all(batch.iter().map(|(_, hash)| git.read_blob(hash))).await?;
+            for ((path, _), blob) in batch.iter().zip(read) {
+                let Some(blob) = blob else { continue };
+                bytes += blob.len();
+                result.files_scanned += 1;
+                let Some(text) = protection::text_of(path, &blob) else { continue };
+                let lines: Vec<&str> = text.lines().collect();
+                for hit in custom::scan_lines(text, std::slice::from_ref(pattern), |_| true) {
+                    if result.matches.len() >= limit {
+                        result.truncated = true;
+                        break;
+                    }
+                    let line = lines.get(hit.line as usize - 1).copied().unwrap_or_default();
+                    result.matches.push(PatternMatch { path: path.clone(), line: hit.line, preview: custom::masked_line(line, &hit.value) });
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Asks a landed secret's issuer whether it still works: finds it again
+    /// by its fingerprint at `commit`:`path` near `line`, and makes the
+    /// issuer's own read-only check over HTTPS. The value goes nowhere else.
+    pub(crate) async fn check_secret(&self, a: CheckSecretArgs) -> Result<SecretValidity> {
+        let unknown = |detail: &str| SecretValidity { validity: "unknown".to_owned(), detail: Some(detail.to_owned()) };
+        let Some(kind) = g1t_scan::secrets::SecretKind::parse(&a.kind) else {
+            return Ok(SecretValidity { validity: "unsupported".to_owned(), detail: None });
+        };
+        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
+            return Ok(unknown("no such repository"));
+        };
+        let git = self.store.open(&store_key(&repo)).await?;
+        let Some(bytes) = git.read_file(&a.commit, &a.path).await? else {
+            return Ok(unknown("the file is not at that commit"));
+        };
+        let Some(text) = protection::text_of(&a.path, &bytes) else {
+            return Ok(unknown("the file cannot be read as text"));
+        };
+        let near = |line: u32| line + 2 >= a.line && line <= a.line + 2;
+        let Some(hit) = g1t_scan::secrets::scan_lines(text, near).into_iter().find(|hit| hit.fingerprint() == a.fingerprint) else {
+            return Ok(unknown("the secret is no longer where it was found"));
+        };
+        let Some(probe) = g1t_scan::validity::check_for(kind, &hit.value) else {
+            return Ok(SecretValidity { validity: "unsupported".to_owned(), detail: None });
+        };
+        let headers = worker::Headers::new();
+        headers.set("user-agent", "g1t secret validity check (+https://docs.g1t.sh/guides/security/secret-protection/)")?;
+        for (name, value) in &probe.headers {
+            headers.set(name, value)?;
+        }
+        let mut init = worker::RequestInit::new();
+        init.with_method(if probe.method == "POST" { worker::Method::Post } else { worker::Method::Get }).with_headers(headers);
+        if let Some(body) = &probe.body {
+            init.with_body(Some(body.clone().into()));
+        }
+        let answer = async {
+            let mut response = worker::Fetch::Request(worker::Request::new_with_init(probe.url, &init)?).send().await?;
+            let status = response.status_code();
+            let body = if probe.reader == g1t_scan::validity::Reader::SlackOk { response.text().await.unwrap_or_default() } else { String::new() };
+            Ok::<_, worker::Error>((status, body))
+        }
+        .await;
+        Ok(match answer {
+            Ok((status, body)) => {
+                let validity = g1t_scan::validity::read(probe.reader, kind, status, &body);
+                SecretValidity {
+                    validity: validity.as_str().to_owned(),
+                    detail: (validity == g1t_scan::validity::Validity::Unknown).then(|| format!("the issuer answered {status}")),
+                }
+            }
+            Err(error) => unknown(&format!("the issuer could not be reached: {error}")),
+        })
+    }
 }
+
+/// Files a dry run reads, at most, and text in all.
+const MATCH_FILES: usize = 2_000;
+const MATCH_BYTES: usize = 20 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests {
@@ -635,7 +871,7 @@ mod tests {
             Entry::Whole(ObjectKind::Tree, tree),
             Entry::Whole(ObjectKind::Blob, blob),
         ]);
-        let found = run(scan_push(&FakeRepo::default(), &body)).unwrap();
+        let found = run(scan_push(&FakeRepo::default(), &body, &[])).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].path.as_str(), found[0].line, found[0].kind.as_str()), ("config.env", 2, "aws_access_key"));
         assert!(found[0].preview.starts_with("AKIA") && !found[0].preview.contains(&key()));
@@ -678,7 +914,7 @@ mod tests {
             Entry::Whole(ObjectKind::Tree, tree),
             Entry::Delta(old_id, delta),
         ]);
-        let found = run(scan_push(&repo, &body)).unwrap();
+        let found = run(scan_push(&repo, &body, &[])).unwrap();
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!((found[0].path.as_str(), found[0].line), ("app.env", 2));
     }
@@ -686,7 +922,7 @@ mod tests {
     #[test]
     fn a_push_too_large_to_read_is_never_let_through_unread() {
         let body = vec![0u8; MAX_SCANNED_PUSH + 1];
-        let error = run(scan_push(&FakeRepo::default(), &body)).unwrap_err();
+        let error = run(scan_push(&FakeRepo::default(), &body, &[])).unwrap_err();
         assert!(unscannable(&error));
         let (reason, messages) = crate::git_http::size_refusal(&crate::git_http::SizeViolation::Unscannable {
             size: body.len() as u64,
@@ -708,9 +944,41 @@ mod tests {
             Entry::Whole(ObjectKind::Tree, tree),
             Entry::Whole(ObjectKind::Blob, blob),
         ]);
-        assert!(run(scan_push(&FakeRepo::default(), &body)).unwrap().is_empty());
+        assert!(run(scan_push(&FakeRepo::default(), &body, &[])).unwrap().is_empty());
         // A deletion sends commands and no pack.
-        assert!(run(scan_push(&FakeRepo::default(), b"0000")).unwrap().is_empty());
+        assert!(run(scan_push(&FakeRepo::default(), b"0000", &[])).unwrap().is_empty());
+    }
+
+    #[test]
+    fn custom_patterns_are_found_in_a_push_and_a_committed_file() {
+        let patterns = compiled(&[PatternSpec {
+            id: "pat_1".into(),
+            name: "Acme key".into(),
+            pattern: "acme_[0-9a-f]{16}".into(),
+            before: None,
+            after: None,
+        }]);
+        let blob = b"token: acme_0123456789abcdef\n".to_vec();
+        let blob_id = object_id(ObjectKind::Blob, &blob);
+        let tree = encode_tree(&[TreeItem { mode: "100644".into(), name: "deploy.yml".into(), id: blob_id }]);
+        let tree_id = object_id(ObjectKind::Tree, &tree);
+        let body = push(&[
+            Entry::Whole(ObjectKind::Commit, commit(&tree_id, None)),
+            Entry::Whole(ObjectKind::Tree, tree),
+            Entry::Whole(ObjectKind::Blob, blob.clone()),
+        ]);
+        let found = run(scan_push(&FakeRepo::default(), &body, &patterns)).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].kind.as_str(), found[0].pattern_id.as_deref(), found[0].line), ("custom_pattern", Some("pat_1"), 1));
+        assert_eq!(secret_label(&found[0]).unwrap(), "a match for the custom pattern \"Acme key\"");
+        assert!(!found[0].preview.contains("0123456789abcdef"));
+        // Without the pattern, nothing.
+        assert!(run(scan_push(&FakeRepo::default(), &body, &[])).unwrap().is_empty());
+        // A file committed through g1t is scanned for both.
+        let file = format!("{blob}AWS={}\n", key(), blob = String::from_utf8(blob).unwrap());
+        let found = scan_file(".g1t/workflows/deploy.yml", file.as_bytes(), "c0ffee", &patterns);
+        let kinds: Vec<&str> = found.iter().map(|secret| secret.kind.as_str()).collect();
+        assert_eq!(kinds, ["aws_access_key", "custom_pattern"]);
     }
 
     #[test]

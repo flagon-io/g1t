@@ -461,8 +461,9 @@ impl Stripe {
         Ok(())
     }
 
-    /// The plan's product at Stripe, made the first time it is needed.
-    async fn plan_product(&self, title: &str) -> Result<String> {
+    /// A feature's product at Stripe (the plan's is tagged `plan`), made
+    /// the first time it is needed.
+    async fn plan_product(&self, feature: &str, title: &str) -> Result<String> {
         #[derive(Deserialize)]
         struct Product {
             id: String,
@@ -474,7 +475,7 @@ impl Stripe {
             data: Vec<Product>,
         }
         let list: List = self.call(Method::Get, "/products?active=true&limit=100", None).await?;
-        let ours = |p: &Product| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some("plan");
+        let ours = |p: &Product| p.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some(feature);
         if let Some(found) = list.data.into_iter().find(ours) {
             return Ok(found.id);
         }
@@ -482,7 +483,7 @@ impl Stripe {
             .call(
                 Method::Post,
                 "/products",
-                Some(form(&[("name", format!("{title} plan")), ("metadata[g1t]", "plan".to_owned())])),
+                Some(form(&[("name", format!("{title} plan")), ("metadata[g1t]", feature.to_owned())])),
             )
             .await?;
         Ok(created.id)
@@ -500,7 +501,7 @@ impl Stripe {
         customer: &str,
         payment_method: &str,
     ) -> Result<StripeSubscription> {
-        let product = self.plan_product(title).await?;
+        let product = self.plan_product(feature, title).await?;
         let fields = [
             ("customer", customer.to_owned()),
             ("default_payment_method", payment_method.to_owned()),

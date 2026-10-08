@@ -9,16 +9,23 @@ use g1t_contracts::access::{
     OutsideCollaboratorsArgs, RemoveCollaboratorArgs, RepoAccess, RepoAccessArgs, RepoInvitation, RepoRole,
     RespondRepoInvitationArgs, RevokeRepoInvitationArgs, SetBasePermissionArgs, SetCollaboratorRoleArgs,
 };
+use g1t_contracts::codeowners::CodeOwnersErrorsArgs;
 use g1t_contracts::identity::AgentScope;
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
 use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspace};
 use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
+use g1t_contracts::teams::{
+    CreateTeamArgs, DeleteTeamArgs, ListTeamsArgs, RemoveTeamMemberArgs, RemoveTeamRepoArgs, ReviewAlgorithm,
+    ReviewAssignment, SetTeamMemberArgs, SetTeamRepoArgs, Team, TeamArgs, TeamRole, TeamVisibility, UpdateTeamArgs,
+    UserTeamsArgs,
+};
 use g1t_contracts::security::{
     AlertChange, AlertState, DismissArgs, DismissReason, OverviewArgs as SecurityOverviewArgs, ReopenArgs,
     SecurityOverview,
 };
 
 use crate::alerts::{AlertKind, SecurityAlert};
+use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
@@ -131,11 +138,25 @@ pub enum Op {
     GetPlan,
     ApplyPlan,
     ListLabels,
+    CreateLabel,
+    UpdateLabel,
+    DeleteLabel,
+    AddDefaultLabels,
+    ListIssueLabels,
+    AddIssueLabels,
+    SetIssueLabels,
+    RemoveIssueLabels,
+    ListMilestones,
+    GetMilestone,
+    CreateMilestone,
+    UpdateMilestone,
+    DeleteMilestone,
     AddComment,
     ReviewPullRequest,
     ListPullRequests,
     GetPullRequest,
     CreatePullRequest,
+    UpdatePullRequest,
     RecordSession,
     ReadSession,
     MarkPullRequestReady,
@@ -214,6 +235,25 @@ pub enum Op {
     PinProject,
     UnpinProject,
     ReorderPinnedProjects,
+    ListTeams,
+    GetTeam,
+    CreateTeam,
+    UpdateTeam,
+    DeleteTeam,
+    ListTeamMembers,
+    SetTeamMember,
+    RemoveTeamMember,
+    ListChildTeams,
+    ListTeamRepos,
+    SetTeamRepo,
+    RemoveTeamRepo,
+    SetTeamReviewAssignment,
+    ListUserTeams,
+    RequestReviewers,
+    RemoveRequestedReviewers,
+    GetCodeownersErrors,
+    /// The security suite's operations: see [`crate::security`].
+    Security(SecurityOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -415,6 +455,24 @@ fn webhook_events() -> Vec<&'static str> {
     g1t_contracts::webhooks::EVENT_TYPES.to_vec()
 }
 
+fn label_schema() -> Value {
+    json!({ "type": "string", "description": "The label's name, e.g. \"good first issue\". URL-encode spaces in the path." })
+}
+
+fn milestone_schema() -> Value {
+    json!({ "type": "integer", "description": "The milestone's number, from list_milestones." })
+}
+
+/// A milestone given as a number, or as null or 0 for none: `Some(0)` for
+/// none, `None` when it was not given.
+fn milestone_input(input: &Value) -> Option<u32> {
+    match input.get("milestone") {
+        None => None,
+        Some(Value::Null) => Some(0),
+        Some(_) => integer(input, "milestone"),
+    }
+}
+
 fn repo_schema() -> Value {
     json!({
         "type": "string",
@@ -433,6 +491,103 @@ fn role_schema() -> Value {
         "enum": RepoRole::ALL.map(RepoRole::as_str),
         "description": "read: read and comment. triage: also label, assign and close. write: also push, merge and put agents to work. maintain: also settings and branch protection. admin: everything, including who has access.",
     })
+}
+
+fn team_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "The team's slug, as in its mention @workspace/slug, e.g. \"backend\".",
+    })
+}
+
+/// A person's place in a team.
+fn team_role_schema() -> Value {
+    json!({
+        "type": "string",
+        "enum": [TeamRole::Member.as_str(), TeamRole::Maintainer.as_str()],
+        "description": "member, or maintainer: also manages the team's people and settings. Defaults to member.",
+    })
+}
+
+fn team_visibility_schema() -> Value {
+    json!({
+        "type": "string",
+        "enum": [TeamVisibility::Visible.as_str(), TeamVisibility::Secret.as_str()],
+        "description": "visible: every member of the workspace sees it. secret: only its own people and the workspace's owners.",
+    })
+}
+
+fn include_child_teams_schema() -> Value {
+    json!({
+        "type": "boolean",
+        "description": "Also the people of its child teams: listed with list_members, picked from with review assignment.",
+    })
+}
+
+/// The fields of a team's review assignment, each optional.
+fn review_assignment_properties() -> Value {
+    json!({
+        "enabled": {
+            "type": "boolean",
+            "description": "On: g1t picks count people from the team to ask. Off: everyone in it is asked.",
+        },
+        "algorithm": {
+            "type": "string",
+            "enum": [ReviewAlgorithm::RoundRobin.as_str(), ReviewAlgorithm::LoadBalance.as_str()],
+            "description": "round_robin: whoever this team asked least recently. load_balance: whoever has the fewest pull requests waiting on their review.",
+        },
+        "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": g1t_contracts::teams::MAX_ASSIGNED,
+            "description": "How many people to pick, 1 to 10. People from the team already asked count towards it.",
+        },
+        "skip_busy": {
+            "type": "boolean",
+            "description": "Leave out anyone with busy_at or more pull requests waiting on their review.",
+        },
+        "busy_at": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "With skip_busy: how many waiting reviews make someone busy, 1 to 100.",
+        },
+        "include_child_teams": include_child_teams_schema(),
+        "excluded": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Usernames never picked. Replaces the whole list.",
+        },
+        "notify_team": {
+            "type": "boolean",
+            "description": "Also tell the rest of the team when people are picked.",
+        },
+    })
+}
+
+/// The inputs naming a team, with `more` added.
+fn team_target(more: Value) -> Value {
+    let mut properties = json!({ "workspace": workspace_schema(), "team": team_schema() });
+    if let (Some(all), Value::Object(more)) = (properties.as_object_mut(), more) {
+        all.extend(more);
+    }
+    properties
+}
+
+/// The people and teams to ask, or stop asking, to review a pull request.
+fn requested_reviewers_properties() -> Value {
+    numbered(json!({
+        "reviewers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Usernames. g1t asks a g1t agent.",
+        },
+        "team_reviewers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Teams, as \"workspace/team\", or the team's slug in the repository's workspace.",
+        },
+    }))
 }
 
 fn thread_id_schema() -> Value {
@@ -461,7 +616,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 135] = [
+    pub const ALL: [Op; 197] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
@@ -514,11 +669,25 @@ impl Op {
         Op::GetPlan,
         Op::ApplyPlan,
         Op::ListLabels,
+        Op::CreateLabel,
+        Op::UpdateLabel,
+        Op::DeleteLabel,
+        Op::AddDefaultLabels,
+        Op::ListIssueLabels,
+        Op::AddIssueLabels,
+        Op::SetIssueLabels,
+        Op::RemoveIssueLabels,
+        Op::ListMilestones,
+        Op::GetMilestone,
+        Op::CreateMilestone,
+        Op::UpdateMilestone,
+        Op::DeleteMilestone,
         Op::AddComment,
         Op::ReviewPullRequest,
         Op::ListPullRequests,
         Op::GetPullRequest,
         Op::CreatePullRequest,
+        Op::UpdatePullRequest,
         Op::RecordSession,
         Op::ReadSession,
         Op::MarkPullRequestReady,
@@ -597,6 +766,54 @@ impl Op {
         Op::PinProject,
         Op::UnpinProject,
         Op::ReorderPinnedProjects,
+        Op::ListTeams,
+        Op::GetTeam,
+        Op::CreateTeam,
+        Op::UpdateTeam,
+        Op::DeleteTeam,
+        Op::ListTeamMembers,
+        Op::SetTeamMember,
+        Op::RemoveTeamMember,
+        Op::ListChildTeams,
+        Op::ListTeamRepos,
+        Op::SetTeamRepo,
+        Op::RemoveTeamRepo,
+        Op::SetTeamReviewAssignment,
+        Op::ListUserTeams,
+        Op::RequestReviewers,
+        Op::RemoveRequestedReviewers,
+        Op::GetCodeownersErrors,
+        Op::Security(SecurityOp::ListSecretAlerts),
+        Op::Security(SecurityOp::GetSecretAlert),
+        Op::Security(SecurityOp::UpdateSecretAlert),
+        Op::Security(SecurityOp::ListSecretLocations),
+        Op::Security(SecurityOp::BypassPushProtection),
+        Op::Security(SecurityOp::CheckSecretValidity),
+        Op::Security(SecurityOp::ListBypassRequests),
+        Op::Security(SecurityOp::ReviewBypassRequest),
+        Op::Security(SecurityOp::ListCustomPatterns),
+        Op::Security(SecurityOp::CreateCustomPattern),
+        Op::Security(SecurityOp::UpdateCustomPattern),
+        Op::Security(SecurityOp::DeleteCustomPattern),
+        Op::Security(SecurityOp::DryRunCustomPattern),
+        Op::Security(SecurityOp::ListCodeAlerts),
+        Op::Security(SecurityOp::GetCodeAlert),
+        Op::Security(SecurityOp::UpdateCodeAlert),
+        Op::Security(SecurityOp::ListAnalyses),
+        Op::Security(SecurityOp::UploadSarif),
+        Op::Security(SecurityOp::GetSarifUpload),
+        Op::Security(SecurityOp::ListVulnerabilityAlerts),
+        Op::Security(SecurityOp::GetVulnerabilityAlert),
+        Op::Security(SecurityOp::UpdateVulnerabilityAlert),
+        Op::Security(SecurityOp::FixAlert),
+        Op::Security(SecurityOp::GetDependencyGraph),
+        Op::Security(SecurityOp::GetSbom),
+        Op::Security(SecurityOp::CompareDependencies),
+        Op::Security(SecurityOp::GetSettings),
+        Op::Security(SecurityOp::UpdateSettings),
+        Op::Security(SecurityOp::GetWorkspaceSettings),
+        Op::Security(SecurityOp::UpdateWorkspaceSettings),
+        Op::Security(SecurityOp::GetOverview),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -658,11 +875,25 @@ impl Op {
             Op::GetPlan => "get_plan",
             Op::ApplyPlan => "apply_plan",
             Op::ListLabels => "list_labels",
+            Op::CreateLabel => "create_label",
+            Op::UpdateLabel => "update_label",
+            Op::DeleteLabel => "delete_label",
+            Op::AddDefaultLabels => "add_default_labels",
+            Op::ListIssueLabels => "list_issue_labels",
+            Op::AddIssueLabels => "add_issue_labels",
+            Op::SetIssueLabels => "set_issue_labels",
+            Op::RemoveIssueLabels => "remove_issue_labels",
+            Op::ListMilestones => "list_milestones",
+            Op::GetMilestone => "get_milestone",
+            Op::CreateMilestone => "create_milestone",
+            Op::UpdateMilestone => "update_milestone",
+            Op::DeleteMilestone => "delete_milestone",
             Op::AddComment => "add_comment",
             Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
             Op::GetPullRequest => "get_pull_request",
             Op::CreatePullRequest => "create_pull_request",
+            Op::UpdatePullRequest => "update_pull_request",
             Op::RecordSession => "record_session",
             Op::ReadSession => "read_session",
             Op::MarkPullRequestReady => "mark_pull_request_ready",
@@ -741,6 +972,24 @@ impl Op {
             Op::PinProject => "pin_project",
             Op::UnpinProject => "unpin_project",
             Op::ReorderPinnedProjects => "reorder_pinned_projects",
+            Op::ListTeams => "list_teams",
+            Op::GetTeam => "get_team",
+            Op::CreateTeam => "create_team",
+            Op::UpdateTeam => "update_team",
+            Op::DeleteTeam => "delete_team",
+            Op::ListTeamMembers => "list_team_members",
+            Op::SetTeamMember => "set_team_member",
+            Op::RemoveTeamMember => "remove_team_member",
+            Op::ListChildTeams => "list_child_teams",
+            Op::ListTeamRepos => "list_team_repos",
+            Op::SetTeamRepo => "set_team_repo",
+            Op::RemoveTeamRepo => "remove_team_repo",
+            Op::SetTeamReviewAssignment => "set_team_review_assignment",
+            Op::ListUserTeams => "list_user_teams",
+            Op::RequestReviewers => "request_reviewers",
+            Op::RemoveRequestedReviewers => "remove_requested_reviewers",
+            Op::GetCodeownersErrors => "get_codeowners_errors",
+            Op::Security(op) => op.name(),
         }
     }
 
@@ -822,10 +1071,10 @@ impl Op {
                 "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
             Op::GetRepoSettings => {
-                "How a repository handles pull requests, as its default branch's protection: the checks that must pass (required_checks), the approvals a merge needs, whether required checks can be bypassed, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged. The same rules hold for a person's pull request and an agent's."
+                "How a repository handles pull requests, as its default branch's protection: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and how g1t's agents are reviewed, revised and merged. The same rules hold for a person's pull request and an agent's."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher."
+                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. With `require_code_owner_review`, a pull request merges only once the code owners of every file it changes, as the CODEOWNERS file of the branch it merges into names them, have approved it. Needs the Maintain role or higher."
             }
             Op::ListCheckNames => {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
@@ -861,16 +1110,16 @@ impl Op {
                 "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere."
             }
             Op::ListIssues => {
-                "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it."
+                "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it. Filter by state, by a label's name, or by a milestone's number."
             }
             Op::GetIssue => {
                 "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried."
             }
             Op::CreateIssue => {
-                "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request."
+                "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request. labels are the repository's labels by name; a name it does not have yet is created when you have the Triage role or higher, and refused otherwise. milestone, a milestone's number, needs the Triage role."
             }
             Op::UpdateIssue => {
-                "Change an issue's title, body, labels or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set. Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
+                "Change an issue's title, body, labels, milestone or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set, and milestone null or 0 takes it out of its milestone. Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event."
             }
             Op::CloseIssue => {
                 "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
@@ -891,7 +1140,46 @@ impl Op {
             Op::Delegate => {
                 "Put an agent on something in one step: open an issue and assign it to g1t at once. Say what you want done in plain words, with what done means if you know it. What must pass before its pull request merges is the default branch's required checks. Needs the Write role or higher, and nothing is opened without it. The issue is opened whatever happens next: agent.status is started (pull is the draft pull request the agent opened; follow it with get_pull_request), queued (every agent slot of the workspace is busy; it starts by itself when one frees up) or not_started, with agent.code saying why (not_paid, trial_used, limit, paused, issue_cap, billing_unavailable or no_model), agent.message saying what to do, and agent.fix_url where. There is no model or agent count to choose."
             }
-            Op::ListLabels => "The labels available on a repository's issues.",
+            Op::ListLabels => {
+                "A repository's labels, by name: each one's color (six hex digits), description, and how many issues and pull requests carry it. A new repository starts with bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security."
+            }
+            Op::CreateLabel => {
+                "Create a label, named by label. Names are lowercase and unique in a repository, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Triage role or higher."
+            }
+            Op::UpdateLabel => {
+                "Change a label's name, color or description; only the fields given change. Renaming it renames it on every issue and pull request that carries it. Needs the Triage role or higher."
+            }
+            Op::DeleteLabel => {
+                "Delete a label. It is taken off every issue and pull request that carries it, without events for each. Needs the Triage role or higher."
+            }
+            Op::AddDefaultLabels => {
+                "Add the default labels a repository does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Triage role or higher."
+            }
+            Op::ListIssueLabels => {
+                "The labels an issue or a pull request carries, with their colors and descriptions. Issues and pull requests share numbers."
+            }
+            Op::AddIssueLabels => {
+                "Add labels to an issue or a pull request, keeping the ones it has. A name the repository does not have yet is created when you have the Triage role or higher; without it, you may use the repository's labels on what you opened. Each label added is an issue.labeled or pull.labeled event. Returns its labels now, at most 20."
+            }
+            Op::SetIssueLabels => {
+                "Replace the labels of an issue or a pull request with these; an empty list takes them all off. The same rules as add_issue_labels. Returns its labels now."
+            }
+            Op::RemoveIssueLabels => {
+                "Take labels off an issue or a pull request: label for one, labels for several, or neither for all of them. The labels stay on the repository. Returns its labels now."
+            }
+            Op::ListMilestones => {
+                "A repository's milestones: open ones soonest due first (those without a due date after), then closed ones, most recently closed first. Each has its number, title, description, due_on (YYYY-MM-DD), state, and open_items and closed_items: its issues and pull requests, a merged pull request counting as closed."
+            }
+            Op::GetMilestone => "A milestone, with every issue and pull request in it, newest first.",
+            Op::CreateMilestone => {
+                "Create a milestone: a title, unique in the repository, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each repository, apart from issues. Needs the Triage role or higher."
+            }
+            Op::UpdateMilestone => {
+                "Change a milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Triage role or higher."
+            }
+            Op::DeleteMilestone => {
+                "Delete a milestone. The issues and pull requests in it are in no milestone afterwards. Needs the Triage role or higher."
+            }
             Op::AddComment => {
                 "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
             }
@@ -899,13 +1187,16 @@ impl Op {
                 "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by)."
             }
             Op::ListPullRequests => {
-                "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed."
+                "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed. Filter by a label's name, a milestone's number, or base, the branch they merge into."
             }
             Op::GetPullRequest => {
-                "A pull request's status, head commit, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the default branch requires, as success, failure, pending or expected when nothing has reported it yet), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files."
+                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the default branch requires, as success, failure, pending or expected when nothing has reported it yet; empty for a pull request into another branch, which the default branch's protection does not cover), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them)."
             }
             Op::CreatePullRequest => {
-                "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once."
+                "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
+            }
+            Op::UpdatePullRequest => {
+                "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
             }
             Op::RecordSession => {
                 "Append entries to a pull request's session: the prompt you were given, your reasoning, the tools you ran. This is how people later see why a change was made, so record as you work, not only at the end."
@@ -919,7 +1210,7 @@ impl Op {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
             Op::MergePullRequest => {
-                "Land a pull request on the repository's main branch. Merging needs the Write role or higher, and only once it is marked ready and every check the default branch requires has passed on its head (see required_checks on get_pull_request); with ignore_checks, someone who may merge can bypass them where the repository allows it. Merging resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded. Where the repository has a merge queue, it joins the queue instead of landing at once. If main has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests to be up to date refuses instead, so pull main into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
+                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and, into the default branch, every check the default branch requires has passed on its head (see required_checks on get_pull_request); with ignore_checks, someone who may merge can bypass them where the repository allows it. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
@@ -1117,6 +1408,58 @@ impl Op {
             Op::ReorderPinnedProjects => {
                 "Put your pins in a workspace in a new order: `projects` names every pinned project's slug, once, in the order you want them. Returns your pins, in order."
             }
+            Op::ListTeams => {
+                "A workspace's teams that you can see, yours first, then by name. A team is a group of the workspace's members, given roles on repositories together, mentioned as @workspace/team and asked to review together. A secret team is seen only by its own people and the workspace's owners. Each team has its `slug`, `name`, `description`, `visibility` (`visible` or `secret`), `parent`, whether its people are notified when it is mentioned (`notify`), its `review_assignment`, how many people, repositories and child teams it has (`members_count`, `repos_count`, `child_teams_count`), your own `viewer_role` in it, and whether you may change it (`can_manage`). `query` narrows them by name or slug. Members of the workspace only."
+            }
+            Op::GetTeam => {
+                "One team, by its slug, as list_teams describes it. A secret team is found only by its own people and the workspace's owners; anyone else is told it does not exist. Members of the workspace only."
+            }
+            Op::CreateTeam => {
+                "Create a team in a workspace. Any member may create one, and becomes its first maintainer; `members` adds more people by username, each a member of the workspace. `slug` is made from the name unless you give one: lowercase letters, digits and single hyphens. `visibility` is `visible` (the default: every member sees it) or `secret` (only its people and the owners). A team under a `parent` inherits the parent's roles on repositories, and a mention or review request for the parent reaches it too; giving it a parent needs an owner, or a maintainer of the parent. Secret teams cannot be nested. People only, signed in or with a personal access token. Returns the team."
+            }
+            Op::UpdateTeam => {
+                "Change a team's `name`, `slug`, `description`, `visibility`, `parent` (an empty string takes it out from under its parent), `notify` or `review_assignment`. Only the fields given change; give at least one. A new slug changes how it is mentioned, @workspace/slug. Owners of the workspace and the team's maintainers. People only. Returns the team as it is now."
+            }
+            Op::DeleteTeam => {
+                "Delete a team. Its child teams move up to its parent, and the roles it gave on repositories go with it: its people keep only what they have otherwise. Owners of the workspace and the team's maintainers. People only. Returns true."
+            }
+            Op::ListTeamMembers => {
+                "The people in a team, each with their `username`, `name`, `avatar` and `role` in it (`member` or `maintainer`). With `include_child_teams`, the people of its child teams are listed too, each with `via`, the child team they are in. Anyone who can see the team."
+            }
+            Op::SetTeamMember => {
+                "Add a member of the workspace to a team, or change their role in it: `member` (the default) or `maintainer`, who manages the team's people and settings. Someone who is not a member of the workspace must join it first. Owners of the workspace and the team's maintainers. People only. Returns the person as list_team_members lists them."
+            }
+            Op::RemoveTeamMember => {
+                "Take someone out of a team. They lose the roles the team gave them on repositories, unless they have them otherwise. Owners of the workspace and the team's maintainers; anyone may leave a team themselves. People only. Returns true."
+            }
+            Op::ListChildTeams => {
+                "The teams nested directly under a team, as list_teams describes them. Anyone who can see the team."
+            }
+            Op::ListTeamRepos => {
+                "The repositories a team has a role on: each one's `repo` (`workspace/name`), the team's `role` there (read, triage, write, maintain or admin), and `inherited_from`, the parent team it comes from when the team inherits it, or null for its own. Everyone in the team gets the role; where someone has a higher one otherwise, the higher one counts. Anyone who can see the team."
+            }
+            Op::SetTeamRepo => {
+                "Give a team a role on a repository in its workspace, or change it: read, triage, write, maintain or admin. Everyone in the team and in its child teams gets the role. Needs the Admin role on the repository. People only. Returns the repository as list_team_repos lists it."
+            }
+            Op::RemoveTeamRepo => {
+                "Take a team's role on a repository away. Its people keep only the roles they have otherwise. Needs the Admin role on the repository, or to be an owner or one of the team's maintainers. People only. Returns true."
+            }
+            Op::SetTeamReviewAssignment => {
+                "Choose what happens when a team is asked to review a pull request. Off, everyone in it is asked. On (`enabled`), g1t picks `count` people from it (1 to 10, never the pull request's author) and asks them, and the team stays shown as asked beside them: `round_robin` picks whoever this team asked least recently, `load_balance` whoever has the fewest pull requests waiting on their review. `skip_busy` leaves out anyone with `busy_at` or more waiting; `include_child_teams` also picks from its child teams' people; `excluded` lists usernames never picked; `notify_team` also tells the rest of the team. Fields left out keep their current value. Owners of the workspace and the team's maintainers. People only. Returns the team."
+            }
+            Op::ListUserTeams => {
+                "The teams someone is in within a workspace, as list_teams describes them, leaving out secret teams you cannot see. Members of the workspace only."
+            }
+            Op::RequestReviewers => {
+                "Ask more people or teams to review a pull request. `reviewers` are usernames, and may include `g1t` to ask a g1t agent; `team_reviewers` are teams, as `workspace/team` or the team's slug in the repository's workspace. They are added to whoever is asked already. Asking a team asks everyone in it, or with its review assignment on, the people it picks. Nobody is asked to review their own pull request, and a team must be one you can see. Whoever opened the pull request, or anyone with the Triage role or higher, while it is open. Returns the pull request, with `reviewers` and `team_reviewers` as they are now."
+            }
+            Op::RemoveRequestedReviewers => {
+                "Stop asking people or teams to review a pull request: `reviewers` by username and `team_reviewers` as `workspace/team` or the team's slug. Reviews they already gave stay. The same people may do this as may ask. Returns the pull request, with `reviewers` and `team_reviewers` as they are now."
+            }
+            Op::GetCodeownersErrors => {
+                "Check a repository's CODEOWNERS file as a linter would. g1t reads it from one branch (`ref`, the default branch unless you say): the first of `.g1t/CODEOWNERS`, `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS` and `.gitlab/CODEOWNERS` that exists. Returns its `path` (null when there is none), the `ref` read, its `size`, how many `rules` it has, its `sections`, and `errors`: each with its `line` (0 for the file as a whole), `kind`, the `token` at fault and a `message` saying how to fix it. `kind` is `too_large`, `negation`, `character_range`, `bad_pattern`, `bad_owner`, `bad_section`, `unknown_user`, `unknown_team`, `unknown_email`, `no_write_access` or `team_no_access`. Needs the Read role; a public repository's is open to anyone."
+            }
+            Op::Security(op) => op.description(),
         }
     }
 
@@ -1249,7 +1592,71 @@ impl Op {
                 }),
                 &["repo", "to"],
             ),
-            Op::GetRepo | Op::ListLabels => repo_only(),
+            Op::GetRepo | Op::ListLabels | Op::AddDefaultLabels => repo_only(),
+            Op::CreateLabel => object(
+                json!({
+                    "repo": repo_schema(),
+                    "label": { "type": "string", "description": "Its name: lowercase, at most 50 characters, e.g. \"good first issue\"." },
+                    "color": { "type": "string", "description": "Six hex digits, with or without #, e.g. \"d73a4a\". Chosen from the name when left out." },
+                    "description": { "type": "string", "description": "What it means, at most 100 characters." },
+                }),
+                &["repo", "label"],
+            ),
+            Op::UpdateLabel => object(
+                json!({
+                    "repo": repo_schema(),
+                    "label": label_schema(),
+                    "new_name": { "type": "string", "description": "Rename it, on everything that carries it." },
+                    "color": { "type": "string", "description": "Six hex digits." },
+                    "description": { "type": "string", "description": "An empty string clears it." },
+                }),
+                &["repo", "label"],
+            ),
+            Op::DeleteLabel => object(json!({ "repo": repo_schema(), "label": label_schema() }), &["repo", "label"]),
+            Op::ListIssueLabels => just_numbered(),
+            Op::AddIssueLabels | Op::SetIssueLabels => object(
+                numbered(json!({
+                    "labels": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Triage role.",
+                    },
+                })),
+                &["repo", "number", "labels"],
+            ),
+            Op::RemoveIssueLabels => object(
+                numbered(json!({
+                    "label": label_schema(),
+                    "labels": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Instead of label: several to take off. With neither, all of them.",
+                    },
+                })),
+                &["repo", "number"],
+            ),
+            Op::ListMilestones => object(
+                json!({ "repo": repo_schema(), "state": states }),
+                &["repo"],
+            ),
+            Op::GetMilestone | Op::DeleteMilestone => {
+                object(json!({ "repo": repo_schema(), "milestone": milestone_schema() }), &["repo", "milestone"])
+            }
+            Op::CreateMilestone | Op::UpdateMilestone => {
+                let mut properties = json!({
+                    "repo": repo_schema(),
+                    "title": { "type": "string", "description": "Unique in the repository, at most 100 characters." },
+                    "description": { "type": "string", "description": "Markdown." },
+                    "due_on": { "type": "string", "description": "The day it is due, YYYY-MM-DD. On update, \"\" clears it." },
+                    "state": states,
+                });
+                if self == Op::UpdateMilestone {
+                    properties["milestone"] = milestone_schema();
+                    object(properties, &["repo", "milestone"])
+                } else {
+                    object(properties, &["repo", "title"])
+                }
+            }
             Op::UpdateRepo => object(
                 json!({
                     "repo": repo_schema(),
@@ -1465,6 +1872,10 @@ impl Op {
                         "type": "boolean",
                         "description": "Ask a person before merging a g1t agent's change whose confidence is low: auto-merge and the merge queue leave it until a person approves it. On by default.",
                     },
+                    "require_code_owner_review": {
+                        "type": "boolean",
+                        "description": "Refuse to merge until the code owners of every file a pull request changes, as the CODEOWNERS file of the branch it merges into names them, have approved it, as many as each section asks. Only people's approvals count, and g1t's only where the file names @g1t.",
+                    },
                 }),
                 &["repo"],
             ),
@@ -1489,6 +1900,7 @@ impl Op {
                     "repo": repo_schema(),
                     "state": states,
                     "label": { "type": "string", "description": "Only issues carrying this label." },
+                    "milestone": { "type": "integer", "description": "Only issues in the milestone of this number." },
                 }),
                 &["repo"],
             ),
@@ -1508,7 +1920,7 @@ impl Op {
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "What kind of issue this is, e.g. \"bug\" or \"feature\". list_labels shows the labels in use; a new name creates a new label.",
+                        "description": "What kind of issue this is, e.g. \"bug\" or \"enhancement\": the repository's labels, as list_labels gives them. A name it does not have yet is created for someone with the Triage role.",
                     },
                     "checks": {
                         "type": "array",
@@ -1516,6 +1928,7 @@ impl Op {
                         "deprecated": true,
                         "description": "Deprecated. Commands are added to the body under \"Definition of done\", and the response says so in deprecation. What must pass before a pull request merges is the default branch's required checks.",
                     },
+                    "milestone": { "type": "integer", "description": "The number of the milestone to put it in. Needs the Triage role." },
                 }),
                 &["repo", "title"],
             ),
@@ -1523,7 +1936,15 @@ impl Op {
                 numbered(json!({
                     "title": { "type": "string" },
                     "body": { "type": "string" },
-                    "labels": { "type": "array", "items": { "type": "string" } },
+                    "labels": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Replaces the whole set. Names the repository does not have yet are created for someone with the Triage role.",
+                    },
+                    "milestone": {
+                        "type": ["integer", "null"],
+                        "description": "The number of the milestone to put it in; null or 0 takes it out. Needs the Triage role.",
+                    },
                     "assignees": {
                         "type": "array",
                         "items": { "type": "string" },
@@ -1630,9 +2051,44 @@ impl Op {
                 })),
                 &["repo", "number", "verdict"],
             ),
-            Op::ListPullRequests => {
-                object(json!({ "repo": repo_schema(), "state": states }), &["repo"])
-            }
+            Op::ListPullRequests => object(
+                json!({
+                    "repo": repo_schema(),
+                    "state": states,
+                    "label": { "type": "string", "description": "Only pull requests carrying this label." },
+                    "milestone": { "type": "integer", "description": "Only pull requests in the milestone of this number." },
+                    "base": { "type": "string", "description": "Only pull requests into this branch." },
+                }),
+                &["repo"],
+            ),
+            Op::UpdatePullRequest => object(
+                numbered(json!({
+                    "base": {
+                        "type": "string",
+                        "description": "The branch it merges into: an existing branch other than its own. Needs the Write role.",
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Replaces the whole set.",
+                    },
+                    "milestone": {
+                        "type": ["integer", "null"],
+                        "description": "The number of the milestone to put it in; null or 0 takes it out. Needs the Triage role.",
+                    },
+                    "assignees": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Usernames; replaces the whole set.",
+                    },
+                    "reviewers": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Usernames whose review is asked for, and g1t for a g1t agent's; replaces the whole set.",
+                    },
+                })),
+                &["repo", "number"],
+            ),
             Op::CreatePullRequest => object(
                 json!({
                     "repo": repo_schema(),
@@ -1652,6 +2108,10 @@ impl Op {
                     "agent": {
                         "type": "string",
                         "description": "A label for the agent doing the work, e.g. \"claude-code\".",
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "The branch it merges into: the default branch when left out. Name another existing branch only when asked to.",
                     },
                 }),
                 &["repo"],
@@ -2134,6 +2594,103 @@ impl Op {
                 }),
                 &["workspace", "projects"],
             ),
+            Op::ListTeams => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "query": { "type": "string", "description": "Only teams whose name or slug has these letters." },
+                }),
+                &["workspace"],
+            ),
+            Op::GetTeam | Op::DeleteTeam | Op::ListChildTeams | Op::ListTeamRepos => {
+                object(team_target(json!({})), &["workspace", "team"])
+            }
+            Op::CreateTeam => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "name": { "type": "string", "description": "Its display name, at most 80 characters." },
+                    "slug": {
+                        "type": "string",
+                        "description": "Its name in mentions and URLs: lowercase letters, digits and single hyphens. Made from the name if left out.",
+                    },
+                    "description": { "type": "string", "description": "What it is for, at most 280 characters." },
+                    "visibility": team_visibility_schema(),
+                    "parent": { "type": "string", "description": "The slug of the team to nest it under." },
+                    "notify": {
+                        "type": "boolean",
+                        "description": "Whether its people are notified when it is mentioned. On unless you say.",
+                    },
+                    "members": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Usernames of members of the workspace to add, besides you.",
+                    },
+                }),
+                &["workspace", "name"],
+            ),
+            Op::UpdateTeam => object(
+                team_target(json!({
+                    "name": { "type": "string", "description": "A new display name." },
+                    "slug": { "type": "string", "description": "A new slug, which changes its mention." },
+                    "description": { "type": "string", "description": "A new description; an empty string clears it." },
+                    "visibility": team_visibility_schema(),
+                    "parent": {
+                        "type": "string",
+                        "description": "The slug of the team to nest it under; an empty string for none.",
+                    },
+                    "notify": { "type": "boolean", "description": "Whether its people are notified when it is mentioned." },
+                    "review_assignment": {
+                        "type": "object",
+                        "properties": review_assignment_properties(),
+                        "description": "What happens when it is asked to review; fields left out keep their value. See set_team_review_assignment.",
+                    },
+                })),
+                &["workspace", "team"],
+            ),
+            Op::ListTeamMembers => object(
+                team_target(json!({ "include_child_teams": include_child_teams_schema() })),
+                &["workspace", "team"],
+            ),
+            Op::SetTeamMember => object(
+                team_target(json!({ "username": username_schema(), "role": team_role_schema() })),
+                &["workspace", "team", "username"],
+            ),
+            Op::RemoveTeamMember => object(
+                team_target(json!({ "username": username_schema() })),
+                &["workspace", "team", "username"],
+            ),
+            Op::SetTeamRepo | Op::RemoveTeamRepo => {
+                let mut properties = team_target(json!({
+                    "repo": {
+                        "type": "string",
+                        "description": "The repository, in the team's workspace: its name, or \"owner/name\".",
+                    },
+                }));
+                let mut required = vec!["workspace", "team", "repo"];
+                if self == Op::SetTeamRepo {
+                    properties["role"] = role_schema();
+                    required.push("role");
+                }
+                object(properties, &required)
+            }
+            Op::SetTeamReviewAssignment => object(team_target(review_assignment_properties()), &["workspace", "team"]),
+            Op::ListUserTeams => object(
+                json!({ "workspace": workspace_schema(), "username": username_schema() }),
+                &["workspace", "username"],
+            ),
+            Op::RequestReviewers | Op::RemoveRequestedReviewers => {
+                object(requested_reviewers_properties(), &["repo", "number"])
+            }
+            Op::GetCodeownersErrors => object(
+                json!({
+                    "repo": repo_schema(),
+                    "ref": {
+                        "type": "string",
+                        "description": "The branch, tag or commit to read the file from. The default branch if left out.",
+                    },
+                }),
+                &["repo"],
+            ),
+            Op::Security(op) => op.input(),
         }
     }
 
@@ -2147,6 +2704,9 @@ impl Op {
                 | Op::ListIssues
                 | Op::GetIssue
                 | Op::ListLabels
+                | Op::ListIssueLabels
+                | Op::ListMilestones
+                | Op::GetMilestone
                 | Op::ListPullRequests
                 | Op::GetPullRequest
                 | Op::ReadSession
@@ -2155,6 +2715,7 @@ impl Op {
                 | Op::GetRepoSettings
                 | Op::ListCheckNames
                 | Op::GetMergeQueue
+                | Op::GetCodeownersErrors
         )
     }
 
@@ -2165,6 +2726,9 @@ impl Op {
 
     /// Whether the operation is about one repository, named by `repo`.
     pub(crate) fn needs_repo(self) -> bool {
+        if let Op::Security(op) = self {
+            return op.needs_repo();
+        }
         !matches!(
             self,
             Op::Whoami
@@ -2235,6 +2799,20 @@ impl Op {
                 | Op::PinProject
                 | Op::UnpinProject
                 | Op::ReorderPinnedProjects
+                | Op::ListTeams
+                | Op::GetTeam
+                | Op::CreateTeam
+                | Op::UpdateTeam
+                | Op::DeleteTeam
+                | Op::ListTeamMembers
+                | Op::SetTeamMember
+                | Op::RemoveTeamMember
+                | Op::ListChildTeams
+                | Op::ListTeamRepos
+                | Op::SetTeamRepo
+                | Op::RemoveTeamRepo
+                | Op::SetTeamReviewAssignment
+                | Op::ListUserTeams
         )
     }
 
@@ -2902,6 +3480,10 @@ impl Op {
                     max_revisions: integer(input, "max_revisions").unwrap_or(current.max_revisions),
                     merge_queue: flag("merge_queue", current.merge_queue),
                     hold_low_confidence: flag("hold_low_confidence", current.hold_low_confidence),
+                    require_code_owner_review: flag(
+                        "require_code_owner_review",
+                        current.require_code_owner_review,
+                    ),
                     ..current
                 };
                 pass(
@@ -2948,6 +3530,7 @@ impl Op {
                         viewer: viewer.clone(),
                         state: state(input),
                         label: optional_text(input, "label"),
+                        milestone: integer(input, "milestone"),
                     },
                 )
                 .await
@@ -2965,6 +3548,7 @@ impl Op {
                         body: text(input, "body"),
                         labels: strings(input, "labels").unwrap_or_default(),
                         checks: checks.clone(),
+                        milestone: integer(input, "milestone"),
                     },
                 )
                 .await?;
@@ -2982,6 +3566,7 @@ impl Op {
                         body: input["body"].as_str().map(str::to_owned),
                         labels: strings(input, "labels"),
                         assignees: strings(input, "assignees"),
+                        milestone: milestone_input(input),
                     },
                 )
                 .await
@@ -3073,6 +3658,107 @@ impl Op {
                 .await
             }
             Op::ListLabels => pass(work, "list_labels", &view()).await,
+            Op::CreateLabel | Op::UpdateLabel => {
+                let creating = self == Op::CreateLabel;
+                pass(
+                    work,
+                    "save_label",
+                    &SaveLabelArgs {
+                        actor: actor(),
+                        repo,
+                        name: (!creating).then(|| text(input, "label")),
+                        new_name: if creating { Some(text(input, "label")) } else { optional_text(input, "new_name") },
+                        color: optional_text(input, "color"),
+                        description: input["description"].as_str().map(str::to_owned),
+                    },
+                )
+                .await
+            }
+            Op::DeleteLabel => {
+                pass(work, "delete_label", &DeleteLabelArgs { actor: actor(), repo, name: text(input, "label") }).await
+            }
+            Op::AddDefaultLabels => pass(work, "add_default_labels", &RepoActorArgs { actor: actor(), repo }).await,
+            Op::ListIssueLabels => {
+                // The item's names, with each label's color and description.
+                let labels = call::<_, Vec<Label>>(work, "list_labels", &view()).await?;
+                let item = call::<_, IssueDetail>(work, "get_issue", &view()).await?;
+                let names = match item {
+                    Outcome::Ok(detail) => detail.issue.labels,
+                    Outcome::Fail(_) => match call::<_, PullDetail>(work, "get_pull", &view()).await? {
+                        Outcome::Ok(detail) => detail.pull.labels,
+                        Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                    },
+                };
+                let labels = match labels {
+                    Outcome::Ok(labels) => labels,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                ok(&names
+                    .iter()
+                    .filter_map(|name| labels.iter().find(|label| label.name == *name))
+                    .collect::<Vec<_>>())
+            }
+            Op::AddIssueLabels | Op::SetIssueLabels | Op::RemoveIssueLabels => {
+                let (change, labels) = match self {
+                    Op::AddIssueLabels => (LabelChange::Add, strings(input, "labels").unwrap_or_default()),
+                    Op::SetIssueLabels => (LabelChange::Set, strings(input, "labels").unwrap_or_default()),
+                    // One, several, or with neither, all of them.
+                    _ => match (optional_text(input, "label"), strings(input, "labels")) {
+                        (Some(one), _) => (LabelChange::Remove, vec![one]),
+                        (None, Some(several)) => (LabelChange::Remove, several),
+                        (None, None) => (LabelChange::Set, Vec::new()),
+                    },
+                };
+                pass(work, "set_labels", &SetLabelsArgs { actor: actor(), repo, number, labels, change }).await
+            }
+            Op::ListMilestones => {
+                pass(work, "list_milestones", &ListMilestonesArgs { repo, viewer: viewer.clone(), state: state(input) }).await
+            }
+            Op::GetMilestone => {
+                let asked = ViewArgs { number: integer(input, "milestone").unwrap_or_default(), ..view() };
+                pass(work, "get_milestone", &asked).await
+            }
+            Op::CreateMilestone | Op::UpdateMilestone => {
+                pass(
+                    work,
+                    "save_milestone",
+                    &SaveMilestoneArgs {
+                        actor: actor(),
+                        repo,
+                        number: (self == Op::UpdateMilestone).then(|| integer(input, "milestone").unwrap_or_default()),
+                        title: input["title"].as_str().map(str::to_owned),
+                        description: input["description"].as_str().map(str::to_owned),
+                        due_on: input["due_on"].as_str().map(str::to_owned),
+                        state: state(input),
+                    },
+                )
+                .await
+            }
+            Op::DeleteMilestone => {
+                pass(
+                    work,
+                    "delete_milestone",
+                    &DeleteMilestoneArgs { actor: actor(), repo, number: integer(input, "milestone").unwrap_or_default() },
+                )
+                .await
+            }
+            Op::UpdatePullRequest => {
+                pass(
+                    work,
+                    "update_pull",
+                    &UpdatePullArgs {
+                        actor: actor(),
+                        repo,
+                        number,
+                        assignees: strings(input, "assignees"),
+                        reviewers: strings(input, "reviewers"),
+                        labels: strings(input, "labels"),
+                        milestone: milestone_input(input),
+                        base: optional_text(input, "base"),
+                    },
+                )
+                .await
+            }
             Op::AddComment | Op::ReviewPullRequest => {
                 let verdict = match (self, input["verdict"].as_str()) {
                     (Op::AddComment, _) => None,
@@ -3108,6 +3794,9 @@ impl Op {
                         repo,
                         viewer: viewer.clone(),
                         state: state(input),
+                        label: optional_text(input, "label"),
+                        milestone: integer(input, "milestone"),
+                        base: optional_text(input, "base"),
                     },
                 )
                 .await
@@ -3127,6 +3816,7 @@ impl Op {
                         branch: optional_text(input, "branch"),
                         agent: optional_text(input, "agent").unwrap_or_else(|| "agent".into()),
                         runtime: Runtime::External,
+                        base: optional_text(input, "base"),
                     },
                 )
                 .await?;
@@ -3665,6 +4355,265 @@ impl Op {
                 .await?;
                 changed_alert(changed)
             }
+            // Teams: identity decides who may see and change each, and
+            // refuses every token but a person's for changes. See
+            // g1t_contracts::teams.
+            Op::ListTeams => {
+                pass(
+                    identity,
+                    "list_teams",
+                    &ListTeamsArgs { viewer: viewer.clone(), workspace: workspace(), query: optional_text(input, "query") },
+                )
+                .await
+            }
+            Op::GetTeam | Op::ListChildTeams | Op::ListTeamRepos | Op::ListTeamMembers => {
+                let method = match self {
+                    Op::GetTeam => "get_team",
+                    Op::ListChildTeams => "child_teams",
+                    Op::ListTeamRepos => "team_repos",
+                    _ => "team_members",
+                };
+                pass(
+                    identity,
+                    method,
+                    &TeamArgs {
+                        viewer: viewer.clone(),
+                        workspace: workspace(),
+                        team: team_slug(input),
+                        include_child_teams: self == Op::ListTeamMembers && yes(input, "include_child_teams") == Some(true),
+                    },
+                )
+                .await
+            }
+            Op::CreateTeam => {
+                let visibility = match team_visibility(input) {
+                    Ok(visibility) => visibility,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                pass(
+                    identity,
+                    "create_team",
+                    &CreateTeamArgs {
+                        actor: actor(),
+                        workspace: workspace(),
+                        name: text(input, "name").trim().to_owned(),
+                        slug: optional_text(input, "slug"),
+                        description: optional_text(input, "description"),
+                        visibility,
+                        parent: optional_text(input, "parent"),
+                        notify: yes(input, "notify"),
+                        members: strings(input, "members").unwrap_or_default(),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::UpdateTeam | Op::SetTeamReviewAssignment => {
+                let visibility = match team_visibility(input) {
+                    Ok(visibility) if self == Op::UpdateTeam => visibility,
+                    Ok(_) => None,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                // The review assignment's fields: in `review_assignment` to
+                // update a team, or at the top level to set it.
+                let given = match self {
+                    Op::UpdateTeam => input.get("review_assignment").filter(|value| !value.is_null()),
+                    _ => Some(input),
+                };
+                if given.is_some_and(|given| !given.is_object()) {
+                    return failed(FailureCode::Invalid, "review_assignment is an object, such as {\"enabled\": true, \"count\": 2}.");
+                }
+                let review = match given {
+                    None => None,
+                    Some(given) => {
+                        if !REVIEW_ASSIGNMENT_FIELDS.iter().any(|key| given.get(*key).is_some_and(|value| !value.is_null())) {
+                            return failed(
+                                FailureCode::Invalid,
+                                &format!("Give the review assignment to change: {}.", REVIEW_ASSIGNMENT_FIELDS.join(", ")),
+                            );
+                        }
+                        // What is not given stays as it is.
+                        let current: Outcome<Team> = call(
+                            identity,
+                            "get_team",
+                            &TeamArgs { viewer: viewer.clone(), workspace: workspace(), team: team_slug(input), include_child_teams: false },
+                        )
+                        .await?;
+                        let current = match current {
+                            Outcome::Ok(team) => team.review_assignment,
+                            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                        };
+                        match review_assignment(given, current) {
+                            Ok(review) => Some(review),
+                            Err(message) => return failed(FailureCode::Invalid, &message),
+                        }
+                    }
+                };
+                let words = |key: &str| match self {
+                    Op::UpdateTeam => input[key].as_str().map(str::to_owned),
+                    _ => None,
+                };
+                let args = UpdateTeamArgs {
+                    actor: actor(),
+                    workspace: workspace(),
+                    team: team_slug(input),
+                    name: words("name"),
+                    slug: words("slug"),
+                    description: words("description"),
+                    visibility,
+                    parent: words("parent"),
+                    notify: if self == Op::UpdateTeam { yes(input, "notify") } else { None },
+                    review_assignment: review,
+                    surface: Some(services.audit.surface),
+                };
+                if args.name.is_none()
+                    && args.slug.is_none()
+                    && args.description.is_none()
+                    && args.visibility.is_none()
+                    && args.parent.is_none()
+                    && args.notify.is_none()
+                    && args.review_assignment.is_none()
+                {
+                    return failed(
+                        FailureCode::Invalid,
+                        "Give name, slug, description, visibility, parent, notify or review_assignment to change.",
+                    );
+                }
+                pass(identity, "update_team", &args).await
+            }
+            Op::DeleteTeam => {
+                pass(
+                    identity,
+                    "delete_team",
+                    &DeleteTeamArgs {
+                        actor: actor(),
+                        workspace: workspace(),
+                        team: team_slug(input),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::SetTeamMember => {
+                let role = match team_role(input) {
+                    Ok(role) => role,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                pass(
+                    identity,
+                    "set_team_member",
+                    &SetTeamMemberArgs {
+                        actor: actor(),
+                        workspace: workspace(),
+                        team: team_slug(input),
+                        username: text(input, "username").trim().trim_start_matches('@').to_owned(),
+                        role,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::RemoveTeamMember => {
+                pass(
+                    identity,
+                    "remove_team_member",
+                    &RemoveTeamMemberArgs {
+                        actor: actor(),
+                        workspace: workspace(),
+                        team: team_slug(input),
+                        username: text(input, "username").trim().trim_start_matches('@').to_owned(),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::SetTeamRepo | Op::RemoveTeamRepo => {
+                let Some(path) = team_repo(input, &workspace()) else {
+                    return failed(
+                        FailureCode::Invalid,
+                        "Give the repository: its name in the team's workspace, or \"owner/name\".",
+                    );
+                };
+                if self == Op::RemoveTeamRepo {
+                    return pass(
+                        identity,
+                        "remove_team_repo",
+                        &RemoveTeamRepoArgs {
+                            actor: actor(),
+                            workspace: workspace(),
+                            team: team_slug(input),
+                            repo: path,
+                            surface: Some(services.audit.surface),
+                        },
+                    )
+                    .await;
+                }
+                let Some(role) = repo_role(input) else {
+                    return failed(FailureCode::Invalid, ROLE_NEEDED);
+                };
+                pass(
+                    identity,
+                    "set_team_repo",
+                    &SetTeamRepoArgs {
+                        actor: actor(),
+                        workspace: workspace(),
+                        team: team_slug(input),
+                        repo: path,
+                        role,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::ListUserTeams => {
+                pass(
+                    identity,
+                    "user_teams",
+                    &UserTeamsArgs {
+                        viewer: viewer.clone(),
+                        workspace: workspace(),
+                        username: text(input, "username").trim().trim_start_matches('@').to_owned(),
+                    },
+                )
+                .await
+            }
+            // Who is asked to review: the whole list, people and teams,
+            // replaces who is asked, so read it and change it.
+            Op::RequestReviewers | Op::RemoveRequestedReviewers => {
+                let (people, teams) = reviewer_names(input, &repo.namespace);
+                if people.is_empty() && teams.is_empty() {
+                    return failed(
+                        FailureCode::Invalid,
+                        "Give reviewers (usernames) or team_reviewers (\"workspace/team\").",
+                    );
+                }
+                let found: Outcome<PullDetail> = call(work, "get_pull", &view()).await?;
+                let pull = match found {
+                    Outcome::Ok(detail) => detail.pull,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                let reviewers = reviewers_after(
+                    &pull.reviewers,
+                    &pull.team_reviewers,
+                    &people,
+                    &teams,
+                    self == Op::RequestReviewers,
+                );
+                pass(
+                    work,
+                    "update_pull",
+                    &UpdatePullArgs { actor: actor(), repo: repo.clone(), number, assignees: None, reviewers: Some(reviewers), labels: None, milestone: None, base: None },
+                )
+                .await
+            }
+            Op::GetCodeownersErrors => {
+                pass(
+                    work,
+                    "codeowners_errors",
+                    &CodeOwnersErrorsArgs { viewer: viewer.clone(), repo, git_ref: optional_text(input, "ref") },
+                )
+                .await
+            }
             // A person's own inbox: the events service keeps it.
             Op::ListNotifications
             | Op::MarkNotificationsRead
@@ -3684,6 +4633,9 @@ impl Op {
             Op::ListPinnedProjects | Op::PinProject | Op::UnpinProject | Op::ReorderPinnedProjects => {
                 crate::pins::run(self, services, viewer, input).await
             }
+            // The security suite: the security service decides, this gives
+            // each answer its public shape.
+            Op::Security(op) => crate::security::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,
@@ -3755,6 +4707,150 @@ const ROLE_NEEDED: &str = "Give a role: read, triage, write, maintain or admin."
 /// The role named by `role`.
 fn repo_role(input: &Value) -> Option<RepoRole> {
     input["role"].as_str().and_then(RepoRole::parse)
+}
+
+/// A yes or no, given as a boolean or, in a URL, as text.
+fn yes(input: &Value, key: &str) -> Option<bool> {
+    match &input[key] {
+        Value::Bool(value) => Some(*value),
+        Value::String(text) => match text.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" => Some(true),
+            "false" | "0" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The team named by `team`, by its slug.
+fn team_slug(input: &Value) -> String {
+    text(input, "team").trim().trim_start_matches('@').to_lowercase()
+}
+
+/// `visibility`, when it is given.
+fn team_visibility(input: &Value) -> std::result::Result<Option<TeamVisibility>, String> {
+    match input.get("visibility").filter(|value| !value.is_null()) {
+        None => Ok(None),
+        Some(value) => value
+            .as_str()
+            .and_then(TeamVisibility::parse)
+            .map(Some)
+            .ok_or_else(|| "visibility is visible or secret.".to_owned()),
+    }
+}
+
+/// A person's `role` in a team: member when it is left out.
+fn team_role(input: &Value) -> std::result::Result<TeamRole, String> {
+    match input.get("role").filter(|value| !value.is_null()) {
+        None => Ok(TeamRole::Member),
+        Some(value) => value
+            .as_str()
+            .and_then(TeamRole::parse)
+            .ok_or_else(|| "role is member or maintainer.".to_owned()),
+    }
+}
+
+/// The fields of a team's review assignment, as inputs name them.
+const REVIEW_ASSIGNMENT_FIELDS: [&str; 8] =
+    ["enabled", "algorithm", "count", "skip_busy", "busy_at", "include_child_teams", "excluded", "notify_team"];
+
+/// `current` with the fields `given` has changed, each checked.
+fn review_assignment(given: &Value, current: ReviewAssignment) -> std::result::Result<ReviewAssignment, String> {
+    let mut next = current;
+    let present = |key: &str| given.get(key).is_some_and(|value| !value.is_null());
+    let boolean = |key: &str, now: bool| -> std::result::Result<bool, String> {
+        if !present(key) {
+            return Ok(now);
+        }
+        yes(given, key).ok_or_else(|| format!("{key} is true or false."))
+    };
+    let within = |key: &str, now: u32, most: u32| -> std::result::Result<u32, String> {
+        if !present(key) {
+            return Ok(now);
+        }
+        integer(given, key)
+            .filter(|n| (1..=most).contains(n))
+            .ok_or_else(|| format!("{key} is a whole number from 1 to {most}."))
+    };
+    next.enabled = boolean("enabled", next.enabled)?;
+    if present("algorithm") {
+        next.algorithm = given["algorithm"]
+            .as_str()
+            .and_then(ReviewAlgorithm::parse)
+            .ok_or_else(|| "algorithm is round_robin or load_balance.".to_owned())?;
+    }
+    next.count = within("count", next.count, g1t_contracts::teams::MAX_ASSIGNED)?;
+    next.skip_busy = boolean("skip_busy", next.skip_busy)?;
+    next.busy_at = within("busy_at", next.busy_at, 100)?;
+    next.include_child_teams = boolean("include_child_teams", next.include_child_teams)?;
+    if present("excluded") {
+        next.excluded = strings(given, "excluded").ok_or_else(|| "excluded is a list of usernames.".to_owned())?;
+    }
+    next.notify_team = boolean("notify_team", next.notify_team)?;
+    Ok(next)
+}
+
+/// The repository `repo` names for a team of `workspace`: `owner/name`, or
+/// a name in the workspace.
+fn team_repo(input: &Value, workspace: &str) -> Option<RepoPath> {
+    repo_path(input).or_else(|| {
+        let name = input["repo"].as_str()?.trim();
+        (!name.is_empty() && !name.contains('/')).then(|| RepoPath {
+            namespace: workspace.to_owned(),
+            name: name.to_owned(),
+        })
+    })
+}
+
+/// The people (`reviewers`) and teams (`team_reviewers`) a call names, each
+/// once, lowercase; a team as `workspace/team`, a bare slug being one of
+/// `workspace`'s. A name in `reviewers` with a `/` is a team too.
+fn reviewer_names(input: &Value, workspace: &str) -> (Vec<String>, Vec<String>) {
+    let (mut people, mut teams): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    let clean = |name: &str| name.trim().trim_start_matches('@').to_lowercase();
+    for name in strings(input, "reviewers").unwrap_or_default() {
+        let name = clean(&name);
+        let list = if name.contains('/') { &mut teams } else { &mut people };
+        if !name.is_empty() && !list.contains(&name) {
+            list.push(name);
+        }
+    }
+    for name in strings(input, "team_reviewers").unwrap_or_default() {
+        let name = clean(&name);
+        if name.is_empty() {
+            continue;
+        }
+        let name = if name.contains('/') { name } else { format!("{}/{name}", workspace.to_lowercase()) };
+        if !teams.contains(&name) {
+            teams.push(name);
+        }
+    }
+    (people, teams)
+}
+
+/// Who is asked to review once `people` and `teams` are added (or, with
+/// `add` false, taken away), as update_pull takes it: people, then teams.
+fn reviewers_after(
+    current_people: &[String],
+    current_teams: &[String],
+    people: &[String],
+    teams: &[String],
+    add: bool,
+) -> Vec<String> {
+    let has = |list: &[String], name: &str| list.iter().any(|item| item.eq_ignore_ascii_case(name));
+    let mut out = Vec::new();
+    for (current, change) in [(current_people, people), (current_teams, teams)] {
+        let mut kept: Vec<String> = current.iter().filter(|name| add || !has(change, name)).cloned().collect();
+        if add {
+            for name in change {
+                if !has(&kept, name) {
+                    kept.push(name.clone());
+                }
+            }
+        }
+        out.extend(kept);
+    }
+    out
 }
 
 impl Op {
@@ -3919,5 +5015,117 @@ mod tests {
             assert!(NEVER.contains(&op.name()), "{}", op.name());
         }
         assert!(!NEVER.contains(&Op::ListSecurityAlerts.name()));
+    }
+
+    const TEAMS: [Op; 14] = [
+        Op::ListTeams,
+        Op::GetTeam,
+        Op::CreateTeam,
+        Op::UpdateTeam,
+        Op::DeleteTeam,
+        Op::ListTeamMembers,
+        Op::SetTeamMember,
+        Op::RemoveTeamMember,
+        Op::ListChildTeams,
+        Op::ListTeamRepos,
+        Op::SetTeamRepo,
+        Op::RemoveTeamRepo,
+        Op::SetTeamReviewAssignment,
+        Op::ListUserTeams,
+    ];
+
+    /// A team belongs to a workspace: its operations name the workspace,
+    /// never need a repository, and need someone signed in.
+    #[test]
+    fn team_operations_name_a_workspace() {
+        for op in TEAMS {
+            assert!(!op.needs_repo(), "{}", op.name());
+            assert!(op.needs_user(), "{}", op.name());
+            assert!(op.required().contains(&"workspace".to_owned()), "{}", op.name());
+        }
+        for op in [Op::RequestReviewers, Op::RemoveRequestedReviewers, Op::GetCodeownersErrors] {
+            assert!(op.needs_repo(), "{}", op.name());
+        }
+        // A public repository's CODEOWNERS file is anyone's to check.
+        assert!(!Op::GetCodeownersErrors.needs_user());
+    }
+
+    #[test]
+    fn team_words_are_checked() {
+        assert_eq!(team_visibility(&json!({})), Ok(None));
+        assert_eq!(team_visibility(&json!({ "visibility": "Secret" })), Ok(Some(TeamVisibility::Secret)));
+        assert!(team_visibility(&json!({ "visibility": "hidden" })).is_err());
+        assert_eq!(team_role(&json!({})), Ok(TeamRole::Member));
+        assert_eq!(team_role(&json!({ "role": "maintainer" })), Ok(TeamRole::Maintainer));
+        assert!(team_role(&json!({ "role": "admin" })).is_err());
+        assert_eq!(Op::SetTeamMember.input()["properties"]["role"]["enum"], json!(["member", "maintainer"]));
+        assert_eq!(Op::CreateTeam.input()["properties"]["visibility"]["enum"], json!(["visible", "secret"]));
+        assert_eq!(
+            Op::SetTeamRepo.input()["properties"]["role"]["enum"],
+            json!(["read", "triage", "write", "maintain", "admin"])
+        );
+        assert_eq!(
+            Op::SetTeamReviewAssignment.input()["properties"]["algorithm"]["enum"],
+            json!(["round_robin", "load_balance"])
+        );
+        assert_eq!(yes(&json!({ "a": "true" }), "a"), Some(true));
+        assert_eq!(yes(&json!({ "a": false }), "a"), Some(false));
+        assert_eq!(yes(&json!({ "a": "maybe" }), "a"), None);
+        assert_eq!(team_slug(&json!({ "team": " @Backend " })), "backend");
+    }
+
+    /// Fields left out keep their value; a bad one is refused before
+    /// identity is asked.
+    #[test]
+    fn review_assignment_changes_only_what_is_given() {
+        let current = ReviewAssignment { count: 2, excluded: vec!["bo".into()], ..ReviewAssignment::default() };
+        let next = review_assignment(&json!({ "enabled": true, "algorithm": "load_balance" }), current.clone()).unwrap();
+        assert!(next.enabled);
+        assert_eq!(next.algorithm, ReviewAlgorithm::LoadBalance);
+        assert_eq!((next.count, next.excluded.clone()), (2, vec!["bo".to_owned()]));
+        let next = review_assignment(&json!({ "count": "3", "excluded": [], "skip_busy": "true", "busy_at": 4 }), current.clone()).unwrap();
+        assert_eq!((next.count, next.busy_at, next.skip_busy), (3, 4, true));
+        assert!(next.excluded.is_empty());
+        for bad in [
+            json!({ "algorithm": "random" }),
+            json!({ "count": 0 }),
+            json!({ "count": 11 }),
+            json!({ "busy_at": 101 }),
+            json!({ "enabled": "sometimes" }),
+            json!({ "excluded": "ana" }),
+        ] {
+            assert!(review_assignment(&bad, current.clone()).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_team_names_a_repository_by_itself_or_in_full() {
+        let path = team_repo(&json!({ "repo": "rocket" }), "acme").unwrap();
+        assert_eq!((path.namespace.as_str(), path.name.as_str()), ("acme", "rocket"));
+        let path = team_repo(&json!({ "repo": "acme/rocket" }), "other").unwrap();
+        assert_eq!((path.namespace.as_str(), path.name.as_str()), ("acme", "rocket"));
+        assert!(team_repo(&json!({ "repo": "" }), "acme").is_none());
+        assert!(team_repo(&json!({}), "acme").is_none());
+    }
+
+    /// Requested reviewers are added to, or taken from, who is asked; a
+    /// team's bare slug is one of the repository's workspace.
+    #[test]
+    fn requested_reviewers_change_the_whole_list() {
+        let input = json!({ "reviewers": ["@Ana", "g1t", "acme/web"], "team_reviewers": ["Backend", "acme/web"] });
+        let (people, teams) = reviewer_names(&input, "Acme");
+        assert_eq!(people, vec!["ana", "g1t"]);
+        assert_eq!(teams, vec!["acme/web", "acme/backend"]);
+        let current_people = vec!["bo".to_owned(), "ana".to_owned()];
+        let current_teams = vec!["acme/web".to_owned()];
+        assert_eq!(
+            reviewers_after(&current_people, &current_teams, &people, &teams, true),
+            vec!["bo", "ana", "g1t", "acme/web", "acme/backend"]
+        );
+        assert_eq!(
+            reviewers_after(&current_people, &current_teams, &["ANA".to_owned()], &["acme/web".to_owned()], false),
+            vec!["bo"]
+        );
+        assert_eq!(reviewer_names(&json!({}), "acme"), (vec![], vec![]));
     }
 }

@@ -29,14 +29,6 @@ export type RoadmapItem = {
 export const ROADMAP: RoadmapItem[] = [
   // --- Work ---------------------------------------------------------------
   {
-    key: "teams",
-    title: "Teams",
-    section: "Workspace",
-    summary: "Groups of members, given roles on repositories together.",
-    why: "Give a group a role on many repositories at once, mention it, and request its review, instead of adding people one by one.",
-    plans: ["Teams with members and maintainers", "Repository roles for a team", "@team mentions and review requests"],
-  },
-  {
     key: "board",
     title: "Board",
     section: "Workspace",
@@ -162,16 +154,8 @@ export const ROADMAP: RoadmapItem[] = [
   },
 
   // --- Security -------------------------------------------------------------
-  // The overview, secret scanning and dependency upkeep are built: see
-  // routes/repo/security.tsx.
-  {
-    key: "code-scanning",
-    title: "Code scanning",
-    section: "Security",
-    summary: "Code scanned for vulnerabilities on every change.",
-    why: "Scanning on every pull request, with findings explained in the review and fixed by the author's agent.",
-    plans: ["Static analysis on every pull request", "Findings in the review, with a fix", "Baselines so only new findings block"],
-  },
+  // The overview, secret scanning, code scanning, vulnerabilities and the
+  // dependency graph are built: see routes/repo/security-*.tsx.
   {
     key: "firewall",
     title: "Firewall",

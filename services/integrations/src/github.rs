@@ -739,6 +739,7 @@ impl GithubApp {
                     body,
                     labels: labels_of(issue),
                     checks: Vec::new(),
+                    milestone: None,
                 },
             )
             .await?;

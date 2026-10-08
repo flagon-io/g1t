@@ -3,7 +3,7 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    CheckStatus, Comment, CommentKind, Issue, IssueReason, Pull, PullStatus, Runtime, SessionEntry,
+    CheckStatus, Comment, CommentKind, Issue, IssueReason, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry,
     SessionEntryKind, State, Verdict,
 };
 use serde::Deserialize;
@@ -63,6 +63,17 @@ pub struct IssueRow {
     /// JSON of who queued it for a g1t agent, if anyone has.
     pub queued_by: Option<String>,
     pub agent: Option<String>,
+    /// The number of its milestone, and that milestone's title.
+    #[serde(default)]
+    pub milestone: Option<u32>,
+    #[serde(default)]
+    pub milestone_title: Option<String>,
+}
+
+/// A milestone as an issue or pull request names it, from its number and
+/// title as read beside it.
+pub(crate) fn milestone_ref(number: Option<u32>, title: Option<String>) -> Option<MilestoneRef> {
+    Some(MilestoneRef { number: number?, title: title? })
 }
 
 impl From<IssueRow> for Issue {
@@ -88,6 +99,7 @@ impl From<IssueRow> for Issue {
             blocked_by: serde_json::from_str(&row.blocked_by).unwrap_or_default(),
             queued: row.queued_by.is_some(),
             agent: row.agent,
+            milestone: milestone_ref(row.milestone, row.milestone_title),
         }
     }
 }
@@ -106,8 +118,10 @@ pub struct Snapshot {
 
 /// A pull request's columns, with its confidence (confidence.rs) beside
 /// them: what every read of a [`PullRow`] selects.
-pub const PULL_COLUMNS: &str =
-    "pulls.*, (SELECT detail FROM pull_confidence WHERE pull_confidence.pull_id = pulls.id) AS confidence";
+pub const PULL_COLUMNS: &str = "pulls.*,
+  (SELECT detail FROM pull_confidence WHERE pull_confidence.pull_id = pulls.id) AS confidence,
+  (SELECT title FROM milestones
+   WHERE milestones.repo_id = pulls.repo_id AND milestones.number = pulls.milestone) AS milestone_title";
 
 #[derive(Deserialize)]
 pub struct PullRow {
@@ -135,6 +149,9 @@ pub struct PullRow {
     /// JSON arrays of usernames.
     pub assignees: String,
     pub reviewers: String,
+    /// JSON array of `workspace/team`.
+    #[serde(default)]
+    pub team_reviewers: Option<String>,
     pub author_id: String,
     pub author_name: String,
     #[serde(default)]
@@ -146,6 +163,16 @@ pub struct PullRow {
     /// JSON of its confidence, once worked out.
     #[serde(default)]
     pub confidence: Option<String>,
+    /// JSON array of label names.
+    #[serde(default)]
+    pub labels: Option<String>,
+    #[serde(default)]
+    pub milestone: Option<u32>,
+    #[serde(default)]
+    pub milestone_title: Option<String>,
+    /// The branch it merges into; NULL for the default branch.
+    #[serde(default)]
+    pub base_branch: Option<String>,
 }
 
 impl From<PullRow> for Pull {
@@ -179,6 +206,11 @@ impl From<PullRow> for Pull {
                 .unwrap_or_default(),
             assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
             reviewers: serde_json::from_str(&row.reviewers).unwrap_or_default(),
+            team_reviewers: row
+                .team_reviewers
+                .as_deref()
+                .and_then(|teams| serde_json::from_str(teams).ok())
+                .unwrap_or_default(),
             author: user(row.author_id, row.author_name),
             requested_by: requester(row.requested_by_id, row.requested_by_name),
             created_at: row.created_at,
@@ -187,6 +219,13 @@ impl From<PullRow> for Pull {
                 .confidence
                 .as_deref()
                 .and_then(|detail| serde_json::from_str(detail).ok()),
+            labels: row
+                .labels
+                .as_deref()
+                .and_then(|labels| serde_json::from_str(labels).ok())
+                .unwrap_or_default(),
+            milestone: milestone_ref(row.milestone, row.milestone_title),
+            base: row.base_branch,
         }
     }
 }

@@ -134,7 +134,7 @@ test("every tab says something when it is empty", () => {
 
 test("every reason has words, a filter and an email choice", () => {
   const reasons = Object.keys(REASON_LABEL);
-  assert.equal(reasons.length, 11);
+  assert.equal(reasons.length, 12);
   assert.deepEqual(REASON_FILTERS.slice(1).map((entry) => entry.reason), reasons);
   assert.equal(REASON_FILTERS[0].label, "Any reason");
   assert.equal(REASON_FILTERS.find((entry) => entry.reason === "review_requested")?.label, "Review requested");

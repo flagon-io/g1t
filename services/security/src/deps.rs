@@ -7,6 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::repos::{BlobArgs, BlobView};
 use g1t_contracts::security::{AlertState, FindLockfilesArgs, Lockfiles, VersionUpdatesState, VulnStatus, Vulnerability};
+use g1t_contracts::updates::DEPENDABOT_PATHS;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{AddCommentArgs, Issue, IssueDetail, ViewArgs};
 use g1t_contracts::{Outcome, User};
@@ -19,6 +20,7 @@ use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
 use crate::Security;
 use crate::store::{RepoRow, VulnRow};
 use crate::updates;
+use crate::version_updates::Loaded;
 
 /// OSV's records are fetched again after this long.
 const ADVISORY_MAX_AGE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -111,7 +113,7 @@ fn directory(path: &str) -> &str {
 
 impl Security {
     /// The ids of the vulnerabilities affecting each package, from OSV.
-    async fn query_osv(&self, packages: &[Package]) -> Result<(Vec<Vec<String>>, u32)> {
+    pub(crate) async fn query_osv(&self, packages: &[Package]) -> Result<(Vec<Vec<String>>, u32)> {
         let mut ids = Vec::with_capacity(packages.len());
         let mut calls = 0;
         for (body, chunk) in osv::batch_bodies(packages).iter().zip(packages.chunks(osv::MAX_BATCH)) {
@@ -139,7 +141,7 @@ impl Security {
     }
 
     /// OSV's record of each id, from the cache when it is fresh.
-    async fn advisories(&self, ids: &BTreeSet<String>) -> Result<(HashMap<String, Value>, u32)> {
+    pub(crate) async fn advisories(&self, ids: &BTreeSet<String>) -> Result<(HashMap<String, Value>, u32)> {
         let fresh_after = rfc3339(now_ms().saturating_sub(ADVISORY_MAX_AGE_MS));
         let unfixed_fresh_after = rfc3339(now_ms().saturating_sub(UNFIXED_ADVISORY_MAX_AGE_MS));
         let mut records = HashMap::new();
@@ -179,7 +181,7 @@ impl Security {
     /// `.g1t/dependencies.yml`. Returns what went wrong, for the Security
     /// page, if anything did.
     pub async fn scan_dependencies(&self, repo: &RepoRow) -> Result<Option<String>> {
-        let files: Lockfiles = g1t_kit::call(&self.repos, "find_lockfiles", &FindLockfilesArgs { repo_id: repo.repo_id.clone() }).await?;
+        let files: Lockfiles = g1t_kit::call(&self.repos, "find_lockfiles", &FindLockfilesArgs { repo_id: repo.repo_id.clone(), git_ref: None }).await?;
         let paths: Vec<String> = files.files.iter().map(|file| file.path.clone()).collect();
         let located = packages(&files);
         let unique: Vec<Package> = located.iter().map(|l| l.package.clone()).collect::<BTreeSet<_>>().into_iter().collect();
@@ -210,43 +212,62 @@ impl Security {
                 return Ok(Some(problem));
             }
         };
+        let before: BTreeSet<String> = self.store.open_vulnerabilities(&repo.repo_id).await?.into_iter().map(|row| row.id).collect();
         self.store.replace_vulnerabilities(&repo.repo_id, &found).await?;
         self.store.set_dependencies_scanned(&repo.repo_id, files.commit.as_deref(), &paths, None).await?;
-        self.meter(&repo.namespace, 0, 0, calls, dependency_check_cost(calls, found.len())).await?;
-        if let Some(commit) = files.commit.as_deref() {
-            self.read_version_updates(repo, commit).await?;
+        if let Err(error) = self.record_graph(repo, &files).await {
+            worker::console_error!("security: dependency graph of {} not kept: {error}", repo.repo_id);
         }
+        self.vulnerabilities_changed(repo, &before).await?;
+        self.meter(&repo.namespace, 0, 0, calls, dependency_check_cost(calls, found.len())).await?;
+        // The dependency update file says how security updates are made too.
+        let rules = match files.commit.as_deref() {
+            Some(commit) => self.read_version_updates(repo, commit).await?,
+            None => None,
+        };
         // No security updates on an archived (read-only) or deleted
         // repository; ones in flight for packages no longer vulnerable are
         // closed either way.
         let active = self.active(&repo.repo_id).await?;
-        self.security_updates(repo, repo.upkeep != 0 && active).await?;
+        self.security_updates(repo, repo.upkeep != 0 && active, rules.as_ref()).await?;
         Ok(None)
     }
 
-    /// Reads `.g1t/dependencies.yml` at `commit` and keeps what it says.
-    async fn read_version_updates(&self, repo: &RepoRow, commit: &str) -> Result<()> {
-        let found: Outcome<BlobView> = g1t_kit::call(
-            &self.repos,
-            "blob",
-            &BlobArgs {
-                path: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
+    /// Reads the dependency update file at `commit` and keeps what it
+    /// says; see `updates`. Its entries' schedules start or move. Returns
+    /// it, when it has no problems.
+    pub(crate) async fn read_version_updates(&self, repo: &RepoRow, commit: &str) -> Result<Option<Loaded>> {
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
+        let asks: Vec<BlobArgs> = DEPENDABOT_PATHS
+            .iter()
+            .map(|file| BlobArgs {
+                path: path.clone(),
                 viewer: Some(User::system(&repo.namespace)),
                 git_ref: commit.to_owned(),
-                file_path: updates::PATH.to_owned(),
-            },
-        )
-        .await?;
-        let mut state = VersionUpdatesState { read_at: Some(crate::store::now()), ..VersionUpdatesState::default() };
-        if let Outcome::Ok(blob) = found {
-            state.found = true;
-            match blob.text.as_deref().map(updates::parse) {
-                Some(Ok(entries)) => state.updates = entries,
-                Some(Err(error)) => state.error = Some(error),
-                None => state.error = Some(format!("{} is too large or not text.", updates::PATH)),
+                file_path: (*file).to_owned(),
+            })
+            .collect();
+        let reads = asks.iter().map(|ask| g1t_kit::call::<_, Outcome<BlobView>>(&self.repos, "blob", ask));
+        let mut found = Vec::new();
+        let mut default_branch = None;
+        for (file, read) in DEPENDABOT_PATHS.iter().zip(futures_util::future::join_all(reads).await) {
+            if let Outcome::Ok(blob) = read? {
+                default_branch = Some(blob.repo.default_branch.clone());
+                found.push(((*file).to_owned(), blob.text));
             }
         }
-        self.store.set_version_updates(&repo.repo_id, &state).await
+        let (mut state, config) = match updates::choose(found) {
+            Some(((file, text), ignored)) => {
+                let (state, config) = updates::state(&file, text.as_deref(), ignored, &repo.repo_id, default_branch.as_deref());
+                (state, config.map(|config| (config, file)))
+            }
+            None => (VersionUpdatesState::default(), None),
+        };
+        state.read_at = Some(crate::store::now());
+        state.commit = Some(commit.to_owned());
+        self.store.set_version_updates(&repo.repo_id, &state).await?;
+        self.schedule_entries(repo, config.as_ref().map(|(config, _)| config), default_branch.as_deref()).await?;
+        Ok(config.map(|(config, file)| Loaded { config, file, default_branch: default_branch.unwrap_or_default() }))
     }
 
     pub(crate) async fn issue(&self, actor: &User, repo: &RepoPath, number: u32) -> Result<Option<Issue>> {
@@ -274,6 +295,46 @@ impl Security {
             },
         )
         .await?;
+        Ok(())
+    }
+}
+
+/// The event that tells of a vulnerability alert.
+pub(crate) fn vulnerability_event(repo: &RepoRow, vuln: &Vulnerability) -> g1t_contracts::security_suite::SecurityEvent {
+    g1t_contracts::security_suite::SecurityEvent {
+        repo_id: repo.repo_id.clone(),
+        alert_id: vuln.id.clone(),
+        alert_type: g1t_contracts::security_suite::AlertType::Vulnerability.as_str().to_owned(),
+        severity: vuln.severity.clone(),
+        title: format!("{} {} in {}: {}", vuln.package, vuln.version, vuln.manifest, vuln.advisory),
+        link: crate::suite::link(repo, &format!("vulnerabilities?finding={}", vuln.id)),
+        path: Some(vuln.manifest.clone()),
+        state: vuln.state.as_str().to_owned(),
+        ..Default::default()
+    }
+}
+
+impl Security {
+    /// Tells of vulnerability alerts a dependency read opened or fixed,
+    /// given the ids that were open before it.
+    async fn vulnerabilities_changed(&self, repo: &RepoRow, before: &BTreeSet<String>) -> Result<()> {
+        use g1t_contracts::security_suite::AlertType;
+        let after: Vec<VulnRow> = self.store.open_vulnerabilities(&repo.repo_id).await?;
+        let now: BTreeSet<&str> = after.iter().map(|row| row.id.as_str()).collect();
+        let opened: Vec<&str> = now.iter().copied().filter(|id| !before.contains(*id)).take(20).collect();
+        let fixed: Vec<&String> = before.iter().filter(|id| !now.contains(id.as_str())).take(20).collect();
+        for id in opened {
+            if let Some(vuln) = self.store.vulnerability(&repo.repo_id, id).await? {
+                self.alert_event(AlertType::Vulnerability, "created", repo, vulnerability_event(repo, &vuln), None).await;
+            }
+        }
+        for id in fixed {
+            if let Some(vuln) = self.store.vulnerability(&repo.repo_id, id).await?
+                && vuln.status == VulnStatus::Fixed
+            {
+                self.alert_event(AlertType::Vulnerability, "fixed", repo, vulnerability_event(repo, &vuln), None).await;
+            }
+        }
         Ok(())
     }
 }

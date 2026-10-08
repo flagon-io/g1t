@@ -77,7 +77,7 @@ import {
 import { hubContext } from "./hub";
 import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
-import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor } from "./bump";
+import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
@@ -264,6 +264,8 @@ type Build = {
   minutes: number;
   /** A workflow job's workflow, environment and trust, for workflow-only domains. */
   job?: WorkflowJob | null;
+  /** More hosts it may reach: an update's private registries. */
+  hosts?: string[];
 };
 /** Deploy builds are metered by the Deployments plan, not here. */
 type RunRequest = Run & {
@@ -409,7 +411,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       guard = track
         ? withPlanLimits(await guardFor(this.env.WORK, track.repo, track.kind), limits)
         : build
-          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId, build.job), limits)
+          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId, build.job, build.hosts), limits)
           : null;
     } catch (error) {
       await this.settle(0);
@@ -1747,24 +1749,36 @@ export default class RunnerService
    * Makes a security update in a sandbox of its own (crates/runner
    * bump.rs): raises one package to a fixed version in the lockfiles
    * named, commits that as g1t and pushes it to its `g1t/security/…`
-   * branch. Asked by the security service, which opens the pull request
-   * when it hears the push; nothing here opens one. Admitted, reserved and
-   * metered like checks, always in g1t's sandbox (a self-hosted runner may
-   * not know the mode), under the project's network list plus the package
-   * registries. Returns whether the sandbox started.
+   * branch. A version update (`kind: "version"`) raises one or more
+   * packages the same way, to the branch its dependency update file names,
+   * which is never the default one. Asked by the security service, which
+   * opens the pull request when it hears the push; nothing here opens one.
+   * Admitted, reserved and metered like checks, always in g1t's sandbox (a
+   * self-hosted runner may not know the mode), under the project's network
+   * list plus the package registries. Returns whether the sandbox started.
    */
   private async startBump(input: unknown): Promise<Result<boolean>> {
     const problem = bumpProblem(input, UPDATE_BRANCH_PREFIX);
     if (problem) return fail("invalid", problem);
     const args = input as BumpArgs;
     const repo = args.repo;
+    const what = args.kind === "version" ? "version update" : "security update";
     const actor = systemActor(repo.namespace);
     const closed = await this.closedRepo(actor, repo);
     if (closed) return closed;
     const admitted = await this.admitSandbox("check", repo, BUMP_MINUTES, STANDARD_INSTANCE, { selfHosted: false });
     if (!admitted.ok) return notAdmitted(admitted);
     try {
-      const base = await this.defaultBranch(repo, actor);
+      const defaultBranch = await this.defaultBranch(repo, actor);
+      // From its `target-branch`, which its pull request merges into, or
+      // the default branch.
+      const base = args.base ?? defaultBranch;
+      // A version update names its own branch, which is never the one it
+      // starts from, nor the default one.
+      if (args.kind === "version" && (args.branch === defaultBranch || args.branch === base)) {
+        await this.release(admitted.held);
+        return fail("invalid", `A version update cannot push to ${args.branch}, the branch it starts from.`);
+      }
       // As g1t, for the workspace: reads the repository and pushes this
       // branch only, with no API operations.
       const token = await runCredential(this.env.IDENTITY, {
@@ -1784,13 +1798,13 @@ export default class RunnerService
         branch: args.branch,
         reservation: admitted.held,
         limits: admitted.limits,
-        build: { kind: "bump", repo, minutes: BUMP_MINUTES },
-        meter: meter(repo, `Security update in ${repo.namespace}/${repo.name}`),
+        build: { kind: "bump", repo, minutes: BUMP_MINUTES, hosts: registryHosts(args) },
+        meter: meter(repo, `${args.kind === "version" ? "Version" : "Security"} update in ${repo.namespace}/${repo.name}`),
         envVars: bumpEnv(args, base, token),
       });
     } catch (error) {
       await this.release(admitted.held);
-      return fail("conflict", `The runner could not start the security update: ${String(error).replace(/^Error: /, "")}`);
+      return fail("conflict", `The runner could not start the ${what}: ${String(error).replace(/^Error: /, "")}`);
     }
     return ok(true);
   }
@@ -2473,6 +2487,8 @@ export default class RunnerService
       return fail("conflict", await this.wait(repo, { kind: "update", actor, repo, number }, admitted.message));
     }
     const defaultBranch = await this.defaultBranch(repo, actor);
+    // What it catches up with: the branch it merges into.
+    const base = pull.base ?? defaultBranch;
     await this.holding(admitted, () => this.startUpdate({
       granted: admitted,
       actor,
@@ -2482,13 +2498,13 @@ export default class RunnerService
         ? `https://g1t.sh/${pull.fork.namespace}/${pull.fork.name}.git`
         : `https://g1t.sh/${repo.namespace}/${repo.name}.git`,
       branch: pull.branch ?? defaultBranch,
-      defaultBranch,
+      defaultBranch: base,
       about: [
         pull.title,
         pull.body,
         issue && `Issue #${issue.number}: ${issue.title}\n\n${issue.body}`,
         conflicts.length > 0 &&
-          `g1t found ahead of time that merging ${defaultBranch} into this pull request conflicts in these files: ${conflicts.join(", ")}.`,
+          `g1t found ahead of time that merging ${base} into this pull request conflicts in these files: ${conflicts.join(", ")}.`,
       ],
     }));
     return ok(true);

@@ -14,12 +14,11 @@ language or about a topic.
 
 ## Search from anywhere
 
-There are three ways in:
+There are two ways in:
 
 | Where | What it does |
 | --- | --- |
-| The search box in the top bar | Opens [g1t.sh/search](https://g1t.sh/search) with what you typed |
-| **⌘K** (Ctrl-K on Windows and Linux) | Opens the command palette. As you type it shows matching repositories, issues, pull requests and people, the pages you can go to, and rows that search all of g1t or only code for what you typed |
+| **Search or jump to…** at the top of the sidebar, or **⌘K** (Ctrl-K on Windows and Linux) | Opens the command palette. As you type it shows matching repositories, issues, pull requests and people, the pages you can go to, and rows that search all of g1t (the full results at [g1t.sh/search](https://g1t.sh/search)) or only code for what you typed. On a phone, where the sidebar is folded away, the magnifier in the top bar opens it |
 | A project's **Code** page | **Search this repository's code** searches the project's repository, with `repo:` filled in |
 
 The search page has a tab for each kind of result, each with its count:

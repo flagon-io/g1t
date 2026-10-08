@@ -60,6 +60,10 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Projects",
     about: "Everything the workspace builds and runs. Search, filter and sort them, and pin the ones you use most to keep them in your sidebar.",
   },
+  teams: {
+    title: "Teams",
+    about: "Groups of members, given roles on repositories together, mentioned as @workspace/team and asked to review together. Child teams inherit their parent's access.",
+  },
   repositories: {
     title: "Repositories",
     about: "Every repository in the workspace: who can see it, whether it is archived, and the ones deleted recently.",

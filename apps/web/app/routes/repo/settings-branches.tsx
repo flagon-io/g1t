@@ -1,9 +1,11 @@
 import { ChevronRight, ShieldCheck } from "lucide-react";
-import { Form, Link } from "react-router";
+import { Suspense } from "react";
+import { Await, Form, Link } from "react-router";
 
 import type { Route } from "./+types/settings-branches";
 import { page } from "../../lib/meta";
 import { AddCiPrompt } from "../../components/add-ci";
+import { CodeownersReportPanel, CodeownersReportSkeleton } from "../../components/codeowners";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { RequiredChecksPicker } from "../../components/required-checks";
 import { SettingChoice as Choice, SettingsSection as Section, SettingToggle as Toggle } from "../../components/settings-section";
@@ -27,7 +29,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     work.seenChecks(path, viewer),
     actions.workflows(path, viewer),
   ]);
+  // Streamed: the CODEOWNERS file is read and checked on its own time.
+  const codeowners = work
+    .codeownersErrors(path, viewer)
+    .then((found) => (found.ok ? found.value : null))
+    .catch(() => null);
   return {
+    codeowners,
     repo: unwrap(repo),
     settings: unwrap(settings),
     // The names to choose required checks from: what reported lately.
@@ -66,12 +74,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     maxRevisions: count(form.get("maxRevisions"), 0, 5),
     mergeQueue: on("mergeQueue"),
     holdLowConfidence: on("holdLowConfidence"),
+    requireCodeOwnerReview: on("requireCodeOwnerReview"),
   });
   return settings.ok ? { saved: true, error: null } : { saved: false, error: settings.error.message };
 }
 
 export default function BranchSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, settings, seen, noChecks, canPush } = loaderData;
+  const { repo, settings, seen, noChecks, canPush, codeowners } = loaderData;
   const branch = repo.defaultBranch;
   const base = `/${repo.namespace}/${repo.name}`;
   const archived = Boolean(repo.archivedAt);
@@ -97,6 +106,14 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
               mergeQueue={settings.mergeQueue}
               disabled={archived}
             />
+            <p className="-mt-4 text-sm text-muted">
+              Code scanning results and dependency review gate merges the same way: require the <strong>Code scanning</strong> and{" "}
+              <strong>Dependency review</strong> checks here once they have reported on a pull request. When each one fails is set in{" "}
+              <Link to={`/${repo.namespace}/${repo.name}/security/settings`} className="underline underline-offset-2 hover:text-fg">
+                Security settings
+              </Link>
+              .
+            </p>
             <Toggle name="bypassChecks" on={settings.allowIgnoringChecks} title="Allow bypassing required checks">
               Someone who may merge can tick a box to merge although a required check failed or has not finished, and
               the pull request says who did. With this off, nobody can, and auto-merge never does.
@@ -124,6 +141,14 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
               How many reviewers must approve before a pull request can merge. A reviewer who has since asked for
               changes blocks it, and nobody approves their own.
             </Choice>
+            <Toggle
+              name="requireCodeOwnerReview"
+              on={settings.requireCodeOwnerReview ?? false}
+              title="Require review from code owners"
+            >
+              A pull request waits until the owners of every file it changes, as the CODEOWNERS file on {branch} names
+              them, have approved.
+            </Toggle>
             <Toggle name="countAgentApprovals" on={settings.countAgentApprovals} title="g1t's approval counts">
               With this off, required approvals have to come from people, and an agent's review is advice.
             </Toggle>
@@ -133,6 +158,18 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
               <code className="text-fg">merge_group</code> on each. {branch} only ever moves to a combination whose
               required checks passed. One that fails leaves the queue and goes back to its author.
             </Toggle>
+          </Section>
+
+          <Section
+            id="codeowners"
+            title="CODEOWNERS"
+            about={`Who owns which files, read from ${branch}. Owners are asked to review changes to their files.`}
+          >
+            <Suspense fallback={<CodeownersReportSkeleton />}>
+              <Await resolve={codeowners}>
+                {(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}
+              </Await>
+            </Suspense>
           </Section>
 
           <Section

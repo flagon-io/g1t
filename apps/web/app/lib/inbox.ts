@@ -24,6 +24,7 @@ const INBOX_REASONS: InboxReason[] = [
   "review_requested",
   "assign",
   "mention",
+  "team_mention",
   "ci_activity",
   "security_alert",
   "state_change",
@@ -180,6 +181,7 @@ export const REASON_LABEL: Record<InboxReason, string> = {
   review_requested: "review requested",
   assign: "assigned",
   mention: "mentioned",
+  team_mention: "team mentioned",
   ci_activity: "CI activity",
   security_alert: "security alert",
   state_change: "state changed",
@@ -266,6 +268,8 @@ export function subscriptionLine(subscription: ThreadSubscription | null | undef
       return "You're subscribed because you commented.";
     case "mention":
       return "You're subscribed because you were mentioned.";
+    case "team_mention":
+      return "You're subscribed because a team you're in was mentioned.";
     default:
       return `You're subscribed to this ${thing}.`;
   }
@@ -292,6 +296,7 @@ export const EMAIL_REASONS: { reason: InboxReason; label: string; detail: string
   { reason: "agent", label: "An agent is waiting on you", detail: "It asked you something, or stopped until you step in." },
   { reason: "review_requested", label: "You're asked to review", detail: "Someone asked for your review of a pull request." },
   { reason: "mention", label: "You're mentioned", detail: "Someone wrote your @username in a comment." },
+  { reason: "team_mention", label: "Your team is mentioned", detail: "Someone wrote @workspace/team for a team you're in." },
   { reason: "assign", label: "You're assigned", detail: "Someone assigned you an issue or a pull request." },
   { reason: "ci_activity", label: "Your work's checks and deployments", detail: "Checks, a workflow or a deployment failed on your work." },
   { reason: "state_change", label: "What you follow closes or merges", detail: "An issue or pull request you're subscribed to was closed, reopened or merged." },

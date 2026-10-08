@@ -284,7 +284,17 @@ export interface ReposApi {
    * with the last commit it shares with the repository it came from, and a
    * branch with the point where it left the default branch.
    */
-  compare(repoId: string, viewer: Viewer, base?: string | null, head?: string | null): Promise<Result<Comparison>>;
+  /**
+   * With no `base`, a branch is compared from where it left `baseBranch`
+   * (the default branch when absent).
+   */
+  compare(
+    repoId: string,
+    viewer: Viewer,
+    base?: string | null,
+    head?: string | null,
+    baseBranch?: string | null,
+  ): Promise<Result<Comparison>>;
 
   /**
    * Services only, for the runner's sweep: up to `limit` queued nightly

@@ -18,8 +18,10 @@
 //! - **a direct grant** ([`RepoGrant`]) to the person, on that repository;
 //! - **public**: anyone, signed in or not, can read a public repository.
 //!
-//! Teams, when they come, are one more source: a grant whose principal is
-//! a team, resolved into the same [`RepoGrant`]s on the people in it.
+//! - **a team's grant**: a role given to a team the person is in, or to
+//!   one of that team's parents (see [`crate::teams`]). Identity resolves
+//!   it into the same [`RepoGrant`]s, with [`RepoGrant::team`] set, so the
+//!   rules here treat it as any other grant.
 //!
 //! Identity attaches a person's grants ([`User::grants`]) and each
 //! membership's base permission ([`Membership::base_permission`]) when it
@@ -246,6 +248,9 @@ pub struct RepoGrant {
     /// The repository's workspace, by slug, as it is now.
     pub workspace: String,
     pub role: RepoRole,
+    /// The team it comes through, by slug, when it is a team's grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<String>,
 }
 
 /// What [`permission`] needs to know about a repository.
@@ -390,6 +395,8 @@ pub enum AccessSource {
     Base,
     /// Given a role on this repository directly.
     Direct,
+    /// In a team given a role on this repository, or in a child of one.
+    Team,
 }
 
 /// One person with access to a repository.
@@ -408,6 +415,11 @@ pub struct Collaborator {
     pub direct: Option<RepoRole>,
     /// `owner`, `member`, or null for an outside collaborator.
     pub workspace_role: Option<Role>,
+    /// The highest role a team gives them here, and that team's slug.
+    #[serde(default)]
+    pub team_role: Option<RepoRole>,
+    #[serde(default)]
+    pub team: Option<String>,
 }
 
 /// Where an invitation to a repository stands.
@@ -455,6 +467,9 @@ pub struct RepoAccess {
     /// Everyone with access other than through the repository being
     /// public: owners, members with a base role, and direct grants.
     pub people: Vec<Collaborator>,
+    /// The workspace's teams given a role on it.
+    #[serde(default)]
+    pub teams: Vec<crate::teams::RepoTeam>,
     /// Pending invitations. Empty unless the viewer may manage access.
     pub invitations: Vec<RepoInvitation>,
     /// The viewer's own role, and whether they may change who has access.
@@ -655,6 +670,7 @@ mod tests {
                     repo_id: (*id).into(),
                     workspace: (*workspace).into(),
                     role: *role,
+                    team: None,
                 })
                 .collect(),
             ..User::default()
@@ -746,6 +762,32 @@ mod tests {
         // A grant lower than the base changes nothing.
         let member = user(&[("acme", Role::Member, Some(BasePermission::Admin))], &[("rep_1", "acme", RepoRole::Read)]);
         assert_eq!(permission(Some(&member), repo("rep_1", "acme", true)), Some(RepoRole::Admin));
+    }
+
+    #[test]
+    fn a_teams_grant_counts_like_any_other_and_the_highest_wins() {
+        let mut member = user(&[("acme", Role::Member, Some(BasePermission::Read))], &[]);
+        member.grants.push(RepoGrant {
+            repo_id: "rep_1".into(),
+            workspace: "acme".into(),
+            role: RepoRole::Maintain,
+            team: Some("backend".into()),
+        });
+        member.grants.push(RepoGrant {
+            repo_id: "rep_1".into(),
+            workspace: "acme".into(),
+            role: RepoRole::Triage,
+            team: None,
+        });
+        assert_eq!(permission(Some(&member), repo("rep_1", "acme", true)), Some(RepoRole::Maintain));
+        assert!(can(Some(&member), repo("rep_1", "acme", true), Capability::ManageProtection));
+        assert!(!can(Some(&member), repo("rep_1", "acme", true), Capability::ManageAccess));
+        // Elsewhere, only the base.
+        assert_eq!(permission(Some(&member), repo("rep_2", "acme", true)), Some(RepoRole::Read));
+        // Serialized without `team` when it is a person's own.
+        let own = serde_json::to_value(&member.grants[1]).unwrap();
+        assert!(own.get("team").is_none());
+        assert_eq!(serde_json::to_value(&member.grants[0]).unwrap()["team"], "backend");
     }
 
     #[test]

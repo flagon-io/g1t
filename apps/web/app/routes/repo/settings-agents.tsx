@@ -74,7 +74,7 @@ export default function AgentSettings({ loaderData, actionData, params }: Route.
           </Field>
           <datalist id="known-labels">
             {labels.map((label) => (
-              <option key={label} value={label} />
+              <option key={label.name} value={label.name} />
             ))}
           </datalist>
           <div className="flex flex-wrap items-center gap-3">

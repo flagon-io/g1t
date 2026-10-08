@@ -24,8 +24,10 @@
 //! its grants and invitations with it (`forget_repo_access`); a transfer or
 //! rename keeps them (deletion.rs, `transfer_repo_scopes`).
 //!
-//! **Teams** slot in as another `principal_kind` in `repo_grants`,
-//! resolved into the same `RepoGrant`s for each person in the team.
+//! **Teams** are another `principal_kind` in `repo_grants` (teams.rs):
+//! [`Identity::grants_of`] resolves a team's grants into the same
+//! `RepoGrant`s for each person in the team and in its child teams, and
+//! the access list shows where such a role comes from.
 
 use g1t_contracts::access::*;
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
@@ -71,18 +73,27 @@ pub fn invitee(text: &str) -> Option<Invitee> {
 }
 
 /// A person's role on a repository, and where it comes from: ownership,
-/// the base permission, or a direct grant. A direct grant at least as high
-/// as the base is shown as direct, so it can be changed where it was given.
-pub fn effective(owner: bool, base: Option<RepoRole>, direct: Option<RepoRole>) -> Option<(RepoRole, AccessSource)> {
+/// the base permission, a team's grant, or a direct grant. The highest
+/// wins; on a tie a direct grant is shown first, then a team's, so a role
+/// is shown where it can be changed.
+pub fn effective(
+    owner: bool,
+    base: Option<RepoRole>,
+    direct: Option<RepoRole>,
+    team: Option<RepoRole>,
+) -> Option<(RepoRole, AccessSource)> {
     if owner {
         return Some((RepoRole::Admin, AccessSource::Owner));
     }
-    match (base, direct) {
-        (base, Some(direct)) if base.is_none_or(|base| direct >= base) => Some((direct, AccessSource::Direct)),
-        (Some(base), _) => Some((base, AccessSource::Base)),
-        (None, None) => None,
-        (None, Some(_)) => unreachable!("handled above"),
+    let mut best = base.map(|role| (role, AccessSource::Base));
+    for (role, source) in [(team, AccessSource::Team), (direct, AccessSource::Direct)] {
+        if let Some(role) = role
+            && best.is_none_or(|(had, _)| role >= had)
+        {
+            best = Some((role, source));
+        }
     }
+    best
 }
 
 /// Where an invitation stands at `now`.
@@ -105,6 +116,25 @@ struct GrantRow {
     repo_id: String,
     workspace: String,
     role: String,
+    #[serde(default)]
+    team: Option<String>,
+}
+
+/// The highest role a team gives each person on a repository, and that
+/// team's slug, by user id.
+pub(crate) type TeamRoles = std::collections::HashMap<String, (RepoRole, String)>;
+
+/// Folds (user id, role, team slug) rows into each person's highest; on a
+/// tie, the first slug, so the answer never flips.
+pub(crate) fn highest_team_roles(rows: impl IntoIterator<Item = (String, RepoRole, String)>) -> TeamRoles {
+    let mut roles = TeamRoles::new();
+    for (user_id, role, team) in rows {
+        let entry = roles.entry(user_id).or_insert((role, team.clone()));
+        if role > entry.0 || (role == entry.0 && team < entry.1) {
+            *entry = (role, team);
+        }
+    }
+    roles
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -162,6 +192,7 @@ const INVITATION_COLUMNS: &str = "ri.id, ri.repo_id, w.slug AS workspace, ri.wor
 /// A person as an access list shows them.
 #[derive(Deserialize)]
 struct PersonRow {
+    id: String,
     username: String,
     name: Option<String>,
     avatar: Option<String>,
@@ -185,10 +216,10 @@ struct Base {
 
 /// A repository by id and path: what events and the audit log name.
 #[derive(Clone, Copy)]
-struct Named<'a> {
-    id: &'a str,
-    namespace: &'a str,
-    name: &'a str,
+pub(crate) struct Named<'a> {
+    pub id: &'a str,
+    pub namespace: &'a str,
+    pub name: &'a str,
 }
 
 impl<'a> From<&'a Repo> for Named<'a> {
@@ -202,9 +233,9 @@ impl<'a> From<&'a Repo> for Named<'a> {
 }
 
 /// A repository someone may manage the access of, with its workspace's id.
-struct Target {
-    repo: Repo,
-    workspace_id: String,
+pub(crate) struct Target {
+    pub repo: Repo,
+    pub workspace_id: String,
 }
 
 fn opt(value: Option<&str>) -> JsValue {
@@ -216,16 +247,28 @@ fn full_name(repo: &Repo) -> String {
 }
 
 impl Identity {
-    /// Every repository `user_id` has a role on directly, with the slug of
-    /// its workspace now. Attached to every user resolved from credentials.
+    /// Every repository `user_id` has a role on, directly or through a
+    /// team they are in (or through that team's parents, whose roles child
+    /// teams inherit), with the slug of its workspace now. Attached to
+    /// every user resolved from credentials.
     pub async fn grants_of(&self, user_id: &str) -> Result<Vec<RepoGrant>> {
         let rows = self
             .db
             .prepare(format!(
-                "SELECT g.repo_id, w.slug AS workspace, g.role FROM repo_grants g
+                "WITH RECURSIVE mine(id) AS (
+                   SELECT team_id FROM team_members WHERE user_id = ?1
+                   UNION
+                   SELECT t.parent_id FROM teams t JOIN mine ON t.id = mine.id WHERE t.parent_id IS NOT NULL
+                 )
+                 SELECT g.repo_id, w.slug AS workspace, g.role, NULL AS team FROM repo_grants g
                  JOIN workspaces w ON w.id = g.workspace_id AND w.deleted_at IS NULL
-                 WHERE g.principal_kind = 'user' AND g.principal_id = ?
-                 ORDER BY g.created_at LIMIT {MAX_GRANTS}"
+                 WHERE g.principal_kind = 'user' AND g.principal_id = ?1
+                 UNION ALL
+                 SELECT g.repo_id, w.slug AS workspace, g.role, t.slug AS team FROM repo_grants g
+                 JOIN mine ON g.principal_kind = 'team' AND g.principal_id = mine.id
+                 JOIN teams t ON t.id = g.principal_id
+                 JOIN workspaces w ON w.id = g.workspace_id AND w.deleted_at IS NULL
+                 LIMIT {MAX_GRANTS}"
             ))
             .bind(&[user_id.into()])?
             .all()
@@ -238,6 +281,7 @@ impl Identity {
                     repo_id: row.repo_id,
                     workspace: row.workspace,
                     role: RepoRole::parse(&row.role)?,
+                    team: row.team,
                 })
             })
             .collect())
@@ -245,7 +289,7 @@ impl Identity {
 
     /// The repository at `path` as `viewer` sees it: missing when they
     /// cannot read it. Asked of repos, which owns visibility.
-    async fn repo_for(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
+    pub(crate) async fn repo_for(&self, path: &RepoPath, viewer: &Viewer) -> Result<Option<Repo>> {
         let repos = self.env.service("REPOS")?;
         let found: Outcome<Repo> = g1t_kit::call(
             &repos,
@@ -263,6 +307,75 @@ impl Identity {
         })
     }
 
+    /// The highest role a team gives each person on a repository: the
+    /// teams with a grant on it, and their child teams, whose people
+    /// inherit it. `user_id` narrows it to one person.
+    pub(crate) async fn team_roles_on(&self, repo_id: &str, user_id: Option<&str>) -> Result<TeamRoles> {
+        #[derive(Deserialize)]
+        struct Row {
+            user_id: String,
+            role: String,
+            via: String,
+        }
+        let rows = self
+            .db
+            .prepare(
+                "WITH RECURSIVE reach(id, role, via) AS (
+                   SELECT g.principal_id, g.role, t.slug FROM repo_grants g JOIN teams t ON t.id = g.principal_id
+                   WHERE g.repo_id = ?1 AND g.principal_kind = 'team'
+                   UNION
+                   SELECT c.id, reach.role, reach.via FROM teams c JOIN reach ON c.parent_id = reach.id
+                 )
+                 SELECT tm.user_id, reach.role, reach.via FROM reach JOIN team_members tm ON tm.team_id = reach.id
+                 WHERE ?2 IS NULL OR tm.user_id = ?2",
+            )
+            .bind(&[repo_id.into(), opt(user_id)])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        Ok(highest_team_roles(
+            rows.into_iter()
+                .filter_map(|row| Some((row.user_id, RepoRole::parse(&row.role)?, row.via))),
+        ))
+    }
+
+    /// The teams with a role of their own on a repository.
+    pub(crate) async fn teams_on(&self, repo_id: &str) -> Result<Vec<g1t_contracts::teams::RepoTeam>> {
+        #[derive(Deserialize)]
+        struct Row {
+            slug: String,
+            name: String,
+            role: String,
+            visibility: String,
+            members_count: u32,
+        }
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT t.slug, t.name, g.role, t.visibility,
+                   (SELECT count(*) FROM team_members tm WHERE tm.team_id = t.id) AS members_count
+                 FROM repo_grants g JOIN teams t ON t.id = g.principal_id
+                 WHERE g.repo_id = ? AND g.principal_kind = 'team'
+                 ORDER BY t.name LIMIT {LIST_LIMIT}"
+            ))
+            .bind(&[repo_id.into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                Some(g1t_contracts::teams::RepoTeam {
+                    slug: row.slug,
+                    name: row.name,
+                    role: RepoRole::parse(&row.role)?,
+                    members_count: row.members_count,
+                    visibility: g1t_contracts::teams::TeamVisibility::parse(&row.visibility).unwrap_or_default(),
+                })
+            })
+            .collect())
+    }
+
     pub(crate) async fn workspace_id_of(&self, slug: &str) -> Result<Option<String>> {
         Ok(self
             .db
@@ -274,7 +387,7 @@ impl Identity {
             .map(|row| row.id))
     }
 
-    async fn base_of(&self, workspace_id: &str) -> Result<BasePermission> {
+    pub(crate) async fn base_of(&self, workspace_id: &str) -> Result<BasePermission> {
         Ok(self
             .db
             .prepare("SELECT base_permission FROM workspaces WHERE id = ?")
@@ -286,7 +399,7 @@ impl Identity {
     }
 
     /// The repository at `path`, if `actor` may change who has access to it.
-    async fn manageable(&self, actor: &User, path: &RepoPath) -> Result<Outcome<Target>> {
+    pub(crate) async fn manageable(&self, actor: &User, path: &RepoPath) -> Result<Outcome<Target>> {
         if !crate::security::is_person(actor) {
             return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
         }
@@ -328,7 +441,7 @@ impl Identity {
             .results::<PersonRow>()
     }
 
-    fn collaborator(row: PersonRow, base: BasePermission) -> Option<Collaborator> {
+    fn collaborator(row: PersonRow, base: BasePermission, teams: &TeamRoles) -> Option<Collaborator> {
         let workspace_role = match row.workspace_role.as_deref() {
             Some("owner") => Some(Role::Owner),
             Some(_) => Some(Role::Member),
@@ -336,7 +449,13 @@ impl Identity {
         };
         let direct = row.direct.as_deref().and_then(RepoRole::parse);
         let base_role = workspace_role.and(base.role());
-        let (role, source) = effective(workspace_role == Some(Role::Owner), base_role, direct)?;
+        let team = teams.get(&row.id).cloned();
+        let (role, source) = effective(
+            workspace_role == Some(Role::Owner),
+            base_role,
+            direct,
+            team.as_ref().map(|(role, _)| *role),
+        )?;
         Some(Collaborator {
             username: row.username,
             name: row.name,
@@ -345,6 +464,8 @@ impl Identity {
             source,
             direct,
             workspace_role,
+            team_role: team.as_ref().map(|(role, _)| *role),
+            team: team.map(|(_, slug)| slug),
         })
     }
 
@@ -382,11 +503,12 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::NotFound, "Repository not found."));
         };
         let base = self.base_of(&workspace_id).await?;
-        let mut people: Vec<Collaborator> = self
-            .people_rows(&repo.id, &workspace_id)
-            .await?
+        let rows = self.people_rows(&repo.id, &workspace_id).await?;
+        let team_roles = self.team_roles_on(&repo.id, None).await?;
+        let teams = self.teams_on(&repo.id).await?;
+        let mut people: Vec<Collaborator> = rows
             .into_iter()
-            .filter_map(|row| Self::collaborator(row, base))
+            .filter_map(|row| Self::collaborator(row, base, &team_roles))
             .collect();
         people.sort_by(|a, b| b.role.cmp(&a.role).then_with(|| a.username.cmp(&b.username)));
         let invitations = if can_manage {
@@ -403,6 +525,7 @@ impl Identity {
             repo: full_name(&repo),
             base_permission: base,
             people,
+            teams,
             invitations,
             viewer_role,
             can_manage,
@@ -410,8 +533,9 @@ impl Identity {
     }
 
     /// One person's place on the repository, as the access list shows it.
-    async fn collaborator_on(&self, repo: &Repo, workspace_id: &str, user_id: &str) -> Result<Option<Collaborator>> {
+    pub(crate) async fn collaborator_on(&self, repo: &Repo, workspace_id: &str, user_id: &str) -> Result<Option<Collaborator>> {
         let base = self.base_of(workspace_id).await?;
+        let teams = self.team_roles_on(&repo.id, Some(user_id)).await?;
         let row = self
             .db
             .prepare(
@@ -425,10 +549,10 @@ impl Identity {
             .bind(&[repo.id.as_str().into(), workspace_id.into(), user_id.into()])?
             .first::<PersonRow>(None)
             .await?;
-        Ok(row.and_then(|row| Self::collaborator(row, base)))
+        Ok(row.and_then(|row| Self::collaborator(row, base, &teams)))
     }
 
-    async fn person_by_username(&self, username: &str) -> Result<Option<(String, String)>> {
+    pub(crate) async fn person_by_username(&self, username: &str) -> Result<Option<(String, String)>> {
         #[derive(Deserialize)]
         struct Person {
             id: String,
@@ -443,7 +567,7 @@ impl Identity {
             .map(|person| (person.id, person.username)))
     }
 
-    async fn is_member_of(&self, workspace_id: &str, user_id: &str) -> Result<bool> {
+    pub(crate) async fn is_member_of(&self, workspace_id: &str, user_id: &str) -> Result<bool> {
         Ok(self
             .db
             .prepare("SELECT user_id AS id FROM workspace_members WHERE workspace_id = ? AND user_id = ?")
@@ -772,6 +896,8 @@ impl Identity {
                 source: AccessSource::Direct,
                 direct: Some(a.role),
                 workspace_role: None,
+                team_role: None,
+                team: None,
             }),
         })
     }
@@ -1256,7 +1382,7 @@ impl Identity {
         self.audit(actor, kind, repo, surface, message).await;
     }
 
-    async fn publish_repo<T: Serialize>(&self, kind: &'static str, repo_id: &str, actor: &str, data: T) {
+    pub(crate) async fn publish_repo<T: Serialize>(&self, kind: &'static str, repo_id: &str, actor: &str, data: T) {
         let Ok(events) = self.env.service("EVENTS") else {
             return;
         };
@@ -1274,12 +1400,12 @@ impl Identity {
         }
     }
 
-    async fn audit(&self, actor: &User, action: &str, repo: Named<'_>, surface: Surface, message: String) {
+    pub(crate) async fn audit(&self, actor: &User, action: &str, repo: Named<'_>, surface: Surface, message: String) {
         let full = format!("{}/{}", repo.namespace, repo.name);
         self.record(actor, action, repo.namespace, Some(full), surface, message).await;
     }
 
-    async fn audit_workspace(&self, actor: &User, action: &str, slug: &str, surface: Surface, message: String) {
+    pub(crate) async fn audit_workspace(&self, actor: &User, action: &str, slug: &str, surface: Surface, message: String) {
         self.record(actor, action, slug, None, surface, message).await;
     }
 
@@ -1327,16 +1453,46 @@ mod tests {
     fn a_role_comes_from_ownership_the_base_or_a_grant() {
         use AccessSource::*;
         use RepoRole::*;
-        assert_eq!(effective(true, Some(Read), Some(Write)), Some((Admin, Owner)));
-        assert_eq!(effective(false, Some(Write), None), Some((Write, Base)));
-        assert_eq!(effective(false, Some(Write), Some(Maintain)), Some((Maintain, Direct)));
+        assert_eq!(effective(true, Some(Read), Some(Write), None), Some((Admin, Owner)));
+        assert_eq!(effective(false, Some(Write), None, None), Some((Write, Base)));
+        assert_eq!(effective(false, Some(Write), Some(Maintain), None), Some((Maintain, Direct)));
         // A grant as high as the base is shown as direct, where it can be changed.
-        assert_eq!(effective(false, Some(Write), Some(Write)), Some((Write, Direct)));
-        assert_eq!(effective(false, Some(Admin), Some(Read)), Some((Admin, Base)));
+        assert_eq!(effective(false, Some(Write), Some(Write), None), Some((Write, Direct)));
+        assert_eq!(effective(false, Some(Admin), Some(Read), None), Some((Admin, Base)));
         // An outside collaborator.
-        assert_eq!(effective(false, None, Some(Triage)), Some((Triage, Direct)));
+        assert_eq!(effective(false, None, Some(Triage), None), Some((Triage, Direct)));
         // A member of a workspace whose base is none, with no grant.
-        assert_eq!(effective(false, None, None), None);
+        assert_eq!(effective(false, None, None, None), None);
+    }
+
+    #[test]
+    fn a_teams_role_counts_where_it_is_the_highest() {
+        use AccessSource::*;
+        use RepoRole::*;
+        assert_eq!(effective(false, Some(Read), None, Some(Maintain)), Some((Maintain, Team)));
+        assert_eq!(effective(false, None, None, Some(Triage)), Some((Triage, Team)));
+        // Lower than the base: the base.
+        assert_eq!(effective(false, Some(Write), None, Some(Read)), Some((Write, Base)));
+        // As high as the base: shown as the team's, where it can be changed.
+        assert_eq!(effective(false, Some(Write), None, Some(Write)), Some((Write, Team)));
+        // A direct grant as high as the team's is shown as direct.
+        assert_eq!(effective(false, Some(Read), Some(Admin), Some(Admin)), Some((Admin, Direct)));
+        assert_eq!(effective(false, Some(Read), Some(Write), Some(Admin)), Some((Admin, Team)));
+        // Owners are owners.
+        assert_eq!(effective(true, None, None, Some(Write)), Some((Admin, Owner)));
+    }
+
+    #[test]
+    fn each_person_keeps_the_highest_role_any_team_gives() {
+        let roles = highest_team_roles([
+            ("usr_a".to_owned(), RepoRole::Read, "docs".to_owned()),
+            ("usr_a".to_owned(), RepoRole::Maintain, "platform".to_owned()),
+            ("usr_a".to_owned(), RepoRole::Write, "backend".to_owned()),
+            ("usr_b".to_owned(), RepoRole::Write, "web".to_owned()),
+            ("usr_b".to_owned(), RepoRole::Write, "api".to_owned()),
+        ]);
+        assert_eq!(roles["usr_a"], (RepoRole::Maintain, "platform".to_owned()));
+        assert_eq!(roles["usr_b"], (RepoRole::Write, "api".to_owned()));
     }
 
     #[test]

@@ -1,0 +1,178 @@
+# Every option of the format, written once, for the parser's tests.
+version: 2
+enable-beta-ecosystems: false
+
+registries:
+  npm-acme:
+    type: npm-registry
+    url: https://npm.acme.dev
+    token: ${{secrets.ACME_NPM_TOKEN}}
+    replaces-base: true
+    scope: "@acme"
+  crates-acme:
+    type: cargo-registry
+    url: https://cargo.acme.dev/index
+    token: ${{ secrets.ACME_CARGO_TOKEN }}
+  pypi-acme:
+    type: python-index
+    url: https://pypi.acme.dev/simple
+    username: ci
+    password: ${{secrets.ACME_PYPI_PASSWORD}}
+  goproxy-acme:
+    type: goproxy-server
+    url: https://go.acme.dev
+    username: ci
+    password: ${{secrets.ACME_GO_PASSWORD}}
+  ecr:
+    type: docker-registry
+    url: https://123456789012.dkr.ecr.us-east-1.amazonaws.com
+    username: ${{secrets.ECR_ACCESS_KEY_ID}}
+    password: ${{secrets.ECR_SECRET_ACCESS_KEY}}
+  artifactory:
+    type: maven-repository
+    url: https://acme.jfrog.io/artifactory/maven
+    jfrog-oidc-provider-name: acme
+    identity-mapping-name: dependabot
+    audience: jfrog
+  hex:
+    type: hex-organization
+    organization: acme
+    key: ${{secrets.HEX_KEY}}
+
+multi-ecosystem-groups:
+  infrastructure:
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "06:00"
+      timezone: UTC
+    labels: [infrastructure]
+    assignees: [platform-lead]
+    milestone: 2
+    commit-message:
+      prefix: infra
+    pull-request-branch-name:
+      separator: "-"
+    open-pull-requests-limit: 3
+
+updates:
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/apps/*"
+      - "/packages/**"
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "09:30"
+      timezone: America/New_York
+    allow:
+      - dependency-type: production
+      - dependency-name: "@acme/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+    ignore:
+      - dependency-name: react
+        versions: [">=19.0.0"]
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: left-pad
+    groups:
+      lint:
+        patterns: ["eslint*", "@typescript-eslint/*", "prettier"]
+        exclude-patterns: ["eslint-plugin-legacy"]
+        update-types: [minor, patch]
+        dependency-type: development
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      shared:
+        patterns: ["@acme/*"]
+        group-by: dependency-name
+    cooldown:
+      default-days: 5
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 0
+      include: ["*"]
+      exclude: ["@acme/*"]
+    assignees: [ana]
+    reviewers: [ben, acme/frontend]
+    labels: [dependencies, javascript]
+    milestone: 4
+    commit-message:
+      prefix: build
+      prefix-development: chore
+      include: scope
+    open-pull-requests-limit: 10
+    pull-request-branch-name:
+      separator: "/"
+      prefix: deps
+      max-length: 120
+      word-separator: "-"
+      branch-name-case: lowercase
+      template: "{prefix}/{package_manager}/{directory}/{name}"
+    rebase-strategy: auto
+    target-branch: main
+    versioning-strategy: increase-if-necessary
+    insecure-external-code-execution: deny
+    exclude-paths: ["vendor/**", "src/test/assets", "**/*.snap"]
+    registries: [npm-acme]
+    name: Web dependencies
+
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: monthly
+    versioning-strategy: lockfile-only
+    registries: [crates-acme]
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: gomod
+    directory: /tools
+    schedule:
+      interval: cron
+      cronjob: "every weekday at 6am"
+      timezone: Europe/London
+    vendor: true
+    allow:
+      - dependency-type: all
+    registries: [goproxy-acme]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: quarterly
+    insecure-external-code-execution: allow
+    registries: "*"
+    rebase-strategy: disabled
+
+  - package-ecosystem: docker
+    directory: /
+    patterns: ["nginx", "redis"]
+    multi-ecosystem-group: infrastructure
+    registries: [ecr]
+
+  - package-ecosystem: terraform
+    directory: /infra
+    patterns: ["*"]
+    multi-ecosystem-group: infrastructure
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: semiannually
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: maven
+    directory: /java
+    schedule:
+      interval: yearly
+    registries: [artifactory]
+
+  - package-ecosystem: mix
+    directory: /elixir
+    schedule:
+      interval: daily
+    registries: [hex]

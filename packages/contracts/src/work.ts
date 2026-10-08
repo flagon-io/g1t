@@ -1,3 +1,4 @@
+import type { CodeownersReport, PullCodeOwners } from "./codeowners";
 import type { User, Viewer } from "./identity";
 import type { PullBranchUpdate, RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -63,7 +64,55 @@ export type Issue = {
    * that is still in progress in a fork, such as `g1t`.
    */
   agent: string | null;
+  /** The milestone it is in, if any. */
+  milestone?: MilestoneRef | null;
 };
+
+/**
+ * A label of a repository: a name, a color and what it means. Issues and
+ * pull requests carry labels by name; names are lowercase.
+ */
+export type Label = {
+  name: string;
+  /** Six hex digits, without `#`. */
+  color: string;
+  description: string;
+  /** How many issues carry it, open or closed. */
+  issues: number;
+  /** How many pull requests carry it, in any state. */
+  pulls: number;
+};
+
+/** A milestone, as an issue or pull request names it. */
+export type MilestoneRef = { number: number; title: string };
+
+/**
+ * A goal, with an optional due date, that issues and pull requests are
+ * gathered under. Its progress is how many of them are closed.
+ */
+export type Milestone = {
+  /** Numbered from 1 in each repository, apart from issues. */
+  number: number;
+  title: string;
+  /** Markdown. */
+  description: string;
+  /** `YYYY-MM-DD`. */
+  dueOn: string | null;
+  state: State;
+  /** Open issues and pull requests in it. */
+  openItems: number;
+  /** Closed issues, and merged or closed pull requests, in it. */
+  closedItems: number;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+};
+
+/** One milestone and what is in it, newest first. */
+export type MilestoneDetail = { milestone: Milestone; issues: Issue[]; pulls: Pull[] };
+
+/** How `setLabels` changes an item's labels. */
+export type LabelChange = "set" | "add" | "remove";
 
 /**
  * Whose an issue or a pull request is to answer for: whoever asked g1t for
@@ -134,6 +183,20 @@ export type Pull = {
    * agent was asked.
    */
   reviewers: string[];
+  /**
+   * Teams whose review was asked for, as `workspace/slug`. A team stays here
+   * after review assignment picks people from it, who are in `reviewers`.
+   */
+  teamReviewers?: string[];
+  /** The labels it carries, by name. */
+  labels?: string[];
+  /** The milestone it is in, if any. */
+  milestone?: MilestoneRef | null;
+  /**
+   * The branch it merges into. Lists and `getPull` name it; null only in
+   * what services pass between themselves, for the default branch.
+   */
+  base?: string | null;
   /** Who opened it: a person, or g1t (`kind` `agent`, username `g1t`) for a change g1t made. */
   author: User;
   /**
@@ -396,6 +459,11 @@ export type PullDetail = {
    * on the head commit. Empty when none are required.
    */
   requiredChecks?: RequiredCheck[];
+  /**
+   * Who owns the files it changes (the CODEOWNERS file of the branch it
+   * merges into) and whose approval is still needed. Absent without one.
+   */
+  codeOwners?: PullCodeOwners | null;
 };
 
 /** Where a required check stands on a commit; `expected` when nothing has reported it yet. */
@@ -652,6 +720,12 @@ export type RepoSettings = {
    * low: auto-merge and the merge queue leave it until a person approves it.
    */
   holdLowConfidence: boolean;
+  /**
+   * Refuse to merge until the code owners of every file it changes have
+   * approved, as many as each section asks. People only; `g1t` only where
+   * the file names `@g1t`.
+   */
+  requireCodeOwnerReview?: boolean;
   /** Username of the member who last changed the settings, if anyone has. */
   updatedBy: string | null;
   /** RFC 3339. */
@@ -702,6 +776,8 @@ export type OpenIssueInput = {
   labels?: string[];
   /** Deprecated: commands, added to the body under "Definition of done". */
   checks?: string[];
+  /** The number of the milestone to put it in. Needs the Triage role. */
+  milestone?: number;
 };
 
 export type UpdateIssueInput = {
@@ -710,6 +786,8 @@ export type UpdateIssueInput = {
   labels?: string[];
   /** Usernames of the people it is assigned to; replaces the whole set. */
   assignees?: string[];
+  /** The number of the milestone to put it in; 0 takes it out. */
+  milestone?: number;
 };
 
 export type OpenPullInput = {
@@ -726,6 +804,8 @@ export type OpenPullInput = {
   branch?: string;
   agent: string;
   runtime: Runtime;
+  /** The branch to merge into: the default branch when left out. */
+  base?: string;
 };
 
 /** One repository's pull requests from `pullsForRepos`, newest first. */
@@ -750,15 +830,50 @@ export interface WorkApi {
   listIssues(
     repo: RepoPath,
     viewer: Viewer,
-    filter?: { state?: State; label?: string },
+    filter?: { state?: State; label?: string; milestone?: number },
   ): Promise<Result<Issue[]>>;
   getIssue(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<IssueDetail>>;
   /** The author or a member of the workspace may. */
   updateIssue(actor: User, repo: RepoPath, number: number, input: UpdateIssueInput): Promise<Result<Issue>>;
   closeIssue(actor: User, repo: RepoPath, number: number, reason?: IssueReason): Promise<Result<Issue>>;
   reopenIssue(actor: User, repo: RepoPath, number: number): Promise<Result<Issue>>;
-  /** The default labels, then every other label in use on the repository. */
-  listLabels(repo: RepoPath, viewer: Viewer): Promise<Result<string[]>>;
+  /** A repository's labels, by name, each with how many issues and pull requests carry it. */
+  listLabels(repo: RepoPath, viewer: Viewer): Promise<Result<Label[]>>;
+  /**
+   * Creates a label, or with `name` changes one; renaming it renames it on
+   * everything that carries it. Needs the Triage role.
+   */
+  saveLabel(
+    actor: User,
+    repo: RepoPath,
+    label: { name?: string; newName?: string; color?: string; description?: string },
+  ): Promise<Result<Label>>;
+  /** Removes a label from the repository and everything carrying it. */
+  deleteLabel(actor: User, repo: RepoPath, name: string): Promise<Result<boolean>>;
+  /** Adds the default labels the repository does not have yet; returns them all. */
+  addDefaultLabels(actor: User, repo: RepoPath): Promise<Result<Label[]>>;
+  /**
+   * The labels of an issue or a pull request, replaced, added to or taken
+   * from. Labels the repository lacks are created for someone with the
+   * Triage role. Returns its labels now.
+   */
+  setLabels(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    labels: string[],
+    change?: LabelChange,
+  ): Promise<Result<string[]>>;
+  /** Open ones by due date, then closed ones; both unless `state` says. */
+  listMilestones(repo: RepoPath, viewer: Viewer, state?: State): Promise<Result<Milestone[]>>;
+  getMilestone(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<MilestoneDetail>>;
+  /** Creates a milestone, or with `number` changes the fields given. Needs the Triage role. */
+  saveMilestone(
+    actor: User,
+    repo: RepoPath,
+    milestone: { number?: number; title?: string; description?: string; dueOn?: string; state?: State },
+  ): Promise<Result<Milestone>>;
+  deleteMilestone(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
   /** How many issues and pull requests are open. */
   counts(repo: RepoPath, viewer: Viewer): Promise<Result<{ issues: number; pulls: number }>>;
 
@@ -821,6 +936,8 @@ export interface WorkApi {
   seenChecks(repo: RepoPath, viewer: Viewer): Promise<Result<SeenCheck[]>>;
   /** Members of the repository's workspace only. */
   updateSettings(actor: User, repo: RepoPath, settings: RepoSettingsInput): Promise<Result<RepoSettings>>;
+  /** The CODEOWNERS file at a branch (the default when left out), checked. Needs Read. */
+  codeownersErrors(repo: RepoPath, viewer: Viewer, ref?: string | null): Promise<Result<CodeownersReport>>;
   /**
    * What the runner needs to bring a pull request up to date because a
    * merge of it was asked for. Null if none was.
@@ -840,7 +957,12 @@ export interface WorkApi {
    */
   openPull(actor: User, repo: RepoPath, input: OpenPullInput): Promise<Result<Pull>>;
   /** Newest first. */
-  listPulls(repo: RepoPath, viewer: Viewer, state?: State): Promise<Result<Pull[]>>;
+  listPulls(
+    repo: RepoPath,
+    viewer: Viewer,
+    state?: State,
+    filter?: { label?: string; milestone?: number; base?: string },
+  ): Promise<Result<Pull[]>>;
   /**
    * The newest `limit` open and closed pull requests of each repository,
    * in one call. Repositories the viewer cannot read, and forks, are left
@@ -857,7 +979,15 @@ export interface WorkApi {
     actor: User,
     repo: RepoPath,
     number: number,
-    changes: { assignees?: string[]; reviewers?: string[] },
+    changes: {
+      assignees?: string[];
+      reviewers?: string[];
+      labels?: string[];
+      /** 0 takes it out of its milestone. */
+      milestone?: number;
+      /** The branch it merges into. Needs the Write role. */
+      base?: string;
+    },
   ): Promise<Result<Pull>>;
   /**
    * Brings a pull request up to date with the default branch in seconds,
@@ -949,13 +1079,17 @@ export function pullComparison(pull: Pull): {
   repoId: string;
   base: string | null;
   head: string | null;
+  /** The branch it merges into, which it is compared from. */
+  baseBranch: string | null;
 } {
-  if (pull.forkRepoId) return { repoId: pull.forkRepoId, base: pull.mergeBase, head: null };
+  const baseBranch = pull.base ?? null;
+  if (pull.forkRepoId) return { repoId: pull.forkRepoId, base: pull.mergeBase, head: null, baseBranch };
   const settled = pull.status === "merged" || pull.status === "closed";
   return {
     repoId: pull.repoId,
     base: pull.mergeBase,
     head: (settled && pull.headCommit) || pull.branch,
+    baseBranch,
   };
 }
 

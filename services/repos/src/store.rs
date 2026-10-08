@@ -1134,7 +1134,13 @@ impl GitRepo for ArtifactsRepo {
             }
         }
         let args = js::to_js(&serde_json::json!({ "ref": git_ref, "path": path }))?;
-        let bytes = blob_bytes(self.call("readFile", &[args], true).await?).await?;
+        // The store answers a path that is not a file at the ref with
+        // NOT_FOUND (its "read rejected"), not with nothing.
+        let bytes = match self.call("readFile", &[args], true).await {
+            Ok(blob) => blob_bytes(blob).await?,
+            Err(failed) if failed.is("NOT_FOUND") => None,
+            Err(failed) => return Err(failed.into()),
+        };
         if let Some(bytes) = &bytes {
             meters::record_bytes("binding.read_file", &self.key, 0, bytes.len() as u64);
         } else if remember_absent && let Some(key) = &key {

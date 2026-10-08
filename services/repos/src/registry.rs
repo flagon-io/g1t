@@ -893,7 +893,7 @@ mod tests {
             workspaces: memberships,
             grants: grants
                 .into_iter()
-                .map(|(repo_id, role)| RepoGrant { repo_id: repo_id.into(), workspace: "acme".into(), role })
+                .map(|(repo_id, role)| RepoGrant { repo_id: repo_id.into(), workspace: "acme".into(), role, team: None })
                 .collect(),
             ..User::default()
         })

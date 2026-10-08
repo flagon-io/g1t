@@ -22,7 +22,7 @@ export type WorkspaceTab = {
 export const TAB_PAGES = ["projects", "packages", "teams", "people", "insights"] as const;
 
 /** Tabs whose pages say what they will be, until they are built. */
-export const SOON_TABS = new Set<WorkspaceTabKey>(["teams", "insights"]);
+export const SOON_TABS = new Set<WorkspaceTabKey>(["insights"]);
 
 /**
  * The tabs, in order. People, Teams and Insights are for members, and
@@ -37,7 +37,7 @@ export function workspaceTabs(
     { key: "overview", label: "Overview", to: base },
     { key: "projects", label: "Projects", to: `${base}/-/projects`, count: options.projects ?? null },
     { key: "packages", label: "Packages", to: `${base}/-/packages` },
-    options.member && { key: "teams", label: "Teams", to: `${base}/-/teams`, soon: true },
+    options.member && { key: "teams", label: "Teams", to: `${base}/-/teams` },
     options.member && { key: "people", label: "People", to: `${base}/-/people`, count: options.people ?? null },
     options.member && { key: "insights", label: "Insights", to: `${base}/-/insights`, soon: true },
     options.owner && { key: "settings", label: "Settings", to: `${base}/-/settings` },

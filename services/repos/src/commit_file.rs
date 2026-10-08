@@ -121,6 +121,10 @@ impl<S: GitStore> Repos<S> {
             message,
         );
         let commit_id = object_id(ObjectKind::Commit, &commit);
+        // Push protection, as for git: a secret nobody let through stops it.
+        if let Some(refusal) = self.protect_file(&repo, &a.actor, &a.path, a.content.as_bytes(), &commit_id).await {
+            return Ok(Outcome::fail(FailureCode::Forbidden, refusal));
+        }
         let mut objects: Vec<(ObjectKind, Vec<u8>)> = vec![(ObjectKind::Blob, blob)];
         objects.extend(merged.objects.into_iter().map(|bytes| (ObjectKind::Tree, bytes)));
         objects.push((ObjectKind::Commit, commit));

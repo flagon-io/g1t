@@ -446,16 +446,22 @@ pub enum Feature {
     /// Previews per pull request and production on g1t.page: part of the
     /// plan.
     Deployments,
+    /// The Security and quality activation: the security suite's paid
+    /// features on private repositories, for a monthly price per workspace
+    /// from the price book (`security_activation`). Sold on its own; it
+    /// does not need the plan, and the plan does not include it.
+    Security,
 }
 
 impl Feature {
-    /// What is sold: the plan alone.
-    pub const ALL: [Feature; 1] = [Feature::Plan];
+    /// What is sold: the plan, and the Security and quality activation.
+    pub const ALL: [Feature; 2] = [Feature::Plan, Feature::Security];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Feature::Plan => "plan",
             Feature::Deployments => "deployments",
+            Feature::Security => "security",
         }
     }
 
@@ -463,6 +469,7 @@ impl Feature {
         match name {
             "plan" | "team" => Some(Feature::Plan),
             "deployments" => Some(Feature::Deployments),
+            "security" => Some(Feature::Security),
             _ => None,
         }
     }
@@ -471,6 +478,7 @@ impl Feature {
         match self {
             Feature::Plan => "g1t",
             Feature::Deployments => "Deployments",
+            Feature::Security => "Security and quality",
         }
     }
 }
@@ -2877,7 +2885,9 @@ mod tests {
         // Older readers named the plan Team.
         assert_eq!(Feature::parse("team"), Some(Feature::Plan));
         assert_eq!(serde_json::from_value::<Feature>(serde_json::json!("team")).unwrap(), Feature::Plan);
-        assert_eq!(Feature::ALL, [Feature::Plan]);
+        assert_eq!(Feature::ALL, [Feature::Plan, Feature::Security]);
+        assert_eq!(Feature::parse("security"), Some(Feature::Security));
+        assert_eq!(serde_json::to_value(Feature::Security).unwrap(), serde_json::json!("security"));
         assert!(SubscriptionStatus::Canceling.on());
         assert!(!SubscriptionStatus::PastDue.on());
     }

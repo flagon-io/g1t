@@ -91,9 +91,13 @@ What g1t adds to the familiar pair:
   open" leaves the issue and its other pull requests alone.
 - **Every pull request has a fork and a session.** See
   [forks and branches](https://docs.g1t.sh/concepts/forks/).
-- **Labels need no setup.** A repository starts with `bug`, `feature`,
-  `docs`, `chore` and `question`; any other name becomes a label the first
-  time it is used, so an integration can tag what it files.
+- **Labels need no setup.** A repository starts with the default labels
+  (`bug`, `documentation`, `enhancement`, `question`, `dependencies`,
+  `security` and the rest), each with a color and a description, on issues
+  and pull requests alike; someone with Triage makes a new one as they use
+  it. **Milestones** gather issues and pull requests under a goal and a
+  due date. Pull requests can merge into any branch; the default branch's
+  protection holds only for those into it.
 - **The developer path is unchanged.** Push a branch, open a pull request
   from it, get review, merge. Agents get a fork per pull request instead.
 - **Both paths meet at `main`.** The same landing rules apply to a person's
@@ -490,12 +494,38 @@ lands it through the queue. People only decide.
 
 ### Upkeep agents
 
-- **Dependency updates.** A scheduled scan reads the lockfiles (npm, Cargo,
-  Go, pip), finds outdated and vulnerable packages and opens one issue per
-  update or group, assigned to g1t. The agent upgrades the package,
-  fixes what the upgrade broke and lands it through the queue. A repository
-  sets how often it scans, which packages it groups and what lands without
-  review (`.g1t/upkeep.yml`, shaped like `dependabot.yml`).
+- **Dependency updates.** The file is `dependabot.yml` version 2, read from
+  the default branch at `.g1t/dependabot.yml` (or `.yaml`), then
+  `.github/dependabot.yml` (or `.yaml`); `.g1t/` wins when both exist, and
+  an imported repository's file works unchanged. Every option is read and
+  checked, each problem reported with its line and key on the Security page
+  and as the `g1t / dependabot.yml` status on pull requests that change the
+  file; a file with problems is not acted on.
+  - **Built (2026-10-07):** version updates for npm, cargo, gomod and pip:
+    schedules (all intervals, cron and natural phrases, time zones, a
+    picked time per repository), allow, ignore, cooldown (3 days by
+    default), groups (including across directories and `group-by`),
+    versioning strategies, open-pull-requests-limit, commit-message,
+    branch names, rebase-strategy, assignees, reviewers, private
+    registries filled from workflow secrets (npm, cargo, Go proxy, Python
+    index), and the `@g1t` comment commands. Pull requests come from g1t
+    with an `updated-dependencies` commit record and land through the
+    required checks; one that fails them is closed and becomes a
+    "needs code changes" issue assigned to g1t.
+  - **Security updates follow the same file:** ignore (and comment
+    ignores), allow names, `applies-to: security-updates` groups,
+    commit-message, assignees, reviewers, labels and milestone. Cooldown
+    and the open pull request limit do not apply. The Security updates
+    switch still turns them on and off.
+  - **Labels, milestone and target-branch** are applied to version
+    updates: `dependencies` and the ecosystem's label by default, missing
+    labels created; `target-branch` updates are made from that branch and
+    merge into it.
+  - **Not done yet:** one pull request for a multi-ecosystem group
+    (it opens one per ecosystem); registries that sign in with OIDC;
+    updating vendored copies; and version updates for the other
+    ecosystems (bundler, composer, docker, github-actions, gradle, maven,
+    nuget, terraform, uv and the rest are read and checked only).
 - **Secret scanning.** Pushes are scanned for known token formats. A push
   that adds a secret is refused with the file and line; one already in
   history opens an issue to rotate it and remove it.
@@ -509,6 +539,60 @@ lands it through the queue. People only decide.
 
 All of these are event sources for the existing issue → agent → checks →
 queue pipeline; they need no new kind of work.
+
+### The security suite (built 2026-10-07)
+
+GitHub Advanced Security's depth, in g1t's shape (services/security,
+`g1t_contracts::security_suite`, docs `guides/security/*`):
+
+- **Secret protection.** Custom patterns (repository and workspace; Rust
+  `regex`, linear time, size-limited; test strings; dry run over the
+  default branch) used by push protection, `commit_file` and history
+  scans. Bypass with a reason (false positive, used in tests, will fix
+  later), recorded on the alert and in the audit log; delegated bypass
+  (requests reviewed by owners and repository admins, through the inbox).
+  Validity checks for GitHub, GitLab, Stripe, Slack, npm, OpenAI,
+  Anthropic and SendGrid tokens, made by the repos service, which reads the
+  landed secret again: the value never leaves it except to the issuer. AWS
+  keys (need their secret key to sign) and webhook addresses (would post)
+  are the extension points left (`g1t_scan::validity::check_for`).
+- **Code scanning.** SARIF 2.1.0 uploads → alerts with fingerprints (tool
+  partial fingerprints first), fixed when no longer reported; pull request
+  uploads → line comments and the `Code scanning` commit status, gated by a
+  per-repository threshold and required like any check. Starter workflow:
+  a scanner per language present, each uploading its own category: Bandit
+  (Python), gosec (Go), ESLint + eslint-plugin-security with the SARIF
+  formatter (JS/TS), Clippy + clippy-sarif (Rust); all install from the
+  registries the runner's egress already allows. Semgrep's registry rules
+  and the Opengrep rules fork are not usable in a paid feature, so neither
+  is used. "Fix with g1t" opens an issue and runs the agent.
+- **Supply chain.** Dependency graph (direct/transitive where the lockfile
+  says, npm licenses), SPDX 2.3 SBOM, `Dependency review` status on every
+  pull request (OSV severity threshold, license deny list, summary comment).
+- **Overview.** Workspace totals, opened/closed, a daily snapshot trend,
+  coverage, repositories most in need first.
+- **Paid.** The Security and quality activation on private repositories;
+  free on public ones; the free core (secret scanning, push protection,
+  vulnerability alerts, security updates, dependency graph) free everywhere.
+
+Not built yet:
+
+- **The reviewer agent as an analysis source.** g1t's reviewer reads each
+  pull request's diff (`agent_review`), but its findings are review
+  comments, not SARIF. Next: have it emit SARIF for the security issues it
+  finds and upload them as the tool `g1t review`, so they become alerts and
+  count toward the Code scanning check.
+- **Repository security advisories.** Private advisories, draft →
+  published, with affected versions (ranges per ecosystem), severity and a
+  CVSS vector, credits, and a private fork (a `g1t/advisory/GHSA-…` working
+  copy only the advisory's collaborators can see) for the fix, merged into
+  the default branch when the advisory publishes. Published advisories
+  should feed the OSV-shaped data other g1t repositories' vulnerability
+  alerts read. CVE requests are out of scope. Needs: an `advisories` table
+  per repository, a collaborator list per advisory, the private-fork
+  visibility rule in repos, and an Advisories page on the Security tab.
+- **SARIF upload as a background job.** Uploads are read in the request
+  (10 MB encoded, 40 MB unzipped, 5,000 results); larger ones need a queue.
 
 ### Deployments
 
@@ -845,7 +929,7 @@ What a workspace pays:
 | g1t's models | | Cost + 20% | 1.2× | The provider's own price |
 | Your own model provider | | Only its sandbox minutes (the $0.10 run fee was dropped 2026-10-05) | | |
 | **Deployments** activation | | $5 / month, with the allowances above | covers Workers for Platforms' $25 / month across workspaces | Vercel Pro $20 per seat |
-| **Security and quality** activation (later) | | $10 / month; fixes as agent usage | | GitHub Advanced Security $49 per committer |
+| **Security and quality** activation (built 2026-10-07: price book meter `security_activation`) | | $10 / month; fixes as agent usage | | GitHub Advanced Security $49 per committer |
 
 A workspace that uses g1t lightly (a few agent runs, a small site)
 pays nothing or its activation; a workspace running agents all day pays
@@ -1218,6 +1302,21 @@ for volume splits storage by how the data is read.
   never moves; every service follows `repo.transferred`; old paths redirect
   until reused) and deleting an empty, settled workspace (its slug is
   tombstoned, never reissued except to the person whose username it is).
+- Access: five repository roles, a workspace base permission, outside
+  collaborators and invitations. Teams are built on it (2026-10-07): visible
+  or secret, nested up to 8 levels (child teams inherit their parents'
+  roles), run by maintainers and owners. A team's role on a repository is a
+  `repo_grants` row whose principal is the team, which identity resolves
+  into the same `RepoGrant`s on each person, so `access::can` needs nothing
+  new: the highest role wins. `@workspace/team` mentions tell the team's
+  people; a team asked to review either asks everyone or picks people by
+  round robin or load balance.
+- CODEOWNERS, read in both conventions (single-section, and sections with
+  approval counts, optional sections and default owners) from the first of
+  `.g1t/`, `.github/`, the root, `docs/` and `.gitlab/`. Owners are asked to
+  review, the `g1t / codeowners` status lints a changed file, and branch
+  protection's "Require review from code owners" holds merges, for people,
+  agents and the queue alike, until each owning rule is approved.
 
 ## Built on Cloudflare
 
@@ -1317,8 +1416,8 @@ use is not something people should have to do.
 
 Earlier items still open, after those:
 
-1. Deleting a branch once its pull request merges; approval rules per
-   path; risk tiers.
+1. Deleting a branch once its pull request merges; risk tiers. (Approval
+   rules per path are in, as CODEOWNERS.)
 2. Scopes on OAuth grants and access tokens.
 3. Event storage per the design above: per-repo hot log, Iceberg on R2,
    hash-chained audit.

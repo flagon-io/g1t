@@ -75,11 +75,12 @@ export async function buildGuardFor(
   minutes: number,
   repoId?: string | null,
   job?: WorkflowJob | null,
+  extra: readonly string[] = [],
 ): Promise<RunGuard> {
   const found = await guardrailsClient(work).runGuardrails(repo, repoId);
   if (!found.ok) throw new Error(`g1t could not read this project's guardrails: ${found.error.message}`);
   const policy = found.value;
-  const hosts = [...policy.hosts, ...buildHosts(kind), ...jobHosts(policy, kind, job)];
+  const hosts = [...policy.hosts, ...buildHosts(kind), ...jobHosts(policy, kind, job), ...extra];
   return { policy: { ...policy, hosts: [...new Set(hosts)] }, minutes };
 }
 

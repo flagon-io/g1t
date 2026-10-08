@@ -26,6 +26,7 @@ export type InboxReason =
   | "review_requested"
   | "assign"
   | "mention"
+  | "team_mention"
   | "ci_activity"
   | "security_alert"
   | "state_change"
@@ -39,6 +40,7 @@ export const INBOX_REASONS: InboxReason[] = [
   "review_requested",
   "assign",
   "mention",
+  "team_mention",
   "ci_activity",
   "security_alert",
   "state_change",

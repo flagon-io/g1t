@@ -184,6 +184,17 @@ a commit is pushed to it, and, for one g1t makes, when g1t
 marks it ready, which on g1t is when it first has code. Each head runs
 each workflow once.
 
+They also start on the activity types `labeled`, `unlabeled`,
+`milestoned`, `demilestoned`, `assigned`, `review_requested` and
+`closed`, and `edited` when the branch a pull request merges into
+changes; `issues` workflows on `labeled`, `unlabeled`, `milestoned` and
+`demilestoned` too. List them under `types:` to run on them. For
+`labeled` and `unlabeled`, `github.event.label` names the label. A pull
+request's `branches` filter, `github.base_ref` and
+`pull_request.base.ref` are the branch it merges into, which is not
+always the default branch: see
+[pull requests into other branches](/guides/base-branches/).
+
 `github.event.pull_request` reads as it does on GitHub. For a pull request
 g1t made, `pull_request.user` is g1t (`login` `g1t`, `type` `Bot`), and
 `pull_request.requested_by` names the person who asked for it; it is `null`

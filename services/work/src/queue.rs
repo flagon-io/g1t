@@ -771,6 +771,8 @@ impl Work {
                     source_id: repo_id.to_owned(),
                     branch: Some(row.branch()),
                     actor: actor.clone(),
+                    // The queue lands on the default branch.
+                    target_branch: None,
                 },
             )
             .await?;

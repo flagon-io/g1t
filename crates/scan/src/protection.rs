@@ -5,7 +5,10 @@ use std::collections::HashSet;
 
 use similar::{ChangeTag, TextDiff};
 
-use crate::secrets::{self, ALLOW_MARKER, Hit, SecretKind};
+use crate::custom;
+use crate::secrets::{self, ALLOW_MARKER, Hit};
+#[cfg(test)]
+use crate::secrets::SecretKind;
 
 /// Files larger than this are not read for secrets.
 pub const MAX_FILE_BYTES: usize = 2 * 1024 * 1024;
@@ -43,10 +46,29 @@ pub fn scan_change(path: &str, old: Option<&[u8]>, new: &[u8]) -> Vec<Hit> {
     }
 }
 
+/// What a change adds that the custom `patterns` find, on its new lines
+/// only, as [`scan_change`] does for the built-in formats.
+pub fn scan_change_custom(path: &str, old: Option<&[u8]>, new: &[u8], patterns: &[custom::Compiled]) -> Vec<custom::CustomHit> {
+    if patterns.is_empty() {
+        return Vec::new();
+    }
+    let Some(new) = text_of(path, new) else {
+        return Vec::new();
+    };
+    match old.and_then(|old| std::str::from_utf8(old).ok()) {
+        Some(old) => {
+            let added = added_lines(old, new);
+            custom::scan_lines(new, patterns, |line| added.contains(&line))
+        }
+        None => custom::scan_lines(new, patterns, |_| true),
+    }
+}
+
 /// A secret that stops a push.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Blocked {
-    pub kind: SecretKind,
+    /// What it is, for a sentence: "an AWS access key".
+    pub label: String,
     pub path: String,
     pub line: u32,
     /// The commit that adds it.
@@ -63,13 +85,13 @@ fn short(commit: &str) -> &str {
 pub fn reason(blocked: &[Blocked]) -> String {
     match blocked {
         [] => "refused".to_owned(),
-        [only] => format!("secret found: {}:{} has {}", only.path, only.line, only.kind.label()),
+        [only] => format!("secret found: {}:{} has {}", only.path, only.line, only.label),
         [first, rest @ ..] => format!(
             "{} secrets found, first {}:{} ({})",
             rest.len() + 1,
             first.path,
             first.line,
-            first.kind.label()
+            first.label
         ),
     }
 }
@@ -92,7 +114,7 @@ pub fn explain(blocked: &[Blocked]) -> Vec<String> {
         .unwrap_or(0);
     for item in blocked {
         let place = format!("{}:{}", item.path, item.line);
-        lines.push(format!("  {place:<width$}  {}  (commit {})", item.kind.label(), short(&item.commit)));
+        lines.push(format!("  {place:<width$}  {}  (commit {})", item.label, short(&item.commit)));
     }
     lines.extend([
         String::new(),
@@ -100,23 +122,24 @@ pub fn explain(blocked: &[Blocked]) -> Vec<String> {
         "git rebase -i for an older commit), rotate it if it was ever real, and".to_owned(),
         "push again.".to_owned(),
         String::new(),
-        "If it is not a real secret, such as a test fixture:".to_owned(),
+        "If it is not a real secret (a test fixture), or you will rotate it later:".to_owned(),
         format!("  - add {ALLOW_MARKER} in a comment on its line, or"),
     ]);
     let links: Vec<&str> = blocked.iter().filter_map(|item| item.allow_url.as_deref()).collect();
     match links.as_slice() {
         [] => lines.push("  - ask a member of the workspace to allow it on the project's Security page.".to_owned()),
         [one] => {
-            lines.push(format!("  - allow it once at {one}"));
+            lines.push(format!("  - bypass it with a reason at {one}"));
         }
         many => {
-            lines.push("  - allow each once:".to_owned());
+            lines.push("  - bypass each with a reason:".to_owned());
             for link in many {
                 lines.push(format!("      {link}"));
             }
         }
     }
-    lines.push("    Allowing is recorded with your name, then the same push goes through.".to_owned());
+    lines.push("    A bypass is recorded with your name and reason (or goes to an owner".to_owned());
+    lines.push("    to approve, if your workspace asks), then the same push goes through.".to_owned());
     lines
 }
 
@@ -144,9 +167,31 @@ mod tests {
     }
 
     #[test]
+    fn custom_patterns_find_only_added_lines_too() {
+        let pattern = custom::compile(&custom::PatternSpec {
+            id: "pat_1".into(),
+            name: "Acme key".into(),
+            pattern: "acme_[0-9]{8}".into(),
+            before: None,
+            after: None,
+        })
+        .unwrap();
+        let old = "a = acme_12345678
+";
+        let new = "a = acme_12345678
+b = acme_87654321
+";
+        let hits = scan_change_custom("src/app.ts", Some(old.as_bytes()), new.as_bytes(), std::slice::from_ref(&pattern));
+        assert_eq!(hits.len(), 1);
+        assert_eq!((hits[0].line, hits[0].value.as_str()), (2, "acme_87654321"));
+        assert_eq!(scan_change_custom("src/app.ts", None, new.as_bytes(), std::slice::from_ref(&pattern)).len(), 2);
+        assert!(scan_change_custom("yarn.lock", None, new.as_bytes(), &[pattern]).is_empty());
+    }
+
+    #[test]
     fn the_refusal_names_the_file_line_kind_and_ways_forward() {
         let blocked = vec![Blocked {
-            kind: SecretKind::AwsAccessKey,
+            label: SecretKind::AwsAccessKey.label().into(),
             path: "config/prod.env".into(),
             line: 3,
             commit: "4807077b296e6edbf410d55e72749d3e1170c291".into(),
@@ -157,14 +202,14 @@ mod tests {
         assert!(text.starts_with("g1t found a secret in this push, so nothing was pushed."));
         assert!(text.contains("config/prod.env:3  an AWS access key  (commit 4807077)"));
         assert!(text.contains("g1t:allow-secret"));
-        assert!(text.contains("allow it once at https://g1t.sh/acme/rocket/security?finding=sec_1"));
-        assert!(text.contains("recorded with your name"));
+        assert!(text.contains("bypass it with a reason at https://g1t.sh/acme/rocket/security?finding=sec_1"));
+        assert!(text.contains("recorded with your name and reason"));
     }
 
     #[test]
     fn several_secrets_are_listed_and_counted() {
         let item = |path: &str, line| Blocked {
-            kind: SecretKind::GithubToken,
+            label: SecretKind::GithubToken.label().into(),
             path: path.into(),
             line,
             commit: "c71546fcd893".into(),

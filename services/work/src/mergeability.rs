@@ -50,6 +50,17 @@ struct ProbeRow {
     mergeable_token_hash: Option<String>,
 }
 
+/// What a push moved, as far as the pull requests into it go.
+pub(crate) enum Moved<'a> {
+    /// The repository's default branch: every open pull request into it,
+    /// whose base is stored as none.
+    DefaultBranch,
+    /// Another branch: the open pull requests into that one.
+    Branch(&'a str),
+    /// A tag, or anything else nothing merges into.
+    Nothing,
+}
+
 /// The pair of commits an answer is for.
 fn key(divergence: &Divergence) -> String {
     format!("{}..{}", divergence.head, divergence.base)
@@ -111,6 +122,7 @@ impl Work {
             &BehindArgs {
                 source_id: pull.fork_repo_id.clone().unwrap_or_else(|| pull.repo_id.clone()),
                 branch: pull.branch.clone(),
+                target_branch: pull.base.clone().filter(|base| !base.is_empty()),
             },
         )
         .await?;
@@ -202,13 +214,18 @@ impl Work {
     }
 
     /// Works out mergeability again after a push: for the pull requests
-    /// whose heads it moved, and, when it moved a repository's default
-    /// branch, for every open pull request into it. A failure is logged and
-    /// not passed on, so that it never holds up the rest of the push.
-    pub(crate) async fn after_push(&self, repo_id: &str, default_branch: bool, moved: &[String]) {
+    /// whose heads it moved, and, when it moved a branch pull requests
+    /// merge into, for every open pull request into it. A failure is logged
+    /// and not passed on, so that it never holds up the rest of the push.
+    pub(crate) async fn after_push(&self, repo_id: &str, into: Moved<'_>, moved: &[String]) {
         let mut ids: Vec<String> = moved.to_vec();
-        if default_branch {
-            match self.targeting(repo_id).await {
+        let base = match into {
+            Moved::DefaultBranch => Some(None),
+            Moved::Branch(branch) => Some(Some(branch)),
+            Moved::Nothing => None,
+        };
+        if let Some(base) = base {
+            match self.targeting(repo_id, base).await {
                 Ok(targeting) => {
                     for id in targeting {
                         if !ids.contains(&id) {
@@ -232,16 +249,17 @@ impl Work {
         }
     }
 
-    /// The open pull requests into a repository, most recently active first.
-    async fn targeting(&self, repo_id: &str) -> Result<Vec<String>> {
+    /// The open pull requests into a branch of a repository (`None`: its
+    /// default branch), most recently active first.
+    async fn targeting(&self, repo_id: &str, base: Option<&str>) -> Result<Vec<String>> {
         Ok(self
             .db
             .prepare(
                 "SELECT id AS value FROM pulls
-                 WHERE repo_id = ? AND status IN ('draft', 'open')
+                 WHERE repo_id = ? AND status IN ('draft', 'open') AND base_branch IS ?
                  ORDER BY updated_at DESC LIMIT ?",
             )
-            .bind(&[repo_id.into(), MAX_TARGETING.into()])?
+            .bind(&[repo_id.into(), base.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into), MAX_TARGETING.into()])?
             .all()
             .await?
             .results::<ValueRow>()?
@@ -426,7 +444,8 @@ impl Work {
             branch: pull.branch.clone().unwrap_or_else(|| repo.default_branch.clone()),
             repo: path,
             number: pull.number,
-            default_branch: repo.default_branch,
+            // The branch it merges into.
+            default_branch: pull.base_branch(&repo.default_branch).to_owned(),
             base,
             head,
             author: pull.requested_by.unwrap_or(pull.author),

@@ -19,6 +19,7 @@ mod profiles;
 mod rename;
 mod run_credentials;
 mod security;
+mod teams;
 mod throttle;
 mod tokens;
 mod workspaces;
@@ -854,6 +855,23 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_workspace_residency" => reply(&identity.set_workspace_residency(args(body)?).await?),
         "outside_collaborators" => reply(&identity.outside_collaborators(args(body)?).await?),
         "forget_repo_access" => reply(&identity.forget_repo_access(args(body)?).await?),
+        // Teams (teams.rs).
+        "list_teams" => reply(&identity.list_teams(args(body)?).await?),
+        "get_team" => reply(&identity.get_team(args(body)?).await?),
+        "create_team" => reply(&identity.create_team(args(body)?).await?),
+        "update_team" => reply(&identity.update_team(args(body)?).await?),
+        "delete_team" => reply(&identity.delete_team(args(body)?).await?),
+        "team_members" => reply(&identity.team_members(args(body)?).await?),
+        "set_team_member" => reply(&identity.set_team_member(args(body)?).await?),
+        "remove_team_member" => reply(&identity.remove_team_member(args(body)?).await?),
+        "child_teams" => reply(&identity.child_teams(args(body)?).await?),
+        "team_repos" => reply(&identity.team_repos(args(body)?).await?),
+        "set_team_repo" => reply(&identity.set_team_repo(args(body)?).await?),
+        "remove_team_repo" => reply(&identity.remove_team_repo(args(body)?).await?),
+        "user_teams" => reply(&identity.user_teams(args(body)?).await?),
+        "team_memberships" => reply(&identity.team_memberships(args(body)?).await?),
+        "resolve_teams" => reply(&identity.resolve_teams(args(body)?).await?),
+        "resolve_owners" => reply(&identity.resolve_owners(args(body)?).await?),
         // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.
         "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),
         "admin_workspaces" => reply(&identity.admin_workspaces(args(body)?).await?),

@@ -726,6 +726,7 @@
 			"max_revisions": 2,
 			"merge_queue": false,
 			"hold_low_confidence": true,
+			"require_code_owner_review": false,
 			"updated_by": null,
 			"updated_at": null
 		}
@@ -738,7 +739,8 @@
 			],
 			"required_approvals": 1,
 			"count_agent_approvals": false,
-			"merge_queue": true
+			"merge_queue": true,
+			"require_code_owner_review": true
 		},
 		"response": {
 			"auto_merge": false,
@@ -754,10 +756,11 @@
 			"max_revisions": 2,
 			"merge_queue": true,
 			"hold_low_confidence": true,
+			"require_code_owner_review": true,
 			"updated_by": "syntaqx",
 			"updated_at": "2026-10-04T16:20:37.508Z"
 		},
-		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is)."
+		"notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/)."
 	},
 	"list_check_names": {
 		"response": [
@@ -777,6 +780,39 @@
 			}
 		],
 		"notes": "The names reported on the repository's commits in the last 30 days, most recent first. A workflow reports a check named after it (`CI`), for each event it ran for; another tool, such as a deployment, reports its own name (`g1t / deploy`). Empty until something has reported on a commit: add a workflow in `.g1t/workflows` first."
+	},
+	"get_codeowners_errors": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"query": {
+			"ref": "main"
+		},
+		"response": {
+			"path": ".github/CODEOWNERS",
+			"ref": "main",
+			"size": 412,
+			"rules": 9,
+			"sections": [
+				"Docs"
+			],
+			"errors": [
+				{
+					"line": 4,
+					"kind": "unknown_team",
+					"token": "@flagon-io/platform",
+					"message": "@flagon-io/platform is not a team of flagon-io."
+				},
+				{
+					"line": 7,
+					"kind": "negation",
+					"token": "!docs/internal/",
+					"message": "!docs/internal/ starts with !, and negation is not supported; this line is skipped. Give the path a later rule with no owners instead."
+				}
+			]
+		},
+		"notes": "The file is the first of `.g1t/CODEOWNERS`, `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS` and `.gitlab/CODEOWNERS` found on `ref` (the default branch when left out); `path` is null when there is none, with no errors. Each error has its `line` (0 for the file as a whole), the `token` at fault, a `message`, and a `kind`:\n\n| `kind` | |\n| --- | --- |\n| `too_large` | The file is over 3 MB and was ignored. |\n| `negation` | A pattern starting with `!`; the line was skipped. |\n| `character_range` | A pattern with `[` or `]`; the line was skipped. |\n| `bad_pattern` | A pattern that names no path; the line was skipped. |\n| `bad_owner` | An owner that is not `@user`, `@workspace/team` or an email address. |\n| `bad_section` | A section header that could not be read. |\n| `unknown_user` | No account has that username. |\n| `unknown_team` | The workspace has no team of that slug. |\n| `unknown_email` | No account has confirmed that address. |\n| `no_write_access` | The person cannot write to the repository. |\n| `team_no_access` | The team has no write access to the repository. |\n\nSee [Code owners](/guides/codeowners/)."
 	},
 	"list_events": {
 		"query": {
@@ -849,7 +885,8 @@
 				"assignees": [],
 				"blocked_by": [],
 				"queued": false,
-				"agent": "claude-code"
+				"agent": "claude-code",
+				"milestone": null
 			}
 		],
 		"notes": "Returns at most 100 issues, newest first. `comment_count` counts comments, not events such as \"opened #14 for this\"."
@@ -890,7 +927,8 @@
 			"assignees": [],
 			"blocked_by": [],
 			"queued": false,
-			"agent": null
+			"agent": null,
+			"milestone": null
 		},
 		"notes": "Labels are lowercased. A label not used before is created."
 	},
@@ -924,7 +962,8 @@
 				"assignees": [],
 				"blocked_by": [],
 				"queued": false,
-				"agent": null
+				"agent": null,
+				"milestone": null
 			},
 			"pulls": [
 				{
@@ -952,6 +991,9 @@
 					"files": [],
 					"assignees": [],
 					"reviewers": [],
+					"labels": [],
+					"milestone": null,
+					"base": "main",
 					"author": {
 						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 						"username": "syntaqx",
@@ -996,6 +1038,9 @@
 					"reviewers": [
 						"ana"
 					],
+					"labels": [],
+					"milestone": null,
+					"base": "main",
 					"author": {
 						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 						"username": "syntaqx",
@@ -1037,7 +1082,8 @@
 			],
 			"assignees": [
 				"syntaqx"
-			]
+			],
+			"milestone": 3
 		},
 		"response": {
 			"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
@@ -1070,7 +1116,11 @@
 			],
 			"blocked_by": [],
 			"queued": false,
-			"agent": null
+			"agent": null,
+			"milestone": {
+				"number": 3,
+				"title": "Launch"
+			}
 		}
 	},
 	"close_issue": {
@@ -1105,7 +1155,8 @@
 			"assignees": [],
 			"blocked_by": [],
 			"queued": false,
-			"agent": null
+			"agent": null,
+			"milestone": null
 		}
 	},
 	"reopen_issue": {
@@ -1137,7 +1188,8 @@
 			"assignees": [],
 			"blocked_by": [],
 			"queued": false,
-			"agent": null
+			"agent": null,
+			"milestone": null
 		}
 	},
 	"assign_issue": {
@@ -1169,6 +1221,9 @@
 			"files": [],
 			"assignees": [],
 			"reviewers": [],
+			"labels": [],
+			"milestone": null,
+			"base": "main",
 			"author": {
 				"id": "usr_g1t_agent",
 				"username": "g1t",
@@ -1221,7 +1276,8 @@
 				"assignees": [],
 				"blocked_by": [],
 				"queued": false,
-				"agent": "g1t"
+				"agent": "g1t",
+				"milestone": null
 			},
 			"pull": {
 				"id": "pr_01m4a2c9b6e0h4m8q2t6x0a4d8",
@@ -1248,6 +1304,9 @@
 				"files": [],
 				"assignees": [],
 				"reviewers": [],
+				"labels": [],
+				"milestone": null,
+				"base": "main",
 				"author": {
 					"id": "usr_g1t_agent",
 					"username": "g1t",
@@ -1303,14 +1362,29 @@
 	},
 	"list_labels": {
 		"response": [
-			"bug",
-			"feature",
-			"docs",
-			"chore",
-			"question",
-			"good first issue"
+			{
+				"name": "bug",
+				"color": "d73a4a",
+				"description": "Something isn't working",
+				"issues": 4,
+				"pulls": 1
+			},
+			{
+				"name": "dependencies",
+				"color": "0366d6",
+				"description": "Updates a dependency",
+				"issues": 0,
+				"pulls": 6
+			},
+			{
+				"name": "good first issue",
+				"color": "7057ff",
+				"description": "Good for newcomers",
+				"issues": 2,
+				"pulls": 0
+			}
 		],
-		"notes": "The five default labels come first, then the others used on the repository's issues, alphabetically."
+		"notes": "By name. A new repository starts with the default labels; add_default_labels adds those an older one is missing."
 	},
 	"plan_work": {
 		"request": {
@@ -1479,6 +1553,7 @@
 				"reviewers": [
 					"ana"
 				],
+				"team_reviewers": [],
 				"author": {
 					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 					"username": "syntaqx",
@@ -1488,7 +1563,10 @@
 				},
 				"requested_by": null,
 				"created_at": "2026-10-01T18:20:02.117Z",
-				"updated_at": "2026-10-01T18:35:44.902Z"
+				"updated_at": "2026-10-01T18:35:44.902Z",
+				"labels": [],
+				"milestone": null,
+				"base": "main"
 			}
 		],
 		"notes": "Returns at most 100 pull requests, newest first. `check_status` is `queued`, `running`, `passed`, `failed`, `errored`, or `null` when no checks have run against the head."
@@ -1524,6 +1602,9 @@
 				"files": [],
 				"assignees": [],
 				"reviewers": [],
+				"labels": [],
+				"milestone": null,
+				"base": "main",
 				"author": {
 					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 					"username": "syntaqx",
@@ -1578,6 +1659,9 @@
 				"reviewers": [
 					"ana"
 				],
+				"team_reviewers": [
+					"flagon-io/backend"
+				],
 				"author": {
 					"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 					"username": "syntaqx",
@@ -1588,7 +1672,10 @@
 				"requested_by": null,
 				"created_at": "2026-10-01T18:20:02.117Z",
 				"updated_at": "2026-10-01T18:35:44.902Z",
-				"confidence": null
+				"confidence": null,
+				"labels": [],
+				"milestone": null,
+				"base": "main"
 			},
 			"issue": {
 				"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
@@ -1618,7 +1705,8 @@
 				"assignees": [],
 				"blocked_by": [],
 				"queued": false,
-				"agent": "claude-code"
+				"agent": "claude-code",
+				"milestone": null
 			},
 			"comments": [
 				{
@@ -1675,9 +1763,33 @@
 					"description": "CI passed",
 					"target_url": "https://g1t.sh/syntaqx/hello/actions/runs/run_01m43sw8e2g6j0m4q8t2x6a0c4"
 				}
-			]
+			],
+			"code_owners": {
+				"path": ".github/CODEOWNERS",
+				"required": true,
+				"reviews": [
+					{
+						"section": null,
+						"line": 3,
+						"pattern": "/src/",
+						"owners": [
+							"@flagon-io/backend"
+						],
+						"files": [
+							"src/main.rs"
+						],
+						"optional": false,
+						"required": 1,
+						"approved_by": [],
+						"changes_requested_by": [],
+						"satisfied": false
+					}
+				],
+				"missing": "Code owners have not approved: @flagon-io/backend for /src/.",
+				"errors": 0
+			}
 		},
-		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
+		"notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
 	},
 	"get_pull_request_changes": {
 		"response": {
@@ -1761,6 +1873,9 @@
 			],
 			"assignees": [],
 			"reviewers": [],
+			"labels": [],
+			"milestone": null,
+			"base": "main",
 			"author": {
 				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 				"username": "syntaqx",
@@ -1800,6 +1915,131 @@
 			"created_at": "2026-10-01T18:40:05.019Z"
 		}
 	},
+	"request_reviewers": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 14
+		},
+		"request": {
+			"reviewers": [
+				"bo"
+			],
+			"team_reviewers": [
+				"backend"
+			]
+		},
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+			"agent": "claude-code",
+			"runtime": "external",
+			"status": "open",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"merge_base": null,
+			"merged_by": null,
+			"merged_at": null,
+			"superseded_by": null,
+			"check_status": "passed",
+			"files": [
+				{
+					"path": "src/main.rs",
+					"additions": 6,
+					"deletions": 2
+				}
+			],
+			"assignees": [],
+			"reviewers": [
+				"ana",
+				"bo"
+			],
+			"team_reviewers": [
+				"flagon-io/backend"
+			],
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"requested_by": null,
+			"created_at": "2026-10-01T18:20:02.117Z",
+			"updated_at": "2026-10-01T18:40:12.331Z"
+		},
+		"notes": "Adds to who is asked: `reviewers` by username (`g1t` asks a g1t agent), `team_reviewers` as `workspace/team`, or a team's slug in the repository's workspace. A team with review assignment on has the people it picks added to `reviewers`, and stays in `team_reviewers`. Each is told in their inbox. Nobody is asked to review their own pull request. `422` for someone who is not an account, or a team that does not exist or that you cannot see. Whoever opened it, or the Triage role or higher, while it is open. See [Pull requests](/guides/pull-requests/) and [Teams](/guides/teams/)."
+	},
+	"remove_requested_reviewers": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 14
+		},
+		"request": {
+			"reviewers": [
+				"bo"
+			],
+			"team_reviewers": [
+				"flagon-io/backend"
+			]
+		},
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+			"agent": "claude-code",
+			"runtime": "external",
+			"status": "open",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"merge_base": null,
+			"merged_by": null,
+			"merged_at": null,
+			"superseded_by": null,
+			"check_status": "passed",
+			"files": [
+				{
+					"path": "src/main.rs",
+					"additions": 6,
+					"deletions": 2
+				}
+			],
+			"assignees": [],
+			"reviewers": [
+				"ana"
+			],
+			"team_reviewers": [],
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"requested_by": null,
+			"created_at": "2026-10-01T18:20:02.117Z",
+			"updated_at": "2026-10-01T18:41:30.904Z"
+		},
+		"notes": "Takes them off who is asked; anyone not asked is ignored. Reviews they already gave stay, as do the people a team's review assignment picked: remove them by username."
+	},
 	"merge_pull_request": {
 		"request": {
 			"keep_issue_open": false
@@ -1837,6 +2077,9 @@
 			"reviewers": [
 				"ana"
 			],
+			"labels": [],
+			"milestone": null,
+			"base": "main",
 			"author": {
 				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 				"username": "syntaqx",
@@ -1882,6 +2125,9 @@
 			],
 			"assignees": [],
 			"reviewers": [],
+			"labels": [],
+			"milestone": null,
+			"base": "main",
 			"author": {
 				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
 				"username": "syntaqx",
@@ -4111,6 +4357,410 @@
 		],
 		"notes": "By username, each with the repositories they have a role on. Refused with `403` for anyone but an owner. See [Access and roles](/guides/access-and-roles/)."
 	},
+	"list_teams": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"query": {
+			"q": "back"
+		},
+		"response": [
+			{
+				"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+				"workspace": "flagon-io",
+				"slug": "backend",
+				"name": "Backend",
+				"description": "The API and the services behind it.",
+				"visibility": "visible",
+				"parent": {
+					"slug": "engineering",
+					"name": "Engineering"
+				},
+				"notify": true,
+				"review_assignment": {
+					"enabled": false,
+					"algorithm": "round_robin",
+					"count": 1,
+					"skip_busy": false,
+					"busy_at": 5,
+					"include_child_teams": false,
+					"excluded": [],
+					"notify_team": false
+				},
+				"members_count": 4,
+				"repos_count": 2,
+				"child_teams_count": 1,
+				"viewer_role": "maintainer",
+				"can_manage": true,
+				"created_at": "2026-10-06T15:02:11.480Z",
+				"updated_at": "2026-10-06T15:02:11.480Z"
+			}
+		],
+		"notes": "Teams you are in come first, then the rest by name. A secret team is listed only for its own people and the workspace's owners. `review_assignment` is what happens when the team is asked to review: see [`set_team_review_assignment`](/reference/api/teams/set-team-review-assignment/). `403` for anyone who is not a member of the workspace. See [Teams](/guides/teams/)."
+	},
+	"create_team": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"name": "Backend",
+			"description": "The API and the services behind it.",
+			"visibility": "visible",
+			"parent": "engineering",
+			"members": [
+				"ana"
+			]
+		},
+		"response": {
+			"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+			"workspace": "flagon-io",
+			"slug": "backend",
+			"name": "Backend",
+			"description": "The API and the services behind it.",
+			"visibility": "visible",
+			"parent": {
+				"slug": "engineering",
+				"name": "Engineering"
+			},
+			"notify": true,
+			"review_assignment": {
+				"enabled": false,
+				"algorithm": "round_robin",
+				"count": 1,
+				"skip_busy": false,
+				"busy_at": 5,
+				"include_child_teams": false,
+				"excluded": [],
+				"notify_team": false
+			},
+			"members_count": 2,
+			"repos_count": 0,
+			"child_teams_count": 0,
+			"viewer_role": "maintainer",
+			"can_manage": true,
+			"created_at": "2026-10-06T15:02:11.480Z",
+			"updated_at": "2026-10-06T15:02:11.480Z"
+		},
+		"notes": "You become the team's maintainer. `slug` is made from `name` when left out (`Web & Mobile` becomes `web-mobile`), and `409` says one is taken. A workspace has at most 500 teams, nested at most 8 deep; `name` is at most 80 characters and `description` 280. A `secret` team cannot have a parent or child teams. Refused with `403` for an agent's or a workspace's token. See [Teams](/guides/teams/)."
+	},
+	"get_team": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend"
+		},
+		"response": {
+			"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+			"workspace": "flagon-io",
+			"slug": "backend",
+			"name": "Backend",
+			"description": "The API and the services behind it.",
+			"visibility": "visible",
+			"parent": {
+				"slug": "engineering",
+				"name": "Engineering"
+			},
+			"notify": true,
+			"review_assignment": {
+				"enabled": false,
+				"algorithm": "round_robin",
+				"count": 1,
+				"skip_busy": false,
+				"busy_at": 5,
+				"include_child_teams": false,
+				"excluded": [],
+				"notify_team": false
+			},
+			"members_count": 4,
+			"repos_count": 2,
+			"child_teams_count": 1,
+			"viewer_role": "maintainer",
+			"can_manage": true,
+			"created_at": "2026-10-06T15:02:11.480Z",
+			"updated_at": "2026-10-06T15:02:11.480Z"
+		},
+		"notes": "`404` for a team that does not exist, or a secret one you are not in, unless you are an owner."
+	},
+	"update_team": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend"
+		},
+		"request": {
+			"description": "The API, the services behind it, and their on-call.",
+			"visibility": "secret",
+			"parent": ""
+		},
+		"response": {
+			"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+			"workspace": "flagon-io",
+			"slug": "backend",
+			"name": "Backend",
+			"description": "The API, the services behind it, and their on-call.",
+			"visibility": "secret",
+			"parent": null,
+			"notify": true,
+			"review_assignment": {
+				"enabled": false,
+				"algorithm": "round_robin",
+				"count": 1,
+				"skip_busy": false,
+				"busy_at": 5,
+				"include_child_teams": false,
+				"excluded": [],
+				"notify_team": false
+			},
+			"members_count": 4,
+			"repos_count": 2,
+			"child_teams_count": 1,
+			"viewer_role": "maintainer",
+			"can_manage": true,
+			"created_at": "2026-10-06T15:02:11.480Z",
+			"updated_at": "2026-10-07T09:41:52.006Z"
+		},
+		"notes": "Only the fields given change. `parent` set to `\"\"` takes the team out from under its parent; a team cannot be nested under itself or one of its own child teams. A new `slug` changes how it is mentioned: `@flagon-io/backend` no longer reaches it. `review_assignment` takes the fields [`set_team_review_assignment`](/reference/api/teams/set-team-review-assignment/) does. Owners of the workspace and the team's maintainers (`403` otherwise)."
+	},
+	"delete_team": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend"
+		},
+		"response": true,
+		"notes": "Its child teams move up to its parent, or to the top when it has none. The roles it gave on repositories are taken away, and it is no longer asked to review. Owners of the workspace and the team's maintainers (`403` otherwise)."
+	},
+	"list_team_members": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend"
+		},
+		"query": {
+			"include_child_teams": "true"
+		},
+		"response": [
+			{
+				"username": "syntaqx",
+				"name": "Chase Pierce",
+				"avatar": null,
+				"role": "maintainer",
+				"via": null
+			},
+			{
+				"username": "ana",
+				"name": "Ana Lima",
+				"avatar": null,
+				"role": "member",
+				"via": null
+			},
+			{
+				"username": "bo",
+				"name": null,
+				"avatar": null,
+				"role": "member",
+				"via": "payments"
+			}
+		],
+		"notes": "Maintainers come first, then members, each by username. With `include_child_teams`, the people of its child teams (and theirs) follow, each with `via`, the child team they are in; someone in both is listed once, as the team's own."
+	},
+	"set_team_member": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend",
+			"username": "ana"
+		},
+		"request": {
+			"role": "maintainer"
+		},
+		"response": {
+			"username": "ana",
+			"name": "Ana Lima",
+			"avatar": null,
+			"role": "maintainer",
+			"via": null
+		},
+		"notes": "`role` is `member` (the default) or `maintainer`. `422` when they are not a member of the workspace: add them to it first. Owners of the workspace and the team's maintainers (`403` otherwise)."
+	},
+	"remove_team_member": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend",
+			"username": "ana"
+		},
+		"response": true,
+		"notes": "Anyone may take themselves out of a team. Leaving the workspace takes a person out of all its teams."
+	},
+	"list_child_teams": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "engineering"
+		},
+		"response": [
+			{
+				"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+				"workspace": "flagon-io",
+				"slug": "backend",
+				"name": "Backend",
+				"description": "The API and the services behind it.",
+				"visibility": "visible",
+				"parent": {
+					"slug": "engineering",
+					"name": "Engineering"
+				},
+				"notify": true,
+				"review_assignment": {
+					"enabled": false,
+					"algorithm": "round_robin",
+					"count": 1,
+					"skip_busy": false,
+					"busy_at": 5,
+					"include_child_teams": false,
+					"excluded": [],
+					"notify_team": false
+				},
+				"members_count": 4,
+				"repos_count": 2,
+				"child_teams_count": 0,
+				"viewer_role": "maintainer",
+				"can_manage": true,
+				"created_at": "2026-10-06T15:02:11.480Z",
+				"updated_at": "2026-10-06T15:02:11.480Z"
+			}
+		],
+		"notes": "Only the teams directly under it; read each one's own with this again. A child team inherits its parent's roles on repositories, and a mention or review request for the parent reaches its people too."
+	},
+	"list_team_repos": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend"
+		},
+		"response": [
+			{
+				"repo": "flagon-io/hello",
+				"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+				"role": "write",
+				"inherited_from": null
+			},
+			{
+				"repo": "flagon-io/docs",
+				"repo_id": "rep_01m3m5r2a8c4e6g8j0m2p4r6t8",
+				"role": "read",
+				"inherited_from": "engineering"
+			}
+		],
+		"notes": "A role inherited from a parent team names it in `inherited_from`. Where the team has a role of its own on the same repository, the higher one is listed. Only repositories you can see are listed."
+	},
+	"set_team_repo": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend",
+			"repo": "hello"
+		},
+		"request": {
+			"role": "maintain"
+		},
+		"response": {
+			"repo": "flagon-io/hello",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"role": "maintain",
+			"inherited_from": null
+		},
+		"notes": "`repo` in the path is the repository's name in the team's workspace; a team has roles only on its own workspace's repositories. `role` is `read`, `triage`, `write`, `maintain` or `admin`. Everyone in the team and its child teams gets it; someone with a higher role otherwise keeps that. Needs the Admin role on the repository (`403` otherwise), and the `access:admin` scope. See [Access and roles](/guides/access-and-roles/)."
+	},
+	"remove_team_repo": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend",
+			"repo": "hello"
+		},
+		"response": true,
+		"notes": "A role the team inherits from a parent is taken away on the parent. Needs the Admin role on the repository, or to be an owner or one of the team's maintainers."
+	},
+	"set_team_review_assignment": {
+		"params": {
+			"workspace": "flagon-io",
+			"team": "backend"
+		},
+		"request": {
+			"enabled": true,
+			"algorithm": "load_balance",
+			"count": 2,
+			"skip_busy": true,
+			"busy_at": 5,
+			"excluded": [
+				"syntaqx"
+			]
+		},
+		"response": {
+			"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+			"workspace": "flagon-io",
+			"slug": "backend",
+			"name": "Backend",
+			"description": "The API and the services behind it.",
+			"visibility": "visible",
+			"parent": {
+				"slug": "engineering",
+				"name": "Engineering"
+			},
+			"notify": true,
+			"review_assignment": {
+				"enabled": true,
+				"algorithm": "load_balance",
+				"count": 2,
+				"skip_busy": true,
+				"busy_at": 5,
+				"include_child_teams": false,
+				"excluded": [
+					"syntaqx"
+				],
+				"notify_team": false
+			},
+			"members_count": 4,
+			"repos_count": 2,
+			"child_teams_count": 1,
+			"viewer_role": "maintainer",
+			"can_manage": true,
+			"created_at": "2026-10-06T15:02:11.480Z",
+			"updated_at": "2026-10-07T09:44:03.512Z"
+		},
+		"notes": "| Field | |\n| --- | --- |\n| `enabled` | Off, everyone in the team is asked. On, `count` people are picked and asked, and the team stays shown as asked beside them. |\n| `algorithm` | `round_robin`: whoever this team asked least recently. `load_balance`: whoever has the fewest pull requests waiting on their review. |\n| `count` | How many to pick, 1 to 10. People from the team already asked count towards it. |\n| `skip_busy`, `busy_at` | Leave out anyone with `busy_at` (1 to 100) or more pull requests waiting on their review. |\n| `include_child_teams` | Also pick from its child teams' people. |\n| `excluded` | Usernames never picked. Replaces the whole list. |\n| `notify_team` | Also tell the rest of the team when people are picked. |\n\nFields left out keep their value. The pull request's author is never picked. See [Teams](/guides/teams/)."
+	},
+	"list_user_teams": {
+		"params": {
+			"workspace": "flagon-io",
+			"username": "ana"
+		},
+		"response": [
+			{
+				"id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
+				"workspace": "flagon-io",
+				"slug": "backend",
+				"name": "Backend",
+				"description": "The API and the services behind it.",
+				"visibility": "visible",
+				"parent": {
+					"slug": "engineering",
+					"name": "Engineering"
+				},
+				"notify": true,
+				"review_assignment": {
+					"enabled": false,
+					"algorithm": "round_robin",
+					"count": 1,
+					"skip_busy": false,
+					"busy_at": 5,
+					"include_child_teams": false,
+					"excluded": [],
+					"notify_team": false
+				},
+				"members_count": 4,
+				"repos_count": 2,
+				"child_teams_count": 1,
+				"viewer_role": null,
+				"can_manage": false,
+				"created_at": "2026-10-06T15:02:11.480Z",
+				"updated_at": "2026-10-06T15:02:11.480Z"
+			}
+		],
+		"notes": "Only the teams they are in themselves, not the parents those teams are under. Secret teams you are not in are left out unless you are an owner. `403` for anyone who is not a member of the workspace."
+	},
 	"list_security_alerts": {
 		"params": {
 			"owner": "flagon-io",
@@ -5180,5 +5830,1741 @@
 			}
 		],
 		"notes": "Name every pinned project once; anything else is refused with `422 invalid`."
+	},
+	"list_secret_scanning_alerts": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"query": {
+			"state": "open"
+		},
+		"response": [
+			{
+				"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"kind": "github_token",
+				"label": "a GitHub token",
+				"path": "scripts/release.sh",
+				"line": 12,
+				"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"preview": "ghp_X7…",
+				"status": "open",
+				"source": "push",
+				"found_by": "syntaqx",
+				"found_at": "2026-10-06T09:14:02.118Z",
+				"decided_by": null,
+				"reason": null,
+				"decided_at": null,
+				"dismissed_reason": null,
+				"test_value": null,
+				"state": "open",
+				"validity": "active",
+				"validity_checked_at": "2026-10-06T09:20:41.502Z",
+				"bypass": {
+					"reason": "will_fix_later",
+					"comment": "Rotating it this afternoon.",
+					"by": "syntaqx",
+					"at": "2026-10-06T09:14:02.118Z",
+					"approved_by": null
+				},
+				"pattern_id": null,
+				"pattern_name": null,
+				"locations": 1
+			}
+		],
+		"notes": "| Filter | Values |\n| --- | --- |\n| `state` | `open` (in the history, or blocked at a push), `dismissed`, `fixed` |\n| `secret_type` | `aws_access_key`, `github_token`, `custom_pattern`, … |\n| `validity` | `active`, `inactive`, `unknown`, `unsupported` |\n| `bypassed` | `true` or `false` |\n\nThe secret itself is never returned: `preview` is enough to recognise it. `status` says where it stands: `open`, `blocked` (stopped at a push, never landed), `allowed` or `resolved`."
+	},
+	"list_secret_scanning_alerts_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"query": {
+			"state": "open"
+		},
+		"response": [
+			{
+				"repo": "hello",
+				"secret": {
+					"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+					"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+					"kind": "github_token",
+					"label": "a GitHub token",
+					"path": "scripts/release.sh",
+					"line": 12,
+					"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+					"preview": "ghp_X7…",
+					"status": "open",
+					"source": "push",
+					"found_by": "syntaqx",
+					"found_at": "2026-10-06T09:14:02.118Z",
+					"decided_by": null,
+					"reason": null,
+					"decided_at": null,
+					"dismissed_reason": null,
+					"test_value": null,
+					"state": "open",
+					"validity": "active",
+					"validity_checked_at": "2026-10-06T09:20:41.502Z",
+					"bypass": {
+						"reason": "will_fix_later",
+						"comment": "Rotating it this afternoon.",
+						"by": "syntaqx",
+						"at": "2026-10-06T09:14:02.118Z",
+						"approved_by": null
+					},
+					"pattern_id": null,
+					"pattern_name": null,
+					"locations": 1
+				}
+			}
+		],
+		"notes": "Every repository whose findings you may see, each alert with its repository's name."
+	},
+	"get_secret_scanning_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p"
+		},
+		"response": {
+			"secret": {
+				"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"kind": "github_token",
+				"label": "a GitHub token",
+				"path": "scripts/release.sh",
+				"line": 12,
+				"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"preview": "ghp_X7…",
+				"status": "blocked",
+				"source": "push",
+				"found_by": "syntaqx",
+				"found_at": "2026-10-06T09:14:02.118Z",
+				"decided_by": null,
+				"reason": null,
+				"decided_at": null,
+				"dismissed_reason": null,
+				"test_value": null,
+				"state": "open",
+				"validity": null,
+				"validity_checked_at": null,
+				"bypass": null,
+				"pattern_id": null,
+				"pattern_name": null,
+				"locations": 1
+			},
+			"locations": [
+				{
+					"path": "scripts/release.sh",
+					"line": 12,
+					"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+					"source": "push",
+					"found_at": "2026-10-06T09:14:02.118Z"
+				}
+			],
+			"activity": [],
+			"requests": [],
+			"checkable": true,
+			"can_bypass": true,
+			"can_request_bypass": false
+		}
+	},
+	"update_secret_scanning_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p"
+		},
+		"request": {
+			"state": "dismissed",
+			"reason": "revoked",
+			"comment": "Rotated in the issuer's settings."
+		},
+		"response": {
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+			"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+			"kind": "github_token",
+			"label": "a GitHub token",
+			"path": "scripts/release.sh",
+			"line": 12,
+			"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"preview": "ghp_X7…",
+			"status": "resolved",
+			"source": "push",
+			"found_by": "syntaqx",
+			"found_at": "2026-10-06T09:14:02.118Z",
+			"decided_by": "syntaqx",
+			"reason": "Rotated in the issuer's settings.",
+			"decided_at": "2026-10-06T09:20:41.502Z",
+			"dismissed_reason": "revoked",
+			"test_value": null,
+			"state": "fixed",
+			"validity": "active",
+			"validity_checked_at": "2026-10-06T09:20:41.502Z",
+			"bypass": {
+				"reason": "will_fix_later",
+				"comment": "Rotating it this afternoon.",
+				"by": "syntaqx",
+				"at": "2026-10-06T09:14:02.118Z",
+				"approved_by": null
+			},
+			"pattern_id": null,
+			"pattern_name": null,
+			"locations": 1
+		},
+		"notes": "Takes the Admin role: a dismissed secret is let through push protection, unless it was `revoked`, which marks it fixed. `state` `open` reopens it."
+	},
+	"list_secret_scanning_locations": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p"
+		},
+		"response": [
+			{
+				"path": "scripts/release.sh",
+				"line": 12,
+				"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"source": "push",
+				"found_at": "2026-10-06T09:14:02.118Z"
+			}
+		]
+	},
+	"bypass_push_protection": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p"
+		},
+		"request": {
+			"reason": "will_fix_later",
+			"comment": "Rotating it this afternoon."
+		},
+		"response": {
+			"secret": {
+				"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"kind": "github_token",
+				"label": "a GitHub token",
+				"path": "scripts/release.sh",
+				"line": 12,
+				"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"preview": "ghp_X7…",
+				"status": "open",
+				"source": "push",
+				"found_by": "syntaqx",
+				"found_at": "2026-10-06T09:14:02.118Z",
+				"decided_by": null,
+				"reason": null,
+				"decided_at": null,
+				"dismissed_reason": null,
+				"test_value": null,
+				"state": "open",
+				"validity": null,
+				"validity_checked_at": null,
+				"bypass": {
+					"reason": "will_fix_later",
+					"comment": "Rotating it this afternoon.",
+					"by": "syntaqx",
+					"at": "2026-10-06T09:14:02.118Z",
+					"approved_by": null
+				},
+				"pattern_id": null,
+				"pattern_name": null,
+				"locations": 1
+			},
+			"request": null
+		},
+		"notes": "| Reason | The alert |\n| --- | --- |\n| `false_positive` | Closed as a false positive |\n| `used_in_tests` | Closed as used in tests |\n| `will_fix_later` | Stays open, to be rotated |\n\nWith delegated bypass on, a call from someone who does not review bypasses makes a request instead: `request` is set and the secret is still blocked until an owner or admin approves it. Push again once it is bypassed."
+	},
+	"check_secret_validity": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p"
+		},
+		"response": {
+			"id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+			"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+			"kind": "github_token",
+			"label": "a GitHub token",
+			"path": "scripts/release.sh",
+			"line": 12,
+			"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"preview": "ghp_X7…",
+			"status": "open",
+			"source": "push",
+			"found_by": "syntaqx",
+			"found_at": "2026-10-06T09:14:02.118Z",
+			"decided_by": null,
+			"reason": null,
+			"decided_at": null,
+			"dismissed_reason": null,
+			"test_value": null,
+			"state": "open",
+			"validity": "active",
+			"validity_checked_at": "2026-10-06T09:20:41.502Z",
+			"bypass": {
+				"reason": "will_fix_later",
+				"comment": "Rotating it this afternoon.",
+				"by": "syntaqx",
+				"at": "2026-10-06T09:14:02.118Z",
+				"approved_by": null
+			},
+			"pattern_id": null,
+			"pattern_name": null,
+			"locations": 1
+		},
+		"notes": "Made for GitHub, GitLab, Stripe, Slack, npm, OpenAI, Anthropic and SendGrid tokens, with the issuer's own read-only call. Other formats answer `unsupported`; a secret that never landed answers `unknown`."
+	},
+	"list_bypass_requests": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"query": {
+			"state": "pending"
+		},
+		"response": [
+			{
+				"id": "byp_01kq2n8e5f6g7h8j9k0m1n2p3q",
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"workspace": "flagon-io",
+				"repo": "hello",
+				"secret_id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+				"label": "a GitHub token",
+				"path": "scripts/release.sh",
+				"line": 12,
+				"preview": "ghp_X7…",
+				"requester": "ana",
+				"reason": "used_in_tests",
+				"comment": "A token from the test fixtures, never issued.",
+				"state": "pending",
+				"reviewer": null,
+				"review_comment": null,
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"reviewed_at": null
+			}
+		]
+	},
+	"review_bypass_request": {
+		"params": {
+			"workspace": "flagon-io",
+			"id": "byp_01kq2n8e5f6g7h8j9k0m1n2p3q"
+		},
+		"request": {
+			"decision": "approve",
+			"comment": "A fixture."
+		},
+		"response": {
+			"id": "byp_01kq2n8e5f6g7h8j9k0m1n2p3q",
+			"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+			"workspace": "flagon-io",
+			"repo": "hello",
+			"secret_id": "sec_01kq2m7d4e5f6g7h8j9k0m1n2p",
+			"label": "a GitHub token",
+			"path": "scripts/release.sh",
+			"line": 12,
+			"preview": "ghp_X7…",
+			"requester": "ana",
+			"reason": "used_in_tests",
+			"comment": "A token from the test fixtures, never issued.",
+			"state": "approved",
+			"reviewer": "syntaqx",
+			"review_comment": "A fixture.",
+			"created_at": "2026-10-06T09:14:02.118Z",
+			"reviewed_at": "2026-10-06T09:20:41.502Z"
+		}
+	},
+	"list_custom_patterns": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": {
+			"patterns": [
+				{
+					"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r",
+					"scope": "repository",
+					"workspace": "flagon-io",
+					"repo": "hello",
+					"name": "Acme API key",
+					"pattern": "acme_[a-z0-9]{32}",
+					"before": null,
+					"after": null,
+					"test_strings": [
+						"ACME_KEY=acme_0123456789abcdef0123456789abcdef"
+					],
+					"state": "published",
+					"created_by": "syntaqx",
+					"created_at": "2026-10-06T09:14:02.118Z",
+					"updated_by": "syntaqx",
+					"updated_at": "2026-10-06T09:14:02.118Z",
+					"open_alerts": 0
+				}
+			],
+			"entitled": true
+		},
+		"notes": "A repository's list includes its workspace's patterns, with `scope` `workspace`. `entitled` says whether they run here: always on a public repository, and on a private one with the Security and quality activation."
+	},
+	"list_custom_patterns_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": {
+			"patterns": [
+				{
+					"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r",
+					"scope": "workspace",
+					"workspace": "flagon-io",
+					"repo": null,
+					"name": "Acme API key",
+					"pattern": "acme_[a-z0-9]{32}",
+					"before": null,
+					"after": null,
+					"test_strings": [
+						"ACME_KEY=acme_0123456789abcdef0123456789abcdef"
+					],
+					"state": "published",
+					"created_by": "syntaqx",
+					"created_at": "2026-10-06T09:14:02.118Z",
+					"updated_by": "syntaqx",
+					"updated_at": "2026-10-06T09:14:02.118Z",
+					"open_alerts": 0
+				}
+			],
+			"entitled": true
+		}
+	},
+	"create_custom_pattern": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"request": {
+			"pattern_name": "Acme API key",
+			"pattern": "acme_[a-z0-9]{32}",
+			"test_strings": [
+				"ACME_KEY=acme_0123456789abcdef0123456789abcdef"
+			],
+			"publish": true
+		},
+		"response": {
+			"pattern": {
+				"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r",
+				"scope": "repository",
+				"workspace": "flagon-io",
+				"repo": "hello",
+				"name": "Acme API key",
+				"pattern": "acme_[a-z0-9]{32}",
+				"before": null,
+				"after": null,
+				"test_strings": [
+					"ACME_KEY=acme_0123456789abcdef0123456789abcdef"
+				],
+				"state": "published",
+				"created_by": "syntaqx",
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"updated_by": "syntaqx",
+				"updated_at": "2026-10-06T09:14:02.118Z",
+				"open_alerts": 0
+			},
+			"tests": [
+				[
+					9,
+					46
+				]
+			]
+		},
+		"notes": "`tests` gives, for each test string, where the pattern matched (start and end, in characters), or `null`. A pattern that does not compile, matches an empty string, or is too complex is refused with `422` and says why."
+	},
+	"create_custom_pattern_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"pattern_name": "Acme API key",
+			"pattern": "acme_[a-z0-9]{32}",
+			"publish": false
+		},
+		"response": {
+			"pattern": {
+				"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r",
+				"scope": "workspace",
+				"workspace": "flagon-io",
+				"repo": null,
+				"name": "Acme API key",
+				"pattern": "acme_[a-z0-9]{32}",
+				"before": null,
+				"after": null,
+				"test_strings": [],
+				"state": "draft",
+				"created_by": "syntaqx",
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"updated_by": "syntaqx",
+				"updated_at": "2026-10-06T09:14:02.118Z",
+				"open_alerts": 0
+			},
+			"tests": []
+		}
+	},
+	"update_custom_pattern": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r"
+		},
+		"request": {
+			"pattern_name": "Acme API key",
+			"pattern": "acme_[a-z0-9]{32,40}",
+			"publish": true
+		},
+		"response": {
+			"pattern": {
+				"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r",
+				"scope": "repository",
+				"workspace": "flagon-io",
+				"repo": "hello",
+				"name": "Acme API key",
+				"pattern": "acme_[a-z0-9]{32,40}",
+				"before": null,
+				"after": null,
+				"test_strings": [
+					"ACME_KEY=acme_0123456789abcdef0123456789abcdef"
+				],
+				"state": "published",
+				"created_by": "syntaqx",
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"updated_by": "syntaqx",
+				"updated_at": "2026-10-06T09:14:02.118Z",
+				"open_alerts": 0
+			},
+			"tests": [
+				[
+					9,
+					46
+				]
+			]
+		}
+	},
+	"update_custom_pattern_for_workspace": {
+		"params": {
+			"workspace": "flagon-io",
+			"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r"
+		},
+		"request": {
+			"pattern_name": "Acme API key",
+			"pattern": "acme_[a-z0-9]{32}",
+			"publish": true
+		},
+		"response": {
+			"pattern": {
+				"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r",
+				"scope": "workspace",
+				"workspace": "flagon-io",
+				"repo": null,
+				"name": "Acme API key",
+				"pattern": "acme_[a-z0-9]{32}",
+				"before": null,
+				"after": null,
+				"test_strings": [
+					"ACME_KEY=acme_0123456789abcdef0123456789abcdef"
+				],
+				"state": "published",
+				"created_by": "syntaqx",
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"updated_by": "syntaqx",
+				"updated_at": "2026-10-06T09:14:02.118Z",
+				"open_alerts": 0
+			},
+			"tests": [
+				[
+					9,
+					46
+				]
+			]
+		}
+	},
+	"delete_custom_pattern": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r"
+		},
+		"response": {
+			"deleted": true
+		}
+	},
+	"delete_custom_pattern_for_workspace": {
+		"params": {
+			"workspace": "flagon-io",
+			"id": "pat_01kq2p9f6g7h8j9k0m1n2p3q4r"
+		},
+		"response": {
+			"deleted": true
+		}
+	},
+	"dry_run_custom_pattern": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"request": {
+			"pattern": "acme_[a-z0-9]{32}"
+		},
+		"response": {
+			"repos": [
+				{
+					"name": "hello",
+					"files_scanned": 214,
+					"matches": [
+						{
+							"path": "config/dev.env",
+							"line": 3,
+							"preview": "ACME_KEY=acme_01••••••••••••••••••••••••"
+						}
+					],
+					"truncated": false,
+					"commit": "4807077b296e6edbf410d55e72749d3e1170c291"
+				}
+			]
+		},
+		"notes": "Reads up to 2,000 files and 20 MB of the default branch, skipping what secret scanning skips. Nothing is recorded."
+	},
+	"dry_run_custom_pattern_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"pattern": "acme_[a-z0-9]{32}",
+			"repos": [
+				"hello"
+			]
+		},
+		"response": {
+			"repos": [
+				{
+					"name": "hello",
+					"files_scanned": 214,
+					"matches": [],
+					"truncated": false,
+					"commit": "4807077b296e6edbf410d55e72749d3e1170c291"
+				}
+			]
+		}
+	},
+	"list_code_scanning_alerts": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"query": {
+			"state": "open",
+			"severity": "high"
+		},
+		"response": [
+			{
+				"id": "cod_01kq2qag7h8j9k0m1n2p3q4r5s",
+				"number": 4,
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"tool": "Semgrep OSS",
+				"category": "Semgrep OSS",
+				"rule_id": "javascript.lang.security.detect-child-process.detect-child-process",
+				"rule_name": "javascript.lang.security.detect-child-process.detect-child-process",
+				"rule_description": "Detected calls to child_process from a function argument.",
+				"help": null,
+				"help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
+				"tags": [
+					"security",
+					"CWE-78"
+				],
+				"level": "error",
+				"security_severity": null,
+				"severity": "high",
+				"message": "Detected calls to child_process from a function argument `req`. This could lead to a command injection.",
+				"path": "src/server.js",
+				"start_line": 6,
+				"end_line": 6,
+				"start_column": 3,
+				"end_column": 60,
+				"state": "open",
+				"fingerprint": "3f1c9a0e7b2d4c5e6f708192a3b4c5d6",
+				"first_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"last_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"updated_at": "2026-10-06T09:14:02.118Z",
+				"fixed_at": null,
+				"dismissed_by": null,
+				"dismissed_reason": null,
+				"dismissed_comment": null,
+				"dismissed_at": null,
+				"issue": null
+			}
+		],
+		"notes": "`severity` is the rule's security severity when it has one (from its `security-severity` score), else from the result's level: `error` high, `warning` medium, `note` low."
+	},
+	"list_code_scanning_alerts_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"query": {
+			"state": "open"
+		},
+		"response": [
+			{
+				"repo": "hello",
+				"code": {
+					"id": "cod_01kq2qag7h8j9k0m1n2p3q4r5s",
+					"number": 4,
+					"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+					"tool": "Semgrep OSS",
+					"category": "Semgrep OSS",
+					"rule_id": "javascript.lang.security.detect-child-process.detect-child-process",
+					"rule_name": "javascript.lang.security.detect-child-process.detect-child-process",
+					"rule_description": "Detected calls to child_process from a function argument.",
+					"help": null,
+					"help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
+					"tags": [
+						"security",
+						"CWE-78"
+					],
+					"level": "error",
+					"security_severity": null,
+					"severity": "high",
+					"message": "Detected calls to child_process from a function argument `req`. This could lead to a command injection.",
+					"path": "src/server.js",
+					"start_line": 6,
+					"end_line": 6,
+					"start_column": 3,
+					"end_column": 60,
+					"state": "open",
+					"fingerprint": "3f1c9a0e7b2d4c5e6f708192a3b4c5d6",
+					"first_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+					"last_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+					"created_at": "2026-10-06T09:14:02.118Z",
+					"updated_at": "2026-10-06T09:14:02.118Z",
+					"fixed_at": null,
+					"dismissed_by": null,
+					"dismissed_reason": null,
+					"dismissed_comment": null,
+					"dismissed_at": null,
+					"issue": null
+				}
+			}
+		]
+	},
+	"get_code_scanning_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 4
+		},
+		"response": {
+			"alert": {
+				"id": "cod_01kq2qag7h8j9k0m1n2p3q4r5s",
+				"number": 4,
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"tool": "Semgrep OSS",
+				"category": "Semgrep OSS",
+				"rule_id": "javascript.lang.security.detect-child-process.detect-child-process",
+				"rule_name": "javascript.lang.security.detect-child-process.detect-child-process",
+				"rule_description": "Detected calls to child_process from a function argument.",
+				"help": null,
+				"help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
+				"tags": [
+					"security",
+					"CWE-78"
+				],
+				"level": "error",
+				"security_severity": null,
+				"severity": "high",
+				"message": "Detected calls to child_process from a function argument `req`. This could lead to a command injection.",
+				"path": "src/server.js",
+				"start_line": 6,
+				"end_line": 6,
+				"start_column": 3,
+				"end_column": 60,
+				"state": "open",
+				"fingerprint": "3f1c9a0e7b2d4c5e6f708192a3b4c5d6",
+				"first_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"last_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"created_at": "2026-10-06T09:14:02.118Z",
+				"updated_at": "2026-10-06T09:14:02.118Z",
+				"fixed_at": null,
+				"dismissed_by": null,
+				"dismissed_reason": null,
+				"dismissed_comment": null,
+				"dismissed_at": null,
+				"issue": null
+			},
+			"activity": [],
+			"analyses": [
+				{
+					"id": "ana_01kq2rbh8j9k0m1n2p3q4r5s6t",
+					"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+					"sarif_id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v",
+					"tool": "Semgrep OSS",
+					"tool_version": "1.140.0",
+					"category": "Semgrep OSS",
+					"commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
+					"git_ref": "refs/heads/main",
+					"pull": null,
+					"results": 7,
+					"new_alerts": 2,
+					"fixed_alerts": 1,
+					"dropped": 0,
+					"created_at": "2026-10-06T09:14:02.118Z"
+				}
+			]
+		}
+	},
+	"update_code_scanning_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"number": 4
+		},
+		"request": {
+			"state": "dismissed",
+			"dismissed_reason": "false_positive",
+			"dismissed_comment": "The argument is a constant."
+		},
+		"response": {
+			"id": "cod_01kq2qag7h8j9k0m1n2p3q4r5s",
+			"number": 4,
+			"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+			"tool": "Semgrep OSS",
+			"category": "Semgrep OSS",
+			"rule_id": "javascript.lang.security.detect-child-process.detect-child-process",
+			"rule_name": "javascript.lang.security.detect-child-process.detect-child-process",
+			"rule_description": "Detected calls to child_process from a function argument.",
+			"help": null,
+			"help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
+			"tags": [
+				"security",
+				"CWE-78"
+			],
+			"level": "error",
+			"security_severity": null,
+			"severity": "high",
+			"message": "Detected calls to child_process from a function argument `req`. This could lead to a command injection.",
+			"path": "src/server.js",
+			"start_line": 6,
+			"end_line": 6,
+			"start_column": 3,
+			"end_column": 60,
+			"state": "dismissed",
+			"fingerprint": "3f1c9a0e7b2d4c5e6f708192a3b4c5d6",
+			"first_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"last_commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"created_at": "2026-10-06T09:14:02.118Z",
+			"updated_at": "2026-10-06T09:14:02.118Z",
+			"fixed_at": null,
+			"dismissed_by": "syntaqx",
+			"dismissed_reason": "false_positive",
+			"dismissed_comment": "The argument is a constant.",
+			"dismissed_at": "2026-10-06T09:20:41.502Z",
+			"issue": null
+		}
+	},
+	"list_code_scanning_analyses": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": [
+			{
+				"id": "ana_01kq2rbh8j9k0m1n2p3q4r5s6t",
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"sarif_id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v",
+				"tool": "Semgrep OSS",
+				"tool_version": "1.140.0",
+				"category": "Semgrep OSS",
+				"commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
+				"git_ref": "refs/heads/main",
+				"pull": null,
+				"results": 7,
+				"new_alerts": 2,
+				"fixed_alerts": 1,
+				"dropped": 0,
+				"created_at": "2026-10-06T09:14:02.118Z"
+			}
+		]
+	},
+	"upload_sarif": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"request": {
+			"commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"ref": "refs/heads/main",
+			"sarif": "H4sIAAAAAAAA…",
+			"checkout_uri": "file:///home/runner/work/repo"
+		},
+		"response": {
+			"id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v",
+			"processing_status": "complete",
+			"analyses": [
+				"ana_01kq2rbh8j9k0m1n2p3q4r5s6t"
+			],
+			"errors": [],
+			"commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"git_ref": "refs/heads/main",
+			"created_at": "2026-10-06T09:14:02.118Z"
+		},
+		"notes": "`sarif` is the SARIF 2.1.0 file gzipped, then base64-encoded: `gzip -c results.sarif | base64 -w0`. The upload is read at once: `processing_status` is `complete` or `failed`, with `errors` saying why. For `refs/pull/<number>/head`, the results become the pull request's `Code scanning` check instead of alerts."
+	},
+	"get_sarif_upload": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v"
+		},
+		"response": {
+			"id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v",
+			"processing_status": "complete",
+			"analyses": [
+				"ana_01kq2rbh8j9k0m1n2p3q4r5s6t"
+			],
+			"errors": [],
+			"commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"git_ref": "refs/heads/main",
+			"created_at": "2026-10-06T09:14:02.118Z"
+		}
+	},
+	"list_vulnerability_alerts": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"query": {
+			"state": "open"
+		},
+		"response": [
+			{
+				"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n",
+				"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+				"ecosystem": "npm",
+				"package": "lodash",
+				"version": "4.17.20",
+				"manifest": "package-lock.json",
+				"advisory": "GHSA-35jh-r3h4-6jhm",
+				"osv_id": "GHSA-35jh-r3h4-6jhm",
+				"summary": "Command Injection in lodash",
+				"severity": "high",
+				"fixed_version": "4.17.21",
+				"status": "open",
+				"issue": null,
+				"found_at": "2026-10-06T09:14:02.118Z",
+				"fixed_at": null,
+				"state": "open",
+				"dismissed_by": null,
+				"dismissed_reason": null,
+				"dismissed_comment": null,
+				"dismissed_at": null,
+				"update": null
+			}
+		]
+	},
+	"list_vulnerability_alerts_for_workspace": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"query": {
+			"severity": "critical"
+		},
+		"response": [
+			{
+				"repo": "hello",
+				"vulnerability": {
+					"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n",
+					"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+					"ecosystem": "npm",
+					"package": "lodash",
+					"version": "4.17.20",
+					"manifest": "package-lock.json",
+					"advisory": "GHSA-35jh-r3h4-6jhm",
+					"osv_id": "GHSA-35jh-r3h4-6jhm",
+					"summary": "Command Injection in lodash",
+					"severity": "high",
+					"fixed_version": "4.17.21",
+					"status": "open",
+					"issue": null,
+					"found_at": "2026-10-06T09:14:02.118Z",
+					"fixed_at": null,
+					"state": "open",
+					"dismissed_by": null,
+					"dismissed_reason": null,
+					"dismissed_comment": null,
+					"dismissed_at": null,
+					"update": null
+				}
+			}
+		]
+	},
+	"get_vulnerability_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n"
+		},
+		"response": {
+			"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n",
+			"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+			"ecosystem": "npm",
+			"package": "lodash",
+			"version": "4.17.20",
+			"manifest": "package-lock.json",
+			"advisory": "GHSA-35jh-r3h4-6jhm",
+			"osv_id": "GHSA-35jh-r3h4-6jhm",
+			"summary": "Command Injection in lodash",
+			"severity": "high",
+			"fixed_version": "4.17.21",
+			"status": "open",
+			"issue": null,
+			"found_at": "2026-10-06T09:14:02.118Z",
+			"fixed_at": null,
+			"state": "open",
+			"dismissed_by": null,
+			"dismissed_reason": null,
+			"dismissed_comment": null,
+			"dismissed_at": null,
+			"update": null
+		}
+	},
+	"update_vulnerability_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n"
+		},
+		"request": {
+			"state": "dismissed",
+			"reason": "tolerable_risk",
+			"comment": "Only the build uses it."
+		},
+		"response": {
+			"id": "vul_01kp4b8c3d4e5f6g7h8j9k0m1n",
+			"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+			"ecosystem": "npm",
+			"package": "lodash",
+			"version": "4.17.20",
+			"manifest": "package-lock.json",
+			"advisory": "GHSA-35jh-r3h4-6jhm",
+			"osv_id": "GHSA-35jh-r3h4-6jhm",
+			"summary": "Command Injection in lodash",
+			"severity": "high",
+			"fixed_version": "4.17.21",
+			"status": "dismissed",
+			"issue": null,
+			"found_at": "2026-10-06T09:14:02.118Z",
+			"fixed_at": null,
+			"state": "dismissed",
+			"dismissed_by": "syntaqx",
+			"dismissed_reason": "tolerable_risk",
+			"dismissed_comment": "Only the build uses it.",
+			"dismissed_at": "2026-10-06T09:20:41.502Z",
+			"update": null
+		}
+	},
+	"fix_security_alert": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"id": "cod_01kq2qag7h8j9k0m1n2p3q4r5s"
+		},
+		"response": {
+			"issue": 57,
+			"started": true,
+			"message": null
+		},
+		"notes": "Opens an issue with what is wrong and what done means, and puts g1t on it as you. Its run is charged as agent usage, and its pull request lands through the repository's required checks. Asking again while the issue is open returns it."
+	},
+	"get_dependency_graph": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": {
+			"commit": "4807077b296e6edbf410d55e72749d3e1170c291",
+			"manifests": [
+				{
+					"path": "package-lock.json",
+					"ecosystem": "npm",
+					"dependencies": 2,
+					"direct": 1
+				}
+			],
+			"dependencies": [
+				{
+					"ecosystem": "npm",
+					"name": "lodash",
+					"version": "4.17.20",
+					"manifest": "package-lock.json",
+					"relationship": "direct",
+					"development": false,
+					"license": "MIT",
+					"purl": "pkg:npm/lodash@4.17.20",
+					"vulnerabilities": 1
+				},
+				{
+					"ecosystem": "npm",
+					"name": "ms",
+					"version": "2.1.3",
+					"manifest": "package-lock.json",
+					"relationship": "transitive",
+					"development": false,
+					"license": "MIT",
+					"purl": "pkg:npm/ms@2.1.3",
+					"vulnerabilities": 0
+				}
+			]
+		}
+	},
+	"get_sbom": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": {
+			"sbom": {
+				"spdxVersion": "SPDX-2.3",
+				"dataLicense": "CC0-1.0",
+				"SPDXID": "SPDXRef-DOCUMENT",
+				"name": "flagon-io/hello dependency graph",
+				"documentNamespace": "https://g1t.sh/flagon-io/hello/sbom/sbom_01kq2tdk0m1n2p3q4r5s6t7v8w",
+				"creationInfo": {
+					"created": "2026-10-06T09:14:02Z",
+					"creators": [
+						"Tool: g1t",
+						"Organization: g1t"
+					],
+					"comment": "Read from the repository's lockfiles on its default branch."
+				},
+				"documentDescribes": [
+					"SPDXRef-Repository-flagon-io-hello"
+				],
+				"packages": [
+					{
+						"SPDXID": "SPDXRef-Repository-flagon-io-hello",
+						"name": "flagon-io/hello",
+						"versionInfo": "4807077b296e6edbf410d55e72749d3e1170c291",
+						"downloadLocation": "git+https://g1t.sh/flagon-io/hello.git",
+						"filesAnalyzed": false,
+						"licenseConcluded": "NOASSERTION",
+						"licenseDeclared": "NOASSERTION",
+						"copyrightText": "NOASSERTION",
+						"primaryPackagePurpose": "SOURCE",
+						"externalRefs": []
+					},
+					{
+						"SPDXID": "SPDXRef-Package-npm-lodash-4.17.20",
+						"name": "lodash",
+						"versionInfo": "4.17.20",
+						"downloadLocation": "NOASSERTION",
+						"filesAnalyzed": false,
+						"licenseConcluded": "NOASSERTION",
+						"licenseDeclared": "MIT",
+						"copyrightText": "NOASSERTION",
+						"primaryPackagePurpose": "LIBRARY",
+						"comment": "Resolved by package-lock.json (direct dependency).",
+						"externalRefs": [
+							{
+								"referenceCategory": "PACKAGE-MANAGER",
+								"referenceType": "purl",
+								"referenceLocator": "pkg:npm/lodash@4.17.20"
+							}
+						]
+					}
+				],
+				"relationships": [
+					{
+						"spdxElementId": "SPDXRef-DOCUMENT",
+						"relationshipType": "DESCRIBES",
+						"relatedSpdxElement": "SPDXRef-Repository-flagon-io-hello"
+					},
+					{
+						"spdxElementId": "SPDXRef-Repository-flagon-io-hello",
+						"relationshipType": "DEPENDS_ON",
+						"relatedSpdxElement": "SPDXRef-Package-npm-lodash-4.17.20"
+					}
+				]
+			}
+		},
+		"notes": "`sbom` is an SPDX 2.3 JSON document, sent as SPDX spells it. Save it with `jq .sbom`."
+	},
+	"compare_dependencies": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello",
+			"basehead": "main...upgrade-deps"
+		},
+		"response": {
+			"base": "main",
+			"head": "upgrade-deps",
+			"changes": [
+				{
+					"change_type": "added",
+					"manifest": "package-lock.json",
+					"ecosystem": "npm",
+					"name": "lodash",
+					"version": "4.17.20",
+					"relationship": "direct",
+					"development": false,
+					"license": "MIT",
+					"purl": "pkg:npm/lodash@4.17.20",
+					"vulnerabilities": [
+						{
+							"advisory": "GHSA-35jh-r3h4-6jhm",
+							"osv_id": "GHSA-35jh-r3h4-6jhm",
+							"summary": "Command Injection in lodash",
+							"severity": "high",
+							"fixed_version": "4.17.21",
+							"url": "https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm"
+						}
+					],
+					"denied_license": false,
+					"failing": true
+				},
+				{
+					"change_type": "removed",
+					"manifest": "package-lock.json",
+					"ecosystem": "npm",
+					"name": "lodash",
+					"version": "4.17.21",
+					"relationship": "direct",
+					"development": false,
+					"license": "MIT",
+					"purl": "pkg:npm/lodash@4.17.21",
+					"vulnerabilities": [],
+					"denied_license": false,
+					"failing": false
+				}
+			],
+			"passed": false,
+			"headline": "Adds 1 vulnerable package",
+			"fail_on": "high",
+			"deny_licenses": []
+		}
+	},
+	"get_security_settings": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"response": {
+			"settings": {
+				"code_scanning_gate": "high",
+				"dependency_review": true,
+				"review_fail_on": "high",
+				"review_deny_licenses": [
+					"AGPL-3.0-only"
+				],
+				"review_comment": true
+			},
+			"workspace": {
+				"delegated_bypass": true,
+				"validity_checks": true
+			},
+			"private": true,
+			"entitled": true,
+			"upkeep": true
+		}
+	},
+	"update_security_settings": {
+		"params": {
+			"owner": "flagon-io",
+			"name": "hello"
+		},
+		"request": {
+			"code_scanning_gate": "high",
+			"review_deny_licenses": [
+				"AGPL-3.0-only"
+			]
+		},
+		"response": {
+			"settings": {
+				"code_scanning_gate": "high",
+				"dependency_review": true,
+				"review_fail_on": "high",
+				"review_deny_licenses": [
+					"AGPL-3.0-only"
+				],
+				"review_comment": true
+			},
+			"workspace": {
+				"delegated_bypass": true,
+				"validity_checks": true
+			},
+			"private": true,
+			"entitled": true,
+			"upkeep": true
+		},
+		"notes": "Only what you send changes. The `Code scanning` and `Dependency review` checks gate merges once you require them in branch protection."
+	},
+	"get_workspace_security_settings": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"response": {
+			"settings": {
+				"delegated_bypass": true,
+				"validity_checks": true
+			},
+			"activated": true
+		}
+	},
+	"update_workspace_security_settings": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"request": {
+			"delegated_bypass": true
+		},
+		"response": {
+			"settings": {
+				"delegated_bypass": true,
+				"validity_checks": true
+			},
+			"activated": true
+		}
+	},
+	"get_security_overview": {
+		"params": {
+			"workspace": "flagon-io"
+		},
+		"query": {
+			"days": "30"
+		},
+		"response": {
+			"activated": true,
+			"private_hidden": 0,
+			"totals": [
+				{
+					"alert_type": "secret_scanning",
+					"open": {
+						"critical": 1,
+						"high": 0,
+						"medium": 0,
+						"low": 0,
+						"unknown": 0
+					},
+					"opened": 2,
+					"closed": 1
+				},
+				{
+					"alert_type": "code_scanning",
+					"open": {
+						"critical": 0,
+						"high": 3,
+						"medium": 4,
+						"low": 0,
+						"unknown": 0
+					},
+					"opened": 7,
+					"closed": 2
+				},
+				{
+					"alert_type": "vulnerability",
+					"open": {
+						"critical": 0,
+						"high": 1,
+						"medium": 2,
+						"low": 1,
+						"unknown": 0
+					},
+					"opened": 3,
+					"closed": 5
+				}
+			],
+			"trend": [
+				{
+					"day": "2026-10-05",
+					"secret_scanning": 1,
+					"code_scanning": 8,
+					"vulnerability": 6
+				},
+				{
+					"day": "2026-10-06",
+					"secret_scanning": 1,
+					"code_scanning": 7,
+					"vulnerability": 4
+				}
+			],
+			"repos": [
+				{
+					"repo_id": "rep_01kp0a1b2c3d4e5f6g7h8j9k0m",
+					"name": "hello",
+					"private": true,
+					"custom_patterns": 1,
+					"validity_checks": true,
+					"code_scanning_at": "2026-10-06T09:14:02.118Z",
+					"dependency_review": true,
+					"security_updates": true,
+					"lockfiles": 1,
+					"secrets": {
+						"critical": 1,
+						"high": 0,
+						"medium": 0,
+						"low": 0,
+						"unknown": 0
+					},
+					"code": {
+						"critical": 0,
+						"high": 3,
+						"medium": 4,
+						"low": 0,
+						"unknown": 0
+					},
+					"vulnerabilities": {
+						"critical": 0,
+						"high": 1,
+						"medium": 2,
+						"low": 1,
+						"unknown": 0
+					}
+				}
+			]
+		}
+	},
+	"create_label": {
+		"request": {
+			"label": "area: cli",
+			"color": "1d76db",
+			"description": "The command-line tool"
+		},
+		"response": {
+			"name": "area: cli",
+			"color": "1d76db",
+			"description": "The command-line tool",
+			"issues": 0,
+			"pulls": 0
+		}
+	},
+	"update_label": {
+		"params": {
+			"label": "area: cli"
+		},
+		"request": {
+			"new_name": "cli",
+			"color": "0052cc"
+		},
+		"response": {
+			"name": "cli",
+			"color": "0052cc",
+			"description": "The command-line tool",
+			"issues": 3,
+			"pulls": 1
+		},
+		"notes": "Renaming a label renames it on every issue and pull request that carries it."
+	},
+	"delete_label": {
+		"params": {
+			"label": "wontfix"
+		},
+		"response": true
+	},
+	"add_default_labels": {
+		"response": [
+			{
+				"name": "bug",
+				"color": "d73a4a",
+				"description": "Something isn't working",
+				"issues": 4,
+				"pulls": 1
+			},
+			{
+				"name": "documentation",
+				"color": "0075ca",
+				"description": "Improvements or additions to documentation",
+				"issues": 0,
+				"pulls": 0
+			}
+		],
+		"notes": "Every label the repository has afterwards, shortened here. Labels it already had are left as they were."
+	},
+	"list_issue_labels": {
+		"response": [
+			{
+				"name": "bug",
+				"color": "d73a4a",
+				"description": "Something isn't working",
+				"issues": 4,
+				"pulls": 1
+			},
+			{
+				"name": "help wanted",
+				"color": "008672",
+				"description": "Extra attention is needed",
+				"issues": 1,
+				"pulls": 0
+			}
+		]
+	},
+	"add_issue_labels": {
+		"request": {
+			"labels": [
+				"help wanted"
+			]
+		},
+		"response": [
+			"bug",
+			"help wanted"
+		],
+		"notes": "Returns its labels now, by name."
+	},
+	"set_issue_labels": {
+		"request": {
+			"labels": [
+				"bug"
+			]
+		},
+		"response": [
+			"bug"
+		]
+	},
+	"remove_issue_labels": {
+		"response": []
+	},
+	"remove_issue_label": {
+		"params": {
+			"label": "help wanted"
+		},
+		"response": [
+			"bug"
+		]
+	},
+	"list_milestones": {
+		"response": [
+			{
+				"number": 3,
+				"title": "Launch",
+				"description": "Everything that has to land before the launch on October 14.",
+				"due_on": "2026-10-14",
+				"state": "open",
+				"open_items": 5,
+				"closed_items": 12,
+				"created_at": "2026-09-20T09:00:00.000Z",
+				"updated_at": "2026-10-06T16:12:40.118Z",
+				"closed_at": null
+			}
+		],
+		"notes": "Open milestones soonest due first, then closed ones. Progress is closed_items out of open_items plus closed_items."
+	},
+	"create_milestone": {
+		"request": {
+			"title": "Launch",
+			"description": "Everything that has to land before the launch on October 14.",
+			"due_on": "2026-10-14"
+		},
+		"response": {
+			"number": 3,
+			"title": "Launch",
+			"description": "Everything that has to land before the launch on October 14.",
+			"due_on": "2026-10-14",
+			"state": "open",
+			"open_items": 0,
+			"closed_items": 0,
+			"created_at": "2026-09-20T09:00:00.000Z",
+			"updated_at": "2026-09-20T09:00:00.000Z",
+			"closed_at": null
+		}
+	},
+	"update_milestone": {
+		"params": {
+			"milestone": 3
+		},
+		"request": {
+			"state": "closed"
+		},
+		"response": {
+			"number": 3,
+			"title": "Launch",
+			"description": "Everything that has to land before the launch on October 14.",
+			"due_on": "2026-10-14",
+			"state": "closed",
+			"open_items": 0,
+			"closed_items": 17,
+			"created_at": "2026-09-20T09:00:00.000Z",
+			"updated_at": "2026-10-14T18:00:00.000Z",
+			"closed_at": "2026-10-14T18:00:00.000Z"
+		}
+	},
+	"delete_milestone": {
+		"params": {
+			"milestone": 3
+		},
+		"response": true
+	},
+	"get_milestone": {
+		"params": {
+			"milestone": 3
+		},
+		"response": {
+			"milestone": {
+				"number": 3,
+				"title": "Launch",
+				"description": "Everything that has to land before the launch on October 14.",
+				"due_on": "2026-10-14",
+				"state": "open",
+				"open_items": 5,
+				"closed_items": 12,
+				"created_at": "2026-09-20T09:00:00.000Z",
+				"updated_at": "2026-10-06T16:12:40.118Z",
+				"closed_at": null
+			},
+			"issues": [
+				{
+					"id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+					"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"number": 12,
+					"title": "Greeting should name the caller",
+					"body": "Take a name from the first argument; fall back to world.",
+					"labels": [
+						"feature",
+						"good first issue"
+					],
+					"state": "open",
+					"reason": null,
+					"resolved_by": null,
+					"author": {
+						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+						"username": "syntaqx",
+						"kind": "user",
+						"verified": false,
+						"workspaces": []
+					},
+					"requested_by": null,
+					"created_at": "2026-10-01T18:04:11.482Z",
+					"updated_at": "2026-10-01T18:09:47.305Z",
+					"closed_at": null,
+					"pull_count": 0,
+					"comment_count": 0,
+					"assignees": [
+						"syntaqx"
+					],
+					"blocked_by": [],
+					"queued": false,
+					"agent": null,
+					"milestone": {
+						"number": 3,
+						"title": "Launch"
+					}
+				}
+			],
+			"pulls": [
+				{
+					"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+					"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+					"number": 14,
+					"issue": 12,
+					"title": "Greeting should name the caller",
+					"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+					"agent": "claude-code",
+					"runtime": "external",
+					"status": "open",
+					"fork": {
+						"namespace": "pulls",
+						"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+					},
+					"fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+					"branch": null,
+					"head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+					"merge_base": null,
+					"merged_by": null,
+					"merged_at": null,
+					"superseded_by": null,
+					"check_status": "passed",
+					"files": [
+						{
+							"path": "src/main.rs",
+							"additions": 6,
+							"deletions": 2
+						}
+					],
+					"assignees": [],
+					"reviewers": [
+						"ana"
+					],
+					"labels": [],
+					"milestone": {
+						"number": 3,
+						"title": "Launch"
+					},
+					"base": "main",
+					"author": {
+						"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+						"username": "syntaqx",
+						"kind": "user",
+						"verified": false,
+						"workspaces": []
+					},
+					"requested_by": null,
+					"created_at": "2026-10-01T18:20:02.117Z",
+					"updated_at": "2026-10-01T18:35:44.902Z",
+					"confidence": null
+				}
+			]
+		}
+	},
+	"update_pull_request": {
+		"request": {
+			"base": "release/1.x",
+			"labels": [
+				"bug"
+			]
+		},
+		"response": {
+			"id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+			"repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+			"number": 14,
+			"issue": 12,
+			"title": "Greeting should name the caller",
+			"body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+			"agent": "claude-code",
+			"runtime": "external",
+			"status": "open",
+			"fork": {
+				"namespace": "pulls",
+				"name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+			},
+			"fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+			"branch": null,
+			"head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+			"merge_base": null,
+			"merged_by": null,
+			"merged_at": null,
+			"superseded_by": null,
+			"check_status": "passed",
+			"files": [
+				{
+					"path": "src/main.rs",
+					"additions": 6,
+					"deletions": 2
+				}
+			],
+			"assignees": [],
+			"reviewers": [
+				"ana"
+			],
+			"labels": [
+				"bug"
+			],
+			"milestone": null,
+			"base": "release/1.x",
+			"author": {
+				"id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+				"username": "syntaqx",
+				"kind": "user",
+				"verified": false,
+				"workspaces": []
+			},
+			"requested_by": null,
+			"created_at": "2026-10-01T18:20:02.117Z",
+			"updated_at": "2026-10-01T18:35:44.902Z",
+			"confidence": null
+		},
+		"notes": "A new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
 	}
 }

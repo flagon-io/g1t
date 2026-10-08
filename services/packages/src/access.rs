@@ -242,7 +242,7 @@ mod tests {
         assert!(may(Some(&owner), linked(PRIVATE_REPO), Action::Delete));
         // A direct grant counts, for someone outside the workspace.
         let mut collaborator = outsider();
-        collaborator.grants = vec![RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Admin }];
+        collaborator.grants = vec![RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Admin, team: None }];
         assert!(may(Some(&collaborator), linked(PRIVATE_REPO), Action::Delete));
         assert!(!may(Some(&outsider()), linked(PRIVATE_REPO), Action::Pull));
     }

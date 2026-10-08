@@ -2,6 +2,7 @@ import type { AccessClient, BasePermission, RepoGrant } from "./access";
 import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
+import type { TeamsClient } from "./teams";
 
 export type User = {
   id: string;
@@ -452,7 +453,7 @@ export type DeletedWorkspace = {
   restorable: boolean;
 };
 
-export interface IdentityApi extends AccessClient {
+export interface IdentityApi extends AccessClient, TeamsClient {
   /**
    * Creates an account and signs it in. While registration is invite-only,
    * `inviteCode` must be an unused, unexpired invite (and, when it names an

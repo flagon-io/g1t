@@ -13,7 +13,7 @@ A webhook belongs to one of two things:
 | | Sent the events of | Managed by | Where |
 | --- | --- | --- | --- |
 | A repository's | That repository | People with the Admin [role](/guides/access-and-roles/) on it | The project's **Settings → Webhooks** |
-| A workspace's | Every repository in the workspace, and the workspace's own [packages](/guides/packages/) | Owners | The workspace's **Settings → Webhooks** |
+| A workspace's | Every repository in the workspace, the workspace's own [packages](/guides/packages/), and its [teams](/guides/teams/) | Owners | The workspace's **Settings → Webhooks** |
 
 Seeing a repository's webhooks, and their deliveries, needs Admin too: the
 page is not shown to anyone else, since a webhook's address and secret are
@@ -73,14 +73,24 @@ With these headers:
 | `repo.default_branch_changed` | Its default branch changed, or the default branch was renamed. |
 | `branch.renamed` | A branch was renamed. |
 | `repo.collaborator_added`, `repo.collaborator_role_changed`, `repo.collaborator_removed` | Someone was given a role on it, had their role changed, or lost it. `data.username`, `data.role`, `data.previous_role`. See [access and roles](/guides/access-and-roles/). |
+| `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. Sent to the workspace's webhooks. `data.workspace`, `data.team` (its slug), `data.team_id`, `data.name`, `data.visibility`, `data.parent`; on `team.edited`, `data.changes`. |
+| `team.member_added`, `team.member_role_changed`, `team.member_removed` | Someone joined or left a team, or became its maintainer or a member. Sent to the workspace's webhooks. `data.username`, `data.role` (`member` or `maintainer`), `data.previous_role`. |
+| `team.repo_added`, `team.repo_role_changed`, `team.repo_removed` | A team was given a role on the repository, had it changed, or lost it. `data.repo`, `data.repo_id`, `data.repo_role`, `data.previous_repo_role`. |
 | `repo.archived`, `repo.unarchived` | It was made read-only, or writable again. |
 | `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored within its 30 days, or removed for good. |
+| `issue.labeled`, `issue.unlabeled`, `pull.labeled`, `pull.unlabeled` | A [label](/guides/labels/) was put on an issue or a pull request, or taken off: one event for each label. `data.number` and `data.label` (`name` and `color`). |
+| `issue.milestoned`, `issue.demilestoned`, `pull.milestoned`, `pull.demilestoned` | An issue or a pull request was put in a [milestone](/guides/milestones/), or taken out of one. `data.milestone` (`number` and `title`). Moving it from one to another is both. |
+| `pull.base_changed` | The branch a pull request merges into changed. `data.base` names it. See [pull requests into other branches](/guides/base-branches/). |
 | `issue.opened`, `issue.updated`, `issue.assigned`, `issue.closed`, `issue.reopened` | An issue changed. `data.number` and `data.author` (`id` and `username`); on close, `data.reason` and `data.resolved_by`; on assignment, `data.assignees` and the newly assigned `data.added`. For an issue g1t's agent filed while at work, `data.author` is g1t and `data.requested_by` is the person it was working for. |
 | `comment.created` | A comment or review on an issue or pull request. |
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue` and `data.author` (`id` and `username`); on merge, `data.commit`. For a change g1t made, `data.author` is g1t and `data.requested_by` is the person who asked for it; `actor` is still whoever caused the event. On a change by g1t, once g1t has worked it out, `data.confidence`: `level` (`high`, `medium` or `low`), `reasons`, `self_reported`, `uncertain_about`, `run_id` and `assessed_at`. See [how sure the agent is](/guides/working-with-g1t/#how-sure-the-agent-is). |
 | `pull.assigned` | People were assigned to a pull request. `data.assignees` is everyone assigned now, `data.added` those newly assigned. |
-| `pull.review_requested`, `pull.review_request_removed` | Reviewers were asked for a pull request, or no longer are. `data.reviewers` names them. |
+| `pull.review_requested`, `pull.review_request_removed` | Reviewers were asked for a pull request, or no longer are. `data.reviewers` names the people. `data.teams` lists the [teams](/guides/teams/#review-requests) asked, or no longer asked, each with `team` (`workspace/team`), `notified` (who in it was told) and `assigned` (who review assignment picked). `data.code_owners` is `true` when its [CODEOWNERS file](/guides/codeowners/) asked them. |
 | `pull.stalled`, `pull.resumed` | g1t stopped seeing a pull request through until a person steps in, with why in `data.detail`; or it picked back up. |
+| `secret_scanning_alert.created`, `.fixed`, `.dismissed`, `.reopened` | A [secret alert](/guides/security/secret-protection/) opened (found in history, or blocked at a push: `data.pusher`), was revoked, dismissed or reopened. `data.alert_id`, `data.title`, `data.path`, `data.line`, `data.severity`, `data.state`, `data.reason`, `data.link`. Never the secret. |
+| `secret_scanning.bypass_requested`, `secret_scanning.bypass_reviewed` | Someone asked to bypass push protection, or the request was approved or denied (`data.state`). `data.request_id`, `data.alert_id`, `data.reason`. |
+| `code_scanning_alert.created`, `.fixed`, `.dismissed`, `.reopened` | A [code scanning alert](/guides/security/code-scanning/) changed. `data.alert_id`, `data.alert_number`, `data.title`, `data.severity`, `data.path`, `data.line`, `data.state`, `data.link`. |
+| `vulnerability_alert.created`, `.fixed`, `.dismissed`, `.reopened` | A [vulnerability alert](/guides/security/supply-chain/) changed. `data.alert_id`, `data.title` (package, version, lockfile and advisory), `data.severity`, `data.state`, `data.link`. |
 | `checks.completed` | A pull request's checks finished: every status on its head has reported and none is still pending, or the merge queue took it out. `data.number`, `data.commit`, and `data.status`, `passed` or `failed`. |
 | `review.completed` | g1t reviewed a pull request. `data.verdict`. |
 | `workflow.completed` | A [workflow](/guides/actions/) run finished. `data.workflow`, `data.conclusion`, `data.run_id`, `data.sha`, `data.pull`. |

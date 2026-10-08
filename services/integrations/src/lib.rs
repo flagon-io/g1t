@@ -379,7 +379,7 @@ impl Integrations {
         let Some(path) = repo_path(repo) else {
             return Ok(false);
         };
-        let seen: Outcome<Vec<String>> = g1t_kit::call(
+        let seen: Outcome<serde_json::Value> = g1t_kit::call(
             &self.work,
             "list_labels",
             &ViewArgs {
@@ -880,6 +880,7 @@ impl Integrations {
                 body,
                 labels: vec![label, provider.name().to_owned()],
                 checks: Vec::new(),
+                milestone: None,
             },
         )
         .await?;
@@ -1049,6 +1050,7 @@ impl Integrations {
                 body,
                 labels: vec![item.provider.name().to_owned()],
                 checks: Vec::new(),
+                milestone: None,
             },
         )
         .await?;

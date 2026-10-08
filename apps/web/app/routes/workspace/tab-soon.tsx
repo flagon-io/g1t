@@ -6,7 +6,7 @@ import { roadmapItem } from "../../lib/roadmap";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { SoonView } from "../repo/soon";
 
-/** The tab is the last part of the address: `-/teams` or `-/insights`. */
+/** The tab is the last part of the address: `-/insights`. */
 const tabOf = (pathname: string) => pathname.replace(/\/+$/, "").split("/").pop() ?? "";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -25,7 +25,7 @@ export function loader({ params, context, request }: Route.LoaderArgs) {
   return { item };
 }
 
-/** A tab of the workspace's page that is coming: Teams, Insights. */
+/** A tab of the workspace's page that is coming: Insights. */
 export default function WorkspaceTabSoon({ loaderData, params }: Route.ComponentProps) {
   return <SoonView item={loaderData.item} base={`/${params.owner}/-`} newProject={`/new?workspace=${params.owner}`} />;
 }

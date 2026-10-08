@@ -30,6 +30,8 @@ struct SettingsRow {
     /// JSON array of names.
     #[serde(default)]
     required_checks: Option<String>,
+    #[serde(default)]
+    require_code_owner_review: u8,
     updated_by: String,
     updated_at: String,
 }
@@ -52,6 +54,7 @@ impl From<SettingsRow> for RepoSettings {
             merge_queue: row.merge_queue != 0,
             // Kept in its own table (confidence.rs), read beside this row.
             hold_low_confidence: true,
+            require_code_owner_review: row.require_code_owner_review != 0,
             updated_by: Some(row.updated_by),
             updated_at: Some(row.updated_at),
         }
@@ -129,9 +132,33 @@ impl Work {
         })
     }
 
+    /// The settings that hold for a pull request: its repository's, which
+    /// protect the default branch, or for one into another branch, those
+    /// without the protection (`RepoSettings::for_base`). A pull request's
+    /// base is stored as none for the default branch.
+    pub(crate) async fn settings_for(&self, pull: &Pull) -> Result<RepoSettings> {
+        let settings = self.settings(&pull.repo_id).await?;
+        Ok(match pull.base.as_deref().filter(|base| !base.is_empty()) {
+            None => settings,
+            Some(base) => settings.for_base(base, ""),
+        })
+    }
+
     /// What is missing before a pull request has the approvals its
-    /// repository asks for, or `None` if nothing is.
+    /// repository asks for, or `None` if nothing is: the number of
+    /// approvals, then its code owners' (codeowners.rs).
     pub(crate) async fn approvals_gap(
+        &self,
+        settings: &RepoSettings,
+        pull: &Pull,
+    ) -> Result<Option<String>> {
+        if let Some(missing) = self.count_gap(settings, pull).await? {
+            return Ok(Some(missing));
+        }
+        self.code_owners_gap(settings, pull).await
+    }
+
+    async fn count_gap(
         &self,
         settings: &RepoSettings,
         pull: &Pull,
@@ -202,8 +229,8 @@ impl Work {
                 "INSERT INTO repo_settings
                    (repo_id, auto_merge, require_up_to_date, required_approvals,
                     count_agent_approvals, allow_ignoring_checks, agent_review, max_revisions,
-                    merge_queue, required_checks, updated_by, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    merge_queue, required_checks, require_code_owner_review, updated_by, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id) DO UPDATE SET
                    auto_merge = excluded.auto_merge,
                    require_up_to_date = excluded.require_up_to_date,
@@ -214,6 +241,7 @@ impl Work {
                    max_revisions = excluded.max_revisions,
                    merge_queue = excluded.merge_queue,
                    required_checks = excluded.required_checks,
+                   require_code_owner_review = excluded.require_code_owner_review,
                    updated_by = excluded.updated_by,
                    updated_at = excluded.updated_at",
             )
@@ -228,6 +256,7 @@ impl Work {
                 settings.max_revisions.into(),
                 u32::from(settings.merge_queue).into(),
                 serde_json::to_string(&settings.required_checks)?.into(),
+                u32::from(settings.require_code_owner_review).into(),
                 settings.updated_by.as_deref().unwrap_or_default().into(),
                 settings.updated_at.as_deref().unwrap_or_default().into(),
             ])?

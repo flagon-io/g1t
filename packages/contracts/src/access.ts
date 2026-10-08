@@ -8,6 +8,7 @@
  */
 import type { Membership, Role, User } from "./identity";
 import type { Result } from "./result";
+import type { RepoTeam } from "./teams";
 
 /** What someone may do in one repository, from least to most. */
 export type RepoRole = "read" | "triage" | "write" | "maintain" | "admin";
@@ -80,7 +81,13 @@ export const CAPABILITIES = [
 export const OWNER_ONLY = ["delete"] as const satisfies readonly Capability[];
 
 /** A person's role on one repository, given directly. */
-export type RepoGrant = { repo_id: string; workspace: string; role: RepoRole };
+export type RepoGrant = {
+  repo_id: string;
+  workspace: string;
+  role: RepoRole;
+  /** The team it comes through, when it is a team's grant. */
+  team?: string;
+};
 
 /** What `permission` needs to know about a repository. */
 export type RepoRef = { id: string; namespace: string; isPrivate: boolean };
@@ -170,7 +177,7 @@ export function sharedWorkspaces(user: User | null | undefined): string[] {
 
 // --- Who has access ----------------------------------------------------------
 
-export type AccessSource = "owner" | "base" | "direct";
+export type AccessSource = "owner" | "base" | "direct" | "team";
 
 export type Collaborator = {
   username: string;
@@ -181,6 +188,9 @@ export type Collaborator = {
   direct: RepoRole | null;
   /** Null for an outside collaborator. */
   workspace_role: Role | null;
+  /** The highest role a team gives them here, and that team's slug. */
+  team_role?: RepoRole | null;
+  team?: string | null;
 };
 
 export type RepoInvitationStatus = "pending" | "accepted" | "declined" | "revoked" | "expired";
@@ -205,6 +215,8 @@ export type RepoAccess = {
   repo: string;
   base_permission: BasePermission;
   people: Collaborator[];
+  /** The workspace's teams given a role on it. */
+  teams?: RepoTeam[];
   invitations: RepoInvitation[];
   viewer_role: RepoRole | null;
   can_manage: boolean;

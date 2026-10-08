@@ -84,7 +84,18 @@ export default defineConfig({
 						{ label: 'RubyGems', slug: 'guides/rubygems' },
 						{ label: 'Go modules', slug: 'guides/go' },
 						{ label: 'Secrets and variables', slug: 'guides/secrets-and-variables' },
+					],
+				},
+				{
+					label: 'Security',
+					items: [
 						{ label: 'Security', slug: 'guides/security' },
+						{ label: 'Dependency updates', slug: 'guides/dependency-updates' },
+						{ label: 'Secret protection', slug: 'guides/security/secret-protection' },
+						{ label: 'Code scanning', slug: 'guides/security/code-scanning' },
+						{ label: 'Supply chain', slug: 'guides/security/supply-chain' },
+						{ label: 'Security overview', slug: 'guides/security/security-overview' },
+						{ label: "What's free and what's paid", slug: 'guides/security/pricing' },
 					],
 				},
 				{
@@ -113,7 +124,11 @@ export default defineConfig({
 					label: 'Landing changes',
 					items: [
 						{ label: 'Pull requests and checks', slug: 'guides/pull-requests' },
+						{ label: 'Pull requests into other branches', slug: 'guides/base-branches' },
+						{ label: 'Labels', slug: 'guides/labels' },
+						{ label: 'Milestones', slug: 'guides/milestones' },
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
+						{ label: 'CODEOWNERS', slug: 'guides/codeowners' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
 						{ label: 'Forks and branches', slug: 'concepts/forks' },
 					],
@@ -125,6 +140,7 @@ export default defineConfig({
 						{ label: 'GitHub', slug: 'guides/github' },
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
 						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
+						{ label: 'Teams', slug: 'guides/teams' },
 						{ label: 'Managing a repository', slug: 'guides/managing-repositories' },
 						{ label: 'Transferring a repository', slug: 'guides/transferring-repositories' },
 						{ label: 'Audit log', slug: 'guides/audit-log' },

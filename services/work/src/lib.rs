@@ -7,14 +7,17 @@
 mod authored;
 mod capture;
 mod checks;
+mod codeowners;
 mod compute;
 mod confidence;
 mod guardrails;
 mod inbox;
+mod labels;
 mod lifecycle;
 mod memory;
 mod mentions;
 mod mergeability;
+mod milestones;
 mod plans;
 mod messages;
 mod prefetch;
@@ -25,6 +28,7 @@ mod rows;
 mod runs;
 mod settings;
 mod statuses;
+mod team_reviews;
 
 use g1t_contracts::events::{
     CommentCreated, Event, IssueEvent, NewEvent, Publish, PullEvent, SessionAppended,
@@ -47,7 +51,7 @@ use worker::{
 };
 
 use retired::writable;
-use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot, ValueRow};
+use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot};
 
 const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
@@ -66,7 +70,9 @@ const ISSUE_COLUMNS: &str = "issues.*,
    ORDER BY pulls.number DESC LIMIT 1) AS agent,
   (SELECT count(*) FROM comments
    WHERE comments.repo_id = issues.repo_id AND comments.number = issues.number
-     AND comments.kind = 'comment') AS comment_count";
+     AND comments.kind = 'comment') AS comment_count,
+  (SELECT title FROM milestones
+   WHERE milestones.repo_id = issues.repo_id AND milestones.number = issues.milestone) AS milestone_title";
 
 fn no_issue<T>() -> Outcome<T> {
     Outcome::fail(FailureCode::NotFound, "Issue not found.")
@@ -113,6 +119,21 @@ fn optional(value: &Option<String>) -> JsValue {
 
 fn optional_number(value: Option<u32>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
+}
+
+/// Names the branch a pull request merges into when it is the default
+/// branch, which is stored as none so that it follows a change of default.
+pub(crate) fn fill_base(pull: &mut Pull, repo: &Repo) {
+    if pull.base.as_deref().is_none_or(str::is_empty) {
+        pull.base = Some(repo.default_branch.clone());
+    }
+}
+
+/// The branch a pull request is stored as merging into: none for the
+/// default branch.
+fn stored_base(base: &str, repo: &Repo) -> Option<String> {
+    let base = base.trim();
+    (!base.is_empty() && base != repo.default_branch).then(|| base.to_owned())
 }
 
 /// The lowercase name a `State` is stored and sent as.
@@ -428,6 +449,7 @@ impl Work {
             body: a.body,
             labels: a.labels,
             checks: a.checks,
+            milestone: None,
         })
         .await
     }
@@ -443,11 +465,21 @@ impl Work {
         let Some(labels) = normalize_labels(&a.labels) else {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                "An issue can have up to 10 labels of up to 40 characters each.",
+                format!("An issue can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
             ));
         };
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
+        // Labels it does not have yet are made for someone who may triage;
+        // anyone else picks from those there are.
+        let colors = check!(self.ensure_labels(&a.actor, &repo, &labels).await?);
+        let milestone = match a.milestone.filter(|number| *number > 0) {
+            Some(number) => {
+                check!(allowed(Some(&a.actor), &repo, Capability::Triage));
+                check!(self.milestone_ref(&repo.id, number).await?)
+            }
+            None => None,
+        };
         // Commands given the old way are words for the agent now: added to
         // the body under "Definition of done". What has to pass to merge is
         // the branch's required checks.
@@ -463,8 +495,8 @@ impl Work {
             .prepare(
                 "INSERT INTO issues
                    (id, repo_id, number, title, body, labels, checks, author_id, author_name,
-                    requested_by_id, requested_by_name, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    requested_by_id, requested_by_name, created_at, updated_at, milestone)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -480,6 +512,7 @@ impl Work {
                 optional(&requested_by.as_ref().map(|user| user.username.clone())),
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
+                optional_number(milestone.as_ref().map(|milestone| milestone.number)),
             ])?
             .run()
             .await?;
@@ -497,6 +530,23 @@ impl Work {
             },
         )
         .await?;
+        // Opened with labels and a milestone: each is said, as it would be
+        // if they were added afterwards, without notes in the conversation.
+        for label in &issue.labels {
+            let color = colors.iter().find(|(name, _)| name == label).map_or_else(|| label_color_for(label), |(_, c)| c.clone());
+            let label = Some(g1t_contracts::events::EventLabel { name: label.clone(), color });
+            self.publish("issue.labeled", &repo.id, &a.actor, IssueEvent { label, ..Self::issue_event(&issue) })
+                .await?;
+        }
+        if let Some(milestone) = milestone {
+            self.publish(
+                "issue.milestoned",
+                &repo.id,
+                &a.actor,
+                IssueEvent { milestone: Some(milestone), ..Self::issue_event(&issue) },
+            )
+            .await?;
+        }
         Ok(Outcome::Ok(issue))
     }
 
@@ -504,8 +554,9 @@ impl Work {
         let state = state_name(a.state);
         let label = a
             .label
-            .map(|label| label.trim().to_lowercase())
+            .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
             .filter(|label| !label.is_empty());
+        let milestone = a.milestone;
         let list = |repo_id: String| {
             let label = label.clone();
             async move {
@@ -517,6 +568,7 @@ impl Work {
                          WHERE repo_id = ? AND (? IS NULL OR state = ?)
                            AND (? IS NULL OR EXISTS
                              (SELECT 1 FROM json_each(issues.labels) WHERE json_each.value = ?))
+                           AND (? IS NULL OR milestone = ?)
                          ORDER BY number DESC LIMIT ?"
                     ))
                     .bind(&[
@@ -525,6 +577,8 @@ impl Work {
                         state,
                         optional(&label),
                         optional(&label),
+                        optional_number(milestone),
+                        optional_number(milestone),
                         LIST_PAGE.into(),
                     ])?;
                 self.timing.db(1, query.all()).await?.results::<IssueRow>()
@@ -591,34 +645,39 @@ impl Work {
             Some(Ok(title)) => Some(title.to_owned()),
             None => None,
         };
-        let labels = match a.labels.as_deref().map(normalize_labels) {
-            Some(None) => {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    "An issue can have up to 10 labels of up to 40 characters each.",
-                ));
-            }
-            Some(Some(labels)) => Some(serde_json::to_string(&labels)?),
-            None => None,
-        };
+        if a.labels.as_deref().is_some_and(|labels| normalize_labels(labels).is_none()) {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                format!("An issue can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
+            ));
+        }
         let assignees = match a.assignees {
             Some(names) => Some(check!(self.valid_assignees(names).await?)),
             None => None,
         };
+        // Its labels and milestone first: either can be refused, and then
+        // nothing else changes.
+        if a.milestone.is_some() || a.labels.is_some() {
+            let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+            if let Some(number) = a.milestone {
+                check!(self.set_milestone(&a.actor, &repo, &labels::Item::Issue(issue.clone()), number).await?);
+            }
+            if let Some(labels) = &a.labels {
+                check!(self.relabel(&a.actor, &repo, &labels::Item::Issue(issue.clone()), labels).await?);
+            }
+        }
         let assigned = assignees.as_ref().map(serde_json::to_string).transpose()?;
         let body = a.body.map(|body| body.trim().to_owned());
         self.db
             .prepare(
                 "UPDATE issues
                  SET title = COALESCE(?, title), body = COALESCE(?, body),
-                     labels = COALESCE(?, labels), assignees = COALESCE(?, assignees),
-                     updated_at = ?
+                     assignees = COALESCE(?, assignees), updated_at = ?
                  WHERE id = ?",
             )
             .bind(&[
                 optional(&title),
                 optional(&body),
-                optional(&labels),
                 optional(&assigned),
                 rfc3339(now_ms()).into(),
                 issue.id.as_str().into(),
@@ -809,28 +868,6 @@ impl Work {
         Ok(Outcome::Ok(issue))
     }
 
-    /// The default labels, then every other label in use on the repository.
-    async fn list_labels(&self, a: ViewArgs) -> Result<Outcome<Vec<String>>> {
-        let read = |repo_id: String| async move {
-            let query = self
-                .db
-                .prepare(
-                    "SELECT DISTINCT json_each.value AS value
-                     FROM issues, json_each(issues.labels)
-                     WHERE issues.repo_id = ? ORDER BY 1 LIMIT 200",
-                )
-                .bind(&[repo_id.into()])?;
-            self.timing.db(1, query.all()).await?.results::<ValueRow>()
-        };
-        let (_, used) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
-        let mut labels: Vec<String> = DEFAULT_LABELS.iter().map(|label| (*label).into()).collect();
-        for row in used {
-            if !labels.contains(&row.value) {
-                labels.push(row.value);
-            }
-        }
-        Ok(Outcome::Ok(labels))
-    }
 
     async fn counts(&self, a: ViewArgs) -> Result<Outcome<Counts>> {
         let read = |repo_id: String| async move {
@@ -882,6 +919,9 @@ impl Work {
         check!(writable(&repo));
         // The number names an issue or a pull request, never both.
         let mut pull_id = None;
+        // A command to g1t on a dependency update it opened (`@g1t rebase`)
+        // is the security service's to act on, not a mention for an agent.
+        let mut update_command = false;
         let table = if self.issue(&repo.id, a.number).await?.is_some() {
             if path.is_some() || a.verdict.is_some() {
                 return Ok(Outcome::fail(
@@ -898,6 +938,8 @@ impl Work {
                 ));
             }
             pull_id = Some(pull.id.clone());
+            update_command = pull.author.is_system()
+                && g1t_contracts::updates::update_command(body).is_some();
             "pulls"
         } else {
             return Ok(Outcome::fail(
@@ -950,7 +992,9 @@ impl Work {
                     ])?,
             ])
             .await?;
-        self.note_mention(&a.actor, &repo, a.number, &comment, pull_id.as_deref()).await?;
+        if !update_command {
+            self.note_mention(&a.actor, &repo, a.number, &comment, pull_id.as_deref()).await?;
+        }
         self.publish(
             "comment.created",
             &repo.id,
@@ -1017,11 +1061,32 @@ impl Work {
             .as_deref()
             .map(str::trim)
             .filter(|branch| !branch.is_empty());
+        // The branch it merges into: the default branch unless another is
+        // asked for, which has to exist.
+        let base = a.base.as_deref().and_then(|base| stored_base(base, &repo));
+        if let Some(base) = &base {
+            if branch == Some(base.as_str()) {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("A pull request cannot merge {base} into itself. Choose another base."),
+                ));
+            }
+            let exists: Option<String> = g1t_kit::call(
+                &self.repos,
+                "head",
+                &HeadArgs { repo_id: repo.id.clone(), branch: base.clone() },
+            )
+            .await?;
+            if exists.is_none() {
+                return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no branch named {base} to merge into.")));
+            }
+        }
+        let base_name = base.clone().unwrap_or_else(|| repo.default_branch.clone());
         // The change is on a branch already pushed to the repository, or
         // will be made in a fork created for this pull request.
         let (fork, head) = match branch {
             Some(branch) => {
-                if branch == repo.default_branch {
+                if branch == base_name {
                     return Ok(Outcome::fail(
                         FailureCode::Invalid,
                         format!("Choose a branch other than {branch}."),
@@ -1042,19 +1107,21 @@ impl Work {
                         format!("There is no branch named {branch}. Push it first."),
                     ));
                 };
+                // One open pull request for each branch and base.
                 let existing = self
                     .db
                     .prepare(
                         "SELECT number AS n FROM pulls
-                         WHERE repo_id = ? AND source_branch = ? AND status IN ('draft', 'open')",
+                         WHERE repo_id = ? AND source_branch = ? AND status IN ('draft', 'open')
+                           AND base_branch IS ?",
                     )
-                    .bind(&[repo.id.as_str().into(), branch.into()])?
+                    .bind(&[repo.id.as_str().into(), branch.into(), optional(&base)])?
                     .first::<NumberRow>(None)
                     .await?;
                 if let Some(existing) = existing {
                     return Ok(Outcome::fail(
                         FailureCode::Conflict,
-                        format!("Pull request #{} is already open for {branch}.", existing.n),
+                        format!("Pull request #{} is already open from {branch} into {base_name}.", existing.n),
                     ));
                 }
                 (None, Some(head))
@@ -1089,8 +1156,9 @@ impl Work {
                 "INSERT INTO pulls
                    (id, repo_id, number, issue_id, issue_number, title, body, agent, runtime,
                     status, fork_repo_id, fork_namespace, fork_name, source_branch, head_commit,
-                    author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at,
+                    base_branch)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1114,12 +1182,14 @@ impl Work {
                 optional(&requested_by.as_ref().map(|user| user.username.clone())),
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
+                optional(&base),
             ])?
             .run()
             .await?;
-        let Some(pull) = self.pull(&repo.id, number).await? else {
+        let Some(mut pull) = self.pull(&repo.id, number).await? else {
             return Ok(no_pull());
         };
+        fill_base(&mut pull, &repo);
         self.manage(&pull).await?;
         // Someone is on it now, so it is no longer waiting for an agent.
         if let Some(issue) = pull.issue {
@@ -1144,10 +1214,14 @@ impl Work {
             &a.actor,
             PullEvent {
                 agent: Some(pull.agent.clone()),
+                base: pull.base.clone(),
                 ..Self::pull_event(&pull)
             },
         )
         .await?;
+        // Its code owners asked to review (codeowners.rs).
+        self.refresh_code_owners(&pull).await;
+        let pull = self.pull(&repo.id, number).await?.unwrap_or(pull);
         Ok(Outcome::Ok(pull))
     }
 
@@ -1157,17 +1231,46 @@ impl Work {
             Some(State::Closed) => "AND status IN ('merged', 'closed')",
             None => "",
         };
-        let read = |repo_id: String| async move {
-            let query = self
-                .db
-                .prepare(format!(
-                    "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? {filter} ORDER BY number DESC LIMIT ?"
-                ))
-                .bind(&[repo_id.into(), LIST_PAGE.into()])?;
-            self.timing.db(1, query.all()).await?.results::<PullRow>()
+        let label = a
+            .label
+            .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
+            .filter(|label| !label.is_empty());
+        let milestone = a.milestone;
+        let read = |repo_id: String| {
+            let label = label.clone();
+            async move {
+                let query = self
+                    .db
+                    .prepare(format!(
+                        "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? {filter}
+                           AND (? IS NULL OR EXISTS
+                             (SELECT 1 FROM json_each(pulls.labels) WHERE json_each.value = ?))
+                           AND (? IS NULL OR milestone = ?)
+                         ORDER BY number DESC LIMIT ?"
+                    ))
+                    .bind(&[
+                        repo_id.into(),
+                        optional(&label),
+                        optional(&label),
+                        optional_number(milestone),
+                        optional_number(milestone),
+                        LIST_PAGE.into(),
+                    ])?;
+                self.timing.db(1, query.all()).await?.results::<PullRow>()
+            }
         };
-        let (_, rows) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
-        Ok(Outcome::Ok(rows.into_iter().map(Pull::from).collect()))
+        let (repo, rows) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
+        let base = a.base.map(|base| base.trim().to_owned()).filter(|base| !base.is_empty());
+        Ok(Outcome::Ok(
+            rows.into_iter()
+                .map(|row| {
+                    let mut pull = Pull::from(row);
+                    fill_base(&mut pull, &repo);
+                    pull
+                })
+                .filter(|pull| base.as_deref().is_none_or(|base| pull.base.as_deref() == Some(base)))
+                .collect(),
+        ))
     }
 
     /// `pulls_for_repos`: what `list_pulls` gives, open and closed, for many
@@ -1242,9 +1345,19 @@ impl Work {
         let comments: Vec<Comment> =
             found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
         self.keep_prefetched(Some(found));
+        let default_branch = repo.default_branch.clone();
         let detail = self.pull_detail(repo, Pull::from(row), issue, comments, stored).await;
         self.keep_prefetched(None);
-        detail
+        // The branch it merges into, named, for whoever reads it.
+        Ok(match detail? {
+            Outcome::Ok(mut detail) => {
+                if detail.pull.base.as_deref().is_none_or(str::is_empty) {
+                    detail.pull.base = Some(default_branch);
+                }
+                Outcome::Ok(detail)
+            }
+            failed => failed,
+        })
     }
 
     async fn pull_detail(
@@ -1315,8 +1428,12 @@ impl Work {
         }
         let (statuses, settings) =
             try_join(self.statuses(&repo.id, pull.head_commit.as_deref()), self.settings(&repo.id)).await?;
+        // The protection of the branch it merges into.
+        let settings = settings.for_base(pull.base_branch(&repo.default_branch), &repo.default_branch);
+        let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
         Ok(Outcome::Ok(PullDetail {
             required_checks: required_checks(&settings.required_checks, &statuses),
+            code_owners,
             comments,
             checks,
             overlaps,
@@ -1391,6 +1508,7 @@ impl Work {
                 branch: pull.branch.clone(),
                 number: pull.number,
                 actor: a.actor,
+                target_branch: pull.base.clone(),
             },
         )
         .await?;
@@ -1410,11 +1528,38 @@ impl Work {
 
     async fn update_pull(&self, a: UpdatePullArgs) -> Result<Outcome<Pull>> {
         let pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
+        // The branch it merges into, its milestone and its labels first:
+        // each can be refused, and then nothing else changes.
+        if a.base.is_some() || a.milestone.is_some() || a.labels.is_some() {
+            let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+            if let Some(base) = &a.base {
+                check!(self.change_base(&a.actor, &repo, &pull, base).await?);
+            }
+            if let Some(number) = a.milestone {
+                check!(self.set_milestone(&a.actor, &repo, &labels::Item::Pull(pull.clone()), number).await?);
+            }
+            if let Some(labels) = &a.labels {
+                check!(self.relabel(&a.actor, &repo, &labels::Item::Pull(pull.clone()), labels).await?);
+            }
+        }
         let assignees = match a.assignees {
             Some(names) => Some(check!(self.valid_assignees(names).await?)),
             None => None,
         };
-        let reviewers = match a.reviewers {
+        // Teams, named `workspace/team`, apart from the people.
+        let (team_names, a_reviewers) = match a.reviewers {
+            Some(names) => {
+                let (teams, people): (Vec<String>, Vec<String>) =
+                    names.into_iter().partition(|name| team_reviews::team_name(name).is_some());
+                (Some(teams), Some(people))
+            }
+            None => (None, None),
+        };
+        let teams = match team_names {
+            Some(names) => Some(check!(self.valid_team_reviewers(&a.actor, &a.repo, &pull, names).await?)),
+            None => None,
+        };
+        let reviewers = match a_reviewers {
             Some(names) => {
                 // g1t is not an account; everyone else has to be.
                 let agent = names
@@ -1437,13 +1582,11 @@ impl Work {
         self.db
             .prepare(
                 "UPDATE pulls
-                 SET assignees = COALESCE(?, assignees), reviewers = COALESCE(?, reviewers),
-                     updated_at = ?
+                 SET assignees = COALESCE(?, assignees), updated_at = ?
                  WHERE id = ?",
             )
             .bind(&[
                 optional(&assignees.as_ref().map(serde_json::to_string).transpose()?),
-                optional(&reviewers.as_ref().map(serde_json::to_string).transpose()?),
                 rfc3339(now_ms()).into(),
                 pull.id.as_str().into(),
             ])?
@@ -1457,20 +1600,6 @@ impl Work {
                 &pull.assignees,
                 assignees,
                 ("assigned", "unassigned"),
-            )
-            .await?;
-        }
-        if let Some(reviewers) = &reviewers {
-            self.note_changes(
-                &pull.repo_id,
-                pull.number,
-                &a.actor,
-                &pull.reviewers,
-                reviewers,
-                (
-                    "requested a review from",
-                    "withdrew the request for a review from",
-                ),
             )
             .await?;
         }
@@ -1495,29 +1624,91 @@ impl Work {
                 .await?;
             }
         }
-        if let Some(reviewers) = &reviewers {
-            for (kind, names) in [
-                ("pull.review_requested", newly(reviewers, &pull.reviewers)),
-                ("pull.review_request_removed", newly(&pull.reviewers, reviewers)),
-            ] {
-                if !names.is_empty() {
-                    self.publish(
-                        kind,
-                        &pull.repo_id,
-                        &a.actor,
-                        PullEvent {
-                            reviewers: Some(names),
-                            ..Self::pull_event(&pull)
-                        },
-                    )
-                    .await?;
-                }
-            }
+        if reviewers.is_some() || teams.is_some() {
+            let people = reviewers.unwrap_or_else(|| pull.reviewers.clone());
+            let teams = teams.unwrap_or_else(|| pull.team_reviewers.clone());
+            self.set_reviewers(&pull, people, teams, Some(&a.actor), false).await?;
         }
         Ok(match self.pull(&pull.repo_id, pull.number).await? {
             Some(pull) => Outcome::Ok(pull),
             None => no_pull(),
         })
+    }
+
+    /// Points an open pull request at another branch to merge into. Needs
+    /// the Write role. What it would merge, whether it is behind, its
+    /// mergeability and its checks are all worked out against the new base.
+    async fn change_base(&self, actor: &User, repo: &Repo, pull: &Pull, base: &str) -> Result<Outcome<()>> {
+        check!(allowed(Some(actor), repo, Capability::Push));
+        let base = base.trim();
+        if base.is_empty() {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Name the branch it should merge into."));
+        }
+        let before = pull.base_branch(&repo.default_branch).to_owned();
+        if base == before {
+            return Ok(Outcome::Ok(()));
+        }
+        if pull.fork_repo_id.is_none() && pull.branch.as_deref() == Some(base) {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                format!("A pull request cannot merge {base} into itself. Choose another base."),
+            ));
+        }
+        let exists: Option<String> = g1t_kit::call(
+            &self.repos,
+            "head",
+            &HeadArgs { repo_id: repo.id.clone(), branch: base.to_owned() },
+        )
+        .await?;
+        if exists.is_none() {
+            return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no branch named {base} to merge into.")));
+        }
+        // In the merge queue it was headed for the default branch; it
+        // leaves the queue for another base.
+        let left_queue = self
+            .leave(&pull.repo_id, pull, QueueState::Removed, Some("Its base branch changed."))
+            .await?;
+        let stored = stored_base(base, repo);
+        self.db
+            .prepare(
+                "UPDATE pulls
+                 SET base_branch = ?, updated_at = ?, land_requested = NULL, land_requested_at = NULL, behind = NULL,
+                     mergeable = NULL, mergeable_key = NULL, conflicts = NULL
+                 WHERE id = ?",
+            )
+            .bind(&[optional(&stored), rfc3339(now_ms()).into(), pull.id.as_str().into()])?
+            .run()
+            .await?;
+        self.note(
+            &pull.repo_id,
+            pull.number,
+            (&actor.id, &actor.username),
+            &format!("changed the base branch from `{before}` to `{base}`"),
+        )
+        .await?;
+        self.publish(
+            "pull.base_changed",
+            &pull.repo_id,
+            actor,
+            PullEvent { base: Some(base.to_owned()), ..Self::pull_event(pull) },
+        )
+        .await?;
+        if left_queue {
+            self.publish_as(
+                "queue.changed",
+                &pull.repo_id,
+                None,
+                g1t_contracts::events::QueueChanged { repo_id: pull.repo_id.clone() },
+            )
+            .await?;
+        }
+        // Whether it merges cleanly into the new base.
+        if let Some(moved) = self.pull_by_id(&pull.id).await?
+            && let Err(error) = self.assess_mergeability(&moved).await
+        {
+            worker::console_warn!("mergeability of {}: {error}", pull.id);
+        }
+        Ok(Outcome::Ok(()))
     }
 
     /// Marks a draft ready for review, or updates the description of one
@@ -1565,6 +1756,12 @@ impl Work {
         pull.status = PullStatus::Open;
         pull.body = summary.or(pull.body);
         pull.updated_at = now;
+        // A draft's code owners are asked once it is ready.
+        self.refresh_code_owners(&pull).await;
+        if let Some(fresh) = self.pull(&pull.repo_id, pull.number).await? {
+            pull.reviewers = fresh.reviewers;
+            pull.team_reviewers = fresh.team_reviewers;
+        }
         Ok(Outcome::Ok(pull))
     }
 
@@ -1633,7 +1830,10 @@ impl Work {
                 ));
             }
         }
-        let settings = self.settings(&repo.id).await?;
+        let base = pull.base_branch(&repo.default_branch).to_owned();
+        // The protection of the branch it merges into: the default branch's
+        // settings, or none for another branch (RepoSettings::for_base).
+        let settings = self.settings(&repo.id).await?.for_base(&base, &repo.default_branch);
         // The default branch's protection: its required checks must pass on
         // the head, for a person's pull request and an agent's alike. Where
         // the repository does not allow bypassing them, asking to bypass
@@ -1672,8 +1872,7 @@ impl Work {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
                 format!(
-                    "This branch has conflicts with {}{named} that must be resolved first. Have g1t resolve them, or merge {0} into it, fix them and push.",
-                    repo.default_branch
+                    "This branch has conflicts with {base}{named} that must be resolved first. Have g1t resolve them, or merge {base} into it, fix them and push."
                 ),
             ));
         }
@@ -1696,8 +1895,7 @@ impl Work {
                 return Ok(Outcome::fail(
                     FailureCode::Conflict,
                     format!(
-                        "{} has moved since this pull request was made, and this repository requires pull requests to be up to date before they merge. Catch up with {0} first.",
-                        repo.default_branch
+                        "{base} has moved since this pull request was made, and this repository requires pull requests to be up to date before they merge. Catch up with {base} first."
                     ),
                 ));
             }
@@ -1719,6 +1917,7 @@ impl Work {
                 source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
                 branch: pull.branch.clone(),
                 actor: a.actor.clone(),
+                target_branch: Some(base.clone()),
             },
         )
         .await?;
@@ -1739,6 +1938,9 @@ impl Work {
         keep_issue_open: bool,
         landed: Landed,
     ) -> Result<Pull> {
+        // Only a merge into the default branch resolves the issue: into
+        // another branch, the work has not landed yet.
+        let keep_issue_open = keep_issue_open || !pull.targets_default(&repo.default_branch);
         let issue = match pull.issue {
             Some(number) if !keep_issue_open => self
                 .issue(&repo.id, number)
@@ -2028,6 +2230,27 @@ impl Work {
     /// A push moves the head of the pull request it concerns: the one whose
     /// fork was pushed to, or the one opened from the branch that moved.
     async fn on_event(&self, event: &Event) -> Result<()> {
+        // A new repository starts with the default labels.
+        if event.kind == "repo.created"
+            && let Some(repo_id) = event.repo_id.as_deref()
+        {
+            return self.seed_labels(repo_id).await;
+        }
+        // Pull requests into the branch that became the default merge into
+        // the default branch, which is stored as none.
+        if event.kind == "repo.default_branch_changed"
+            && let (Some(repo_id), Some(to)) = (event.repo_id.as_deref(), event.data["to"].as_str())
+        {
+            self.db
+                .prepare(
+                    "UPDATE pulls SET base_branch = NULL
+                     WHERE repo_id = ? AND base_branch = ? AND status IN ('draft', 'open')",
+                )
+                .bind(&[repo_id.into(), to.into()])?
+                .run()
+                .await?;
+            return Ok(());
+        }
         if event.kind != "git.push" {
             return Ok(());
         }
@@ -2086,8 +2309,10 @@ impl Work {
         }
         // What each now changes, so overlaps show while the work is under way.
         for moved in &pulls {
-            if let Some(pull) = self.pull_by_id(&moved.id).await? {
-                self.refresh_files(&pull).await?;
+            if let Some(mut pull) = self.pull_by_id(&moved.id).await? {
+                pull.files = self.refresh_files(&pull).await?;
+                // Owners of files it now changes are asked too.
+                self.refresh_code_owners(&pull).await;
             }
         }
         // A merge that was waiting for this push to bring it up to date.
@@ -2097,8 +2322,14 @@ impl Work {
         // Whether each still merges cleanly, and, when a default branch
         // moved, every open pull request into it.
         let moved_ids: Vec<String> = pulls.iter().map(|pull| pull.id.clone()).collect();
-        self.after_push(repo_id, event.data["defaultBranch"].as_bool() == Some(true), &moved_ids)
-            .await;
+        let into = match event.data["defaultBranch"].as_bool() {
+            Some(true) => mergeability::Moved::DefaultBranch,
+            _ => match git_ref.strip_prefix("refs/heads/") {
+                Some(branch) => mergeability::Moved::Branch(branch),
+                None => mergeability::Moved::Nothing,
+            },
+        };
+        self.after_push(repo_id, into, &moved_ids).await;
         // A draft is announced when it is marked ready instead.
         for pull in pulls
             .into_iter()
@@ -2161,6 +2392,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "close_issue" => reply(&work.close_issue(args(body)?).await?),
         "reopen_issue" => reply(&work.reopen_issue(args(body)?).await?),
         "list_labels" => reply(&work.list_labels(args(body)?).await?),
+        "save_label" => reply(&work.save_label(args(body)?).await?),
+        "delete_label" => reply(&work.delete_label(args(body)?).await?),
+        "add_default_labels" => reply(&work.add_default_labels(args(body)?).await?),
+        "set_labels" => reply(&work.set_labels(args(body)?).await?),
+        "list_milestones" => reply(&work.list_milestones(args(body)?).await?),
+        "get_milestone" => reply(&work.get_milestone(args(body)?).await?),
+        "save_milestone" => reply(&work.save_milestone(args(body)?).await?),
+        "delete_milestone" => reply(&work.delete_milestone(args(body)?).await?),
         "counts" => reply(&work.counts(args(body)?).await?),
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
@@ -2183,6 +2422,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "wake_for_messages" => reply(&work.wake_for_messages(args(body)?).await?),
         "catch_up_job" => reply(&work.catch_up_job(args(body)?).await?),
         "get_settings" => reply(&work.get_settings(args(body)?).await?),
+        "codeowners_errors" => reply(&work.codeowners_errors(args(body)?).await?),
         "update_settings" => reply(&work.update_settings(args(body)?).await?),
         "report_review" => reply(&work.report_review(args(body)?).await?),
         "open_pull" => reply(&work.open_pull(args(body)?).await?),

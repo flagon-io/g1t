@@ -21,8 +21,8 @@ use serde_json::{Map, Value};
 /// they appear: workflow `inputs` and `on.workflow_dispatch.inputs`
 /// (`dispatch`), `env`, `secrets`, `variables` and `vars` by name, a job's
 /// `matrix`, `needs` and `outputs`, an action's `with`, guardrail `rules`
-/// and `minutes` by id and kind of run, HTTP `headers`, `metadata`, and
-/// `labels` by name.
+/// and `minutes` by id and kind of run, HTTP `headers`, `metadata`,
+/// `labels` by name, and an `sbom`, which is a standard's own document.
 pub const USER_KEYED: &[&str] = &[
     "inputs",
     "dispatch",
@@ -39,6 +39,8 @@ pub const USER_KEYED: &[&str] = &[
     "headers",
     "metadata",
     "labels",
+    // An SBOM, sent as SPDX spells it.
+    "sbom",
 ];
 
 /// Whether a key is a `camelCase` identifier with something to convert.

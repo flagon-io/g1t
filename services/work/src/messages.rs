@@ -452,6 +452,7 @@ impl Work {
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(None);
         };
+        let base = pull.base_branch(&repo.default_branch).to_owned();
         let path = g1t_contracts::repos::RepoPath {
             namespace: repo.namespace,
             name: repo.name,
@@ -480,7 +481,7 @@ impl Work {
                 number: pull.number,
                 author: pull.requested_by.unwrap_or(pull.author),
                 branch: pull.branch,
-                default_branch: repo.default_branch,
+                default_branch: base,
                 title: pull.title,
                 description: pull.body.unwrap_or_default(),
                 issue,

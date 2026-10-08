@@ -4,7 +4,7 @@
 
 use g1t_contracts::{PrincipalKind, User};
 use g1t_contracts::repos::{Commit, Repo};
-use g1t_contracts::work::{Comment, Issue, Pull, PullStatus, State};
+use g1t_contracts::work::{Comment, Issue, MilestoneRef, Pull, PullStatus, State};
 use serde_json::{Value, json};
 
 use crate::{API, SITE};
@@ -44,6 +44,11 @@ fn person(user: &User) -> Value {
 
 fn labels(names: &[String]) -> Value {
     Value::Array(names.iter().map(|name| json!({ "name": name })).collect())
+}
+
+/// A milestone as an issue or a pull request names it.
+fn milestone(milestone: Option<&MilestoneRef>) -> Value {
+    milestone.map_or(Value::Null, |milestone| json!({ "number": milestone.number, "title": milestone.title }))
 }
 
 pub fn commit(repo: &Repo, commit: &Commit) -> Value {
@@ -89,6 +94,7 @@ pub fn issue(repo: &Repo, issue: &Issue) -> Value {
         "state": if issue.state == State::Open { "open" } else { "closed" },
         "state_reason": issue.reason,
         "labels": labels(&issue.labels),
+        "milestone": milestone(issue.milestone.as_ref()),
         "user": person(&issue.author),
         // g1t's own field: for an issue its agent filed, who it worked for.
         "requested_by": issue.requested_by.as_ref().map(person),
@@ -102,10 +108,11 @@ pub fn issue(repo: &Repo, issue: &Issue) -> Value {
     })
 }
 
-/// A pull request. `labels` are its issue's, since g1t labels issues.
-pub fn pull(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
+/// A pull request, with its own labels.
+pub fn pull(repo: &Repo, pull: &Pull) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     let head_ref = head_ref(pull);
+    let base_ref = pull.base_branch(&repo.default_branch);
     let head_repo = match &pull.fork {
         Some(fork) => json!({ "full_name": format!("{}/{}", fork.namespace, fork.name), "fork": true }),
         None => json!({ "full_name": full_name, "fork": false }),
@@ -121,7 +128,8 @@ pub fn pull(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
         "merged_at": pull.merged_at,
         "merged_by": pull.merged_by.as_deref().map(user),
         "merge_commit_sha": if pull.status == PullStatus::Merged { pull.head_commit.clone() } else { None },
-        "labels": labels(labels_of),
+        "labels": labels(&pull.labels),
+        "milestone": milestone(pull.milestone.as_ref()),
         "user": person(&pull.author),
         // g1t's own field: for a change g1t made, who asked for it.
         "requested_by": pull.requested_by.as_ref().map(person),
@@ -134,15 +142,28 @@ pub fn pull(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
             "repo": head_repo,
         },
         "base": {
-            "ref": repo.default_branch,
+            "ref": base_ref,
             "sha": pull.merge_base,
-            "label": format!("{}:{}", repo.namespace, repo.default_branch),
+            "label": format!("{}:{base_ref}", repo.namespace),
             "repo": repository(repo),
         },
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
         "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
         "issue_url": pull.issue.map(|n| format!("{API}/repos/{full_name}/issues/{n}")),
     })
+}
+
+/// What a `labeled`, `unlabeled`, `milestoned`, `demilestoned` or base
+/// change was about, from the g1t event: `label`, `milestone`, and for a
+/// new base, `changes.base.ref.from` is not known, so only the new base is
+/// in `pull_request.base`.
+pub fn changed(payload: &mut Value, data: &Value) {
+    if let Some(label) = data.get("label").filter(|label| label.is_object()) {
+        payload["label"] = json!({ "name": label["name"], "color": label["color"] });
+    }
+    if let Some(milestone) = data.get("milestone").filter(|milestone| milestone.is_object()) {
+        payload["milestone"] = json!({ "number": milestone["number"], "title": milestone["title"] });
+    }
 }
 
 /// The branch a pull request comes from, or a name for its fork.
@@ -167,7 +188,7 @@ pub fn comment(repo: &Repo, number: u32, comment: &Comment, on_pull: bool) -> Va
 
 /// An issue as `issue_comment` gives it for a pull request: the pull
 /// request's number and title, with `pull_request` set.
-pub fn pull_as_issue(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
+pub fn pull_as_issue(repo: &Repo, pull: &Pull) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     json!({
         "id": pull.id,
@@ -175,7 +196,8 @@ pub fn pull_as_issue(repo: &Repo, pull: &Pull, labels_of: &[String]) -> Value {
         "title": pull.title,
         "body": pull.body,
         "state": if pull.status.is_active() { "open" } else { "closed" },
-        "labels": labels(labels_of),
+        "labels": labels(&pull.labels),
+        "milestone": milestone(pull.milestone.as_ref()),
         "user": person(&pull.author),
         "requested_by": pull.requested_by.as_ref().map(person),
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),

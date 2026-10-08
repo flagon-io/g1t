@@ -17,14 +17,42 @@
 //!   required checks. Only when code has to change is g1t put on an
 //!   issue for it.
 //!
+//! - The security suite (`g1t_contracts::security_suite`): custom secret
+//!   patterns (`patterns`), push protection bypasses, their review and
+//!   validity checks (`secret_alerts`), code scanning from SARIF uploads
+//!   and its pull request check (`code_scanning`), the dependency graph,
+//!   its SBOM and dependency review (`supply_chain`), "Fix with g1t"
+//!   (`fixes`), and settings with the workspace's overview (`overview`).
+//!   On private repositories its paid parts need the workspace's Security
+//!   and quality activation (`suite`); it tells people through events.
+//!
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::security`.
 
+mod code_scanning;
+mod config;
 mod deps;
+mod fixes;
 mod history;
+mod manifests;
+mod overview;
+mod patterns;
+mod planning;
+mod pull_text;
+mod ranges;
+mod registries;
+mod schedule;
+mod secret_alerts;
 mod security_updates;
 mod store;
+mod suite;
+mod suite_store;
+mod supply_chain;
+mod timezones;
+mod update_store;
 mod updates;
+mod version_updates;
+mod yaml;
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::{Event, WorkspaceRenamed};
@@ -57,6 +85,11 @@ pub struct Security {
     work: Fetcher,
     runner: Fetcher,
     billing: Fetcher,
+    actions: Fetcher,
+    /// The events service: security events for webhooks and the inbox,
+    /// and audit entries. Optional so a deployment without the binding
+    /// still scans.
+    events: Option<Fetcher>,
 }
 
 fn fail<T>(code: FailureCode, message: impl Into<String>) -> Outcome<T> {
@@ -112,6 +145,8 @@ impl Security {
             work: env.service("WORK")?,
             runner: env.service("RUNNER")?,
             billing: env.service("BILLING")?,
+            actions: env.service("ACTIONS")?,
+            events: env.service("EVENTS").ok(),
         })
     }
 
@@ -144,7 +179,9 @@ impl Security {
                 access::needs(capability, &format!("{}/{}", repo.namespace, repo.name)),
             ));
         }
-        Ok(Outcome::Ok(self.store.register(&repo.id, &repo.namespace, &repo.name).await?))
+        let row = self.store.register(&repo.id, &repo.namespace, &repo.name).await?;
+        self.store.set_private(&repo.id, repo.is_private).await?;
+        Ok(Outcome::Ok(row))
     }
 
     /// Whether the repository is neither archived nor deleted. When repos
@@ -195,7 +232,7 @@ impl Security {
             activity: self.store.activity(&repo.repo_id, ACTIVITY_SHOWN).await?,
             scan: repo.scan_state(),
             upkeep: repo.upkeep != 0,
-            version_updates: repo.version_updates(),
+            version_updates: self.version_updates_view(&repo).await?,
         }))
     }
 
@@ -239,7 +276,18 @@ impl Security {
                     number: None,
                 }])
                 .await?;
-            return Ok(Outcome::Ok(AlertChange { secret: self.store.secret(&repo.repo_id, &a.id).await?, vulnerability: None }));
+            let secret = self.store.secret(&repo.repo_id, &a.id).await?;
+            if let Some(secret) = &secret {
+                // Revoked is fixed; any other reason, dismissed.
+                let action = if a.reason == DismissReason::Revoked { "fixed" } else { "dismissed" };
+                let event = g1t_contracts::security_suite::SecurityEvent {
+                    reason: Some(a.reason.as_str().to_owned()),
+                    ..secret_alerts::secret_event(&repo, secret)
+                };
+                self.alert_event(g1t_contracts::security_suite::AlertType::SecretScanning, action, &repo, event, Some(a.actor.id.clone()))
+                    .await;
+            }
+            return Ok(Outcome::Ok(AlertChange { secret, vulnerability: None }));
         }
         let Some(vuln) = self.store.vulnerability(&repo.repo_id, &a.id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such alert."));
@@ -266,7 +314,12 @@ impl Security {
                 number: None,
             }])
             .await?;
-        Ok(Outcome::Ok(AlertChange { secret: None, vulnerability: self.store.vulnerability(&repo.repo_id, &a.id).await? }))
+        let vulnerability = self.store.vulnerability(&repo.repo_id, &a.id).await?;
+        if let Some(vuln) = &vulnerability {
+            let event = g1t_contracts::security_suite::SecurityEvent { reason: Some(a.reason.as_str().to_owned()), ..deps::vulnerability_event(&repo, vuln) };
+            self.alert_event(g1t_contracts::security_suite::AlertType::Vulnerability, "dismissed", &repo, event, Some(a.actor.id.clone())).await;
+        }
+        Ok(Outcome::Ok(AlertChange { secret: None, vulnerability }))
     }
 
     async fn reopen(&self, a: ReopenArgs) -> Result<Outcome<AlertChange>> {
@@ -286,7 +339,18 @@ impl Security {
             let status = if finding.source == "push" && finding.test_value.is_none() { SecretStatus::Blocked } else { SecretStatus::Open };
             self.store.reopen_secret(&repo.repo_id, &a.id, status).await?;
             self.store.record(&repo.repo_id, &[reopened]).await?;
-            return Ok(Outcome::Ok(AlertChange { secret: self.store.secret(&repo.repo_id, &a.id).await?, vulnerability: None }));
+            let secret = self.store.secret(&repo.repo_id, &a.id).await?;
+            if let Some(secret) = &secret {
+                self.alert_event(
+                    g1t_contracts::security_suite::AlertType::SecretScanning,
+                    "reopened",
+                    &repo,
+                    secret_alerts::secret_event(&repo, secret),
+                    Some(a.actor.id.clone()),
+                )
+                .await;
+            }
+            return Ok(Outcome::Ok(AlertChange { secret, vulnerability: None }));
         }
         let Some(vuln) = self.store.vulnerability(&repo.repo_id, &a.id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such alert."));
@@ -296,7 +360,18 @@ impl Security {
         }
         self.store.reopen_vulnerability(&repo.repo_id, &a.id).await?;
         self.store.record(&repo.repo_id, &[reopened]).await?;
-        Ok(Outcome::Ok(AlertChange { secret: None, vulnerability: self.store.vulnerability(&repo.repo_id, &a.id).await? }))
+        let vulnerability = self.store.vulnerability(&repo.repo_id, &a.id).await?;
+        if let Some(vuln) = &vulnerability {
+            self.alert_event(
+                g1t_contracts::security_suite::AlertType::Vulnerability,
+                "reopened",
+                &repo,
+                deps::vulnerability_event(&repo, vuln),
+                Some(a.actor.id.clone()),
+            )
+            .await;
+        }
+        Ok(Outcome::Ok(AlertChange { secret: None, vulnerability }))
     }
 
     async fn rescan(&self, a: RescanArgs) -> Result<Outcome<ScanState>> {
@@ -358,10 +433,18 @@ impl Security {
     /// Push protection's question: which of these secrets were allowed?
     /// The others are recorded as blocked, so someone can allow them.
     async fn push_blocked(&self, a: PushBlockedArgs) -> Result<PushVerdict> {
-        self.store.register(&a.repo_id, &a.path.namespace, &a.path.name).await?;
+        let repo = self.store.register(&a.repo_id, &a.path.namespace, &a.path.name).await?;
+        if let Some(private) = a.private {
+            self.store.set_private(&a.repo_id, private).await?;
+        }
         let fingerprints: Vec<String> = a.secrets.iter().map(|secret| secret.fingerprint.clone()).collect();
         let known = self.store.known(&a.repo_id, &fingerprints).await?;
-        let allowed = let_through(&known, &a.secrets);
+        let mut allowed = let_through(&known, &a.secrets);
+        // Bypassed with a reason: let through, whatever the alert says now.
+        allowed.extend(self.store.bypassed(&a.repo_id, &fingerprints).await?);
+        allowed.sort();
+        allowed.dedup();
+        let all = a.secrets.clone();
         let fresh: Vec<NewSecret> = a
             .secrets
             .into_iter()
@@ -375,6 +458,8 @@ impl Security {
         self.store
             .add_secrets(&a.repo_id, &tests, SecretStatus::Open, "push", a.pusher.as_deref())
             .await?;
+        let fresh: Vec<String> = real.iter().map(|secret| secret.fingerprint.clone()).collect();
+        self.secrets_found(&repo, &all, "push", &fresh, a.pusher.as_deref()).await?;
         let ids = self
             .store
             .known(&a.repo_id, &fingerprints)
@@ -405,6 +490,14 @@ impl Security {
                         .await?;
                     self.advance_push_scan(&id, history::PUSH_PAGES_AT_ONCE).await?;
                 }
+                // A version update's branch, or a grouped security update's,
+                // pushed by its sandbox: time for its pull request.
+                if !pushed.default_branch
+                    && let Some(branch) = pushed.git_ref.strip_prefix("refs/heads/")
+                    && self.update_pull_pushed(&pushed.repo_id, branch, &pushed.after).await?
+                {
+                    return Ok(());
+                }
                 // A security update's branch, pushed by its sandbox: time for
                 // its pull request.
                 if let Some(branch) = pushed.git_ref.strip_prefix("refs/heads/")
@@ -424,7 +517,9 @@ impl Security {
                 }
             }
             "pull.merged" | "pull.closed" | "checks.completed" => {
-                if let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone()) {
+                if let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone())
+                    && !(event.kind != "checks.completed" && self.update_pull_closed(&event.kind, &happened.repo_id, happened.number).await?)
+                {
                     self.update_pull_event(
                         &event.kind,
                         &happened.repo_id,
@@ -435,9 +530,28 @@ impl Security {
                     .await?;
                 }
             }
+            "comment.created" => self.update_comment(event).await?,
+            // A pull request opened or its head moved: a dependency update
+            // file it changes is checked (not on `pull.ready`, which moves
+            // nothing), and dependency review runs.
+            "pull.opened" | "pull.updated" | "pull.ready" => {
+                if event.kind != "pull.ready" {
+                    self.check_dependabot_file(event).await?;
+                }
+                if let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone()) {
+                    self.review_pull(&happened.repo_id, happened.number).await?;
+                }
+            }
             "repo.created" => {
                 if let Ok(created) = serde_json::from_value::<Created>(event.data.clone()) {
                     self.register_by_id(&created.repo_id).await?;
+                }
+            }
+            "repo.visibility_changed" => {
+                if let Ok(changed) = serde_json::from_value::<g1t_contracts::events::RepoVisibilityChanged>(event.data.clone())
+                    && self.store.repo(&changed.repo_id).await?.is_some()
+                {
+                    self.store.set_private(&changed.repo_id, changed.is_private).await?;
                 }
             }
             // A repository transferred or renamed: it is recorded under its new path.
@@ -463,6 +577,7 @@ impl Security {
             // A repository purged: everything found in it goes.
             "repo.purged" => {
                 if let Some(g1t_kit::lifecycle::Lifecycle::Purged(purged)) = g1t_kit::lifecycle::read(event) {
+                    self.store.purge_suite(&purged.repo_id).await?;
                     self.store.purge(&purged.repo_id).await?;
                 }
             }
@@ -487,6 +602,9 @@ impl Security {
         }
         if let Err(error) = self.stalled_updates().await {
             worker::console_error!("security: stalled security updates not handled: {error}");
+        }
+        if let Err(error) = self.sweep_suite().await {
+            worker::console_error!("security: daily snapshots and validity checks: {error}");
         }
         // Archived and deleted repositories wait; a few more are looked at
         // so that they do not hold up the rest.
@@ -549,6 +667,34 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_upkeep" => reply(&security.set_upkeep(args(body)?).await?),
         "workspace" => reply(&security.workspace(args(body)?).await?),
         "push_blocked" => reply(&security.push_blocked(args(body)?).await?),
+        "check_updates" => reply(&security.check_updates(args(body)?).await?),
+        // The security suite.
+        "patterns_for" => reply(&security.patterns_for(args(body)?).await?),
+        "custom_patterns" => reply(&security.custom_patterns(args(body)?).await?),
+        "save_custom_pattern" => reply(&security.save_custom_pattern(args(body)?).await?),
+        "delete_custom_pattern" => reply(&security.delete_custom_pattern(args(body)?).await?),
+        "dry_run_pattern" => reply(&security.dry_run_pattern(args(body)?).await?),
+        "secret_alert" => reply(&security.secret_alert(args(body)?).await?),
+        "bypass" => reply(&security.bypass(args(body)?).await?),
+        "bypass_requests" => reply(&security.bypass_requests(args(body)?).await?),
+        "review_bypass" => reply(&security.review_bypass(args(body)?).await?),
+        "check_validity" => reply(&security.check_validity(args(body)?).await?),
+        "upload_sarif" => reply(&security.upload_sarif(args(body)?).await?),
+        "sarif_status" => reply(&security.sarif_status(args(body)?).await?),
+        "code_scanning" => reply(&security.code_scanning(args(body)?).await?),
+        "code_alert" => reply(&security.code_alert(args(body)?).await?),
+        "set_code_alert_state" => reply(&security.set_code_alert_state(args(body)?).await?),
+        "pull_code_scanning" => reply(&security.pull_code_scanning(args(body)?).await?),
+        "fix_alert" => reply(&security.fix_alert(args(body)?).await?),
+        "dependency_graph" => reply(&security.dependency_graph(args(body)?).await?),
+        "sbom" => reply(&security.sbom(args(body)?).await?),
+        "dependency_review" => reply(&security.dependency_review(args(body)?).await?),
+        "security_settings" => reply(&security.security_settings(args(body)?).await?),
+        "set_security_settings" => reply(&security.set_security_settings(args(body)?).await?),
+        "workspace_security_settings" => reply(&security.workspace_security_settings(args(body)?).await?),
+        "set_workspace_security_settings" => reply(&security.set_workspace_security_settings(args(body)?).await?),
+        "security_overview" => reply(&security.security_overview(args(body)?).await?),
+        "workspace_alerts" => reply(&security.workspace_alerts(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -567,9 +713,18 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     Ok(())
 }
 
+/// The cron (wrangler.jsonc) that runs version updates that are due.
+const VERSION_UPDATES_CRON: &str = "*/5 * * * *";
+
 #[event(scheduled)]
-async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     match Security::new(&env) {
+        // Version updates run every few minutes, so a schedule's time is kept.
+        Ok(security) if event.cron() == VERSION_UPDATES_CRON => {
+            if let Err(error) = security.version_update_sweep().await {
+                worker::console_error!("security: the version update sweep failed: {error}");
+            }
+        }
         Ok(security) => {
             if let Err(error) = security.sweep().await {
                 worker::console_error!("security: the sweep failed: {error}");
@@ -592,6 +747,8 @@ mod tests {
             commit: "c".into(),
             preview: "AKIA…".into(),
             test_value: test_value.map(str::to_owned),
+            pattern_id: None,
+            pattern_name: None,
         }
     }
 

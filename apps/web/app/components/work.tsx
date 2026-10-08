@@ -4,6 +4,7 @@ import { Form, Link } from "react-router";
 
 import type { Comment, Issue, Pull, State } from "@g1t/contracts";
 
+import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
 import { IssueIcon, PullIcon } from "./work-icons";
@@ -29,9 +30,14 @@ function hueFor(name: string): number {
   return hash;
 }
 
-export function Label({ name }: { name: string }) {
+/**
+ * A label's chip: in its own color when the page knows it (the
+ * repository's labels, by name), else in a hue chosen from its name.
+ */
+export function Label({ name, color }: { name: string; color?: string | null }) {
   const hue = LABEL_HUES[name] ?? hueFor(name);
-  const style: CSSProperties = {
+  const own = chipStyle(color);
+  const style: CSSProperties = Object.keys(own).length > 0 ? own : {
     color: `oklch(0.84 0.11 ${hue})`,
     borderColor: `oklch(0.84 0.11 ${hue} / 0.35)`,
     backgroundColor: `oklch(0.84 0.11 ${hue} / 0.1)`,
@@ -378,12 +384,15 @@ export function CommentForm({
   author,
   resetKey,
   review,
+  handles,
 }: {
   /** The viewer's username, or null if they are signed out. */
   author: string | null;
   /** Changes when a comment is added, which clears the box. */
   resetKey: number;
   review?: Review;
+  /** Teams the box offers to mention, as `@workspace/team`. */
+  handles?: readonly string[];
 }) {
   if (!author) {
     return (
@@ -404,6 +413,7 @@ export function CommentForm({
         <input type="hidden" name="action" value="comment" />
         <MentionTextarea
           name="body"
+          handles={handles}
           rows={3}
           placeholder={
             review?.canJudge
@@ -449,10 +459,12 @@ export function PeoplePicker({
   name,
   members,
   chosen,
+  placeholder = "Other usernames, comma separated",
 }: {
   name: string;
   members: string[];
   chosen: string[];
+  placeholder?: string;
 }) {
   const people = [...new Set([...members, ...chosen])];
   return (
@@ -479,7 +491,7 @@ export function PeoplePicker({
       )}
       <input
         name="others"
-        placeholder="Other usernames, comma separated"
+        placeholder={placeholder}
         autoComplete="off"
         data-1p-ignore
         className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none placeholder:text-faint hover:border-line-strong focus:border-accent-dim"

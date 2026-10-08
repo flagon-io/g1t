@@ -18,6 +18,8 @@ export type Tab = {
   about?: string;
   /** Members only. */
   members?: boolean;
+  /** Current on its own path only, not on the paths under it. */
+  exact?: boolean;
   /** Only for viewers whose role has this capability, once it is known. */
   needs?: Capability;
 };
@@ -67,7 +69,16 @@ export const SECTIONS: Section[] = [
   { key: "Observability", tabs: soon("Observability") },
   {
     key: "Security",
-    tabs: [{ label: "Overview", path: "security", members: true, needs: "push" }, ...soon("Security")],
+    tabs: [
+      { label: "Overview", path: "security", members: true, needs: "push", exact: true },
+      { label: "Secret scanning", path: "security/secret-scanning", members: true, needs: "push" },
+      { label: "Code scanning", path: "security/code-scanning", members: true, needs: "push", also: ["security/pulls"] },
+      { label: "Vulnerabilities", path: "security/vulnerabilities", members: true, needs: "push" },
+      { label: "Dependency graph", path: "security/dependency-graph", members: true, needs: "push" },
+      { label: "Dependency updates", path: "security/dependency-updates", members: true, needs: "push" },
+      { label: "Settings", path: "security/settings", members: true, needs: "push" },
+      ...soon("Security"),
+    ],
   },
   { key: "Insights", tabs: soon("Insights") },
 ];

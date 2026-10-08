@@ -495,7 +495,11 @@ impl Work {
             body: row.body,
             intent: Intent::parse(&row.intent),
             member: row.member != 0,
-            default_branch: repo.default_branch.clone(),
+            // On a pull request, the branch it merges into.
+            default_branch: pull
+                .as_ref()
+                .map_or(repo.default_branch.as_str(), |pull| pull.base_branch(&repo.default_branch))
+                .to_owned(),
             issue_open,
             working_pull,
             pull: pull.map(|pull| MentionPull {
@@ -566,6 +570,7 @@ impl Work {
         let (Outcome::Ok(repo), Some(source)) = (crate::retired::unless_archived(repo), pull.fork.clone()) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
+        let base = pull.base_branch(&repo.default_branch).to_owned();
         // A person asking outranks a stop and the limit on revisions.
         let was_stalled = self.is_stalled(&pull.id).await?;
         self.db
@@ -610,7 +615,7 @@ impl Work {
             author: pull.requested_by.unwrap_or(pull.author),
             source,
             branch: None,
-            default_branch: repo.default_branch,
+            default_branch: base,
             title: pull.title,
             description: pull.body.unwrap_or_default(),
             issue,

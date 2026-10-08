@@ -24,7 +24,11 @@
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "RUNNER", "service": "g1t-runner" },
-		{ "binding": "BILLING", "service": "g1t-billing" }
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		// The secrets a dependency update file's private registries name.
+		{ "binding": "ACTIONS", "service": "g1t-actions" },
+		// Security events (webhooks, the inbox) and audit entries.
+		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
 	// Pushes to a default branch (dependencies are read again), pushes too
 	// large to scan first (scanned after they land), security updates'
@@ -35,8 +39,9 @@
 		"consumers": [{ "queue": "g1t-events-security", "max_batch_size": 10, "max_batch_timeout": 5 }]
 	},
 	// Continues history scans a page at a time, and reads every
-	// repository's dependencies again once a day.
-	"triggers": { "crons": ["*/30 * * * *"] },
+	// repository's dependencies again once a day (every 30 minutes); runs
+	// version updates that are due and looks at their pull requests (every 5).
+	"triggers": { "crons": ["*/30 * * * *", "*/5 * * * *"] },
 	"vars": {
 		"SITE_URL": "https://g1t.sh"
 	},

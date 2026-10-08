@@ -11,7 +11,6 @@ import {
   CircleDot,
   CircleSlash,
   ExternalLink,
-  FileWarning,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -38,7 +37,6 @@ import {
   type SecurityUpdate,
   type Severity,
   type SeverityCounts,
-  type VersionUpdatesState,
   type Vulnerability,
   dismissLabel,
 } from "@g1t/contracts";
@@ -69,8 +67,6 @@ const SEVERITY: Record<Severity, { label: string; tone: BadgeTone }> = {
   unknown: { label: "Unrated", tone: "neutral" },
 };
 
-/** Where the docs explain `.g1t/dependencies.yml`. */
-export const VERSION_UPDATES_DOCS = "https://docs.g1t.sh/guides/security/#version-updates";
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
   return <Badge tone={SEVERITY[severity].tone}>{SEVERITY[severity].label}</Badge>;
@@ -157,7 +153,7 @@ const SMALL_BUTTON =
   "rounded-md border border-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-line-strong hover:text-fg disabled:opacity-50";
 
 /** Dismiss an alert with one of `reasons` and an optional comment. */
-function DismissDialog({
+export function DismissDialog({
   id,
   title,
   detail,
@@ -232,7 +228,7 @@ function DismissDialog({
   );
 }
 
-function ReopenButton({ id, action }: { id: string; action: string }) {
+export function ReopenButton({ id, action }: { id: string; action: string }) {
   const fetcher = useFetcher<Done>();
   return (
     <span className="flex flex-col items-end gap-1">
@@ -346,11 +342,20 @@ function SecretItem({
       <KeyRound size={15} className="mt-0.5 hidden shrink-0 text-muted sm:block" />
       <div className="min-w-0 grow">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium first-letter:uppercase">{finding.label}</span>
+          <Link to={`${base}/security/secret-scanning/${finding.id}`} className="text-sm font-medium first-letter:uppercase hover:underline">
+            {finding.label}
+          </Link>
           <Badge tone={badge.tone} title={badge.about}>
             {badge.label}
           </Badge>
           {finding.testValue && <Badge title={finding.testValue}>Likely test value</Badge>}
+          {finding.validity === "active" && (
+            <Badge tone="danger" title="Its issuer says it still works">
+              Active
+            </Badge>
+          )}
+          {finding.validity === "inactive" && <Badge title="Its issuer refused it: revoked or expired">Inactive</Badge>}
+          {finding.bypass && <Badge tone="warn" title={`Bypassed by ${finding.bypass.by}`}>Bypassed</Badge>}
           {finding.state === "dismissed" && finding.dismissedReason && <Badge>{dismissLabel(finding.dismissedReason)}</Badge>}
         </div>
         <p className="mt-1 truncate font-mono text-xs">
@@ -832,119 +837,6 @@ export function ScanSummary({
           {scan.dependenciesError}
         </span>
       )}
-    </div>
-  );
-}
-
-function list(values: string[]): string {
-  return values.length > 0 ? values.join(", ") : "—";
-}
-
-/** What `.g1t/dependencies.yml` asks for, and that acting on it is still to come. */
-export function VersionUpdatesCard({ state }: { state: VersionUpdatesState }) {
-  const rows = state.updates.map((entry) => ({
-    key: `${entry.ecosystem}:${entry.directory}`,
-    ecosystem: entry.ecosystem,
-    directory: entry.directory,
-    interval: entry.interval,
-    groups: list(entry.groups.map((group) => `${group.name} (${group.patterns.join(", ")})`)),
-    ignore: list(entry.ignore.map((rule) => (rule.versions.length > 0 ? `${rule.dependency} ${rule.versions.join(", ")}` : rule.dependency))),
-    limit: String(entry.openPullRequestsLimit),
-  }));
-  return (
-    <div className="rounded-xl border border-line bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">Version updates</span>
-        <Badge tone="merged">Coming soon</Badge>
-      </div>
-      <p className="mt-1 text-sm text-muted">
-        Ask for pull requests that raise your dependencies to new versions on a schedule, in{" "}
-        <code className="text-fg-soft">.g1t/dependencies.yml</code>. g1t reads and checks this file now; pull requests for new
-        versions are coming.
-      </p>
-      <p className="mt-3 flex items-center gap-1.5 text-xs text-muted">
-        {state.error ? (
-          <>
-            <FileWarning size={13} className="shrink-0 text-danger" />
-            <span className="text-danger wrap-anywhere">.g1t/dependencies.yml has a problem: {state.error}</span>
-          </>
-        ) : state.found ? (
-          <>
-            <CircleCheck size={13} className="shrink-0 text-accent" />
-            <span>
-              Read .g1t/dependencies.yml
-              {state.readAt && (
-                <>
-                  {" "}
-                  <TimeAgo at={state.readAt} />
-                </>
-              )}
-              : {rows.length} {rows.length === 1 ? "entry" : "entries"}
-            </span>
-          </>
-        ) : (
-          <>
-            <CircleDot size={13} className="shrink-0 text-faint" />
-            <span>No .g1t/dependencies.yml on the default branch.</span>
-          </>
-        )}
-      </p>
-      {rows.length > 0 && (
-        <>
-          <table className="mt-3 hidden w-full text-left text-xs sm:table">
-            <thead className="text-faint">
-              <tr className="border-b border-line">
-                <th className="py-1.5 pr-3 font-medium">Ecosystem</th>
-                <th className="py-1.5 pr-3 font-medium">Directory</th>
-                <th className="py-1.5 pr-3 font-medium">Interval</th>
-                <th className="py-1.5 pr-3 font-medium">Groups</th>
-                <th className="py-1.5 pr-3 font-medium">Ignored</th>
-                <th className="py-1.5 text-right font-medium">Limit</th>
-              </tr>
-            </thead>
-            <tbody className="text-muted">
-              {rows.map((row) => (
-                <tr key={row.key} className="border-b border-line/60 align-top last:border-0">
-                  <td className="py-1.5 pr-3 font-mono text-fg-soft">{row.ecosystem}</td>
-                  <td className="py-1.5 pr-3 font-mono">{row.directory}</td>
-                  <td className="py-1.5 pr-3">{row.interval}</td>
-                  <td className="py-1.5 pr-3 font-mono wrap-anywhere">{row.groups}</td>
-                  <td className="py-1.5 pr-3 font-mono wrap-anywhere">{row.ignore}</td>
-                  <td className="py-1.5 text-right tabular-nums">{row.limit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <ul className="mt-3 space-y-2 sm:hidden">
-            {rows.map((row) => (
-              <li key={row.key} className="rounded-lg border border-line px-3 py-2 text-xs">
-                <p className="font-mono text-fg-soft">
-                  {row.ecosystem} <span className="text-muted">{row.directory}</span>
-                </p>
-                <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-muted">
-                  <dt className="text-faint">Interval</dt>
-                  <dd>{row.interval}</dd>
-                  <dt className="text-faint">Groups</dt>
-                  <dd className="font-mono wrap-anywhere">{row.groups}</dd>
-                  <dt className="text-faint">Ignored</dt>
-                  <dd className="font-mono wrap-anywhere">{row.ignore}</dd>
-                  <dt className="text-faint">Limit</dt>
-                  <dd className="tabular-nums">{row.limit}</dd>
-                </dl>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <a
-        href={VERSION_UPDATES_DOCS}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 inline-flex items-center gap-1 text-xs text-fg-soft hover:text-fg hover:underline"
-      >
-        How to write .g1t/dependencies.yml
-        <ExternalLink size={10} />
-      </a>
     </div>
   );
 }

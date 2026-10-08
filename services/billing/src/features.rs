@@ -117,6 +117,29 @@ pub(crate) fn per_units(each: f64, units: f64) -> String {
     dollars((each * units).round() as i64)
 }
 
+/// The price book's meter for the Security and quality activation.
+pub(crate) const SECURITY_METER: &str = "security_activation";
+/// Its price when the price book cannot be read: $10 a month.
+const SECURITY_FALLBACK_MICROS: f64 = 10_000_000.0;
+
+/// The Security and quality activation at the price book's price.
+pub(crate) fn security_plan_at(book: &std::collections::BTreeMap<&str, f64>) -> Plan {
+    let micros = book.get(SECURITY_METER).copied().unwrap_or(SECURITY_FALLBACK_MICROS);
+    Plan {
+        feature: Feature::Security,
+        title: Feature::Security.title().to_owned(),
+        monthly_cents: (micros / 10_000.0).round().max(0.0) as u32,
+        includes: vec![
+            "For every private repository in the workspace; public repositories have it free".to_owned(),
+            "Custom secret patterns, validity checks with issuers, and delegated push protection bypass".to_owned(),
+            "Code scanning from SARIF, with pull request checks that can block merges".to_owned(),
+            "Dependency review on pull requests, and the workspace's security overview".to_owned(),
+            "Everyone in the workspace at one price, never per person".to_owned(),
+        ],
+        overage: "Fixes by g1t's agent are charged as agent usage, like any other agent run. Secret scanning, push protection, vulnerability alerts and security updates stay free.".to_owned(),
+    }
+}
+
 impl SubscriptionRow {
     fn subscription(&self) -> Option<Subscription> {
         Some(Subscription {
@@ -132,8 +155,14 @@ impl SubscriptionRow {
 impl Billing {
     /// What the g1t plan costs and includes, as it is sold now, at the
     /// price book's prices (the same figures as the pricing page's table).
-    pub(crate) async fn plan(&self, _feature: Feature) -> Result<Plan> {
+    pub(crate) async fn plan(&self, feature: Feature) -> Result<Plan> {
         let mut book = std::collections::BTreeMap::new();
+        if feature == Feature::Security {
+            if let Some((_, price)) = self.price(SECURITY_METER).await? {
+                book.insert(SECURITY_METER, price);
+            }
+            return Ok(security_plan_at(&book));
+        }
         for meter in ["build_second", "app_requests", "app_cpu", "custom_domain_month", "private_storage", "git_operations"] {
             if let Some((_, price)) = self.price(meter).await? {
                 book.insert(meter, price);
@@ -266,8 +295,19 @@ impl Billing {
     }
 
     /// The plan as a workspace sees it. A Deployments subscription from
-    /// before the plan shows as the plan until its period ends.
-    async fn state(&self, workspace: &str, _feature: Feature) -> Result<FeatureState> {
+    /// before the plan shows as the plan until its period ends. The
+    /// Security and quality activation is its own subscription.
+    async fn state(&self, workspace: &str, feature: Feature) -> Result<FeatureState> {
+        if feature == Feature::Security {
+            let subscription = self.current(workspace, Feature::Security).await?.and_then(|row| row.subscription());
+            let included = self.security_included(workspace).await?;
+            return Ok(FeatureState {
+                plan: self.plan(Feature::Security).await?,
+                on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
+                subscription,
+                included,
+            });
+        }
         let subscription = match self.current(workspace, Feature::Plan).await?.and_then(|row| row.subscription()) {
             Some(plan) if plan.status.on() => Some(plan),
             plan => self
@@ -293,6 +333,15 @@ impl Billing {
         Ok(account.terms.kind == g1t_contracts::billing::TermsKind::Comped
             || account.kind == g1t_contracts::billing::AccountKind::Enterprise
             || account.allowances.plan)
+    }
+
+    /// Whether the Security and quality activation is on without its
+    /// price: comped terms, or an enterprise's workspace. Giving the plan
+    /// as an allowance does not give the activation.
+    async fn security_included(&self, workspace: &str) -> Result<bool> {
+        let account = self.account_of(workspace).await?;
+        Ok(account.terms.kind == g1t_contracts::billing::TermsKind::Comped
+            || account.kind == g1t_contracts::billing::AccountKind::Enterprise)
     }
 
     /// Sets every Deployments subscription from before the plan to end
@@ -360,7 +409,9 @@ impl Billing {
         if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
             return Ok(members_only());
         }
-        Ok(Outcome::Ok(vec![self.state(&workspace, Feature::Plan).await?]))
+        let plan = self.state(&workspace, Feature::Plan).await?;
+        let security = self.state(&workspace, Feature::Security).await?;
+        Ok(Outcome::Ok(vec![plan, security]))
     }
 
     pub(crate) async fn subscribe(&self, a: SubscribeArgs) -> Result<Outcome<Checkout>> {
@@ -378,16 +429,18 @@ impl Billing {
             ));
         };
         // Deployments come with the plan: asking for them starts the plan.
-        let feature = Feature::Plan;
+        // The Security and quality activation is its own subscription.
+        let feature = if a.feature == Feature::Security { Feature::Security } else { Feature::Plan };
+        let name = if feature == Feature::Security { "The Security and quality activation" } else { "The g1t plan" };
         let state = self.state(&workspace, feature).await?;
         if state.included {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                format!("The g1t plan is included for {workspace} already, at no charge."),
+                format!("{name} is included for {workspace} already, at no charge."),
             ));
         }
-        if self.plan_on(&workspace, Feature::Plan).await? {
-            return Ok(Outcome::fail(FailureCode::Conflict, format!("The g1t plan is already on for {workspace}.")));
+        if self.plan_on(&workspace, feature).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{name} is already on for {workspace}.")));
         }
         let plan = self.plan(feature).await?;
         let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
@@ -402,8 +455,13 @@ impl Billing {
                 Ok(subscription) if matches!(subscription.status.as_str(), "active" | "trialing") => {
                     self.record(&workspace, feature, &subscription, &a.actor.username).await?;
                     let account = self.account_of(&workspace).await?;
-                    self.audit(&account.id, "plan", &format!("{workspace}: the g1t plan started on the checked card"), &a.actor.username)
-                        .await?;
+                    self.audit(
+                        &account.id,
+                        "plan",
+                        &format!("{workspace}: {} started on the checked card", name.to_lowercase()),
+                        &a.actor.username,
+                    )
+                    .await?;
                     let separator = if a.return_url.contains('?') { '&' } else { '?' };
                     return Ok(Outcome::Ok(Checkout { url: format!("{}{separator}plan=started", a.return_url) }));
                 }
@@ -529,31 +587,52 @@ impl Billing {
                 "Only an owner can change the workspace's plan.",
             ));
         }
-        // The plan, or a Deployments subscription from before it.
-        let row = match self.current(&workspace, Feature::Plan).await? {
-            Some(row) if status_from(&row.status) != SubscriptionStatus::Canceled => Some((Feature::Plan, row)),
-            _ => self.current(&workspace, Feature::Deployments).await?.map(|row| (Feature::Deployments, row)),
+        // The activation; or the plan, or a Deployments subscription from
+        // before it.
+        let row = if a.feature == Feature::Security {
+            self.current(&workspace, Feature::Security).await?.map(|row| (Feature::Security, row))
+        } else {
+            match self.current(&workspace, Feature::Plan).await? {
+                Some(row) if status_from(&row.status) != SubscriptionStatus::Canceled => Some((Feature::Plan, row)),
+                _ => self.current(&workspace, Feature::Deployments).await?.map(|row| (Feature::Deployments, row)),
+            }
         };
         let (Some(stripe), Some((feature, row))) = (&self.stripe, row) else {
-            return Ok(Outcome::fail(FailureCode::NotFound, format!("The g1t plan is not on for {workspace}.")));
+            let name = if a.feature == Feature::Security { "The Security and quality activation" } else { "The g1t plan" };
+            return Ok(Outcome::fail(FailureCode::NotFound, format!("{name} is not on for {workspace}.")));
         };
         let subscription = stripe
             .cancel_at_period_end(&row.subscription_id, !a.resume)
             .await?;
         self.record(&workspace, feature, &subscription, &row.started_by)
             .await?;
-        Ok(Outcome::Ok(self.state(&workspace, Feature::Plan).await?))
+        let shown = if feature == Feature::Security { Feature::Security } else { Feature::Plan };
+        Ok(Outcome::Ok(self.state(&workspace, shown).await?))
     }
 
-    /// Whether the workspace has the plan, which deployments come with.
+    /// Whether the workspace has the plan, which deployments come with, or
+    /// the Security and quality activation.
     pub(crate) async fn has_feature(&self, a: HasFeatureArgs) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
+        if a.feature == Feature::Security {
+            let state = self.state(&workspace, Feature::Security).await?;
+            if state.on {
+                return Ok(Outcome::Ok(true));
+            }
+            return Ok(Outcome::fail(
+                FailureCode::PaymentRequired,
+                format!(
+                    "This needs the Security and quality activation ({} a month for the workspace), and {workspace} does not have it. An owner can turn it on at /{workspace}/-/billing.",
+                    dollars(i64::from(state.plan.monthly_cents) * 10_000)
+                ),
+            ));
+        }
         if self.has_plan(&workspace).await? {
             return Ok(Outcome::Ok(true));
         }
         let what = match a.feature {
             Feature::Deployments => "Deployments come with the g1t plan",
-            Feature::Plan => "This needs the g1t plan",
+            Feature::Plan | Feature::Security => "This needs the g1t plan",
         };
         Ok(Outcome::fail(
             FailureCode::PaymentRequired,
@@ -704,5 +783,22 @@ mod tests {
         assert_eq!(dollars(24_000), "$0.024");
         assert_eq!(dollars(360_000), "$0.36");
         assert_eq!(dollars(5_000_000), "$5.00");
+    }
+}
+
+#[cfg(test)]
+mod security_activation {
+    use super::*;
+
+    #[test]
+    fn the_activation_is_priced_from_the_price_book() {
+        let book = std::collections::BTreeMap::from([(SECURITY_METER, 12_000_000.0)]);
+        let plan = security_plan_at(&book);
+        assert_eq!((plan.feature, plan.monthly_cents), (Feature::Security, 1200));
+        assert_eq!(plan.title, "Security and quality");
+        // The price book unreadable: $10, as the migration seeds it.
+        assert_eq!(security_plan_at(&std::collections::BTreeMap::new()).monthly_cents, 1000);
+        assert!(plan.includes.iter().any(|line| line.contains("public repositories have it free")));
+        assert!(plan.overage.contains("agent usage"));
     }
 }

@@ -1,5 +1,5 @@
 import { BookOpen, Check, ChevronDown, Code2, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
 import type { Blame, BlobView as Blob, Branch, Commit, LastCommits, TreeView as Tree } from "@g1t/contracts";
@@ -403,9 +403,15 @@ export function BlobView({
   html,
   blame,
   branches = null,
+  notice,
+  marked,
 }: {
   /** For the branch menu; it shows the current branch alone without them. */
   branches?: Branch[] | null;
+  /** Said above the file, such as what is wrong with it. */
+  notice?: ReactNode;
+  /** Lines to mark as having a problem, 1-based. */
+  marked?: readonly number[];
   blob: Blob;
   /** Syntax-highlighted HTML per line, when the language is known. */
   html: string[] | null;
@@ -436,6 +442,7 @@ export function BlobView({
         />
         <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />
       </div>
+      {notice}
       <div className="overflow-hidden rounded-xl border border-line">
         <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs text-muted">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
@@ -450,7 +457,7 @@ export function BlobView({
         {blame && lines ? (
           <BlameView base={base} path={path} lines={lines} html={blame.lines} blame={blame.blame} />
         ) : lines ? (
-          <CodeLines lines={lines} html={html} />
+          <CodeLines lines={lines} html={html} marked={marked} />
         ) : (
           <p className="p-6 text-sm text-muted">
             This file is binary or too large to show.

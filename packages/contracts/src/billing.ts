@@ -725,11 +725,12 @@ export type Trial = {
 };
 
 /**
- * What a workspace pays a monthly price for: the g1t plan (`plan`). Deployments
- * are part of it; `has_feature` for `deployments` answers whether the workspace
- * has the plan. Mirrors `Feature` in `crates/contracts/src/billing.rs`.
+ * What a workspace pays a monthly price for: the g1t plan (`plan`), and the
+ * Security and quality activation (`security`), sold on its own. Deployments
+ * are part of the plan; `has_feature` for `deployments` answers whether the
+ * workspace has the plan. Mirrors `Feature` in `crates/contracts/src/billing.rs`.
  */
-export type Feature = "plan" | "deployments";
+export type Feature = "plan" | "deployments" | "security";
 
 /**
  * What deployments cost g1t, in millionths of a dollar: fallbacks for when

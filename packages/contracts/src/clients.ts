@@ -8,7 +8,8 @@ import type { IntegrationsApi } from "./integrations";
 import type { PackagesApi } from "./packages";
 import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
-import type { WorkApi } from "./work";
+import type { PullDetail, WorkApi } from "./work";
+import type { Result } from "./result";
 import type { RunnersApi } from "./runners";
 
 /** A service binding, as far as these clients need it. */
@@ -157,6 +158,26 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("revoke_repo_invitation", { actor, path: { namespace: owner, name }, id }),
     setBasePermission: (actor, slug, base) => call("set_base_permission", { actor, slug, base_permission: base }),
     outsideCollaborators: (viewer, slug) => call("outside_collaborators", { viewer, slug }),
+    // Teams; see teams.ts.
+    listTeams: (viewer, workspace, query) => call("list_teams", { viewer, workspace, query: query ?? null }),
+    getTeam: (viewer, workspace, team) => call("get_team", { viewer, workspace, team }),
+    createTeam: (actor, workspace, team) => call("create_team", { actor, workspace, ...team }),
+    updateTeam: (actor, workspace, team, changes) => call("update_team", { actor, workspace, team, ...changes }),
+    deleteTeam: (actor, workspace, team) => call("delete_team", { actor, workspace, team }),
+    teamMembers: (viewer, workspace, team, includeChildTeams) =>
+      call("team_members", { viewer, workspace, team, include_child_teams: includeChildTeams ?? false }),
+    setTeamMember: (actor, workspace, team, username, role) =>
+      call("set_team_member", { actor, workspace, team, username, role }),
+    removeTeamMember: (actor, workspace, team, username) =>
+      call("remove_team_member", { actor, workspace, team, username }),
+    childTeams: (viewer, workspace, team) => call("child_teams", { viewer, workspace, team }),
+    teamRepos: (viewer, workspace, team) => call("team_repos", { viewer, workspace, team }),
+    setTeamRepo: (actor, workspace, team, owner, name, role) =>
+      call("set_team_repo", { actor, workspace, team, repo: { namespace: owner, name }, role }),
+    removeTeamRepo: (actor, workspace, team, owner, name) =>
+      call("remove_team_repo", { actor, workspace, team, repo: { namespace: owner, name } }),
+    userTeams: (viewer, workspace, username) => call("user_teams", { viewer, workspace, username }),
+    teamMemberships: (viewer, workspace) => call("team_memberships", { viewer, workspace }),
   };
 }
 
@@ -294,11 +315,41 @@ export function reposClient(service: ServiceBinding): ReposApi {
     rawBlobs: (repoId, hashes, maxBytes) => call("raw_blobs", { repoId, hashes, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
-    compare: (repoId, viewer, base, head) => call("compare", { repoId, viewer, base, head }),
+    compare: (repoId, viewer, base, head, baseBranch) => call("compare", { repoId, viewer, base, head, baseBranch }),
     claimBackups: (limit, maxRunning) => call("claim_backups", { limit, maxRunning }),
     // The sandbox's own calls are snake_case (they come through the API).
     failBackup: (jobId, token, error) => call("backup_fail", { job_id: jobId, token, error }),
   };
+}
+
+/**
+ * `PullDetail`'s own fields that the work service writes in snake_case:
+ * `g1t_contracts::work::PullDetail` has no camelCase renaming, though what
+ * it holds (`Pull`, `CheckRun` and the rest) does. Each with its name here.
+ */
+const PULL_DETAIL_FIELDS = [
+  ["review_pending", "reviewPending"],
+  ["earlier_checks", "earlierChecks"],
+  ["required_checks", "requiredChecks"],
+  ["code_owners", "codeOwners"],
+] as const;
+
+/**
+ * A pull request's detail as the work service sent it, with its own fields
+ * in the camelCase this package uses: read at the edge, by `workClient`'s
+ * `getPull`. Either spelling is taken, so a service that already sends
+ * camelCase reads the same.
+ */
+export function pullDetailFromWire(raw: Record<string, unknown>): PullDetail {
+  const detail: Record<string, unknown> = { ...raw };
+  for (const [snake, camel] of PULL_DETAIL_FIELDS) {
+    if (snake in detail) {
+      if (!(camel in detail)) detail[camel] = detail[snake];
+      delete detail[snake];
+    }
+  }
+  if (typeof detail.reviewPending !== "boolean") detail.reviewPending = false;
+  return detail as PullDetail;
 }
 
 export function workClient(service: ServiceBinding): WorkApi {
@@ -314,6 +365,15 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("close_issue", { actor, repo, number, reason }),
     reopenIssue: (actor, repo, number) => call("reopen_issue", { actor, repo, number }),
     listLabels: (repo, viewer) => call("list_labels", { repo, viewer }),
+    saveLabel: (actor, repo, label) => call("save_label", { actor, repo, ...label }),
+    deleteLabel: (actor, repo, name) => call("delete_label", { actor, repo, name }),
+    addDefaultLabels: (actor, repo) => call("add_default_labels", { actor, repo }),
+    setLabels: (actor, repo, number, labels, change = "set") =>
+      call("set_labels", { actor, repo, number, labels, change }),
+    listMilestones: (repo, viewer, state) => call("list_milestones", { repo, viewer, state }),
+    getMilestone: (repo, number, viewer) => call("get_milestone", { repo, number, viewer }),
+    saveMilestone: (actor, repo, milestone) => call("save_milestone", { actor, repo, ...milestone }),
+    deleteMilestone: (actor, repo, number) => call("delete_milestone", { actor, repo, number }),
     counts: (repo, viewer) => call("counts", { repo, viewer }),
     addComment: (actor, repo, number, comment) =>
       call("add_comment", { actor, repo, number, ...comment }),
@@ -336,12 +396,17 @@ export function workClient(service: ServiceBinding): WorkApi {
     wakeForMessages: (pullId) => call("wake_for_messages", { pullId }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
     seenChecks: (repo, viewer) => call("seen_checks", { repo, viewer }),
+    codeownersErrors: (repo, viewer, ref) => call("codeowners_errors", { repo, viewer, ref: ref ?? null }),
     updateSettings: (actor, repo, settings) =>
       call("update_settings", { actor, repo, settings }),
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
-    listPulls: (repo, viewer, state) => call("list_pulls", { repo, viewer, state }),
+    listPulls: (repo, viewer, state, filter = {}) => call("list_pulls", { repo, viewer, state, ...filter }),
     pullsForRepos: (repoIds, viewer, limit) => call("pulls_for_repos", { repoIds, viewer, limit }),
-    getPull: (repo, number, viewer) => call("get_pull", { repo, number, viewer }),
+    // Its own fields arrive in snake_case: read into camelCase here.
+    getPull: (repo, number, viewer) =>
+      call<Result<Record<string, unknown>>>("get_pull", { repo, number, viewer }).then(
+        (found): Result<PullDetail> => (found.ok ? { ok: true, value: pullDetailFromWire(found.value) } : found),
+      ),
     updatePull: (actor, repo, number, changes) =>
       call("update_pull", { actor, repo, number, ...changes }),
     catchUpPull: (actor, repo, number) => call("catch_up_pull", { actor, repo, number }),

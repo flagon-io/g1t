@@ -65,13 +65,21 @@ export default [
     // Its tabs: Overview (above), Projects, Packages, Teams, People, Insights.
     route("-/projects", "routes/workspace/projects.tsx"),
     route("-/people", "routes/workspace/people.tsx"),
-    route("-/teams", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/teams" }),
     route("-/insights", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/insights" }),
     // Pinning its projects, for the person signed in.
     route("-/pins", "routes/workspace/pins.ts"),
     // Pages that moved: Members is People, and the overview is the workspace.
     route("-/members", "routes/workspace/moved.ts", { id: "routes/workspace/moved-members" }),
     route("-/overview", "routes/workspace/moved.ts", { id: "routes/workspace/moved-overview" }),
+    // Teams: the list, a new one, and each team's pages.
+    route("-/teams", "routes/workspace/teams.tsx"),
+    route("-/teams/new", "routes/workspace/team-new.tsx"),
+    route("-/teams/:team", "routes/workspace/team/layout.tsx", [
+      index("routes/workspace/team/members.tsx"),
+      route("teams", "routes/workspace/team/teams.tsx"),
+      route("repositories", "routes/workspace/team/repositories.tsx"),
+      route("settings", "routes/workspace/team/settings.tsx"),
+    ]),
     route("-/tokens", "routes/workspace/tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
     route("-/billing", "routes/workspace/billing.tsx"),
@@ -89,6 +97,9 @@ export default [
     route("-/memory", "routes/workspace/memory.tsx"),
     route("-/context", "routes/workspace/context.tsx"),
     route("-/security", "routes/workspace/security.tsx"),
+    route("-/security/patterns", "routes/workspace/security-patterns.tsx"),
+    route("-/security/bypass-requests", "routes/workspace/security-bypass.tsx"),
+    route("-/security/settings", "routes/workspace/security-settings.tsx"),
     route("-/audit", "routes/workspace/audit.tsx"),
     route("-/audit/export", "routes/workspace/audit-export.ts"),
     route("-/guardrails", "routes/workspace/guardrails.tsx"),
@@ -99,6 +110,8 @@ export default [
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
   // A project's agent runs as JSON, and stopping or messaging one.
   route(":owner/:repo/agents.json", "routes/repo/agents-live.ts"),
+  // Its branch names, for changing the branch a pull request merges into.
+  route(":owner/:repo/branches.json", "routes/repo/branch-names.ts"),
   // What a project's agent runs did, from the audit log, for the Agent panel.
   route(":owner/:repo/audit.json", "routes/repo/audit-live.ts"),
   // An invitation to a repository, answered by someone who cannot see it yet.
@@ -124,6 +137,9 @@ export default [
     route("compare/*", "routes/repo/compare.tsx", { id: "routes/repo/compare-range" }),
     route("compare", "routes/repo/compare.tsx"),
     route("commit/:hash", "routes/repo/commit.tsx"),
+    route("labels", "routes/repo/labels.tsx"),
+    route("milestones", "routes/repo/milestones.tsx"),
+    route("milestones/:number", "routes/repo/milestone.tsx"),
     route("issues", "routes/repo/issues.tsx"),
     route("issues/new", "routes/repo/issue-new.tsx"),
     route("issues/:number", "routes/repo/issue.tsx"),
@@ -142,7 +158,21 @@ export default [
     route("actions/jobs/:job/log", "routes/repo/actions-log.ts"),
     route("deployments", "routes/repo/deployments.tsx"),
     route("deployments/:id", "routes/repo/deployment.tsx"),
-    route("security", "routes/repo/security.tsx"),
+    // Security: an overview, then a page for each part. Old links to
+    // `security?tab=…` are sent on by the overview.
+    route("security", "routes/repo/security-overview.tsx"),
+    route("security/secret-scanning", "routes/repo/security-secrets.tsx"),
+    route("security/secret-scanning/patterns", "routes/repo/security-patterns.tsx"),
+    route("security/secret-scanning/:id", "routes/repo/security-secret.tsx"),
+    route("security/code-scanning", "routes/repo/security-code.tsx"),
+    route("security/code-scanning/setup", "routes/repo/security-code-setup.ts"),
+    route("security/code-scanning/:number", "routes/repo/security-code-alert.tsx"),
+    route("security/vulnerabilities", "routes/repo/security.tsx"),
+    route("security/dependency-graph", "routes/repo/security-graph.tsx"),
+    route("security/dependency-graph/sbom.json", "routes/repo/security-sbom.ts"),
+    route("security/dependency-updates", "routes/repo/security-updates.tsx"),
+    route("security/pulls/:number", "routes/repo/security-pull.tsx"),
+    route("security/settings", "routes/repo/security-settings.tsx"),
     route("plans", "routes/repo/plans.tsx"),
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),

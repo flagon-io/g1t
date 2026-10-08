@@ -106,7 +106,10 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
           Compare
         </button>
         {head && !same && commits.length > 0 && (
-          <ButtonLink to={`${repoBase}/pulls/new?branch=${encodeURIComponent(head)}`} variant="accent">
+          <ButtonLink
+            to={`${repoBase}/pulls/new?branch=${encodeURIComponent(head)}&base=${encodeURIComponent(base)}`}
+            variant="accent"
+          >
             <GitPullRequest size={15} />
             Open a pull request
           </ButtonLink>

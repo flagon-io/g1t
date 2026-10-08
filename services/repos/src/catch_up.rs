@@ -410,8 +410,8 @@ impl<S: GitStore> Repos<S> {
             (Err((code, message)), _) | (_, Err((code, message))) => return Ok(Outcome::fail(code, message)),
         };
         let from_fork = source.id != target.id;
-        let base_branch = target.default_branch.clone();
-        let branch = a.branch.clone().unwrap_or_else(|| base_branch.clone());
+        let base_branch = a.target_branch.clone().unwrap_or_else(|| target.default_branch.clone());
+        let branch = a.branch.clone().unwrap_or_else(|| target.default_branch.clone());
         if !from_fork && branch == base_branch {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,

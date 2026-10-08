@@ -139,7 +139,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const { pathname } = useLocation();
   const rest = pathname.slice(base.length + 1);
   const current = (tab: PageTab) =>
-    [tab.path, ...(tab.also ?? [])].some((path) => rest === path || rest.startsWith(`${path}/`));
+    [tab.path, ...(tab.also ?? [])].some((path) => rest === path || (!tab.exact && rest.startsWith(`${path}/`)));
   return (
     <nav aria-label="Views" className="relative -mb-px flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((tab) => (

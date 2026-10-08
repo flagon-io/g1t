@@ -226,7 +226,7 @@ mod tests {
             workspaces: vec![Membership { base_permission: Some(base), ..Membership::member("acme") }],
             grants: grants
                 .iter()
-                .map(|(id, role)| RepoGrant { repo_id: (*id).into(), workspace: "acme".into(), role: *role })
+                .map(|(id, role)| RepoGrant { repo_id: (*id).into(), workspace: "acme".into(), role: *role, team: None })
                 .collect(),
             ..User::default()
         })
@@ -260,7 +260,7 @@ mod tests {
         let outsider = Some(User {
             id: "usr_2".into(),
             username: "bo".into(),
-            grants: vec![RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Triage }],
+            grants: vec![RepoGrant { repo_id: "rep_1".into(), workspace: "acme".into(), role: RepoRole::Triage, team: None }],
             ..User::default()
         });
         let reader = Reader::of(&outsider);

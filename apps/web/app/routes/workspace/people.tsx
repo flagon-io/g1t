@@ -37,11 +37,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // someone a repository is shared with, gets nothing here.
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
-  const [members, invites, workspace, outside] = await Promise.all([
+  const [members, invites, workspace, outside, teams] = await Promise.all([
     identity.listMembers(params.owner, viewer),
     owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
     identity.getWorkspace(params.owner),
     owner ? identity.outsideCollaborators(viewer, params.owner).catch(() => null) : null,
+    // Each member's teams, as the viewer may see them.
+    identity.teamMemberships(viewer, params.owner).catch(() => null),
   ]);
   return {
     role,
@@ -49,6 +51,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     invites: invites?.ok ? invites.value : [],
     base: workspace?.basePermission ?? DEFAULT_BASE_PERMISSION,
     outside: outside?.ok ? outside.value : [],
+    teams: Object.fromEntries((teams?.ok ? teams.value : []).map((person) => [person.username, person.teams])),
     origin: new URL(request.url).origin,
   };
 }
@@ -90,7 +93,7 @@ const BASE_MEANS: Record<BasePermission, string> = {
 };
 
 export default function WorkspacePeople({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, invites, origin, base, outside } = loaderData;
+  const { role, members, invites, origin, base, outside, teams } = loaderData;
   const owner = role === "owner";
   const pending = invites.filter((invite) => invite.status === "pending");
   const [search, setSearch] = useSearchParams();
@@ -106,6 +109,22 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
                 {member.username}
               </Link>
               {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
+              {(teams[member.username] ?? []).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {(teams[member.username] ?? []).slice(0, 3).map((team) => (
+                    <Link
+                      key={team.slug}
+                      to={`/${params.owner}/-/teams/${team.slug}`}
+                      className="rounded-full border border-line px-2 py-px text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+                    >
+                      {team.name}
+                    </Link>
+                  ))}
+                  {(teams[member.username] ?? []).length > 3 && (
+                    <span className="px-1 text-xs text-faint">+{(teams[member.username] ?? []).length - 3} more</span>
+                  )}
+                </div>
+              )}
             </div>
             {member.role === "owner" ? <Badge tone="accent">Owner</Badge> : <Badge>Member</Badge>}
             {owner && (

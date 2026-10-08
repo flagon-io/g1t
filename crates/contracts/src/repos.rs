@@ -444,9 +444,10 @@ pub struct GitAccessArgs {
     pub service: GitService,
 }
 
-/// `land`: moves a repository's default branch to the head of a pull
-/// request's source. Refused with `conflict` when the source is behind,
-/// since that would discard commits. Returns `Outcome<Landed>`.
+/// `land`: moves the branch a pull request merges into (the repository's
+/// default branch unless `target_branch` names another) to the head of
+/// its source. Refused with `conflict` when the source is behind, since
+/// that would discard commits. Returns `Outcome<Landed>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LandArgs {
@@ -458,6 +459,9 @@ pub struct LandArgs {
     #[serde(default)]
     pub branch: Option<String>,
     pub actor: User,
+    /// The branch of the target to land on; its default branch when absent.
+    #[serde(default)]
+    pub target_branch: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -531,6 +535,11 @@ pub struct CompareArgs {
     pub base: Option<String>,
     #[serde(default)]
     pub head: Option<String>,
+    /// With no `base`: the branch whose shared point with the head it is
+    /// compared from, instead of the default branch. A pull request into
+    /// another branch is compared this way.
+    #[serde(default)]
+    pub base_branch: Option<String>,
 }
 
 /// Lines `start` to `end` of a file, inclusive and counted from 1, last
@@ -643,6 +652,10 @@ pub struct BehindArgs {
     /// The branch of the source. A fork is compared on its default branch.
     #[serde(default)]
     pub branch: Option<String>,
+    /// The branch of the target it would merge into; the default branch
+    /// when absent.
+    #[serde(default)]
+    pub target_branch: Option<String>,
 }
 
 /// `divergence`: how a pull request's source and the default branch it
@@ -691,6 +704,9 @@ pub struct UpdatePullBranchArgs {
     pub number: u32,
     /// Who asked: the merge commit's author and committer, and the pusher.
     pub actor: User,
+    /// The branch of the target to merge in; its default branch when absent.
+    #[serde(default)]
+    pub target_branch: Option<String>,
 }
 
 /// Why an update has to be left to a sandbox.

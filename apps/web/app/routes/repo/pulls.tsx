@@ -1,5 +1,5 @@
-import { Bot, GitBranch, Plus } from "lucide-react";
-import { Link } from "react-router";
+import { ArrowLeft, Bot, GitBranch, Milestone as MilestoneIcon, Plus, Tag } from "lucide-react";
+import { Link, useLocation } from "react-router";
 
 import type { Route } from "./+types/pulls";
 import { page } from "../../lib/meta";
@@ -8,7 +8,9 @@ import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { CheckBadge } from "../../components/checks";
 import { ChangeSize, PullIcon, StateTabs } from "../../components/work";
 import { AgentBadge, useActiveRuns } from "../../components/agents";
-import { accessTo } from "../../lib/access.server";
+import { FilterMenu, LabelChip, Swatch } from "../../components/labels";
+import { colorsOf, listFilters, withFilter } from "../../lib/labels";
+import { accessTo, repoFor } from "../../lib/access.server";
 import { agents, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
@@ -19,32 +21,55 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const viewer = getViewer(context);
-  const state =
-    new URL(request.url).searchParams.get("state") === "closed" ? "closed" : "open";
+  // `?label=bug&milestone=3&base=release`, or the same written in `q`.
+  const { state, label, milestone, base } = listFilters(new URL(request.url).searchParams);
   // Which an agent is working on, beside the list, so its badges come with it.
-  const [pulls, active, { can }] = await Promise.all([
-    work.listPulls(path, viewer, state),
+  const [pulls, active, { can }, labels, milestones, repo] = await Promise.all([
+    work.listPulls(path, viewer, state, {
+      label: label || undefined,
+      milestone: milestone ?? undefined,
+      base: base || undefined,
+    }),
     agents.listRuns(viewer, { repo: path, active: true, limit: 100 }).catch(() => null),
     accessTo(context, params),
+    work.listLabels(path, viewer),
+    work.listMilestones(path, viewer, "open"),
+    // The layout looks it up in this request too.
+    repoFor(context, params),
   ]);
   return {
     pulls: unwrap(pulls),
     state,
+    label,
+    milestone,
+    base,
+    labels: labels.ok ? labels.value : [],
+    milestones: milestones.ok ? milestones.value : [],
+    defaultBranch: repo.ok ? repo.value.defaultBranch : null,
     // As the project's agents.json has them; left out, the list fetches them.
     active: active?.ok ? { runs: active.value, member: can.run } : undefined,
   } as const;
 }
 
 export default function Pulls({ loaderData, params }: Route.ComponentProps) {
-  const { pulls, state, active } = loaderData;
+  const { pulls, state, active, labels, milestones, label, milestone, defaultBranch } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  const list = `${base}/pulls`;
   // Which pull requests an agent is working on this minute, and at what.
   const working = useActiveRuns(params.owner, params.repo, active);
+  const current = new URLSearchParams(useLocation().search);
+  const colors = colorsOf(labels);
+  const milestoneTitle = milestones.find((m) => m.number === milestone)?.title ?? (milestone ? `#${milestone}` : null);
+  const filtered = [label, milestone, loaderData.base].some(Boolean);
+  const kept = new URLSearchParams(current);
+  kept.delete("state");
+  kept.delete("q");
   return (
     <div>
       <StateTabs
-        to={`${base}/pulls`}
+        to={list}
         state={state}
+        query={kept.toString()}
         action={
           <ButtonLink to={`${base}/pulls/new`}>
             <Plus size={15} />
@@ -52,10 +77,81 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
           </ButtonLink>
         }
       />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <FilterMenu
+          label="Label"
+          active={label || undefined}
+          clearTo={label ? withFilter(list, current, "label", null) : undefined}
+          searchPlaceholder="Filter labels"
+          emptyText="No label matches."
+          options={labels.map((each) => ({
+            key: each.name,
+            to: withFilter(list, current, "label", each.name),
+            keywords: `${each.name} ${each.description}`,
+            selected: each.name === label,
+            label: (
+              <>
+                <Swatch color={each.color} />
+                <span className="truncate">{each.name}</span>
+              </>
+            ),
+          }))}
+        />
+        <FilterMenu
+          label="Milestone"
+          active={milestoneTitle ?? undefined}
+          clearTo={milestone ? withFilter(list, current, "milestone", null) : undefined}
+          searchPlaceholder="Filter milestones"
+          emptyText="No open milestone matches."
+          options={milestones.map((each) => ({
+            key: String(each.number),
+            to: withFilter(list, current, "milestone", String(each.number)),
+            keywords: `${each.title} ${each.number}`,
+            selected: each.number === milestone,
+            label: <span className="truncate">{each.title}</span>,
+          }))}
+        />
+        {loaderData.base && (
+          <Link
+            to={withFilter(list, current, "base", null)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-accent/40 bg-accent/5 px-2.5 text-sm"
+            title="Show pull requests into every branch"
+          >
+            Into <span className="font-mono">{loaderData.base}</span>
+          </Link>
+        )}
+        {filtered && (
+          <Link to={state === "closed" ? `${list}?state=closed` : list} className="text-xs text-muted hover:text-fg">
+            Clear filters
+          </Link>
+        )}
+        <span className="ml-auto flex items-center gap-1">
+          <Link
+            to={`${base}/labels`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <Tag size={14} />
+            Labels
+          </Link>
+          <Link
+            to={`${base}/milestones`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <MilestoneIcon size={14} />
+            Milestones
+          </Link>
+        </span>
+      </div>
       <div className="mt-4">
         {pulls.length === 0 ? (
           <EmptyState
-            title={state === "open" ? "No open pull requests" : "No closed pull requests"}
+            title={
+              filtered
+                ? `No ${state} pull requests match these filters`
+                : state === "open"
+                  ? "No open pull requests"
+                  : "No closed pull requests"
+            }
           >
             A pull request proposes a change. Assign agents to an issue and
             each opens one in its own fork, or push a branch and open one
@@ -74,13 +170,16 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                     <PullIcon status={pull.status} />
                   </span>
                   <span className="min-w-0 grow">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate font-medium">{pull.title}</span>
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="min-w-0 truncate font-medium">{pull.title}</span>
                       {pull.status === "draft" && (
                         <span className="shrink-0 rounded-full border border-line px-1.5 py-px text-[0.6875rem] text-faint">
                           draft
                         </span>
                       )}
+                      {(pull.labels ?? []).map((name) => (
+                        <LabelChip key={name} name={name} color={colors[name]} />
+                      ))}
                       <AgentBadge run={working.get(pull.number)} />
                     </span>
                     <span className="mt-0.5 block text-xs text-faint">
@@ -89,6 +188,20 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                       {pull.requestedBy && <> for {pull.requestedBy.username}</>}
                       {pull.issue != null && <> · for #{pull.issue}</>}
                       {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
+                      {pull.milestone && (
+                        <>
+                          {" "}
+                          · <MilestoneIcon size={11} className="inline" /> {pull.milestone.title}
+                        </>
+                      )}
+                      {/* Into a branch other than the default one: said. */}
+                      {pull.base && defaultBranch && pull.base !== defaultBranch && (
+                        <>
+                          {" "}
+                          · <ArrowLeft size={11} className="inline" /> into{" "}
+                          <span className="font-mono">{pull.base}</span>
+                        </>
+                      )}
                     </span>
                   </span>
                   <span className="mt-0.5 hidden sm:block">

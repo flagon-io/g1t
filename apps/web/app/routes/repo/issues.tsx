@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
-import { GitPullRequest, MessageSquare, Plus, Sparkles, X } from "lucide-react";
+import { GitPullRequest, MessageSquare, Milestone as MilestoneIcon, Plus, Sparkles, Tag } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Form, Link, useRouteLoaderData } from "react-router";
+import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
@@ -11,9 +11,10 @@ import {
   Assignee,
   AssigneeStack,
   IssueIcon,
-  Label,
   StateTabs,
 } from "../../components/work";
+import { FilterMenu, LabelChip, Swatch } from "../../components/labels";
+import { colorsOf, listFilters, withFilter } from "../../lib/labels";
 import { computeNoteFor } from "../../lib/compute.server";
 import { isWaitingMessage } from "../../lib/compute";
 import { work } from "../../lib/services.server";
@@ -30,16 +31,16 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
-  const query = new URL(request.url).searchParams;
-  const state = query.get("state") === "closed" ? "closed" : "open";
-  const label = query.get("label") ?? "";
+  // `?label=bug&milestone=3`, or `label:bug milestone:3` written in `q`.
+  const { state, label, milestone } = listFilters(new URL(request.url).searchParams);
   // Assigning agents needs Write: Read cannot spend compute. All at once:
   // only the plan's note waits for the viewer's role.
   const access = accessTo(context, params);
-  const [{ can }, issues, labels, agentsEnabled, computeNote] = await Promise.all([
+  const [{ can }, issues, labels, milestones, agentsEnabled, computeNote] = await Promise.all([
     access,
-    work.listIssues(path, viewer, { state, label: label || undefined }),
+    work.listIssues(path, viewer, { state, label: label || undefined, milestone: milestone ?? undefined }),
     work.listLabels(path, viewer),
+    work.listMilestones(path, viewer, "open"),
     env.RUNNER.enabled(viewer, path),
     // Before a member assigns: whether the workspace's plan lets agents start.
     access.then(({ can }) => (can.run ? computeNoteFor(params.owner, "agent") : null)),
@@ -47,8 +48,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return {
     issues: unwrap(issues),
     labels: unwrap(labels),
+    milestones: milestones.ok ? milestones.value : [],
     state,
     label,
+    milestone,
     agentsEnabled: agentsEnabled && can.run,
     computeNote,
   } as const;
@@ -87,11 +90,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function Issues({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issues, labels, state, label, agentsEnabled } = loaderData;
+  const { issues, labels, milestones, state, label, milestone, agentsEnabled } = loaderData;
   const repo = `/${params.owner}/${params.repo}`;
   const base = `${repo}/issues`;
-  const stateQuery = state === "closed" ? "state=closed" : "";
   const assignable = agentsEnabled && state === "open" && issues.length > 0;
+  const current = new URLSearchParams(useLocation().search);
+  const colors = colorsOf(labels);
+  const milestoneTitle = milestones.find((m) => m.number === milestone)?.title ?? (milestone ? `#${milestone}` : null);
+  const filtered = [label, milestone].some(Boolean);
+  // The tabs keep the filters; each filter keeps the state and the other.
+  const kept = new URLSearchParams(current);
+  kept.delete("state");
+  kept.delete("q");
 
   // An archived repository's issues are locked: no new ones.
   const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
@@ -106,7 +116,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
       <StateTabs
         to={base}
         state={state}
-        query={label ? `label=${encodeURIComponent(label)}` : ""}
+        query={kept.toString()}
         action={
           archived ? undefined : (
             <ButtonLink to={`${base}/new`}>
@@ -116,25 +126,61 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
           )
         }
       />
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {labels.map((name) => {
-          const active = name === label;
-          const query = [stateQuery, active ? "" : `label=${encodeURIComponent(name)}`]
-            .filter(Boolean)
-            .join("&");
-          return (
-            <Link
-              key={name}
-              to={`${base}?${query}`}
-              className={`flex items-center gap-1 rounded-full transition-opacity ${
-                label && !active ? "opacity-45 hover:opacity-100" : ""
-              }`}
-            >
-              <Label name={name} />
-              {active && <X size={12} className="text-muted" />}
-            </Link>
-          );
-        })}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <FilterMenu
+          label="Label"
+          active={label || undefined}
+          clearTo={label ? withFilter(base, current, "label", null) : undefined}
+          searchPlaceholder="Filter labels"
+          emptyText="No label matches."
+          options={labels.map((each) => ({
+            key: each.name,
+            to: withFilter(base, current, "label", each.name),
+            keywords: `${each.name} ${each.description}`,
+            selected: each.name === label,
+            label: (
+              <>
+                <Swatch color={each.color} />
+                <span className="truncate">{each.name}</span>
+              </>
+            ),
+          }))}
+        />
+        <FilterMenu
+          label="Milestone"
+          active={milestoneTitle ?? undefined}
+          clearTo={milestone ? withFilter(base, current, "milestone", null) : undefined}
+          searchPlaceholder="Filter milestones"
+          emptyText="No open milestone matches."
+          options={milestones.map((each) => ({
+            key: String(each.number),
+            to: withFilter(base, current, "milestone", String(each.number)),
+            keywords: `${each.title} ${each.number}`,
+            selected: each.number === milestone,
+            label: <span className="truncate">{each.title}</span>,
+          }))}
+        />
+        {filtered && (
+          <Link to={state === "closed" ? `${base}?state=closed` : base} className="text-xs text-muted hover:text-fg">
+            Clear filters
+          </Link>
+        )}
+        <span className="ml-auto flex items-center gap-1">
+          <Link
+            to={`${repo}/labels`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <Tag size={14} />
+            Labels
+          </Link>
+          <Link
+            to={`${repo}/milestones`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <MilestoneIcon size={14} />
+            Milestones
+          </Link>
+        </span>
       </div>
       <Form ref={form} method="post" className="mt-4">
         {assignable && (
@@ -173,8 +219,8 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
         {issues.length === 0 ? (
           <EmptyState
             title={
-              label
-                ? `No ${state} issues labelled ${label}`
+              filtered
+                ? `No ${state} issues match these filters`
                 : state === "open"
                   ? "No open issues"
                   : "No closed issues"
@@ -209,7 +255,7 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="font-medium">{issue.title}</span>
                       {issue.labels.map((name) => (
-                        <Label key={name} name={name} />
+                        <LabelChip key={name} name={name} color={colors[name]} />
                       ))}
                       {issue.state === "open" && issue.agent && (
                         <Assignee agent={issue.agent} />
@@ -228,6 +274,12 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
                       {issue.requestedBy && <> for {issue.requestedBy.username}</>}
                       {issue.resolvedBy != null && (
                         <span className="text-merged"> · resolved by #{issue.resolvedBy}</span>
+                      )}
+                      {issue.milestone && (
+                        <span className="inline-flex items-center gap-1">
+                          {" "}
+                          · <MilestoneIcon size={11} className="inline" /> {issue.milestone.title}
+                        </span>
                       )}
                     </span>
                   </span>

@@ -98,6 +98,8 @@ pub enum Reason {
     Assign,
     /// Someone mentioned them by name.
     Mention,
+    /// Someone mentioned a team they are in (`@workspace/team`).
+    TeamMention,
     /// A check, workflow or deployment on their work finished.
     CiActivity,
     /// A security alert on a repository they look after.
@@ -117,11 +119,12 @@ pub enum Reason {
 impl Reason {
     /// Most specific first: when one person is told of something for more
     /// than one reason, the first of these is the one shown.
-    pub const ALL: [Reason; 11] = [
+    pub const ALL: [Reason; 12] = [
         Reason::Agent,
         Reason::ReviewRequested,
         Reason::Assign,
         Reason::Mention,
+        Reason::TeamMention,
         Reason::CiActivity,
         Reason::SecurityAlert,
         Reason::StateChange,
@@ -137,6 +140,7 @@ impl Reason {
             Reason::ReviewRequested => "review_requested",
             Reason::Assign => "assign",
             Reason::Mention => "mention",
+            Reason::TeamMention => "team_mention",
             Reason::CiActivity => "ci_activity",
             Reason::SecurityAlert => "security_alert",
             Reason::StateChange => "state_change",
@@ -168,7 +172,13 @@ impl Reason {
     pub fn direct(self) -> bool {
         matches!(
             self,
-            Reason::Agent | Reason::ReviewRequested | Reason::Assign | Reason::Mention | Reason::CiActivity | Reason::SecurityAlert
+            Reason::Agent
+                | Reason::ReviewRequested
+                | Reason::Assign
+                | Reason::Mention
+                | Reason::TeamMention
+                | Reason::CiActivity
+                | Reason::SecurityAlert
         )
     }
 }
@@ -606,6 +616,13 @@ pub struct InboxSubject {
     /// Usernames, and `g1t`. Pull requests only.
     #[serde(default)]
     pub reviewers: Vec<String>,
+    /// The people its description mentions by name, outside code and
+    /// quotes, for `issue.opened` and `pull.opened`. Never `g1t`.
+    #[serde(default)]
+    pub mentions: Vec<String>,
+    /// The teams its description mentions, with the people each tells.
+    #[serde(default)]
+    pub team_mentions: Vec<TeamMentioned>,
     /// For a pull request: the issue it is for, with that issue's people.
     #[serde(default)]
     pub issue: Option<Box<InboxSubject>>,
@@ -629,12 +646,28 @@ pub struct InboxComment {
     /// The people it mentions by name, outside code and quotes. Never `g1t`.
     #[serde(default)]
     pub mentions: Vec<String>,
+    /// The teams it mentions (`@workspace/team`), with the people each
+    /// tells: everyone in the team and its child teams, unless the team
+    /// turned notifications off. A secret team tells nobody unless the
+    /// writer is in it.
+    #[serde(default)]
+    pub team_mentions: Vec<TeamMentioned>,
     /// A review's verdict: `approve` or `request_changes`.
     #[serde(default)]
     pub verdict: Option<String>,
     /// Something that happened (an assignment, a close), not something written.
     #[serde(default)]
     pub event: bool,
+}
+
+/// A team a comment or description mentions, and who it tells.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMentioned {
+    /// `workspace/slug`.
+    pub team: String,
+    /// Usernames.
+    pub members: Vec<String>,
 }
 
 /// `notify_by_email` on the identity service: one item, emailed to the

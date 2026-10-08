@@ -324,6 +324,7 @@ On the form, scopes are a checklist grouped by area:
 | Memory & search | `memory:read`, `memory:write` |
 | Account | `account:read`, `account:write` |
 | Notifications | `notifications:read`, `notifications:write` |
+| Security | `security:read`, `security:write` |
 | Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
 | Runners | `runners:read` |
 | Dangerous | `repo:admin`, `packages:delete`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
@@ -339,6 +340,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
 | `code:read` | Clone and fetch private repositories with git |
 | `code:write` | Push commits with git |
+| `security:read` | See [secret scanning](/guides/security/secret-protection/), [code scanning](/guides/security/code-scanning/) and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings |
+| `security:write` | Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings |
 | `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
 | `packages:write` | Push container images and publish packages |
 | `packages:delete` | Delete packages and their versions |
@@ -355,10 +358,10 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `account:write` | Change your email addresses, make invites, answer invitations and pin projects |
 | `notifications:read` | See your [inbox](/guides/inbox/), its threads, and what you subscribe to and watch |
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
-| `workspace:read` | Read workspace invites, integrations and model routes |
-| `workspace:admin` | Create and delete workspaces, invite members, connect integrations |
+| `workspace:read` | Read workspace invites, integrations, model routes and [teams](/guides/teams/) |
+| `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
 | `access:read` | See who has access to repositories |
-| `access:admin` | Give and take away access to repositories |
+| `access:admin` | Give people and teams access to repositories, and take it away |
 | `webhooks:read` | See webhooks and their deliveries |
 | `webhooks:admin` | Create, change and delete webhooks |
 | `secrets:read` | List secrets (never their values) and read variables |

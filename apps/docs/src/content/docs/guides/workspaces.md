@@ -305,7 +305,7 @@ and description at the top, and tabs under them:
 | **Overview** | `g1t.sh/<workspace>` | Everyone | Your [pinned projects](#pinned-and-recent-projects), then the most active ones, the pull requests in progress across them, and **All projects**. Members also see a **Usage** card with this month's spend, and who belongs. |
 | **Projects** | `/-/projects` | Everyone | Every project you can see, with their count. See [the Projects tab](#the-projects-tab). |
 | [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. |
-| **Teams** | `/-/teams` | Members | Coming soon: groups of members given roles together. |
+| [**Teams**](/guides/teams/) | `/-/teams` | Members | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
 | **People** | `/-/people` | Members | Who belongs, with their count. Owners add and remove people here. |
 | **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
 | **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
@@ -354,7 +354,7 @@ In order, it lists **Mission control**; the workspace's
 [projects](#pinned-and-recent-projects); under **Workspace**, the places work
 happens across them (**Agent fleet**, **Context**, **Memory**, **Security**
 and [**Packages**](/guides/packages/), with **Boards** and **Roadmap**
-soon); then **People** (and **Teams** soon), **Usage**, what g1t's runs have
+soon); then **People**, [**Teams**](/guides/teams/), **Usage**, what g1t's runs have
 cost (see [usage and billing](/guides/usage-and-billing/)), **Support** and
 **Settings**. An item with an arrow opens a list of its own in the sidebar:
 **Settings** slides over to how the workspace is set up and connected, and
@@ -376,7 +376,8 @@ the row at the top, **‹ Settings**, slides back:
 **People** is in the main list, for every member to see; owners add and
 remove people there, set the
 [base permission](/guides/access-and-roles/#the-base-permission), and see
-the **Outside collaborators** tab.
+the **Outside collaborators** tab. Each member's row also shows the
+[teams](/guides/teams/) they are in that you can see.
 
 Opening a [project](/guides/projects/) slides the sidebar over to the
 project's own list, with **‹ All projects** at the top to go back. Its

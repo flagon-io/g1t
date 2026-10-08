@@ -11,9 +11,265 @@ use serde::{Deserialize, Serialize};
 use crate::repos::{CompareArgs, RepoPath};
 use crate::{User, Viewer};
 
-/// Labels every repository starts with. Any other label comes into being
-/// the first time it is put on an issue.
-pub const DEFAULT_LABELS: [&str; 5] = ["bug", "feature", "docs", "chore", "question"];
+/// The labels a new repository starts with, and that "Add the default
+/// labels" adds to one that is missing some: `(name, color, description)`.
+/// Colors are six hex digits, without `#`.
+pub const DEFAULT_LABELS: [(&str, &str, &str); 11] = [
+    ("bug", "d73a4a", "Something isn't working"),
+    ("documentation", "0075ca", "Improvements or additions to documentation"),
+    ("duplicate", "cfd3d7", "This issue or pull request already exists"),
+    ("enhancement", "a2eeef", "New feature or request"),
+    ("good first issue", "7057ff", "Good for newcomers"),
+    ("help wanted", "008672", "Extra attention is needed"),
+    ("invalid", "e4e669", "This doesn't seem right"),
+    ("question", "d876e3", "Further information is requested"),
+    ("wontfix", "ffffff", "This will not be worked on"),
+    ("dependencies", "0366d6", "Updates a dependency"),
+    ("security", "ee0701", "A security fix or a vulnerability"),
+];
+
+/// The color a label gets when none is given: chosen from its name, so
+/// the same name always gets the same color.
+pub fn label_color_for(name: &str) -> String {
+    const PALETTE: [&str; 12] = [
+        "b60205", "d93f0b", "fbca04", "0e8a16", "006b75", "1d76db", "0052cc", "5319e7", "e99695", "f9d0c4",
+        "c2e0c6", "bfdadc",
+    ];
+    if let Some((_, color, _)) = DEFAULT_LABELS.iter().find(|(known, _, _)| *known == name) {
+        return (*color).to_owned();
+    }
+    let hash = name.bytes().fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(u32::from(byte)));
+    PALETTE[(hash as usize) % PALETTE.len()].to_owned()
+}
+
+/// A color as six lowercase hex digits, from `#A1B2C3`, `a1b2c3` or `abc`.
+pub fn tidy_color(color: &str) -> Option<String> {
+    let hex = color.trim().trim_start_matches('#').to_ascii_lowercase();
+    if !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    match hex.len() {
+        6 => Some(hex),
+        3 => Some(hex.chars().flat_map(|c| [c, c]).collect()),
+        _ => None,
+    }
+}
+
+/// The most labels one issue or pull request can carry, and the longest
+/// name and description of one.
+pub const MAX_LABELS: usize = 20;
+pub const MAX_LABEL_CHARS: usize = 50;
+pub const MAX_LABEL_DESCRIPTION_CHARS: usize = 100;
+
+/// A label of a repository: a name, a color and what it means. Issues and
+/// pull requests carry labels by name. Names are lowercase and unique in
+/// a repository.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Label {
+    pub name: String,
+    /// Six hex digits, without `#`.
+    pub color: String,
+    #[serde(default)]
+    pub description: String,
+    /// How many issues carry it, open or closed.
+    #[serde(default)]
+    pub issues: u32,
+    /// How many pull requests carry it, in any state.
+    #[serde(default)]
+    pub pulls: u32,
+}
+
+/// A milestone, as an issue or pull request names it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MilestoneRef {
+    pub number: u32,
+    pub title: String,
+}
+
+/// A milestone: a goal, with an optional due date, that issues and pull
+/// requests are gathered under. Its progress is how many of them are
+/// closed (a merged pull request counts as closed).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Milestone {
+    /// Numbered from 1 in each repository, apart from issues.
+    pub number: u32,
+    pub title: String,
+    /// Markdown.
+    #[serde(default)]
+    pub description: String,
+    /// The day it is due, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub due_on: Option<String>,
+    pub state: State,
+    /// Open issues and pull requests in it (drafts count as open).
+    #[serde(default)]
+    pub open_items: u32,
+    /// Closed issues, and merged or closed pull requests, in it.
+    #[serde(default)]
+    pub closed_items: u32,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub updated_at: String,
+    /// RFC 3339.
+    #[serde(default)]
+    pub closed_at: Option<String>,
+}
+
+impl Milestone {
+    /// How far along it is, from 0 to 100: closed items over all of them.
+    pub fn percent(&self) -> u32 {
+        let total = self.open_items + self.closed_items;
+        (self.closed_items * 100).checked_div(total).unwrap_or(0)
+    }
+}
+
+/// The most characters a milestone's title and description may have.
+pub const MAX_MILESTONE_TITLE_CHARS: usize = 100;
+pub const MAX_MILESTONE_DESCRIPTION_CHARS: usize = 4000;
+
+/// A due date as `YYYY-MM-DD`, from that or from an RFC 3339 time.
+pub fn tidy_due_on(value: &str) -> Option<String> {
+    let day = value.trim().get(..10)?;
+    let bytes = day.as_bytes();
+    let digits = |range: std::ops::Range<usize>| bytes[range].iter().all(u8::is_ascii_digit);
+    if !(digits(0..4) && bytes[4] == b'-' && digits(5..7) && bytes[7] == b'-' && digits(8..10)) {
+        return None;
+    }
+    let month: u32 = day[5..7].parse().ok()?;
+    let date: u32 = day[8..10].parse().ok()?;
+    ((1..=12).contains(&month) && (1..=31).contains(&date)).then(|| day.to_owned())
+}
+
+/// `list_labels`: a repository's labels, by name, each with how many
+/// issues and pull requests carry it. Takes `ViewArgs`; returns
+/// `Outcome<Vec<Label>>`.
+///
+/// `save_label`: creates a label, or with `name` changes one (renaming it
+/// renames it on every issue and pull request). Needs the Triage role.
+/// Returns `Outcome<Label>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveLabelArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    /// The label to change; absent to create one.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The name it should have: required to create one.
+    #[serde(default)]
+    pub new_name: Option<String>,
+    /// Six hex digits; one is chosen from the name when creating without.
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// `delete_label`: removes a label from the repository and from every
+/// issue and pull request that carries it. Needs the Triage role. Returns
+/// `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteLabelArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub name: String,
+}
+
+/// `add_default_labels`: adds those of [`DEFAULT_LABELS`] the repository
+/// does not have yet. Needs the Triage role. Returns
+/// `Outcome<Vec<Label>>`, every label it has now.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RepoActorArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+}
+
+/// How `set_labels` changes an issue's or pull request's labels.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LabelChange {
+    /// Replace them all.
+    #[default]
+    Set,
+    /// Add these to the ones it has.
+    Add,
+    /// Take these off.
+    Remove,
+}
+
+/// `set_labels`: changes the labels of an issue or a pull request (they
+/// share numbers). A label the repository does not have yet is created
+/// when the actor has the Triage role; anyone else may only use existing
+/// ones, on what they opened. Returns `Outcome<Vec<String>>`, its labels
+/// now.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetLabelsArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub number: u32,
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub change: LabelChange,
+}
+
+/// `list_milestones`: a repository's milestones, open ones by due date
+/// (soonest first, those without one last), then closed ones most recently
+/// closed first. Returns `Outcome<Vec<Milestone>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListMilestonesArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    /// Both when absent.
+    #[serde(default)]
+    pub state: Option<State>,
+}
+
+/// `get_milestone`: one milestone and what is in it. Takes `ViewArgs`,
+/// whose `number` is the milestone's. Returns `Outcome<MilestoneDetail>`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MilestoneDetail {
+    pub milestone: Milestone,
+    /// Newest first, open and closed.
+    pub issues: Vec<Issue>,
+    /// Newest first, in any state.
+    pub pulls: Vec<Pull>,
+}
+
+/// `save_milestone`: creates a milestone, or with `number` changes the
+/// fields given. Needs the Triage role. Returns `Outcome<Milestone>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMilestoneArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    /// The milestone to change; absent to create one.
+    #[serde(default)]
+    pub number: Option<u32>,
+    /// Required to create one.
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// `YYYY-MM-DD`; an empty string clears it.
+    #[serde(default)]
+    pub due_on: Option<String>,
+    #[serde(default)]
+    pub state: Option<State>,
+}
+
+/// `delete_milestone`: removes a milestone; what was in it is in none.
+/// Needs the Triage role. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteMilestoneArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub number: u32,
+}
 
 /// `open` or `closed`: the filter on lists of issues and pull requests. An
 /// open pull request is a draft or one ready for review; a closed one was
@@ -93,6 +349,9 @@ pub struct Issue {
     /// that is still in progress in a fork, such as `g1t`.
     #[serde(default)]
     pub agent: Option<String>,
+    /// The milestone it is in, if any.
+    #[serde(default)]
+    pub milestone: Option<MilestoneRef>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -182,6 +441,22 @@ pub struct Pull {
     /// g1t agent was asked.
     #[serde(default)]
     pub reviewers: Vec<String>,
+    /// Teams whose review was asked for, as `workspace/slug`. A team stays
+    /// here after review assignment picks people from it, who are listed
+    /// in `reviewers`.
+    #[serde(default)]
+    pub team_reviewers: Vec<String>,
+    /// The labels it carries, by name.
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// The milestone it is in, if any.
+    #[serde(default)]
+    pub milestone: Option<MilestoneRef>,
+    /// The branch it merges into. Stored as null for the repository's
+    /// default branch, so that it follows a change of default; lists and
+    /// `get_pull` fill in the name. See [`base_branch`](Pull::base_branch).
+    #[serde(default)]
+    pub base: Option<String>,
     /// Who opened it: a person, or g1t (`kind` `agent`, username `g1t`)
     /// for a change g1t made.
     pub author: User,
@@ -300,6 +575,17 @@ impl Pull {
         self.owner().id == id
     }
 
+    /// The branch it merges into: its own base, or the repository's
+    /// default branch when it has none.
+    pub fn base_branch<'a>(&'a self, default_branch: &'a str) -> &'a str {
+        self.base.as_deref().filter(|base| !base.is_empty()).unwrap_or(default_branch)
+    }
+
+    /// Whether it merges into the repository's default branch.
+    pub fn targets_default(&self, default_branch: &str) -> bool {
+        self.base_branch(default_branch) == default_branch
+    }
+
     /// What to ask the repos service to see what this pull request changes.
     ///
     /// A fork is compared as a whole. A branch is compared by name while
@@ -322,6 +608,7 @@ impl Pull {
             viewer: viewer.clone(),
             base: self.merge_base.clone(),
             head,
+            base_branch: self.base.clone().filter(|base| !base.is_empty()),
         }
     }
 }
@@ -577,6 +864,11 @@ pub struct PullDetail {
     /// stands on the head commit. Empty when none are required.
     #[serde(default, alias = "requiredChecks")]
     pub required_checks: Vec<RequiredCheck>,
+    /// Who owns the files it changes, from the CODEOWNERS file of the
+    /// branch it merges into, and whose approval is still needed. Absent
+    /// when that branch has no CODEOWNERS file.
+    #[serde(default, alias = "codeOwners")]
+    pub code_owners: Option<crate::codeowners::PullCodeOwners>,
 }
 
 /// Where a required check stands on a commit.
@@ -1064,10 +1356,35 @@ pub struct RepoSettings {
     /// low: auto-merge and the merge queue leave it, and it needs someone,
     /// until a person approves it.
     pub hold_low_confidence: bool,
+    /// Refuse to merge until the code owners of every file it changes
+    /// (its CODEOWNERS file) have approved, as many as each section asks.
+    /// Only people count, and `g1t` only where the file names `@g1t`.
+    pub require_code_owner_review: bool,
     /// Username of the member who last changed the settings, if anyone has.
     pub updated_by: Option<String>,
     /// RFC 3339.
     pub updated_at: Option<String>,
+}
+
+impl RepoSettings {
+    /// What holds for a pull request into `base`. The settings are the
+    /// default branch's protection: a pull request into another branch
+    /// needs no required checks or approvals, need not be up to date, and
+    /// never goes through the merge queue, which lands on the default
+    /// branch only. How g1t's agents review, revise and merge holds for
+    /// every branch.
+    pub fn for_base(&self, base: &str, default_branch: &str) -> RepoSettings {
+        if base == default_branch {
+            return self.clone();
+        }
+        RepoSettings {
+            required_checks: Vec::new(),
+            require_up_to_date: false,
+            required_approvals: 0,
+            merge_queue: false,
+            ..self.clone()
+        }
+    }
 }
 
 impl Default for RepoSettings {
@@ -1083,6 +1400,7 @@ impl Default for RepoSettings {
             max_revisions: 2,
             merge_queue: false,
             hold_low_confidence: true,
+            require_code_owner_review: false,
             updated_by: None,
             updated_at: None,
         }
@@ -1165,6 +1483,9 @@ pub struct OpenIssueArgs {
     /// Checks are the workflows the branch's protection requires.
     #[serde(default)]
     pub checks: Vec<String>,
+    /// The number of the milestone to put it in. Needs the Triage role.
+    #[serde(default)]
+    pub milestone: Option<u32>,
 }
 
 /// `delegate_issue`: opens an issue to put g1t on at once, refused
@@ -1252,6 +1573,9 @@ pub struct ListIssuesArgs {
     /// Only issues carrying this label.
     #[serde(default)]
     pub label: Option<String>,
+    /// Only issues in the milestone of this number.
+    #[serde(default)]
+    pub milestone: Option<u32>,
 }
 
 /// `list_pulls`, newest first. Returns `Outcome<Vec<Pull>>`.
@@ -1261,6 +1585,15 @@ pub struct ListPullsArgs {
     pub viewer: Viewer,
     #[serde(default)]
     pub state: Option<State>,
+    /// Only pull requests carrying this label.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Only pull requests in the milestone of this number.
+    #[serde(default)]
+    pub milestone: Option<u32>,
+    /// Only pull requests into this branch.
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 /// `pulls_for_repos`: the newest open and the newest closed pull requests
@@ -1331,6 +1664,10 @@ pub struct UpdateIssueArgs {
     /// Assigning it to g1t is the runner's `run`, not this.
     #[serde(default)]
     pub assignees: Option<Vec<String>>,
+    /// The number of the milestone to put it in; 0 takes it out of its
+    /// milestone. Needs the Triage role.
+    #[serde(default)]
+    pub milestone: Option<u32>,
 }
 
 /// `close_issue` and `reopen_issue`. Each returns `Outcome<Issue>`.
@@ -1385,6 +1722,9 @@ pub struct OpenPullArgs {
     #[serde(default)]
     pub agent: String,
     pub runtime: Runtime,
+    /// The branch to merge into: the default branch when absent.
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 /// `ready_pull`, `close_pull` and `merge_pull`. Each returns `Outcome<Pull>`.
@@ -1592,9 +1932,11 @@ pub struct ReadyIssue {
     pub actor: User,
 }
 
-/// `update_pull`: changes who a pull request is assigned to and whose
-/// review is asked for. Each list given replaces the whole set. Whoever
-/// opened it, or a member of the workspace, may. Returns `Outcome<Pull>`.
+/// `update_pull`: changes who a pull request is assigned to, whose review
+/// is asked for, its labels, its milestone and the branch it merges into.
+/// Each list given replaces the whole set. Whoever opened it, or someone
+/// with the Triage role, may; changing the base needs the Write role.
+/// Returns `Outcome<Pull>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdatePullArgs {
     pub actor: User,
@@ -1603,9 +1945,22 @@ pub struct UpdatePullArgs {
     #[serde(default)]
     pub assignees: Option<Vec<String>>,
     /// May include `g1t`. Asking for its review does not by itself
-    /// start one; the runner's `review` does.
+    /// start one; the runner's `review` does. A team is named
+    /// `workspace/team` (or `@workspace/team`): the whole list, people and
+    /// teams, replaces who is asked.
     #[serde(default)]
     pub reviewers: Option<Vec<String>>,
+    /// Its labels; replaces the whole set, as `set_labels` does.
+    #[serde(default)]
+    pub labels: Option<Vec<String>>,
+    /// The number of the milestone to put it in; 0 takes it out. Needs the
+    /// Triage role.
+    #[serde(default)]
+    pub milestone: Option<u32>,
+    /// The branch it merges into: an existing branch other than its own.
+    /// Needs the Write role.
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 /// `start_checks`: always refused now; a pull request's checks are the
@@ -1758,8 +2113,6 @@ pub struct ReportReviewArgs {
 /// Lowercases, trims and de-duplicates labels, dropping empty ones.
 /// Returns `None` if there are too many or one is too long.
 pub fn normalize_labels(labels: &[String]) -> Option<Vec<String>> {
-    const MAX_LABELS: usize = 10;
-    const MAX_LABEL_CHARS: usize = 40;
     let mut normalized: Vec<String> = Vec::new();
     for label in labels {
         let label = label
@@ -1780,10 +2133,36 @@ pub fn normalize_labels(labels: &[String]) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_labels;
+    use super::*;
 
     fn labels(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn colors_and_due_dates_are_tidied() {
+        assert_eq!(tidy_color("#A1B2C3").as_deref(), Some("a1b2c3"));
+        assert_eq!(tidy_color("fc0").as_deref(), Some("ffcc00"));
+        assert_eq!(tidy_color("red"), None);
+        assert_eq!(tidy_color("12345"), None);
+        assert_eq!(label_color_for("bug"), "d73a4a");
+        assert_eq!(label_color_for("area: web"), label_color_for("area: web"));
+        assert_eq!(tidy_due_on("2026-10-14").as_deref(), Some("2026-10-14"));
+        assert_eq!(tidy_due_on("2026-10-14T00:00:00Z").as_deref(), Some("2026-10-14"));
+        assert_eq!(tidy_due_on("2026-13-01"), None);
+        assert_eq!(tidy_due_on("soon"), None);
+    }
+
+    #[test]
+    fn a_milestone_is_as_far_along_as_its_closed_items() {
+        let mut milestone: Milestone = serde_json::from_value(serde_json::json!({
+            "number": 1, "title": "Launch", "state": "open", "createdAt": "", "updatedAt": ""
+        }))
+        .unwrap();
+        assert_eq!(milestone.percent(), 0);
+        milestone.open_items = 3;
+        milestone.closed_items = 1;
+        assert_eq!(milestone.percent(), 25);
     }
 
     #[test]
@@ -1796,8 +2175,9 @@ mod tests {
 
     #[test]
     fn too_long_or_too_many_labels_are_refused() {
-        assert_eq!(normalize_labels(&["x".repeat(41)]), None);
-        let many: Vec<String> = (0..11).map(|i| format!("label-{i}")).collect();
+        assert_eq!(normalize_labels(&["x".repeat(51)]), None);
+        assert!(normalize_labels(&["x".repeat(50)]).is_some());
+        let many: Vec<String> = (0..21).map(|i| format!("label-{i}")).collect();
         assert_eq!(normalize_labels(&many), None);
     }
 }
@@ -2145,6 +2525,43 @@ mod required_tests {
         assert_eq!(check.description.as_deref(), Some("CI / push failure"));
         let queue = [status("CI / merge_group", "success")];
         assert_eq!(required_checks(&required, &queue)[0].state, RequiredState::Success);
+    }
+
+    #[test]
+    fn only_the_default_branch_is_protected() {
+        let settings = RepoSettings {
+            required_checks: vec!["CI".into()],
+            require_up_to_date: true,
+            required_approvals: 2,
+            merge_queue: true,
+            auto_merge: true,
+            ..RepoSettings::default()
+        };
+        let main = settings.for_base("main", "main");
+        assert_eq!((main.required_checks.len(), main.required_approvals, main.merge_queue), (1, 2, true));
+        let release = settings.for_base("release/1.x", "main");
+        assert!(release.required_checks.is_empty() && !release.require_up_to_date && !release.merge_queue);
+        assert_eq!(release.required_approvals, 0);
+        assert!(release.auto_merge, "how g1t's agents merge holds for every branch");
+    }
+
+    #[test]
+    fn a_pull_request_merges_into_its_base_or_the_default_branch() {
+        let mut pull: Pull = serde_json::from_value(serde_json::json!({
+            "id": "pr_1", "repoId": "rep_1", "number": 14, "issue": null, "title": "Fix it", "body": null,
+            "agent": "agent", "runtime": "external", "status": "open", "fork": null, "forkRepoId": null,
+            "branch": "fix", "headCommit": null, "mergeBase": null, "mergedBy": null, "mergedAt": null,
+            "supersededBy": null, "checkStatus": null, "author": { "id": "x", "username": "x" },
+            "createdAt": "", "updatedAt": ""
+        }))
+        .unwrap();
+        assert_eq!(pull.base_branch("main"), "main");
+        assert!(pull.targets_default("main"));
+        assert_eq!(pull.comparison(&None).base_branch, None);
+        pull.base = Some("release".into());
+        assert_eq!(pull.base_branch("main"), "release");
+        assert!(!pull.targets_default("main"));
+        assert_eq!(pull.comparison(&None).base_branch.as_deref(), Some("release"));
     }
 
     #[test]

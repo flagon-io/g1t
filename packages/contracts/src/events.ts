@@ -8,6 +8,7 @@
  */
 
 import type { RepoRole } from "./access";
+import type { TeamRole, TeamVisibility } from "./teams";
 import type { Confidence, Verdict } from "./work";
 
 /** What every `package.*` event names. */
@@ -46,6 +47,27 @@ export type RepoCollaboratorData = {
   role: RepoRole | null;
   previousRole: RepoRole | null;
 };
+/** A team asked to review a pull request. */
+export type TeamRequested = { team: string; notified: string[]; assigned: string[] };
+
+/** The payload of the `team.*` events; each sets the fields that apply. */
+export type TeamChangedData = {
+  workspace: string;
+  teamId: string;
+  team: string;
+  name: string;
+  visibility: TeamVisibility | null;
+  parent?: string;
+  changes?: string[];
+  username?: string;
+  role?: TeamRole;
+  previousRole?: TeamRole;
+  repoId?: string;
+  repo?: string;
+  repoRole?: RepoRole;
+  previousRepoRole?: RepoRole;
+};
+
 export type EventPayloads = {
   "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
   "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
@@ -174,8 +196,25 @@ export type EventPayloads = {
   /** People were assigned to a pull request: `assignees` is the new set, `added` those newly assigned. */
   "pull.assigned": { pullId: string; repoId: string; number: number; issue?: number; assignees: string[]; added: string[] };
   /** Reviewers were asked for a pull request (`reviewers`), or no longer are. */
-  "pull.review_requested": { pullId: string; repoId: string; number: number; issue?: number; reviewers: string[] };
-  "pull.review_request_removed": { pullId: string; repoId: string; number: number; issue?: number; reviewers: string[] };
+  "pull.review_requested": {
+    pullId: string;
+    repoId: string;
+    number: number;
+    issue?: number;
+    reviewers?: string[];
+    /** Teams asked: `team` is `workspace/slug`, `notified` who is told, `assigned` who review assignment picked. */
+    teams?: TeamRequested[];
+    /** Asked because they own files it changes (its CODEOWNERS file). */
+    codeOwners?: boolean;
+  };
+  "pull.review_request_removed": {
+    pullId: string;
+    repoId: string;
+    number: number;
+    issue?: number;
+    reviewers?: string[];
+    teams?: TeamRequested[];
+  };
   /** g1t stopped seeing a pull request through until a person steps in; `detail` says why. */
   "pull.stalled": { pullId: string; repoId: string; number: number; issue?: number; detail: string };
   /** A pull request g1t had stopped on is going again. */
@@ -210,6 +249,18 @@ export type EventPayloads = {
   "repo.collaborator_added": RepoCollaboratorData;
   "repo.collaborator_removed": RepoCollaboratorData;
   "repo.collaborator_role_changed": RepoCollaboratorData;
+  /** A team of a workspace was created, changed (`changes` says what) or deleted. */
+  "team.created": TeamChangedData;
+  "team.edited": TeamChangedData;
+  "team.deleted": TeamChangedData;
+  /** Someone joined a team, had their role in it changed, or left it. */
+  "team.member_added": TeamChangedData;
+  "team.member_role_changed": TeamChangedData;
+  "team.member_removed": TeamChangedData;
+  /** A team was given a role on a repository, had it changed, or lost it. */
+  "team.repo_added": TeamChangedData;
+  "team.repo_role_changed": TeamChangedData;
+  "team.repo_removed": TeamChangedData;
   /** A repository's merge queue gained, lost or settled an entry. */
   "queue.changed": { repoId: string };
   /** `number` is the issue or pull request commented on. */

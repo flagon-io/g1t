@@ -18,6 +18,7 @@ import {
   reposClient,
   searchClient,
   securityClient,
+  securitySuiteClient,
   webhooksClient,
   workClient,
 } from "@g1t/contracts";
@@ -58,6 +59,8 @@ export const actions = actionsClient(ACTIONS);
 export const deployments = deploymentsClient(DEPLOYMENTS);
 export const projects = projectsClient(PROJECTS);
 export const security = securityClient(SECURITY);
+/** The security suite: patterns, bypasses, code scanning, the dependency graph, settings. */
+export const securitySuite = securitySuiteClient(SECURITY);
 /** Agent runs, sessions and memory: methods of the work service. */
 export const agents = agentsClient(WORK);
 /** What agents may do in a sandbox: methods of the work service. */
