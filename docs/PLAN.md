@@ -1312,6 +1312,26 @@ per resource (`repo:read`, `repo:write`, `issue:write`, `pull:write`).
 MCP clients, the CLI (device flow) and third-party apps all use it. Access
 tokens and SSH keys remain for git itself.
 
+### Workspace aliases (internal, built 2026-10-07)
+
+`g1t` is the product; `flagon-io` is Flagon, Inc., the organization that
+builds it. So nobody mistakes one for the other, `g1t.sh/g1t` leads to
+`g1t.sh/flagon-io`. That is a workspace alias: a name g1t's staff point at
+a workspace, kept in identity's `workspace_aliases` (migration 0029, which
+seeds `g1t`) by the workspace's id, so it follows renames. It is not a
+customer feature and is not documented for users; staff add and remove
+aliases on sudo's Aliases page, with a reason, in sudo's audit log. We may
+give other companies one for a trading name the same way.
+
+An alias is resolved wherever an old slug is (identity's `resolve_slug`),
+so it costs only the not-found path: site pages 301 to the same page under
+the workspace, the API and MCP run the call again under its slug, package
+registries 301, and git over HTTPS is answered in place
+(`resolve_alias`), because pushes do not follow redirects. An alias is
+never a route, a username or a workspace's slug, and nobody can register
+it while it exists. `@g1t` stays g1t's agent: mentions link to how the
+agent works, never to `/g1t`.
+
 ## Architecture
 
 | Component | Language | Runs on | Responsibility |
