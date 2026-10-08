@@ -189,14 +189,69 @@ its job's token, start no workflows, so a workflow cannot set itself off.
 ## The runner
 
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
-`build-essential`, `git`, `curl`, `jq`, Docker (with Buildx and Compose)
-and passwordless `sudo`, in GitHub's layout (`/home/runner/work`,
-`RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
+Java 21, .NET 8, Ruby 3.3, `build-essential`, `git`, `curl`, `jq`, Docker
+(with Buildx and Compose) and passwordless `sudo`, in GitHub's layout
+(`/home/runner/work`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
 `runner.os` is `Linux`. `ubuntu-latest`, `ubuntu-24.04` and other Linux
 labels all run here. A job whose `runs-on` names `self-hosted` waits for one
 of your [self-hosted runners](/guides/self-hosted-runners/) instead. Setup actions such as
 `actions/setup-node` and `actions/setup-python` install other versions as
 they do on GitHub.
+
+### Languages and their setup actions
+
+Each language below is on `PATH` from the job's first step, so a workflow
+that only runs `java`, `dotnet` or `ruby` needs no setup step. When it has
+one, the setup action finds the version that is already there and
+downloads nothing.
+
+| Language | Version | Where | Setup action |
+| --- | --- | --- | --- |
+| Java | Eclipse Temurin 21 (LTS), JDK | `JAVA_HOME` (also `JAVA_HOME_21_X64`), in `RUNNER_TOOL_CACHE` | `actions/setup-java` with `distribution: temurin` and `java-version: 21` uses it. Other versions and distributions are downloaded. |
+| .NET | SDK 8 (LTS) | `DOTNET_ROOT`, `/usr/share/dotnet` | `actions/setup-dotnet` with `dotnet-version: 8.0.x` keeps it when it is the newest 8.0 SDK, and installs other SDKs beside it. |
+| Ruby | 3.3, with Bundler | in `RUNNER_TOOL_CACHE` | `ruby/setup-ruby` with `ruby-version: '3.3'` (or a `.ruby-version` naming 3.3) uses it. |
+| Node | 24 | `/usr/local/bin` | `actions/setup-node` installs other versions. |
+| Python | 3.11 | `/usr/bin/python3` | `actions/setup-python` installs other versions. |
+| Go | 1.27 | `/usr/local/go` | `actions/setup-go` installs other versions. |
+| Rust | stable, with `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target | `~/.cargo/bin` | `rustup` is there to add toolchains and targets. |
+
+```yaml
+steps:
+  - uses: actions/checkout@v5
+  - uses: actions/setup-java@v5
+    with:
+      distribution: temurin
+      java-version: 21
+  - run: ./gradlew build
+```
+
+Because the sandbox runs Debian, `ruby/setup-ruby` treats it as a
+self-hosted runner and uses only the Rubies in `RUNNER_TOOL_CACHE`. A version other than 3.3 fails at that step; install
+it in a `run` step instead (for example with `ruby-build`) or run the job
+in a `container:` with the Ruby you need, such as `ruby:3.4`.
+
+The headers that gems and .NET need to build native code (`libyaml`,
+`libffi`, `zlib`, OpenSSL, ICU) are installed too.
+
+### Calling g1t's API from a job
+
+The `gh` command is not installed: it needs a GraphQL API, and g1t's API
+is REST. Call it with `curl`, using the job's token and the API's address,
+which every job has as `GITHUB_API_URL`:
+
+```yaml
+- name: Comment on the pull request
+  env:
+    TOKEN: ${{ github.token }}
+  run: |
+    curl -fsS -X POST "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/${{ github.event.number }}/comments" \
+      -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+      -d '{"body": "Built."}'
+```
+
+The token reaches this repository and does what the job's `permissions:`
+say; see [the job's token](#the-jobs-token). The
+[API reference](/reference/api/) lists every endpoint.
 
 ### Machine sizes
 

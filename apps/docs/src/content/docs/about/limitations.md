@@ -229,6 +229,30 @@ machines.
   macOS and Windows, on x64 and arm64.
 - **Status.** Not scheduled.
 
+### No `gh` command in jobs
+
+The runner does not include the `gh` command, and pointing it at g1t
+(`GH_HOST=g1t.sh`) does not work.
+
+- **Why.** Most of `gh`'s commands use a GraphQL API, and the rest expect
+  the REST API under `/api/v3` on the same host. g1t's API is REST, at
+  `api.g1t.sh`.
+- **Instead.** Call the API with `curl` and the job's token. See
+  [calling g1t's API from a job](/guides/actions/#calling-g1ts-api-from-a-job).
+- **Status.** Not scheduled.
+
+### One Ruby for `ruby/setup-ruby`
+
+On g1t's machines, `ruby/setup-ruby` finds Ruby 3.3, which the runner
+includes, and fails for any other version.
+
+- **Why.** Its prebuilt Rubies are for other Linux systems, so on Debian it
+  uses only the Rubies already in `RUNNER_TOOL_CACHE`.
+- **Instead.** Use 3.3, run the job in a `container:` with the Ruby you
+  need (such as `ruby:3.4`), or build it in a step with `ruby-build`. See
+  [languages and their setup actions](/guides/actions/#languages-and-their-setup-actions).
+- **Status.** Not scheduled.
+
 ### Machine sizes, time and storage
 
 | Limit | Value |
