@@ -10,6 +10,7 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
+use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -378,6 +379,29 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Packages",
+        "A workspace's packages in every registry: their versions and download counts, deleting and restoring them within 30 days, their visibility and repository, the people and teams with a role on them, and which repositories' workflows may use them (Manage Actions access). A package is named by its type and its name, URL-encoded where it holds a slash.",
+        &[
+            Op::Packages(PackagesOp::ListPackages),
+            Op::Packages(PackagesOp::GetPackage),
+            Op::Packages(PackagesOp::UpdatePackage),
+            Op::Packages(PackagesOp::DeletePackage),
+            Op::Packages(PackagesOp::RestorePackage),
+            Op::Packages(PackagesOp::ListVersions),
+            Op::Packages(PackagesOp::GetVersion),
+            Op::Packages(PackagesOp::DeleteVersion),
+            Op::Packages(PackagesOp::RestoreVersion),
+            Op::Packages(PackagesOp::LinkPackage),
+            Op::Packages(PackagesOp::UnlinkPackage),
+            Op::Packages(PackagesOp::ListAccess),
+            Op::Packages(PackagesOp::SetAccess),
+            Op::Packages(PackagesOp::RemoveAccess),
+            Op::Packages(PackagesOp::ListActionsAccess),
+            Op::Packages(PackagesOp::SetActionsAccess),
+            Op::Packages(PackagesOp::RemoveActionsAccess),
+        ],
+    ),
+    (
         "Deployments",
         "A repository's deployments wherever they run: reported from any CI with these routes, made by g1t Actions jobs with an `environment:`, or built on g1t.page. Each has statuses, shows on its commit as the check `deploy / <environment>`, and belongs to an environment.",
         &[
@@ -662,6 +686,7 @@ fn title(op: Op) -> &'static str {
         Op::Deployments(op) => op.title(),
         Op::Protection(op) => op.title(),
         Op::Artifacts(op) => op.title(),
+        Op::Packages(op) => op.title(),
     }
 }
 

@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
+use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -680,6 +681,25 @@ pub const ROUTES: &[Route] = &[
         Op::GetJobLogs,
         &[("after", "after")],
     ),
+    // Packages, at GitHub's addresses with the workspace in place of the
+    // organization. A name with a slash is one URL-encoded segment.
+    route("GET", "/workspaces/:workspace/packages", Op::Packages(PackagesOp::ListPackages), &[("package_type", "package_type"), ("q", "q"), ("state", "state")]),
+    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name", Op::Packages(PackagesOp::GetPackage), &[]),
+    route("PATCH", "/workspaces/:workspace/packages/:package_type/:package_name", Op::Packages(PackagesOp::UpdatePackage), &[]),
+    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name", Op::Packages(PackagesOp::DeletePackage), &[]),
+    route("POST", "/workspaces/:workspace/packages/:package_type/:package_name/restore", Op::Packages(PackagesOp::RestorePackage), &[]),
+    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/versions", Op::Packages(PackagesOp::ListVersions), &[("state", "state")]),
+    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id", Op::Packages(PackagesOp::GetVersion), &[]),
+    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id", Op::Packages(PackagesOp::DeleteVersion), &[]),
+    route("POST", "/workspaces/:workspace/packages/:package_type/:package_name/versions/:version_id/restore", Op::Packages(PackagesOp::RestoreVersion), &[]),
+    route("PUT", "/workspaces/:workspace/packages/:package_type/:package_name/repository", Op::Packages(PackagesOp::LinkPackage), &[]),
+    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/repository", Op::Packages(PackagesOp::UnlinkPackage), &[]),
+    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/access", Op::Packages(PackagesOp::ListAccess), &[]),
+    route("PUT", "/workspaces/:workspace/packages/:package_type/:package_name/access", Op::Packages(PackagesOp::SetAccess), &[]),
+    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/access", Op::Packages(PackagesOp::RemoveAccess), &[("username", "username"), ("team", "team")]),
+    route("GET", "/workspaces/:workspace/packages/:package_type/:package_name/actions-access", Op::Packages(PackagesOp::ListActionsAccess), &[]),
+    route("PUT", "/workspaces/:workspace/packages/:package_type/:package_name/actions-access", Op::Packages(PackagesOp::SetActionsAccess), &[]),
+    route("DELETE", "/workspaces/:workspace/packages/:package_type/:package_name/actions-access/:repository", Op::Packages(PackagesOp::RemoveActionsAccess), &[]),
     // Artifacts, at GitHub's addresses. `…/zip` answers with a redirect to
     // a signed link (lib.rs).
     route("GET", "/repos/:owner/:name/actions/artifacts", Op::Artifacts(ArtifactsOp::ListArtifacts), &[("name", "name"), ("page", "page"), ("per_page", "per_page")]),

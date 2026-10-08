@@ -1,11 +1,11 @@
-import { ArrowUpRight, Box, Check, ChevronDown, Download, Lock, Search } from "lucide-react";
-import { Form, Link, data } from "react-router";
+import { ArrowUpRight, Box, Check, ChevronDown, Download, Lock, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Form, Link, data, redirect } from "react-router";
 
-import { ECOSYSTEMS, type Ecosystem, type PackageSummary } from "@g1t/contracts";
+import { ECOSYSTEMS, type Ecosystem, PACKAGE_RESTORE_DAYS, type PackageSummary } from "@g1t/contracts";
 
 import type { Route } from "./+types/packages";
 import { PackageIcon } from "../../components/package-icon";
-import { CopyLine, EmptyState, TimeAgo } from "../../components/ui";
+import { CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Hint } from "../../components/ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
@@ -23,7 +23,7 @@ import {
   shortCount,
 } from "../../lib/packages";
 import { packages } from "../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 const DOCS = "https://docs.g1t.sh";
 
@@ -46,12 +46,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const query = url.searchParams.get("q")?.trim() || null;
   const visibility = pick<VisibilityFilter>(url.searchParams.get("visibility"), ["all", "public", "private"], "all");
   const sort = pick<PackageSort>(url.searchParams.get("sort"), ["updated", "downloads", "name"], "updated");
-  const found = unwrap(await packages.list(params.owner, viewer, { ecosystem, query }));
+  const view = url.searchParams.get("view") === "deleted" ? "deleted" : "active";
+  // Deleted packages are listed for those who administer them, and only
+  // then is there a Deleted packages view.
+  const [found, deletedFound] = await Promise.all([
+    packages.list(params.owner, viewer, { ecosystem, query }),
+    packages.deleted(params.owner, viewer),
+  ]);
+  const listed = unwrap(found);
+  const deleted = deletedFound.ok ? deletedFound.value : [];
   // Whether the workspace has any at all decides between a filtered-out
   // list and the first-package page.
-  const any = found.length > 0 || ecosystem != null || query != null;
+  const any = listed.length > 0 || deleted.length > 0 || ecosystem != null || query != null;
   return {
-    list: arrange(found, visibility, sort),
+    list: arrange(listed, visibility, sort),
+    deleted,
+    view,
     any,
     ecosystem,
     query,
@@ -59,6 +69,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     sort,
     workspace: params.owner.toLowerCase(),
   };
+}
+
+type Outcome = { error: string | null; message: string | null };
+
+/** Restoring a deleted package, from the Deleted packages view. */
+export async function action({ request, params, context }: Route.ActionArgs): Promise<Outcome | Response> {
+  assertSameOrigin(request);
+  const user = requireUser(context, request);
+  const form = await request.formData();
+  if (form.get("intent") !== "restore") return { error: "That is not something this page does.", message: null };
+  const type = String(form.get("ecosystem") ?? "");
+  const name = String(form.get("name") ?? "");
+  if (!(ECOSYSTEMS as readonly string[]).includes(type) || !name) return { error: "Name the package to restore.", message: null };
+  const restored = await packages.restorePackage(user, params.owner, type as Ecosystem, name, "web");
+  if (!restored.ok) return { error: restored.error.message, message: null };
+  return redirect(`/${params.owner}/-/packages/${type}/${name}`);
 }
 
 type Filters = { type: string | null; q: string | null; visibility: VisibilityFilter; sort: PackageSort };
@@ -75,9 +101,10 @@ function hrefWith(workspace: string, current: Filters, change: Partial<Filters>)
 }
 
 /** The packages a workspace publishes: filtered, sorted, or, with none yet, how to start. */
-export default function Packages({ loaderData }: Route.ComponentProps) {
-  const { list, any, ecosystem, query, visibility, sort, workspace } = loaderData;
+export default function Packages({ loaderData, actionData }: Route.ComponentProps) {
+  const { list, deleted, view, any, ecosystem, query, visibility, sort, workspace } = loaderData;
   if (!any) return <ChooseRegistry workspace={workspace} />;
+  if (view === "deleted") return <DeletedPackages workspace={workspace} deleted={deleted} outcome={actionData as Outcome | undefined} />;
   const filters: Filters = { type: ecosystem, q: query, visibility, sort };
   const filtered = ecosystem != null || query != null || visibility !== "all";
   return (
@@ -138,9 +165,17 @@ export default function Packages({ loaderData }: Route.ComponentProps) {
               </Link>
             )}
           </span>
-          <a href={`${DOCS}/guides/packages/`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-            How packages work <ArrowUpRight size={12} />
-          </a>
+          <span className="flex items-center gap-4">
+            {deleted.length > 0 && (
+              <Link to={`/${workspace}/-/packages?view=deleted`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+                <Trash2 size={12} />
+                Deleted packages <span className="rounded-full bg-raised px-1.5 text-faint tabular-nums">{deleted.length}</span>
+              </Link>
+            )}
+            <a href={`${DOCS}/guides/packages/`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+              How packages work <ArrowUpRight size={12} />
+            </a>
+          </span>
         </header>
         {list.length === 0 ? (
           <div className="p-4">
@@ -235,6 +270,70 @@ function PackageRow({ pkg }: { pkg: PackageSummary }) {
         </span>
       </Link>
     </li>
+  );
+}
+
+/** Deleted packages that can still be restored, for those who administer them. */
+function DeletedPackages({ workspace, deleted, outcome }: { workspace: string; deleted: PackageSummary[]; outcome: Outcome | undefined }) {
+  return (
+    <div className="space-y-4">
+      <Link to={`/${workspace}/-/packages`} className="text-sm text-muted hover:text-fg">
+        Packages
+      </Link>
+      <div className="max-w-2xl">
+        <h2 className="text-lg font-semibold tracking-tight">Deleted packages</h2>
+        <p className="mt-1 text-sm text-muted">
+          Packages deleted in the last {PACKAGE_RESTORE_DAYS} days, with every version they had. Restore one to bring it back as it was;
+          until it is purged, nobody else can publish a package of its name.
+        </p>
+      </div>
+      {outcome?.error && <ErrorText>{outcome.error}</ErrorText>}
+      {deleted.length === 0 ? (
+        <EmptyState title="No deleted packages">Packages you delete stay here, restorable, for {PACKAGE_RESTORE_DAYS} days.</EmptyState>
+      ) : (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+          {deleted.map((pkg) => (
+            <li key={pkg.id} className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3.5">
+              <PackageIcon ecosystem={pkg.ecosystem} />
+              <span className="min-w-0 grow basis-48">
+                <span className="block truncate font-medium">{pkg.name}</span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+                  <span>{ECOSYSTEM_LABEL[pkg.ecosystem]}</span>
+                  <span className="text-faint">·</span>
+                  <span>
+                    {pkg.versions} {pkg.versions === 1 ? "version" : "versions"}
+                  </span>
+                  {pkg.deleted_at && (
+                    <>
+                      <span className="text-faint">·</span>
+                      <span>
+                        Deleted {pkg.deleted_by ? `by ${pkg.deleted_by} ` : ""}
+                        <TimeAgo at={pkg.deleted_at} />
+                      </span>
+                    </>
+                  )}
+                  {pkg.purge_at && (
+                    <>
+                      <span className="text-faint">·</span>
+                      <span>Purged {new Date(pkg.purge_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                    </>
+                  )}
+                </span>
+              </span>
+              <Form method="post">
+                <input type="hidden" name="intent" value="restore" />
+                <input type="hidden" name="ecosystem" value={pkg.ecosystem} />
+                <input type="hidden" name="name" value={pkg.name} />
+                <SubmitButton variant="quiet" match={{ intent: "restore", name: pkg.name }} pending="Restoring…">
+                  <RotateCcw size={14} />
+                  Restore
+                </SubmitButton>
+              </Form>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

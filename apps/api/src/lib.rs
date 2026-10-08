@@ -17,6 +17,7 @@ mod mcp;
 mod notifications;
 mod oauth;
 mod oidc;
+mod packages;
 mod openapi;
 mod pins;
 mod projects;

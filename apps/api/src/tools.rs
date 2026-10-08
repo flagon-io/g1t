@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
+use crate::packages::PackagesOp;
 use crate::protection::ProtectionOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -260,6 +261,31 @@ pub const TOOLS: &[Tool] = &[
             a("delete_runner_group", Op::DeleteRunnerGroup, "Delete a group; its runners join the default"),
             a("get_runner_settings", Op::GetRunnerSettings, "Where agent work runs; whether forks may use runners"),
             a("update_runner_settings", Op::UpdateRunnerSettings, "Change them"),
+        ],
+    },
+    Tool {
+        name: "package",
+        title: "Packages",
+        description: "A workspace's packages in every registry (container images, npm, Cargo, Maven, NuGet, RubyGems, Composer): their versions and downloads, deleting and restoring them within 30 days, their visibility and repository, who has a role on them, and which repositories' workflows may use them (Manage Actions access). Name one by workspace, package_type and package_name.",
+        default_action: None,
+        actions: &[
+            a("list", Op::Packages(PackagesOp::ListPackages), "A workspace's packages; state deleted for restorable ones"),
+            a("get", Op::Packages(PackagesOp::GetPackage), "One package: address, visibility, repository, downloads"),
+            a("versions", Op::Packages(PackagesOp::ListVersions), "Its versions with tags and downloads; state deleted too"),
+            a("get_version", Op::Packages(PackagesOp::GetVersion), "One version by id, version, digest or tag"),
+            a("update", Op::Packages(PackagesOp::UpdatePackage), "Set visibility, or inherit_access for a linked one"),
+            a("link", Op::Packages(PackagesOp::LinkPackage), "Link it to a repository of its workspace"),
+            a("unlink", Op::Packages(PackagesOp::UnlinkPackage), "Unlink it: the workspace's, private"),
+            a("access", Op::Packages(PackagesOp::ListAccess), "People and teams with a role on it"),
+            a("set_access", Op::Packages(PackagesOp::SetAccess), "Give a person or team read, write or admin"),
+            a("remove_access", Op::Packages(PackagesOp::RemoveAccess), "Take a person's or team's role away"),
+            a("actions_access", Op::Packages(PackagesOp::ListActionsAccess), "Repositories whose workflows may use it"),
+            a("set_actions_access", Op::Packages(PackagesOp::SetActionsAccess), "Let a repository's workflows read or write it"),
+            a("remove_actions_access", Op::Packages(PackagesOp::RemoveActionsAccess), "Stop a repository's workflows using it"),
+            a("delete", Op::Packages(PackagesOp::DeletePackage), "Delete it; restorable for 30 days"),
+            a("restore", Op::Packages(PackagesOp::RestorePackage), "Restore a deleted package"),
+            a("delete_version", Op::Packages(PackagesOp::DeleteVersion), "Delete a version; restorable for 30 days"),
+            a("restore_version", Op::Packages(PackagesOp::RestoreVersion), "Restore a deleted version"),
         ],
     },
     Tool {
@@ -743,7 +769,7 @@ mod tests {
                 assert!(tool.action(default).is_some(), "{}", tool.name);
             }
         }
-        assert!(TOOLS.len() <= 17, "{} tools", TOOLS.len());
+        assert!(TOOLS.len() <= 18, "{} tools", TOOLS.len());
     }
 
     #[test]

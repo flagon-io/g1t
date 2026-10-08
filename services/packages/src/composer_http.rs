@@ -18,7 +18,6 @@ use std::collections::{HashMap, HashSet};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use g1t_contracts::User;
-use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_contracts::repos::{
@@ -29,13 +28,13 @@ use g1t_kit::now_ms;
 use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, Result, Url};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::composer::{self, Origin, Version};
 use crate::db::{NewVersion, PackageRow};
 use crate::digest::Digest;
 use crate::oci::{Credentials, origin};
 use crate::store::BlobStore;
-use crate::{Caller, Packages, TargetOf};
+use crate::{Caller, Packages};
 
 const COMPOSER: &str = "composer";
 /// The biggest `composer.json` or README read.
@@ -181,24 +180,26 @@ impl Packages {
     }
 
     /// The answer when `viewer` may not pull `package`, if they may not.
-    fn composer_check(&self, viewer: Option<&User>, package: &PackageRow) -> Option<Result<Response>> {
-        let target = TargetOf::package(package);
-        if access::decide(viewer, &target.view(), Action::Pull).allowed {
-            return None;
+    async fn composer_check(&self, viewer: Option<&User>, package: &PackageRow) -> Result<Option<Result<Response>>> {
+        if self.check(viewer, package, Action::Pull).await?.0.allowed {
+            return Ok(None);
         }
-        Some(if viewer.is_none() {
+        Ok(Some(if viewer.is_none() {
             error(401, "Sign in to install this package: composer config --auth http-basic.g1t.sh <you> <g1t token>")
         } else {
             error(404, "Not found: no such package, or you cannot see it.")
-        })
+        }))
     }
 
     async fn composer_root(&self, workspace: &str, viewer: Option<&User>) -> Result<Response> {
         let rows = self.db.list(workspace, Some(COMPOSER), None, None, 1000).await?;
+        let packages: Vec<&PackageRow> = rows.iter().map(|row| &row.package).collect();
+        let may = self.may_all(viewer, &packages, Action::Pull).await?;
         let available: Vec<String> = rows
             .iter()
-            .filter(|row| access::decide(viewer, &TargetOf::package(&row.package).view(), Action::Pull).allowed)
-            .map(|row| row.package.name.clone())
+            .zip(may)
+            .filter(|(_, may)| *may)
+            .map(|(row, _)| row.package.name.clone())
             .collect();
         Response::from_json(&composer::root(workspace, &available))
     }
@@ -207,7 +208,7 @@ impl Packages {
         let Some(package) = self.composer_package(workspace, name).await? else {
             return error(404, format!("There is no package {name} in {workspace}."));
         };
-        if let Some(refusal) = self.composer_check(viewer, &package) {
+        if let Some(refusal) = self.composer_check(viewer, &package).await? {
             return refusal;
         }
         let base = origin(url);
@@ -241,14 +242,14 @@ impl Packages {
         let Some(package) = self.composer_package(workspace, name).await? else {
             return error(404, format!("There is no package {name} in {workspace}."));
         };
-        if let Some(refusal) = self.composer_check(viewer, &package) {
+        if let Some(refusal) = self.composer_check(viewer, &package).await? {
             return refusal;
         }
         // Only the commits of its versions: a zip is never made of any
         // other commit of the repository.
-        if self.db.version_by_digest(&package.id, commit).await?.is_none() {
+        let Some(version) = self.db.version_by_digest(&package.id, commit).await? else {
             return error(404, format!("{commit} is not a version of {name}."));
-        }
+        };
         let blob = match self.db.dist_for_commit(&package.id, commit).await? {
             Some(blob) => blob,
             None => match self.build_dist(&package, commit).await? {
@@ -259,7 +260,7 @@ impl Packages {
         let Some(got) = self.store.get(&blob.object_key, None).await? else {
             return error(404, "The archive is missing. Try again.");
         };
-        self.count_download(&package.id, ctx);
+        self.count_version_download(&package.id, &version.id, ctx);
         let headers = Headers::new();
         headers.set("content-type", "application/zip")?;
         headers.set("content-length", &blob.size.to_string())?;
@@ -406,7 +407,7 @@ impl Packages {
 
         // Versions follow git, so g1t records them: what made them is the
         // push, already in the log as `git.push`.
-        let caller = Caller { actor: Some(AuditActor::system()) };
+        let caller = Caller::system();
         let wanted = wanted_versions(&refs, &repo.default_branch);
         let stored = self.db.versions(&package.id, 1000).await?;
         let mut manifests: HashMap<String, Option<Value>> = HashMap::new();
@@ -508,7 +509,7 @@ impl Packages {
     async fn drop_composer(&self, package: &PackageRow) -> Result<()> {
         self.db.delete_package(&package.id).await?;
         self.db.measure(&package.workspace).await?;
-        let caller = Caller { actor: Some(AuditActor::system()) };
+        let caller = Caller::system();
         self.announce("package.deleted", package, self.event_of(package), &caller).await;
         self.audit(&caller, "package.delete", package, Some(&package.name), None).await;
         Ok(())

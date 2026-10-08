@@ -14,14 +14,13 @@
 //! out of the index; its file stays for lockfiles that name it.
 
 use g1t_contracts::User;
-use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_kit::now_ms;
 use serde_json::Value;
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result, Url};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::db::{NewFile, NewVersion, PackageRow, VersionRow};
 use crate::digest::Digest;
 use crate::oci::{Credentials, published_by};
@@ -160,12 +159,10 @@ impl Packages {
     }
 
     async fn gem_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Result<Option<Response>> {
-        let target = TargetOf::package(package);
-        let decision = access::decide(viewer, &target.view(), action);
+        let (decision, readable) = self.check(viewer, package, action).await?;
         if decision.allowed {
             return Ok(None);
         }
-        let readable = action != Action::Pull && access::decide(viewer, &target.view(), Action::Pull).allowed;
         if !readable && viewer.is_none() {
             return Ok(Some(error(401, sign_in(&package.workspace))?));
         }
@@ -183,10 +180,12 @@ impl Packages {
         }
         let packages = self.db.packages_of(workspace, RUBYGEMS, MAX_GEMS).await?;
         let versions = self.db.ecosystem_versions(workspace, RUBYGEMS, MAX_VERSIONS).await?;
+        let may = self.may_all(viewer, &packages.iter().collect::<Vec<_>>(), Action::Pull).await?;
         Ok(Ok(packages
             .into_iter()
-            .filter(|p| access::decide(viewer, &TargetOf::package(p).view(), Action::Pull).allowed)
-            .map(|p| {
+            .zip(may)
+            .filter(|(_, may)| *may)
+            .map(|(p, _)| {
                 let rows: Vec<VersionRow> = versions.iter().filter(|v| v.package_id == p.id && !v.is_yanked()).cloned().collect();
                 (p, rows)
             })
@@ -292,7 +291,7 @@ impl Packages {
                 return Ok(Response::from_body(ResponseBody::Empty)?.with_headers(headers));
             }
             let Some(got) = self.store.get(&blob.object_key, None).await? else { continue };
-            self.count_download(&package.id, ctx);
+            self.count_version_download(&package.id, &row.id, ctx);
             return Ok(Response::from_body(got.body)?.with_headers(headers));
         }
         self.gem_absent(workspace, viewer).await
@@ -317,7 +316,7 @@ impl Packages {
                 break;
             }
         }
-        Ok(TargetOf { workspace: workspace.to_owned(), repo: repo.map(|r| (r.id, r.name, r.is_private)), public: false })
+        Ok(TargetOf::unmade(workspace, &spec.name, repo.map(|r| (r.id, r.name, r.is_private))))
     }
 
     /// `gem push`: the `.gem` as the body.
@@ -353,7 +352,7 @@ impl Packages {
         let found = self.db.package_any_case(workspace, RUBYGEMS, &spec.name).await?;
         if let Some(found) = &found {
             if found.hidden() {
-                return error(403, format!("The workspace {workspace} is deleted; nothing can be pushed to it."));
+                return error(403, Packages::hidden_refusal(found));
             }
             if found.name != spec.name {
                 return error(409, format!("The name {} is taken by the gem {}. Push it under that name.", spec.name, found.name));
@@ -361,38 +360,39 @@ impl Packages {
         } else if self.db.workspace_hidden(workspace).await? {
             return error(403, format!("The workspace {workspace} is deleted; nothing can be pushed to it."));
         }
-        let target = match &found {
+        let mut target = match &found {
             Some(package) => TargetOf::package(package),
             None => self.gem_target(workspace, &spec).await?,
         };
-        let decision = access::decide(viewer, &target.view(), Action::Push);
+        let decision = self.decide(viewer, &mut target, Action::Push).await?;
         if !decision.allowed {
-            let readable = found.is_none() || access::decide(viewer, &target.view(), Action::Pull).allowed;
+            let readable = found.is_none() || self.decide(viewer, &mut target, Action::Pull).await?.allowed;
             if !readable {
                 return error(404, "Not found: no such gem, or you cannot see it.");
             }
             return error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned()));
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         let package = match found {
             Some(package) => package,
             None => {
-                self.db
-                    .create_package(
-                        &new_id("pkg", now_ms()),
-                        workspace,
-                        RUBYGEMS,
-                        &spec.name,
-                        target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
-                        caller.actor.as_ref().map_or("", |actor| actor.actor_id.as_str()),
-                        now_ms(),
-                    )
-                    .await?
+                self.make_package(
+                    workspace,
+                    RUBYGEMS,
+                    &spec.name,
+                    target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
+                    &caller,
+                    now_ms(),
+                )
+                .await?
             }
         };
         let existing = self.db.versions(&package.id, MAX_VERSIONS).await?;
         if existing.iter().any(|v| v.version == key) {
             return error(409, format!("{} ({key}) is already pushed, and a version is pushed once, yanked or not. Bump the version.", package.name));
+        }
+        if let Some(refused) = self.reserved_refusal(&package, &key).await? {
+            return error(409, refused);
         }
 
         let digest = Digest::of(&gem);
@@ -472,7 +472,7 @@ impl Packages {
         }
         self.db.set_yanked(&row.id, true).await?;
         self.db.touch_package(&package.id, now_ms()).await?;
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         self.audit(&caller, "package.yank", &package, Some(&format!("{workspace}/{name}@{key}")), None).await;
         let mut response = Response::ok(format!("Successfully deleted gem: {name} ({key})"))?;
         response.headers_mut().set("content-type", "text/plain; charset=utf-8")?;

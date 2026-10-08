@@ -35,6 +35,13 @@ Every workspace keeps an audit log. It records:
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. |
 | `team.member_added`, `team.member_role_changed`, `team.member_removed` | Someone was added to a team, made its maintainer or a member, or taken out of it. |
 | `team.repo_added`, `team.repo_role_changed`, `team.repo_removed` | A team was given a role on a repository, had it changed, or lost it. |
+| `package.delete`, `package.restore`, `package.purged` | A [package](/guides/packages/#delete-and-restore) was deleted, restored, or removed for good 30 days after it was deleted. |
+| `package.delete_version`, `package.restore_version` | One of its versions was deleted or restored. |
+| `package.access_added`, `package.access_role_changed`, `package.access_removed` | A person or team was given a role on a package itself, had it changed, or lost it. |
+| `package.actions_access_added`, `package.actions_access_role_changed`, `package.actions_access_removed` | A repository's workflows were given access to a package under [Manage Actions access](/guides/packages/#manage-actions-access), had it changed, or lost it. |
+| `package.inherit_access_changed` | Inheriting access from the linked repository was turned on or off. |
+| `package.visibility_changed` | A package was made public or private. |
+| `package.linked`, `package.unlinked` | A package was linked to a repository (from its settings, or by an image's source label), or unlinked. |
 | `workspace.residency_changed` | An owner changed where the workspace's new repositories are stored. See [data residency](/guides/workspaces/#data-residency). |
 | `workspace.deleted`, `workspace.restored`, `workspace.purged` | An owner deleted the workspace, g1t's support restored it, or it was removed for good. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). |
 

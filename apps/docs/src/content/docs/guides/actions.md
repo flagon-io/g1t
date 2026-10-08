@@ -232,7 +232,9 @@ usually `root`. A few things differ from GitHub's runner:
 
 On g1t's machines, a job is signed in to g1t's container registry from
 the start, with its own `G1T_TOKEN`, so it can push to and pull from its
-workspace's images without a login step. A run that gets no secrets is
+repository's images without a login step; images of other repositories
+need this one added under their
+[Manage Actions access](/guides/packages/#manage-actions-access). A run that gets no secrets is
 not signed in. See [container registry](/guides/containers/#in-workflows).
 
 ```yaml
@@ -759,7 +761,10 @@ Each job gets a token of its own, `${{ secrets.G1T_TOKEN }}`
 [API](/reference/api/) or pushes with git:
 
 - It reaches **this repository only**. Every other repository, even one
-  in the same workspace, is refused.
+  in the same workspace, is refused. So are packages: it reaches this
+  repository's own, and another package only once the package's admins
+  add this repository under its
+  [Manage Actions access](/guides/packages/#manage-actions-access).
 - It can do **what its `permissions:` say**, and nothing more.
 - It **stops working when the job ends**, however it ends.
 - Everything it changes is in the [audit log](/guides/audit-log/) as that

@@ -422,6 +422,29 @@
       ]
     },
     {
+      "name": "Packages",
+      "description": "A workspace's packages in every registry: their versions and download counts, deleting and restoring them within 30 days, their visibility and repository, the people and teams with a role on them, and which repositories' workflows may use them (Manage Actions access). A package is named by its type and its name, URL-encoded where it holds a slash.",
+      "x-tools": [
+        "list_packages",
+        "get_package",
+        "update_package",
+        "delete_package",
+        "restore_package",
+        "list_package_versions",
+        "get_package_version",
+        "delete_package_version",
+        "restore_package_version",
+        "link_package",
+        "unlink_package",
+        "list_package_access",
+        "set_package_access",
+        "remove_package_access",
+        "list_package_actions_access",
+        "set_package_actions_access",
+        "remove_package_actions_access"
+      ]
+    },
+    {
       "name": "Deployments",
       "description": "A repository's deployments wherever they run: reported from any CI with these routes, made by g1t Actions jobs with an `environment:`, or built on g1t.page. Each has statuses, shows on its commit as the check `deploy / <environment>`, and belongs to an environment.",
       "x-tools": [
@@ -40362,6 +40385,2558 @@
         },
         "x-example-query": {
           "after": 0
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages": {
+      "get": {
+        "operationId": "list_packages",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "List a workspace's packages",
+        "description": "List a workspace's packages you may pull, most recently updated first: each with its id, name, package_type, address (what a client is given, such as g1t.sh/acme/web), visibility, the repository it is linked to, version_count, latest, size_in_bytes, download_count, inherit_access and html_url. Narrow with package_type and q (part of the name). With state deleted, its deleted packages that can still be restored instead, those you administer, each with deleted_at, deleted_by and purge_at. Public packages are open to anyone.\n\nOnly packages you may pull are listed. With `state=deleted`, the workspace's deleted packages you administer that can still be restored, each with `deleted_at`, `deleted_by` and `purge_at`.",
+        "x-operation": "list_packages",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "list",
+        "x-scope": "packages:read",
+        "security": [
+          {
+            "token": [
+              "packages:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only packages whose name holds this."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "deleted"
+              ]
+            },
+            "description": "active (the default), or deleted: deleted packages that can still be restored."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "pkg_01kq7b3d5f7h9k1m3p5r7t9v1x",
+                    "name": "web",
+                    "package_type": "container",
+                    "workspace": "acme",
+                    "address": "g1t.sh/acme/web",
+                    "visibility": "private",
+                    "repository": {
+                      "id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                      "name": "web",
+                      "full_name": "acme/web"
+                    },
+                    "description": null,
+                    "version_count": 12,
+                    "latest": "latest",
+                    "size_in_bytes": 48211932,
+                    "download_count": 1840,
+                    "inherit_access": true,
+                    "created_at": "2026-09-14T10:02:11.000Z",
+                    "updated_at": "2026-10-08T14:05:20.000Z",
+                    "deleted_at": null,
+                    "deleted_by": null,
+                    "purge_at": null,
+                    "html_url": "https://g1t.sh/acme/-/packages/container/web"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        },
+        "x-example-query": {
+          "package_type": "container"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}": {
+      "get": {
+        "operationId": "get_package",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Get a package",
+        "description": "Get one package by its package_type and package_name (URL-encode a slash in a REST path: web%2Fworker). Not found when you may not pull it, as for one that does not exist.\n\nA name with a slash is one URL-encoded path segment: `/workspaces/acme/packages/container/web%2Fworker`. Not found when you may not pull it.",
+        "x-operation": "get_package",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "get",
+        "x-scope": "packages:read",
+        "security": [
+          {
+            "token": [
+              "packages:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pkg_01kq7b4e6g8j0m2p4r6t8v0x2z",
+                  "name": "ui",
+                  "package_type": "npm",
+                  "workspace": "acme",
+                  "address": "g1t.sh/-/npm/@acme/ui",
+                  "visibility": "public",
+                  "repository": {
+                    "id": "rep_01kpw0b3d5f7h9k1m3p5r7t9v1",
+                    "name": "ui",
+                    "full_name": "acme/ui"
+                  },
+                  "description": "Acme's design system components.",
+                  "version_count": 4,
+                  "latest": "2.1.0",
+                  "size_in_bytes": 391204,
+                  "download_count": 9213,
+                  "inherit_access": true,
+                  "created_at": "2026-08-02T09:30:00.000Z",
+                  "updated_at": "2026-10-07T16:44:02.000Z",
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null,
+                  "html_url": "https://g1t.sh/acme/-/packages/npm/ui"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "npm",
+          "package_name": "ui"
+        }
+      },
+      "patch": {
+        "operationId": "update_package",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Update a package",
+        "description": "Change a package's visibility (public or private: an unlinked package only, as a linked one has its repository's) or, for a linked package, inherit_access: whether it takes its repository's roles. Off, only the roles given on the package itself and the workspace's owners count. Takes the Admin role on the package. Returns the package.\n\nWith `inherit_access` off, the repository's roles no longer reach the package: only the roles given on it (`set_package_access`) and the workspace's owners. `visibility` is for an unlinked package; a linked one has its repository's.",
+        "x-operation": "update_package",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "update",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pkg_01kq7b3d5f7h9k1m3p5r7t9v1x",
+                  "name": "web",
+                  "package_type": "container",
+                  "workspace": "acme",
+                  "address": "g1t.sh/acme/web",
+                  "visibility": "private",
+                  "repository": {
+                    "id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                    "name": "web",
+                    "full_name": "acme/web"
+                  },
+                  "description": null,
+                  "version_count": 12,
+                  "latest": "latest",
+                  "size_in_bytes": 48211932,
+                  "download_count": 1840,
+                  "inherit_access": false,
+                  "created_at": "2026-09-14T10:02:11.000Z",
+                  "updated_at": "2026-10-08T15:01:40.000Z",
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null,
+                  "html_url": "https://g1t.sh/acme/-/packages/container/web"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "private"
+                    ],
+                    "description": "Who may pull an unlinked package: anyone, or the workspace's members by its base permission."
+                  },
+                  "inherit_access": {
+                    "type": "boolean",
+                    "description": "For a linked package: whether it takes its repository's roles."
+                  }
+                }
+              },
+              "example": {
+                "inherit_access": false
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        }
+      },
+      "delete": {
+        "operationId": "delete_package",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Delete a package",
+        "description": "Delete a package and every version: it is gone from the registries at once, and can be restored for 30 days, during which its name cannot be taken. Takes the Admin role on the package.\n\nThe package and every version are gone from the registry at once. Restore it with `restore_package` within 30 days; until then nobody can publish a package of its name.",
+        "x-operation": "delete_package",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "delete",
+        "x-scope": "packages:delete",
+        "security": [
+          {
+            "token": [
+              "packages:delete"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web-old"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/restore": {
+      "post": {
+        "operationId": "restore_package",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Restore a package",
+        "description": "Restore a deleted package, with the versions it had, while it can be (30 days after it was deleted). Takes the Admin role on it. Returns the package.",
+        "x-operation": "restore_package",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "restore",
+        "x-scope": "packages:delete",
+        "security": [
+          {
+            "token": [
+              "packages:delete"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pkg_01kq7b5f7h9k1m3p5r7t9v1x3z",
+                  "name": "web-old",
+                  "package_type": "container",
+                  "workspace": "acme",
+                  "address": "g1t.sh/acme/web-old",
+                  "visibility": "private",
+                  "repository": null,
+                  "description": null,
+                  "version_count": 3,
+                  "latest": "latest",
+                  "size_in_bytes": 20112840,
+                  "download_count": 112,
+                  "inherit_access": true,
+                  "created_at": "2026-07-01T08:00:00.000Z",
+                  "updated_at": "2026-10-08T15:10:00.000Z",
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null,
+                  "html_url": "https://g1t.sh/acme/-/packages/container/web-old"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web-old"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/versions": {
+      "get": {
+        "operationId": "list_package_versions",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "List a package's versions",
+        "description": "List a package's versions, newest first: each with its id (ver_…), name (the version, or for a container image its digest), digest, size_in_bytes, download_count, tags, media_type, platforms, published_by and created_at. With state deleted, its deleted versions that can still be restored, with deleted_at, deleted_by and purge_at: for the package's admins only.\n\nA container image's versions are its manifests, named by digest; every other package's by version. `download_count` counts pulls and downloads of the version itself, approximately. With `state=deleted`, the deleted versions that can still be restored, for the package's admins.",
+        "x-operation": "list_package_versions",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "versions",
+        "x-scope": "packages:read",
+        "security": [
+          {
+            "token": [
+              "packages:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "deleted"
+              ]
+            },
+            "description": "active (the default), or deleted: deleted versions that can still be restored."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "ver_01kq9c5f7h9k1m3p5r7t9v1x3z",
+                    "name": "sha256:9b2e4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b",
+                    "digest": "sha256:9b2e4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b",
+                    "size_in_bytes": 48211932,
+                    "download_count": 611,
+                    "tags": [
+                      "latest",
+                      "v1.4.0"
+                    ],
+                    "media_type": "application/vnd.oci.image.index.v1+json",
+                    "artifact_type": null,
+                    "subject": null,
+                    "platforms": [
+                      "linux/amd64",
+                      "linux/arm64"
+                    ],
+                    "published_by": "ana",
+                    "created_at": "2026-10-08T14:05:20.000Z",
+                    "deprecated": null,
+                    "deleted_at": null,
+                    "deleted_by": null,
+                    "purge_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/versions/{version_id}": {
+      "get": {
+        "operationId": "get_package_version",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Get a package version",
+        "description": "Get one version of a package by its id (ver_…), its version, its digest, or a tag that points to it.\n\n`version_id` is the version's id (`ver_…`), its version, its digest, or a tag that points to it.",
+        "x-operation": "get_package_version",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "get_version",
+        "x-scope": "packages:read",
+        "security": [
+          {
+            "token": [
+              "packages:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The version's id (ver_…), its version, its digest, or a tag that points to it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ver_01kq9c6g8j0m2p4r6t8v0x2z4b",
+                  "name": "2.1.0",
+                  "digest": "sha256:3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e",
+                  "size_in_bytes": 97412,
+                  "download_count": 2204,
+                  "tags": [
+                    "latest"
+                  ],
+                  "media_type": null,
+                  "artifact_type": null,
+                  "subject": null,
+                  "platforms": [],
+                  "published_by": "bo",
+                  "created_at": "2026-10-07T16:44:02.000Z",
+                  "deprecated": null,
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "npm",
+          "package_name": "ui",
+          "version_id": "2.1.0"
+        }
+      },
+      "delete": {
+        "operationId": "delete_package_version",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Delete a package version",
+        "description": "Delete one version by its id, version, digest or a tag that points to it: it is gone from the registries at once, with its tags, and can be restored for 30 days. Its version (or digest) cannot be published again until then. Composer versions follow their repository's tags: delete the tag instead. Takes the Admin role on the package.\n\nThe version and its tags are gone from the registry at once. It can be restored for 30 days, and its version cannot be published again until it is purged.",
+        "x-operation": "delete_package_version",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "delete_version",
+        "x-scope": "packages:delete",
+        "security": [
+          {
+            "token": [
+              "packages:delete"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The version's id (ver_…), its version, its digest, or a tag that points to it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "npm",
+          "package_name": "ui",
+          "version_id": "2.0.0-beta.1"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/versions/{version_id}/restore": {
+      "post": {
+        "operationId": "restore_package_version",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Restore a package version",
+        "description": "Restore a deleted version by its id or version, while it can be (30 days after it was deleted), with the tags that still pointed to it. Takes the Admin role on the package. Returns the version.\n\nTags that pointed to it come back with it, unless one was moved to another version meanwhile.",
+        "x-operation": "restore_package_version",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "restore_version",
+        "x-scope": "packages:delete",
+        "security": [
+          {
+            "token": [
+              "packages:delete"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The version's id (ver_…), its version, its digest, or a tag that points to it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ver_01kq9c7h9k1m3p5r7t9v1x3z5c",
+                  "name": "2.0.0-beta.1",
+                  "digest": "sha256:7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f",
+                  "size_in_bytes": 96880,
+                  "download_count": 41,
+                  "tags": [
+                    "beta"
+                  ],
+                  "media_type": null,
+                  "artifact_type": null,
+                  "subject": null,
+                  "platforms": [],
+                  "published_by": "bo",
+                  "created_at": "2026-09-30T11:20:00.000Z",
+                  "deprecated": null,
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "npm",
+          "package_name": "ui",
+          "version_id": "2.0.0-beta.1"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/repository": {
+      "put": {
+        "operationId": "link_package",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Link a package to a repository",
+        "description": "Link a package to a repository of its workspace (repository: its name or owner/name): it then has that repository's visibility and, unless inherit_access is off, its roles, and the repository's workflows may publish it. Takes the Admin role on the package and on the repository. Returns the package.\n\nThe package takes the repository's visibility. You need the Admin role on the package and on the repository.",
+        "x-operation": "link_package",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "link",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pkg_01kq7b6g8j0m2p4r6t8v0x2z4b",
+                  "name": "tools",
+                  "package_type": "container",
+                  "workspace": "acme",
+                  "address": "g1t.sh/acme/tools",
+                  "visibility": "private",
+                  "repository": {
+                    "id": "rep_01kpw0c4e6g8j0m2p4r6t8v0x2",
+                    "name": "infra",
+                    "full_name": "acme/infra"
+                  },
+                  "description": null,
+                  "version_count": 2,
+                  "latest": "latest",
+                  "size_in_bytes": 7340032,
+                  "download_count": 88,
+                  "inherit_access": true,
+                  "created_at": "2026-09-20T12:00:00.000Z",
+                  "updated_at": "2026-10-08T15:20:00.000Z",
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null,
+                  "html_url": "https://g1t.sh/acme/-/packages/container/tools"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "description": "A repository of the package's workspace: its name, or owner/name."
+                  }
+                },
+                "required": [
+                  "repository"
+                ]
+              },
+              "example": {
+                "repository": "acme/infra"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "tools"
+        }
+      },
+      "delete": {
+        "operationId": "unlink_package",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Unlink a package from its repository",
+        "description": "Unlink a package from its repository: it is then the workspace's, private until someone makes it public, and the repository's workflows lose their access unless it is added under Manage Actions access. Takes the Admin role on the package. Returns the package.",
+        "x-operation": "unlink_package",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "unlink",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pkg_01kq7b6g8j0m2p4r6t8v0x2z4b",
+                  "name": "tools",
+                  "package_type": "container",
+                  "workspace": "acme",
+                  "address": "g1t.sh/acme/tools",
+                  "visibility": "private",
+                  "repository": null,
+                  "description": null,
+                  "version_count": 2,
+                  "latest": "latest",
+                  "size_in_bytes": 7340032,
+                  "download_count": 88,
+                  "inherit_access": true,
+                  "created_at": "2026-09-20T12:00:00.000Z",
+                  "updated_at": "2026-10-08T15:22:00.000Z",
+                  "deleted_at": null,
+                  "deleted_by": null,
+                  "purge_at": null,
+                  "html_url": "https://g1t.sh/acme/-/packages/container/tools"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "tools"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/access": {
+      "get": {
+        "operationId": "list_package_access",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "List who has access to a package",
+        "description": "Who has a role on a package itself (read pulls, write publishes, admin deletes, restores and changes its settings), people and teams, with inherit_access: whether a linked package also takes its repository's roles. Owners of the workspace administer every package. For the package's admins.\n\nOnly the roles given on the package itself. With `inherit_access` on, a linked package's repository roles count too, and the workspace's owners administer every package.",
+        "x-operation": "list_package_access",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "access",
+        "x-scope": "packages:read",
+        "security": [
+          {
+            "token": [
+              "packages:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "inherit_access": true,
+                  "access": [
+                    {
+                      "type": "team",
+                      "id": "team_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                      "name": "acme/platform",
+                      "role": "admin",
+                      "created_at": "2026-10-01T09:00:00.000Z"
+                    },
+                    {
+                      "type": "user",
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                      "name": "dana",
+                      "role": "read",
+                      "created_at": "2026-10-02T13:30:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        }
+      },
+      "put": {
+        "operationId": "set_package_access",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Give a person or team a role on a package",
+        "description": "Give a person (username) or a team of the workspace (team: its slug) the read, write or admin role on a package, or change theirs. It adds to what its repository or workspace gives them. Takes the Admin role on the package. Returns everyone with a role on it.\n\nGive `username` or `team` (a team of the workspace, by slug). The role adds to what the repository or workspace already gives.",
+        "x-operation": "set_package_access",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "set_access",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "type": "team",
+                    "id": "team_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "name": "acme/platform",
+                    "role": "admin",
+                    "created_at": "2026-10-01T09:00:00.000Z"
+                  },
+                  {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "name": "dana",
+                    "role": "write",
+                    "created_at": "2026-10-02T13:30:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "The person's username. Give this or team."
+                  },
+                  "team": {
+                    "type": "string",
+                    "description": "A team of the workspace: its slug, or workspace/slug. Give this or username."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "write",
+                      "admin"
+                    ],
+                    "description": "read pulls, write publishes, admin deletes, restores and changes its settings."
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              },
+              "example": {
+                "username": "dana",
+                "role": "write"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        }
+      },
+      "delete": {
+        "operationId": "remove_package_access",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Remove a person's or team's role on a package",
+        "description": "Take a person's (username) or team's (team) role on a package away. What its repository or workspace gives them stays. Takes the Admin role on the package. Returns everyone left with a role on it.\n\nOver REST, name who in the query: `?username=dana` or `?team=platform`.",
+        "x-operation": "remove_package_access",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "remove_access",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "type": "team",
+                    "id": "team_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "name": "acme/platform",
+                    "role": "admin",
+                    "created_at": "2026-10-01T09:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "The person's username. Give this or team."
+                  },
+                  "team": {
+                    "type": "string",
+                    "description": "The team's slug, or workspace/slug. Give this or username."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        },
+        "x-example-query": {
+          "username": "dana"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/actions-access": {
+      "get": {
+        "operationId": "list_package_actions_access",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "List a package's Actions access",
+        "description": "Which repositories' workflows may use a package with their job token (G1T_TOKEN), with the read or write role: its linked repository (linked, always write) and those added under Manage Actions access. A job's token from any other repository is refused. For the package's admins.\n\nA workflow job's `G1T_TOKEN` reaches the package only from these repositories. The linked repository is always listed, with write.",
+        "x-operation": "list_package_actions_access",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "actions_access",
+        "x-scope": "packages:read",
+        "security": [
+          {
+            "token": [
+              "packages:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repositories": [
+                    {
+                      "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                      "repository": "acme/web",
+                      "role": "write",
+                      "linked": true,
+                      "created_at": null
+                    },
+                    {
+                      "repository_id": "rep_01kpw0d5f7h9k1m3p5r7t9v1x3",
+                      "repository": "acme/deploy",
+                      "role": "read",
+                      "linked": false,
+                      "created_at": "2026-10-03T10:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        }
+      },
+      "put": {
+        "operationId": "set_package_actions_access",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Give a repository's workflows access to a package",
+        "description": "Let a repository of the package's workspace (repository: its name or owner/name) use the package from its workflows, with the read or write role, or change its role. Takes the Admin role on the package. Returns the package's Actions access.",
+        "x-operation": "set_package_actions_access",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "set_actions_access",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repositories": [
+                    {
+                      "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                      "repository": "acme/web",
+                      "role": "write",
+                      "linked": true,
+                      "created_at": null
+                    },
+                    {
+                      "repository_id": "rep_01kpw0d5f7h9k1m3p5r7t9v1x3",
+                      "repository": "acme/deploy",
+                      "role": "read",
+                      "linked": false,
+                      "created_at": "2026-10-03T10:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "description": "A repository of the package's workspace: its name, or owner/name."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "read",
+                      "write"
+                    ],
+                    "description": "read pulls the package from the repository's workflows; write publishes it too."
+                  }
+                },
+                "required": [
+                  "repository",
+                  "role"
+                ]
+              },
+              "example": {
+                "repository": "deploy",
+                "role": "read"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web"
+        }
+      }
+    },
+    "/workspaces/{workspace}/packages/{package_type}/{package_name}/actions-access/{repository}": {
+      "delete": {
+        "operationId": "remove_package_actions_access",
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Remove a repository's Actions access to a package",
+        "description": "Stop a repository's workflows using a package. The linked repository's access cannot be removed: unlink the package instead. Takes the Admin role on the package. Returns the package's Actions access.",
+        "x-operation": "remove_package_actions_access",
+        "x-mcp-tool": "package",
+        "x-mcp-action": "remove_actions_access",
+        "x-scope": "packages:write",
+        "security": [
+          {
+            "token": [
+              "packages:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "package_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "container",
+                "npm",
+                "cargo",
+                "maven",
+                "nuget",
+                "rubygems",
+                "composer"
+              ]
+            },
+            "description": "The registry: container (also docker), npm, cargo, maven, nuget, rubygems or composer."
+          },
+          {
+            "name": "package_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The package's name without the workspace: web for g1t.sh/acme/web, web/worker for an image with more parts, group:artifact for Maven."
+          },
+          {
+            "name": "repository",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository: its name, or owner/name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repositories": [
+                    {
+                      "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+                      "repository": "acme/web",
+                      "role": "write",
+                      "linked": true,
+                      "created_at": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "package_type": "container",
+          "package_name": "web",
+          "repository": "deploy"
         }
       }
     },

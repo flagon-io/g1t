@@ -44,7 +44,7 @@ export const SCOPES = [
   { scope: "security:write", description: "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings" },
   { scope: "packages:read", description: "Pull container images and install private packages" },
   { scope: "packages:write", description: "Push container images and publish packages" },
-  { scope: "packages:delete", description: "Delete packages and their versions" },
+  { scope: "packages:delete", description: "Delete and restore packages and their versions" },
   { scope: "issues:read", description: "Read issues, comments and plans" },
   { scope: "issues:write", description: "Open, edit, close and comment on issues" },
   { scope: "pull_requests:read", description: "Read pull requests, their changes, sessions and merge queues" },
@@ -477,6 +477,28 @@ export const OPERATION_SCOPES = [
   ["update_runner_group", "runners:admin"],
   ["delete_runner_group", "runners:admin"],
   ["update_runner_settings", "runners:admin"],
+  // Packages: reading them, their versions and who may use them needs
+  // `packages:read`; changing their settings, access and Manage Actions
+  // access `packages:write` (and the Admin role on the package, which the
+  // packages service checks); deleting and restoring packages and
+  // versions `packages:delete`, as the registries' own deletes do.
+  ["list_packages", "packages:read"],
+  ["get_package", "packages:read"],
+  ["list_package_versions", "packages:read"],
+  ["get_package_version", "packages:read"],
+  ["list_package_access", "packages:read"],
+  ["list_package_actions_access", "packages:read"],
+  ["update_package", "packages:write"],
+  ["link_package", "packages:write"],
+  ["unlink_package", "packages:write"],
+  ["set_package_access", "packages:write"],
+  ["remove_package_access", "packages:write"],
+  ["set_package_actions_access", "packages:write"],
+  ["remove_package_actions_access", "packages:write"],
+  ["delete_package", "packages:delete"],
+  ["restore_package", "packages:delete"],
+  ["delete_package_version", "packages:delete"],
+  ["restore_package_version", "packages:delete"],
   // The AI Gateway. Sending a request to a model needs `models:write`,
   // checked by the model proxy at models.g1t.sh.
   ["list_gateway_requests", "models:read"],

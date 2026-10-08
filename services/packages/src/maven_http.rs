@@ -17,14 +17,13 @@
 //! event and an audit entry.
 
 use g1t_contracts::User;
-use g1t_contracts::audit::AuditActor;
 use g1t_contracts::events::PackageEvent;
 use g1t_contracts::new_id;
 use g1t_kit::now_ms;
 use serde_json::{Value, json};
 use worker::{Context, Headers, Method, Request, Response, ResponseBody, Result};
 
-use crate::access::{self, Action};
+use crate::access::Action;
 use crate::archive;
 use crate::db::{Checksums, NewFile, NewVersion, PackageRow, VersionRow};
 use crate::digest::Digest;
@@ -153,12 +152,10 @@ impl Packages {
 
     /// Whether `viewer` may `action` the artifact, as the answer when not.
     async fn maven_check(&self, viewer: Option<&User>, package: &PackageRow, action: Action) -> Result<Option<Response>> {
-        let target = TargetOf::package(package);
-        let decision = access::decide(viewer, &target.view(), action);
+        let (decision, readable) = self.check(viewer, package, action).await?;
         if decision.allowed {
             return Ok(None);
         }
-        let readable = action != Action::Pull && access::decide(viewer, &target.view(), Action::Pull).allowed;
         if !readable && viewer.is_none() {
             return Ok(Some(error(401, sign_in())?));
         }
@@ -234,7 +231,7 @@ impl Packages {
     ) -> Result<Response> {
         let mut plugins = Vec::new();
         for package in self.db.maven_group(workspace, group, MAX_GROUP).await? {
-            if !access::decide(viewer, &TargetOf::package(&package).view(), Action::Pull).allowed {
+            if !self.check(viewer, &package, Action::Pull).await?.0.allowed {
                 continue;
             }
             let artifact_id = package.name.rsplit(':').next().unwrap_or("").to_owned();
@@ -327,7 +324,7 @@ impl Packages {
             && !matches!(parsed.extension.as_str(), "pom" | "module" | "asc")
             && !parsed.extension.ends_with(".asc")
         {
-            self.count_download(&package.id, ctx);
+            self.count_version_download(&package.id, &row.id, ctx);
         }
         Ok(Response::from_body(got.body)?.with_headers(headers))
     }
@@ -342,23 +339,23 @@ impl Packages {
                 break;
             }
         }
-        Ok(TargetOf { workspace: workspace.to_owned(), repo: repo.map(|r| (r.id, r.name, r.is_private)), public: false })
+        Ok(TargetOf::unmade(workspace, candidates.first().map_or("", String::as_str), repo.map(|r| (r.id, r.name, r.is_private))))
     }
 
     /// Whether `viewer` may upload to the artifact (made on its first
     /// file), as the answer when not.
-    fn maven_refusal(&self, viewer: Option<&User>, target: &TargetOf, exists: bool) -> Option<Result<Response>> {
-        let decision = access::decide(viewer, &target.view(), Action::Push);
+    async fn maven_refusal(&self, viewer: Option<&User>, target: &mut TargetOf, exists: bool) -> Result<Option<Result<Response>>> {
+        let decision = self.decide(viewer, target, Action::Push).await?;
         if decision.allowed {
-            return None;
+            return Ok(None);
         }
         if viewer.is_none() {
-            return Some(error(401, sign_in()));
+            return Ok(Some(error(401, sign_in())));
         }
-        if exists && !access::decide(viewer, &target.view(), Action::Pull).allowed {
-            return Some(error(404, "Not found: no such artifact, or you cannot see it."));
+        if exists && !self.decide(viewer, target, Action::Pull).await?.allowed {
+            return Ok(Some(error(404, "Not found: no such artifact, or you cannot see it.")));
         }
-        Some(error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned())))
+        Ok(Some(error(403, decision.reason.unwrap_or_else(|| "Not allowed.".to_owned()))))
     }
 
     async fn maven_body(&self, request: &mut Request) -> Result<std::result::Result<Vec<u8>, Response>> {
@@ -432,37 +429,41 @@ impl Packages {
 
         let name = maven::package_name(group, artifact);
         let found = self.db.package(workspace, MAVEN, &name).await?;
-        if found.as_ref().is_some_and(PackageRow::hidden) || (found.is_none() && self.db.workspace_hidden(workspace).await?) {
+        if let Some(hidden) = found.as_ref().filter(|package| package.hidden()) {
+            return error(403, Packages::hidden_refusal(hidden));
+        }
+        if found.is_none() && self.db.workspace_hidden(workspace).await? {
             return error(403, format!("The workspace {workspace} is deleted; nothing can be published to it."));
         }
-        let target = match &found {
+        let mut target = match &found {
             Some(package) => TargetOf::package(package),
             None => {
                 let lower = artifact.to_ascii_lowercase();
                 self.maven_target(workspace, &[lower]).await?
             }
         };
-        if let Some(refusal) = self.maven_refusal(viewer, &target, found.is_some()) {
+        if let Some(refusal) = self.maven_refusal(viewer, &mut target, found.is_some()).await? {
             return refusal;
         }
-        let caller = Caller { actor: viewer.map(AuditActor::of) };
+        let caller = Caller::of(viewer);
         let now = now_ms();
         let package = match found {
             Some(package) => package,
             None => {
-                self.db
-                    .create_package(
-                        &new_id("pkg", now),
-                        workspace,
-                        MAVEN,
-                        &name,
-                        target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
-                        caller.actor.as_ref().map_or("", |actor| actor.actor_id.as_str()),
-                        now,
-                    )
-                    .await?
+                self.make_package(
+                    workspace,
+                    MAVEN,
+                    &name,
+                    target.repo.as_ref().map(|(id, repo, private)| (id.as_str(), repo.as_str(), *private)),
+                    &caller,
+                    now,
+                )
+                .await?
             }
         };
+        if let Some(refused) = self.reserved_refusal(&package, version).await? {
+            return error(409, refused);
+        }
 
         let digest = Digest::of(&bytes);
         let size = bytes.len() as u64;
@@ -559,12 +560,8 @@ impl Packages {
             && owner == package.workspace
             && let Some(repo) = self.repo_by_name(&package.workspace, &repo).await?
         {
-            let linked = TargetOf {
-                workspace: package.workspace.clone(),
-                repo: Some((repo.id.clone(), repo.name.clone(), repo.is_private)),
-                public: false,
-            };
-            if access::decide(viewer, &linked.view(), Action::Push).allowed {
+            let mut linked = TargetOf::unmade(&package.workspace, &package.name, Some((repo.id.clone(), repo.name.clone(), repo.is_private)));
+            if self.decide(viewer, &mut linked, Action::Push).await?.allowed {
                 let visibility = if repo.is_private { "private" } else { "public" };
                 self.db.set_link(&package.id, Some((&repo.id, &repo.name)), visibility, now).await?;
                 self.db.measure(&package.workspace).await?;
@@ -664,16 +661,16 @@ impl Packages {
             }
             MavenPath::GroupMetadata { .. } => None,
         };
-        let target = match &found {
+        let mut target = match &found {
             Some(package) => TargetOf::package(package),
             // A plugin group's metadata names no artifact of its own.
             None => self.maven_target(workspace, &[]).await?,
         };
-        if let Some(refusal) = self.maven_refusal(viewer, &target, found.is_some()) {
+        if let Some(refusal) = self.maven_refusal(viewer, &mut target, found.is_some()).await? {
             return refusal;
         }
         if let (Some(package), MavenPath::ArtifactMetadata { checksum: None, .. }) = (&found, path) {
-            let caller = Caller { actor: viewer.map(AuditActor::of) };
+            let caller = Caller::of(viewer);
             self.maven_announce(package, &caller).await?;
         }
         created()
