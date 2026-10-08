@@ -61,3 +61,37 @@ test("when repos could not answer, the branches still show, without commits or c
   assert.equal(shown.length, 3);
   assert.ok(shown.every((b) => b.commit == null && b.drift == null && b.pull == null));
 });
+
+test("repos' answer, as its JSON reads, keeps every count (flagon-io/hello's farewell)", () => {
+  // What services/repos serializes for `branch_drift` (drift.rs
+  // `the_answer_has_the_names_the_site_reads`): a name that differs here
+  // would drop every count without an error.
+  const wire = JSON.stringify({
+    base: {
+      hash: "8407eba",
+      treeHash: "t1",
+      message: "Use farewell() in the --both call",
+      author: { name: "g1t agent", email: "agent@example.com" },
+      parents: ["ac45e10"],
+      authoredAt: "2026-10-03T09:11:34.000Z",
+    },
+    branches: [
+      {
+        head: "bab14ff",
+        commit: {
+          hash: "bab14ff",
+          treeHash: "t2",
+          message: "Add a farewell\n\nbody",
+          author: { name: "syntaqx", email: "s@example.com" },
+          parents: ["c2ef68d"],
+          authoredAt: "2026-10-02T07:52:16.000Z",
+        },
+        drift: { ahead: 1, behind: 41 },
+      },
+    ],
+  });
+  const measured = JSON.parse(wire) as BranchDrifts;
+  const shown = activeBranches([{ name: "farewell", hash: "bab14ff" }], measured, { pulls: [], previews: [] });
+  assert.deepEqual(shown[0]?.drift, { ahead: 1, behind: 41 });
+  assert.deepEqual(shown[0]?.commit, { hash: "bab14ff", message: "Add a farewell", author: "syntaqx", at: "2026-10-02T07:52:16.000Z" });
+});

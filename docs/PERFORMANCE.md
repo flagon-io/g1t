@@ -189,7 +189,7 @@ than it reads (indexing), so replicas help it least.
 | Sidebar data (projects, spend, limit, entitlements) | per isolate (`lib/cache.server.ts`) | 15 s, per person and workspace | skipped during a write and for 30 s after the person's last one; failures not kept; only settled answers kept |
 | Registration mode | per isolate | 60 s | |
 | A commit's log by hash | repos' data-centre cache | for good | history from a commit never changes. One of 100 commits or more is put together from a 16-commit read and the history kept from any of those commits, when there is one (`store.rs` `spliced_log`): a default branch that moved by a merge costs 16 commits, not 120 or 1,000 |
-| A branch's drift from the default branch (Active branches) | repos' data-centre cache (`branch_drift`) | for good | by repository and the pair of head commits; a failed read is not kept |
+| A branch's drift from the default branch (Active branches) | repos' data-centre cache (`branch_drift`) | a count for good; "too far to count" a day | by repository and the pair of head commits (key version `v2`); a failed read is not kept |
 | A repository's tags | repos' data-centre cache | until the refs move, 5 min at most | as the branch list; not kept when a tag's commit could not be read |
 | Git objects, trees, refs | repos' caches | see services/repos | |
 | A branch's log, the branch list, a file by branch and path | repos' data-centre cache | until the repository's refs change (`refs_version`), 5 min at most | only while no handed-out push credential is live; by commit hash for good (docs/ARTIFACTS.md R9) |
@@ -314,17 +314,30 @@ Now:
 
 - **One call.** `branch_drift` (services/repos/src/drift.rs) takes the
   default branch's head and every branch head, checks access once, opens
-  the store once, and reads the default branch's history once per depth
-  for all of them. Each answer is kept in repos' data-centre cache by the
+  the store once, and reads the default branch's last 120 commits once
+  for all of them. Each count is kept in repos' data-centre cache by the
   pair of hashes; only pairs that changed are walked. It also returns the
   default branch's head commit, which the site read with its own call.
-- **Shallower first.** Depths are (branch, default branch) 12/120, then
-  40/120, 40/1,000 and 1,000/1,000: most branches are a few commits
-  ahead and meet at the first.
+- **Only what the count needs.** The walk goes newest commit first from
+  both heads, as `git rev-list --left-right --count` does, and stops once
+  everything left is reached by both. The store lists first parents only,
+  so a merge's other parent is read on its own (16 commits, by hash, kept
+  for good) when the walk reaches it; a branch a few commits from the
+  default branch costs one read of its own. Past 128 reads or 4,000
+  commits there is no count, and that answer is kept a day, not for good.
+- **Fixed 2026-10-09: counts never showed.** The first version (and the
+  site's before it) gave up when a commit on one side only had a parent
+  not read, which every merge on the default branch has, and kept "no
+  count" for good: no branch of flagon-io/hello or flagon-io/g1t showed
+  counts. The cache key moved to `drift.g1t.internal/v2/`, so those
+  answers are not read again.
 - **Long histories spliced.** A log by hash of 100 commits or more is a
   16-commit read plus the log kept from one of those commits (the
   first-parent chain from a commit never changes), so the default branch
-  after a merge costs 16 commits instead of 120 or 1,000.
+  after a merge costs 16 commits instead of 120 or 1,000. A kept log is
+  used only when it starts at that commit and goes on to the one the
+  16-commit read lists next (`splice_first`), so the join neither repeats
+  nor skips a commit.
 - **Finished after the page.** The call runs in `waitUntil`, so repos
   keeps the answer even when the page stopped waiting for it.
 - **Crawlers wait 0.7 s** for the section (browsers 3.5 s, streamed);
