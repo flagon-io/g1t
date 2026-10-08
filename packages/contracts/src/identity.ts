@@ -52,6 +52,18 @@ export type User = {
     legacy?: boolean;
     /** The token's name, as its owner gave it. */
     name?: string;
+    /** A fine-grained token's reach: its resource owner and repositories. */
+    fine_grained?: {
+      workspace?: string | null;
+      repositories?: "all" | "selected" | "public";
+      repo_ids?: string[];
+    };
+    /** A workspace's own token an owner gave Admin. */
+    admin?: boolean;
+    /** Set on what a deploy key resolves to. */
+    deploy_key?: string;
+    /** The one repository a job's token or a deploy key reaches. */
+    repo?: string;
   };
 };
 

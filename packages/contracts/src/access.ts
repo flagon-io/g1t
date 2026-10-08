@@ -116,14 +116,24 @@ export function baseRole(base: BasePermission | null | undefined): RepoRole | nu
 }
 
 function membershipRole(user: User, membership: Membership): RepoRole | null {
-  // A workspace's own token, and g1t acting in the workspace, do what an
-  // owner can on its repositories.
+  // A workspace's own token has Write, or Admin when an owner gave it that;
+  // g1t, and a service acting as the workspace, do what an owner can.
+  if (user.kind === "workspace" && user.token) return user.token.admin ? "admin" : "write";
   if (user.kind === "workspace" || user.kind === "system") return "admin";
   return membership.role === "owner" ? "admin" : baseRole(membership.base_permission);
 }
 
 /** The user's role on the repository, not counting that it may be public. */
 export function granted(user: User, repo: RepoRef): RepoRole | null {
+  // A fine-grained token outside its resource owner or selection: no role.
+  const reach = user.token?.fine_grained;
+  if (reach) {
+    const inside =
+      !!reach.workspace &&
+      reach.workspace.toLowerCase() === repo.namespace.toLowerCase() &&
+      (reach.repositories === "all" || (reach.repositories === "selected" && (reach.repo_ids ?? []).includes(repo.id)));
+    if (!inside) return null;
+  }
   const namespace = repo.namespace.toLowerCase();
   const membership = user.workspaces?.find((m) => m.slug.toLowerCase() === namespace);
   let role = membership ? membershipRole(user, membership) : null;
