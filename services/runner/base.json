@@ -1,9 +1,9 @@
 {
   "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261008-a314499af03b",
-  "digest": null,
-  "pushed": false,
+  "digest": "sha256:db58aae3a4df6cb90f853c7abf83a0e612977667fa3d409e8b0a67800a849c94",
+  "pushed": true,
   "inputs": "a314499af03bda6a12f906332827ba1b2c23ea781c32e69599050762e5c2ce05",
-  "built_at": "2026-10-08T19:12:40.565Z",
+  "built_at": "2026-10-08T19:56:49.397Z",
   "size_bytes": 4521302378,
   "versions": {
     "node": "v24.21.0",
