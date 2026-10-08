@@ -19,6 +19,7 @@ mod renamed;
 #[cfg(test)]
 mod responses;
 mod rest;
+mod rules;
 mod runners;
 mod security;
 mod tools;

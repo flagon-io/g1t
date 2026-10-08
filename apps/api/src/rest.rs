@@ -3,6 +3,7 @@
 use serde_json::{Map, Value};
 
 use crate::operations::Op;
+use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 
 pub struct Route {
@@ -233,6 +234,31 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("GET", "/repos/:owner/:name/check-names", Op::ListCheckNames, &[]),
+    // Rulesets: a repository's, a workspace's, the rules of one branch,
+    // and how they judged pushes and merges.
+    route("GET", "/repos/:owner/:name/rulesets", Op::Rules(RulesOp::ListRepoRulesets), &[("include_parents", "include_parents")]),
+    route("POST", "/repos/:owner/:name/rulesets", Op::Rules(RulesOp::CreateRepoRuleset), &[]),
+    route("GET", "/repos/:owner/:name/rulesets/:id", Op::Rules(RulesOp::GetRepoRuleset), &[]),
+    route("PUT", "/repos/:owner/:name/rulesets/:id", Op::Rules(RulesOp::UpdateRepoRuleset), &[]),
+    route("DELETE", "/repos/:owner/:name/rulesets/:id", Op::Rules(RulesOp::DeleteRepoRuleset), &[]),
+    route("GET", "/repos/:owner/:name/rules/branches/:branch", Op::Rules(RulesOp::GetBranchRules), &[("target", "target")]),
+    route(
+        "GET",
+        "/repos/:owner/:name/rules/evaluations",
+        Op::Rules(RulesOp::ListRuleEvaluations),
+        &[("ruleset_id", "ruleset_id"), ("verdict", "verdict"), ("problems_only", "problems_only"), ("before", "before"), ("limit", "limit")],
+    ),
+    route("GET", "/workspaces/:workspace/rulesets", Op::Rules(RulesOp::ListWorkspaceRulesets), &[]),
+    route("POST", "/workspaces/:workspace/rulesets", Op::Rules(RulesOp::CreateWorkspaceRuleset), &[]),
+    route("GET", "/workspaces/:workspace/rulesets/:id", Op::Rules(RulesOp::GetWorkspaceRuleset), &[]),
+    route("PUT", "/workspaces/:workspace/rulesets/:id", Op::Rules(RulesOp::UpdateWorkspaceRuleset), &[]),
+    route("DELETE", "/workspaces/:workspace/rulesets/:id", Op::Rules(RulesOp::DeleteWorkspaceRuleset), &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/rules/evaluations",
+        Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
+        &[("ruleset_id", "ruleset_id"), ("verdict", "verdict"), ("problems_only", "problems_only"), ("before", "before"), ("limit", "limit")],
+    ),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
     route(
         "POST",

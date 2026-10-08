@@ -8,6 +8,7 @@ use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::operations::Op;
+use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use crate::rest::{ROUTES, Route};
 
@@ -195,6 +196,25 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Security(SecurityOp::GetWorkspaceSettings),
             Op::Security(SecurityOp::UpdateWorkspaceSettings),
             Op::Security(SecurityOp::GetOverview),
+        ],
+    ),
+    (
+        "Rules",
+        "Rulesets: what may happen to a repository's branches and tags and what a pull request needs before it merges, for a repository or across a workspace; the rules that hold for one branch; and how they judged each push and merge, with insights.",
+        &[
+            Op::Rules(RulesOp::ListRepoRulesets),
+            Op::Rules(RulesOp::CreateRepoRuleset),
+            Op::Rules(RulesOp::GetRepoRuleset),
+            Op::Rules(RulesOp::UpdateRepoRuleset),
+            Op::Rules(RulesOp::DeleteRepoRuleset),
+            Op::Rules(RulesOp::GetBranchRules),
+            Op::Rules(RulesOp::ListRuleEvaluations),
+            Op::Rules(RulesOp::ListWorkspaceRulesets),
+            Op::Rules(RulesOp::CreateWorkspaceRuleset),
+            Op::Rules(RulesOp::GetWorkspaceRuleset),
+            Op::Rules(RulesOp::UpdateWorkspaceRuleset),
+            Op::Rules(RulesOp::DeleteWorkspaceRuleset),
+            Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
         ],
     ),
     (
@@ -533,6 +553,7 @@ fn title(op: Op) -> &'static str {
         Op::RemoveRequestedReviewers => "Remove requested reviewers",
         Op::GetCodeownersErrors => "List CODEOWNERS errors",
         Op::Security(op) => op.title(),
+        Op::Rules(op) => op.title(),
     }
 }
 
