@@ -18,10 +18,12 @@
 //! workspace can read, and a job's `GITHUB_TOKEN` is a short-lived token of
 //! the workspace's.
 
+mod artifacts;
 mod cache;
 mod payload;
 mod plan;
 mod rename;
+pub mod runtime;
 mod runners;
 mod settings;
 mod sync;
@@ -96,6 +98,8 @@ pub struct Actions {
     /// Seals secrets; absent until `ACTIONS_KEY` is set, when secrets
     /// cannot be saved.
     sealer: Option<Sealer>,
+    /// Signs the toolkit's blob links (runtime.rs), from `ACTIONS_KEY`.
+    blob_key: Option<String>,
 }
 
 impl Actions {
@@ -112,6 +116,7 @@ impl Actions {
             deployments: env.service("DEPLOYMENTS")?,
             cache: env.bucket("ACTIONS_CACHE").ok(),
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
+            blob_key: env.secret("ACTIONS_KEY").ok().map(|key| runtime::blob_key(&key.to_string())),
         })
     }
 
@@ -223,6 +228,28 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "cache_reserve" => reply(&service.cache_reserve(args(body)?).await?),
         "cache_commit" => reply(&service.cache_commit(args(body)?).await?),
         "cache_abort" => reply(&service.cache_abort(args(body)?).await?),
+        "cache_upload" => reply(&service.cache_upload(args(body)?).await?),
+        // Artifacts: a job's side, with its token or its runtime token.
+        "artifact_reserve" => reply(&service.artifact_reserve(args(body)?).await?),
+        "artifact_commit" => reply(&service.artifact_commit(args(body)?).await?),
+        "artifact_abort" => reply(&service.artifact_abort(args(body)?).await?),
+        "job_artifacts" => reply(&service.job_artifacts(args(body)?).await?),
+        "job_artifact" => reply(&service.job_artifact(args(body)?).await?),
+        "job_delete_artifact" => reply(&service.job_delete_artifact(args(body)?).await?),
+        // Artifacts: people's side.
+        "artifacts" => reply(&service.artifacts(args(body)?).await?),
+        "artifact" => reply(&service.artifact(args(body)?).await?),
+        "artifact_download" => reply(&service.artifact_download(args(body)?).await?),
+        "delete_artifact" => reply(&service.delete_artifact(args(body)?).await?),
+        "artifact_retention" => reply(&service.artifact_retention(args(body)?).await?),
+        // The toolkit's protocols: the runtime token, OIDC, blob links.
+        "runtime_auth" => reply(&service.runtime_auth(args(body)?).await?),
+        "oidc_claims" => reply(&service.oidc_claims(args(body)?).await?),
+        "blob_sign" => reply(&service.blob_sign(args(body)?).await?),
+        "blob_open" => reply(&service.blob_open(args(body)?).await?),
+        "blob_part" => reply(&service.blob_part(args(body)?).await?),
+        "blob_parts" => reply(&service.blob_parts(args(body)?).await?),
+        "blob_done" => reply(&service.blob_done(args(body)?).await?),
         // Self-hosted runners: people's side.
         "runners" => reply(&service.runners(args(body)?).await?),
         "create_registration_token" => reply(&service.create_registration_token(args(body)?).await?),

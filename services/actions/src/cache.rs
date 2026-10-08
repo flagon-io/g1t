@@ -8,16 +8,20 @@
 //!   the entries restored longest ago.
 //! - An entry not restored for `CACHE_UNUSED_DAYS`, or saved more than
 //!   `CACHE_MAX_AGE_DAYS` ago, is deleted by the hourly sweep, which also
-//!   writes down what each workspace holds and reports this month's storage
-//!   to billing (`note_pending`, source `cache`) at R2's price.
+//!   writes down what each workspace holds, its artifacts included (they
+//!   are in the same bucket), and reports this month's storage to billing
+//!   (`note_pending`, source `cache`) at R2's price.
 //!
-//! The API calls these with the job's token, which is checked here.
+//! The API calls these with the job's token, or its runtime token for the
+//! toolkit's protocols (runtime.rs), which is checked here. An entry the
+//! toolkit saves has the toolkit's version, and is found only by the same
+//! version; g1t's own `actions/cache` saves and finds entries without one.
 
 use g1t_contracts::FailureCode;
 use g1t_contracts::Outcome;
 use g1t_contracts::actions::{
     CACHE_MAX_AGE_DAYS, CACHE_MAX_ENTRY_BYTES, CACHE_MICROS_PER_GB_MONTH, CACHE_REPO_QUOTA_BYTES, CACHE_UNUSED_DAYS,
-    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs, JobCallArgs,
+    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs, CacheUploadArgs,
 };
 use g1t_contracts::billing::NotePendingArgs;
 use g1t_contracts::new_id;
@@ -41,6 +45,7 @@ struct EntryRow {
     key: String,
     object: String,
     size: f64,
+    created_at: String,
 }
 
 /// The longest key: GitHub's limit.
@@ -81,20 +86,40 @@ pub(crate) fn storage_cost(gb_months: f64) -> i64 {
     (gb_months * CACHE_MICROS_PER_GB_MONTH as f64).ceil() as i64
 }
 
+/// Where a job's cache entries are found and saved. Today that is its
+/// repository: every job of a repository restores what any of its jobs
+/// saved. Narrowing that (by branch, say) belongs here, so that g1t's own
+/// `actions/cache` and the toolkit's protocols follow the same rule.
+pub(crate) struct CacheScope {
+    pub repo_id: String,
+}
+
+pub(crate) fn cache_scope(job: &crate::plan::JobRow) -> CacheScope {
+    CacheScope { repo_id: job.repo_id.clone() }
+}
+
 impl Actions {
+    /// A job by its own token or its runtime token (runtime.rs).
     async fn cache_job(&self, job: &str, token: &str) -> Result<Outcome<crate::plan::JobRow>> {
-        self.job_for_token(&JobCallArgs { job: job.to_owned(), token: token.to_owned(), report: Value::Null }).await
+        self.job_for_credential(job, token).await
     }
 
     /// `cache_lookup`.
     pub async fn cache_lookup(&self, a: CacheLookupArgs) -> Result<Outcome<Option<CacheHit>>> {
         let job = check!(self.cache_job(&a.job, &a.token).await?);
+        let scope = cache_scope(&job);
         let now = now_ms();
         let fresh = rfc3339(now.saturating_sub(CACHE_MAX_AGE_DAYS * DAY_MS));
+        // g1t's own `actions/cache` has no version; the toolkit's client
+        // finds only entries of its own version.
+        let version = a.version.clone().unwrap_or_default();
         let exact = self
             .db
-            .prepare("SELECT id, key, object, size FROM cache_entries WHERE repo_id = ? AND key = ? AND status = 'ready' AND created_at > ?")
-            .bind(&[job.repo_id.as_str().into(), a.key.as_str().into(), fresh.as_str().into()])?
+            .prepare(
+                "SELECT id, key, object, size, created_at FROM cache_entries
+                 WHERE repo_id = ? AND key = ? AND version = ? AND status = 'ready' AND created_at > ?",
+            )
+            .bind(&[scope.repo_id.as_str().into(), a.key.as_str().into(), version.as_str().into(), fresh.as_str().into()])?
             .first::<EntryRow>(None)
             .await?;
         let mut found = exact;
@@ -105,11 +130,11 @@ impl Actions {
             found = self
                 .db
                 .prepare(
-                    "SELECT id, key, object, size FROM cache_entries
-                     WHERE repo_id = ?1 AND status = 'ready' AND created_at > ?3 AND substr(key, 1, length(?2)) = ?2
+                    "SELECT id, key, object, size, created_at FROM cache_entries
+                     WHERE repo_id = ?1 AND version = ?4 AND status = 'ready' AND created_at > ?3 AND substr(key, 1, length(?2)) = ?2
                      ORDER BY created_at DESC LIMIT 1",
                 )
-                .bind(&[job.repo_id.as_str().into(), prefix.into(), fresh.as_str().into()])?
+                .bind(&[scope.repo_id.as_str().into(), prefix.into(), fresh.as_str().into(), version.as_str().into()])?
                 .first::<EntryRow>(None)
                 .await?;
         }
@@ -119,12 +144,56 @@ impl Actions {
             .bind(&[rfc3339(now).into(), entry.id.as_str().into()])?
             .run()
             .await?;
-        Ok(Outcome::Ok(Some(CacheHit { key: entry.key, object: entry.object, size: entry.size as u64 })))
+        let blob = a.version.as_ref().and_then(|_| self.download_token("cache", &entry.id, &entry.object, crate::runtime::DOWNLOAD_SECONDS));
+        Ok(Outcome::Ok(Some(CacheHit { key: entry.key, object: entry.object, size: entry.size as u64, created_at: entry.created_at, blob })))
+    }
+
+    /// `cache_upload`.
+    pub async fn cache_upload(&self, a: CacheUploadArgs) -> Result<Outcome<CacheReservation>> {
+        let job = check!(self.cache_job(&a.job, &a.token).await?);
+        let scope = cache_scope(&job);
+        #[derive(Deserialize)]
+        struct Pending {
+            id: String,
+            object: String,
+            number: f64,
+            upload: Option<String>,
+        }
+        let columns = "SELECT id, object, rowid AS number, upload FROM cache_entries";
+        let pending = match (a.number, a.key.as_deref()) {
+            (Some(number), _) => {
+                self.db
+                    .prepare(format!("{columns} WHERE rowid = ? AND repo_id = ? AND status = 'pending'"))
+                    .bind(&[(number as f64).into(), scope.repo_id.as_str().into()])?
+                    .first::<Pending>(None)
+                    .await?
+            }
+            (None, Some(key)) => {
+                self.db
+                    .prepare(format!("{columns} WHERE repo_id = ? AND key = ? AND version = ? AND status = 'pending'"))
+                    .bind(&[scope.repo_id.as_str().into(), key.into(), a.version.clone().unwrap_or_default().into()])?
+                    .first::<Pending>(None)
+                    .await?
+            }
+            (None, None) => None,
+        };
+        let Some(pending) = pending else {
+            return Ok(fail(FailureCode::NotFound, "No upload of that entry is in progress."));
+        };
+        let blob = match &pending.upload {
+            Some(upload) => match self.upload_token("cache", &pending.id, &pending.object, upload) {
+                Some(blob) => Some(blob),
+                None => return Ok(fail(FailureCode::Invalid, "The toolkit's storage is not set up here: the actions service has no ACTIONS_KEY.")),
+            },
+            None => None,
+        };
+        Ok(Outcome::Ok(CacheReservation { id: pending.id, object: pending.object, number: pending.number as u64, upload: pending.upload, blob }))
     }
 
     /// `cache_reserve`.
     pub async fn cache_reserve(&self, a: CacheReserveArgs) -> Result<Outcome<CacheReservation>> {
         let job = check!(self.cache_job(&a.job, &a.token).await?);
+        let scope = cache_scope(&job);
         if !valid_key(&a.key) {
             return Ok(fail(FailureCode::Invalid, format!("A cache key is 1 to {MAX_KEY_CHARS} characters, without commas.")));
         }
@@ -139,36 +208,43 @@ impl Actions {
         // An upload left unfinished long ago no longer holds its key.
         self.db
             .prepare("UPDATE cache_entries SET status = 'expired' WHERE repo_id = ? AND key = ? AND status = 'pending' AND created_at < ?")
-            .bind(&[job.repo_id.as_str().into(), a.key.as_str().into(), rfc3339(now.saturating_sub(PENDING_MS)).into()])?
+            .bind(&[scope.repo_id.as_str().into(), a.key.as_str().into(), rfc3339(now.saturating_sub(PENDING_MS)).into()])?
             .run()
             .await?;
         let id = new_id("cache", now);
-        let object = format!("c/{}/{id}", job.repo_id);
+        let object = format!("c/{}/{id}", scope.repo_id);
+        let version = a.version.clone().unwrap_or_default();
+        #[derive(Deserialize)]
+        struct Inserted {
+            number: f64,
+        }
+        // A key is written once, whatever its version.
         let inserted = self
             .db
             .prepare(
-                "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7)
+                "INSERT INTO cache_entries (id, repo_id, namespace, key, object, size, status, created_at, last_used_at, version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7, ?8)
                  ON CONFLICT (repo_id, key) DO UPDATE SET
-                   id = ?1, object = ?5, size = ?6, status = 'pending', created_at = ?7, last_used_at = ?7
+                   id = ?1, object = ?5, size = ?6, status = 'pending', created_at = ?7, last_used_at = ?7, version = ?8, upload = NULL
                  WHERE cache_entries.status = 'expired'
-                 RETURNING id",
+                 RETURNING rowid AS number",
             )
             .bind(&[
                 id.as_str().into(),
-                job.repo_id.as_str().into(),
+                scope.repo_id.as_str().into(),
                 job.namespace.as_str().into(),
                 a.key.as_str().into(),
                 object.as_str().into(),
                 (a.size as f64).into(),
                 at.as_str().into(),
+                version.as_str().into(),
             ])?
-            .first::<Value>(None)
+            .first::<Inserted>(None)
             .await?;
-        if inserted.is_none() {
+        let Some(inserted) = inserted else {
             return Ok(fail(FailureCode::Conflict, "That key is already cached."));
-        }
-        Ok(Outcome::Ok(CacheReservation { id, object }))
+        };
+        Ok(Outcome::Ok(CacheReservation { id, object, number: inserted.number as u64, upload: None, blob: None }))
     }
 
     /// `cache_commit`: the entry is ready; entries past the quota are
@@ -274,7 +350,13 @@ impl Actions {
         let (day, month) = (&today[..10], &today[..7]);
         let held = self
             .db
-            .prepare("SELECT namespace, SUM(size) AS bytes FROM cache_entries WHERE status = 'ready' GROUP BY namespace")
+            // Artifacts are kept in the same bucket, at the same price.
+            .prepare(
+                "SELECT namespace, SUM(size) AS bytes FROM (
+                   SELECT namespace, size FROM cache_entries WHERE status = 'ready'
+                   UNION ALL SELECT namespace, size FROM artifacts WHERE status = 'ready'
+                 ) GROUP BY namespace",
+            )
             .all()
             .await?
             .results::<Held>()?;

@@ -400,7 +400,7 @@ one short fact at a time, never a secret. See
 ## `workflow`
 
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
-cancelling or rerunning them; checks on commits (statuses, check runs and
+cancelling or rerunning them; their artifacts; checks on commits (statuses, check runs and
 check suites, a workflow job being a check run); a repository's deployments
 and environments; and the self-hosted runners workflows run on. See
 [GitHub Actions](/guides/actions/), [Checks](/guides/checks/),
@@ -417,6 +417,13 @@ and environments; and the self-hosted runners workflows run on. See
 | [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
 | [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
 | [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
+| [`list_artifacts`](/reference/api/actions/list-artifacts/) | The repository's artifacts, newest first, with size, digest and expiry; `name`, `page`, `per_page`. | `repo` | `workflows:read` |
+| [`run_artifacts`](/reference/api/actions/list-workflow-run-artifacts/) | One run's artifacts; `name`. | `repo`, `id` (the run) | `workflows:read` |
+| [`get_artifact`](/reference/api/actions/get-artifact/) | One artifact by its number. | `repo`, `id` | `workflows:read` |
+| [`download_artifact`](/reference/api/actions/download-artifact/) | A link to its zip that needs no token, good for 10 minutes, as `url`. | `repo`, `id` | `workflows:read` |
+| [`delete_artifact`](/reference/api/actions/delete-artifact/) | Delete it before it expires. Write role. | `repo`, `id` | `workflows:write` |
+| [`artifact_retention`](/reference/api/actions/get-artifact-retention/) | The days the repository keeps artifacts, and the most it may. | `repo` | `workflows:read` |
+| [`set_artifact_retention`](/reference/api/actions/set-artifact-retention/) | Set those days, 1 to 90. Maintain role. | `repo`, `days` | `workflows:write` |
 | [`combined_status`](/reference/api/checks/get-combined-status/) | A commit's statuses, one per context, and the `state` they add up to. `ref` is a SHA, branch or tag. | `repo`, `ref` | `checks:read` |
 | [`list_statuses`](/reference/api/checks/list-commit-statuses/) | A commit's statuses, newest first. | `repo`, `ref` | `checks:read` |
 | [`set_status`](/reference/api/checks/create-commit-status/) | Set a status: `state`, `context`, `description`, `target_url`. Write role. | `repo`, `sha`, `state` | `checks:write` |

@@ -5,6 +5,7 @@
 //! the data. This Worker holds none.
 
 mod about;
+mod artifacts;
 mod addresses;
 mod alerts;
 mod audit;
@@ -15,6 +16,7 @@ mod deployments;
 mod mcp;
 mod notifications;
 mod oauth;
+mod oidc;
 mod openapi;
 mod pins;
 mod projects;
@@ -27,6 +29,7 @@ mod rules;
 mod runners;
 mod security;
 mod tools;
+mod toolkit;
 
 use g1t_contracts::billing::{FinishRunArgs, RunTokens};
 use g1t_contracts::identity::{
@@ -71,6 +74,20 @@ pub(crate) fn reply<T: serde::Serialize>(value: &T) -> Result<Response> {
 const JOB_SPEC_AS_GIVEN: &[&str] = &[
     "spec", "workflow", "github", "event", "contexts", "checkout",
 ];
+
+/// Puts the toolkit's variables in a job's spec: its runtime token, where
+/// the toolkit's services are, and where to ask for an OIDC token when the
+/// job may have one and this installation issues them. The `runtime` the
+/// actions service sent goes no further.
+fn with_runtime(spec: &mut Value, api: &str, oidc: bool) {
+    let Some(runtime) = spec.as_object_mut().and_then(|s| s.remove("runtime")) else { return };
+    let Some(token) = runtime["token"].as_str().filter(|t| !t.is_empty()) else { return };
+    let id_token = oidc && runtime["id_token"].as_bool() == Some(true);
+    let vars = toolkit::runtime_variables(api, token, id_token);
+    if let Some(variables) = spec.get_mut("variables").and_then(Value::as_object_mut) {
+        variables.extend(vars);
+    }
+}
 
 /// An error in the shape every endpoint uses.
 fn failure(failure: &Failure) -> Result<Response> {
@@ -546,6 +563,28 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             }));
     }
 
+    // The services GitHub's toolkit calls from inside a job, with its
+    // runtime token, and the links they hand out (toolkit.rs).
+    if !on_mcp && method == "POST"
+        && let Some(rest) = path.strip_prefix("/twirp/")
+    {
+        let (service, rpc) = rest.split_once('/').unwrap_or((rest, ""));
+        let (service, rpc) = (service.to_owned(), rpc.to_owned());
+        return toolkit::twirp(request, env, &services, &service, &rpc).await;
+    }
+    if !on_mcp && let Some(rest) = path.strip_prefix("/actions/toolkit/_apis/artifactcache/") {
+        let rest = rest.to_owned();
+        return toolkit::cache_v1(request, env, &services, method, &rest).await;
+    }
+    if !on_mcp && let Some(token) = path.strip_prefix("/actions/toolkit/blobs/") {
+        let token = token.to_owned();
+        return toolkit::blob(request, env, &services, method, &token).await;
+    }
+    // g1t as an OIDC issuer for workflow jobs (oidc.rs).
+    if !on_mcp && method == "GET" && path.starts_with("/actions/oidc/") {
+        return oidc::handle(&request, env, &services, &path).await;
+    }
+
     // A sandbox's artifacts and cache, with its job's token, which is not a
     // g1t token either.
     if !on_mcp
@@ -602,26 +641,12 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     match (method, path.trim_end_matches('/')) {
         ("GET", "") => return reply(&index(&services.addresses)),
         ("GET", "/openapi.json") => return Response::from_json(&openapi::document()),
-        // A run's artifacts: listed, or one downloaded.
-        ("GET", path) if path.starts_with("/repos/") && path.contains("/actions/runs/") && path.contains("/artifacts") => {
+        // One of a run's artifacts downloaded by name (the run's artifacts
+        // are listed by the REST route in rest.rs).
+        ("GET", path) if path.starts_with("/repos/") && path.contains("/actions/runs/") && path.contains("/artifacts/") => {
             let parts: Vec<&str> = path.trim_start_matches("/repos/").split('/').collect();
-            if let [owner, repo, "actions", "runs", run, "artifacts", rest @ ..] = parts.as_slice() {
-                return match rest {
-                    [] => {
-                        let seen: Outcome<Value> = g1t_kit::call(
-                            &services.actions,
-                            "run",
-                            &json!({ "repo": { "namespace": owner, "name": repo }, "viewer": viewer, "id": run }),
-                        )
-                        .await?;
-                        match seen {
-                            Outcome::Ok(_) => reply(&blobs::of_run(env, run).await?),
-                            Outcome::Fail(refused) => failure(&refused),
-                        }
-                    }
-                    [name] => blobs::download(env, &services, &viewer, owner, repo, run, name).await,
-                    _ => fail(FailureCode::NotFound, "No such endpoint."),
-                };
+            if let [owner, repo, "actions", "runs", run, "artifacts", name] = parts.as_slice() {
+                return blobs::download(env, &services, &viewer, owner, repo, run, name).await;
             }
         }
         ("POST", "/device/code") => return device_code(&mut request, &services).await,
@@ -670,7 +695,11 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             return match answered {
                 // A job's spec is the workflow and its contexts as GitHub
                 // has them; only g1t's own keys around them are converted.
-                Outcome::Ok(value) => Response::from_json(&wire::snake_case_keeping(value, JOB_SPEC_AS_GIVEN)),
+                Outcome::Ok(value) => {
+                    let mut spec = wire::snake_case_keeping(value, JOB_SPEC_AS_GIVEN);
+                    with_runtime(&mut spec, &services.addresses.api, oidc::configured(env));
+                    Response::from_json(&spec)
+                }
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
@@ -758,6 +787,13 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         return fail(FailureCode::NotFound, "No such endpoint.");
     };
     match audit::run(route.op, &services, &viewer, &input).await? {
+        // A download is a redirect to its signed link, as GitHub's is.
+        Outcome::Ok(value) if route.op == operations::Op::Artifacts(artifacts::ArtifactsOp::DownloadArtifact) => {
+            match value["url"].as_str().and_then(|url| worker::Url::parse(url).ok()) {
+                Some(url) => Response::redirect_with_status(url, 302),
+                None => reply(&value),
+            }
+        }
         Outcome::Ok(value) => reply(&value),
         // A token without the scope a call needs is told which one.
         Outcome::Fail(refused) => match (refused.code, audit::missing_scope(route.op, &viewer, &input)) {
@@ -804,6 +840,25 @@ fn snake_case_keys(body: Value) -> Value {
 mod tests {
     use super::snake_case_keys;
     use serde_json::json;
+
+    #[test]
+    fn a_job_spec_gets_the_toolkits_variables() {
+        // As the actions service sends it, converted as the API does.
+        let sent = json!({ "variables": { "GITHUB_SHA": "abc" }, "runtime": { "token": "h.p.s", "idToken": true } });
+        let mut spec = g1t_kit::wire::snake_case_keeping(sent.clone(), super::JOB_SPEC_AS_GIVEN);
+        super::with_runtime(&mut spec, "https://api.g1t.sh", true);
+        assert!(spec.get("runtime").is_none(), "the runner never sees it");
+        let vars = &spec["variables"];
+        assert_eq!(vars["GITHUB_SHA"], "abc");
+        assert_eq!(vars["ACTIONS_RUNTIME_TOKEN"], "h.p.s");
+        assert_eq!(vars["ACTIONS_CACHE_URL"], "https://api.g1t.sh/actions/toolkit/");
+        assert_eq!(vars["ACTIONS_ID_TOKEN_REQUEST_TOKEN"], "h.p.s");
+        // No OIDC key here: no OIDC variables, whatever the job may do.
+        let mut spec = g1t_kit::wire::snake_case_keeping(sent, super::JOB_SPEC_AS_GIVEN);
+        super::with_runtime(&mut spec, "https://api.g1t.sh", false);
+        assert!(spec["variables"].get("ACTIONS_ID_TOKEN_REQUEST_URL").is_none());
+        assert_eq!(spec["variables"]["ACTIONS_RESULTS_URL"], "https://api.g1t.sh/");
+    }
 
     #[test]
     fn camel_case_keys_are_accepted() {

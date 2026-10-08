@@ -683,6 +683,10 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
     setSetting: (actor, owner, kind, name, value, options = {}) =>
       call("set_setting", { actor, ...owner, kind, name, value, ...options }),
     deleteSetting: (actor, owner, kind, name, id) => call("delete_setting", { actor, ...owner, kind, name, id }),
+    artifacts: (repo, viewer, filter = {}) => call("artifacts", { repo, viewer, ...filter }),
+    artifactDownload: (repo, viewer, by) => call("artifact_download", { repo, viewer, ...by }),
+    deleteArtifact: (actor, repo, id) => call("delete_artifact", { actor, repo, id }),
+    artifactRetention: (repo, viewer, days) => call("artifact_retention", { repo, viewer, days }),
   };
 }
 

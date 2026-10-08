@@ -1631,8 +1631,20 @@ impl Actions {
         };
         secrets.insert("G1T_TOKEN".into(), Value::String(token.clone()));
         secrets.insert("GITHUB_TOKEN".into(), Value::String(token.clone()));
-        let masks: Vec<String> = secrets.values().filter_map(|v| v.as_str()).filter(|v| v.len() >= 4).map(str::to_owned).collect();
+        let mut masks: Vec<String> = secrets.values().filter_map(|v| v.as_str()).filter(|v| v.len() >= 4).map(str::to_owned).collect();
         let vars = self.variables_for(&run.repo_id, &run.repo, environment.as_deref(), trusted).await?;
+        // The toolkit's runtime token (runtime.rs), for as long as the job
+        // may run; the API puts it and the toolkit's addresses in the
+        // job's variables.
+        let runtime_token = crate::runtime::runtime_token(
+            &job.id,
+            &job.run_id,
+            job.token_hash.as_deref().unwrap_or_default(),
+            now_ms() / 1000,
+            u64::from(job.timeout_minutes) * 60 + 600,
+        );
+        masks.push(runtime_token.clone());
+        let retention_days = self.retention_setting(&run.repo_id).await?;
 
         let jobs = self.job_rows(&run.id).await?;
         let mut needs = Map::new();
@@ -1657,9 +1669,11 @@ impl Actions {
         let info = run.info();
         let mut github = info.context(&job.key, &token, run.action.as_deref());
         github["token"] = json!(token);
+        github["retention_days"] = json!(retention_days);
         // On a self-hosted runner, `runner` and `RUNNER_*` describe that
         // machine rather than g1t's sandbox.
         let mut variables = info.variables(&job.key);
+        variables.insert("GITHUB_RETENTION_DAYS".into(), json!(retention_days.to_string()));
         let runner = match &job.runner_id {
             Some(id) => self.runner_context_for(id, &mut variables).await?,
             None => runner_context(),
@@ -1726,6 +1740,12 @@ impl Actions {
             },
             "timeoutMinutes": job.timeout_minutes,
             "masks": masks,
+            // Whether the job may ask for an OIDC token decides whether it
+            // is told where to.
+            "runtime": {
+                "token": runtime_token,
+                "idToken": self.oidc_allowed(&run, &job),
+            },
         })))
     }
 
@@ -1883,6 +1903,15 @@ impl Actions {
             && let Err(error) = self.sweep_cache(now_ms).await
         {
             worker::console_error!("actions: the cache's sweep failed: {error}");
+        }
+        // And artifacts past their time, and the toolkit's abandoned parts.
+        if (now_ms / 60_000) % 60 == 37 {
+            if let Err(error) = self.sweep_artifacts(now_ms).await {
+                worker::console_error!("actions: the artifacts' sweep failed: {error}");
+            }
+            if let Err(error) = self.sweep_blob_parts(now_ms).await {
+                worker::console_error!("actions: the blob parts' sweep failed: {error}");
+            }
         }
         self.start_queued().await
     }

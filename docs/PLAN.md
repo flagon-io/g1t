@@ -482,6 +482,44 @@ and on every combined state in the landing queue.
 Agents can also reach integrations directly: an agent definition lists MCP
 servers (Sentry, Linear and so on) it may use while working.
 
+### Workflows: the toolkit, OIDC and artifacts
+
+> **2026-10-08:** built so that workflows that deploy, cache and pass files
+> run unmodified.
+
+- **The toolkit's services.** Every job gets `ACTIONS_RUNTIME_TOKEN` (a
+  JWT whose `scp` names its run and job, signed with a key derived from
+  the job's own token, so nothing new is kept), `ACTIONS_RESULTS_URL`,
+  `ACTIONS_CACHE_URL` and `ACTIONS_CACHE_SERVICE_V2`. The API answers the
+  cache's Twirp service (v2) and its older REST protocol, the artifact
+  Twirp service, and the signed blob links they hand out (a subset of
+  Azure Blob's protocol mapped onto R2 multipart uploads), from the same
+  cache and artifact rows g1t's own runner uses. As the clients' source
+  reads, `@actions/cache` and `@actions/artifact` treat any server
+  but github.com as GitHub Enterprise Server, so the cache client speaks
+  the older protocol and the artifact client refuses to run. g1t's runner
+  therefore keeps handling `actions/upload-artifact`, `download-artifact`
+  and `upload-artifact/merge` itself; the Twirp artifact service is there
+  for clients that do not check.
+- **OIDC.** The issuer is `{API}/actions/oidc`, the API's own host, with
+  discovery, JWKS (RFC 7638 `kid`s, a previous key published while
+  rotating) and a token endpoint for `core.getIDToken`. Claims follow
+  GitHub's. A job gets one only when its permissions (or its workflow's)
+  give `id-token: write`, and never for an untrusted run. The permission
+  check reads only `id-token` (`services/actions/src/runtime.rs`,
+  `id_token_permitted`), the seam for the full `permissions:` model.
+- **Artifacts** moved from KV to R2 (`a/` in the cache bucket), with rows
+  in the actions service: numeric ids, 5 GiB each and 10 GiB a run,
+  zipped by the runner, `retention-days` up to the repository's setting
+  (1 to 90, 14 by default), `overwrite`, `compression-level`, patterns,
+  merging and other runs of the same repository. The REST artifacts API and
+  the `workflow` tool's artifact actions follow GitHub's shapes; the run's
+  page lists them with size and expiry, with download and delete. Their
+  storage is charged with the cache's.
+- **Later:** the toolkit's older artifact protocol (`upload-artifact@v3`
+  inside other actions), downloads from other repositories, and npm
+  trusted publishing, which depends on npm accepting g1t's issuer.
+
 ## A repository that maintains itself
 
 > **2026-10-04:** the user asked for Dependabot, GitHub Advanced Security and

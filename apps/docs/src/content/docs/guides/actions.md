@@ -43,8 +43,10 @@ gives their values out, so they cannot be copied across.
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run. |
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is the workspace's own token for the run; `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. |
-| `actions/upload-artifact`, `actions/download-artifact` | Kept with the run for 14 days, passed between its jobs, and downloadable from the run's page. Up to 60 MB each. |
+| `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
 | `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
+| Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
+| `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
 
 The **Actions** page of a workflow says, under *How this runs on g1t*,
 anything in it that runs differently.
@@ -60,9 +62,11 @@ anything in it that runs differently.
   g1t's image; a [self-hosted runner](/guides/self-hosted-runners/#what-a-job-gets)
   that runs jobs in Docker uses it.
 - **Reusable workflows from other repositories** (`uses: owner/repo/.github/workflows/x.yml@v1`); ones in the same repository work.
-- **The toolkit's own cache.** Actions that cache through GitHub's service
-  themselves, such as `actions/setup-node` with `cache: npm`, run without
-  it. Use `actions/cache` for the same effect.
+- **Actions that upload artifacts with the toolkit's artifact library
+  themselves.** The library refuses to run against any server but
+  github.com. `actions/upload-artifact`, `actions/download-artifact` and
+  `actions/upload-artifact/merge` work, because g1t runs them itself. See
+  [actions built on the toolkit](#actions-built-on-the-toolkit).
 - **Environments' protection rules** (required reviewers, wait timers,
   branch limits). A job with `environment:` gets that environment's
   [values](/guides/secrets-and-variables/#a-value-per-environment), and runs
@@ -164,9 +168,279 @@ looks like it is mining is stopped. See
 ```
 
 Each restore and save says on the job's log how large the entry was and
-how long it took. A workspace on the plan pays for what its caches hold
-(`Actions cache storage` on its statement), at R2's price plus the margin;
-see [usage and billing](/guides/usage-and-billing/#actions-cache).
+how long it took. A workspace on the plan pays for what its caches and
+[artifacts](#artifacts) hold (`Actions cache storage` on its statement),
+at R2's price plus the margin; see
+[usage and billing](/guides/usage-and-billing/#actions-cache).
+
+## Artifacts
+
+`actions/upload-artifact` keeps files a job made with its run, for later
+jobs, other runs and people:
+
+| | |
+| --- | --- |
+| One artifact | Up to 5 GiB, zipped. |
+| A run's artifacts | Up to 10 GiB together. |
+| How long | The repository's setting: 14 days unless someone with the Maintain role changes it under **Settings → Repository → Artifacts**, from 1 to 90 days. `retention-days` asks for fewer days, never more. |
+| Names | One artifact per name in a run. Uploading a name again fails, unless the upload says `overwrite: true`, which replaces it. A name is up to 256 characters, none of `" : < > \| * ? \ /`. |
+| `path` | Files, folders and globs, `**` included; a line starting with `!` leaves matching paths out. Files and folders whose names start with `.` are left out unless `include-hidden-files: true`. |
+| Compression | `compression-level` 0 (stored) to 9; 6 unless you say. |
+| Outputs | `artifact-id` (a number), `artifact-url` (its run's page) and `artifact-digest` (the SHA-256 of its zip). |
+
+```yaml
+- uses: actions/upload-artifact@v4
+  with:
+    name: web-dist
+    path: |
+      dist/
+      !dist/**/*.map
+    retention-days: 5
+    compression-level: 9
+```
+
+`actions/download-artifact` downloads one by `name` into `path`, or every
+artifact of the run, each into a folder of its name; `pattern` picks them
+by name, and `merge-multiple: true` puts them all in one folder.
+`artifact-ids` picks them by number. With `github-token` and `run-id`, it
+downloads from another run of the same repository, such as the one a
+`workflow_run` workflow follows:
+
+```yaml
+- uses: actions/download-artifact@v4
+  with:
+    name: web-dist
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    run-id: ${{ github.event.workflow_run.id }}
+```
+
+`actions/upload-artifact/merge` downloads the run's artifacts that match
+`pattern`, uploads them as one artifact (`name`, `merged-artifacts` unless
+you say), and deletes them with `delete-merged: true`.
+
+A run's page lists its artifacts with their size and when they expire.
+Anyone who can see the run downloads them there; someone with the Write
+role can delete one before it expires.
+
+## Actions built on the toolkit
+
+Many actions save to the cache with GitHub's toolkit, `@actions/cache`,
+rather than through `actions/cache`: `actions/setup-node`,
+`actions/setup-python`, `actions/setup-go` and `actions/setup-java` with
+`cache:`, `Swatinem/rust-cache`, and others. They work on g1t as they
+are: every job gets `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_CACHE_URL` and
+`ACTIONS_RESULTS_URL`, and g1t answers the toolkit's requests from the
+repository's cache.
+
+- Their entries are the repository's, under [the cache's](#the-cache)
+  limits, and are deleted the same way.
+- An entry is restored only by the same kind of save: the toolkit names a
+  version for each entry, from its paths and compression. An entry
+  `setup-node` saved is not restored by `actions/cache`, and the other way
+  round.
+- An entry the toolkit sends whole, which it does below 128 MB, is not
+  saved when it is over 100 MB, the most g1t takes in one request. The
+  step warns and the job goes on.
+- The toolkit's artifact library refuses to run against any server but
+  github.com, so an action that uploads artifacts with it directly fails
+  with its own message. `actions/upload-artifact`,
+  `actions/download-artifact` and `actions/upload-artifact/merge` work:
+  g1t runs those itself.
+
+## OIDC tokens
+
+A job can prove which repository, branch and environment it runs for with
+a short-lived OpenID Connect token signed by g1t, and trade it for a cloud
+provider's credentials. Nothing long-lived needs to sit in a secret.
+
+1. Give the job, or the workflow, `permissions: id-token: write`. A job
+   without it gets no token, and neither does a run of a pull request from
+   outside the repository.
+2. Tell your cloud to trust g1t's issuer for your repository (below).
+3. Use the provider's own login action, which asks for the token.
+
+```yaml
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/acme-web-deploy
+          aws-region: us-east-1
+```
+
+The job gets `ACTIONS_ID_TOKEN_REQUEST_URL` and
+`ACTIONS_ID_TOKEN_REQUEST_TOKEN`, which `core.getIDToken()` reads. To ask
+for a token yourself, name its audience:
+
+```sh
+curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+  "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://deploy.example.com" | jq -r .value
+```
+
+| | |
+| --- | --- |
+| Issuer | `https://api.g1t.sh/actions/oidc` |
+| Discovery | `https://api.g1t.sh/actions/oidc/.well-known/openid-configuration` |
+| Keys | `https://api.g1t.sh/actions/oidc/.well-known/jwks`, RS256, each with its `kid` |
+| Lifetime | 5 minutes |
+| Audience | What the job asks for; `https://g1t.sh/<owner>` when it asks for none |
+
+### Claims
+
+Each token carries the claims GitHub's do, so trust policies written for
+those read g1t's the same way.
+
+| Claim | Example |
+| --- | --- |
+| `sub` | `repo:acme/web:environment:production` for a job with an `environment:`; `repo:acme/web:pull_request` for a pull request's run; otherwise `repo:acme/web:ref:refs/heads/main` (or `refs/tags/v1.2.0`) |
+| `repository`, `repository_owner` | `acme/web`, `acme` |
+| `repository_id`, `repository_owner_id` | g1t's ids for them, such as `rep_01kpw0…` |
+| `repository_visibility` | `public` or `private` |
+| `ref`, `ref_type`, `ref_protected`, `sha` | `refs/heads/main`, `branch`, `"true"`, the commit |
+| `head_ref`, `base_ref` | A pull request's branches |
+| `environment` | The job's environment, when it has one |
+| `event_name` | `push`, `pull_request`, `workflow_dispatch`, … |
+| `workflow`, `workflow_ref`, `workflow_sha` | `Deploy`, `acme/web/.g1t/workflows/deploy.yml@refs/heads/main`, the commit |
+| `job_workflow_ref`, `job_workflow_sha` | The workflow that defines the job: a called workflow's own file |
+| `run_id`, `run_number`, `run_attempt` | `run_01kq9c…`, `"12"`, `"1"` |
+| `actor`, `actor_id` | Who started the run |
+| `runner_environment` | `github-hosted` on g1t's machines, `self-hosted` on yours |
+| `iss`, `aud`, `jti`, `iat`, `nbf`, `exp` | As in any OIDC token |
+
+### AWS
+
+1. Add g1t as an identity provider, under **IAM → Identity providers**:
+   provider type **OpenID Connect**, provider URL
+   `https://api.g1t.sh/actions/oidc`, audience `sts.amazonaws.com`. Or:
+
+   ```sh
+   aws iam create-open-id-connect-provider \
+     --url https://api.g1t.sh/actions/oidc \
+     --client-id-list sts.amazonaws.com
+   ```
+
+2. Give the role a trust policy for your repository:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Principal": { "Federated": "arn:aws:iam::123456789012:oidc-provider/api.g1t.sh/actions/oidc" },
+       "Action": "sts:AssumeRoleWithWebIdentity",
+       "Condition": {
+         "StringEquals": {
+           "api.g1t.sh/actions/oidc:aud": "sts.amazonaws.com",
+           "api.g1t.sh/actions/oidc:sub": "repo:acme/web:environment:production"
+         }
+       }
+     }]
+   }
+   ```
+
+3. Use `aws-actions/configure-aws-credentials@v4` with `role-to-assume`,
+   as above.
+
+### Google Cloud
+
+1. Make a workload identity pool and a provider for g1t:
+
+   ```sh
+   gcloud iam workload-identity-pools create g1t --location=global
+   gcloud iam workload-identity-pools providers create-oidc g1t \
+     --location=global --workload-identity-pool=g1t \
+     --issuer-uri=https://api.g1t.sh/actions/oidc \
+     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+     --attribute-condition="assertion.repository_owner == 'acme'"
+   ```
+
+2. Let the repository act as a service account:
+
+   ```sh
+   gcloud iam service-accounts add-iam-policy-binding deploy@acme-prod.iam.gserviceaccount.com \
+     --role=roles/iam.workloadIdentityUser \
+     --member="principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/g1t/attribute.repository/acme/web"
+   ```
+
+3. Use `google-github-actions/auth@v2` with
+   `workload_identity_provider: projects/123456789/locations/global/workloadIdentityPools/g1t/providers/g1t`
+   and `service_account`. It asks for the provider's own name as the
+   audience, which the provider accepts unless you change its allowed
+   audiences.
+
+### Azure
+
+1. On the app registration or user-assigned managed identity, add a
+   federated credential with the scenario **Other issuer**: issuer
+   `https://api.g1t.sh/actions/oidc`, subject identifier
+   `repo:acme/web:environment:production`, audience
+   `api://AzureADTokenExchange`. Or:
+
+   ```sh
+   az ad app federated-credential create --id <application id> --parameters '{
+     "name": "g1t-acme-web-production",
+     "issuer": "https://api.g1t.sh/actions/oidc",
+     "subject": "repo:acme/web:environment:production",
+     "audiences": ["api://AzureADTokenExchange"]
+   }'
+   ```
+
+2. Give it a role on what it deploys to, as for any identity.
+3. Use `azure/login@v2` with `client-id`, `tenant-id` and
+   `subscription-id`, and no secret.
+
+A federated credential matches the subject exactly: add one per
+environment or branch that deploys.
+
+### Cloudflare
+
+Cloudflare's API takes API tokens, not OIDC tokens. Keep a token scoped
+to what the workflow deploys in a secret, available to that workflow only
+(see [workflow-only domains](/guides/guardrails/#workflow-only-domains)
+for limiting where it can be sent).
+
+A Worker of your own can trust g1t's jobs directly, by checking the token
+a job sends it against g1t's keys:
+
+```ts
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
+const keys = createRemoteJWKSet(new URL("https://api.g1t.sh/actions/oidc/.well-known/jwks"));
+
+export async function fromG1tJob(request: Request): Promise<boolean> {
+  const token = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+  const { payload } = await jwtVerify(token, keys, {
+    issuer: "https://api.g1t.sh/actions/oidc",
+    audience: "https://deploy.example.com",
+  });
+  return payload.sub === "repo:acme/web:environment:production";
+}
+```
+
+### npm
+
+npm's trusted publishing and provenance accept OIDC tokens only from the
+CI services npm lists, and g1t is not one of them yet. Publish with a
+granular access token in a secret instead:
+
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version: 24
+    registry-url: https://registry.npmjs.org
+- run: npm publish
+  env:
+    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+See [What g1t can't do yet](/about/limitations/#no-npm-trusted-publishing-or-provenance).
 
 ## Runs and logs
 
@@ -331,6 +605,12 @@ usually work once they point at `https://api.g1t.sh`.
 | `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel` |
 | `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs` |
 | `update` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
+| `list_artifacts` | `GET /repos/{owner}/{repo}/actions/artifacts`, with `name`, `page`, `per_page` |
+| `run_artifacts` | `GET …/actions/runs/{id}/artifacts`, with `name` |
+| `get_artifact` | `GET …/actions/artifacts/{artifact_id}` |
+| `download_artifact` | `GET …/actions/artifacts/{artifact_id}/zip`: a `302` to a link good for 10 minutes |
+| `delete_artifact` | `DELETE …/actions/artifacts/{artifact_id}` |
+| `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept with their run) |
 
 Secrets and variables have a tool of their own, `secret`:
 
@@ -350,3 +630,9 @@ curl -X POST https://api.g1t.sh/repos/acme/web/actions/workflows/ci.yml/dispatch
   -d '{"ref": "main", "inputs": {"environment": "staging"}}'
 ```
 
+To save an artifact from a script, follow the redirect:
+
+```sh
+curl -L -o web-dist.zip -H "Authorization: Bearer $G1T_TOKEN" \
+  https://api.g1t.sh/repos/acme/web/actions/artifacts/4182/zip
+```

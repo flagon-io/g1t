@@ -487,9 +487,17 @@ curl -X POST https://api.g1t.sh/repos/flagon-io/g1t/actions/variables \
    workflow-only domains, for `deploy.yml` in `production` (above).
 3. Build and push the base once, and commit `services/runner/base.json`:
    `node scripts/deploy.mjs build-base`. Create the cache bucket:
-   `npx wrangler r2 bucket create g1t-actions-cache`, with a lifecycle rule
-   deleting objects 30 days after upload
-   (`npx wrangler r2 bucket lifecycle add g1t-actions-cache expire --expire-days 30 --abort-multipart-days 1`).
+   `npx wrangler r2 bucket create g1t-actions-cache`, with lifecycle rules
+   deleting cache entries (`c/`) 30 days after upload and artifacts (`a/`)
+   after 91, a day past the longest they are kept, and unfinished uploads
+   after a day (the actions service deletes both sooner; the rules catch
+   what it misses):
+   `npx wrangler r2 bucket lifecycle add g1t-actions-cache expire-cache c/ --expire-days 30 --abort-multipart-days 1`
+   and `npx wrangler r2 bucket lifecycle add g1t-actions-cache expire-artifacts a/ --expire-days 91 --abort-multipart-days 1`.
+   A bucket made before artifacts moved there has one rule for everything,
+   `expire`, which would delete artifacts kept longer than 30 days: remove
+   it (`npx wrangler r2 bucket lifecycle remove g1t-actions-cache --id expire`)
+   and add the two above.
 4. Adopt the live Workers once, from a laptop: deploy everything with the
    tool so each version records its commit (`scripts/deploy.sh`, or
    `node scripts/deploy.mjs deploy --all`). Until then every plan says "no
@@ -512,8 +520,8 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
   manifest: `g1t-events`, `g1t-events-<service>` for every subscriber,
   `g1t-search-jobs`, `g1t-context-jobs`.
 - R2: `npx wrangler r2 bucket create g1t-screenshots`,
-  `npx wrangler r2 bucket create g1t-actions-cache` (with its 30-day
-  lifecycle rule, above), and `npx wrangler r2 bucket create g1t-git-packs`,
+  `npx wrangler r2 bucket create g1t-actions-cache` (with its two
+  lifecycle rules, above), and `npx wrangler r2 bucket create g1t-git-packs`,
   the clone pack cache (`services/repos/src/pack_cache.rs`), with a rule
   deleting packs 7 days after they were written and unfinished uploads
   after a day:
@@ -529,6 +537,37 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
 Then `node scripts/deploy.mjs deploy --all`. A Worker bound to a service
 that does not exist yet may be refused; deploy that service first with
 `--only`.
+
+## OIDC tokens for workflow jobs
+
+The API is the issuer of workflow jobs' OIDC tokens,
+`https://api.g1t.sh/actions/oidc` (`apps/api/src/oidc.rs`): no host or DNS
+of its own. It signs with an RSA key kept as the API's secret
+`ACTIONS_OIDC_KEY`. Without it, the issuer's addresses answer 404 and jobs
+are not told where to ask for a token.
+
+To turn it on, make a key on a trusted machine and store it, then delete
+the file:
+
+```sh
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out oidc.pem
+cd apps/api && npx wrangler secret put ACTIONS_OIDC_KEY < ../../oidc.pem
+rm ../../oidc.pem
+```
+
+Check `https://api.g1t.sh/actions/oidc/.well-known/jwks` lists one key.
+Its `kid` is the key's RFC 7638 thumbprint.
+
+To rotate it, keep the old key published while tokens it signed can still
+be presented (they last 5 minutes; relying parties cache keys for longer):
+
+1. Store the current key as `ACTIONS_OIDC_KEY_PREVIOUS` (the same PEM).
+2. Make a new key and store it as `ACTIONS_OIDC_KEY`. The JWKS now lists
+   both; new tokens are signed with the new one.
+3. A day later, `npx wrangler secret delete ACTIONS_OIDC_KEY_PREVIOUS`.
+
+A key that may have leaked is rotated the same way, skipping the first
+step, so that tokens it signed stop verifying at once.
 
 ## Deployments on g1t
 

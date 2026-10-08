@@ -8,6 +8,7 @@ use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
+use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -366,6 +367,13 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::CancelWorkflowRun,
             Op::RerunWorkflowRun,
             Op::UpdateWorkflow,
+            Op::Artifacts(ArtifactsOp::ListArtifacts),
+            Op::Artifacts(ArtifactsOp::ListRunArtifacts),
+            Op::Artifacts(ArtifactsOp::GetArtifact),
+            Op::Artifacts(ArtifactsOp::DownloadArtifact),
+            Op::Artifacts(ArtifactsOp::DeleteArtifact),
+            Op::Artifacts(ArtifactsOp::GetArtifactRetention),
+            Op::Artifacts(ArtifactsOp::SetArtifactRetention),
         ],
     ),
     (
@@ -633,6 +641,7 @@ fn title(op: Op) -> &'static str {
         Op::Checks(op) => op.title(),
         Op::About(op) => op.title(),
         Op::Deployments(op) => op.title(),
+        Op::Artifacts(op) => op.title(),
     }
 }
 

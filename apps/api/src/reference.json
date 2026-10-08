@@ -10625,5 +10625,188 @@
     "response": {
       "rerequested": true
     }
+  },
+  "list_artifacts": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "query": {
+      "name": "web-dist",
+      "per_page": "1"
+    },
+    "response": {
+      "total_count": 9,
+      "artifacts": [
+        {
+          "id": 4182,
+          "node_id": "artifact_4182",
+          "name": "web-dist",
+          "size_in_bytes": 18734120,
+          "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+          "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+          "expired": false,
+          "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+          "created_at": "2026-10-08T14:03:51.204Z",
+          "updated_at": "2026-10-08T14:03:52.880Z",
+          "expires_at": "2026-10-22T14:03:51.204Z",
+          "workflow_run": {
+            "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+            "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+            "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+            "head_branch": "main",
+            "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+          }
+        }
+      ]
+    },
+    "notes": "Expired and deleted artifacts are not listed. `workflow_run.id` is the run's id, which `get_workflow_run` takes."
+  },
+  "list_workflow_run_artifacts": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "response": {
+      "total_count": 2,
+      "artifacts": [
+        {
+          "id": 4181,
+          "node_id": "artifact_4181",
+          "name": "coverage",
+          "size_in_bytes": 412870,
+          "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4181",
+          "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4181/zip",
+          "expired": false,
+          "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+          "created_at": "2026-10-08T14:03:51.204Z",
+          "updated_at": "2026-10-08T14:03:52.880Z",
+          "expires_at": "2026-10-22T14:03:51.204Z",
+          "workflow_run": {
+            "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+            "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+            "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+            "head_branch": "main",
+            "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+          }
+        },
+        {
+          "id": 4182,
+          "node_id": "artifact_4182",
+          "name": "web-dist",
+          "size_in_bytes": 18734120,
+          "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+          "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+          "expired": false,
+          "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+          "created_at": "2026-10-08T14:03:51.204Z",
+          "updated_at": "2026-10-08T14:03:52.880Z",
+          "expires_at": "2026-10-22T14:03:51.204Z",
+          "workflow_run": {
+            "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+            "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+            "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+            "head_branch": "main",
+            "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+          }
+        }
+      ]
+    }
+  },
+  "get_artifact": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "4182"
+    },
+    "response": {
+      "id": 4182,
+      "node_id": "artifact_4182",
+      "name": "web-dist",
+      "size_in_bytes": 18734120,
+      "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+      "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+      "expired": false,
+      "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+      "created_at": "2026-10-08T14:03:51.204Z",
+      "updated_at": "2026-10-08T14:03:52.880Z",
+      "expires_at": "2026-10-22T14:03:51.204Z",
+      "workflow_run": {
+        "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+        "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+        "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+        "head_branch": "main",
+        "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+      }
+    }
+  },
+  "download_artifact": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "4182"
+    },
+    "response": {
+      "url": "https://api.g1t.sh/actions/toolkit/blobs/eyJrIjoiYXJ0aWZhY3QiLCJpIjoiNDE4MiJ9.q3VbS1x9",
+      "expires_at": "2026-10-08T15:13:00.000Z",
+      "artifact": {
+        "id": 4182,
+        "node_id": "artifact_4182",
+        "name": "web-dist",
+        "size_in_bytes": 18734120,
+        "url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182",
+        "archive_download_url": "https://api.g1t.sh/repos/flagon-io/g1t/actions/artifacts/4182/zip",
+        "expired": false,
+        "digest": "sha256:5f1c3a9e7b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a",
+        "created_at": "2026-10-08T14:03:51.204Z",
+        "updated_at": "2026-10-08T14:03:52.880Z",
+        "expires_at": "2026-10-22T14:03:51.204Z",
+        "workflow_run": {
+          "id": "run_01kq9c4e6g8j0m2p4r6t8v0x2z",
+          "repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+          "head_repository_id": "rep_01kpw0a2c4e6g8j0m2p4r6t8v0",
+          "head_branch": "main",
+          "head_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7"
+        }
+      }
+    },
+    "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o web-dist.zip …/zip` saves the file; the body above is what the MCP `workflow` tool's `download_artifact` returns. The link needs no token and stops working after 10 minutes."
+  },
+  "delete_artifact": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "4181"
+    },
+    "response": {
+      "deleted": true,
+      "id": 4181,
+      "name": "coverage"
+    }
+  },
+  "get_artifact_retention": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "response": {
+      "days": 14,
+      "maximum_allowed_days": 90
+    }
+  },
+  "set_artifact_retention": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "request": {
+      "days": 30
+    },
+    "response": {
+      "days": 30,
+      "maximum_allowed_days": 90
+    },
+    "notes": "Only artifacts uploaded afterwards are kept the new number of days. A workflow's `retention-days` asks for fewer, never more."
   }
 }

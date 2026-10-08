@@ -32,7 +32,7 @@
 		// A job with an `environment:` makes its run's deployment there.
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" }
 	],
-	// actions/cache entries, which the API writes: deleted here when they
+	// actions/cache entries and artifacts, which the API writes: deleted here when they
 	// are evicted or expire.
 	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
 	// Every event on the bus: what starts workflows, and pushes that change them.

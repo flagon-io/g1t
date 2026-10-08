@@ -112,6 +112,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Rules(RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset) => return as_is,
         // Deployments travel in `snake_case` between services too.
         Op::Deployments(_) => return as_is,
+        // Artifacts are shaped by the API itself, in `snake_case`.
+        Op::Artifacts(_) => return as_is,
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {

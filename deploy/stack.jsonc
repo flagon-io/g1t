@@ -231,7 +231,14 @@
 			"kind": "rust-worker",
 			"worker": "g1t-api",
 			"stage": "edge",
-			"secrets": [],
+			// ACTIONS_OIDC_KEY signs workflow jobs' OIDC tokens; without it the
+			// issuer answers 404 and jobs are not offered tokens.
+			// ACTIONS_OIDC_KEY_PREVIOUS only while rotating. docs/DEPLOYING.md.
+			"secrets": ["ACTIONS_OIDC_KEY"],
+			"setup": [
+				"The OIDC signing key for workflow jobs: an RSA key made with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`, stored with `npx wrangler secret put ACTIONS_OIDC_KEY` (docs/DEPLOYING.md, \"OIDC tokens for workflow jobs\")",
+				"The actions cache bucket's lifecycle rule limited to `c/`, so artifacts under `a/` are kept their retention-days (docs/DEPLOYING.md)"
+			],
 			"self_host": "separate"
 		},
 		"models": {

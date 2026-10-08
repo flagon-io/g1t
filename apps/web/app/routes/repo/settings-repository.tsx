@@ -24,7 +24,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import { FieldLabel, Field as FormField } from "../../components/ui/field";
 import { Input as TextInput } from "../../components/ui/input";
-import { repos } from "../../lib/services.server";
+import { actions, repos } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -41,7 +41,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Maintain and up; to anyone without a role here the page does not exist.
   const { repo, access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
-  const branches = await repos.branches(path, viewer);
+  const [branches, retention] = await Promise.all([repos.branches(path, viewer), actions.artifactRetention(path, viewer)]);
   // Renaming, visibility, archiving and the default branch are for Admins;
   // moving and deleting, for owners of the workspace.
   const owner = access.can.administer;
@@ -57,6 +57,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     owner,
     remove: access.can.delete,
     destinations,
+    // How long workflow runs' artifacts are kept.
+    retention: retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
   };
 }
 
@@ -79,7 +81,7 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
   // What each form needs: the details are settings, renaming a branch other
   // than the default is pushing, transfer and delete are for owners.
   const capability =
-    intent === "details"
+    intent === "details" || intent === "artifacts"
       ? "manage_settings"
       : intent === "rename-branch"
         ? "push"
@@ -106,6 +108,8 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
     }
     case "archive":
       return outcome(intent, await repos.archive(user, path, text("archived") === "true"));
+    case "artifacts":
+      return outcome(intent, await actions.artifactRetention(path, user, Number(text("days"))));
     case "transfer": {
       // repos checks both workspaces' owners, the name and storage, and
       // keeps the old address as a redirect.
@@ -141,7 +145,7 @@ function Status({ intent, data: result, saved = "Saved." }: { intent: string; da
 }
 
 export default function RepoSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, branches, owner, remove, destinations } = loaderData;
+  const { repo, branches, owner, remove, destinations, retention } = loaderData;
   const navigation = useNavigation();
   const posting = (intent: string) => navigation.state !== "idle" && navigation.formData?.get("intent") === intent;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -211,6 +215,32 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
             </span>
             <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
           </Link>
+        </Section>
+
+        <Section title="Artifacts" about="How long the files workflow runs upload are kept.">
+          <Form method="post" key={retention.days} className="space-y-3">
+            <input type="hidden" name="intent" value="artifacts" />
+            <Field
+              label="Days to keep artifacts"
+              hint={`1 to ${retention.maximum_allowed_days}. A workflow's retention-days can ask for fewer, never more. Artifacts already uploaded keep their expiry.`}
+            >
+              <Input
+                name="days"
+                type="number"
+                min={1}
+                max={retention.maximum_allowed_days}
+                required
+                defaultValue={retention.days}
+                className="w-28"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center gap-4 pt-1">
+              <SubmitButton match={{ intent: "artifacts" }} pending="Saving…">
+                Save
+              </SubmitButton>
+              <Status intent="artifacts" data={actionData} />
+            </div>
+          </Form>
         </Section>
 
         {owner ? (

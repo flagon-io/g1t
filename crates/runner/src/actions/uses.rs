@@ -246,6 +246,7 @@ impl Job {
         match lower.as_str() {
             "actions/checkout" => return self.checkout(with),
             "actions/upload-artifact" => return self.upload_artifact(with),
+            "actions/upload-artifact/merge" => return self.merge_artifacts(with),
             "actions/download-artifact" => return self.download_artifact(with),
             "actions/cache" => return self.cache(with, true, title),
             "actions/cache/restore" => return self.cache(with, false, title),

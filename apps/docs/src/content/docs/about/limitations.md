@@ -220,7 +220,8 @@ machines.
 | One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours. |
 | One cache entry | 2 GiB, compressed. A larger one is not saved. |
 | A repository's caches | 10 GiB together. Past it, the entries restored longest ago are removed. |
-| One artifact | 60 MB, kept for 14 days |
+| One artifact | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90. |
+| A run's artifacts | 10 GiB together. |
 
 The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 [self-hosted runner](/guides/self-hosted-runners/). See
@@ -230,13 +231,33 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 
 - Reusable workflows from another repository. Ones in the same repository
   work.
-- Actions that cache through the hosted toolkit's own cache service, such as
-  `setup-node` with `cache: npm`. They run without it; use `actions/cache`.
+- Actions that upload or download artifacts with the toolkit's artifact
+  library themselves. The library refuses to run against any server but
+  github.com. `actions/upload-artifact`, `actions/download-artifact` and
+  `actions/upload-artifact/merge` work, as g1t runs them itself.
+- A cache entry between 100 and 128 MB saved by an action built on the
+  toolkit, such as `setup-node` with `cache: npm`. The toolkit sends an
+  entry under 128 MB in one request, and g1t takes at most 100 MB in one
+  request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
+  the job goes on; smaller and larger entries are saved.
 - Environments' protection rules: required reviewers, wait timers and branch
   limits. A job with `environment:` gets that environment's values and runs
   without waiting.
 
 See [Not yet](/guides/actions/#not-yet). **Status.** Planned.
+
+### No npm trusted publishing or provenance
+
+A workflow on g1t can't publish to npm with trusted publishing, or with
+`--provenance`.
+
+- **Why.** Both trade the job's OIDC token with npm and Sigstore, which
+  accept tokens only from the CI services they list. g1t's
+  [OIDC tokens](/guides/actions/#oidc-tokens) work with any cloud that
+  lets you add an issuer, and npm does not.
+- **Instead.** Publish with a granular access token in a secret
+  (`NODE_AUTH_TOKEN`); see [npm](/guides/actions/#npm).
+- **Status.** Depends on npm.
 
 ## Deployments
 

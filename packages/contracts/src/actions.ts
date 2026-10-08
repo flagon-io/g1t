@@ -185,4 +185,42 @@ export interface ActionsApi {
   ): Promise<Result<Setting>>;
   /** One row by `id`, or every row of the key. */
   deleteSetting(actor: User, owner: SettingsOwner, kind: SettingKindFilter, name: string, id?: string): Promise<Result<boolean>>;
+  /** A repository's artifacts, newest first, or one run's. */
+  artifacts(repo: RepoPath, viewer: Viewer, filter?: { run?: string; name?: string; page?: number; per_page?: number }): Promise<Result<ArtifactList>>;
+  /** One artifact by id, or by run and name, with a token to download it for a few minutes. */
+  artifactDownload(repo: RepoPath, viewer: Viewer, by: { id?: number; run?: string; name?: string }): Promise<Result<ArtifactBlob>>;
+  /** Needs the Write role. */
+  deleteArtifact(actor: User, repo: RepoPath, id: number): Promise<Result<Artifact>>;
+  /** How long the repository keeps artifacts; with `days`, sets it (Maintain). */
+  artifactRetention(repo: RepoPath, viewer: Viewer, days?: number): Promise<Result<ArtifactRetention>>;
 }
+
+/**
+ * A workflow run's artifact, kept in R2 for its retention days. Mirrors
+ * `g1t_contracts::actions::Artifact` (which travels in `snake_case`).
+ */
+export type Artifact = {
+  id: number;
+  name: string;
+  size: number;
+  /** `sha256:<hex>`, when the uploader said. */
+  digest: string | null;
+  /** `zip`, or `tgz` for one an older runner sent. */
+  format: string;
+  run_id: string;
+  job_id: string;
+  repo_id: string;
+  expired: boolean;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  head_branch?: string | null;
+  head_sha?: string | null;
+};
+
+export type ArtifactList = { total_count: number; artifacts: Artifact[] };
+
+/** An artifact, where it is, and a signed token for the API's `/actions/toolkit/blobs/{blob}`. */
+export type ArtifactBlob = { artifact: Artifact; object: string; blob: string };
+
+export type ArtifactRetention = { days: number; maximum_allowed_days: number };

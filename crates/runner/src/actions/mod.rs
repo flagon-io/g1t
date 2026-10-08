@@ -10,10 +10,12 @@
 
 mod blobs;
 mod files;
+mod glob;
 mod paths;
 mod process;
 mod report;
 mod uses;
+mod zip;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

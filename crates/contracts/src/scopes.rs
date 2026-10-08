@@ -751,6 +751,13 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("cancel_workflow_run", Scope::WorkflowsWrite),
     ("rerun_workflow_run", Scope::WorkflowsWrite),
     ("update_workflow", Scope::WorkflowsWrite),
+    ("list_artifacts", Scope::WorkflowsRead),
+    ("list_workflow_run_artifacts", Scope::WorkflowsRead),
+    ("get_artifact", Scope::WorkflowsRead),
+    ("download_artifact", Scope::WorkflowsRead),
+    ("get_artifact_retention", Scope::WorkflowsRead),
+    ("delete_artifact", Scope::WorkflowsWrite),
+    ("set_artifact_retention", Scope::WorkflowsWrite),
     // Checks: statuses, check runs and check suites on commits.
     ("list_commit_statuses", Scope::ChecksRead),
     ("get_combined_status", Scope::ChecksRead),
