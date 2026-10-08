@@ -195,6 +195,20 @@ nothing but sudo binds to them.
    JWT itself (RS256 against the team's published keys, audience, issuer,
    expiry), then requires its email to be in `STAFF_EMAILS`. That email is
    who every change is recorded as. See `app/lib/access.ts`.
+   **Service tokens.** A program (Claude, working without a browser) signs
+   in with an Access service token instead: it sends `CF-Access-Client-Id`
+   and `CF-Access-Client-Secret`, the Access application has a policy with
+   the **Service Auth** action that includes the token, and Access sends
+   sudo a JWT with no email whose `common_name` is the token's client id.
+   sudo lets it in only if that client id is in `STAFF_SERVICE_TOKENS`
+   (`<client id>=<name>`, comma separated, in `wrangler.jsonc`), after the
+   same signature, audience, issuer and expiry checks, and records it as
+   `<name>@service.g1t.sh`: `claude@service.g1t.sh` for
+   `claude-sudo`. Its secret lives in `.credentials/sudo-service-token.json`
+   and is used by `scripts/ops/sudo.mjs`, which sends sudo's own `Origin`
+   with each POST so the same-origin check applies to it as to a browser.
+   To take its access away, remove its entry here, or delete or revoke the
+   token in Zero Trust.
 3. **It fails closed.** Until `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` and
    `STAFF_EMAILS` are all set, every request gets a 403 saying sudo is not
    configured.

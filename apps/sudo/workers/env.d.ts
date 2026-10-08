@@ -14,6 +14,7 @@ declare global {
       ACCESS_TEAM_DOMAIN: string;
       ACCESS_AUD: string;
       STAFF_EMAILS: string;
+      STAFF_SERVICE_TOKENS?: string;
     }
   }
   interface Env extends Cloudflare.Env {}

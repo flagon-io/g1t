@@ -28,13 +28,37 @@ export type AccessSettings = {
   aud: string;
   /** Lowercased staff emails, and `@domain` for everyone at a domain. */
   staff: string[];
+  /**
+   * Access service tokens let in as staff, by client id: the name each
+   * acts as. A service token's JWT has no email, only `common_name`, the
+   * token's client id; it is recorded as `<name>@service.g1t.sh`.
+   */
+  services: Map<string, string>;
 };
 
 export type AccessEnv = {
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
   STAFF_EMAILS?: string;
+  /** `<client id>=<name>`, comma separated: service tokens let in as staff. */
+  STAFF_SERVICE_TOKENS?: string;
 };
+
+/** The domain a service token's staff identity is recorded under. */
+export const SERVICE_STAFF_DOMAIN = "service.g1t.sh";
+
+/**
+ * `abc.access=claude, def.access=ci` as client id to name. Entries without
+ * a name, or whose name is not a plain lowercase word, are dropped.
+ */
+export function parseServiceTokens(raw: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const entry of raw.split(",")) {
+    const [id = "", name = ""] = entry.split("=").map((part) => part.trim());
+    if (/^[A-Za-z0-9]{16,64}\.access$/.test(id) && /^[a-z][a-z0-9-]{0,31}$/.test(name)) out.set(id, name);
+  }
+  return out;
+}
 
 /**
  * Reads the settings, or null when any is missing or malformed: sudo then
@@ -45,7 +69,7 @@ export function readSettings(env: AccessEnv): AccessSettings | null {
   const aud = (env.ACCESS_AUD ?? "").trim();
   const staff = parseStaff(env.STAFF_EMAILS ?? "");
   if (!teamDomain || !/^[A-Za-z0-9]{16,128}$/.test(aud) || staff.length === 0) return null;
-  return { teamDomain, aud, staff };
+  return { teamDomain, aud, staff, services: parseServiceTokens(env.STAFF_SERVICE_TOKENS ?? "") };
 }
 
 /**
@@ -89,6 +113,8 @@ export type AccessClaims = {
   iat?: number;
   sub?: string;
   email?: string;
+  /** A service token's client id, on tokens with no email. */
+  common_name?: string;
   [claim: string]: unknown;
 };
 
@@ -232,8 +258,9 @@ export type Authorized = { ok: true; email: string } | { ok: false; reason: stri
 
 /**
  * Whether a request comes from g1t staff, through Access: a valid token
- * whose email is on the staff list. Service tokens carry no email and are
- * refused.
+ * whose email is on the staff list, or a service token's (no email, its
+ * client id as `common_name`) listed in STAFF_SERVICE_TOKENS, which acts as
+ * `<name>@service.g1t.sh`. Any other service token is refused.
  */
 export async function authorize(
   request: Request,
@@ -245,7 +272,12 @@ export async function authorize(
   const verified = await verifyAccessJwt(token, settings, options);
   if (!verified.ok) return verified;
   const email = typeof verified.claims.email === "string" ? verified.claims.email.trim().toLowerCase() : "";
-  if (!email) return { ok: false, reason: "token has no email" };
+  if (!email) {
+    const client = typeof verified.claims.common_name === "string" ? verified.claims.common_name.trim() : "";
+    const name = client ? settings.services.get(client) : undefined;
+    if (!name) return { ok: false, reason: client ? "service token not staff" : "token has no email" };
+    return { ok: true, email: `${name}@${SERVICE_STAFF_DOMAIN}` };
+  }
   if (!isStaff(email, settings.staff)) return { ok: false, reason: "not staff", email };
   return { ok: true, email };
 }

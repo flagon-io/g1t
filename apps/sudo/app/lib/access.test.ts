@@ -7,6 +7,7 @@ import {
   clearKeyCache,
   isSameOrigin,
   isStaff,
+  parseServiceTokens,
   parseStaff,
   readSettings,
   verifyAccessJwt,
@@ -14,7 +15,8 @@ import {
 
 const TEAM = "g1t.cloudflareaccess.com";
 const AUD = "a".repeat(64);
-const SETTINGS: AccessSettings = { teamDomain: TEAM, aud: AUD, staff: ["owner@g1t.sh"] };
+const CLIENT = "434297ede60761875e84742d0486cf27.access";
+const SETTINGS: AccessSettings = { teamDomain: TEAM, aud: AUD, staff: ["owner@g1t.sh"], services: new Map([[CLIENT, "claude"]]) };
 const NOW = Date.UTC(2026, 9, 4, 12, 0, 0);
 const NOW_SECONDS = Math.floor(NOW / 1000);
 const RSA = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" } as const;
@@ -151,9 +153,42 @@ test("a valid token whose email is not staff is refused", async () => {
   assert.deepEqual(result, { ok: false, reason: "not staff", email: "someone@example.com" });
 });
 
-test("a service token, which has no email, is refused", async () => {
+test("a token with neither an email nor a client id is refused", async () => {
   const result = await authorize(request(await sign(claims({ email: undefined }))), SETTINGS, { fetcher, now: NOW });
   assert.deepEqual(result, { ok: false, reason: "token has no email" });
+});
+
+test("a listed service token is let in as its name at service.g1t.sh", async () => {
+  const token = await sign(claims({ email: undefined, sub: "", common_name: CLIENT }));
+  const result = await authorize(request(token), SETTINGS, { fetcher, now: NOW });
+  assert.deepEqual(result, { ok: true, email: "claude@service.g1t.sh" });
+});
+
+test("a service token not listed is refused", async () => {
+  const token = await sign(claims({ email: undefined, common_name: "ffffffffffffffffffffffffffffffff.access" }));
+  const result = await authorize(request(token), SETTINGS, { fetcher, now: NOW });
+  assert.deepEqual(result, { ok: false, reason: "service token not staff" });
+});
+
+test("a listed service token still needs a valid signature and audience", async () => {
+  const forged = await sign(claims({ email: undefined, common_name: CLIENT }), { key: stranger.privateKey });
+  assert.deepEqual(await authorize(request(forged), SETTINGS, { fetcher, now: NOW }), { ok: false, reason: "bad signature" });
+  const elsewhere = await sign(claims({ email: undefined, common_name: CLIENT, aud: ["b".repeat(64)] }));
+  assert.deepEqual(await authorize(request(elsewhere), SETTINGS, { fetcher, now: NOW }), { ok: false, reason: "wrong audience" });
+});
+
+test("an email wins over a client id on the same token", async () => {
+  const token = await sign(claims({ email: "someone@example.com", common_name: CLIENT }));
+  const result = await authorize(request(token), SETTINGS, { fetcher, now: NOW });
+  assert.deepEqual(result, { ok: false, reason: "not staff", email: "someone@example.com" });
+});
+
+test("service tokens are read as client id to name, dropping malformed entries", () => {
+  assert.deepEqual(
+    parseServiceTokens(` ${CLIENT}=claude , short.access=x, abcdefabcdefabcdef.access=Bad Name, abcdefabcdefabcdef.access=`),
+    new Map([[CLIENT, "claude"]]),
+  );
+  assert.deepEqual(parseServiceTokens(""), new Map());
 });
 
 test("staff emails match without regard to case", async () => {
@@ -188,7 +223,8 @@ test("when the keys cannot be fetched, nothing is let in", async () => {
 
 test("sudo is closed until every setting is given", () => {
   const full = { ACCESS_TEAM_DOMAIN: "https://g1t.cloudflareaccess.com/", ACCESS_AUD: AUD, STAFF_EMAILS: "A@g1t.sh, b@g1t.sh" };
-  assert.deepEqual(readSettings(full), { teamDomain: TEAM, aud: AUD, staff: ["a@g1t.sh", "b@g1t.sh"] });
+  assert.deepEqual(readSettings(full), { teamDomain: TEAM, aud: AUD, staff: ["a@g1t.sh", "b@g1t.sh"], services: new Map() });
+  assert.deepEqual(readSettings({ ...full, STAFF_SERVICE_TOKENS: `${CLIENT}=claude` })?.services, new Map([[CLIENT, "claude"]]));
   assert.equal(readSettings({ ...full, ACCESS_AUD: "" }), null);
   assert.equal(readSettings({ ...full, ACCESS_TEAM_DOMAIN: "" }), null);
   assert.equal(readSettings({ ...full, STAFF_EMAILS: " , " }), null);

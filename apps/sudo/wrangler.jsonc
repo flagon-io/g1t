@@ -36,7 +36,11 @@
 		"ACCESS_AUD": "5479fcf84130fc7ae68c207ae69a81b2aa17d97714443c6f1dddd058c530b8cf",
 		// Who may use sudo, comma separated. Access lets them in; this
 		// decides again, in case the Access policy is ever widened.
-		"STAFF_EMAILS": "syntaqx@gmail.com, @g1t.sh"
+		"STAFF_EMAILS": "syntaqx@gmail.com, @g1t.sh",
+		// Access service tokens let in as staff: `<client id>=<name>`, comma
+		// separated. Each acts, and is recorded, as `<name>@service.g1t.sh`.
+		// The Access application needs a Service Auth policy including it.
+		"STAFF_SERVICE_TOKENS": "434297ede60761875e84742d0486cf27.access=claude"
 	},
 	"observability": { "enabled": true },
 	"upload_source_maps": true
