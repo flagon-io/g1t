@@ -67,7 +67,8 @@ impl TokenOp {
         }
     }
 
-    /// Whether it changes anything.
+    /// Whether it changes anything: checked against the scope table in tests.
+    #[cfg(test)]
     pub fn writes(self) -> bool {
         matches!(self, TokenOp::SetTokenPolicy | TokenOp::ReviewTokenRequest | TokenOp::RevokeMemberToken)
     }
