@@ -4,7 +4,10 @@ import { Await, Form, Link } from "react-router";
 
 import type { Blame, BlobView as Blob, Branch, Commit, LastCommits, TreeView as Tree } from "@g1t/contracts";
 
+import type { DeploymentEnvironments } from "@g1t/contracts";
+
 import { BlameView } from "./blame-view";
+import { DeploymentsPanel } from "./deployments-panel";
 import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
@@ -280,11 +283,14 @@ export function TreeView({
   tree,
   branches = null,
   lastCommits = null,
+  deployments = null,
 }: {
   tree: Tree;
   branches?: Branch[] | null;
   /** Each entry's last commit, streamed in after the list. */
   lastCommits?: Promise<LastCommits | null> | null;
+  /** The repository's environments, for the About sidebar's Deployments panel. */
+  deployments?: DeploymentEnvironments | null;
 }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -388,6 +394,8 @@ export function TreeView({
               </Link>
             </li>
           </ul>
+          {/* Deployments panel (deployments-panel.tsx) */}
+          <DeploymentsPanel base={base} summary={deployments} className="mt-5 border-t border-line pt-5" />
           <p className="mt-4 text-xs text-faint">
             Created <TimeAgo at={repo.createdAt} />
           </p>

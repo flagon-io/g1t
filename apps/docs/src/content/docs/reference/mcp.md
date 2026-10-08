@@ -383,8 +383,9 @@ one short fact at a time, never a secret. See
 ## `workflow`
 
 Workflows in `.g1t/workflows/`: their runs, jobs and logs, and running,
-cancelling or rerunning them, and the self-hosted runners they run on. See
-[GitHub Actions](/guides/actions/) and
+cancelling or rerunning them; a repository's deployments and environments;
+and the self-hosted runners workflows run on. See
+[GitHub Actions](/guides/actions/), [Deployments API](/guides/deployments-api/) and
 [self-hosted runners](/guides/self-hosted-runners/).
 
 | Action | What it does | Required | Scope |
@@ -397,6 +398,13 @@ cancelling or rerunning them, and the self-hosted runners they run on. See
 | [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
 | [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
 | [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
+| [`list_deployments`](/reference/api/deployments/list-deployments/) | Deployments wherever they run, newest first; filter by `environment`, `ref`, `sha`, `task`, `state`, `source` (`api`, `actions` or `g1t_page`) or `creator`, and page with `page` and `per_page`. | `repo` | `deployments:read` |
+| [`get_deployment`](/reference/api/deployments/get-deployment/) | One deployment with every status it has had, oldest first. | `repo`, `id` | `deployments:read` |
+| [`create_deployment`](/reference/api/deployments/create-deployment/) | Report a deployment of `ref` to an `environment` (`production` unless you say), with optional `sha`, `task`, `description`, `payload`, `production_environment`, `transient_environment`, first `state`, `environment_url` and `log_url`. Write role. | `repo`, `ref` | `deployments:write` |
+| [`deployment_statuses`](/reference/api/deployments/list-deployment-statuses/) | A deployment's statuses, newest first. | `repo`, `id` | `deployments:read` |
+| [`create_deployment_status`](/reference/api/deployments/create-deployment-status/) | Report where a deployment is: `state` (`queued`, `in_progress`, `success`, `failure`, `error` or `inactive`), with optional `description`, `environment_url`, `log_url` and `auto_inactive`. Not for a g1t.page build. Write role. | `repo`, `id`, `state` | `deployments:write` |
+| [`list_environments`](/reference/api/deployments/list-environments/) | Environments with their address, current and latest deployments, production first. | `repo` | `deployments:read` |
+| [`get_environment`](/reference/api/deployments/get-environment/) | One environment by name. | `repo`, `environment` | `deployments:read` |
 | [`list_runners`](/reference/api/runners/list-runners-for-workspace/) | [Self-hosted runners](/guides/self-hosted-runners/): a workspace's (`workspace`), or a repository's own and the workspace's it may use (`repo`), with status, labels and what each is running. | `workspace` or `repo` | `runners:read` |
 | [`create_runner_token`](/reference/api/runners/create-runner-registration-token-for-workspace/) | A registration token for `g1t-runner register`, an hour long; `group` for a workspace's. Owners, or a repository's admins; not workspace tokens. | `workspace` or `repo` | `runners:admin` |
 | [`remove_runner`](/reference/api/runners/remove-runner-for-workspace/) | Remove a runner; a job it is running fails. | `workspace` or `repo`, `id` | `runners:admin` |

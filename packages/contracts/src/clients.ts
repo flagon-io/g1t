@@ -701,6 +701,11 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
       call("add_domain", { actor, project, hostname, twin: !!options.twin }),
     removeDomain: (actor, project, id) => call("remove_domain", { actor, project, id }),
     refreshDomain: (actor, project, id) => call("refresh_domain", { actor, project, id }),
+    repoDeployments: (repo, viewer, filter = {}) => call("list_deployments", { repo, viewer, ...filter }),
+    repoDeployment: (repo, id, viewer) => call("get_deployment", { repo, id, viewer }),
+    environments: (repo, viewer) => call("list_environments", { repo, viewer }),
+    createDeployment: (actor, repo, input) => call("create_deployment", { repo, actor, ...input }),
+    createDeploymentStatus: (actor, repo, id, input) => call("create_deployment_status", { repo, actor, id, ...input }),
   };
 }
 

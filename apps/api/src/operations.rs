@@ -26,6 +26,7 @@ use g1t_contracts::security::{
 };
 
 use crate::alerts::{AlertKind, SecurityAlert};
+use crate::deployments::DeploymentsOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -55,6 +56,8 @@ pub struct Services {
     pub security: Fetcher,
     /// Projects: a person's pinned ones.
     pub projects: Fetcher,
+    /// Deployments wherever they run, and environments.
+    pub deployments: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -79,6 +82,7 @@ impl Services {
             search: env.service("SEARCH")?,
             security: env.service("SECURITY")?,
             projects: env.service("PROJECTS")?,
+            deployments: env.service("DEPLOYMENTS")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -267,6 +271,8 @@ pub enum Op {
     Security(SecurityOp),
     /// Rulesets: rules.rs.
     Rules(RulesOp),
+    /// Deployments wherever they run, and environments: deployments.rs.
+    Deployments(DeploymentsOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -629,7 +635,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 219] = [
+    pub const ALL: [Op; 226] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -849,6 +855,13 @@ impl Op {
         Op::Rules(RulesOp::UpdateWorkspaceRuleset),
         Op::Rules(RulesOp::DeleteWorkspaceRuleset),
         Op::Rules(RulesOp::ListWorkspaceRuleEvaluations),
+        Op::Deployments(DeploymentsOp::ListDeployments),
+        Op::Deployments(DeploymentsOp::CreateDeployment),
+        Op::Deployments(DeploymentsOp::GetDeployment),
+        Op::Deployments(DeploymentsOp::ListDeploymentStatuses),
+        Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
+        Op::Deployments(DeploymentsOp::ListEnvironments),
+        Op::Deployments(DeploymentsOp::GetEnvironment),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1035,6 +1048,7 @@ impl Op {
             Op::GetCodeownersErrors => "get_codeowners_errors",
             Op::Security(op) => op.name(),
             Op::Rules(op) => op.name(),
+            Op::Deployments(op) => op.name(),
         }
     }
 
@@ -1533,6 +1547,7 @@ impl Op {
             }
             Op::Security(op) => op.description(),
             Op::Rules(op) => op.description(),
+            Op::Deployments(op) => op.description(),
         }
     }
 
@@ -2843,6 +2858,7 @@ impl Op {
             ),
             Op::Security(op) => op.input(),
             Op::Rules(op) => op.input(),
+            Op::Deployments(op) => op.input(),
         }
     }
 
@@ -2869,6 +2885,13 @@ impl Op {
                 | Op::GetMergeQueue
                 | Op::GetCodeownersErrors
                 | Op::Rules(RulesOp::ListRepoRulesets | RulesOp::GetRepoRuleset | RulesOp::GetBranchRules)
+                | Op::Deployments(
+                    DeploymentsOp::ListDeployments
+                        | DeploymentsOp::GetDeployment
+                        | DeploymentsOp::ListDeploymentStatuses
+                        | DeploymentsOp::ListEnvironments
+                        | DeploymentsOp::GetEnvironment
+                )
         )
     }
 
@@ -4848,6 +4871,7 @@ impl Op {
             // each answer its public shape.
             Op::Security(op) => crate::security::run(op, services, viewer, input).await,
             Op::Rules(op) => crate::rules::run(op, services, viewer, input).await,
+            Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

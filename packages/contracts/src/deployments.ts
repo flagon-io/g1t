@@ -1,4 +1,5 @@
 import type { User, Viewer } from "./identity";
+import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 
 /**
@@ -181,6 +182,158 @@ export type ProjectDomains = {
   used: number;
 };
 
+// ---- A repository's deployments, wherever they run ---------------------
+//
+// Every deployment of a repository, in one model: g1t.page builds (read
+// from the builds above, never copied), deployments g1t Actions makes for
+// a job with an `environment:`, and deployments any other system reports
+// through the API. These travel in `snake_case` between services too, as
+// the API shows them, so a deployment's `payload` reaches the API with its
+// keys as they were given.
+
+/** Where a deployment is, as its latest status says. */
+export type DeploymentState = "queued" | "in_progress" | "success" | "failure" | "error" | "inactive";
+
+export const DEPLOYMENT_STATES: readonly DeploymentState[] = ["queued", "in_progress", "success", "failure", "error", "inactive"];
+
+/**
+ * What made a deployment: `api` (reported with a token), `actions` (a g1t
+ * Actions job with an `environment:`) or `g1t_page` (a build on g1t.page).
+ */
+export type DeploymentSource = "api" | "actions" | "g1t_page";
+
+/** One deployment of one commit to one environment. */
+export type RepoDeployment = {
+  /** `dep_…` for a reported deployment, `dpl_…` for a g1t.page build. */
+  id: string;
+  /** Such as `production`, `staging` or `preview`. */
+  environment: string;
+  /** The branch, tag or commit asked for. */
+  ref: string;
+  sha: string;
+  /** What kind of deployment: `deploy` unless given, such as `deploy:migrations`. */
+  task: string;
+  description: string | null;
+  /** Whatever the reporter attached, as given. */
+  payload: Record<string, unknown>;
+  /** An environment that goes away, such as a pull request's preview. */
+  transient_environment: boolean;
+  /** An environment people use directly. */
+  production_environment: boolean;
+  /** Its latest status's state. */
+  state: DeploymentState;
+  /** Where it is served, from its latest status that gave one. */
+  environment_url: string | null;
+  /** Where its output can be read, from its latest status that gave one. */
+  log_url: string | null;
+  /** The username that created it, or `g1t`. */
+  creator: string;
+  source: DeploymentSource;
+  /** For `actions`: the workflow run, and its address on the site. */
+  run_id: string | null;
+  run_url: string | null;
+  /** For `g1t_page`: the project it built, and a preview's pull request. */
+  project: string | null;
+  number: number | null;
+  /** RFC 3339. */
+  created_at: string;
+  /** RFC 3339: its latest status. */
+  updated_at: string;
+};
+
+/** One status of a deployment: what it said, and when. */
+export type DeploymentStatus = {
+  id: string;
+  deployment_id: string;
+  state: DeploymentState;
+  description: string | null;
+  environment_url: string | null;
+  log_url: string | null;
+  creator: string;
+  /** RFC 3339. */
+  created_at: string;
+};
+
+/** A deployment with every status it has had, oldest first. */
+export type DeploymentDetail = RepoDeployment & { statuses: DeploymentStatus[] };
+
+/** An environment: a name deployments go to, made by the first. */
+export type DeploymentEnvironment = {
+  name: string;
+  /** Where its current deployment is served. */
+  url: string | null;
+  production_environment: boolean;
+  transient_environment: boolean;
+  /** How many deployments it has had. */
+  deployments_count: number;
+  /** Its newest deployment, whatever its state. */
+  latest: RepoDeployment | null;
+  /** The newest deployment that succeeded and is still active: what it serves. */
+  current: RepoDeployment | null;
+  /** RFC 3339: its newest deployment's latest status. */
+  updated_at: string;
+};
+
+/** A repository's environments, production first, and its count of deployments. */
+export type DeploymentEnvironments = {
+  /** Deployments across every environment. */
+  total_count: number;
+  environments: DeploymentEnvironment[];
+};
+
+/** Which deployments to list. Every field narrows the list. */
+export type DeploymentFilter = {
+  environment?: string | null;
+  ref?: string | null;
+  sha?: string | null;
+  task?: string | null;
+  state?: DeploymentState | null;
+  source?: DeploymentSource | null;
+  creator?: string | null;
+  /** From 1. */
+  page?: number | null;
+  /** 1 to 100; 30 unless given. */
+  per_page?: number | null;
+};
+
+/** One page of deployments, newest first. */
+export type DeploymentPage = {
+  deployments: RepoDeployment[];
+  total_count: number;
+  page: number;
+  per_page: number;
+};
+
+/** What `create_deployment` takes, as the API does. */
+export type NewDeployment = {
+  ref: string;
+  /** The commit; resolved from `ref` when left out. */
+  sha?: string | null;
+  environment?: string | null;
+  task?: string | null;
+  description?: string | null;
+  payload?: Record<string, unknown> | null;
+  transient_environment?: boolean | null;
+  production_environment?: boolean | null;
+  /** The state of its first status: `queued` unless given. */
+  state?: DeploymentState | null;
+  environment_url?: string | null;
+  log_url?: string | null;
+};
+
+/** What `create_deployment_status` takes. */
+export type NewDeploymentStatus = {
+  state: DeploymentState;
+  description?: string | null;
+  environment_url?: string | null;
+  log_url?: string | null;
+  /**
+   * On a success: the environment's older deployments that succeeded get
+   * an `inactive` status. True unless given.
+   */
+  auto_inactive?: boolean | null;
+};
+
 export interface DeploymentsApi {
   /** Members of the workspace only. */
   settings(project: ProjectRef, viewer: Viewer): Promise<Result<DeploySettings>>;
@@ -216,4 +369,14 @@ export interface DeploymentsApi {
   removeDomain(actor: User, project: ProjectRef, id: string): Promise<Result<true>>;
   /** Asks Cloudflare to check the domain again now. Members only. */
   refreshDomain(actor: User, project: ProjectRef, id: string): Promise<Result<Domain>>;
+  /** A repository's deployments, newest first, filtered. Anyone who can read it. */
+  repoDeployments(repo: RepoPath, viewer: Viewer, filter?: DeploymentFilter): Promise<Result<DeploymentPage>>;
+  /** One deployment with its statuses, oldest first. Anyone who can read the repository. */
+  repoDeployment(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<DeploymentDetail>>;
+  /** A repository's environments with their current and latest deployments. Anyone who can read it. */
+  environments(repo: RepoPath, viewer: Viewer): Promise<Result<DeploymentEnvironments>>;
+  /** Reports a deployment. Takes the Write role. */
+  createDeployment(actor: User, repo: RepoPath, input: NewDeployment): Promise<Result<DeploymentDetail>>;
+  /** Adds a status to a reported deployment. Takes the Write role. */
+  createDeploymentStatus(actor: User, repo: RepoPath, id: string, input: NewDeploymentStatus): Promise<Result<DeploymentStatus>>;
 }

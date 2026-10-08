@@ -7,6 +7,7 @@
 use g1t_contracts::scopes::scope_for;
 use serde_json::{Map, Value, json};
 
+use crate::deployments::DeploymentsOp;
 use crate::operations::Op;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -314,6 +315,19 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Deployments",
+        "A repository's deployments wherever they run: reported from any CI with these routes, made by g1t Actions jobs with an `environment:`, or built on g1t.page. Each has statuses, shows on its commit as the check `deploy / <environment>`, and belongs to an environment.",
+        &[
+            Op::Deployments(DeploymentsOp::ListDeployments),
+            Op::Deployments(DeploymentsOp::CreateDeployment),
+            Op::Deployments(DeploymentsOp::GetDeployment),
+            Op::Deployments(DeploymentsOp::ListDeploymentStatuses),
+            Op::Deployments(DeploymentsOp::CreateDeploymentStatus),
+            Op::Deployments(DeploymentsOp::ListEnvironments),
+            Op::Deployments(DeploymentsOp::GetEnvironment),
+        ],
+    ),
+    (
         "Secrets and variables",
         "Values that workflows and deployments read, per repository or for a whole workspace, with a row per environment.",
         &[
@@ -557,6 +571,7 @@ fn title(op: Op) -> &'static str {
         Op::GetCodeownersErrors => "List CODEOWNERS errors",
         Op::Security(op) => op.title(),
         Op::Rules(op) => op.title(),
+        Op::Deployments(op) => op.title(),
     }
 }
 

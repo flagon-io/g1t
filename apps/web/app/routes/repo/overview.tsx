@@ -72,6 +72,8 @@ import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import { PUBLISH_GUIDES, hasRelease, libraryPackages, packageName, packagePath, publishGuide } from "../../lib/project-kind";
 import { actions, agents, deployments, events as eventLog, packages, projects, repos, work } from "../../lib/services.server";
 import { madeByG1t } from "../../lib/opened-by";
+import { DeploymentStateBadge, DeploymentsPanel, sourceLabel } from "../../components/deployments-panel";
+import { environmentLabel, environmentUrl, productionEnvironment, shortSha } from "../../lib/deployments";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, countsFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
@@ -114,6 +116,10 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
   const projectP = soft(projects.get(params.owner, params.repo, viewer));
+  // Deployments from anywhere (g1t.page, g1t Actions, the API), by environment, for anyone who can read it.
+  const environmentsP = projectP.then((found) =>
+    soft(deployments.environments(found?.ok && found.value.source.kind === "hosted" ? found.value.source.repo : path, viewer)),
+  );
   // A library shows its packages where an app shows production, and its
   // checklist counts a workflow and a release instead of deploys.
   const libraryRepoP = Promise.all([projectP, repoP]).then(([project, repo]) =>
@@ -338,6 +344,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
       });
 
   const github = await githubP;
+  const environments = ok(await environmentsP);
   return {
     member,
     can,
@@ -371,6 +378,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
       ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false }
       : null,
     branches,
+    environments: environments && environments.environments.length > 0 ? environments : null,
   };
 }
 
@@ -694,6 +702,13 @@ function Overview({
   const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   const previews = live.filter((app) => app.kind === "preview");
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
+  // Production deployed somewhere other than g1t.page (by g1t Actions, or reported through the API): shown as production.
+  const reportedEnv = production ? null : productionEnvironment(loaderData.environments?.environments ?? []);
+  const elsewhere =
+    reportedEnv?.latest && reportedEnv.latest.source !== "g1t_page"
+      ? { deployment: reportedEnv.latest, url: environmentUrl(reportedEnv) }
+      : null;
+  const lastDeploy = library ? null : elsewhere ? "elsewhere" : member && settings?.enabled ? "page" : null;
   const addresses = useAddresses();
   const source = project?.source.kind === "hosted" ? project.source : null;
   const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
@@ -745,6 +760,28 @@ function Overview({
                     {settings?.primaryDomain && <span className="text-faint">also at {host(production.url)}</span>}
                   </p>
                 </>
+              ) : elsewhere ? (
+                // Deployed by its own workflow or reported through the API, wherever it runs.
+                <>
+                  {elsewhere.url ? (
+                    <a href={elsewhere.url} className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent">
+                      {host(elsewhere.url)}
+                      <ArrowUpRight size={16} className="shrink-0 text-faint" />
+                    </a>
+                  ) : (
+                    <p className="mt-2 text-lg font-medium">{environmentLabel(reportedEnv?.name ?? "production")}</p>
+                  )}
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    <DeploymentStateBadge state={elsewhere.deployment.state} size={13} />
+                    <Link to={`${base}/commit/${elsewhere.deployment.sha}`} className="inline-flex items-center gap-1 font-mono hover:text-fg">
+                      <GitCommitHorizontal size={13} className="text-faint" />
+                      {shortSha(elsewhere.deployment.sha)}
+                    </Link>
+                    <Link to={`${base}/deployments/${elsewhere.deployment.id}`} className="hover:text-fg">
+                      deployed <TimeAgo at={elsewhere.deployment.updated_at} /> via {sourceLabel(elsewhere.deployment.source)}
+                    </Link>
+                  </p>
+                </>
               ) : settings?.enabled ? (
                 <>
                   <p className="mt-2 font-mono text-lg text-muted">{host(settings.productionUrl)}</p>
@@ -767,15 +804,23 @@ function Overview({
                 </>
               )}
             </div>
-            {member && (
+            {(member || elsewhere?.url) && (
               <div className="flex shrink-0 items-center gap-2">
-                {production && (
+                {production ? (
                   <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
                     Visit
                     <ArrowUpRight size={14} />
                   </ButtonLink>
+                ) : (
+                  elsewhere?.url && (
+                    <ButtonLink to={elsewhere.url} variant="accent" reloadDocument>
+                      Visit
+                      <ArrowUpRight size={14} />
+                    </ButtonLink>
+                  )
                 )}
-                {settings?.enabled ? (
+                {/* Deployed elsewhere: g1t.page hosting is on the Deployments page, not the first thing offered. */}
+                {elsewhere && !settings?.enabled ? null : settings?.enabled ? (
                   loaderData.can.run && <Form method="post">
                     <Hint label="Build production again from the default branch">
                       <SubmitButton variant="quiet" name="intent" value="redeploy" pending="Redeploying…">
@@ -845,10 +890,23 @@ function Overview({
             }
           />
           <Stat
-            label={member && settings?.enabled && !library ? "Last deploy" : "Open"}
-            to={member && settings?.enabled && !library ? `${base}/deployments` : `${base}/pulls`}
+            label={lastDeploy ? "Last deploy" : "Open"}
+            to={
+              lastDeploy === "elsewhere" && elsewhere
+                ? `${base}/deployments/${elsewhere.deployment.id}`
+                : lastDeploy
+                  ? `${base}/deployments`
+                  : `${base}/pulls`
+            }
             value={
-              member && settings?.enabled && !library ? (
+              lastDeploy === "elsewhere" && elsewhere ? (
+                <span className="inline-flex items-center gap-2">
+                  <DeploymentStateBadge state={elsewhere.deployment.state} size={12} />
+                  <span className="font-normal text-muted">
+                    <TimeAgo at={elsewhere.deployment.updated_at} />
+                  </span>
+                </span>
+              ) : lastDeploy ? (
                 latestProduction ? (
                   <span className="inline-flex items-center gap-2">
                     <StatusDot status={latestProduction.status} />
@@ -1078,6 +1136,8 @@ function Overview({
         </div>
 
         <aside className="space-y-4 text-sm">
+          {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
+          <DeploymentsPanel base={base} summary={loaderData.environments} className="rounded-xl border border-line bg-surface p-5" />
           {member && (
             <section className="rounded-xl border border-line bg-surface p-5">
               <div className="flex items-center justify-between">

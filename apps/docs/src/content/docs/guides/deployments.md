@@ -41,6 +41,12 @@ When the [default branch changes](/guides/managing-repositories/), production
 is built again from the new default branch. An
 [archived](/guides/managing-repositories/) repository's apps keep serving.
 
+Every build is also a deployment in the repository's one list of
+deployments, beside those reported from any CI and those g1t Actions
+jobs make, with the source `g1t_page` and the environment `production` or
+`preview`. See [Deployments API](/guides/deployments-api/) to read them,
+report your own, and hear of them by webhook.
+
 An app runs only while it answers a request. One nobody visits runs
 nothing and costs nothing, and the next visit wakes it in milliseconds.
 
