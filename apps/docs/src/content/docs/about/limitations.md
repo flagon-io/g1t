@@ -257,9 +257,8 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
   entry under 128 MB in one request, and g1t takes at most 100 MB in one
   request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
   the job goes on; smaller and larger entries are saved.
-- Environments' protection rules: required reviewers, wait timers and branch
-  limits. A job with `environment:` gets that environment's values and runs
-  without waiting.
+- `on: delete`: deleting a branch or tag starts no workflows. New branches
+  and tags start `create` and `push` workflows.
 
 See [Not yet](/guides/actions/#not-yet). **Status.** Planned.
 

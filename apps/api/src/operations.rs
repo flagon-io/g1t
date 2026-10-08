@@ -30,6 +30,7 @@ use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
+use crate::protection::ProtectionOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -284,6 +285,9 @@ pub enum Op {
     About(AboutOp),
     /// Deployments wherever they run, and environments: deployments.rs.
     Deployments(DeploymentsOp),
+    /// Environments' protection rules, approving runs, the token's default
+    /// permissions and repository dispatch: protection.rs.
+    Protection(ProtectionOp),
     /// Workflow run artifacts, and how long they are kept: artifacts.rs.
     Artifacts(ArtifactsOp),
 }
@@ -648,7 +652,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 264] = [
+    pub const ALL: [Op; 276] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -913,6 +917,18 @@ impl Op {
         Op::Artifacts(ArtifactsOp::DeleteArtifact),
         Op::Artifacts(ArtifactsOp::GetArtifactRetention),
         Op::Artifacts(ArtifactsOp::SetArtifactRetention),
+        Op::Protection(ProtectionOp::UpdateEnvironment),
+        Op::Protection(ProtectionOp::DeleteEnvironment),
+        Op::Protection(ProtectionOp::GetPendingDeployments),
+        Op::Protection(ProtectionOp::ReviewPendingDeployments),
+        Op::Protection(ProtectionOp::ApproveWorkflowRun),
+        Op::Protection(ProtectionOp::GetWorkflowPermissions),
+        Op::Protection(ProtectionOp::SetWorkflowPermissions),
+        Op::Protection(ProtectionOp::GetForkPrApproval),
+        Op::Protection(ProtectionOp::SetForkPrApproval),
+        Op::Protection(ProtectionOp::CreateRepositoryDispatch),
+        Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
+        Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1106,6 +1122,7 @@ impl Op {
             Op::Checks(op) => op.name(),
             Op::About(op) => op.name(),
             Op::Deployments(op) => op.name(),
+            Op::Protection(op) => op.name(),
             Op::Artifacts(op) => op.name(),
         }
     }
@@ -1620,6 +1637,7 @@ impl Op {
             Op::Checks(op) => op.description(),
             Op::About(op) => op.description(),
             Op::Deployments(op) => op.description(),
+            Op::Protection(op) => op.description(),
             Op::Artifacts(op) => op.description(),
         }
     }
@@ -2992,6 +3010,7 @@ impl Op {
             Op::Checks(op) => op.input(),
             Op::About(op) => op.input(),
             Op::Deployments(op) => op.input(),
+            Op::Protection(op) => op.input(),
             Op::Artifacts(op) => op.input(),
         }
     }
@@ -3039,6 +3058,9 @@ impl Op {
                         | DeploymentsOp::ListEnvironments
                         | DeploymentsOp::GetEnvironment
                 )
+                | Op::Protection(
+                    ProtectionOp::GetPendingDeployments | ProtectionOp::GetWorkflowPermissions | ProtectionOp::GetForkPrApproval
+                )
         )
     }
 
@@ -3056,6 +3078,9 @@ impl Op {
             return op.needs_repo();
         }
         if let Op::Security(op) = self {
+            return op.needs_repo();
+        }
+        if let Op::Protection(op) = self {
             return op.needs_repo();
         }
         !matches!(
@@ -5056,6 +5081,7 @@ impl Op {
             Op::Checks(op) => crate::checks::run(op, services, viewer, input).await,
             Op::About(op) => crate::about::run(op, services, viewer, input).await,
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
+            Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::artifacts::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(

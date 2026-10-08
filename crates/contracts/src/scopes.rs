@@ -497,16 +497,47 @@ pub struct TokenAccess {
     /// Made before tokens had scopes: full access until someone narrows it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub legacy: bool,
+    /// Set on a workflow job's token (`G1T_TOKEN`): the one repository it
+    /// reaches, as `owner/name`. Every other is refused, whatever its owner
+    /// could reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    /// Set on a workflow job's token: the run and job it was made for. The
+    /// audit log records its changes as that job's, and what it changes
+    /// starts no workflows (only `workflow_dispatch` and
+    /// `repository_dispatch` do), so a workflow cannot set itself off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<JobToken>,
     /// The token's name, as its owner gave it, so a log can say which
     /// token made a request. Absent where whoever resolved it did not say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
+/// The workflow job a token was made for.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobToken {
+    /// The run, `run_…`.
+    pub run_id: String,
+    /// The job, `job_…`.
+    pub job_id: String,
+    /// Whether it may open pull requests and approve them, by its
+    /// repository's and workspace's choice ("Allow g1t Actions to create and
+    /// approve pull requests"). Off unless chosen.
+    #[serde(default)]
+    pub pull_requests: bool,
+}
+
 impl TokenAccess {
     /// Full access to everything: the access tokens made before scopes had.
     pub fn full() -> Self {
         TokenAccess::default()
+    }
+
+    /// Whether it may reach the repository `owner/name`: every token but a
+    /// workflow job's, which reaches its own repository only.
+    pub fn reaches(&self, repo: &str) -> bool {
+        self.repo.as_deref().is_none_or(|only| only.eq_ignore_ascii_case(repo))
     }
 
     pub fn is_full(&self) -> bool {
@@ -779,6 +810,23 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_environment", Scope::DeploymentsRead),
     ("create_deployment", Scope::DeploymentsWrite),
     ("create_deployment_status", Scope::DeploymentsWrite),
+    // What keeps runs safe: the runs environments hold and reviewing them,
+    // approving a pull request's run, and a repository's own rules for
+    // its environments and tokens, which are an admin's.
+    ("get_pending_deployments", Scope::WorkflowsRead),
+    ("review_pending_deployments", Scope::WorkflowsWrite),
+    ("approve_workflow_run", Scope::WorkflowsWrite),
+    ("get_workflow_permissions", Scope::RepoRead),
+    ("get_fork_pr_approval", Scope::RepoRead),
+    ("update_environment", Scope::RepoAdmin),
+    ("delete_environment", Scope::RepoAdmin),
+    ("set_workflow_permissions", Scope::RepoAdmin),
+    ("set_fork_pr_approval", Scope::RepoAdmin),
+    // Starting workflows from outside, as a push would.
+    ("create_repository_dispatch", Scope::CodeWrite),
+    // A workspace's policy for its repositories' tokens.
+    ("get_workspace_workflow_permissions", Scope::WorkspaceRead),
+    ("set_workspace_workflow_permissions", Scope::WorkspaceAdmin),
     // Memory and the context hub.
     ("recall", Scope::MemoryRead),
     ("search_context", Scope::MemoryRead),
@@ -887,6 +935,30 @@ pub fn needed(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
 /// was asked about.
 pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) -> Decision {
     let rule = if access.legacy { "token:legacy" } else { "token:scope" };
+    // A workflow job may open or approve pull requests only where its
+    // repository and workspace let it, as on GitHub.
+    if let Some(job) = &access.job
+        && !job.pull_requests
+        && (operation == "create_pull_request" || (operation == "review_pull_request" && input["verdict"].as_str() == Some("approve")))
+    {
+        return Decision::deny(
+            "token:pull-requests",
+            "A workflow job cannot open or approve pull requests here: an admin can allow it under Settings, Actions.",
+        );
+    }
+    if let Some(only) = access.repo.as_deref()
+        && !NO_SCOPE.contains(&operation)
+    {
+        match input["repo"].as_str() {
+            Some(repo) if access.reaches(repo) => {}
+            Some(repo) => {
+                return Decision::deny("token:repository", format!("This token is a workflow job's in {only}: it cannot reach {repo}."));
+            }
+            None => {
+                return Decision::deny("token:repository", format!("This token is a workflow job's: it reaches only {only}, and {operation} is not about one repository."));
+            }
+        }
+    }
     if access.scopes.is_some() {
         let known = NO_SCOPE.contains(&operation) || scope_for(operation).is_some();
         if !known {
@@ -900,6 +972,15 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
         }
     }
     Decision::allow(rule)
+}
+
+/// Whether a token may use the repository `owner/name` at all: a refusal
+/// for a workflow job's token in another repository, else `None`. Git and
+/// the package registries ask this before [`decide_git`] and
+/// [`decide_packages`].
+pub fn decide_repo(access: &TokenAccess, repo: &str) -> Option<Decision> {
+    let only = access.repo.as_deref()?;
+    (!access.reaches(repo)).then(|| Decision::deny("token:repository", format!("This token is a workflow job's in {only}: it cannot reach {repo}.")))
 }
 
 /// Whether a token may clone or fetch (`write` false), or push to (`write`
@@ -945,6 +1026,7 @@ mod tests {
             scopes: Some(scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
             name: None,
+            ..TokenAccess::default()
         }
     }
 
@@ -1046,6 +1128,34 @@ mod tests {
         // A g1t Actions job runs again as its workflow does.
         let refused = decide(&reporter, "rerequest_check_run", &json!({ "id": "job_1" }));
         assert!(refused.reason.unwrap().contains("workflows:write"));
+    }
+
+    #[test]
+    fn a_job_token_reaches_its_repository_only() {
+        let job = TokenAccess {
+            repo: Some("acme/web".into()),
+            job: Some(JobToken { run_id: "run_1".into(), job_id: "job_1".into(), pull_requests: false }),
+            ..token(&[Scope::RepoRead, Scope::IssuesWrite, Scope::IssuesRead, Scope::PullRequestsWrite])
+        };
+        assert!(decide(&job, "create_issue", &json!({ "repo": "acme/web" })).allowed);
+        assert!(decide(&job, "create_issue", &json!({ "repo": "Acme/Web" })).allowed, "names compare without case");
+        let elsewhere = decide(&job, "create_issue", &json!({ "repo": "acme/api" }));
+        assert!(!elsewhere.allowed);
+        assert_eq!(elsewhere.rule, "token:repository");
+        // Nothing beyond the one repository, a workspace's listing included.
+        assert!(!decide(&job, "list_repos", &json!({})).allowed);
+        assert!(decide(&job, "whoami", &json!({})).allowed);
+        // Its scopes still hold inside it.
+        assert!(!decide(&job, "create_pull_request", &json!({ "repo": "acme/web" })).allowed);
+        assert!(decide_repo(&job, "acme/web").is_none());
+        assert!(!decide_repo(&job, "acme/api").unwrap().allowed);
+        assert!(decide_repo(&token(&[Scope::CodeRead]), "acme/api").is_none(), "other tokens reach what their owner can");
+        // Opening and approving pull requests is off unless allowed.
+        assert_eq!(decide(&job, "create_pull_request", &json!({ "repo": "acme/web" })).rule, "token:pull-requests");
+        assert!(!decide(&job, "review_pull_request", &json!({ "repo": "acme/web", "verdict": "approve" })).allowed);
+        assert!(decide(&job, "review_pull_request", &json!({ "repo": "acme/web", "verdict": "request_changes" })).allowed);
+        let allowed = TokenAccess { job: Some(JobToken { pull_requests: true, ..job.job.clone().unwrap() }), ..job.clone() };
+        assert!(decide(&allowed, "create_pull_request", &json!({ "repo": "acme/web" })).allowed);
     }
 
     #[test]

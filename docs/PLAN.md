@@ -479,6 +479,54 @@ issue and resolves it.
 commands declared in `.g1t/checks.yaml`, run in sandboxes on every pull request
 and on every combined state in the landing queue.
 
+### Keeping workflow runs safe (built 2026-10-08)
+
+An audit of g1t Actions found a job's token was a full-access workspace
+token, environments had no protection, outside pull requests ran at once,
+the cache could be poisoned across branches, a job's token could set off
+more runs, and masking missed multi-line and encoded secrets. Now:
+
+- **The job's token** (`G1T_TOKEN`, `GITHUB_TOKEN`) is minted per job by
+  identity (`create_job_token`, migration identity/0030): it reaches its
+  repository only (`TokenAccess.repo`, enforced by the API, git and the
+  registries), carries the scopes its `permissions:` map to
+  (`g1t_actions::permissions`), is revoked when the job ends, and its
+  writes are audited with the run as `run_kind: workflow_job`. Without
+  `permissions:` it gets the repository's default, the GitHub way:
+  repositories that existed when actions/0007 ran keep read and write,
+  newer ones take their workspace's default (read-only unless an owner
+  says), and a workspace can cap every repository at read-only. An outside
+  pull request's is read-only. "Allow g1t Actions to create and approve
+  pull requests" (repository and workspace, off by default) decides whether
+  the token may open or approve pull requests. OIDC (`id-token: write`)
+  reads the same permissions model.
+- **No loops.** Work and repos mark the events a job's token causes
+  (`causedByJob`), carried on to a pull request it moves; the actions
+  service starts nothing for them. `workflow_dispatch` and
+  `repository_dispatch` (now sent by `POST {repo}/dispatches`) still start
+  runs.
+- **Environments' protection rules** (actions/0007): required reviewers
+  (people or teams, up to six, optionally not whoever started the run), a
+  wait timer, which branches and tags may deploy, and admin bypass. A job
+  naming one is `pending` once its needs are done, its environment read
+  then (an expression included); reviewers hear in the inbox
+  (`deployment.review_requested`) and approve on the run's page or through
+  `pending_deployments`; secrets are read only when the job starts.
+- **Approval for outside pull requests**, by a repository policy
+  (first-time contributors, outside contributors (the default), or every
+  external contributor): such runs are `action_required` until someone with
+  Write approves them.
+- **The cache is scoped by ref** (own, then the pull request's base, then
+  the default branch; outside pull requests save where nothing else reads)
+  and versioned by its paths and compression (0006's toolkit `version`,
+  which g1t's runner now sends too); g1t's `actions/cache` and the
+  toolkit's protocols share one scope rule. Entries from before were
+  expired.
+- **Masking** covers each line of a multi-line secret, base64 at every
+  offset and JSON-escaped forms; outputs holding a secret are withheld and
+  annotations masked.
+- A job's own `concurrency:` is honoured, `create` runs on new branches and
+  tags, and `on: delete` says plainly that it never runs yet.
 ### Docker in workflow jobs (built 2026-10-08)
 
 > **2026-10-08:** "Why didn't we give CI docker then? We need GitHub
@@ -773,8 +821,9 @@ Not built yet:
   deploy somewhere else from its own workflows. Apps built for Cloudflare
   (Workers, static assets, D1, KV, R2) deploy without configuration.
 
-Later, toward GitLab's DevOps breadth: environment protection rules,
-package and container registries, releases, container hosting.
+Later, toward GitLab's DevOps breadth: package and container registries,
+releases, container hosting. (Environments' protection rules for g1t
+Actions were built on 2026-10-08; see above.)
 
 ## Projects
 

@@ -193,7 +193,9 @@ impl Work {
         actor: &User,
         data: T,
     ) -> Result<()> {
-        self.publish_as(kind, repo_id, Some(actor.id.clone()), data)
+        // What a workflow job's token did is marked, so it starts no
+        // workflows (`g1t_contracts::events::CAUSED_BY_JOB`).
+        self.publish_as(kind, repo_id, Some(actor.id.clone()), g1t_contracts::events::marked(data, Some(actor)))
             .await
     }
 
@@ -2380,13 +2382,24 @@ impl Work {
                     issue: pull.issue_number,
                     commit: Some(after.to_owned()),
                     ..PullEvent::default()
-                },
+                }
+                .carrying(&event.data),
             )
             .await?;
         }
         Ok(())
     }
 }
+
+/// An event's data that carries on what caused the event it follows from.
+trait Carrying: serde::Serialize + Sized {
+    /// As JSON, marked as a workflow job's doing when `cause` was.
+    fn carrying(self, cause: &serde_json::Value) -> serde_json::Value {
+        g1t_contracts::events::carried(self, cause)
+    }
+}
+
+impl Carrying for PullEvent {}
 
 fn service(env: &Env) -> Result<Work> {
     Ok(Work {

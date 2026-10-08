@@ -607,6 +607,7 @@ mod tests {
             scopes: preset.scopes().map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
             name: None,
+            ..TokenAccess::default()
         };
         for preset in [Preset::ReadOnly, Preset::Agent] {
             let access = token(preset);

@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Sparkles, Ticket, TrendingUp, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Sparkles, Ticket, TrendingUp, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -877,6 +877,9 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
         <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
           Secrets and variables
         </SidebarLink>
+        <SidebarLink to={`/${slug}/-/actions`} icon={<PlayCircle size={15} />}>
+          Actions
+        </SidebarLink>
         {owner && (
           <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
             Runners
@@ -1105,6 +1108,16 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
         {shows("secrets") && (
           <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
             Secrets and variables
+          </SidebarLink>
+        )}
+        {shows("actions") && (
+          <SidebarLink to={`${base}/settings/actions`} icon={<PlayCircle size={15} />}>
+            Actions
+          </SidebarLink>
+        )}
+        {shows("environments") && (
+          <SidebarLink to={`${base}/settings/environments`} icon={<Layers size={15} />}>
+            Environments
           </SidebarLink>
         )}
         {shows("runners") && (
@@ -1405,11 +1418,15 @@ const SECTIONS: Record<string, string> = {
   security: "Security",
   packages: "Packages",
   runners: "Runners",
+  environments: "Environments",
   workflows: "Workflows",
   observability: "Observability",
   insights: "Insights",
   sessions: "Sessions",
 };
+
+/** Settings pages whose name differs from the section's of the same word. */
+const SETTINGS_SECTIONS: Record<string, string> = { branches: "Branches and merging", actions: "Actions" };
 
 /** Where the page is, as a trail of links: workspace / repository / section. */
 function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: boolean; repo?: ShellData["repo"] }) {
@@ -1465,7 +1482,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
       // A settings page names which one: Settings / Secrets and variables.
       if (third === "settings" && fourth && SECTIONS[fourth]) {
-        trail.push({ label: fourth === "branches" ? "Branches and merging" : SECTIONS[fourth]!, to: `${repo}/settings/${fourth}` });
+        trail.push({ label: SETTINGS_SECTIONS[fourth] ?? SECTIONS[fourth]!, to: `${repo}/settings/${fourth}` });
       }
     }
   }

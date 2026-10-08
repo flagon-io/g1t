@@ -164,7 +164,7 @@ pub async fn for_job(request: Request, env: &Env, services: &Services, method: &
         }
         (_, what) if what == "cache" || what.starts_with("cache/") => {
             let bucket = env.bucket("ACTIONS_CACHE")?;
-            cache(request, &kv, &bucket, services, method, job, &token, &repo, what).await
+            cache(request, &bucket, services, method, job, &token, &repo, what).await
         }
         _ => error(404, "No such endpoint."),
     }
@@ -204,7 +204,6 @@ fn refused<T>(outcome: Outcome<T>) -> std::result::Result<T, Result<Response>> {
 #[allow(clippy::too_many_arguments)]
 async fn cache(
     mut request: Request,
-    kv: &KvStore,
     bucket: &Bucket,
     services: &Services,
     method: &str,
@@ -215,6 +214,9 @@ async fn cache(
 ) -> Result<Response> {
     let parts: Vec<&str> = what.split('/').collect();
     let upload_id = query(&request, "upload").unwrap_or_default();
+    // The hash of the entry's paths and compression; runners from before
+    // it was sent send none.
+    let version = query(&request, "version").unwrap_or_default();
     match (method, parts.as_slice()) {
         ("GET", ["cache"]) => {
             let key = query(&request, "key").unwrap_or_default();
@@ -223,7 +225,7 @@ async fn cache(
             let found: Outcome<Option<CacheHit>> = g1t_kit::call(
                 &services.actions,
                 "cache_lookup",
-                &CacheLookupArgs { job: job.to_owned(), token: token.to_owned(), key: key.clone(), restore: restore.clone(), version: None },
+                &CacheLookupArgs { job: job.to_owned(), token: token.to_owned(), key: key.clone(), restore, version: Some(version.clone()).filter(|v| !v.is_empty()) },
             )
             .await?;
             let found = match refused(found) {
@@ -241,8 +243,9 @@ async fn cache(
                 headers.set("content-type", "application/octet-stream")?;
                 return Ok(response);
             }
-            // Entries saved in KV before the cache moved to R2.
-            kv_lookup(kv, repo, &key, &restore).await
+            // Entries kept in KV before the cache moved to R2 had no scope,
+            // so they are never restored.
+            error(404, "Nothing cached under those keys.")
         }
         // Older runners send a whole entry of at most 60 MB at once.
         ("PUT", ["cache"]) => {
@@ -254,7 +257,7 @@ async fn cache(
             let reserved: Outcome<CacheReservation> = g1t_kit::call(
                 &services.actions,
                 "cache_reserve",
-                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size: bytes.len() as u64, version: None },
+                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size: bytes.len() as u64, version: Some(version.clone()).filter(|v| !v.is_empty()) },
             )
             .await?;
             let reserved = match reserved {
@@ -277,7 +280,7 @@ async fn cache(
             let reserved: Outcome<CacheReservation> = g1t_kit::call(
                 &services.actions,
                 "cache_reserve",
-                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size, version: None },
+                &CacheReserveArgs { job: job.to_owned(), token: token.to_owned(), key, size, version: Some(version.clone()).filter(|v| !v.is_empty()) },
             )
             .await?;
             let reserved = match refused(reserved) {
@@ -581,25 +584,6 @@ async fn abort(services: &Services, job: &str, token: &str, id: &str) -> Result<
 }
 
 /// An entry saved in KV before the cache moved to R2, by key or restore key.
-async fn kv_lookup(kv: &KvStore, repo: &str, key: &str, restore: &[String]) -> Result<Response> {
-    // The exact key, else the newest entry under each restore key.
-    if let Some(bytes) = get(kv, &format!("c/{repo}/{key}")).await? {
-        let mut response = Response::from_bytes(bytes)?;
-        response.headers_mut().set("x-g1t-key", key)?;
-        return Ok(response);
-    }
-    for prefix in restore {
-        if let Some((base, meta)) = list(kv, &format!("c/{repo}/{prefix}")).await?.into_iter().next()
-            && let Some(bytes) = get(kv, &base).await?
-        {
-            let mut response = Response::from_bytes(bytes)?;
-            response.headers_mut().set("x-g1t-key", &meta.name)?;
-            return Ok(response);
-        }
-    }
-    error(404, "Nothing cached under those keys.")
-}
-
 /// Someone who can see the run downloading one of its artifacts.
 pub async fn download(env: &Env, services: &Services, viewer: &g1t_contracts::Viewer, owner: &str, repo: &str, run: &str, name: &str) -> Result<Response> {
     let seen: Outcome<Value> = g1t_kit::call(

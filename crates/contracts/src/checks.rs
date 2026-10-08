@@ -1011,6 +1011,7 @@ mod tests {
             reason: None,
             started_at: Some("2026-10-07T00:00:01Z".into()),
             finished_at: Some("2026-10-07T00:00:26Z".into()),
+            environment: None,
             self_hosted: false,
             runner: None,
         };

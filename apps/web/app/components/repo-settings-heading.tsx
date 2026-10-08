@@ -13,6 +13,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
   branches: { title: "Branches and merging", about: "How pull requests merge, what g1t's agents do with theirs, and who owns which files." },
   rules: { title: "Rules", about: "Rulesets: what may happen to branches and tags, what a pull request needs before it merges, and how the rules judged each push and merge." },
   secrets: { title: "Secrets and variables", about: "Values workflows, builds and deployments read at run time." },
+  actions: { title: "Actions", about: "What workflows' tokens may do, and whose pull requests' runs wait for approval." },
+  environments: { title: "Environments", about: "Protection rules for the environments jobs deploy to: reviews, wait timers and branches." },
   runners: { title: "Runners", about: "Machines of your own for this project's workflow jobs, and where its agents' work runs." },
   webhooks: { title: "Webhooks", about: "Addresses g1t calls when something happens in the project." },
 };

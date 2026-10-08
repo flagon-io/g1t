@@ -719,6 +719,18 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
     setSetting: (actor, owner, kind, name, value, options = {}) =>
       call("set_setting", { actor, ...owner, kind, name, value, ...options }),
     deleteSetting: (actor, owner, kind, name, id) => call("delete_setting", { actor, ...owner, kind, name, id }),
+    approveRun: (actor, repo, id) => call("approve_run", { actor, repo, id }),
+    pendingDeployments: (repo, viewer, id) => call("pending_deployments", { repo, viewer, id }),
+    reviewDeployments: (actor, repo, id, state, environments = [], comment) =>
+      call("review_deployments", { actor, repo, id, state, environments, comment: comment ?? null }),
+    actionsSettings: (repo, viewer) => call("actions_settings", { repo, viewer }),
+    setActionsSettings: (actor, repo, change) => call("set_actions_settings", { actor, repo, ...change }),
+    workspaceActionsSettings: (workspace, viewer) => call("workspace_actions_settings", { workspace, viewer }),
+    setWorkspaceActionsSettings: (actor, workspace, change) =>
+      call("set_workspace_actions_settings", { actor, workspace, ...change }),
+    environments: (repo, viewer) => call("environments", { repo, viewer }),
+    setEnvironment: (actor, repo, name, change) => call("set_environment", { actor, repo, name, ...change }),
+    deleteEnvironment: (actor, repo, name) => call("delete_environment", { actor, repo, name }),
     artifacts: (repo, viewer, filter = {}) => call("artifacts", { repo, viewer, ...filter }),
     artifactDownload: (repo, viewer, by) => call("artifact_download", { repo, viewer, ...by }),
     deleteArtifact: (actor, repo, id) => call("delete_artifact", { actor, repo, id }),

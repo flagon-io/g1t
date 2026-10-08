@@ -1234,6 +1234,21 @@ impl<S: GitStore> Repos<S> {
         // anyone. Which repositories a token reaches is its owner's, checked
         // below as for anyone.
         if let Some(access) = a.viewer.as_ref().and_then(|user| user.token.as_deref()).cloned() {
+            // A workflow job's token reaches its own repository only, and
+            // the working copies of that repository's pull requests, where
+            // their heads are.
+            if let Some(refused) = g1t_contracts::scopes::decide_repo(&access, &format!("{}/{}", path.namespace, path.name)) {
+                let source = match found.as_ref().and_then(|repo| repo.fork_of.as_deref()) {
+                    Some(source_id) => self.registry.by_id(source_id).await?,
+                    None => None,
+                };
+                if !source.is_some_and(|source| access.reaches(&format!("{}/{}", source.namespace, source.name))) {
+                    return Ok(Outcome::fail(
+                        FailureCode::Forbidden,
+                        format!("{}\n", refused.reason.unwrap_or_default()),
+                    ));
+                }
+            }
             let public = found.as_ref().is_some_and(|repo| !repo.is_private);
             let decision = g1t_contracts::scopes::decide_git(&access, write, public);
             if !decision.allowed {
@@ -1432,7 +1447,7 @@ impl<S: GitStore> Repos<S> {
             &format!("refs/heads/{branch}"),
             old.as_deref(),
             &new,
-            Some(a.actor.id),
+            Some(&a.actor),
         )
             .await?;
         Ok(Outcome::Ok(Landed {
@@ -1512,20 +1527,23 @@ impl<S: GitStore> Repos<S> {
         }))
     }
 
-    /// Reports that `git_ref` of `repo` (a full ref) now points to `after`.
+    /// Reports that `git_ref` of `repo` (a full ref) now points to `after`,
+    /// moved by `actor` (marked when that was a workflow job's token).
     async fn publish_push(
         &self,
         repo: &Repo,
         git_ref: &str,
         before: Option<&str>,
         after: &str,
-        actor: Option<String>,
+        actor: Option<&User>,
     ) -> Result<()> {
-        self.publish_git_push(repo, git_ref, before, after, actor, false).await
+        let caused_by_job = actor.and_then(g1t_contracts::events::job_run_of).map(str::to_owned);
+        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job).await
     }
 
     /// `publish_push`, saying whether the push reached the store without
     /// being scanned for secrets first.
+    #[allow(clippy::too_many_arguments)]
     async fn publish_git_push(
         &self,
         repo: &Repo,
@@ -1534,6 +1552,7 @@ impl<S: GitStore> Repos<S> {
         after: &str,
         actor: Option<String>,
         unscanned: bool,
+        caused_by_job: Option<String>,
     ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
@@ -1548,6 +1567,7 @@ impl<S: GitStore> Repos<S> {
                 default_branch: git_ref.strip_prefix("refs/heads/")
                     == Some(repo.default_branch.as_str()),
                 unscanned,
+                caused_by_job,
             },
         })
         .await
@@ -1910,6 +1930,7 @@ impl<S: GitStore> Repos<S> {
                 repo,
                 pushed: forwarded.pushed,
                 pack_bytes: forwarded.pack_bytes,
+                caused_by_job: viewer.as_ref().and_then(g1t_contracts::events::job_run_of).map(str::to_owned),
                 actor: viewer.map(|user: User| user.id),
                 unscanned: forwarded.unscanned,
             });
@@ -2004,6 +2025,7 @@ impl<S: GitStore> Repos<S> {
             pack_bytes,
             actor,
             unscanned,
+            caused_by_job,
         } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
@@ -2041,6 +2063,7 @@ impl<S: GitStore> Repos<S> {
                     &pushed.after,
                     actor.clone(),
                     unscanned,
+                    caused_by_job.clone(),
                 )
                 .await?;
             }
@@ -2057,6 +2080,9 @@ struct PushDone {
     actor: Option<String>,
     /// Too large to scan for secrets before it was stored.
     unscanned: bool,
+    /// The run whose job's token pushed, if one did: its push starts no
+    /// workflows.
+    caused_by_job: Option<String>,
 }
 
 /// What a git request leaves for after its answer: its audit entry, with

@@ -52,6 +52,7 @@ fn job_view(row: JobRow) -> Job {
         reason: row.reason,
         started_at: row.started_at,
         finished_at: row.finished_at,
+        environment: row.environment,
         self_hosted: row.labels.is_some(),
         runner: row.runner_name,
     }
@@ -158,11 +159,19 @@ impl Actions {
             return Ok(fail(FailureCode::NotFound, "There is no such repository."));
         }
         let run = check!(self.run_in(&a.repo, &a.id).await?);
-        let jobs = self.job_rows(&run.id).await?.into_iter().map(job_view).collect();
+        let jobs: Vec<Job> = self.job_rows(&run.id).await?.into_iter().map(job_view).collect();
+        let pending_deployments = self.pending_for(&run, &a.viewer).await?;
+        let mut summary = run.summary();
+        // Jobs held at an environment's rules: the run waits, as on GitHub.
+        if matches!(summary.status.as_str(), "queued" | "in_progress") && jobs.iter().any(|job| job.status == "pending") {
+            summary.status = "waiting".to_owned();
+        }
         Ok(Outcome::Ok(RunDetail {
             notes: notes(&run.source),
-            run: run.summary(),
+            run: summary,
             jobs,
+            approval: run.approval(),
+            pending_deployments,
         }))
     }
 
@@ -276,7 +285,13 @@ impl Actions {
         }
         Ok(runs
             .iter()
-            .map(|run| RunDetail { run: run.summary(), jobs: by_run.remove(&run.id).unwrap_or_default(), notes: Vec::new() })
+            .map(|run| RunDetail {
+                run: run.summary(),
+                jobs: by_run.remove(&run.id).unwrap_or_default(),
+                notes: Vec::new(),
+                approval: run.approval(),
+                pending_deployments: Vec::new(),
+            })
             .collect())
     }
 }

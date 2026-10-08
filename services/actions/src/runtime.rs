@@ -151,21 +151,13 @@ pub(crate) fn open_blob(key: &str, token: &str, now: u64) -> Option<BlobClaims> 
 /// (`write-all` included). Nothing given gives no OIDC token, as GitHub's
 /// default token permissions do not include it.
 ///
-/// This reads only the `id-token` key. When `permissions:` as a whole is
-/// read elsewhere, this is the one place to plug that in.
+/// Read with the same model as the job's token (`g1t_actions::permissions`).
 pub(crate) fn id_token_permitted(workflow: &Value, job: &Value) -> bool {
-    let permissions = match job.get("permissions") {
-        Some(own) => own,
-        None => match workflow.get("permissions") {
-            Some(theirs) => theirs,
-            None => return false,
-        },
-    };
-    match permissions {
-        Value::String(all) => all.trim() == "write-all",
-        Value::Object(each) => each.get("id-token").and_then(Value::as_str).is_some_and(|level| level.trim() == "write"),
-        _ => false,
-    }
+    use g1t_actions::permissions::{self, Access};
+    // A job's own `permissions:` replace the workflow's; without either,
+    // no default gives `id-token`, as on GitHub.
+    let written = |spec: &Value| spec.get("permissions").and_then(|value| permissions::parse(value).ok()).map(|(read, _)| read);
+    written(job).or_else(|| written(workflow)).is_some_and(|granted| granted.get("id-token") == Access::Write)
 }
 
 /// A job's `environment:` name, when it names one plainly.
@@ -319,11 +311,14 @@ impl Actions {
                 let parent = call["parent"].as_str().unwrap_or_default();
                 let caller_allows = caller.jobs.iter().find(|j| j.id == parent).is_none_or(|j| id_token_permitted(&caller.raw, &j.raw));
                 let path = call["path"].as_str().unwrap_or(&run.path).to_owned();
-                Some((trusted && caller_allows && id_token_permitted(&called.raw, &spec.raw), environment_name(&spec.raw), path))
+                let environment = job.environment.clone().or_else(|| environment_name(&spec.raw));
+                Some((trusted && caller_allows && id_token_permitted(&called.raw, &spec.raw), environment, path))
             }
             None => {
                 let spec = caller.jobs.iter().find(|j| j.id == job.key)?;
-                Some((trusted && id_token_permitted(&caller.raw, &spec.raw), environment_name(&spec.raw), run.path.clone()))
+                // As read when its needs were done, an expression's included.
+                let environment = job.environment.clone().or_else(|| environment_name(&spec.raw));
+                Some((trusted && id_token_permitted(&caller.raw, &spec.raw), environment, run.path.clone()))
             }
         }
     }

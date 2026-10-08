@@ -58,7 +58,7 @@ pub(crate) struct Post {
 
 pub(crate) enum PostRun {
     Node { action_dir: PathBuf, script: String },
-    CacheSave { key: String, paths: Vec<String> },
+    CacheSave { key: String, paths: Vec<String>, version: String },
     /// A Docker action's `post-entrypoint`.
     Docker(containers::DockerRun),
 }
@@ -625,6 +625,16 @@ fn run_job(job: &mut Job) {
     {
         job.log.line(&format!("Matrix: {}", serde_json::to_string(matrix).unwrap_or_default()));
     }
+    // What its G1T_TOKEN may do, as its `permissions:` gave it.
+    if let Some(Value::Object(permissions)) = job.spec.get("permissions").cloned() {
+        job.log.line("##[group]G1T_TOKEN permissions");
+        for (name, access) in &permissions {
+            if access.as_str() != Some("none") {
+                job.log.line(&format!("{name}: {}", access.as_str().unwrap_or_default()));
+            }
+        }
+        job.log.line("##[endgroup]");
+    }
     if job.docker_hosted {
         let registry = job.contexts["github"]["server_url"].as_str().and_then(crate::docker::engine::registry_host);
         let token = job.contexts.get("secrets").and_then(|s| s.get("G1T_TOKEN")).map(expr::to_text).filter(|t| !t.is_empty());
@@ -670,7 +680,7 @@ fn run_job(job: &mut Job) {
         job.log.step_state(number, &post.name, "in_progress", None);
         let ok = match &post.run {
             PostRun::Node { action_dir, script } => job.run_node(action_dir, script, &post.env),
-            PostRun::CacheSave { key, paths } => job.cache_save(key, paths),
+            PostRun::CacheSave { key, paths, version } => job.cache_save(key, paths, version),
             PostRun::Docker(run) => job.run_docker(run).0,
         };
         job.log.step_state(number, &post.name, "completed", Some(if ok { "success" } else { "failure" }));

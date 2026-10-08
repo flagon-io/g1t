@@ -188,14 +188,17 @@ exist.
 
 ## In workflows
 
-A workflow's `G1T_TOKEN` is the workspace's own token for the run, and can
-restore and push the workspace's packages. With the `nuget.config` above,
+A workflow's `G1T_TOKEN`, [the job's own token](/guides/actions/#the-jobs-token), can restore the workspace's packages,
+and push them with `packages: write` in its [`permissions:`](/guides/actions/#the-jobs-token). With the `nuget.config` above,
 which reads `%G1T_TOKEN%`:
 
 ```yaml
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       G1T_TOKEN: ${{ secrets.G1T_TOKEN }}
     steps:

@@ -20,6 +20,7 @@ mod oidc;
 mod openapi;
 mod pins;
 mod projects;
+mod protection;
 mod operations;
 mod renamed;
 #[cfg(test)]
@@ -72,7 +73,7 @@ pub(crate) fn reply<T: serde::Serialize>(value: &T) -> Result<Response> {
 /// workflow file, GitHub's contexts and event, and where to check out, all
 /// passed through as they are.
 const JOB_SPEC_AS_GIVEN: &[&str] = &[
-    "spec", "workflow", "github", "event", "contexts", "checkout",
+    "spec", "workflow", "github", "event", "contexts", "checkout", "permissions",
 ];
 
 /// Puts the toolkit's variables in a job's spec: its runtime token, where
@@ -646,6 +647,14 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         ("GET", path) if path.starts_with("/repos/") && path.contains("/actions/runs/") && path.contains("/artifacts/") => {
             let parts: Vec<&str> = path.trim_start_matches("/repos/").split('/').collect();
             if let [owner, repo, "actions", "runs", run, "artifacts", name] = parts.as_slice() {
+                // A workflow job's token reaches its own repository only.
+                if viewer
+                    .as_ref()
+                    .and_then(|user| user.token.as_deref())
+                    .is_some_and(|token| !token.reaches(&format!("{owner}/{repo}")))
+                {
+                    return fail(FailureCode::NotFound, "No such run.");
+                }
                 return blobs::download(env, &services, &viewer, owner, repo, run, name).await;
             }
         }

@@ -10,18 +10,23 @@
 //!   when the workspace has room, and finished by the sandbox's report.
 //! - [`payload`] builds the webhook-shaped `github.event`.
 //! - [`settings`] keeps secrets and variables.
+//! - [`protection`] keeps a repository's workflow settings and its
+//!   environments' protection rules, holds jobs at those rules until they
+//!   pass, and lets pull requests' runs from outside wait for approval.
 //! - [`cache`] lists `actions/cache` entries, which the API keeps in R2.
 //! - [`runners`] keeps self-hosted runners, hands them jobs (and agent
 //!   work from the runner service) when they ask, and hears back.
 //!
 //! The service acts as the repository's workspace: it reads what the
-//! workspace can read, and a job's `GITHUB_TOKEN` is a short-lived token of
-//! the workspace's.
+//! workspace can read, and a job's `GITHUB_TOKEN` is a token of the
+//! workspace's that reaches the job's repository only, with the scopes its
+//! `permissions:` give it, revoked when the job ends.
 
 mod artifacts;
 mod cache;
 mod payload;
 mod plan;
+mod protection;
 mod rename;
 pub mod runtime;
 mod runners;
@@ -211,6 +216,17 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "run" => reply(&service.run(args(body)?).await?),
         "logs" => reply(&service.logs(args(body)?).await?),
         "dispatch" => reply(&service.dispatch(args(body)?).await?),
+        "repository_dispatch" => reply(&service.repository_dispatch(args(body)?).await?),
+        "approve_run" => reply(&service.approve_run(args(body)?).await?),
+        "pending_deployments" => reply(&service.pending_deployments(args(body)?).await?),
+        "review_deployments" => reply(&service.review_deployments(args(body)?).await?),
+        "actions_settings" => reply(&service.actions_settings(args(body)?).await?),
+        "set_actions_settings" => reply(&service.set_actions_settings(args(body)?).await?),
+        "workspace_actions_settings" => reply(&service.workspace_actions_settings(args(body)?).await?),
+        "set_workspace_actions_settings" => reply(&service.set_workspace_actions_settings(args(body)?).await?),
+        "environments" => reply(&service.environments(args(body)?).await?),
+        "set_environment" => reply(&service.set_environment(args(body)?).await?),
+        "delete_environment" => reply(&service.delete_environment(args(body)?).await?),
         "merge_group" => reply(&service.merge_group(args(body)?).await?),
         "cancel" => reply(&service.cancel(args(body)?).await?),
         "rerun" => reply(&service.rerun(args(body)?).await?),

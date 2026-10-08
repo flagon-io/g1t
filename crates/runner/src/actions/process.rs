@@ -73,7 +73,7 @@ impl Commands {
         match name.as_str() {
             "add-mask" => {
                 if !data.trim().is_empty() {
-                    log.masks.push(data.trim().to_owned());
+                    log.add_mask(data.trim());
                 }
                 None
             }

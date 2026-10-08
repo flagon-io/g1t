@@ -143,6 +143,8 @@ pub fn wants(event: &Event) -> Option<Wanted> {
             _ => None,
         },
         "deployment.failed" | "deployment.succeeded" => on(number("number"), None),
+        // A workflow run's jobs wait for their environment's reviewers.
+        "deployment.review_requested" => on(None, None),
         "comment.created" => on(Some(number("number")?), Some(text("commentId")?)),
         // Security alerts are threads of their own, not of an issue.
         kind if SECURITY_EVENTS.contains(&kind) => on(None, None),
@@ -193,6 +195,19 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 link: text("path"),
             }
         }
+        // One run's deployment to one environment, waiting for review.
+        "deployment.review_requested" => Thread {
+            key: format!(
+                "{}/review/{}/{}",
+                wanted.repo_id,
+                text("runId").unwrap_or_default(),
+                text("environment").unwrap_or_default()
+            ),
+            kind: Some(SubjectKind::Run),
+            number: None,
+            run_id: text("runId"),
+            link: text("link"),
+        },
         // A workflow on a branch: its next failure bumps the same thread.
         "workflow.completed" if subject.is_none() => {
             let branch = text("ref").unwrap_or_default();
@@ -380,6 +395,7 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             | "pull.stalled"
             | "deployment.failed"
             | "deployment.succeeded"
+            | "deployment.review_requested"
     ) || SECURITY_EVENTS.contains(&event.kind.as_str());
     let mut told = Told {
         actor: if outcome { &nobody } else { actor },
@@ -547,6 +563,16 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             };
             told.tell_subscribed(on, Some(Reason::StateChange), severity, &title, &on.title);
             told.tell_watchers(activity_of(on), severity, &title, &on.title);
+        }
+        ("deployment.review_requested", _) => {
+            let environment = data["environment"].as_str().unwrap_or("an environment");
+            let workflow = data["workflow"].as_str().unwrap_or("A workflow");
+            let title = format!("{workflow} is waiting for your review to deploy to {environment} in {repo}");
+            let body = data["title"].as_str().unwrap_or_default();
+            // Those the actions service names: the environment's reviewers.
+            for name in names(data, "notify") {
+                told.tell(&name, Reason::ReviewRequested, Severity::Warning, &title, body, true);
+            }
         }
         (kind, None) if SECURITY_EVENTS.contains(&kind) => {
             let severity = match data["severity"].as_str() {
@@ -1705,6 +1731,28 @@ mod tests {
             assert_eq!(resolves(&event(kind, None, json!({ "repoId": "rep_1", "number": 7 }))), Some("rep_1#7".into()));
         }
         assert_eq!(resolves(&event("comment.created", None, json!({ "repoId": "rep_1", "number": 7 }))), None);
+    }
+
+    #[test]
+    fn a_deployments_reviewers_are_told() {
+        let asked = event(
+            "deployment.review_requested",
+            Some("usr_ana"),
+            json!({
+                "repoId": "rep_1", "runId": "run_7", "environment": "production", "workflow": "Deploy",
+                "title": "Ship it", "notify": ["cy", "ana"], "link": "/acme/rocket/actions/runs/run_7"
+            }),
+        );
+        let wanted = wants(&asked).unwrap();
+        assert_eq!(wanted.number, None);
+        let thread = thread_of(&asked, &wanted, None);
+        assert_eq!(thread.key, "rep_1/review/run_7/production");
+        assert_eq!(thread.link.as_deref(), Some("/acme/rocket/actions/runs/run_7"));
+        let told = notices(&asked, "acme/rocket", &actor("usr_ana", "ana"), None, &nobody());
+        let names: Vec<&str> = told.iter().map(|notice| notice.username.as_str()).collect();
+        // Whoever started the run is told too, when they review it.
+        assert_eq!(names, ["cy", "ana"]);
+        assert!(told[0].title.contains("waiting for your review to deploy to production"));
     }
 
     #[test]

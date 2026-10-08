@@ -123,10 +123,15 @@ pub struct Job {
     pub conclusion: Option<String>,
     pub steps: Vec<StepState>,
     pub annotations: Vec<Annotation>,
-    /// Why it did not run, or what stopped it.
+    /// Why it did not run, what stopped it, or what it waits for.
     pub reason: Option<String>,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    /// The environment it names, once its needs are done (an expression
+    /// read by then). A job held by the environment's protection rules is
+    /// `pending` until they let it through.
+    #[serde(default)]
+    pub environment: Option<String>,
     /// Its `runs-on` names self-hosted runners (see `runners`).
     #[serde(default)]
     pub self_hosted: bool,
@@ -142,6 +147,282 @@ pub struct RunDetail {
     pub jobs: Vec<Job>,
     /// The workflow's notes, as of the run's commit.
     pub notes: Vec<WorkflowNote>,
+    /// For a run of a pull request from outside: whether it waits for, or
+    /// had, someone's approval (`status` is `action_required` while it waits).
+    #[serde(default)]
+    pub approval: Option<RunApproval>,
+    /// The environments whose protection rules hold its jobs, this attempt.
+    #[serde(default)]
+    pub pending_deployments: Vec<PendingDeployment>,
+}
+
+/// A run that needed approval before it started.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunApproval {
+    /// `required` while it waits, then `approved`.
+    pub state: String,
+    /// Why it waits, in words.
+    pub reason: String,
+    /// Who approved it.
+    pub approved_by: Option<String>,
+}
+
+/// One person or team who may approve a job's deployment to an
+/// environment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvironmentReviewer {
+    /// `user` or `team`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// A username, or a team's slug in the repository's workspace.
+    pub name: String,
+}
+
+/// A branch or tag pattern an environment lets deploy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BranchPattern {
+    /// fnmatch-style, as branch filters are: `main`, `release/*`, `v*`.
+    pub name: String,
+    /// `branch` or `tag`.
+    #[serde(rename = "type", default = "branch_kind")]
+    pub kind: String,
+}
+
+fn branch_kind() -> String {
+    "branch".to_owned()
+}
+
+/// The most reviewers an environment may have, as on GitHub.
+pub const MAX_ENVIRONMENT_REVIEWERS: usize = 6;
+/// The longest wait timer, in minutes: 30 days.
+pub const MAX_WAIT_MINUTES: u32 = 43_200;
+
+/// An environment and its protection rules. Jobs that name it with
+/// `environment:` wait until the rules let them through; only then does the
+/// job get the environment's secrets.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Environment {
+    /// Lowercase.
+    pub name: String,
+    /// Who may approve its jobs; none means no review is needed.
+    pub reviewers: Vec<EnvironmentReviewer>,
+    /// Whoever started a run may not approve its jobs, even as a reviewer.
+    pub prevent_self_review: bool,
+    /// Minutes each job waits before it may start.
+    pub wait_minutes: u32,
+    /// Which refs may deploy: `all`, `protected` (branches the rules
+    /// protect, the default branch included) or `selected` (`branch_patterns`).
+    pub branch_policy: String,
+    pub branch_patterns: Vec<BranchPattern>,
+    /// Admins may approve without being reviewers, which also skips the wait.
+    pub admins_bypass: bool,
+    /// Whether it has rules saved; false for one only named by a workflow,
+    /// a secret or a deployment.
+    pub protected: bool,
+    pub updated_at: Option<String>,
+    pub updated_by: Option<String>,
+}
+
+/// An environment holding a run's jobs, and where its rules stand.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingDeployment {
+    pub environment: String,
+    /// `waiting`, `approved` or `rejected`.
+    pub state: String,
+    /// Whether a reviewer must approve it before its jobs start.
+    pub needs_review: bool,
+    /// When its wait timer lets its jobs start, if it has one.
+    pub wait_until: Option<String>,
+    pub reviewers: Vec<EnvironmentReviewer>,
+    /// The jobs it holds, by name.
+    pub jobs: Vec<String>,
+    /// Whether the viewer may approve or reject it now.
+    #[serde(default)]
+    pub can_review: bool,
+    pub reviewed_by: Option<String>,
+    pub comment: Option<String>,
+    pub reviewed_at: Option<String>,
+}
+
+/// A repository's choices for its workflows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsSettings {
+    /// What a workflow without `permissions:` gets: `read` (contents and
+    /// packages read) or `write` (every permission). Unchosen, a repository
+    /// made before restricted tokens keeps `write`; a newer one takes its
+    /// workspace's default. Never more than the workspace's maximum.
+    pub default_permissions: String,
+    /// Whether the repository chose it, rather than taking it as above.
+    #[serde(default)]
+    pub default_chosen: bool,
+    /// The most the workspace lets a repository's default be.
+    #[serde(default = "write")]
+    pub max_permissions: String,
+    /// Which pull requests' runs wait for approval: `first_time_contributors`,
+    /// `outside_contributors` (the default) or `all_external_contributors`.
+    pub approval_policy: String,
+    /// Whether a job's token may open pull requests and approve them. Off
+    /// unless the repository turns it on, and only where the workspace
+    /// allows it.
+    #[serde(default)]
+    pub can_approve_pull_requests: bool,
+    /// Whether the workspace lets its repositories turn that on.
+    #[serde(default)]
+    pub workspace_allows_pull_requests: bool,
+}
+
+fn write() -> String {
+    "write".to_owned()
+}
+
+/// A workspace's policy for its repositories' tokens.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceActionsSettings {
+    /// What a repository made from now on gets by default: `read` (the
+    /// default) or `write`.
+    pub default_permissions: String,
+    /// The most any repository's default may be: `write` (the default) or
+    /// `read`, which holds every repository to read-only.
+    pub max_permissions: String,
+    /// Whether its repositories may let jobs open and approve pull
+    /// requests. Off by default.
+    pub can_approve_pull_requests: bool,
+}
+
+/// `workspace_actions_settings`: members only. Returns
+/// `Outcome<WorkspaceActionsSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceActionsSettingsArgs {
+    pub viewer: Viewer,
+    pub workspace: String,
+}
+
+/// `set_workspace_actions_settings`: owners only. Fields left out stay as
+/// they are. Returns `Outcome<WorkspaceActionsSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWorkspaceActionsSettingsArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub default_permissions: Option<String>,
+    #[serde(default)]
+    pub max_permissions: Option<String>,
+    #[serde(default)]
+    pub can_approve_pull_requests: Option<bool>,
+}
+
+/// The approval policies, least strict first.
+pub const APPROVAL_POLICIES: [&str; 3] = ["first_time_contributors", "outside_contributors", "all_external_contributors"];
+
+/// `actions_settings`. Returns `Outcome<ActionsSettings>`; anyone who can
+/// read the repository may see them.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActionsSettingsArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+}
+
+/// `set_actions_settings`: Admins only. Fields left out stay as they are.
+/// Returns `Outcome<ActionsSettings>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetActionsSettingsArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    /// `read` or `write`; `inherit` goes back to the workspace's (or, for a
+    /// repository made before restricted tokens, `write`).
+    #[serde(default)]
+    pub default_permissions: Option<String>,
+    #[serde(default)]
+    pub approval_policy: Option<String>,
+    #[serde(default)]
+    pub can_approve_pull_requests: Option<bool>,
+}
+
+/// `environments`: every environment a repository's workflows, secrets,
+/// deployments or rules name, with its rules. `environment`: one, by
+/// `name`. Returns `Outcome<Vec<Environment>>` and `Outcome<Environment>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnvironmentsArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// `set_environment`: create an environment's rules or change them. Fields
+/// left out stay as they are (none, for a new one). Admins only. Returns
+/// `Outcome<Environment>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetEnvironmentArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub name: String,
+    #[serde(default)]
+    pub reviewers: Option<Vec<EnvironmentReviewer>>,
+    #[serde(default)]
+    pub prevent_self_review: Option<bool>,
+    #[serde(default)]
+    pub wait_minutes: Option<u32>,
+    #[serde(default)]
+    pub branch_policy: Option<String>,
+    #[serde(default)]
+    pub branch_patterns: Option<Vec<BranchPattern>>,
+    #[serde(default)]
+    pub admins_bypass: Option<bool>,
+}
+
+/// `delete_environment`: its rules go; jobs naming it run without them.
+/// Its secrets' rows stay. Admins only. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteEnvironmentArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub name: String,
+}
+
+/// `pending_deployments`: the environments holding a run's jobs. Returns
+/// `Outcome<Vec<PendingDeployment>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PendingDeploymentsArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+    pub id: String,
+}
+
+/// `review_deployments`: approve or reject a run's jobs for `environments`
+/// (every one waiting, if empty). Returns `Outcome<Vec<PendingDeployment>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReviewDeploymentsArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub id: String,
+    #[serde(default)]
+    pub environments: Vec<String>,
+    /// `approved` or `rejected`.
+    pub state: String,
+    #[serde(default)]
+    pub comment: Option<String>,
+}
+
+/// `repository_dispatch`: start the default branch's workflows that run
+/// `on: repository_dispatch` for `event_type`. Needs the Write role (a
+/// token's `code:write`). Returns `Outcome<u32>`: how many started.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDispatchArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub event_type: String,
+    #[serde(default)]
+    pub client_payload: Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -503,9 +784,10 @@ pub struct CacheLookupArgs {
     pub key: String,
     #[serde(default)]
     pub restore: Vec<String>,
-    /// The toolkit's version of the entry (a hash of its paths and
-    /// compression): only an entry of the same version is found. `None`
-    /// for g1t's own `actions/cache`, whose entries have none.
+    /// The entry's version, a hash of its paths and compression, as the
+    /// toolkit's client and g1t's runner both send it: only an entry of the
+    /// same version is found. `None` from runners that send none, whose
+    /// entries have none.
     #[serde(default)]
     pub version: Option<String>,
 }
@@ -535,6 +817,7 @@ pub struct CacheReserveArgs {
     /// Its size, when known before it is sent (the toolkit's newer client
     /// says only when it finishes: 0 then).
     pub size: u64,
+    /// As in `CacheLookupArgs`.
     #[serde(default)]
     pub version: Option<String>,
 }

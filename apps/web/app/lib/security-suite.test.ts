@@ -133,6 +133,8 @@ test("the starter workflow scans each language it finds, then uploads SARIF for 
   assert.match(yaml, /--rawfile sarif "\$file\.b64"/);
   assert.match(yaml, /\/code-scanning\/sarifs/);
   assert.match(yaml, /\$\{\{ secrets\.G1T_TOKEN \}\}/);
+  // Its token may upload results, and nothing more.
+  assert.match(yaml, /\npermissions:\n  contents: read\n  security-events: write\n/);
   assert.ok(!yaml.includes("\t"), "YAML takes no tabs");
   assert.match(codeScanningPullBody("main"), /Code scanning\*\* check/);
   assert.equal(codeScanningBranch([]), "add-code-scanning");

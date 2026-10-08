@@ -54,6 +54,7 @@ export const SETTINGS_PAGES = [
   "rules",
   "guardrails",
   "secrets",
+  "actions",
   "runners",
   "integrations",
   "webhooks",

@@ -29,10 +29,11 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group` | The same, from g1t's own pushes, pull requests, issues, comments and [merge queue](/guides/merge-queue/). |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `repository_dispatch` | The same, from g1t's own pushes, pull requests, issues, comments and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag; `repository_dispatch` on [a dispatch event](#repository-dispatch). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
-| `concurrency` with `cancel-in-progress` | The same. |
+| `concurrency` with `cancel-in-progress`, for the workflow or for one job | The same: one run, or one job, of a group at a time. |
+| `permissions:` for the workflow or for one job, `read-all`, `write-all` | The same: they decide what [the job's token](#the-jobs-token) may do. |
 | `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, `success()`, `failure()`, `always()` and `cancelled()`. |
 | `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
 | JavaScript actions (`uses: owner/repo@v7`) | Fetched from GitHub and run as they are, on Node 24, the runtime current actions declare. |
@@ -40,11 +41,11 @@ gives their values out, so they cannot be copied across.
 | Reusable workflows in the repository (`jobs.<id>.uses: ./.g1t/workflows/build.yml`) | The same: `with:` inputs, `on.workflow_call` outputs, and nesting up to four deep. `./.github/workflows/…` finds the workflow under `.g1t/` after the move. Their jobs read the repository's secrets and variables. |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
-| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run. |
-| `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is the workspace's own token for the run; `GITHUB_TOKEN` is its alias. |
-| `environment:` on a job | The job reads each key's row for that environment, as GitHub's environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. |
+| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run, and [masked](#masking-secrets) values stay hidden. |
+| `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
+| `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
-| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
 | Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
 | `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
 | `docker build`, `push`, `run`, `login`, `compose`, Buildx | The same, with a Docker Engine of the job's own. See [Docker](#docker). |
@@ -71,12 +72,8 @@ anything in it that runs differently.
   github.com. `actions/upload-artifact`, `actions/download-artifact` and
   `actions/upload-artifact/merge` work, because g1t runs them itself. See
   [actions built on the toolkit](#actions-built-on-the-toolkit).
-- **Environments' protection rules** (required reviewers, wait timers,
-  branch limits). A job with `environment:` gets that environment's
-  [values](/guides/secrets-and-variables/#a-value-per-environment), and runs
-  without waiting. It still records a
-  [deployment](/guides/deployments-api/#deployments-from-g1t-actions)
-  unless it says `deployment: false`.
+- **`on: delete`.** Deleting a branch or tag starts no workflows yet; the
+  workflow's page says so.
 
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
@@ -316,9 +313,17 @@ unless the job brings a cache:
 | One entry | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on. |
 | A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago. |
 | How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. |
-| Keys | Written once: saving under a key that exists does nothing. A restore finds its `key` exactly, else the newest entry whose key starts with one of its `restore-keys`. |
-| `path` | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. |
+| Which branch | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. |
+| Keys | Written once on each branch: saving under a key that exists there does nothing. On each branch in turn, a restore finds its `key` exactly, else the newest entry whose key starts with one of its `restore-keys`. |
+| `path` | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. The same key saved for other paths is another entry. |
 | Compression | zstd. |
+
+So a feature branch can read what `main` saved, but `main` never reads
+what a feature branch saved, and a pull request from outside the
+repository saves where nothing else ever reads it: nobody can plant an
+entry that the default branch's builds restore. Actions that cache through the
+toolkit, such as `actions/setup-node` with `cache: npm`, follow the same
+rules.
 
 ```yaml
 - uses: actions/cache@v4
@@ -617,6 +622,27 @@ written. Groups fold, errors and warnings are marked, and secrets are
 replaced with `***`. **Cancel**, **Re-run all jobs** and **Re-run failed
 jobs** do what they say.
 
+The start of each job's log lists what its [token](#the-jobs-token) may do.
+
+### Masking secrets
+
+Every secret's value is replaced with `***` wherever a job prints it, and
+so is every value a step masks with `::add-mask::`. Each is masked in the
+forms it shows up in:
+
+| Form | Example |
+| --- | --- |
+| As it is | `echo $API_KEY` |
+| Each of its lines on its own | `cat key.pem`, which prints a private key a line at a time |
+| Base64 | `echo -n $API_KEY \| base64`, or an `Authorization: Basic` header |
+| JSON-escaped | A secret holding quotes or newlines printed inside JSON |
+
+Annotations' titles and messages, and step names, are masked the same way.
+A job output that holds a secret in any of those forms is left out, with
+a warning in the log, since outputs go to other jobs and to the run's page.
+A value of one character is not masked: it would hide that character
+everywhere.
+
 ## Pull requests
 
 A pull request's workflows run on each new head: when it is opened, when
@@ -634,6 +660,9 @@ request's `branches` filter, `github.base_ref` and
 `pull_request.base.ref` are the branch it merges into, which is not
 always the default branch: see
 [pull requests into other branches](/guides/base-branches/).
+
+A pull request from outside the workspace may wait for approval before
+its workflows run: see [pull requests from outside](#pull-requests-from-outside).
 
 `github.event.pull_request` reads as it does on GitHub. For a pull request
 g1t made, `pull_request.user` is g1t (`login` `g1t`, `type` `Bot`), and
@@ -712,16 +741,205 @@ job with an `environment:` also makes a deployment to it; see
 [Secrets and variables](/guides/secrets-and-variables/) for how rows,
 environments and the workspace's rows work.
 
-Every trusted job also gets `${{ secrets.G1T_TOKEN }}`, the workspace's own
-token for the run, with `GITHUB_TOKEN` as its alias. A pull request's runs
-get secrets and the token only when its author has the Write
-[role](/guides/access-and-roles/) or higher on the repository, a member or
-an outside collaborator, or is g1t working on its own. For a pull request
-g1t made, its author is g1t and the person who asked for it is the one
-whose role counts. Anyone else's, such as one
+Every job also gets `${{ secrets.G1T_TOKEN }}`, [its own token](#the-jobs-token),
+with `GITHUB_TOKEN` as its alias. A pull request's runs get secrets only
+when its author has the Write [role](/guides/access-and-roles/) or higher
+on the repository, a member or an outside collaborator, or is g1t working
+on its own. For a pull request g1t made, its author is g1t and the person
+who asked for it is the one whose role counts. Anyone else's, such as one
 from a fork or by someone with Read or Triage, runs without secrets and
-with an empty token. See
+with a token that can only read. See
 [who gets secrets](/guides/secrets-and-variables/#who-gets-secrets).
+
+## The job's token
+
+Each job gets a token of its own, `${{ secrets.G1T_TOKEN }}`
+(`${{ secrets.GITHUB_TOKEN }}` and `${{ github.token }}` are the same).
+`actions/checkout` uses it, and so can any step that calls the
+[API](/reference/api/) or pushes with git:
+
+- It reaches **this repository only**. Every other repository, even one
+  in the same workspace, is refused.
+- It can do **what its `permissions:` say**, and nothing more.
+- It **stops working when the job ends**, however it ends.
+- Everything it changes is in the [audit log](/guides/audit-log/) as that
+  job's, under its run.
+- What it changes **starts no workflows**: a push, a pull request, an issue
+  or a comment made with it runs nothing, so a workflow cannot set itself
+  off. `workflow_dispatch` and [`repository_dispatch`](#repository-dispatch)
+  are the exceptions, for a workflow that means to start another.
+
+`permissions:` goes at the top of the workflow, for every job, or on a job,
+which then ignores the workflow's. Once either is written, every permission
+it leaves out is `none`:
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - run: ./scripts/release.sh
+```
+
+| Permission | `read` lets it | `write` also lets it |
+| --- | --- | --- |
+| `contents` | Clone and fetch with git, read the repository | Push, publish releases |
+| `pull-requests` | Read pull requests | Open, review, close and merge them |
+| `issues` | Read issues | Open, edit, comment on and close them |
+| `actions` | Read workflows, runs and logs | Run, cancel and re-run them |
+| `checks`, `statuses` | Read statuses and check runs | Report them |
+| `deployments`, `pages` | Read deployments | Report them |
+| `packages` | Pull packages | Push and publish them |
+| `security-events` | Read security alerts | Upload code scanning results, change alerts |
+| `metadata` | Always `read` | |
+| `id-token` | Nothing | Ask for an [OIDC token](#oidc-tokens) |
+| `discussions`, `attestations`, `models`, `repository-projects` | Nothing on g1t | Nothing on g1t |
+
+`read-all` and `write-all` set every permission; `permissions: {}` sets
+none, so the token cannot even clone a private repository. A reusable
+workflow's jobs get no more than the job that calls it.
+
+**Without `permissions:`** a job gets the repository's default, which
+someone with the Admin role sets under **Settings → Actions**:
+
+| Repository | Default until someone chooses |
+| --- | --- |
+| Made before restricted tokens came in, in October 2026 | **Read and write**: every permission at `write`, as before |
+| Made since | The workspace's default for new repositories: **Read repository contents and packages** (`contents: read`, `packages: read`) unless an owner chose otherwise |
+
+The workspace's owners set that default, and a **maximum**, under the
+workspace's **Settings → Actions**: with a maximum of **Read only**, no
+repository's default goes past `contents: read` and `packages: read`,
+whatever it chose. Workflows that write `permissions:` get what they
+write either way, and whatever a workflow asks for, a pull request from
+outside the repository's writers (a fork, or someone with Read or Triage)
+gets a token that can only read.
+
+**Allow g1t Actions to create and approve pull requests** is off unless a
+repository's admin turns it on under **Settings → Actions**, and they can
+only where the workspace's owners allow it. Until then a job's token
+cannot open a pull request or approve one, whatever its `pull-requests`
+permission says; it can still read, comment on, review with changes
+requested, and merge them.
+
+The token can never change secrets, variables, environments' rules or
+the Actions settings, approve runs or deployments, or reach another
+repository.
+
+## Environments
+
+A job that names an environment with `environment:` reads that
+environment's [secrets and variables](/guides/secrets-and-variables/#a-value-per-environment)
+and records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions)
+to it. Give the environment protection rules, and such a job waits until
+they let it through, and only then gets the environment's secrets:
+
+| Rule | What it does |
+| --- | --- |
+| **Required reviewers** | Up to 6 people or teams. The job waits until one of them approves it. |
+| **Prevent self-review** | Whoever started the run cannot approve it, even as a reviewer. |
+| **Wait timer** | Minutes the job waits once it reaches the environment, up to 43,200 (30 days). |
+| **Deployment branches and tags** | **All branches**; **Protected branches only**, those the repository's [rules](/guides/rules/) protect, the default branch included; or **Selected branches and tags**, by pattern, such as `main`, `release/*` or `v*`. A job on any other ref fails, saying so. A pull request's run is on no branch, so it can deploy only where all branches may. |
+| **Allow admins to bypass** | On unless you turn it off: someone with the Admin role may approve without being a reviewer, which also skips the wait timer. |
+
+To set them:
+
+1. Open the repository's **Settings → Environments**. It lists every
+   environment your workflows, secrets and deployments name.
+2. Choose one, or name a new one, and set its rules.
+3. Save. Runs that reach the environment from then on wait by them.
+
+A run whose jobs wait shows **Waiting for review** at the top of its page,
+with the environments, the jobs each holds, its reviewers and when its
+wait timer runs out. Reviewers are told in their [inbox](/guides/inbox/);
+on the run's page they choose **Approve and deploy** or **Reject**, with
+room for a comment. One review covers every job of the run that names the
+environment. A rejected job fails, and so does anything that needs it. The
+rest of the run goes on meanwhile: jobs that do not need the waiting ones
+run.
+
+The environment's name may be an expression, such as
+`environment: ${{ inputs.target }}`: it is read once the job's needs are
+done, and its rules and secrets are that environment's. Names are matched
+without regard to case.
+
+From the API, `PUT /repos/{owner}/{repo}/environments/{environment}` sets
+the rules, with `reviewers`, `prevent_self_review`, `wait_timer`,
+`deployment_branch_policy`, `branch_policies` and `can_admins_bypass`;
+`GET` on the same route returns them as `protection_rules`; `DELETE`
+removes them. `POST /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments`
+approves or rejects a run's waiting jobs:
+
+```sh
+curl -X PUT https://api.g1t.sh/repos/acme/web/environments/production \
+  -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
+  -d '{"reviewers": [{"type": "Team", "name": "deployers"}], "wait_timer": 10,
+       "deployment_branch_policy": {"protected_branches": true, "custom_branch_policies": false}}'
+```
+
+A job's own token cannot approve, reject or change any of it.
+
+## Pull requests from outside
+
+A pull request from someone outside the workspace runs code anyone could
+have written. By the repository's **approval policy**, its runs wait as
+**Approval required** until someone with the Write
+[role](/guides/access-and-roles/) chooses **Approve and run** on the run's
+page. Nothing runs before then: no job starts, and no token or secret is
+handed out.
+
+| Policy, under **Settings → Actions** | Whose pull requests' runs wait |
+| --- | --- |
+| **First-time contributors** | Someone outside the workspace who has not had a pull request merged here yet. |
+| **Outside contributors** (the default) | Those, and everyone outside the workspace who cannot push here: pull requests from forks, and from people with Read or Triage. |
+| **All external contributors** | Everyone outside the workspace, [outside collaborators](/guides/access-and-roles/#outside-collaborators) with Write included. |
+
+Members' pull requests never wait, nor do pull requests g1t opens on its
+own. For a pull request g1t made for someone, that person is the one whose
+policy counts. Each new push to the pull request waits again.
+`pull_request_target` runs, which run the default branch's workflow and
+code, never wait.
+
+From the API: `POST /repos/{owner}/{repo}/actions/runs/{id}/approve`
+approves a run, and `GET` and `PUT
+/repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval`
+read and set the policy, as `approval_policy`.
+
+## Repository dispatch
+
+`POST /repos/{owner}/{repo}/dispatches` starts the default branch's
+workflows that run `on: repository_dispatch` for its `event_type`, those
+listing it under `types:` or listing none. `client_payload` is theirs to
+read as `github.event.client_payload`:
+
+```yaml
+on:
+  repository_dispatch:
+    types: [docs-published]
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docs ${{ github.event.client_payload.version }} are out"
+```
+
+```sh
+curl -X POST https://api.g1t.sh/repos/acme/web/dispatches \
+  -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
+  -d '{"event_type": "docs-published", "client_payload": {"version": "2.4.0"}}'
+```
+
+It needs the Write role, or a token with `code:write`; a job's own token
+needs `contents: write`. `client_payload` is a JSON object of at most 10
+properties and 64 KB.
 
 ## Who may run workflows
 
@@ -731,9 +949,10 @@ What you can do with a repository's workflows follows your
 | | Needs |
 | --- | --- |
 | See workflows, runs and their logs | Read: on a public repository, anyone |
-| Run a workflow by hand, cancel or re-run a run | Write |
+| Run a workflow by hand, cancel or re-run a run, approve a pull request's run from outside | Write |
+| Approve or reject a job waiting for an environment | One of the environment's reviewers |
 | Enable or disable a workflow | Maintain |
-| The repository's secrets and variables, seeing them included | Admin |
+| The repository's secrets and variables, seeing them included; environments' rules; **Settings → Actions** | Admin |
 
 Jobs run in g1t's sandboxes, so they need the
 [g1t plan](/guides/usage-and-billing/#the-g1t-plan) or
@@ -769,6 +988,16 @@ usually work once they point at `https://api.g1t.sh`.
 | `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel` |
 | `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs` |
 | `update` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
+| `approve_run` | `POST /repos/{owner}/{repo}/actions/runs/{id}/approve` |
+| `pending_deployments` | `GET /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` |
+| `review_deployments` | `POST /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` with `environment_names`, `state` and `comment` |
+| `get_environment` | `GET /repos/{owner}/{repo}/environments/{environment}` |
+| `update_environment` | `PUT /repos/{owner}/{repo}/environments/{environment}` |
+| `delete_environment` | `DELETE /repos/{owner}/{repo}/environments/{environment}` |
+| `get_permissions`, `set_permissions` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/workflow`, with `default_workflow_permissions` (`read`, `write` or `inherit`) and `can_approve_pull_request_reviews` |
+| `get_workspace_permissions`, `set_workspace_permissions` | `GET` and `PUT /workspaces/{workspace}/actions/permissions/workflow`, with `default_workflow_permissions`, `max_workflow_permissions` and `can_approve_pull_request_reviews` |
+| `get_approval_policy`, `set_approval_policy` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` |
+| `repository_dispatch` | `POST /repos/{owner}/{repo}/dispatches` with `event_type` and `client_payload` |
 | `list_artifacts` | `GET /repos/{owner}/{repo}/actions/artifacts`, with `name`, `page`, `per_page` |
 | `run_artifacts` | `GET …/actions/runs/{id}/artifacts`, with `name` |
 | `get_artifact` | `GET …/actions/artifacts/{artifact_id}` |

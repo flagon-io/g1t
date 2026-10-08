@@ -121,6 +121,13 @@ pub fn decide(viewer: Option<&User>, target: &Target<'_>, action: Action) -> Dec
     }
 
     if let Some(token) = user.token.as_deref() {
+        // A workflow job's token: a package linked to another repository is
+        // out of its reach; the workspace's unlinked ones follow its scopes.
+        if let Some(repo) = target.repo
+            && let Some(refused) = scopes::decide_repo(token, &format!("{}/{}", target.workspace, repo.name))
+        {
+            return refused;
+        }
         let decision = scopes::decide_packages(token, action.level(), public);
         if !decision.allowed {
             return decision;
@@ -302,6 +309,7 @@ mod tests {
                 scopes: Some(scopes.iter().map(|s| s.as_str().to_owned()).collect()),
                 legacy: false,
                 name: None,
+                ..TokenAccess::default()
             }));
             user
         };
@@ -318,6 +326,21 @@ mod tests {
         let mut legacy = person(Role::Owner, None);
         legacy.token = Some(Box::new(TokenAccess { legacy: true, ..TokenAccess::full() }));
         assert!(may(Some(&legacy), linked(PRIVATE_REPO), Action::Delete));
+    }
+
+    #[test]
+    fn a_workflow_jobs_token_reaches_its_repositorys_packages_only() {
+        let mut job = person(Role::Owner, None);
+        job.token = Some(Box::new(TokenAccess {
+            token_id: "tok_1".into(),
+            scopes: Some(vec!["packages:read".into(), "packages:write".into()]),
+            repo: Some("acme/web".into()),
+            ..TokenAccess::default()
+        }));
+        assert!(may(Some(&job), linked(PRIVATE_REPO), Action::Push));
+        assert!(may(Some(&job), unlinked(false), Action::Push), "the workspace's own packages follow its scopes");
+        let api = LinkedTo { id: "rep_2", name: "api", private: true };
+        assert_eq!(decide(Some(&job), &linked(api), Action::Pull).rule, "token:repository");
     }
 
     #[test]

@@ -3,7 +3,7 @@
  * took, and a job's log as GitHub shows one, with its groups folded and
  * its errors and warnings marked.
  */
-import { AlertTriangle, Ban, Check, ChevronRight, CircleDashed, CircleSlash, Clock, Info, Loader2, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, ChevronRight, CircleDashed, CircleSlash, Clock, Hourglass, Info, Loader2, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -11,11 +11,32 @@ import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/cont
 
 import { Hint } from "./ui/hint";
 
-type Standing = { status: string; conclusion: Conclusion | null };
+/**
+ * Where a run, job or step stands. `of` says which: a run's `pending` waits
+ * for its concurrency group and its `waiting` for its environments' rules,
+ * while a job's `pending` is held at its environment and its `waiting`
+ * waits for the jobs it needs. `environment` is the job's.
+ */
+type Standing = { status: string; conclusion: Conclusion | null; of?: "run" | "job"; environment?: string | null };
+
+/** Held until a person (or a wait timer) lets it through. */
+function heldWord({ status, of = "run", environment }: Standing): string | null {
+  if (of === "run" && status === "action_required") return "Approval required";
+  if (of === "run" && status === "waiting") return "Waiting for review";
+  if (of === "job" && status === "pending") return environment ? `Waiting to deploy to ${environment}` : "Waiting at its environment";
+  return null;
+}
 
 /** One icon for where a run, job or step stands. */
-export function StatusIcon({ status, conclusion, size = 16 }: Standing & { size?: number }) {
+export function StatusIcon({ status, conclusion, of = "run", environment, size = 16 }: Standing & { size?: number }) {
   if (status === "in_progress") return <Loader2 size={size} className="shrink-0 animate-spin text-warn" aria-label="Running" />;
+  const held = heldWord({ status, conclusion, of, environment });
+  if (held)
+    return status === "action_required" ? (
+      <ShieldAlert size={size} className="shrink-0 text-warn" aria-label={held} />
+    ) : (
+      <Hourglass size={size} className="shrink-0 text-warn" aria-label={held} />
+    );
   if (status !== "completed")
     return <Clock size={size} className="shrink-0 text-faint" aria-label={status === "pending" ? "Waiting its turn" : "Queued"} />;
   switch (conclusion) {
@@ -38,8 +59,11 @@ export function StatusIcon({ status, conclusion, size = 16 }: Standing & { size?
   }
 }
 
-export function standingWord({ status, conclusion }: Standing): string {
+export function standingWord(standing: Standing): string {
+  const { status, conclusion } = standing;
   if (status === "in_progress") return "Running";
+  const held = heldWord(standing);
+  if (held) return held;
   if (status === "pending") return "Waiting for its concurrency group";
   if (status === "waiting") return "Waiting for the jobs it needs";
   if (status === "calling") return "Running the workflow it calls";

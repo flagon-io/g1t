@@ -13,5 +13,7 @@ pub mod cron;
 pub mod events;
 pub mod expr;
 pub mod filter;
+pub mod mask;
 pub mod matrix;
+pub mod permissions;
 pub mod workflow;

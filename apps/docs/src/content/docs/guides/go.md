@@ -53,6 +53,11 @@ HTTPS, and neither is ever needed.
 
 ## In workflows
 
+A job's own `G1T_TOKEN` reaches [its repository only](/guides/actions/#the-jobs-token).
+To fetch private modules from the workspace's other repositories, keep an
+[access token](/guides/authentication/) with `code:read` as a secret, and
+use it in place of `G1T_TOKEN` below.
+
 ```yaml
 jobs:
   build:

@@ -36,6 +36,11 @@ on:
   schedule:
     - cron: "27 4 * * 1"
 
+# The job's token reads the code and uploads the results.
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   scan:
     name: Code scanning
@@ -174,7 +179,9 @@ upload step.
 ## Uploading SARIF
 
 `POST /repos/{owner}/{name}/code-scanning/sarifs`, with a token that has
-`security:write` (a workflow's `G1T_TOKEN` does):
+`security:write` (a workflow's `G1T_TOKEN` does, with `security-events: write`
+in its [`permissions:`](/guides/actions/#the-jobs-token), as the workflow
+g1t writes has):
 
 | Field | |
 | --- | --- |

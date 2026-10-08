@@ -10,6 +10,7 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::artifacts::ArtifactsOp;
 use crate::deployments::DeploymentsOp;
+use crate::protection::ProtectionOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -390,6 +391,24 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Run protection",
+        "What keeps workflow runs safe: environments' protection rules (required reviewers, a wait timer, which branches may deploy) and the reviews of the jobs they hold, approving a pull request's run from outside, what a job's token gets when its workflow writes no `permissions:`, and repository_dispatch, which a job's own token may send.",
+        &[
+            Op::Protection(ProtectionOp::UpdateEnvironment),
+            Op::Protection(ProtectionOp::DeleteEnvironment),
+            Op::Protection(ProtectionOp::GetPendingDeployments),
+            Op::Protection(ProtectionOp::ReviewPendingDeployments),
+            Op::Protection(ProtectionOp::ApproveWorkflowRun),
+            Op::Protection(ProtectionOp::GetWorkflowPermissions),
+            Op::Protection(ProtectionOp::SetWorkflowPermissions),
+            Op::Protection(ProtectionOp::GetForkPrApproval),
+            Op::Protection(ProtectionOp::SetForkPrApproval),
+            Op::Protection(ProtectionOp::CreateRepositoryDispatch),
+            Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
+            Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
+        ],
+    ),
+    (
         "Secrets and variables",
         "Values that workflows and deployments read, per repository or for a whole workspace, with a row per environment.",
         &[
@@ -641,6 +660,7 @@ fn title(op: Op) -> &'static str {
         Op::Checks(op) => op.title(),
         Op::About(op) => op.title(),
         Op::Deployments(op) => op.title(),
+        Op::Protection(op) => op.title(),
         Op::Artifacts(op) => op.title(),
     }
 }

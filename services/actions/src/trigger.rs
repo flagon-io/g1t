@@ -5,8 +5,8 @@
 use g1t_actions::events::{RunInfo, github_events};
 use g1t_actions::workflow::{self, Trigger, Workflow};
 use g1t_contracts::access::{self, Capability};
-use g1t_contracts::actions::{DispatchArgs, WorkflowRun};
-use g1t_contracts::events::Event;
+use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
+use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, Repo, RepoPath};
 use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
@@ -39,6 +39,9 @@ struct Subject {
     payload: Value,
     title: String,
     trusted: bool,
+    /// Why its runs wait for approval first: a pull request from outside,
+    /// by the repository's approval policy (protection.rs).
+    approval: Option<String>,
 }
 
 /// Whether whoever a pull request is for is trusted without asking
@@ -166,6 +169,7 @@ impl Actions {
             payload,
             title,
             trusted: true,
+            approval: None,
         };
         let view = |number: u32| ViewArgs {
             repo: path.clone(),
@@ -203,6 +207,46 @@ impl Actions {
                     payload,
                     title,
                     trusted: true,
+                    approval: None,
+                })
+            }
+            // A branch or tag was made: its own commit, as on GitHub.
+            "create" => {
+                let (Some(git_ref), Some(after)) = (data["ref"].as_str(), data["after"].as_str()) else {
+                    return Ok(None);
+                };
+                if git_ref.starts_with("refs/heads/g1t-queue/") || !data["before"].is_null() {
+                    return Ok(None);
+                }
+                let (ref_type, name) = match (git_ref.strip_prefix("refs/heads/"), git_ref.strip_prefix("refs/tags/")) {
+                    (Some(branch), _) => ("branch", branch),
+                    (_, Some(tag)) => ("tag", tag),
+                    _ => return Ok(None),
+                };
+                let payload = json!({
+                    "ref": name,
+                    "ref_type": ref_type,
+                    "master_branch": repo.default_branch,
+                    "description": repo.description,
+                    "pusher_type": "user",
+                    "repository": payload::repository(repo),
+                    "sender": payload::user(sender),
+                });
+                Some(Subject {
+                    source: path.clone(),
+                    source_ref: Some(after.to_owned()),
+                    git_ref: git_ref.to_owned(),
+                    sha: after.to_owned(),
+                    head_ref: None,
+                    base_ref: None,
+                    pull: None,
+                    filter_ref: git_ref.to_owned(),
+                    paths: None,
+                    compare: None,
+                    payload,
+                    title: format!("Created {ref_type} {name}"),
+                    trusted: true,
+                    approval: None,
                 })
             }
             "pull_request" | "pull_request_target" | "pull_request_review" => {
@@ -228,6 +272,15 @@ impl Actions {
                     });
                 }
                 let trusted = self.insider(pull.owner(), repo, ws).await?;
+                // A pull request from outside may wait for approval before
+                // its head's code runs. `pull_request_target` runs the
+                // base's code, and a merged one's run the commit it landed
+                // as, so neither waits.
+                let approval = if event_name != "pull_request_target" && action != Some("closed") {
+                    self.approval_needed(repo, pull.owner(), ws).await?
+                } else {
+                    None
+                };
                 let head_ref = payload::head_ref(pull);
                 if event_name == "pull_request_target" {
                     // In the base's context: its workflows, its head.
@@ -270,6 +323,7 @@ impl Actions {
                     payload,
                     title: pull.title.clone(),
                     trusted,
+                    approval,
                 })
             }
             "workflow_run" => {
@@ -340,7 +394,11 @@ impl Actions {
 
     pub async fn on_event(&self, event: &Event) -> Result<()> {
         let Some(repo_id) = event.repo_id.as_deref() else { return Ok(()) };
-        let mapped = github_events(&event.kind);
+        let mut mapped = github_events(&event.kind);
+        // A new branch or tag is also `create`.
+        if event.kind == "git.push" && event.data["before"].is_null() {
+            mapped.push(("create", None));
+        }
         let pushed_default = event.kind == "git.push" && event.data["defaultBranch"].as_bool() == Some(true);
         if mapped.is_empty() && !pushed_default {
             return Ok(());
@@ -348,6 +406,13 @@ impl Actions {
         let Some((repo, ws)) = self.repo_by_id(repo_id).await? else { return Ok(()) };
         if pushed_default {
             self.sync(&repo, &ws).await?;
+        }
+        // What a workflow job's own token did starts no workflows, as on
+        // GitHub, so a workflow cannot set itself off; only
+        // `workflow_dispatch` and `repository_dispatch` do.
+        if let Some(run) = caused_by_job(&event.data) {
+            worker::console_log!("actions: {} {} came from run {run}'s token; no workflows start for it", event.kind, event.id);
+            return Ok(());
         }
         let sender = self.username(event.actor.as_deref()).await?.unwrap_or_else(|| repo.namespace.clone());
         for (event_name, action) in mapped {
@@ -368,6 +433,7 @@ impl Actions {
                     let phase = if action == Some("closed") { "closed" } else { "open" };
                     format!("{event_name}:{number}:{}:{phase}", subject.sha)
                 }
+                _ if event_name == "create" => format!("{}:create", event.id),
                 _ => event.id.clone(),
             };
             self.start_matching(&repo, &ws, read, &mut subject, event_name, action, &key, event.actor.as_deref(), &sender)
@@ -430,6 +496,7 @@ impl Actions {
                 actor_id: actor_id.map(str::to_owned),
                 actor: Some(sender.to_owned()),
                 trusted: subject.trusted,
+                approval: subject.approval.clone(),
             })
             .await?;
         }
@@ -553,6 +620,7 @@ impl Actions {
                 payload,
                 title: format!("Scheduled: {cron}"),
                 trusted: true,
+                approval: None,
             };
             subject.filter_ref = subject.git_ref.clone();
             let info = self.run_info(&repo, &workflow, "schedule", &subject, &repo.namespace, None);
@@ -570,6 +638,7 @@ impl Actions {
                 actor_id: None,
                 actor: None,
                 trusted: true,
+                approval: None,
             })
             .await?;
         }
@@ -656,6 +725,7 @@ impl Actions {
             payload,
             title: format!("{} run by {}", workflow.display_name(&file.path), a.actor.username),
             trusted: true,
+            approval: None,
         };
         let info = self.run_info(&repo, &workflow, "workflow_dispatch", &subject, &a.actor.username, Some(&a.actor.id));
         let created = self
@@ -673,12 +743,100 @@ impl Actions {
                 actor_id: Some(a.actor.id.clone()),
                 actor: Some(a.actor.username.clone()),
                 trusted: true,
+                approval: None,
             })
             .await?;
         match created {
             Some(id) => self.run_summary(&id).await,
             None => Ok(fail(FailureCode::Conflict, "It did not start.")),
         }
+    }
+
+    /// `repository_dispatch`: an outside event, by name, starts the default
+    /// branch's workflows that run `on: repository_dispatch` with that type
+    /// (or with no `types`). A workflow job's token may send one: this,
+    /// with `workflow_dispatch`, is how a workflow starts another.
+    pub async fn repository_dispatch(&self, a: RepositoryDispatchArgs) -> Result<Outcome<u32>> {
+        let repo = check!(self.may(&a.actor, &a.repo, Capability::Push).await?);
+        if repo.archived() {
+            return Ok(fail(FailureCode::Forbidden, g1t_contracts::repos::archived_message(&repo.namespace, &repo.name)));
+        }
+        let event_type = a.event_type.trim().to_owned();
+        if event_type.is_empty() || event_type.chars().count() > 100 {
+            return Ok(fail(FailureCode::Invalid, "event_type is 1 to 100 characters."));
+        }
+        let client_payload = match a.client_payload {
+            Value::Null => json!({}),
+            Value::Object(map) if map.len() <= 10 => Value::Object(map),
+            Value::Object(_) => return Ok(fail(FailureCode::Invalid, "client_payload has at most 10 top-level properties.")),
+            _ => return Ok(fail(FailureCode::Invalid, "client_payload is a JSON object.")),
+        };
+        if serde_json::to_string(&client_payload).map_or(0, |text| text.len()) > 64 * 1024 {
+            return Ok(fail(FailureCode::Invalid, "client_payload is at most 64 KB."));
+        }
+        let Some(ws) = self.workspace_actor(&repo.namespace).await? else {
+            return Ok(fail(FailureCode::NotFound, "There is no such workspace."));
+        };
+        let read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&repo.default_branch)).await?;
+        let Some(sha) = read.head.clone() else {
+            return Ok(fail(FailureCode::NotFound, "The repository has no default branch to run on yet."));
+        };
+        let git_ref = format!("refs/heads/{}", repo.default_branch);
+        let payload = json!({
+            "action": event_type,
+            "branch": repo.default_branch,
+            "client_payload": client_payload,
+            "repository": payload::repository(&repo),
+            "sender": payload::user(&a.actor.username),
+        });
+        let key = format!("repository_dispatch:{}", new_id("dsp", now_ms()));
+        let mut started = 0u32;
+        for file in read.files {
+            let Ok(workflow) = workflow::parse(&file.source) else { continue };
+            let Some(trigger) = workflow.trigger("repository_dispatch") else { continue };
+            if !trigger.wants_type(Some(&event_type)) || self.disabled(&repo.id, &file.path).await? {
+                continue;
+            }
+            let subject = Subject {
+                source: Self::repo_path(&repo),
+                source_ref: Some(sha.clone()),
+                git_ref: git_ref.clone(),
+                sha: sha.clone(),
+                head_ref: None,
+                base_ref: None,
+                pull: None,
+                filter_ref: git_ref.clone(),
+                paths: None,
+                compare: None,
+                payload: payload.clone(),
+                title: event_type.clone(),
+                trusted: true,
+                approval: None,
+            };
+            let info = self.run_info(&repo, &workflow, "repository_dispatch", &subject, &a.actor.username, Some(&a.actor.id));
+            let created = self
+                .create_run(NewRun {
+                    repo: repo.clone(),
+                    path: file.path.clone(),
+                    source: file.source.clone(),
+                    workflow,
+                    info,
+                    action: Some(event_type.clone()),
+                    pull: None,
+                    title: subject.title.clone(),
+                    inputs: Map::new(),
+                    event_key: key.clone(),
+                    actor_id: Some(a.actor.id.clone()),
+                    actor: Some(a.actor.username.clone()),
+                    trusted: true,
+                    approval: None,
+                })
+                .await?;
+            if created.is_some() {
+                started += 1;
+            }
+        }
+        Ok(Outcome::Ok(started))
     }
 }
 
@@ -749,6 +907,7 @@ impl Actions {
                 payload: payload.clone(),
                 title: format!("Merge queue: #{}{ahead}", a.number),
                 trusted: true,
+                approval: None,
             };
             let info = self.run_info(&repo, &workflow, "merge_group", &subject, &repo.namespace, None);
             let created = self
@@ -766,6 +925,7 @@ impl Actions {
                     actor_id: None,
                     actor: None,
                     trusted: true,
+                    approval: None,
                 })
                 .await?;
             if created.is_some() {
