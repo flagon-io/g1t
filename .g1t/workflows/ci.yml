@@ -1,0 +1,77 @@
+# Tests every pull request into main, so main can always be deployed. The
+# "Default branch" ruleset requires this workflow ("CI") to pass before a
+# pull request merges; people may still push to main directly, agents
+# may not. Deploy (deploy.yml) ships what lands on main.
+#
+#   rust        every crate's tests, natively
+#   typescript  type checks and tests of the apps and TS services, the
+#               deploy and ops scripts, and the deploy manifest
+#   build       the site, sudo and the docs build as they deploy
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: g1t-4core
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache crates
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-crates-${{ runner.os }}-
+      - name: Cache the test build
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/debug
+            !target/debug/incremental
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
+          restore-keys: cargo-test-${{ runner.os }}-
+      - name: Tests
+        run: cargo test --workspace --locked --quiet
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Type checks
+        run: npm run typecheck
+      - name: Tests
+        run: npm test --workspaces --if-present
+      - name: The deploy tool's tests
+        run: npm run test:deploy
+      - name: The ops scripts' tests
+        run: npm run test:ops
+      - name: The manifest matches every wrangler.jsonc
+        run: node scripts/deploy.mjs manifest --check
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: The site, sudo and the docs
+        run: node scripts/deploy.mjs build --only web,sudo,docs
