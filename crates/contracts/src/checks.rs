@@ -1014,6 +1014,7 @@ mod tests {
             environment: None,
             self_hosted: false,
             runner: None,
+            cancelling: false,
         };
         let check = job_check_run("acme/web", &workflow_run, &job);
         assert_eq!(check.display_name(), "CI / Test (push)");
