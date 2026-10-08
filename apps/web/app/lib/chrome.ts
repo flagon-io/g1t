@@ -19,6 +19,7 @@ const MARKETING = new Set([
   "/register",
   "/logout",
   "/verify",
+  "/confirm-email",
   "/forgot",
   "/reset",
   "/device",

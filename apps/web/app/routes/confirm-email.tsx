@@ -1,5 +1,5 @@
 import { CircleCheck, MailCheck } from "lucide-react";
-import { Form, data, redirect } from "react-router";
+import { Form, data } from "react-router";
 
 import { CONFIRM_TTL_SECONDS, tidyConfirmCode } from "@g1t/contracts";
 
@@ -27,13 +27,15 @@ const MINUTES = CONFIRM_TTL_SECONDS / 60;
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const next = safeNext(new URL(request.url).searchParams.get("next"));
-  if (user.verified) throw redirect(next);
+  // Confirmed already: from a bookmark, or the page loading again right
+  // after the code worked, when it shows what that did.
+  if (user.verified) return { username: user.username, address: null, next, verified: true };
   const emails = await accounts.listEmails(user);
   const list = emails.ok ? emails.value.emails : [];
   // The address the code went to: the primary, or (when another account
   // confirmed that first) the oldest address still to confirm.
   const address = (list.find((email) => email.primary && !email.verified) ?? list.find((email) => !email.verified))?.email ?? null;
-  return { username: user.username, address, next };
+  return { username: user.username, address, next, verified: false };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -78,16 +80,16 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
     | undefined;
   const errorFor = (intent: string) => (said?.intent === intent ? (said.error ?? null) : null);
 
-  if (said?.confirmed) {
+  if (said?.confirmed || loaderData.verified) {
     return (
       <main className="mx-auto flex max-w-sm flex-col px-4 pt-20 pb-10">
         <CircleCheck size={36} className="text-success" aria-hidden="true" />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">Email confirmed</h1>
-        <p className={`mt-2 text-sm leading-6 ${said.lapsed ? "text-fg" : "text-muted"}`} role="status">
-          {said.line}
+        <p className={`mt-2 text-sm leading-6 ${said?.lapsed ? "text-fg" : "text-muted"}`} role="status">
+          {said?.line ?? "Your email address is confirmed."}
         </p>
         <div className="mt-8 *:w-full">
-          <ButtonLink to={said.to ?? "/"}>Continue</ButtonLink>
+          <ButtonLink to={said?.to ?? loaderData.next}>Continue</ButtonLink>
         </div>
       </main>
     );
