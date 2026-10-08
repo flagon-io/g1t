@@ -2927,6 +2927,11 @@ pub struct OverallMargin {
     pub given_credit_promotional_micros: i64,
     #[serde(default)]
     pub given_credit_goodwill_micros: i64,
+    /// What testing resets wiped that g1t paid for (`reset_costs`): the
+    /// model calls and Cloudflare usage still happened, so their cost is
+    /// given, never a leak.
+    #[serde(default)]
+    pub given_reset_micros: i64,
     /// Credits over the range: given (every kind), spent on usage, and
     /// refunds' money given back.
     #[serde(default)]

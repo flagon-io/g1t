@@ -252,16 +252,21 @@ impl Billing {
     }
 
     pub(crate) async fn audit(&self, account: &str, action: &str, detail: &str, by: &str) -> Result<()> {
-        let now = now_ms();
+        self.audit_at(account, action, detail, by, now_ms()).await
+    }
+
+    /// `audit`, at a given instant: a testing reset's entry carries the
+    /// same `created_at` as the `reset_costs` it kept.
+    pub(crate) async fn audit_at(&self, account: &str, action: &str, detail: &str, by: &str, at_ms: u64) -> Result<()> {
         self.db
             .prepare("INSERT INTO admin_actions (id, account, action, detail, by, created_at) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(&[
-                new_id("adm", now).into(),
+                new_id("adm", at_ms).into(),
                 account.into(),
                 action.into(),
                 detail.into(),
                 by.into(),
-                rfc3339(now).into(),
+                rfc3339(at_ms).into(),
             ])?
             .run()
             .await?;
