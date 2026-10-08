@@ -448,6 +448,29 @@ export function pushedCommits<C extends { hash: string; parents: string[]; autho
   return brought.filter((commit) => commit.parents.length <= 1 && !isAgent(commit.author.name));
 }
 
+/**
+ * Each commit of `history` (newest first) a push in `pushes` (newest
+ * first) brought, at that push's time. A commit pushed twice (after a
+ * force push, say) counts once, at its first landing; a push whose `after`
+ * is no longer in the history (rewritten) brings nothing.
+ */
+export function placePushes<C extends { hash: string; parents: string[]; author: { name: string } }>(
+  history: C[],
+  pushes: { time: string; data: { after: string; before?: string } }[],
+): { hash: string; at: string }[] {
+  const index = new Map(history.map((commit, i) => [commit.hash, i]));
+  const seen = new Map<string, string>();
+  for (const push of [...pushes].reverse()) {
+    const start = index.get(push.data.after);
+    if (start === undefined) continue;
+    const end = push.data.before ? index.get(push.data.before) : undefined;
+    for (const commit of pushedCommits(history.slice(start, end ?? history.length), undefined)) {
+      if (!seen.has(commit.hash)) seen.set(commit.hash, push.time);
+    }
+  }
+  return [...seen].map(([hash, at]) => ({ hash, at }));
+}
+
 export type Merged = {
   repo: RepoPath;
   number: number;

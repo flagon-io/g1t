@@ -39,7 +39,7 @@ import {
 import {
   type Fact,
   type Merged,
-  pushedCommits,
+  placePushes,
   type NeedRow,
   type QuickAction,
   RUN_LABEL,
@@ -152,9 +152,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   return data<DelegateResult>({ error: null, notStarted: refused });
 }
 
-/** Pushes to the default branch read for the week, per project, and commits read back from each. */
-const PUSHES_READ = 40;
-const PUSH_DEPTH = 60;
+/**
+ * Push events read per project, a page at a time, back two weeks. Pushes
+ * to every branch are in the log, so a fixed count (it was 40) lost a busy
+ * week's earlier days to agents' branches.
+ */
+const PUSH_PAGE = 200;
+const PUSH_PAGES = 5;
+/** Commits of the default branch read once, to place each push's commits. */
+const HISTORY_READ = 1000;
 
 /**
  * The commits people pushed straight to a project's default branch in the
@@ -163,21 +169,26 @@ const PUSH_DEPTH = 60;
  */
 async function directCommits(repo: Repo, viewer: Viewer): Promise<{ hash: string; at: string }[]> {
   const since = Date.now() - 14 * TIME.DAY;
-  const pushes = (await eventLog.list({ repoId: repo.id, types: ["git.push"], limit: PUSHES_READ })).filter(
-    (event): event is G1tEvent<"git.push"> => event.type === "git.push" && event.data.defaultBranch && Date.parse(event.time) >= since,
-  );
+  const pushes: G1tEvent<"git.push">[] = [];
+  let before: string | undefined;
+  for (let page = 0; page < PUSH_PAGES; page++) {
+    const batch = await eventLog.list({ repoId: repo.id, types: ["git.push"], limit: PUSH_PAGE, ...(before ? { before } : {}) });
+    for (const event of batch) {
+      if (event.type === "git.push" && event.data.defaultBranch && Date.parse(event.time) >= since) pushes.push(event as G1tEvent<"git.push">);
+    }
+    const oldest = batch.at(-1);
+    if (batch.length < PUSH_PAGE || !oldest || Date.parse(oldest.time) < since) break;
+    before = oldest.id;
+  }
+  if (pushes.length === 0) return [];
+  // One read of the branch from the newest push back; each push brought
+  // what lies between its `after` and its `before` in that history.
   const path = { namespace: repo.namespace, name: repo.name };
-  const read = await Promise.all(
-    pushes.map(async (push) => {
-      const history = await reposApi.log(path, viewer, push.data.after, PUSH_DEPTH).catch(() => null);
-      return history?.ok ? pushedCommits(history.value, push.data.before).map((commit) => ({ hash: commit.hash, at: push.time })) : [];
-    }),
-  );
-  // A commit pushed twice (after a force push, say) counts once, at its first landing.
-  const seen = new Map<string, string>();
-  for (const commit of read.flat().reverse()) if (!seen.has(commit.hash)) seen.set(commit.hash, commit.at);
-  return [...seen].map(([hash, at]) => ({ hash, at }));
+  const history = await reposApi.log(path, viewer, pushes[0].data.after, HISTORY_READ).catch(() => null);
+  if (!history?.ok) return [];
+  return placePushes(history.value, pushes);
 }
+
 
 export async function loader({ context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
