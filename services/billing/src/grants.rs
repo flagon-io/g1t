@@ -283,10 +283,12 @@ pub(crate) fn state(left: i64, expires_at: Option<&str>, closed_reason: Option<&
 }
 
 /// The key a usage line is reconciled under, as `margin::usage_rows` reads
-/// it: builds apart from a deployment's requests.
+/// it: builds apart from a deployment's requests, and an agent's planning
+/// run apart from the plan's payments (`margin::PLANNING_KEY`).
 pub(crate) fn usage_key(task: Option<&str>, reference: &str) -> String {
     match task {
         Some("deployments") if reference.starts_with("deploy/") => "builds".to_owned(),
+        Some("plan") => crate::margin::PLANNING_KEY.to_owned(),
         Some(task) => task.to_owned(),
         None => "other".to_owned(),
     }
@@ -1140,6 +1142,8 @@ mod tests {
         assert_eq!(usage_key(Some("deployments"), "deploy/abc"), "builds");
         assert_eq!(usage_key(Some("deployments"), "requests/2026-10"), "deployments");
         assert_eq!(usage_key(Some("implement"), "run_1"), "implement");
+        // An agent's planning run, never the plan's payments.
+        assert_eq!(usage_key(Some("plan"), "run_2"), "planning");
         assert_eq!(usage_key(None, "crd_a"), "other");
     }
 

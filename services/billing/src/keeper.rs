@@ -116,10 +116,11 @@ impl Keeper {
     }
 
     /// A GraphQL query over AI Gateway's analytics: with the keeper's token
-    /// (AI Gateway Read) first, and on failure with the bill's. Not the
-    /// other way round: Cloudflare answers a token that cannot see AI
-    /// Gateway with no rows, not an error, so the bill's token would read
-    /// as a gateway that priced nothing.
+    /// (AI Gateway Read) first, and on failure with the bill's. A token
+    /// without Account Analytics Read gets an error ("caller does not hold
+    /// any of the required permissions for this dataset"); when the answer
+    /// has no rows, `gateway_visible` tells a token that cannot see the
+    /// gateway from a gateway nothing went through.
     pub(crate) async fn gateway_graphql(&self, body: Value) -> Result<Value> {
         let Some(token) = &self.token else {
             return self.graphql(body).await;
@@ -130,6 +131,18 @@ impl Keeper {
                 Some(billing) if billing != token => self.graphql(body).await,
                 _ => Err(error),
             },
+        }
+    }
+
+    /// Whether the token AI Gateway's analytics are read with can see the
+    /// gateway: the REST API answers 403 for a token without AI Gateway
+    /// Read and 404 for a gateway id that is not there. None when the
+    /// answer says neither (Cloudflare down, no token).
+    pub(crate) async fn gateway_visible(&self) -> Option<bool> {
+        let token = self.token.as_deref().or(self.billing_token.as_deref())?;
+        match send_with(token, Method::Get, &self.api(&format!("/ai-gateway/gateways/{}", self.gateway)), None).await {
+            Ok(_) => Some(true),
+            Err(error) => refused(&error.to_string()).then_some(false),
         }
     }
 
@@ -198,6 +211,13 @@ impl Keeper {
             memory_byte_seconds: total.memory_byte_seconds + g["sum"]["allocatedMemory"].as_f64().unwrap_or(0.0),
         }))
     }
+}
+
+/// Whether an error from `send_with` is Cloudflare saying no to the token
+/// (401, 403) or that there is no such thing for it (404), rather than
+/// failing.
+pub(crate) fn refused(error: &str) -> bool {
+    ["Cloudflare answered 401", "Cloudflare answered 403", "Cloudflare answered 404"].iter().any(|s| error.contains(s))
 }
 
 /// A request to Cloudflare's API with a bearer token; anything but 200 is
