@@ -759,7 +759,9 @@ impl Billing {
             Err(error) => return Err(error),
         };
         let tax_cents = u32::try_from(calculation.tax_amount_exclusive.max(0)).unwrap_or(0);
-        let charge = crate::stripe::SavedCharge { tax_cents, tax_calculation: Some(&calculation.id), ..untaxed };
+        // An empty id: Stripe Tax is not active for this key, so no tax.
+        let taxed = !calculation.id.is_empty();
+        let charge = crate::stripe::SavedCharge { tax_cents, tax_calculation: taxed.then_some(calculation.id.as_str()), ..untaxed };
         let paid = match stripe.charge_saved(&charge).await {
             Ok(intent) if intent["status"].as_str() == Some("succeeded") => intent["id"].as_str().map(str::to_owned),
             Ok(intent) => {
@@ -782,9 +784,10 @@ impl Billing {
         self.grant_purchased(workspace, &intent, amount, i64::from(fee_cents) * 10_000, "g1t", Some(&customer)).await?;
         // Recorded with Stripe Tax once paid, so it is reported and filed;
         // a failure is logged and the payment stands.
-        let transaction = match stripe.record_tax(&calculation.id, &intent).await {
-            Ok(id) => Some(id),
-            Err(error) => {
+        let transaction = match if taxed { Some(stripe.record_tax(&calculation.id, &intent).await) } else { None } {
+            None => None,
+            Some(Ok(id)) => Some(id),
+            Some(Err(error)) => {
                 worker::console_error!("{workspace}: the tax on auto-reload {intent} was not recorded with Stripe Tax: {error}");
                 None
             }

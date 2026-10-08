@@ -227,6 +227,27 @@ fn encode(value: &str) -> String {
 }
 
 /// `name=value` pairs as a form body.
+/// Requests that carry `automatic_tax`: payment pages, invoices and
+/// subscriptions. When Stripe Tax is not active for the key's mode (a test
+/// account where it was never turned on), Stripe refuses them outright, so
+/// the field is left out and the payment goes through untaxed.
+pub(crate) fn taxed_path(path: &str) -> bool {
+    path == "/checkout/sessions" || path == "/invoices" || path == "/subscriptions"
+}
+
+/// A form body without its `automatic_tax[…]` fields.
+pub(crate) fn without_automatic_tax(body: &str) -> String {
+    body.split('&').filter(|pair| !pair.starts_with("automatic_tax")).collect::<Vec<_>>().join("&")
+}
+
+/// How long whether Stripe Tax is active is believed, in milliseconds.
+const TAX_ACTIVE_FOR_MS: u64 = 10 * 60 * 1000;
+
+thread_local! {
+    /// Whether Stripe Tax is active for the key, and when that was read.
+    static TAX_ACTIVE: std::cell::Cell<Option<(bool, u64)>> = const { std::cell::Cell::new(None) };
+}
+
 pub(crate) fn form(fields: &[(&str, String)]) -> String {
     fields
         .iter()
@@ -296,6 +317,23 @@ impl Stripe {
         body: Option<String>,
         idempotency_key: Option<&str>,
     ) -> Result<T> {
+        let body = match body {
+            Some(body) if matches!(method, Method::Post) && taxed_path(path) && body.contains("automatic_tax") && !self.tax_active().await => {
+                Some(without_automatic_tax(&body))
+            }
+            body => body,
+        };
+        self.send_raw(method, path, body, idempotency_key).await
+    }
+
+    /// The request itself, as given: `send` without the Stripe Tax check.
+    async fn send_raw<T: for<'a> Deserialize<'a>>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<String>,
+        idempotency_key: Option<&str>,
+    ) -> Result<T> {
         let headers = Headers::new();
         headers.set("authorization", &format!("Bearer {}", self.key))?;
         headers.set("stripe-version", STRIPE_VERSION)?;
@@ -320,6 +358,32 @@ impl Stripe {
             )));
         }
         response.json().await
+    }
+
+    /// Whether Stripe Tax is active for this key's mode (`GET /tax/settings`,
+    /// `status` `active`), read at most every ten minutes. When it cannot be
+    /// read, it is taken as active: asking for tax and being refused says
+    /// why, where leaving it out would undercharge without a word.
+    pub async fn tax_active(&self) -> bool {
+        let now = crate::now_ms();
+        if let Some((active, at)) = TAX_ACTIVE.with(|cell| cell.get())
+            && now.saturating_sub(at) < TAX_ACTIVE_FOR_MS
+        {
+            return active;
+        }
+        #[derive(Deserialize)]
+        struct Settings {
+            status: String,
+        }
+        let active = match self.send_raw::<Settings>(Method::Get, "/tax/settings", None, None).await {
+            Ok(settings) => settings.status == "active",
+            Err(error) => {
+                worker::console_error!("Stripe Tax settings could not be read; asking for tax anyway: {error}");
+                true
+            }
+        };
+        TAX_ACTIVE.with(|cell| cell.set(Some((active, now))));
+        active
     }
 
     /// A customer for a workspace that has none yet.
@@ -506,6 +570,10 @@ impl Stripe {
     /// A customer Stripe cannot place fails with
     /// `customer_tax_location_invalid` (`is_tax_location_error`).
     pub async fn tax_calculation(&self, charge: &SavedCharge<'_>) -> Result<TaxCalculation> {
+        if !self.tax_active().await {
+            // No Stripe Tax for this key's mode: no tax, and nothing to record.
+            return Ok(TaxCalculation { id: String::new(), tax_amount_exclusive: 0 });
+        }
         let key = format!("{}/tax", charge.key);
         self.send(Method::Post, "/tax/calculations", Some(form(&tax_calculation_fields(charge))), Some(&key)).await
     }
@@ -1127,6 +1195,19 @@ pub(crate) fn is_missing(error: &Error) -> bool {
 
 pub(crate) fn is_live(key: &str) -> bool {
     key.starts_with("sk_live_") || key.starts_with("rk_live_")
+}
+
+#[cfg(test)]
+mod tax_mode_tests {
+    use super::*;
+
+    #[test]
+    fn untaxed_requests_lose_only_automatic_tax() {
+        let body = form(&[("mode", "payment".to_owned()), ("automatic_tax[enabled]", "true".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]);
+        assert_eq!(without_automatic_tax(&body), form(&[("mode", "payment".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]));
+        assert!(taxed_path("/checkout/sessions") && taxed_path("/invoices") && taxed_path("/subscriptions"));
+        assert!(!taxed_path("/invoices/in_1/finalize") && !taxed_path("/payment_intents"));
+    }
 }
 
 #[cfg(test)]
