@@ -33,7 +33,8 @@ mod statuses;
 mod team_reviews;
 
 use g1t_contracts::events::{
-    CommentCreated, Event, IssueEvent, NewEvent, Publish, PullEvent, SessionAppended,
+    ChangedFrom, CommentChanges, CommentCreated, CommentDeleted, CommentEdited, DeletedComment, Event, IssueEvent,
+    NewEvent, Publish, PullEvent, SessionAppended,
 };
 use g1t_contracts::identity::UsernameArgs;
 use g1t_contracts::repos::{
@@ -155,6 +156,40 @@ fn valid_title(title: &str) -> std::result::Result<&str, &'static str> {
         Err("That title is too long.")
     } else {
         Ok(title)
+    }
+}
+
+/// What a closed pull request was when it was closed.
+#[derive(serde::Deserialize)]
+struct ClosedFrom {
+    #[serde(default)]
+    closed_from: Option<String>,
+}
+
+/// Why a pull request in `status` cannot be reopened, if it cannot: only a
+/// closed one can, never a merged one.
+fn reopen_refusal(status: PullStatus) -> Option<&'static str> {
+    match status {
+        PullStatus::Closed => None,
+        PullStatus::Merged => Some("This pull request was merged; it cannot be reopened."),
+        PullStatus::Draft | PullStatus::Open => Some("This pull request is already open."),
+    }
+}
+
+/// What a closed pull request is reopened as: the draft it was, when it
+/// was closed as one, else ready for review.
+fn reopened_status(closed_from: Option<&str>) -> PullStatus {
+    if closed_from == Some("draft") { PullStatus::Draft } else { PullStatus::Open }
+}
+
+/// Why a pull request in `status` cannot be turned into a draft, if it
+/// cannot: only one that is open, ready for review, can.
+fn draft_refusal(status: PullStatus) -> Option<&'static str> {
+    match status {
+        PullStatus::Open => None,
+        PullStatus::Draft => Some("This pull request is already a draft."),
+        PullStatus::Merged => Some("This pull request is already merged."),
+        PullStatus::Closed => Some("This pull request is closed. Reopen it first."),
     }
 }
 
@@ -970,6 +1005,7 @@ impl Work {
             line,
             verdict: a.verdict,
             created_at: rfc3339(now),
+            edited_at: None,
         };
         self.db
             .batch(vec![
@@ -1021,6 +1057,118 @@ impl Work {
         )
         .await?;
         Ok(Outcome::Ok(comment))
+    }
+
+    /// A comment in the repository, with the repository and the pull
+    /// request it is on (if it is on one), when `actor` may edit it, or
+    /// with `deleting`, delete it (`may_change_comment`).
+    async fn changeable_comment(
+        &self,
+        a: &CommentActionArgs,
+        deleting: bool,
+    ) -> Result<Outcome<(Repo, CommentRow, Option<String>)>> {
+        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+        check!(writable(&repo));
+        let Some(row) = self
+            .db
+            .prepare("SELECT * FROM comments WHERE id = ? AND repo_id = ?")
+            .bind(&[a.comment_id.trim().into(), repo.id.as_str().into()])?
+            .first::<CommentRow>(None)
+            .await?
+        else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "Comment not found."));
+        };
+        let maintains = access::can(Some(&a.actor), &repo, Capability::ManageSettings);
+        if let Err(refusal) = may_change_comment(
+            row.kind,
+            row.verdict.is_some(),
+            &row.author_id,
+            &a.actor.id,
+            maintains,
+            deleting,
+        ) {
+            // Someone who may change it otherwise was refused for what it is.
+            let code = if row.author_id == a.actor.id || maintains { FailureCode::Conflict } else { FailureCode::Forbidden };
+            return Ok(Outcome::fail(code, refusal));
+        }
+        let pull_id = self.pull(&repo.id, row.number).await?.map(|pull| pull.id);
+        Ok(Outcome::Ok((repo, row, pull_id)))
+    }
+
+    /// Changes the text of a comment: its author's to do, or a
+    /// maintainer's. Publishes `comment.edited` with what it said before.
+    async fn edit_comment(&self, a: CommentActionArgs) -> Result<Outcome<Comment>> {
+        let body = a.body.trim().to_owned();
+        if body.chars().count() > MAX_ENTRY_CHARS {
+            return Ok(Outcome::fail(FailureCode::Invalid, "That comment is too long."));
+        }
+        let (repo, row, pull_id) = check!(self.changeable_comment(&a, false).await?);
+        // An approval speaks for itself; anything else has to say something.
+        if body.is_empty() && row.verdict != Some(Verdict::Approve) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "A comment cannot be empty."));
+        }
+        let number = row.number;
+        let mut comment = Comment::from(row);
+        if comment.body == body {
+            return Ok(Outcome::Ok(comment));
+        }
+        let now = rfc3339(now_ms());
+        self.db
+            .prepare("UPDATE comments SET body = ?, edited_at = ? WHERE id = ?")
+            .bind(&[body.as_str().into(), now.as_str().into(), comment.id.as_str().into()])?
+            .run()
+            .await?;
+        let before = std::mem::replace(&mut comment.body, body);
+        comment.edited_at = Some(now);
+        self.publish(
+            "comment.edited",
+            &repo.id,
+            &a.actor,
+            CommentEdited {
+                comment_id: comment.id.clone(),
+                repo_id: repo.id.clone(),
+                number,
+                pull_id,
+                changes: CommentChanges { body: ChangedFrom { from: before } },
+            },
+        )
+        .await?;
+        Ok(Outcome::Ok(comment))
+    }
+
+    /// Deletes a comment: its author's to do, or a maintainer's. A review
+    /// that gave a verdict stays. Publishes `comment.deleted` with the
+    /// comment as it was.
+    async fn delete_comment(&self, a: CommentActionArgs) -> Result<Outcome<bool>> {
+        let (repo, row, pull_id) = check!(self.changeable_comment(&a, true).await?);
+        self.db
+            .prepare("DELETE FROM comments WHERE id = ?")
+            .bind(&[row.id.as_str().into()])?
+            .run()
+            .await?;
+        let number = row.number;
+        let comment = Comment::from(row);
+        self.publish(
+            "comment.deleted",
+            &repo.id,
+            &a.actor,
+            CommentDeleted {
+                comment_id: comment.id.clone(),
+                repo_id: repo.id.clone(),
+                number,
+                pull_id,
+                comment: DeletedComment {
+                    id: comment.id,
+                    body: comment.body,
+                    author: (&comment.author).into(),
+                    created_at: comment.created_at,
+                    path: comment.path,
+                    line: comment.line,
+                },
+            },
+        )
+        .await?;
+        Ok(Outcome::Ok(true))
     }
 
     // --- Pull requests -----------------------------------------------------
@@ -1479,9 +1627,9 @@ impl Work {
         }))
     }
 
-    /// The pull request, if it is still active and `actor` opened it or
-    /// may triage the repository's pull requests.
-    async fn manageable_pull(
+    /// The pull request, whatever its status, if its repository is not
+    /// archived and `actor` opened it or may triage its pull requests.
+    async fn managed_pull(
         &self,
         actor: &User,
         path: &RepoPath,
@@ -1492,6 +1640,18 @@ impl Work {
         if !pull.is_owned_by(&actor.id) {
             check!(allowed(Some(actor), &repo, Capability::Triage));
         }
+        Ok(Outcome::Ok(pull))
+    }
+
+    /// The pull request, if it is still active and `actor` opened it or
+    /// may triage the repository's pull requests.
+    async fn manageable_pull(
+        &self,
+        actor: &User,
+        path: &RepoPath,
+        number: u32,
+    ) -> Result<Outcome<Pull>> {
+        let pull = check!(self.managed_pull(actor, path, number).await?);
         if !pull.status.is_active() {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -1796,8 +1956,9 @@ impl Work {
         let mut pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
         let now = rfc3339(now_ms());
         self.db
-            .prepare("UPDATE pulls SET status = 'closed', updated_at = ? WHERE id = ?")
-            .bind(&[now.as_str().into(), pull.id.as_str().into()])?
+            // What it was closed as, so that reopening brings that back.
+            .prepare("UPDATE pulls SET status = 'closed', closed_from = ?, updated_at = ? WHERE id = ?")
+            .bind(&[pull.status.as_str().into(), now.as_str().into(), pull.id.as_str().into()])?
             .run()
             .await?;
         self.publish(
@@ -1830,6 +1991,116 @@ impl Work {
             .await?;
         }
         pull.status = PullStatus::Closed;
+        pull.updated_at = now;
+        Ok(Outcome::Ok(pull))
+    }
+
+    /// Opens a closed pull request again: as the draft it was, if it was
+    /// closed as one, else ready for review. A merged one stays merged.
+    async fn reopen_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
+        let mut pull = check!(self.managed_pull(&a.actor, &a.repo, a.number).await?);
+        if let Some(refusal) = reopen_refusal(pull.status) {
+            return Ok(Outcome::fail(FailureCode::Conflict, refusal));
+        }
+        // The head as it is now, which workflows run on. A branch of the
+        // repository that was deleted since leaves nothing to reopen; a
+        // fork removed after the close is made again (repos, `pull.reopened`).
+        let head = self.live_head(&pull).await?;
+        if head.is_none() && pull.fork_repo_id.is_none() {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!(
+                    "The branch {} no longer exists. Push it again to reopen this pull request.",
+                    pull.branch.as_deref().unwrap_or_default()
+                ),
+            ));
+        }
+        let closed_from: Option<ClosedFrom> = self
+            .db
+            .prepare("SELECT closed_from FROM pulls WHERE id = ?")
+            .bind(&[pull.id.as_str().into()])?
+            .first(None)
+            .await?;
+        let status = reopened_status(closed_from.and_then(|row| row.closed_from).as_deref());
+        let now = rfc3339(now_ms());
+        self.db
+            .prepare("UPDATE pulls SET status = ?, closed_from = NULL, superseded_by = NULL, updated_at = ? WHERE id = ?")
+            .bind(&[status.as_str().into(), now.as_str().into(), pull.id.as_str().into()])?
+            .run()
+            .await?;
+        self.publish(
+            "pull.reopened",
+            &pull.repo_id,
+            &a.actor,
+            PullEvent {
+                commit: head.or_else(|| pull.head_commit.clone()),
+                ..Self::pull_event(&pull)
+            },
+        )
+        .await?;
+        self.note(
+            &pull.repo_id,
+            pull.number,
+            (&a.actor.id, &a.actor.username),
+            "reopened this",
+        )
+        .await?;
+        pull.status = status;
+        pull.superseded_by = None;
+        pull.updated_at = now;
+        // Whether it still merges cleanly, now that it is open again.
+        if let Err(error) = self.assess_mergeability(&pull).await {
+            worker::console_warn!("mergeability of {}: {error}", pull.id);
+        }
+        Ok(Outcome::Ok(pull))
+    }
+
+    /// Turns a pull request that is ready for review back into a draft: it
+    /// cannot be merged until it is marked ready again, and it leaves the
+    /// merge queue and any merge that was waiting for it to catch up.
+    async fn convert_pull_to_draft(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
+        let mut pull = check!(self.managed_pull(&a.actor, &a.repo, a.number).await?);
+        if let Some(refusal) = draft_refusal(pull.status) {
+            return Ok(Outcome::fail(FailureCode::Conflict, refusal));
+        }
+        let now = rfc3339(now_ms());
+        self.db
+            .prepare(
+                "UPDATE pulls SET status = 'draft', land_requested = NULL, land_requested_at = NULL, updated_at = ?
+                 WHERE id = ?",
+            )
+            .bind(&[now.as_str().into(), pull.id.as_str().into()])?
+            .run()
+            .await?;
+        self.publish(
+            "pull.converted_to_draft",
+            &pull.repo_id,
+            &a.actor,
+            Self::pull_event(&pull),
+        )
+        .await?;
+        self.note(
+            &pull.repo_id,
+            pull.number,
+            (&a.actor.id, &a.actor.username),
+            "marked this as a draft",
+        )
+        .await?;
+        if self
+            .leave(&pull.repo_id, &pull, QueueState::Removed, Some("It was marked as a draft."))
+            .await?
+        {
+            self.publish_as(
+                "queue.changed",
+                &pull.repo_id,
+                None,
+                g1t_contracts::events::QueueChanged {
+                    repo_id: pull.repo_id.clone(),
+                },
+            )
+            .await?;
+        }
+        pull.status = PullStatus::Draft;
         pull.updated_at = now;
         Ok(Outcome::Ok(pull))
     }
@@ -2445,6 +2716,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "delete_milestone" => reply(&work.delete_milestone(args(body)?).await?),
         "counts" => reply(&work.counts(args(body)?).await?),
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
+        "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
+        "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
         "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
@@ -2490,6 +2763,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "catch_up_pull" => reply(&work.catch_up_pull(args(body)?).await?),
         "ready_pull" => reply(&work.ready_pull(args(body)?).await?),
         "close_pull" => reply(&work.close_pull(args(body)?).await?),
+        "reopen_pull" => reply(&work.reopen_pull(args(body)?).await?),
+        "convert_pull_to_draft" => reply(&work.convert_pull_to_draft(args(body)?).await?),
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
         "by_author" => reply(&work.by_author(args(body)?).await?),
@@ -2652,5 +2927,25 @@ mod owner_rules {
         assert_eq!(event["requestedBy"], serde_json::json!({ "id": "usr_1", "username": "syntaqx" }));
         let own = serde_json::to_value(Work::pull_event(&pull(ASKER, None))).unwrap();
         assert!(own.get("requestedBy").is_none());
+    }
+
+    #[test]
+    fn only_a_closed_pull_request_reopens_and_only_an_open_one_turns_draft() {
+        assert_eq!(reopen_refusal(PullStatus::Closed), None);
+        assert!(reopen_refusal(PullStatus::Merged).is_some(), "a merge cannot be undone");
+        assert!(reopen_refusal(PullStatus::Open).is_some());
+        assert!(reopen_refusal(PullStatus::Draft).is_some());
+        assert_eq!(draft_refusal(PullStatus::Open), None);
+        assert!(draft_refusal(PullStatus::Draft).is_some());
+        assert!(draft_refusal(PullStatus::Closed).is_some());
+        assert!(draft_refusal(PullStatus::Merged).is_some());
+    }
+
+    #[test]
+    fn a_pull_request_reopens_as_what_it_was_closed_as() {
+        assert_eq!(reopened_status(Some("draft")), PullStatus::Draft);
+        assert_eq!(reopened_status(Some("open")), PullStatus::Open);
+        // Closed before this was recorded, or by a merge of another.
+        assert_eq!(reopened_status(None), PullStatus::Open);
     }
 }

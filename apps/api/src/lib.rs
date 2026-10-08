@@ -693,9 +693,12 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         // reporting how it goes. The job's own token is the credential.
         ("POST", path) if path.starts_with("/actions/jobs/") => {
             let rest = path.trim_start_matches("/actions/jobs/");
-            let (job, method) = match rest.strip_suffix("/spec") {
-                Some(job) => (job.to_owned(), "job_spec"),
-                None => (rest.to_owned(), "job_report"),
+            // `/action`: where to fetch another repository's action from (on
+            // g1t, with a read token for a private one, or GitHub).
+            let (job, method) = match (rest.strip_suffix("/spec"), rest.strip_suffix("/action")) {
+                (Some(job), _) => (job.to_owned(), "job_spec"),
+                (_, Some(job)) => (job.to_owned(), "job_action"),
+                _ => (rest.to_owned(), "job_report"),
             };
             let body = json_body(&mut request).await;
             let answered: Outcome<Value> = g1t_kit::call(
@@ -806,6 +809,8 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
                 None => reply(&value),
             }
         }
+        // A deleted comment has nothing to say, as GitHub's says nothing.
+        Outcome::Ok(_) if route.no_content() => Ok(Response::empty()?.with_status(204)),
         Outcome::Ok(value) => reply(&value),
         // A token without the scope a call needs is told which one.
         Outcome::Fail(refused) => match (refused.code, audit::missing_scope(route.op, &viewer, &input)) {

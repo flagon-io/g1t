@@ -197,13 +197,24 @@ export type ActionsSettings = {
   canApprovePullRequests: boolean;
   /** Whether the workspace lets its repositories turn that on. */
   workspaceAllowsPullRequests: boolean;
+  /**
+   * Who may use the repository's actions and reusable workflows while it is
+   * private: only itself (`none`), or private repositories of its workspace
+   * (`organization`). A public repository's are anyone's.
+   */
+  accessLevel: ActionsAccessLevel;
 };
+
+/** Settings, Actions, Access. */
+export const ACTIONS_ACCESS_LEVELS = ["none", "organization"] as const;
+export type ActionsAccessLevel = (typeof ACTIONS_ACCESS_LEVELS)[number];
 
 /** What changes a repository's choices; `inherit` unchooses its default. */
 export type ActionsSettingsChange = {
   defaultPermissions?: "read" | "write" | "inherit";
   approvalPolicy?: ApprovalPolicy;
   canApprovePullRequests?: boolean;
+  accessLevel?: ActionsAccessLevel;
 };
 
 /** A workspace's policy for its repositories' job tokens. */

@@ -743,6 +743,41 @@ servers (Sentry, Linear and so on) it may use while working.
   inside other actions), downloads from other repositories, and npm
   trusted publishing, which depends on npm accepting g1t's issuer.
 
+### Actions parity: other repositories, triggers, step timeouts (built 2026-10-08)
+
+- **Other repositories' actions and reusable workflows**
+  (`services/actions/src/reach.rs`, actions/0008): `uses: owner/repo@ref`,
+  `owner/repo/path@ref` and `jobs.<id>.uses: owner/repo/.g1t|.github/workflows/x.yml@ref`
+  are looked for on g1t first, as the calling workspace sees them. Same
+  repository or public: used. Private: only from a private repository of
+  the same workspace, when its **Settings → Actions → Access** (`access_level`,
+  `GET`/`PUT …/actions/permissions/access`, MCP `get_access`/`set_access`)
+  says `organization`; a job fetches such an action with a read-only token
+  for that repository, revoked with the job (`job_action`, the runner's
+  `POST /actions/jobs/{job}/action`). Not on g1t: actions from GitHub as
+  before, reusable workflows from a public GitHub repository. A `./` call
+  inside a called workflow reads from that workflow's own repository.
+- **Secrets for called workflows** follow GitHub: none but the job token
+  unless the caller passes `secrets:` by name or `secrets: inherit`;
+  required secrets are checked before the call; a called job's
+  `environment:` reads that environment's secrets over what was passed. The
+  mapping is kept with the called jobs and read when each starts, so no
+  secret is stored. (Before, same-repository called workflows read every
+  repository secret.)
+- **Triggers:** `release` (created, published, released, prereleased,
+  edited, unpublished, deleted; repos now publishes `release.*`),
+  `deployment` and `deployment_status` (from the deployments service's
+  events; ones an Actions job or a job token made are marked
+  `causedByJob` and start nothing), `pull_request` `reopened` and
+  `converted_to_draft`, `issue_comment` `edited` and `deleted` (work
+  publishes `pull.reopened`, `pull.converted_to_draft`, `comment.edited`
+  and `comment.deleted`).
+- **`timeout-minutes` on every step**, `uses:` included: the runner keeps a
+  step deadline every process it starts stops by, nested composite steps
+  taking the nearer one.
+- **Not yet:** a deployment's `ref` that is neither a branch nor a commit
+  is read as a tag; `on: delete`.
+
 ## A repository that maintains itself
 
 > **2026-10-04:** the user asked for Dependabot, GitHub Advanced Security and

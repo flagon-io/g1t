@@ -176,6 +176,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::GetPullRequest => through::<work::PullDetail>(op, sent),
         Op::MarkPullRequestReady
         | Op::ClosePullRequest
+        | Op::ReopenPullRequest
+        | Op::ConvertPullRequestToDraft
         | Op::MergePullRequest
         | Op::AssignIssue
         | Op::RequestReviewers
@@ -289,6 +291,9 @@ fn no_route_answers_with_camel_case() {
 fn every_route_has_a_sample() {
     let document = document();
     for route in crate::rest::ROUTES {
+        if route.no_content() {
+            continue;
+        }
         let path = route
             .path
             .split('/')

@@ -29,16 +29,17 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `repository_dispatch` | The same, from g1t's own pushes, pull requests, issues, comments and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag; `repository_dispatch` on [a dispatch event](#repository-dispatch). |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, issues, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag; `repository_dispatch` on [a dispatch event](#repository-dispatch). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
+| `timeout-minutes` and `continue-on-error` on a step | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
 | `concurrency` with `cancel-in-progress`, for the workflow or for one job | The same: one run, or one job, of a group at a time. |
 | `permissions:` for the workflow or for one job, `read-all`, `write-all` | The same: they decide what [the job's token](#the-jobs-token) may do. |
 | `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, `success()`, `failure()`, `always()` and `cancelled()`. |
 | `run:` with `bash`, `sh`, `python` or a custom shell | The same. |
-| JavaScript actions (`uses: owner/repo@v7`) | Fetched from GitHub and run as they are, on Node 24, the runtime current actions declare. |
+| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
 | Composite actions | The same. |
-| Reusable workflows in the repository (`jobs.<id>.uses: ./.g1t/workflows/build.yml`) | The same: `with:` inputs, `on.workflow_call` outputs, and nesting up to four deep. `./.github/workflows/…` finds the workflow under `.g1t/` after the move. Their jobs read the repository's secrets and variables. |
+| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, and nesting up to four deep. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
 | `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::` | The same: errors and warnings become annotations on the run, and [masked](#masking-secrets) values stay hidden. |
@@ -66,7 +67,6 @@ anything in it that runs differently.
 - **Docker's `type=gha` build cache.** Buildx skips it on g1t, and the
   build runs without a cache. Use a registry cache instead; see
   [caching image builds](#caching-image-builds).
-- **Reusable workflows from other repositories** (`uses: owner/repo/.github/workflows/x.yml@v1`); ones in the same repository work.
 - **Actions that upload artifacts with the toolkit's artifact library
   themselves.** The library refuses to run against any server but
   github.com. `actions/upload-artifact`, `actions/download-artifact` and
@@ -77,6 +77,114 @@ anything in it that runs differently.
 
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
+
+## Actions and workflows from other repositories
+
+A step's `uses: owner/repo@ref` (or `owner/repo/path@ref`) and a job's
+`uses: owner/repo/.g1t/workflows/build.yml@ref` name another repository.
+g1t looks for it on g1t first:
+
+| The repository | What happens |
+| --- | --- |
+| On g1t and public | Your workflows use it, from any workspace. |
+| On g1t, private, in your workspace, with **Access** set to *Accessible from repositories in* the workspace | Your private repositories' workflows use it. A job reads it with a read-only token for that repository alone, which ends with the job. |
+| On g1t, private, and not shared that way | The step or job fails, and says why. A private repository's actions are never used by a public repository's workflows, whose logs anyone can read, nor from another workspace. |
+| Not on g1t, or private in a workspace you cannot see | An action is fetched from GitHub, as before; a reusable workflow is read from a public repository on GitHub. |
+
+`ref` is a branch, a tag or a commit. A reusable workflow may be under
+`.g1t/workflows/` or `.github/workflows/`; a `.github/workflows/` path
+also finds the file under `.g1t/workflows/` in a repository moved to
+g1t. A `./.g1t/workflows/…` call inside a workflow from another
+repository reads from that repository, at the same ref.
+
+To share a private repository's actions and workflows with the rest of its
+workspace, an admin chooses **Settings → Actions → Access → Accessible from
+repositories in** the workspace, or calls
+`PUT /repos/{owner}/{repo}/actions/permissions/access` with
+`{"access_level": "organization"}` (`none` to stop).
+
+### Secrets for a called workflow
+
+A called workflow gets only the secrets its caller passes, plus
+`G1T_TOKEN` (`GITHUB_TOKEN`):
+
+```yaml
+jobs:
+  build:
+    uses: acme/shared/.g1t/workflows/build.yml@v2
+    with:
+      node-version: 24
+    secrets:
+      npm-token: ${{ secrets.NPM_TOKEN }}
+
+  deploy:
+    uses: ./.g1t/workflows/deploy.yml
+    secrets: inherit
+```
+
+- `secrets:` with names passes each as the called workflow names it,
+  read from the caller's `secrets`, `needs`, `inputs`, `matrix`,
+  `github` and `vars`.
+- `secrets: inherit` passes every secret the caller has.
+- A job in the called workflow with its own `environment:` also reads that
+  environment's secrets, over what was passed.
+- A secret the called workflow marks `required: true` under
+  `on.workflow_call.secrets` that the caller does not pass fails the
+  calling job before anything runs.
+
+`vars` are the calling repository's, and a called workflow's jobs run
+with the calling run's `github` context: `actions/checkout` checks out the
+calling repository.
+
+## Releases
+
+Workflows with `on: release` start when a release changes, at the commit
+its tag names (`GITHUB_REF` is `refs/tags/<tag>`). Each change is one or
+more activity types, which `types:` chooses among:
+
+| Change | Activity types |
+| --- | --- |
+| A draft made | `created` |
+| A release made and published | `created`, `published`, and `released` (or `prereleased` for a prerelease) |
+| A draft published | `published`, and `released` or `prereleased` |
+| A prerelease made a full release | `edited` and `released` |
+| Made a draft again | `unpublished` |
+| Title, notes or prerelease changed | `edited`, with `github.event.changes` holding the old title and notes |
+| Deleted (the tag stays) | `deleted` |
+
+```yaml
+on:
+  release:
+    types: [published]
+```
+
+`github.event.release` has `tag_name`, `name`, `body`, `draft`,
+`prerelease`, `target_commitish`, `author` and `html_url`. A release a
+job's own token makes or changes starts no workflows.
+
+## Deployments
+
+`on: deployment` starts when a deployment is made, and
+`on: deployment_status` when one has a new status: one reported through
+the [deployments API](/guides/deployments-api/) or a
+[g1t.page](/guides/deployments/) build. The run is at the commit deployed;
+`GITHUB_REF` is the branch or tag deployed, and empty for a bare commit.
+
+```yaml
+on: deployment_status
+
+jobs:
+  smoke:
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS "${{ github.event.deployment_status.environment_url }}"
+```
+
+`github.event.deployment` has `environment`, `ref`, `sha`, `task` and
+`payload`; `github.event.deployment_status` has `state`, `environment_url`
+and `log_url`. Deployments a workflow makes, with `environment:` or with
+its job's token, start no workflows, so a workflow cannot set itself off.
 
 ## The runner
 
@@ -652,10 +760,12 @@ a commit is pushed to it, and, for one g1t makes, when g1t
 marks it ready, which on g1t is when it first has code. Each head runs
 each workflow once.
 
-They also start on the activity types `labeled`, `unlabeled`,
-`milestoned`, `demilestoned`, `assigned`, `review_requested` and
-`closed`, and `edited` when the branch a pull request merges into
-changes; `issues` workflows on `labeled`, `unlabeled`, `milestoned` and
+They also start on the activity types `reopened` (also run by
+default, as `opened` and `synchronize` are), `converted_to_draft`,
+`ready_for_review`, `labeled`, `unlabeled`, `milestoned`, `demilestoned`,
+`assigned`, `review_requested` and `closed`, and `edited` when the branch
+a pull request merges into changes; `issue_comment` workflows on
+`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `issues` workflows on `labeled`, `unlabeled`, `milestoned` and
 `demilestoned` too. List them under `types:` to run on them. For
 `labeled` and `unlabeled`, `github.event.label` names the label. A pull
 request's `branches` filter, `github.base_ref` and
@@ -1014,6 +1124,7 @@ usually work once they point at `https://api.g1t.sh`.
 | `get_permissions`, `set_permissions` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/workflow`, with `default_workflow_permissions` (`read`, `write` or `inherit`) and `can_approve_pull_request_reviews` |
 | `get_workspace_permissions`, `set_workspace_permissions` | `GET` and `PUT /workspaces/{workspace}/actions/permissions/workflow`, with `default_workflow_permissions`, `max_workflow_permissions` and `can_approve_pull_request_reviews` |
 | `get_approval_policy`, `set_approval_policy` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` |
+| `get_access`, `set_access` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/access`, with `access_level` (`none` or `organization`) |
 | `repository_dispatch` | `POST /repos/{owner}/{repo}/dispatches` with `event_type` and `client_payload` |
 | `list_artifacts` | `GET /repos/{owner}/{repo}/actions/artifacts`, with `name`, `page`, `per_page` |
 | `run_artifacts` | `GET …/actions/runs/{id}/artifacts`, with `name` |

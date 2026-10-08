@@ -174,6 +174,8 @@ pub enum Op {
     UpdateMilestone,
     DeleteMilestone,
     AddComment,
+    EditComment,
+    DeleteComment,
     ReviewPullRequest,
     ListPullRequests,
     GetPullRequest,
@@ -182,7 +184,9 @@ pub enum Op {
     RecordSession,
     ReadSession,
     MarkPullRequestReady,
+    ConvertPullRequestToDraft,
     ClosePullRequest,
+    ReopenPullRequest,
     GetPullRequestChanges,
     MergePullRequest,
     ListEvents,
@@ -433,6 +437,13 @@ fn numbered(more: Value) -> Value {
     properties
 }
 
+fn comment_id_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "The comment's id, such as \"cmt_01J9Z8\": each comment's id in get_issue or get_pull_request.",
+    })
+}
+
 fn workspace_schema() -> Value {
     json!({ "type": "string", "description": "The workspace's slug, e.g. \"flagon-io\"." })
 }
@@ -671,7 +682,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 308] = [
+    pub const ALL: [Op; 314] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -744,6 +755,8 @@ impl Op {
         Op::UpdateMilestone,
         Op::DeleteMilestone,
         Op::AddComment,
+        Op::EditComment,
+        Op::DeleteComment,
         Op::ReviewPullRequest,
         Op::ListPullRequests,
         Op::GetPullRequest,
@@ -752,7 +765,9 @@ impl Op {
         Op::RecordSession,
         Op::ReadSession,
         Op::MarkPullRequestReady,
+        Op::ConvertPullRequestToDraft,
         Op::ClosePullRequest,
+        Op::ReopenPullRequest,
         Op::GetPullRequestChanges,
         Op::MergePullRequest,
         Op::ListEvents,
@@ -954,6 +969,8 @@ impl Op {
         Op::Protection(ProtectionOp::SetWorkflowPermissions),
         Op::Protection(ProtectionOp::GetForkPrApproval),
         Op::Protection(ProtectionOp::SetForkPrApproval),
+        Op::Protection(ProtectionOp::GetActionsAccess),
+        Op::Protection(ProtectionOp::SetActionsAccess),
         Op::Protection(ProtectionOp::CreateRepositoryDispatch),
         Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
         Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
@@ -1061,6 +1078,8 @@ impl Op {
             Op::UpdateMilestone => "update_milestone",
             Op::DeleteMilestone => "delete_milestone",
             Op::AddComment => "add_comment",
+            Op::EditComment => "edit_comment",
+            Op::DeleteComment => "delete_comment",
             Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
             Op::GetPullRequest => "get_pull_request",
@@ -1070,6 +1089,8 @@ impl Op {
             Op::ReadSession => "read_session",
             Op::MarkPullRequestReady => "mark_pull_request_ready",
             Op::ClosePullRequest => "close_pull_request",
+            Op::ReopenPullRequest => "reopen_pull_request",
+            Op::ConvertPullRequestToDraft => "convert_pull_request_to_draft",
             Op::GetPullRequestChanges => "get_pull_request_changes",
             Op::MergePullRequest => "merge_pull_request",
             Op::ListEvents => "list_events",
@@ -1394,6 +1415,12 @@ impl Op {
             Op::AddComment => {
                 "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
             }
+            Op::EditComment => {
+                "Change the text of a comment on an issue or a pull request, named by comment_id (the id get_issue and get_pull_request give each comment). Its author may edit it, and so may anyone with the Maintain role or higher. Notes of what happened, such as \"closed this\", cannot be edited. Publishes comment.edited with what it said before."
+            }
+            Op::DeleteComment => {
+                "Delete a comment on an issue or a pull request, named by comment_id. Its author may delete it, and so may anyone with the Maintain role or higher. A review that approved or requested changes cannot be deleted, only edited, and notes of what happened cannot be deleted. This cannot be undone. Publishes comment.deleted with the comment as it was."
+            }
             Op::ReviewPullRequest => {
                 "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by)."
             }
@@ -1407,7 +1434,7 @@ impl Op {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
             }
             Op::UpdatePullRequest => {
-                "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
+                "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after."
             }
             Op::RecordSession => {
                 "Append entries to a pull request's session: the prompt you were given, your reasoning, the tools you ran. This is how people later see why a change was made, so record as you work, not only at the end."
@@ -1417,6 +1444,8 @@ impl Op {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
             }
             Op::ClosePullRequest => "Close a pull request without merging it. Its author may close their own, and whoever asked g1t for one may close that one; anyone else needs the Triage role or higher.",
+            Op::ReopenPullRequest => "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit.",
+            Op::ConvertPullRequestToDraft => "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft.",
             Op::GetPullRequestChanges => {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
             }
@@ -2219,6 +2248,8 @@ impl Op {
             | Op::ReopenIssue
             | Op::GetPullRequest
             | Op::ClosePullRequest
+            | Op::ReopenPullRequest
+            | Op::ConvertPullRequestToDraft
             | Op::GetPullRequestChanges => just_numbered(),
             Op::CreateIssue => object(
                 json!({
@@ -2352,6 +2383,18 @@ impl Op {
                 })),
                 &["repo", "number", "body"],
             ),
+            Op::EditComment => object(
+                json!({
+                    "repo": repo_schema(),
+                    "comment_id": comment_id_schema(),
+                    "body": { "type": "string", "description": "The new text, in Markdown." },
+                }),
+                &["repo", "comment_id", "body"],
+            ),
+            Op::DeleteComment => object(
+                json!({ "repo": repo_schema(), "comment_id": comment_id_schema() }),
+                &["repo", "comment_id"],
+            ),
             Op::ReviewPullRequest => object(
                 numbered(json!({
                     "verdict": { "type": "string", "enum": ["approve", "request_changes"] },
@@ -2374,6 +2417,11 @@ impl Op {
             ),
             Op::UpdatePullRequest => object(
                 numbered(json!({
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed"],
+                        "description": "open reopens it if it is closed (never once merged); closed closes it without merging. Either is left as it is when it already is.",
+                    },
                     "base": {
                         "type": "string",
                         "description": "The branch it merges into: an existing branch other than its own. Needs the Write role.",
@@ -3192,7 +3240,10 @@ impl Op {
                         | DeploymentsOp::GetEnvironment
                 )
                 | Op::Protection(
-                    ProtectionOp::GetPendingDeployments | ProtectionOp::GetWorkflowPermissions | ProtectionOp::GetForkPrApproval
+                    ProtectionOp::GetPendingDeployments
+                        | ProtectionOp::GetWorkflowPermissions
+                        | ProtectionOp::GetForkPrApproval
+                        | ProtectionOp::GetActionsAccess
                 )
         )
     }
@@ -4420,21 +4471,56 @@ impl Op {
                 .await
             }
             Op::UpdatePullRequest => {
-                pass(
-                    work,
-                    "update_pull",
-                    &UpdatePullArgs {
-                        actor: actor(),
-                        repo,
-                        number,
-                        assignees: strings(input, "assignees"),
-                        reviewers: strings(input, "reviewers"),
-                        labels: strings(input, "labels"),
-                        milestone: milestone_input(input),
-                        base: optional_text(input, "base"),
-                    },
-                )
-                .await
+                // `state` reopens a closed pull request (first, so that the
+                // rest can change it) or closes an open one (last).
+                let wanted = optional_text(input, "state");
+                if wanted.as_deref().is_some_and(|state| state != "open" && state != "closed") {
+                    return failed(FailureCode::Invalid, "state must be open or closed.");
+                }
+                let mut current = None;
+                if wanted.is_some() {
+                    let found: Outcome<PullDetail> = call(work, "get_pull", &view()).await?;
+                    match found {
+                        Outcome::Ok(detail) => current = Some(detail.pull),
+                        Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                    }
+                }
+                let status = current.as_ref().map(|pull| pull.status);
+                let mut answer = current.map(|pull| serde_json::to_value(pull)).transpose()?;
+                if wanted.as_deref() == Some("open") && status == Some(PullStatus::Closed) {
+                    match pass(work, "reopen_pull", &pull_action()).await? {
+                        Outcome::Ok(pull) => answer = Some(pull),
+                        failure => return Ok(failure),
+                    }
+                }
+                let changes = ["assignees", "reviewers", "labels", "milestone", "base"]
+                    .iter()
+                    .any(|key| input.get(*key).is_some());
+                if changes || wanted.is_none() {
+                    let updated = pass(
+                        work,
+                        "update_pull",
+                        &UpdatePullArgs {
+                            actor: actor(),
+                            repo: repo.clone(),
+                            number,
+                            assignees: strings(input, "assignees"),
+                            reviewers: strings(input, "reviewers"),
+                            labels: strings(input, "labels"),
+                            milestone: milestone_input(input),
+                            base: optional_text(input, "base"),
+                        },
+                    )
+                    .await?;
+                    match updated {
+                        Outcome::Ok(pull) => answer = Some(pull),
+                        failure => return Ok(failure),
+                    }
+                }
+                if wanted.as_deref() == Some("closed") && status.is_some_and(PullStatus::is_active) {
+                    return pass(work, "close_pull", &pull_action()).await;
+                }
+                Ok(Outcome::Ok(answer.unwrap_or(Value::Null)))
             }
             Op::AddComment | Op::ReviewPullRequest => {
                 let verdict = match (self, input["verdict"].as_str()) {
@@ -4538,6 +4624,18 @@ impl Op {
             Op::ReadSession => pass(work, "read_session", &view()).await,
             Op::MarkPullRequestReady => pass(work, "ready_pull", &pull_action()).await,
             Op::ClosePullRequest => pass(work, "close_pull", &pull_action()).await,
+            Op::ReopenPullRequest => pass(work, "reopen_pull", &pull_action()).await,
+            Op::ConvertPullRequestToDraft => pass(work, "convert_pull_to_draft", &pull_action()).await,
+            Op::EditComment | Op::DeleteComment => {
+                let asked = CommentActionArgs {
+                    actor: actor(),
+                    repo,
+                    comment_id: text(input, "comment_id"),
+                    body: text(input, "body"),
+                };
+                let method = if self == Op::EditComment { "edit_comment" } else { "delete_comment" };
+                pass(work, method, &asked).await
+            }
             Op::MergePullRequest => pass(work, "merge_pull", &pull_action()).await,
             Op::GetPullRequestChanges => {
                 let found: Outcome<PullDetail> = call(work, "get_pull", &view()).await?;

@@ -623,6 +623,7 @@ mod tests {
             line: None,
             verdict,
             created_at: String::new(),
+            edited_at: None,
         }
     }
 

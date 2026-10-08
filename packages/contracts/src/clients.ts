@@ -447,6 +447,8 @@ export function workClient(service: ServiceBinding): WorkApi {
     counts: (repo, viewer) => call("counts", { repo, viewer }),
     addComment: (actor, repo, number, comment) =>
       call("add_comment", { actor, repo, number, ...comment }),
+    editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
+    deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
     startChecks: (pullId) => call("start_checks", { pullId }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
@@ -496,6 +498,8 @@ export function workClient(service: ServiceBinding): WorkApi {
     readyPull: (actor, repo, number, summary) =>
       call("ready_pull", { actor, repo, number, summary }),
     closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),
+    reopenPull: (actor, repo, number) => call("reopen_pull", { actor, repo, number }),
+    convertPullToDraft: (actor, repo, number) => call("convert_pull_to_draft", { actor, repo, number }),
     mergePull: (actor, repo, number, options = {}) =>
       call("merge_pull", { actor, repo, number, ...options }),
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),

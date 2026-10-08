@@ -14,6 +14,8 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "pull.opened" => pull("opened"),
         "pull.updated" => pull("synchronize"),
         "pull.ready" => pull("ready_for_review"),
+        "pull.reopened" => pull("reopened"),
+        "pull.converted_to_draft" => pull("converted_to_draft"),
         "pull.closed" | "pull.merged" => pull("closed"),
         "pull.assigned" => pull("assigned"),
         "pull.review_requested" => pull("review_requested"),
@@ -33,6 +35,17 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "issue.milestoned" => vec![("issues", Some("milestoned"))],
         "issue.demilestoned" => vec![("issues", Some("demilestoned"))],
         "comment.created" => vec![("issue_comment", Some("created"))],
+        "comment.edited" => vec![("issue_comment", Some("edited"))],
+        "comment.deleted" => vec![("issue_comment", Some("deleted"))],
+        "release.created" => vec![("release", Some("created"))],
+        "release.published" => vec![("release", Some("published"))],
+        "release.released" => vec![("release", Some("released"))],
+        "release.prereleased" => vec![("release", Some("prereleased"))],
+        "release.edited" => vec![("release", Some("edited"))],
+        "release.unpublished" => vec![("release", Some("unpublished"))],
+        "release.deleted" => vec![("release", Some("deleted"))],
+        "deployment.created" => vec![("deployment", None)],
+        "deployment_status.created" => vec![("deployment_status", Some("created"))],
         "review.completed" => vec![("pull_request_review", Some("submitted"))],
         "workflow.completed" => vec![("workflow_run", Some("completed"))],
         _ => Vec::new(),
@@ -209,6 +222,16 @@ mod tests {
         assert_eq!(github_events("pull.unlabeled")[0], ("pull_request", Some("unlabeled")));
         assert_eq!(github_events("pull.milestoned")[1], ("pull_request_target", Some("milestoned")));
         assert_eq!(github_events("pull.base_changed")[0], ("pull_request", Some("edited")));
+        assert_eq!(github_events("pull.reopened")[0], ("pull_request", Some("reopened")));
+        assert_eq!(github_events("pull.converted_to_draft")[1], ("pull_request_target", Some("converted_to_draft")));
+        assert_eq!(github_events("comment.edited"), [("issue_comment", Some("edited"))]);
+        assert_eq!(github_events("comment.deleted"), [("issue_comment", Some("deleted"))]);
+        assert_eq!(github_events("release.published"), [("release", Some("published"))]);
+        assert_eq!(github_events("release.prereleased"), [("release", Some("prereleased"))]);
+        assert_eq!(github_events("deployment_status.created"), [("deployment_status", Some("created"))]);
+        assert_eq!(github_events("deployment.created"), [("deployment", None)]);
+        // g1t.page's own deployment outcomes are the inbox's, not a GitHub event.
+        assert!(github_events("deployment.succeeded").is_empty());
         assert!(github_events("session.appended").is_empty());
     }
 

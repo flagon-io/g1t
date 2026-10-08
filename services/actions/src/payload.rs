@@ -209,3 +209,94 @@ pub fn pull_as_issue(repo: &Repo, pull: &Pull) -> Value {
     })
 }
 
+/// A comment as the event that deleted it kept it (`comment.deleted`'s
+/// `comment`), since it can no longer be read.
+pub fn deleted_comment(repo: &Repo, number: u32, kept: &Value, on_pull: bool) -> Value {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let page = if on_pull { "pull" } else { "issues" };
+    let id = kept["id"].as_str().unwrap_or_default();
+    let login = kept["author"]["username"].as_str().unwrap_or_default();
+    json!({
+        "id": id,
+        "body": kept["body"],
+        "user": user(login),
+        "created_at": kept["createdAt"],
+        "updated_at": kept["createdAt"],
+        "path": kept["path"],
+        "line": kept["line"],
+        "html_url": format!("{SITE}/{full_name}/{page}/{number}#{id}"),
+    })
+}
+
+/// A release, from what a `release.*` event carries
+/// (`g1t_contracts::about::Release`).
+pub fn release(repo: &Repo, release: &Value) -> Value {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let tag = release["tagName"].as_str().unwrap_or_default();
+    let id = release["id"].as_str().unwrap_or_default();
+    json!({
+        "id": id,
+        "node_id": id,
+        "tag_name": tag,
+        "target_commitish": release["target"],
+        "name": release["name"].as_str().unwrap_or(tag),
+        "body": release["body"],
+        "draft": release["draft"].as_bool().unwrap_or(false),
+        "prerelease": release["prerelease"].as_bool().unwrap_or(false),
+        "created_at": release["createdAt"],
+        "published_at": release["publishedAt"],
+        "author": user(release["author"].as_str().unwrap_or(&repo.namespace)),
+        "assets": [],
+        "html_url": format!("{SITE}/{full_name}/releases/tag/{tag}"),
+        "url": format!("{API}/repos/{full_name}/releases/{id}"),
+    })
+}
+
+/// A deployment, from what `deployment.created` and
+/// `deployment_status.created` carry (`RepoDeployment`, already in GitHub's
+/// spelling).
+pub fn deployment(repo: &Repo, deployment: &Value) -> Value {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let id = deployment["id"].as_str().unwrap_or_default();
+    json!({
+        "id": id,
+        "node_id": id,
+        "sha": deployment["sha"],
+        "ref": deployment["ref"],
+        "task": deployment["task"].as_str().unwrap_or("deploy"),
+        "payload": deployment.get("payload").filter(|p| p.is_object()).cloned().unwrap_or_else(|| json!({})),
+        "environment": deployment["environment"],
+        "original_environment": deployment["environment"],
+        "description": deployment["description"],
+        "creator": user(deployment["creator"].as_str().unwrap_or("g1t")),
+        "transient_environment": deployment["transient_environment"].as_bool().unwrap_or(false),
+        "production_environment": deployment["production_environment"].as_bool().unwrap_or(false),
+        "created_at": deployment["created_at"],
+        "updated_at": deployment["updated_at"],
+        "url": format!("{API}/repos/{full_name}/deployments/{id}"),
+        "statuses_url": format!("{API}/repos/{full_name}/deployments/{id}/statuses"),
+    })
+}
+
+/// A deployment's status (`DeploymentStatus`), for `deployment_status`.
+pub fn deployment_status(repo: &Repo, status: &Value, deployment: &Value) -> Value {
+    let full_name = format!("{}/{}", repo.namespace, repo.name);
+    let deployment_id = deployment["id"].as_str().unwrap_or_default();
+    let id = status["id"].as_str().unwrap_or_default();
+    json!({
+        "id": id,
+        "node_id": id,
+        "state": status["state"],
+        "description": status["description"].as_str().unwrap_or_default(),
+        "environment": deployment["environment"],
+        "environment_url": status["environment_url"].as_str().unwrap_or_default(),
+        "log_url": status["log_url"].as_str().unwrap_or_default(),
+        "target_url": status["log_url"].as_str().unwrap_or_default(),
+        "creator": user(status["creator"].as_str().unwrap_or("g1t")),
+        "created_at": status["created_at"],
+        "updated_at": status["created_at"],
+        "deployment_url": format!("{API}/repos/{full_name}/deployments/{deployment_id}"),
+        "url": format!("{API}/repos/{full_name}/deployments/{deployment_id}/statuses/{id}"),
+    })
+}
+

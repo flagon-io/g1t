@@ -48,6 +48,9 @@ struct SettingsRow {
     default_permissions: Option<String>,
     approval_policy: Option<String>,
     can_approve_pulls: Option<u32>,
+    /// Migration 0008: who may use its actions and reusable workflows.
+    #[serde(default)]
+    access_level: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -259,7 +262,7 @@ impl Actions {
     async fn repo_choices(&self, repo_id: &str) -> Result<SettingsRow> {
         Ok(self
             .db
-            .prepare("SELECT default_permissions, approval_policy, can_approve_pulls FROM repo_settings WHERE repo_id = ?")
+            .prepare("SELECT default_permissions, approval_policy, can_approve_pulls, access_level FROM repo_settings WHERE repo_id = ?")
             .bind(&[repo_id.into()])?
             .first::<SettingsRow>(None)
             .await?
@@ -310,6 +313,7 @@ impl Actions {
             approval_policy: row.approval_policy.unwrap_or_else(|| DEFAULT_APPROVAL_POLICY.to_owned()),
             can_approve_pull_requests: workspace.can_approve_pull_requests && row.can_approve_pulls == Some(1),
             workspace_allows_pull_requests: workspace.can_approve_pull_requests,
+            access_level: row.access_level.as_deref().and_then(g1t_contracts::actions::access_level).unwrap_or("none").to_owned(),
         })
     }
 
@@ -326,6 +330,12 @@ impl Actions {
     /// The approval policy of a repository.
     pub(crate) async fn approval_policy(&self, repo_id: &str) -> Result<String> {
         Ok(self.repo_choices(repo_id).await?.approval_policy.unwrap_or_else(|| DEFAULT_APPROVAL_POLICY.to_owned()))
+    }
+
+    /// Who may use a repository's actions and reusable workflows when it is
+    /// private: `none` or `organization`.
+    pub(crate) async fn access_level_of(&self, repo_id: &str) -> Result<&'static str> {
+        Ok(self.repo_choices(repo_id).await?.access_level.as_deref().and_then(g1t_contracts::actions::access_level).unwrap_or("none"))
     }
 
     pub async fn actions_settings(&self, a: ActionsSettingsArgs) -> Result<Outcome<ActionsSettings>> {
@@ -373,13 +383,19 @@ impl Actions {
             }
             row.can_approve_pulls = Some(u32::from(allow));
         }
+        if let Some(level) = &a.access_level {
+            match g1t_contracts::actions::access_level(level) {
+                Some(level) => row.access_level = Some(level.to_owned()),
+                None => return Ok(fail(FailureCode::Invalid, "access_level is none or organization.")),
+            }
+        }
         // 0006's artifact retention is kept, or its default for a new row.
         self.db
             .prepare(
-                "INSERT INTO repo_settings (repo_id, artifact_retention_days, default_permissions, approval_policy, can_approve_pulls, updated_at, updated_by)
-                 VALUES (?1, ?7, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO repo_settings (repo_id, artifact_retention_days, default_permissions, approval_policy, can_approve_pulls, access_level, updated_at, updated_by)
+                 VALUES (?1, ?7, ?2, ?3, ?4, ?8, ?5, ?6)
                  ON CONFLICT (repo_id) DO UPDATE SET default_permissions = ?2, approval_policy = ?3, can_approve_pulls = ?4,
-                   updated_at = ?5, updated_by = ?6",
+                   access_level = ?8, updated_at = ?5, updated_by = ?6",
             )
             .bind(&[
                 repo.id.as_str().into(),
@@ -389,6 +405,7 @@ impl Actions {
                 now().into(),
                 a.actor.username.as_str().into(),
                 g1t_contracts::actions::ARTIFACT_RETENTION_DEFAULT_DAYS.into(),
+                optional(row.access_level.as_deref()),
             ])?
             .run()
             .await?;

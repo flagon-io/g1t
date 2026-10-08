@@ -273,6 +273,30 @@ pub struct ActionsSettings {
     /// Whether the workspace lets its repositories turn that on.
     #[serde(default)]
     pub workspace_allows_pull_requests: bool,
+    /// Who may use this repository's actions and reusable workflows from
+    /// their workflows, when it is private: `none` (only itself, the
+    /// default) or `organization` (private repositories of its workspace).
+    /// A public repository's are anyone's. See [`ACCESS_LEVELS`].
+    #[serde(default = "no_access")]
+    pub access_level: String,
+}
+
+fn no_access() -> String {
+    "none".to_owned()
+}
+
+/// The values of `access_level`. `user` is read as `organization`: a
+/// personal account's repositories are its own workspace's.
+pub const ACCESS_LEVELS: [&str; 2] = ["none", "organization"];
+
+/// `access_level` as given, as one of [`ACCESS_LEVELS`]; None when it is
+/// not one.
+pub fn access_level(given: &str) -> Option<&'static str> {
+    match given.trim().to_ascii_lowercase().as_str() {
+        "none" | "" => Some("none"),
+        "organization" | "user" | "workspace" => Some("organization"),
+        _ => None,
+    }
 }
 
 fn write() -> String {
@@ -343,6 +367,10 @@ pub struct SetActionsSettingsArgs {
     pub approval_policy: Option<String>,
     #[serde(default)]
     pub can_approve_pull_requests: Option<bool>,
+    /// `none`, or `organization` (`user` reads the same). See
+    /// [`ActionsSettings::access_level`].
+    #[serde(default)]
+    pub access_level: Option<String>,
 }
 
 /// `environments`: every environment a repository's workflows, secrets,

@@ -1,5 +1,5 @@
 //! `uses:` steps: `actions/checkout` done natively against g1t, actions
-//! fetched from GitHub and run as they are (JavaScript, composite and
+//! fetched from another repository on g1t (or else GitHub) and run as they are (JavaScript, composite and
 //! Docker), `docker://` images, and a few of GitHub's own whose services
 //! g1t does not have yet.
 
@@ -24,6 +24,8 @@ const ACTIONS_DIR: &str = "/home/runner/_actions";
 /// Where an action comes from.
 enum Source {
     Local(PathBuf),
+    /// Another repository: on g1t when g1t has it and this one may use
+    /// it, otherwise on GitHub.
     GitHub { owner: String, repo: String, path: String, git_ref: String },
 }
 
@@ -43,7 +45,7 @@ impl Job {
         }
         command.args(args).env("GIT_TERMINAL_PROMPT", "0");
         let mut commands = Commands::default();
-        matches!(process::run(command, Duration::from_secs(600), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
+        matches!(process::run(command, Duration::from_secs(600).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
     }
 
     /// A fetch, tried again after a short wait when it fails: a transfer
@@ -97,7 +99,9 @@ impl Job {
             Some(r) if is_sha(r) => ("HEAD".into(), Some(r.clone()), None),
             Some(r) if r.starts_with("refs/") => (r.clone(), None, r.strip_prefix("refs/heads/").map(str::to_owned)),
             Some(r) => (r.clone(), None, Some(r.clone())),
-            None if same && run_ref.starts_with("refs/pull/") => ("HEAD".into(), Some(run_sha.clone()), None),
+            // A pull request's merge ref, or no ref at all (a deployment of
+            // a bare commit): the commit itself.
+            None if same && (run_ref.starts_with("refs/pull/") || run_ref.is_empty()) => ("HEAD".into(), Some(run_sha.clone()), None),
             None if same => (run_ref.clone(), Some(run_sha.clone()), run_ref.strip_prefix("refs/heads/").map(str::to_owned)),
             None => ("HEAD".into(), None, None),
         };
@@ -169,6 +173,68 @@ impl Job {
         (true, outputs)
     }
 
+    /// Fetches another repository's action, once per job: from g1t when
+    /// g1t has the repository and this one may use it, otherwise from
+    /// GitHub. A private repository on g1t that may not be used here fails
+    /// the step, saying why, rather than fetching something else by its
+    /// name.
+    fn fetch_remote_action(&mut self, owner: &str, repo: &str, git_ref: &str) -> Option<PathBuf> {
+        let on_g1t = super::paths::under_home(ACTIONS_DIR).join("_g1t").join(owner).join(repo).join(git_ref);
+        let on_github = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
+        for dir in [&on_g1t, &on_github] {
+            if dir.join(".g1t-fetched").exists() {
+                return Some(dir.clone());
+            }
+        }
+        if !(safe(owner) && safe(repo) && safe(git_ref)) {
+            self.log.line(&format!("##[error]`{owner}/{repo}@{git_ref}` is not a name g1t can fetch."));
+            return None;
+        }
+        match self.log.api.action(&format!("{owner}/{repo}"), git_ref) {
+            Ok(found) if found["source"] == "g1t" => self.fetch_g1t_action(&on_g1t, owner, repo, git_ref, &found),
+            Ok(_) => self.fetch_action(owner, repo, git_ref),
+            Err((true, why)) => {
+                self.log.line(&format!("##[error]{why}"));
+                None
+            }
+            Err((false, why)) => {
+                self.log.line(&format!("##[warning]g1t could not say where {owner}/{repo} is ({why}); fetching it from GitHub."));
+                self.fetch_action(owner, repo, git_ref)
+            }
+        }
+    }
+
+    /// Fetches an action from a repository on g1t, at its ref, with the
+    /// read-only token g1t gave for it when it is private.
+    fn fetch_g1t_action(&mut self, dir: &Path, owner: &str, repo: &str, git_ref: &str, found: &Value) -> Option<PathBuf> {
+        let url = found["url"].as_str().unwrap_or_default().to_owned();
+        let token = found["token"].as_str().filter(|token| !token.is_empty()).map(str::to_owned);
+        if let Some(token) = &token {
+            self.log.add_mask(token);
+        }
+        let auth = token.map(|token| format!("AUTHORIZATION: basic {}", STANDARD.encode(format!("x-access-token:{token}"))));
+        self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' from g1t"));
+        let _ = std::fs::remove_dir_all(dir);
+        if std::fs::create_dir_all(dir).is_err() || !self.git(dir, &["init", "--quiet"], None) || !self.git(dir, &["remote", "add", "origin", &url], None) {
+            return None;
+        }
+        // A branch or tag at its tip; a commit may need the history.
+        let shallow = self.fetch_retrying(dir, &["fetch", "--depth=1", "--no-tags", "--quiet", "origin", git_ref], auth.as_deref());
+        let checked_out = if shallow {
+            self.git(dir, &["checkout", "--quiet", "--force", "--detach", "FETCH_HEAD"], None)
+        } else {
+            self.fetch_retrying(dir, &["fetch", "--quiet", "--tags", "origin", "+refs/heads/*:refs/remotes/origin/*"], auth.as_deref())
+                && self.git(dir, &["checkout", "--quiet", "--force", "--detach", git_ref], None)
+        };
+        if !checked_out {
+            self.log.line(&format!("##[error]Could not fetch {owner}/{repo}@{git_ref} from g1t: is {git_ref} a branch, tag or commit there?"));
+            let _ = std::fs::remove_dir_all(dir);
+            return None;
+        }
+        let _ = std::fs::write(dir.join(".g1t-fetched"), "");
+        Some(dir.to_path_buf())
+    }
+
     /// Fetches an action from GitHub, once per job.
     fn fetch_action(&mut self, owner: &str, repo: &str, git_ref: &str) -> Option<PathBuf> {
         let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
@@ -186,7 +252,7 @@ impl Job {
         let mut command = Command::new("bash");
         command.args(["-c", &script]);
         let mut commands = Commands::default();
-        match process::run(command, Duration::from_secs(300), &mut self.log, &mut commands) {
+        match process::run(command, Duration::from_secs(300).min(self.remaining_time()), &mut self.log, &mut commands) {
             Ok(Ended::Exited(0)) => {
                 let _ = std::fs::write(dir.join(".g1t-fetched"), "");
                 Some(dir)
@@ -225,10 +291,10 @@ impl Job {
         };
         let ended = process::run(command, Duration::from_secs(6 * 3600).min(self.deadline_left()), &mut self.log, &mut commands);
         let ok = matches!(ended, Ok(Ended::Exited(0)));
-        if let Ok(Ended::Exited(code)) = ended
-            && code != 0
-        {
-            self.log.line(&format!("##[error]The action exited with code {code}."));
+        match ended {
+            Ok(Ended::Exited(code)) if code != 0 => self.log.line(&format!("##[error]The action exited with code {code}.")),
+            Ok(Ended::TimedOut) => self.log.line("##[error]The action ran past its time limit and was stopped."),
+            _ => {}
         }
         let (outputs, state) = self.absorb(&files, &commands);
         self.last_node_outputs = outputs;
@@ -313,7 +379,7 @@ impl Job {
         };
         let (dir, repository) = match &source {
             Source::Local(dir) => (dir.clone(), String::new()),
-            Source::GitHub { owner, repo, path, git_ref } => match self.fetch_action(owner, repo, git_ref) {
+            Source::GitHub { owner, repo, path, git_ref } => match self.fetch_remote_action(owner, repo, git_ref) {
                 Some(root) => (if path.is_empty() { root } else { root.join(path) }, format!("{owner}/{repo}")),
                 None => return (false, BTreeMap::new()),
             },

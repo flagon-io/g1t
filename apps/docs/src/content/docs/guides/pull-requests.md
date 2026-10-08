@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, and conflicts found before anyone tries to merge.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, drafts, closing and reopening, editing and deleting comments, and conflicts found before anyone tries to merge.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -159,6 +159,74 @@ takes `reviewers` (usernames) and `team_reviewers` (teams, as
 already; `DELETE` on the same route takes requests away. On
 the MCP server they are the `pull_request` tool's `request_reviewers` and
 `remove_requested_reviewers` actions.
+
+## Drafts, closing and reopening
+
+A draft is still being worked on: it can be reviewed, but it cannot merge
+until it is marked ready for review. Its author, whoever asked g1t for it,
+and anyone with the Triage [role](/guides/access-and-roles/) or higher can
+move a pull request between these states. An
+[archived](/guides/managing-repositories/) repository refuses all of them.
+
+### Convert to a draft
+
+To take a pull request that is ready for review back to a draft, select
+**Convert to draft** under the comment box. It leaves the
+[merge queue](/guides/merge-queue/) if it is in it, and a merge that was
+waiting for it to catch up is called off. Mark it ready again with
+**Mark ready for review**.
+
+Only an open pull request can be converted; a draft, a closed or a merged
+one is refused with `409`.
+
+### Reopen a pull request
+
+To open a closed pull request again, select **Reopen pull request** under
+the comment box. It comes back as it was when it was closed: a draft if it
+was closed as a draft, otherwise ready for review. Its checks and whether
+it merges cleanly are worked out again.
+
+A merged pull request cannot be reopened. Neither can one from a branch of
+the repository whose branch was deleted: push the branch again first.
+
+### From the API
+
+| To | Call | MCP |
+| --- | --- | --- |
+| Convert to a draft | `POST /repos/{owner}/{name}/pulls/{number}/draft` | `pull_request` with `"action": "draft"` |
+| Close | `POST /repos/{owner}/{name}/pulls/{number}/close`, or `PATCH /repos/{owner}/{name}/pulls/{number}` with `"state": "closed"` | `pull_request` with `"action": "close"` |
+| Reopen | `POST /repos/{owner}/{name}/pulls/{number}/reopen`, or `PATCH /repos/{owner}/{name}/pulls/{number}` with `"state": "open"` | `pull_request` with `"action": "reopen"` |
+
+Each answers with the pull request as it is now. Converting publishes
+`pull.converted_to_draft` and reopening publishes `pull.reopened`, with the
+head commit in `commit`; both reach [webhooks](/guides/webhooks/) and can
+start [workflows](/guides/actions/).
+
+## Editing and deleting comments
+
+You can edit and delete your own comments on issues and pull requests.
+Anyone with the Maintain [role](/guides/access-and-roles/) or higher can
+edit and delete anyone's.
+
+- To edit a comment, select **Edit** under it, change the text and select
+  **Save**. The comment shows **edited** beside its time.
+- To delete a comment, select **Delete** under it and confirm. It is
+  removed for everyone and cannot be brought back.
+
+A review that approved or requested changes can be edited but not deleted,
+so its verdict stays on record. The notes in the timeline of what happened,
+such as "closed this", cannot be edited or deleted.
+
+Through the API, `PATCH /repos/{owner}/{name}/issues/comments/{comment_id}`
+with `body` edits a comment and answers with it, and
+`DELETE /repos/{owner}/{name}/issues/comments/{comment_id}` deletes it and
+answers `204`. Both work for comments on issues and on pull requests; each
+comment's `id` is in `GET /repos/{owner}/{name}/issues/{number}` and
+`GET /repos/{owner}/{name}/pulls/{number}`. On the MCP server they are the
+`issue` tool's `edit_comment` and `delete_comment` actions. Editing
+publishes `comment.edited`, with what the comment said before in
+`changes.body.from`; deleting publishes `comment.deleted`, with the comment
+as it was in `comment`.
 
 ## Conflicts
 

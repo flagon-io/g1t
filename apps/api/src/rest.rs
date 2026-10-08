@@ -376,6 +376,8 @@ pub const ROUTES: &[Route] = &[
         Op::Protection(ProtectionOp::SetForkPrApproval),
         &[],
     ),
+    route("GET", "/repos/:owner/:name/actions/permissions/access", Op::Protection(ProtectionOp::GetActionsAccess), &[]),
+    route("PUT", "/repos/:owner/:name/actions/permissions/access", Op::Protection(ProtectionOp::SetActionsAccess), &[]),
     route("POST", "/repos/:owner/:name/dispatches", Op::Protection(ProtectionOp::CreateRepositoryDispatch), &[]),
     route(
         "GET",
@@ -842,6 +844,8 @@ pub const ROUTES: &[Route] = &[
         Op::AddComment,
         &[],
     ),
+    route("PATCH", "/repos/:owner/:name/issues/comments/:comment_id", Op::EditComment, &[]),
+    route("DELETE", "/repos/:owner/:name/issues/comments/:comment_id", Op::DeleteComment, &[]),
     route(
         "GET",
         "/repos/:owner/:name/pulls",
@@ -908,12 +912,14 @@ pub const ROUTES: &[Route] = &[
         Op::MarkPullRequestReady,
         &[],
     ),
+    route("POST", "/repos/:owner/:name/pulls/:number/draft", Op::ConvertPullRequestToDraft, &[]),
     route(
         "POST",
         "/repos/:owner/:name/pulls/:number/close",
         Op::ClosePullRequest,
         &[],
     ),
+    route("POST", "/repos/:owner/:name/pulls/:number/reopen", Op::ReopenPullRequest, &[]),
     route(
         "POST",
         "/repos/:owner/:name/pulls/:number/merge",
@@ -923,6 +929,12 @@ pub const ROUTES: &[Route] = &[
 ];
 
 impl Route {
+    /// Whether the route answers success with `204` and no body, as
+    /// GitHub's address for the same does. MCP still answers `true`.
+    pub fn no_content(&self) -> bool {
+        self.op == Op::DeleteComment
+    }
+
     /// The names of the route's path parameters, in order.
     pub fn params(&self) -> impl Iterator<Item = &'static str> {
         self.path
@@ -1254,6 +1266,29 @@ mod tests {
         let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "base": "release" })).unwrap();
         assert_eq!(route.op, Op::UpdatePullRequest);
         assert_eq!(input, json!({ "base": "release", "number": 9, "repo": "acme/web" }));
+    }
+
+    #[test]
+    fn pull_requests_reopen_and_turn_draft_and_comments_are_named_by_id() {
+        let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
+        assert_eq!(op("POST", "/repos/acme/web/pulls/9/reopen"), Op::ReopenPullRequest);
+        assert_eq!(op("POST", "/repos/acme/web/pulls/9/draft"), Op::ConvertPullRequestToDraft);
+        assert_eq!(op("POST", "/repos/acme/web/pulls/9/close"), Op::ClosePullRequest);
+        // Reopening and closing with a PATCH, as `state`.
+        let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "state": "open" })).unwrap();
+        assert_eq!(route.op, Op::UpdatePullRequest);
+        assert_eq!(input, json!({ "state": "open", "number": 9, "repo": "acme/web" }));
+        let (route, input) =
+            resolve("PATCH", "/repos/acme/web/issues/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
+        assert_eq!(route.op, Op::EditComment);
+        assert_eq!(input, json!({ "body": "Better", "comment_id": "cmt_1", "repo": "acme/web" }));
+        let (route, input) = resolve("DELETE", "/repos/acme/web/issues/comments/cmt_1", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::DeleteComment);
+        assert_eq!(input, json!({ "comment_id": "cmt_1", "repo": "acme/web" }));
+        // Still an issue's comments, labels and subscription.
+        assert_eq!(op("POST", "/repos/acme/web/issues/7/comments"), Op::AddComment);
+        assert_eq!(op("DELETE", "/repos/acme/web/issues/7/labels"), Op::RemoveIssueLabels);
+        assert_eq!(op("DELETE", "/repos/acme/web/issues/7/subscription"), Op::DeleteThreadSubscription);
     }
 
     #[test]

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use g1t_contracts::about::*;
 use g1t_contracts::accounts::EmailOwner;
+use g1t_contracts::events::{NewEvent, ReleaseEvent, ReleaseState, release_actions, release_kind};
 use g1t_contracts::identity::{UsernameArgs, UsernamesArgs};
 use g1t_contracts::repos::{Repo, is_valid_branch_name};
 use g1t_contracts::time::rfc3339;
@@ -525,7 +526,11 @@ impl<S: GitStore> Repos<S> {
             ])?
             .run()
             .await?;
-        self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor), id: Some(id), tag: None, latest: false }).await
+        let made = self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor.clone()), id: Some(id), tag: None, latest: false }).await?;
+        if let Outcome::Ok(release) = &made {
+            self.publish_release(&repo, &a.actor, None, Some(release)).await;
+        }
+        Ok(made)
     }
 
     /// `update_release`.
@@ -554,7 +559,7 @@ impl<S: GitStore> Repos<S> {
             .bind(&[
                 release.id.as_str().into(),
                 name.map_or(JsValue::NULL, |name| name.into()),
-                a.body.unwrap_or(release.body).into(),
+                a.body.unwrap_or_else(|| release.body.clone()).into(),
                 JsValue::from_f64(if draft { 1.0 } else { 0.0 }),
                 JsValue::from_f64(if a.prerelease.unwrap_or(release.prerelease) { 1.0 } else { 0.0 }),
                 published_at.map_or(JsValue::NULL, |at| at.into()),
@@ -562,7 +567,11 @@ impl<S: GitStore> Repos<S> {
             ])?
             .run()
             .await?;
-        self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor), id: Some(release.id), tag: None, latest: false }).await
+        let changed = self.release(ReleaseArgs { path: a.path, viewer: Some(a.actor.clone()), id: Some(release.id.clone()), tag: None, latest: false }).await?;
+        if let Outcome::Ok(after) = &changed {
+            self.publish_release(&repo, &a.actor, Some(&release), Some(after)).await;
+        }
+        Ok(changed)
     }
 
     /// `delete_release`: the tag stays.
@@ -571,6 +580,7 @@ impl<S: GitStore> Repos<S> {
             Ok(repo) => repo,
             Err(refused) => return Ok(refused.retype()),
         };
+        let before = self.release_row(&repo.id, Some(&a.id), None).await?;
         let deleted = self
             .db()
             .prepare("DELETE FROM releases WHERE repo_id = ? AND id = ? RETURNING id")
@@ -578,9 +588,58 @@ impl<S: GitStore> Repos<S> {
             .first::<serde_json::Value>(None)
             .await?;
         Ok(match deleted {
-            Some(_) => Outcome::Ok(true),
+            Some(_) => {
+                if let Some(before) = &before {
+                    self.publish_release(&repo, &a.actor, Some(before), None).await;
+                }
+                Outcome::Ok(true)
+            }
             None => Outcome::fail(FailureCode::NotFound, "No such release."),
         })
+    }
+
+    /// Publishes a release's change as the release activities it amounts
+    /// to (`release_actions`), one `release.*` event each, for workflows
+    /// and webhooks. What a workflow job's token did is marked as its, so it
+    /// starts no workflows. A failure is logged: the change itself happened.
+    async fn publish_release(&self, repo: &Repo, actor: &User, before: Option<&Release>, after: Option<&Release>) {
+        let state = |release: &Release| ReleaseState { draft: release.draft, prerelease: release.prerelease };
+        let Some(release) = after.or(before) else { return };
+        let changes = match (before, after) {
+            (Some(before), Some(after)) => {
+                let mut changes = serde_json::Map::new();
+                if before.name != after.name {
+                    changes.insert("name".into(), serde_json::json!({ "from": before.name }));
+                }
+                if before.body != after.body {
+                    changes.insert("body".into(), serde_json::json!({ "from": before.body }));
+                }
+                (!changes.is_empty()).then_some(serde_json::Value::Object(changes))
+            }
+            _ => None,
+        };
+        for action in release_actions(before.map(state), after.map(state)) {
+            let Some(kind) = release_kind(action) else { continue };
+            let data = ReleaseEvent {
+                release_id: release.id.clone(),
+                repo_id: repo.id.clone(),
+                tag_name: release.tag_name.clone(),
+                release: release.clone(),
+                changes: if action == "edited" { changes.clone() } else { None },
+            };
+            let published = self
+                .publish(NewEvent {
+                    kind,
+                    source: crate::SOURCE,
+                    repo_id: Some(repo.id.clone()),
+                    actor: Some(actor.id.clone()),
+                    data: g1t_contracts::events::marked(data, Some(actor)),
+                })
+                .await;
+            if let Err(error) = published {
+                worker::console_error!("{kind} for {} not published: {error}", release.id);
+            }
+        }
     }
 }
 

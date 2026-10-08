@@ -1010,33 +1010,17 @@ impl Actions {
         Ok(())
     }
 
-    /// A job that calls a reusable workflow in the repository: that
-    /// workflow's jobs join the run under it, with the inputs it passes.
+    /// A job that calls a reusable workflow, in the repository or another
+    /// (reach.rs): that workflow's jobs join the run under it, with the
+    /// inputs and secrets it passes.
     async fn call_workflow(&self, run: &RunRow, job: &workflow::Job, row: &JobRow, uses: &str, scope: &Scope<'_>) -> Result<()> {
-        let Some(local) = uses.strip_prefix("./") else {
-            return self
-                .fail_job(row, "Reusable workflows from other repositories are not called on g1t yet; ones in this repository (`./.g1t/workflows/…`) are.")
-                .await;
-        };
         let depth = row.call().and_then(|c| c["depth"].as_u64()).unwrap_or(0) + 1;
         if depth > MAX_CALL_DEPTH {
             return self.fail_job(row, &format!("Reusable workflows call each other more than {MAX_CALL_DEPTH} deep.")).await;
         }
-        let local = local.split('@').next().unwrap_or(local).to_owned();
-        let path = repo_path(&run.repo);
-        let Some(ws) = self.workspace_actor(&path.namespace).await? else {
-            return self.fail_job(row, "The workspace is gone.").await;
-        };
-        // A repository moved from GitHub keeps saying `.github/…`.
-        let mut found = self.read_file(&path, &ws, &run.sha, &local).await?.map(|text| (local.clone(), text));
-        if found.is_none()
-            && let Some(rest) = local.strip_prefix(".github/")
-        {
-            let moved = format!(".g1t/{rest}");
-            found = self.read_file(&path, &ws, &run.sha, &moved).await?.map(|text| (moved, text));
-        }
-        let Some((file, source)) = found else {
-            return self.fail_job(row, &format!("`{uses}` is not in the repository at this commit.")).await;
+        let (file, source, origin) = match self.called_workflow(run, row, uses).await? {
+            Ok(found) => found,
+            Err(why) => return self.fail_job(row, &why).await,
         };
         let called = match workflow::parse(&source) {
             Ok(called) => called,
@@ -1065,12 +1049,19 @@ impl Actions {
         for (name, value) in given {
             inputs.entry(name).or_insert(value);
         }
+        // Secrets: none but the job's token unless `secrets:` passes them,
+        // by name or with `inherit`; read when each job starts (job_spec).
+        let outer = row.call().filter(|c| c["role"] == "callee").and_then(|c| c.get("secrets").cloned());
+        let secrets = crate::reach::secrets_plan(&job.raw, scope.contexts, outer);
+        if let Some(name) = crate::reach::missing_secrets(&called.raw, &secrets).first() {
+            return self.fail_job(row, &format!("`{file}` needs the secret `{name}`: pass it under `secrets:`, or use `secrets: inherit`.")).await;
+        }
         let mut statements = Vec::new();
         for called_job in &called.jobs {
             let needs: Vec<String> = called_job.needs.iter().map(|n| format!("{}/{n}", row.key)).collect();
             let call = json!({
                 "role": "callee", "parent": row.key, "job": called_job.id, "path": file,
-                "source": source, "inputs": inputs, "depth": depth,
+                "source": source, "inputs": inputs, "depth": depth, "origin": origin, "secrets": secrets,
             });
             statements.push(
                 self.db
@@ -1148,7 +1139,7 @@ impl Actions {
     }
 
     /// A file's text at a commit, if it is there.
-    async fn read_file(&self, path: &RepoPath, ws: &g1t_contracts::User, sha: &str, file: &str) -> Result<Option<String>> {
+    pub(crate) async fn read_file(&self, path: &RepoPath, ws: &g1t_contracts::User, sha: &str, file: &str) -> Result<Option<String>> {
         let blob: Outcome<g1t_contracts::repos::BlobView> = g1t_kit::call(
             &self.repos,
             "blob",
@@ -1816,10 +1807,27 @@ impl Actions {
         };
         // A run that is not trusted (a pull request from outside the
         // workspace) gets no secrets and an empty token.
-        let mut secrets = if trusted {
-            self.secrets_for(&run.repo_id, &run.repo, environment.as_deref(), true).await?
-        } else {
-            Map::new()
+        let passed = job.call().filter(|c| c["role"] == "callee").and_then(|c| c.get("secrets").cloned());
+        let mut secrets = match (trusted, passed) {
+            (false, _) => Map::new(),
+            (true, None) => self.secrets_for(&run.repo_id, &run.repo, environment.as_deref(), true).await?,
+            // A called workflow's job: what its callers passed it (reach.rs),
+            // and its own environment's secrets over them.
+            (true, Some(plan)) => {
+                let base = self.secrets_for(&run.repo_id, &run.repo, None, true).await?;
+                let vars = self.variables_for(&run.repo_id, &run.repo, None, true).await?;
+                let github = run.info().context(&job.key, "", run.action.as_deref());
+                let mut passed = crate::reach::resolve_secrets(&plan, &base, &github, &vars);
+                if let Some(name) = environment.as_deref() {
+                    let own = self.secrets_for(&run.repo_id, &run.repo, Some(name), true).await?;
+                    for (key, value) in own {
+                        if base.get(&key) != Some(&value) {
+                            passed.insert(key, value);
+                        }
+                    }
+                }
+                passed
+            }
         };
         secrets.insert("G1T_TOKEN".into(), Value::String(token.clone()));
         secrets.insert("GITHUB_TOKEN".into(), Value::String(token.clone()));

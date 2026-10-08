@@ -26,6 +26,25 @@ impl Api {
         Ok(response.into_json()?)
     }
 
+    /// Where to fetch another repository's action from: `{"source": "g1t",
+    /// "url", "ref", "token"}` or `{"source": "github"}`. Err holds why g1t
+    /// refused (`true`: the repository is private and may not be used
+    /// here), or that it could not be asked (`false`).
+    pub(crate) fn action(&self, repository: &str, git_ref: &str) -> std::result::Result<Value, (bool, String)> {
+        let sent = ureq::post(&format!("{}/actions/jobs/{}/action", self.base, self.job))
+            .timeout(Duration::from_secs(30))
+            .send_json(json!({ "token": self.token, "report": { "repository": repository, "ref": git_ref } }));
+        match sent {
+            Ok(response) => response.into_json().map_err(|error| (false, error.to_string())),
+            Err(ureq::Error::Status(code, response)) => {
+                let body: Value = response.into_json().unwrap_or(Value::Null);
+                let message = body["error"]["message"].as_str().unwrap_or("g1t did not answer.").to_owned();
+                Err((code == 403, message))
+            }
+            Err(error) => Err((false, error.to_string())),
+        }
+    }
+
     pub(crate) fn report(&self, report: Value) {
         // A report that cannot be sent is tried a few times, then dropped:
         // the job goes on, and g1t notices a silent job by itself.

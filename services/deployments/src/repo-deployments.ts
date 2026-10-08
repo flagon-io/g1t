@@ -455,6 +455,7 @@ export class RepoDeployments {
       auto_inactive: true,
       created: true,
       actor: a.actor.kind === "system" ? null : a.actor.id,
+      causedByJob: a.actor.token?.job?.run_id ?? null,
     });
     return this.detail(repo, id);
   }
@@ -486,6 +487,7 @@ export class RepoDeployments {
       auto_inactive: a.auto_inactive ?? true,
       created: false,
       actor: a.actor.kind === "system" ? null : a.actor.id,
+      causedByJob: a.actor.token?.job?.run_id ?? null,
     });
     return ok(status);
   }
@@ -509,6 +511,11 @@ export class RepoDeployments {
       created: boolean;
       /** The person who caused it, by id, for the event. */
       actor: string | null;
+      /**
+       * The workflow run whose job made it, with its token or by deploying
+       * to an environment: its events start no workflows.
+       */
+      causedByJob: string | null;
     },
   ): Promise<DeploymentStatus> {
     const at = now();
@@ -542,15 +549,22 @@ export class RepoDeployments {
     if (input.state === "success" && input.auto_inactive) await this.retireOlder(repo, deployment);
     await this.reportOnCommit(repo, deployment, status);
     const events = [];
+    const caused = input.causedByJob ? { causedByJob: input.causedByJob } : {};
     if (input.created) {
-      events.push({ type: "deployment.created" as const, source: "deployments", repoId: repo.id, actor: input.actor, data: { repoId: repo.id, deployment: withoutPayload(deployment) } });
+      events.push({
+        type: "deployment.created" as const,
+        source: "deployments",
+        repoId: repo.id,
+        actor: input.actor,
+        data: { repoId: repo.id, deployment: withoutPayload(deployment), ...caused },
+      });
     }
     events.push({
       type: "deployment_status.created" as const,
       source: "deployments",
       repoId: repo.id,
       actor: input.actor,
-      data: { repoId: repo.id, deployment: withoutPayload(deployment), deploymentStatus: status },
+      data: { repoId: repo.id, deployment: withoutPayload(deployment), deploymentStatus: status, ...caused },
     });
     await this.publish(events);
     return status;
@@ -683,6 +697,7 @@ export class RepoDeployments {
         auto_inactive: true,
         created: true,
         actor: null,
+        causedByJob: a.runId,
       });
       return ok({ id, state: a.state });
     }
@@ -697,6 +712,7 @@ export class RepoDeployments {
       auto_inactive: true,
       created: false,
       actor: null,
+      causedByJob: a.runId,
     });
     return ok({ id: existing.id, state: next });
   }

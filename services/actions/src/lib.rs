@@ -27,6 +27,7 @@ mod cache;
 mod payload;
 mod plan;
 mod protection;
+mod reach;
 mod rename;
 pub mod runtime;
 mod runners;
@@ -237,6 +238,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "resolve_settings" => reply(&service.resolve_settings(args(body)?).await?),
         "job_spec" => reply(&service.job_spec(args(body)?).await?),
         "job_auth" => reply(&service.job_auth(args(body)?).await?),
+        "job_action" => reply(&service.job_action(args(body)?).await?),
         "check_runs" => reply(&service.check_runs(args(body)?).await?),
         "job_report" => reply(&service.job_report(args(body)?).await?),
         // actions/cache, through the API with the job's token.

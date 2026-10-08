@@ -7,6 +7,7 @@
  * says to what, `data` is the type-specific payload.
  */
 
+import type { Release } from "./about";
 import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
@@ -38,6 +39,18 @@ export type DeploymentEventData = {
   recovered: boolean;
   /** A username, or `g1t`. */
   triggeredBy: string;
+};
+
+/** What every `release.*` event carries. */
+export type ReleaseEventData = {
+  releaseId: string;
+  repoId: string;
+  tagName: string;
+  release: Release;
+  /** On `release.edited`: what the title and notes were before. */
+  changes?: { name?: { from: string | null }; body?: { from: string } };
+  /** Set when a workflow job's token made the change: the run's id. */
+  causedByJob?: string;
 };
 
 /** The payload of the `repo.collaborator_*` events. */
@@ -195,6 +208,10 @@ export type EventPayloads = {
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
   "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
   "pull.closed": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
+  /** A closed pull request was opened again. `commit` is its head. */
+  "pull.reopened": { pullId: string; repoId: string; number: number; issue?: number; commit?: string; confidence?: Confidence };
+  /** A pull request that was ready for review was turned back into a draft. */
+  "pull.converted_to_draft": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
   /** People were assigned to a pull request: `assignees` is the new set, `added` those newly assigned. */
   "pull.assigned": { pullId: string; repoId: string; number: number; issue?: number; assignees: string[]; added: string[] };
   /** Reviewers were asked for a pull request (`reviewers`), or no longer are. */
@@ -285,6 +302,31 @@ export type EventPayloads = {
     /** Set when the comment is a review. */
     verdict?: Verdict;
   };
+  /** A comment's text changed; `changes.body.from` is what it said before. */
+  "comment.edited": {
+    commentId: string;
+    repoId: string;
+    number: number;
+    /** Set when the comment is on a pull request. */
+    pullId?: string;
+    changes: { body: { from: string } };
+  };
+  /** A comment was deleted; `comment` is the comment as it was. */
+  "comment.deleted": {
+    commentId: string;
+    repoId: string;
+    number: number;
+    /** Set when the comment was on a pull request. */
+    pullId?: string;
+    comment: {
+      id: string;
+      body: string;
+      author: { id: string; username: string };
+      createdAt: string;
+      path: string | null;
+      line: number | null;
+    };
+  };
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
   /**
    * A build of a project finished, for production or one pull request's
@@ -298,13 +340,32 @@ export type EventPayloads = {
    * a g1t Actions job with an `environment:`, or a g1t.page build. Its
    * `payload` is left out: read the deployment for it.
    */
-  "deployment.created": { repoId: string; deployment: Omit<RepoDeployment, "payload"> };
-  /** A deployment has a new status; `deployment` is as it is now. */
+  "deployment.created": { repoId: string; deployment: Omit<RepoDeployment, "payload">; causedByJob?: string };
+  /**
+   * A deployment has a new status; `deployment` is as it is now.
+   * `causedByJob` (as on every event a workflow job's token causes) is the
+   * run whose job made it, so no workflow starts for it.
+   */
   "deployment_status.created": {
     repoId: string;
     deployment: Omit<RepoDeployment, "payload">;
     deploymentStatus: DeploymentStatus;
+    causedByJob?: string;
   };
+  /**
+   * A release changed, one event per GitHub release activity it amounts
+   * to: made (`created`; a published one is also `published`, and
+   * `released` or `prereleased`), a draft published, edited, made a draft
+   * again (`unpublished`) or deleted. `release` is as it is now (as it was,
+   * for `release.deleted`).
+   */
+  "release.created": ReleaseEventData;
+  "release.published": ReleaseEventData;
+  "release.released": ReleaseEventData;
+  "release.prereleased": ReleaseEventData;
+  "release.edited": ReleaseEventData;
+  "release.unpublished": ReleaseEventData;
+  "release.deleted": ReleaseEventData;
   /**
    * A package version was published, such as an image pushed by
    * `docker push`. `tags` are the tags that now point to it; `repoId` (and

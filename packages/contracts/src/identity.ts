@@ -65,6 +65,8 @@ export type User = {
     deploy_key?: string;
     /** The one repository a job's token or a deploy key reaches. */
     repo?: string;
+    /** Set on a workflow job's token (`G1T_TOKEN`): the run and job it was made for. */
+    job?: { run_id: string; job_id: string; pull_requests?: boolean };
   };
   /**
    * Workspaces the person belongs to but cannot use until they meet its

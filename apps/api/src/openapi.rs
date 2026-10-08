@@ -312,6 +312,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::AssignIssue,
             Op::Delegate,
             Op::AddComment,
+            Op::EditComment,
+            Op::DeleteComment,
             Op::ListIssueLabels,
             Op::AddIssueLabels,
             Op::SetIssueLabels,
@@ -349,11 +351,13 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::UpdatePullRequest,
             Op::GetPullRequestChanges,
             Op::MarkPullRequestReady,
+            Op::ConvertPullRequestToDraft,
             Op::RequestReviewers,
             Op::RemoveRequestedReviewers,
             Op::ReviewPullRequest,
             Op::MergePullRequest,
             Op::ClosePullRequest,
+            Op::ReopenPullRequest,
             Op::GetMergeQueue,
             Op::MessageAgent,
             Op::AnswerMessage,
@@ -450,6 +454,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Protection(ProtectionOp::SetWorkflowPermissions),
             Op::Protection(ProtectionOp::GetForkPrApproval),
             Op::Protection(ProtectionOp::SetForkPrApproval),
+            Op::Protection(ProtectionOp::GetActionsAccess),
+            Op::Protection(ProtectionOp::SetActionsAccess),
             Op::Protection(ProtectionOp::CreateRepositoryDispatch),
             Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
             Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
@@ -596,6 +602,8 @@ fn title(op: Op) -> &'static str {
         Op::DeleteMilestone => "Delete a milestone",
         Op::UpdatePullRequest => "Update a pull request",
         Op::AddComment => "Add a comment",
+        Op::EditComment => "Edit a comment",
+        Op::DeleteComment => "Delete a comment",
         Op::ReviewPullRequest => "Review a pull request",
         Op::ListPullRequests => "List pull requests",
         Op::GetPullRequest => "Get a pull request",
@@ -604,6 +612,8 @@ fn title(op: Op) -> &'static str {
         Op::ReadSession => "Read a session",
         Op::MarkPullRequestReady => "Mark a pull request ready",
         Op::ClosePullRequest => "Close a pull request",
+        Op::ReopenPullRequest => "Reopen a pull request",
+        Op::ConvertPullRequestToDraft => "Convert a pull request to a draft",
         Op::GetPullRequestChanges => "Get a pull request's changes",
         Op::MergePullRequest => "Merge a pull request",
         Op::ListEvents => "List repository events",
@@ -893,13 +903,17 @@ fn operation(route: &Route) -> Value {
 
     let id = operation_id(route);
     let mut responses = Map::new();
-    responses.insert(
-        "200".into(),
-        json!({
-            "description": "Success.",
-            "content": { "application/json": { "schema": {} } },
-        }),
-    );
+    if route.no_content() {
+        responses.insert("204".into(), json!({ "description": "Success. There is no body." }));
+    } else {
+        responses.insert(
+            "200".into(),
+            json!({
+                "description": "Success.",
+                "content": { "application/json": { "schema": {} } },
+            }),
+        );
+    }
     responses.insert(
         "401".into(),
         error_response("A token is required, or the one sent is not valid."),
@@ -1207,6 +1221,10 @@ mod tests {
         for (path, methods) in document["paths"].as_object().unwrap() {
             for (method, operation) in methods.as_object().unwrap() {
                 known.push(operation["operationId"].as_str().unwrap().to_owned());
+                // Nothing to show for a success without a body.
+                if operation["responses"]["204"].is_object() {
+                    continue;
+                }
                 let example = &operation["responses"]["200"]["content"]["application/json"]["example"];
                 assert!(!example.is_null(), "{method} {path} has no example response");
             }
