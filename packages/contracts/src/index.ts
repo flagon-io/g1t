@@ -1,5 +1,6 @@
 export * from "./about";
 export * from "./access";
+export * from "./account-deletion";
 export * from "./accounts";
 export * from "./actions";
 export * from "./agents";

@@ -140,7 +140,8 @@ impl Identity {
     pub async fn profile(&self, a: UsernameArgs) -> Result<Option<Profile>> {
         Ok(self
             .db
-            .prepare(format!("SELECT {PROFILE_COLUMNS} FROM users WHERE username = ?"))
+            // A deleted account's profile is not found (account_deletion.rs).
+            .prepare(format!("SELECT {PROFILE_COLUMNS} FROM users WHERE username = ? AND deleted_at IS NULL"))
             .bind(&[a.username.trim().to_lowercase().into()])?
             .first::<ProfileRow>(None)
             .await?

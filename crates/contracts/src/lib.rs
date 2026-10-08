@@ -6,6 +6,7 @@
 
 pub mod about;
 pub mod access;
+pub mod account_deletion;
 pub mod accounts;
 pub mod actions;
 pub mod agents;

@@ -4,6 +4,7 @@
 //! the methods and their arguments.
 
 mod access;
+mod account_deletion;
 mod admin;
 mod aliases;
 mod avatars;
@@ -158,7 +159,7 @@ impl Identity {
             .prepare(format!(
                 "SELECT users.id, users.username, email_tokens.email_id FROM email_tokens
                  JOIN users ON users.id = email_tokens.user_id
-                 WHERE email_tokens.id = ? AND email_tokens.kind = ?
+                 WHERE email_tokens.id = ? AND email_tokens.kind = ? AND users.deleted_at IS NULL
                    AND email_tokens.expires_at > {SQL_NOW}"
             ))
             .bind(&[id.as_str().into(), kind.into()])?
@@ -312,7 +313,8 @@ impl Identity {
         };
         self.db
             .prepare(format!(
-                "SELECT id, username, password_hash, email_verified_at IS NOT NULL AS verified FROM users WHERE {column} = ?"
+                "SELECT id, username, password_hash, email_verified_at IS NOT NULL AS verified FROM users
+                 WHERE {column} = ? AND deleted_at IS NULL"
             ))
             .bind(&[JsValue::from(value)])?
             .first::<UserRow>(None)
@@ -467,6 +469,11 @@ impl Identity {
 
     /// A new session for `user`, who has proved who they are in full.
     async fn session_for(&self, user: User) -> Result<Outcome<SignedIn>> {
+        // Whichever way it was proved, a deleted account starts none
+        // (account_deletion.rs).
+        if !self.account_live(&user.id).await? {
+            return Ok(Outcome::fail(FailureCode::Unauthenticated, "Incorrect username or password."));
+        }
         let session_token = crypto::random_hex(32);
         self.db
             .prepare(format!(
@@ -502,7 +509,7 @@ impl Identity {
                 "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified,
                    users.avatar
                  FROM sessions JOIN users ON users.id = sessions.user_id
-                 WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW}"
+                 WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW} AND users.deleted_at IS NULL"
             ),
             &crypto::sha256_hex(&a.session_token),
         )
@@ -522,7 +529,7 @@ impl Identity {
         self.find_user(
             "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified FROM ssh_keys
              JOIN users ON users.id = ssh_keys.user_id
-             WHERE fingerprint = ?",
+             WHERE fingerprint = ? AND users.deleted_at IS NULL",
             &a.fingerprint,
         )
         .await
@@ -530,7 +537,8 @@ impl Identity {
 
     async fn user_by_username(&self, a: UsernameArgs) -> Result<Viewer> {
         self.find_public_user(
-            "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?",
+            // A deleted account is nobody's to find, mention or add.
+            "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ? AND deleted_at IS NULL",
             &a.username.to_lowercase(),
         )
         .await
@@ -546,7 +554,7 @@ impl Identity {
         }
         let user = self
             .find_user(
-                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ?",
+                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ? AND deleted_at IS NULL",
                 &a.username.to_lowercase(),
             )
             .await?;
@@ -748,8 +756,8 @@ impl Identity {
 
 /// Every 15 minutes: staff hear about waitlist requests that arrived while
 /// the last summary's window was still open, so none waits on a later one;
-/// and deleted workspaces past their restore window are purged
-/// (deletion.rs).
+/// and deleted workspaces and accounts past their restore window are purged
+/// (deletion.rs, account_deletion.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let Ok(db) = env.d1("DB") else { return };
@@ -759,6 +767,10 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     if let Err(error) = identity.purge_due_workspaces().await {
         worker::console_error!("workspace purge: {error}");
+    }
+    // And deleted accounts past theirs (account_deletion.rs).
+    if let Err(error) = identity.purge_due_accounts().await {
+        worker::console_error!("account purge: {error}");
     }
     // Once: creators of repositories made before they got Admin (members.rs).
     if let Err(error) = identity.backfill_creator_grants().await {
@@ -1004,6 +1016,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_deleted_workspaces" => reply(&identity.admin_deleted_workspaces().await?),
         "admin_restore_workspace" => reply(&identity.admin_restore_workspace(args(body)?).await?),
         "admin_purge_workspace" => reply(&identity.admin_purge_workspace(args(body)?).await?),
+        // Deleting accounts (account_deletion.rs): the person from the
+        // site, staff from sudo. There is no API route for it.
+        "check_account_deletion" => reply(&identity.check_account_deletion(args(body)?).await?),
+        "delete_account" => reply(&identity.delete_account(args(body)?).await?),
+        "admin_delete_account" => reply(&identity.admin_delete_account(args(body)?).await?),
+        "admin_deleted_accounts" => reply(&identity.admin_deleted_accounts().await?),
+        "admin_restore_account" => reply(&identity.admin_restore_account(args(body)?).await?),
+        "admin_purge_account" => reply(&identity.admin_purge_account(args(body)?).await?),
         // Workspace aliases, set by staff only; see aliases.rs.
         "admin_aliases" => reply(&identity.admin_aliases().await?),
         "admin_set_alias" => reply(&identity.admin_set_alias(args(body)?).await?),

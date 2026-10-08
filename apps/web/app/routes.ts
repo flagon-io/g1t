@@ -40,6 +40,7 @@ export default [
     route("applications", "routes/settings/applications.tsx"),
     route("two-factor", "routes/settings/two-factor.tsx"),
     route("security-log", "routes/settings/security-log.tsx"),
+    route("account", "routes/settings/account.tsx"),
   ]),
   // The account menu's header: name, primary email and invites left.
   route("settings/menu.json", "routes/settings-menu-json.ts"),

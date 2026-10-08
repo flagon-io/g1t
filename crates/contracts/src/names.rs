@@ -48,10 +48,12 @@ const ROUTES: &[&str] = &[
     "notifications",
 ];
 
-/// g1t itself, and the name its agent once went by: everything g1t does is
-/// shown as `g1t`, so nobody else may be called either. Not routes: staff
-/// may point one at a workspace as an alias (identity's `aliases.rs`).
-const OWN: &[&str] = &["g1t", "g1t-agent"];
+/// g1t itself, the name its agent once went by, and `ghost`, who wrote what
+/// a deleted account wrote (`account_deletion::GHOST_USERNAME`): everything
+/// g1t does is shown as `g1t`, so nobody else may be called any of these.
+/// Not routes: staff may point one at a workspace as an alias (identity's
+/// `aliases.rs`).
+const OWN: &[&str] = &["g1t", "g1t-agent", "ghost"];
 
 /// Whether `value`, whatever its case, is a name nobody can register or
 /// rename a workspace to: a route, or g1t's own.
@@ -128,6 +130,8 @@ mod tests {
         }
         assert!(!is_valid_namespace("g1t"));
         assert!(!is_valid_namespace("g1t-agent"));
+        assert!(!is_valid_namespace("ghost"));
+        assert_eq!(claimable_namespace(" Ghost "), None);
     }
 
     #[test]

@@ -449,7 +449,7 @@ impl Identity {
         self.db.prepare("DELETE FROM two_factor_challenges WHERE id = ?").bind(&[id.as_str().into()])?.run().await?;
         let user = self
             .find_user(
-                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ?",
+                "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ? AND deleted_at IS NULL",
                 &challenge.user_id,
             )
             .await?;

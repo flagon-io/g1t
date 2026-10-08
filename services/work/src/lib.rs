@@ -7,6 +7,7 @@
 mod authored;
 mod capture;
 mod checks;
+mod ghost;
 mod codeowners;
 mod commit_checks;
 mod compute;
@@ -2851,6 +2852,13 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
         // A workspace deleted: what it kept for itself goes.
         if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), memory::DELETED).await? {
+            message.ack();
+            continue;
+        }
+        // An account purged: what it wrote shows as ghost (ghost.rs).
+        let ghost = ghost::statements();
+        let ghost: Vec<&str> = ghost.iter().map(String::as_str).collect();
+        if g1t_kit::user_deleted::on_event(&env.d1("DB")?, message.body(), &ghost).await? {
             message.ack();
             continue;
         }

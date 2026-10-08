@@ -37,6 +37,7 @@
 
 use std::collections::HashMap;
 
+use g1t_contracts::account_deletion::{GHOST_ID, GHOST_USERNAME};
 use g1t_contracts::accounts::*;
 use g1t_contracts::events::UserEmailChanged;
 use g1t_contracts::identity::{UserArgs, UsernameArgs};
@@ -952,7 +953,7 @@ impl Identity {
             .db
             .prepare(
                 "SELECT u.id AS user_id, u.username, e.id AS email_id, e.display FROM user_emails e
-                 JOIN users u ON u.id = e.user_id WHERE e.email = ? AND e.verified_at IS NOT NULL",
+                 JOIN users u ON u.id = e.user_id WHERE e.email = ? AND e.verified_at IS NOT NULL AND u.deleted_at IS NULL",
             )
             .bind(&[email.as_str().into()])?
             .first::<ResetTarget>(None)
@@ -964,7 +965,7 @@ impl Identity {
             .prepare(
                 "SELECT u.id AS user_id, u.username, e.id AS email_id, e.display FROM user_emails e
                  JOIN users u ON u.primary_email_id = e.id
-                 WHERE e.email = ? AND e.verified_at IS NULL ORDER BY u.created_at, u.id LIMIT 1",
+                 WHERE e.email = ? AND e.verified_at IS NULL AND u.deleted_at IS NULL ORDER BY u.created_at, u.id LIMIT 1",
             )
             .bind(&[email.as_str().into()])?
             .first::<ResetTarget>(None)
@@ -981,6 +982,9 @@ impl Identity {
             id: String,
             username: String,
             avatar: Option<String>,
+            /// 1 for a purged account's username (`deleted_users`).
+            #[serde(default)]
+            purged: u8,
         }
         let mut owners = HashMap::new();
         let mut plain: Vec<String> = Vec::new();
@@ -1004,7 +1008,7 @@ impl Identity {
                 .db
                 .prepare(format!(
                     "SELECT e.email, u.id, u.username, u.avatar FROM user_emails e JOIN users u ON u.id = e.user_id
-                     WHERE e.verified_at IS NOT NULL AND e.email IN ({marks})"
+                     WHERE e.verified_at IS NOT NULL AND u.deleted_at IS NULL AND e.email IN ({marks})"
                 ))
                 .bind(&bind)?
                 .all()
@@ -1021,9 +1025,13 @@ impl Identity {
             let rows = self
                 .db
                 .prepare(format!(
-                    "SELECT username AS email, id, username, avatar FROM users WHERE username IN ({marks})"
+                    "SELECT username AS email, id, username, avatar, 0 AS purged FROM users
+                     WHERE username IN ({marks}) AND deleted_at IS NULL
+                     UNION ALL
+                     SELECT username AS email, user_id AS id, username, NULL AS avatar, 1 AS purged FROM deleted_users
+                     WHERE username IN ({marks})"
                 ))
-                .bind(&bind)?
+                .bind(&[bind.clone(), bind].concat())?
                 .all()
                 .await?
                 .results::<Row>()?;
@@ -1031,10 +1039,13 @@ impl Identity {
                 if let Some(row) = rows.iter().find(|row| row.username == username)
                     && suffix.as_deref().is_none_or(|suffix| id_suffix(&row.id) == suffix)
                 {
-                    owners.insert(
-                        email,
-                        EmailOwner { id: row.id.clone(), username: row.username.clone(), avatar: row.avatar.clone() },
-                    );
+                    // A purged account's commits are ghost's (account_deletion.rs).
+                    let owner = if row.purged != 0 {
+                        EmailOwner { id: GHOST_ID.to_owned(), username: GHOST_USERNAME.to_owned(), avatar: None }
+                    } else {
+                        EmailOwner { id: row.id.clone(), username: row.username.clone(), avatar: row.avatar.clone() }
+                    };
+                    owners.insert(email, owner);
                 }
             }
         }
@@ -1117,6 +1128,10 @@ impl Identity {
         let rows = self.email_rows(user_id).await?;
         let log = self.security_events(user_id, true).await?;
         let emails = view(&account, rows);
+        // Whether it can be deleted, and its deletion while it waits to be
+        // purged (account_deletion.rs).
+        let deleted = self.deleted_account(&account.id).await?;
+        let deletion = self.account_deletion_facts(&account.id, &account.username, None).await?;
         Ok(Some(AdminUser {
             id: account.id,
             username: account.username,
@@ -1124,6 +1139,8 @@ impl Identity {
             emails: emails.emails,
             private_email: emails.private_email,
             log,
+            deletion,
+            deleted,
         }))
     }
 

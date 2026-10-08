@@ -782,7 +782,9 @@ impl Search {
                     self.index_item(true, &item.repo_id, item.number).await?;
                 }
             }
-            "user.updated" => {
+            // A deleted account's profile is not found, so indexing it
+            // again drops it from results; a restored one comes back.
+            "user.updated" | "user.deleting" | "user.restored" | "user.deleted" => {
                 if let Ok(user) = serde_json::from_value::<UserEvent>(data.clone()) {
                     self.index_user(&user.username).await?;
                 }

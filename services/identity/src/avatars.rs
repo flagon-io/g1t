@@ -93,7 +93,7 @@ impl Identity {
     }
 
     /// Deletes an avatar no workspace or person uses any more.
-    async fn forget_avatar(&self, key: Option<String>) -> Result<()> {
+    pub(crate) async fn forget_avatar(&self, key: Option<String>) -> Result<()> {
         let Some(key) = key.filter(|key| is_key(key)) else {
             return Ok(());
         };

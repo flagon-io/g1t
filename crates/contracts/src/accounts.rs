@@ -361,8 +361,9 @@ pub struct SecurityEvent {
     /// `two_factor_disabled`, `recovery_codes_regenerated`,
     /// `recovery_code_used`, `token_created`, `token_deleted`,
     /// `token_rescoped`, `ssh_key_added`, `ssh_key_removed`,
-    /// `oauth_grant_created`, `oauth_grant_revoked` or
-    /// `oauth_grant_rescoped`.
+    /// `oauth_grant_created`, `oauth_grant_revoked`,
+    /// `oauth_grant_rescoped`, `account_deleted` or `account_restored`
+    /// (seen by staff while the account waits to be purged).
     pub kind: String,
     /// The address concerned, or what changed.
     pub detail: Option<String>,
@@ -500,6 +501,13 @@ pub struct AdminUser {
     pub emails: Vec<AccountEmail>,
     pub private_email: bool,
     pub log: Vec<SecurityEvent>,
+    /// What deleting it would take, and what stands in the way (its
+    /// workspaces' billing is not asked for staff).
+    #[serde(default)]
+    pub deletion: crate::account_deletion::AccountDeletion,
+    /// Set while it is deleted and not yet purged.
+    #[serde(default)]
+    pub deleted: Option<crate::account_deletion::DeletedAccount>,
 }
 
 /// `admin_remove_email`: staff remove an address from an account, such as

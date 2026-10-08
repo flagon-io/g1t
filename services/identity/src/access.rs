@@ -569,7 +569,7 @@ impl Identity {
         }
         Ok(self
             .db
-            .prepare("SELECT id, username FROM users WHERE username = ?")
+            .prepare("SELECT id, username FROM users WHERE username = ? AND deleted_at IS NULL")
             .bind(&[username.trim().trim_start_matches('@').to_lowercase().into()])?
             .first::<Person>(None)
             .await?

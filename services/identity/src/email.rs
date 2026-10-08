@@ -248,6 +248,36 @@ pub async fn send_security_notice(env: &Env, to: &str, username: &str, change: &
     .await
 }
 
+/// What the email telling an account it was deleted says: its subject and
+/// first paragraph. `by_staff` when g1t's staff deleted it.
+pub fn deleted_wording(username: &str, by_staff: bool, days: u64) -> (String, String) {
+    let who = if by_staff { "g1t's staff deleted" } else { "You deleted" };
+    (
+        format!("Your g1t account {username} was deleted"),
+        format!(
+            "{who} your g1t account {username}. It has signed out everywhere, its access tokens and keys no longer work, and it has left every workspace. g1t keeps it for {days} days; after that it is removed for good."
+        ),
+    )
+}
+
+/// Tells an account's primary and backup addresses it was deleted, with how
+/// to ask for it back.
+pub async fn send_account_deleted(env: &Env, to: &str, username: &str, by_staff: bool, days: u64) -> Result<()> {
+    let (subject, intro) = deleted_wording(username, by_staff, days);
+    send_link(
+        env,
+        to,
+        &subject,
+        &intro,
+        "Contact support",
+        &format!("{}/support", site(env)),
+        &format!(
+            "If you did not mean to delete it, or did not delete it, write to support within {days} days and g1t can restore it."
+        ),
+    )
+    .await
+}
+
 /// An invite email: to make an account, or for an existing one to join a
 /// workspace.
 pub struct InviteEmail<'a> {

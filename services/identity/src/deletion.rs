@@ -193,11 +193,16 @@ const DELETED_COLUMNS: &str = "w.id, w.slug, w.name, w.deleted_at, w.deleted_by,
   WHERE w.deleted_at IS NOT NULL";
 
 impl Identity {
-    /// Whether `slug` belonged to a workspace that was deleted and purged.
+    /// Whether `slug` belonged to a workspace that was deleted and purged,
+    /// or is the username of an account that was (account_deletion.rs):
+    /// neither is ever given to anyone again.
     pub async fn slug_deleted(&self, slug: &str) -> Result<bool> {
         Ok(self
             .db
-            .prepare("SELECT 1 AS held FROM deleted_workspaces WHERE slug = ?")
+            .prepare(
+                "SELECT 1 AS held FROM deleted_workspaces WHERE slug = ?1
+                 UNION ALL SELECT 1 FROM deleted_users WHERE username = ?1",
+            )
             .bind(&[slug.to_lowercase().into()])?
             .first::<serde_json::Value>(None)
             .await?

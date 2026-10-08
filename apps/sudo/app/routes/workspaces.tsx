@@ -100,12 +100,20 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
           <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>
           <p className="mt-1 text-sm text-muted">Every workspace, who owns it, and how it pays this month.</p>
         </div>
-        <Link
-          to="/workspaces/deleted"
-          className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg"
-        >
-          Deleted workspaces
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to="/workspaces/deleted"
+            className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg"
+          >
+            Deleted workspaces
+          </Link>
+          <Link
+            to="/users/deleted"
+            className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg"
+          >
+            Deleted accounts
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

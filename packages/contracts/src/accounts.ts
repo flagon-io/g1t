@@ -2,6 +2,7 @@
  * A person's email addresses and the security of their account, on the
  * identity service. Mirrors `crates/contracts/src/accounts.rs`.
  */
+import type { AccountDeletion, DeletedAccount } from "./account-deletion";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
 import type { Result } from "./result";
@@ -118,6 +119,10 @@ export type AdminUser = {
   emails: AccountEmail[];
   privateEmail: boolean;
   log: SecurityEvent[];
+  /** What deleting it would take, and what stands in the way (billing is not asked for staff). */
+  deletion: AccountDeletion;
+  /** Set while it is deleted and not yet purged. */
+  deleted: DeletedAccount | null;
 };
 
 /** Where an account's two-factor authentication stands. */
@@ -174,6 +179,15 @@ export interface AccountsApi {
   twoFactorDisable(user: User, code: string, reauth: Reauth): Promise<Result<boolean>>;
   /** New recovery codes, replacing the old ones. Needs `reauth`. */
   twoFactorRecoveryCodes(user: User, reauth: Reauth): Promise<Result<{ codes: string[] }>>;
+  /** What deleting the person's own account would take, and what stands in the way, changing nothing. People only. */
+  checkAccountDeletion(user: User): Promise<Result<AccountDeletion>>;
+  /**
+   * Deletes the person's own account. `confirm` is their username, typed
+   * out; needs `reauth`. Refused for a protected account and while they are
+   * the only owner of a live workspace. Kept `ACCOUNT_RESTORE_DAYS` for
+   * staff to restore. Publishes `user.deleting`. Not offered by the API.
+   */
+  deleteAccount(user: User, confirm: string, reauth: Reauth): Promise<Result<boolean>>;
 }
 
 /** Staff only, for sudo.g1t.sh. */
@@ -181,6 +195,18 @@ export interface AccountsAdminApi {
   user(username: string): Promise<AdminUser | null>;
   /** Removes an address with a reason the person sees; never the last confirmed one. */
   removeEmail(username: string, email: string, reason: string, staff: string): Promise<Result<AdminUser>>;
+  /**
+   * Deletes an account, with the reason and the username typed out. Refused
+   * for a protected account and while it is the only owner of a live
+   * workspace. Recorded in sudo's audit log (`account_deleted`).
+   */
+  deleteAccount(username: string, reason: string, confirm: string, staff: string): Promise<Result<boolean>>;
+  /** Deleted accounts not purged yet, newest first. */
+  deletedAccounts(): Promise<DeletedAccount[]>;
+  /** Brings a deleted account back within its window, with the memberships it left. Publishes `user.restored`. */
+  restoreAccount(userId: string, staff: string): Promise<Result<boolean>>;
+  /** Purges a deleted account now; `confirm` is its username. Publishes `user.deleted`. */
+  purgeAccount(userId: string, staff: string, confirm: string): Promise<Result<boolean>>;
 }
 
 async function call<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -210,6 +236,8 @@ export function accountsClient(identity: ServiceBinding): AccountsApi {
     twoFactorEnable: (user, code, reauth) => call(identity, "two_factor_enable", { user, code, reauth }),
     twoFactorDisable: (user, code, reauth) => call(identity, "two_factor_disable", { user, code, reauth }),
     twoFactorRecoveryCodes: (user, reauth) => call(identity, "two_factor_recovery_codes", { user, reauth }),
+    checkAccountDeletion: (user) => call(identity, "check_account_deletion", { user }),
+    deleteAccount: (user, confirm, reauth) => call(identity, "delete_account", { user, confirm, reauth }),
   };
 }
 
@@ -217,6 +245,10 @@ export function accountsAdminClient(identity: ServiceBinding): AccountsAdminApi 
   return {
     user: (username) => call(identity, "admin_user", { username }),
     removeEmail: (username, email, reason, staff) => call(identity, "admin_remove_email", { username, email, reason, staff }),
+    deleteAccount: (username, reason, confirm, staff) => call(identity, "admin_delete_account", { username, reason, confirm, staff }),
+    deletedAccounts: () => call(identity, "admin_deleted_accounts", {}),
+    restoreAccount: (userId, staff) => call(identity, "admin_restore_account", { userId, staff }),
+    purgeAccount: (userId, staff, confirm) => call(identity, "admin_purge_account", { userId, staff, confirm }),
   };
 }
 
@@ -266,6 +298,10 @@ export function securityEventLabel(event: Pick<SecurityEvent, "kind" | "detail">
       return `Revoked ${detail}`;
     case "oauth_grant_rescoped":
       return `Changed what ${detail} may do`;
+    case "account_deleted":
+      return "Deleted the account";
+    case "account_restored":
+      return "Restored the account";
     default:
       return detail ? `${event.kind}: ${detail}` : event.kind;
   }
