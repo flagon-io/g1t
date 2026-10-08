@@ -1285,7 +1285,7 @@ class Deployments {
     await this.env.WORK.fetch("https://work/rpc/set_commit_status", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repoId, sha, context, state, description, targetUrl }),
+      body: JSON.stringify({ repoId, sha, context, state, description, targetUrl, source: "deployments" }),
     }).catch(() => undefined);
   }
 

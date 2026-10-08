@@ -466,6 +466,7 @@ impl Work {
             state: state.to_owned(),
             description: Some(description),
             target_url,
+            source: Some("g1t".to_owned()),
         })
         .await?;
         Ok(())

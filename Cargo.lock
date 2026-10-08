@@ -1076,6 +1076,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "g1t-rules"
+version = "0.1.0"
+dependencies = [
+ "g1t-contracts",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "g1t-runner"
 version = "0.1.0"
 dependencies = [

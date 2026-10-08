@@ -29,6 +29,8 @@ struct StatusRow {
     description: Option<String>,
     target_url: Option<String>,
     updated_at: String,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 impl From<StatusRow> for CommitStatus {
@@ -39,6 +41,7 @@ impl From<StatusRow> for CommitStatus {
             description: row.description,
             target_url: row.target_url,
             updated_at: row.updated_at,
+            source: row.source,
         }
     }
 }
@@ -195,7 +198,7 @@ impl Work {
         }
         Ok(self
             .db
-            .prepare("SELECT context, state, description, target_url, updated_at FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")
+            .prepare("SELECT context, state, description, target_url, updated_at, source FROM commit_statuses WHERE repo_id = ? AND sha = ? ORDER BY context")
             .bind(&[repo_id.into(), sha.into()])?
             .all()
             .await?
@@ -211,11 +214,12 @@ impl Work {
         }
         self.db
             .prepare(
-                "INSERT INTO commit_statuses (repo_id, sha, context, state, description, target_url, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO commit_statuses (repo_id, sha, context, state, description, target_url, updated_at, source)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id, sha, context) DO UPDATE SET
                    state = excluded.state, description = excluded.description,
-                   target_url = excluded.target_url, updated_at = excluded.updated_at",
+                   target_url = excluded.target_url, updated_at = excluded.updated_at,
+                   source = excluded.source",
             )
             .bind(&[
                 a.repo_id.as_str().into(),
@@ -225,6 +229,7 @@ impl Work {
                 a.description.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 a.target_url.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
                 rfc3339(now_ms()).into(),
+                a.source.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
             ])?
             .run()
             .await?;
@@ -300,6 +305,7 @@ mod tests {
             description: None,
             target_url: None,
             updated_at: String::new(),
+            source: None,
         }
     }
 

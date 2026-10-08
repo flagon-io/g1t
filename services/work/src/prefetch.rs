@@ -238,7 +238,7 @@ impl Work {
             )?,
             // Slot::Statuses: on its head (statuses.rs `statuses`).
             self.statement(
-                "SELECT context, state, description, target_url, updated_at FROM commit_statuses
+                "SELECT context, state, description, target_url, updated_at, source FROM commit_statuses
                  WHERE repo_id = ?1 AND sha = (SELECT head_commit FROM pulls WHERE repo_id = ?1 AND number = ?2)
                  ORDER BY context",
                 &key(),

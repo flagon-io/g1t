@@ -419,6 +419,7 @@ impl Security {
                 state: state.to_owned(),
                 description: Some(description.chars().take(140).collect()),
                 target_url: Some(format!("{SITE}/{}/{}/security/pulls/{number}", repo.namespace, repo.name)),
+                source: Some("security".to_owned()),
             },
         )
         .await;

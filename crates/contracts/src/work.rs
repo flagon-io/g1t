@@ -1134,6 +1134,11 @@ pub struct CommitStatus {
     /// Where to see more, such as the run's page.
     pub target_url: Option<String>,
     pub updated_at: String,
+    /// The integration that reported it (`actions`, `deployments`,
+    /// `security`, `g1t`), when recorded. A required check can insist on
+    /// one (`rules::RequiredCheck::integration`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// `set_commit_status`: for services only. Returns `Outcome<bool>`.
@@ -1148,6 +1153,10 @@ pub struct SetCommitStatusArgs {
     pub description: Option<String>,
     #[serde(default)]
     pub target_url: Option<String>,
+    /// The integration reporting it: `actions`, `deployments`, `security`
+    /// or `g1t`.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// A message a person sent an agent at work on a pull request. The agent
@@ -2489,6 +2498,7 @@ mod required_tests {
             description: Some(format!("{context} {state}")),
             target_url: None,
             updated_at: String::new(),
+            source: None,
         }
     }
 
