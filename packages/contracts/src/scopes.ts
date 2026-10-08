@@ -21,6 +21,7 @@ export type ScopeResource =
   | "account"
   | "notifications"
   | "workspace"
+  | "billing"
   | "access"
   | "webhooks"
   | "secrets"
@@ -55,6 +56,8 @@ export const SCOPES = [
   { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
   { scope: "workspace:read", description: "Read workspace invites, integrations, model routes and teams" },
   { scope: "workspace:admin", description: "Create and delete workspaces, invite members, connect integrations, and create, change and delete teams" },
+  { scope: "billing:read", description: "See a workspace's usage, budget, AI credit and invoices" },
+  { scope: "billing:write", description: "Change a workspace's budget and buy AI credit" },
   { scope: "access:read", description: "See who has access to repositories" },
   { scope: "access:admin", description: "Give and take away access to repositories, a team's included" },
   { scope: "webhooks:read", description: "See webhooks and their deliveries" },
@@ -81,6 +84,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
   { resource: "account", label: "Your account" },
   { resource: "notifications", label: "Notifications" },
   { resource: "workspace", label: "Workspaces" },
+  { resource: "billing", label: "Billing" },
   { resource: "access", label: "Who has access" },
   { resource: "webhooks", label: "Webhooks" },
   { resource: "secrets", label: "Secrets and variables" },
@@ -138,10 +142,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "notifications:read", "workspace:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "access:read", "webhooks:read", "secrets:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write",
@@ -223,6 +227,14 @@ export const OPERATION_SCOPES = [
   ["set_team_member", "workspace:admin"],
   ["remove_team_member", "workspace:admin"],
   ["set_team_review_assignment", "workspace:admin"],
+  // A workspace's billing: usage, budget, AI credit and invoices.
+  ["get_usage", "billing:read"],
+  ["get_budget", "billing:read"],
+  ["get_ai_credit", "billing:read"],
+  ["list_invoices", "billing:read"],
+  ["get_billing_details", "billing:read"],
+  ["set_budget", "billing:write"],
+  ["buy_ai_credit", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
   ["search", "repo:read"],
@@ -397,6 +409,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },
   { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
+  { id: "billing", label: "Billing", scopes: ["billing:read", "billing:write"] },
   { id: "runners", label: "Runners", scopes: ["runners:read"] },
 ];
 

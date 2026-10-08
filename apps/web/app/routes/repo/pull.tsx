@@ -40,6 +40,7 @@ import {
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
+import { highlightFirstFiles } from "../../lib/highlight.server";
 import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
@@ -63,6 +64,7 @@ import {
 } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Loading, SkeletonLine } from "../../components/ui/skeleton";
+import { TabStrip } from "../../components/ui/tab-strip";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import {
@@ -187,7 +189,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     (found.value.statuses ?? []).length === 0 &&
     (found.value.requiredChecks ?? []).length === 0;
   const [comparison, used, noChecks] = await Promise.all([
-    tab === "changes" ? repos.compare(range.repoId, viewer, range.base, range.head, range.baseBranch) : null,
+    // The first screens of it highlighted here, so their colours do not pop in.
+    tab === "changes"
+      ? repos
+          .compare(range.repoId, viewer, range.base, range.head, range.baseBranch)
+          .then(async (found) => (found.ok ? { ok: true as const, value: await highlightFirstFiles(found.value) } : found))
+      : null,
     deps,
     unchecked
       ? actions
@@ -433,8 +440,9 @@ function TabLink({
     <Link
       to={to}
       preventScrollReset
+      aria-current={active ? "page" : undefined}
       className={
-        "-mb-px flex items-center gap-2 border-b-2 px-3 pb-2.5 text-sm transition-colors " +
+        "-mb-px flex items-center gap-2 border-b-2 px-3 pb-2.5 text-sm whitespace-nowrap transition-colors " +
         (active
           ? "border-accent font-medium text-fg"
           : "border-transparent text-muted hover:text-fg")
@@ -759,7 +767,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </p>
         )}
 
-        <nav className="mt-6 flex items-end gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <TabStrip label="Pull request" className="mt-6 items-end gap-1 border-b border-line">
           <TabLink to={here} active={tab === "conversation"}>
             <MessageSquare size={15} />
             Conversation
@@ -780,7 +788,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               <span className="text-danger">−{pull.files.reduce((sum, file) => sum + file.deletions, 0).toLocaleString("en-US")}</span>
             </span>
           )}
-        </nav>
+        </TabStrip>
       </header>
       <div className={`mt-6 grid gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
         <div className="min-w-0">

@@ -35,6 +35,7 @@ import {
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
+import { InlineMarkdown } from "../../components/inline-markdown";
 import { host, StatusDot } from "../../components/deploy";
 import { CheckBadge } from "../../components/checks";
 import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
@@ -45,6 +46,7 @@ import { PackageIcon } from "../../components/package-icon";
 import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
+import { distinctFacts } from "../../lib/memory-facts";
 import { githubApp } from "../../lib/github.server";
 import { Avatar, ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
 import { ChangeSize } from "../../components/work";
@@ -291,7 +293,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     event.type === "checks.completed" ? [{ repo: "", number: event.data.number, at: Date.parse(event.time), passed: event.data.status === "passed" }] : [],
   );
   const memoryList = ok(memories)?.project ?? [];
-  const knows = [...memoryList.filter((m) => m.pinned), ...memoryList.filter((m) => !m.pinned).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))].slice(0, 5);
+  // Pinned first, then the newest; a fact remembered twice, once.
+  const knows = distinctFacts([...memoryList.filter((m) => m.pinned), ...memoryList.filter((m) => !m.pinned).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))]).slice(0, 5);
   const openIssues = ok(issues);
 
   // --- Getting to production ----------------------------------------------------
@@ -1092,7 +1095,7 @@ function Overview({
                     <li key={memory.id} className="text-xs leading-5">
                       <p className="line-clamp-3 text-fg-soft">
                         {memory.pinned && <Pin size={11} className="mr-1 inline text-accent" />}
-                        {memory.text}
+                        <InlineMarkdown text={memory.text} />
                       </p>
                       <p className="text-faint">
                         {memory.kind} · {memory.createdBy} · <TimeAgo at={memory.createdAt} />

@@ -1,4 +1,7 @@
-import { type ReactNode, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { type ReactNode, Suspense, lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+import { cn } from "../lib/cn";
+import { paletteKeyLabel } from "../lib/shortcut";
 
 /*
  * The ⌘K palette. The dialog itself, with its search and its dependencies,
@@ -26,6 +29,23 @@ export function usePaletteShortcut(toggle: () => void) {
   }, []);
 }
 
+const never = () => () => {};
+
+function platform(): string {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return nav.userAgentData?.platform || nav.platform || nav.userAgent;
+}
+
+/**
+ * The palette's shortcut as this computer writes it: ⌘K on a Mac, Ctrl K
+ * elsewhere. Not shown on a touch screen, which has no keyboard to press it.
+ */
+export function PaletteKey({ className }: { className?: string }) {
+  // The server cannot know the computer: it says ⌘K, and the browser corrects it.
+  const label = useSyncExternalStore(never, () => paletteKeyLabel(platform()), () => "⌘K");
+  return <kbd className={cn(className, "pointer-coarse:hidden")}>{label}</kbd>;
+}
+
 /**
  * ⌘K: pages and actions from what the page already knows, and, as someone
  * types, repositories, issues, pull requests and people from search
@@ -42,10 +62,24 @@ export function CommandPalette(props: {
   useEffect(() => {
     if (props.open) setWanted(true);
   }, [props.open]);
+  // What had focus when it opened, the button or the page, to give it back
+  // on closing: the dialog has no trigger of its own to return to.
+  const opener = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  if (props.open && !wasOpen.current && typeof document !== "undefined") {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+  wasOpen.current = props.open;
   if (!wanted) return null;
   return (
     <Suspense fallback={null}>
-      <Dialog {...props} />
+      <Dialog
+        {...props}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (opener.current?.isConnected) opener.current.focus();
+        }}
+      />
     </Suspense>
   );
 }

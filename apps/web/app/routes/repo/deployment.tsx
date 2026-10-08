@@ -7,6 +7,7 @@ import { TimeAgo } from "../../components/ui";
 import { deployments } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
 import { requireRepo } from "../../lib/access.server";
+import { buildError } from "../../lib/deployments";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Deployment · ${params.owner}/${params.repo} · g1t` });
@@ -33,6 +34,7 @@ const WORDS = {
 export default function DeploymentPage({ loaderData, params }: Route.ComponentProps) {
   const { build } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  const error = buildError(build);
   return (
     <div className="mx-auto max-w-5xl">
       <Link to={`${base}/deployments`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
@@ -62,8 +64,8 @@ export default function DeploymentPage({ loaderData, params }: Route.ComponentPr
           <ExternalLink size={12} />
         </a>
       )}
-      {build.error && (
-        <p className="mt-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm">{build.error}</p>
+      {error && (
+        <p className="mt-4 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm [overflow-wrap:anywhere]">{error}</p>
       )}
       {build.warnings.length > 0 && (
         <ul className="mt-4 space-y-1 rounded-lg border border-warn/30 bg-warn/5 px-4 py-3 text-sm">
@@ -73,7 +75,8 @@ export default function DeploymentPage({ loaderData, params }: Route.ComponentPr
         </ul>
       )}
       <h2 className="mt-8 text-sm font-medium text-muted">Build log</h2>
-      <pre className="mt-3 max-h-[70vh] overflow-auto rounded-xl border border-line bg-bg p-4 font-mono text-xs leading-relaxed text-muted">
+      {/* Long lines wrap, so a narrow screen shows the whole log without scrolling sideways. */}
+      <pre className="mt-3 max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-bg p-4 font-mono text-xs leading-relaxed text-muted [overflow-wrap:anywhere]">
         {build.log || (build.status === "queued" || build.status === "building" ? "The log appears when the build finishes." : "No log.")}
       </pre>
     </div>

@@ -62,6 +62,19 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Billing",
+        "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
+        &[
+            Op::GetUsage,
+            Op::GetBudget,
+            Op::SetBudget,
+            Op::GetAiCredit,
+            Op::BuyAiCredit,
+            Op::ListInvoices,
+            Op::GetBillingDetails,
+        ],
+    ),
+    (
         "Repositories",
         "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it.",
         &[
@@ -492,6 +505,13 @@ fn title(op: Op) -> &'static str {
         Op::DeleteRepoSubscription => "Stop watching a repository",
         Op::ListWatchedRepos => "List repositories you watch",
         Op::ListPinnedProjects => "List your pinned projects",
+        Op::GetUsage => "Get a workspace's usage",
+        Op::GetBudget => "Get a workspace's budget",
+        Op::SetBudget => "Change a workspace's budget",
+        Op::GetAiCredit => "Get a workspace's AI credit",
+        Op::BuyAiCredit => "Buy AI credit",
+        Op::ListInvoices => "List a workspace's invoices",
+        Op::GetBillingDetails => "Get a workspace's billing details",
         Op::PinProject => "Pin a project",
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",

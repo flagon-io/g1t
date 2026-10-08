@@ -148,6 +148,7 @@ export default [
     route("pull/:number", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
     route("agents", "routes/repo/agents.tsx"),
+    route("usage", "routes/repo/usage.tsx"),
     route("agents/runs/:id", "routes/repo/agents-run.tsx"),
     route("sessions", "routes/repo/sessions.tsx"),
     route("sessions/:number", "routes/repo/session.tsx"),

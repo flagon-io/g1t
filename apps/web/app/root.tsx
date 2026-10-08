@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -24,6 +24,7 @@ import {
   ScrollRestoration,
   type ShouldRevalidateFunctionArgs,
   useLocation,
+  useMatches,
   useParams,
   useRouteError,
   useRouteLoaderData,
@@ -53,7 +54,7 @@ import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
-import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./components/command-palette";
+import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./components/command-palette";
 import { billing, inbox, projects } from "./lib/services.server";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
@@ -62,6 +63,7 @@ import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
+import { RELOADED_KEY, reloadFixes } from "./lib/stale-build";
 
 
 export const links: Route.LinksFunction = () => [
@@ -82,7 +84,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
   // What sign-up buttons say: Request access while g1t is invite-only.
   const [shell, mode] = await Promise.all([
-    user ? shellFor(user, params, chosen, context) : visitorShell(params, context),
+    user
+      ? shellFor(user, params, chosen, context).catch((error: unknown) => {
+          // A sidebar that could not be read is no reason to lose the page,
+          // or to draw it as if they were signed out.
+          console.error("root: the sidebar could not be read", error);
+          return bareShell(user, params, chosen);
+        })
+      : visitorShell(params, context),
     user ? Promise.resolve(null) : registrationMode(),
   ]);
   // Where this g1t lives, for clone lines, agent setup and link previews.
@@ -106,6 +115,17 @@ async function visitorShell(params: { owner?: string; repo?: string }, context: 
   };
 }
 
+/** The sidebar from what the session already says, with no service asked. */
+function bareShell(user: User, params: { owner?: string; repo?: string }, chosen: string | null): ShellData {
+  return {
+    workspace: workspaceFor(user.workspaces ?? [], chosen, params),
+    repos: [],
+    repo: null,
+    limit: null,
+    monthUsageMicros: null,
+  };
+}
+
 /**
  * The sidebar only changes with the workspace or repository being looked
  * at, or after something was submitted: not on every page within them.
@@ -121,9 +141,9 @@ export function shouldRevalidate({
 }
 
 /**
- * The sidebar: the workspace you chose (lib/workspace-choice.ts), or the
- * one whose own pages these are; its projects; and the repository being
- * looked at. A project in another workspace does not switch it.
+ * The sidebar: the workspace whose pages or project these are when it is
+ * one of yours, else the one you chose (lib/workspace-choice.ts); its
+ * projects; and the repository being looked at.
  */
 async function shellFor(
   user: User,
@@ -149,7 +169,7 @@ async function shellFor(
     // Whether billing is on, without reading the account: that asks the
     // card processor about the workspace's cards, too slow for every page.
     kept("status", () => billing.status()).catch(() => null),
-    kept(`usage:${monthStart}`, () => billing.usage(workspace!.slug, user, monthStart)),
+    kept(`usage:${monthStart}`, () => billing.usage(workspace!.slug, user, monthStart)).catch(() => null),
     kept("limit", () => billing.limit(workspace!.slug, user)).catch(() => null),
     kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(() => null),
     sharedRepos(user),
@@ -193,12 +213,16 @@ async function shellFor(
     shared,
     inbox: unread,
     // While g1t is free every charge is zero, so usage is shown at cost.
-    monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : usage.value.spentMicros) : null,
+    // Usage at price, the one figure every page shows.
+    monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : (usage.value.priceMicros ?? usage.value.spentMicros)) : null,
   };
 }
 
-/** How long one isolate keeps the sidebar's workspace answers. */
-const SHELL_TTL_MS = 15_000;
+/**
+ * How long the sidebar's workspace answers are kept: as long as someone's
+ * own changes read fresh anyway (lib/perf.ts `PRIMARY_WINDOW_SECONDS`).
+ */
+const SHELL_TTL_MS = 30_000;
 
 /** Most repositories listed under Shared with you. */
 const MAX_SHARED = 20;
@@ -273,9 +297,7 @@ function Header({ user }: { user: User | null | undefined }) {
             aria-label="Search g1t"
             className="w-full rounded-md border border-line bg-bg py-1.5 pr-12 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
           />
-          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">
-            ⌘K
-          </kbd>
+          <PaletteKey className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line" />
         </Form>
         <button
           type="button"
@@ -301,7 +323,7 @@ function Header({ user }: { user: User | null | undefined }) {
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="Menu"
-              className="flex size-10 items-center justify-center rounded-md text-muted outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg sm:hidden"
+              className="flex size-10 items-center justify-center rounded-md text-muted outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised data-[state=open]:text-fg sm:hidden"
             >
               <Menu size={18} />
             </DropdownMenuTrigger>
@@ -349,7 +371,7 @@ function Header({ user }: { user: User | null | undefined }) {
               <DropdownMenu>
                 <DropdownMenuTrigger
                   aria-label="Account menu"
-                  className="flex items-center gap-1.5 rounded-md p-1 outline-none transition-colors hover:bg-raised data-[state=open]:bg-raised"
+                  className="flex items-center gap-1.5 rounded-md p-1 outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised"
                 >
                   <Avatar name={user.username} image={user.avatar} size={24} />
                   <ChevronDown size={14} className="text-faint" />
@@ -428,9 +450,20 @@ function Header({ user }: { user: User | null | undefined }) {
   );
 }
 
+/**
+ * The root's data as the browser last had it. When a navigation fails in a
+ * way that takes the root's data with it, the error is still drawn in the
+ * person's own frame, signed in, not the visitor's. Never kept on the
+ * server, where one module serves everyone.
+ */
+let lastRoot: Awaited<ReturnType<typeof loader>> | undefined;
+
 export function Layout({ children }: { children: React.ReactNode }) {
   // Undefined when the root loader itself failed.
-  const root = useRouteLoaderData<typeof loader>("root");
+  const loaded = useRouteLoaderData<typeof loader>("root");
+  const inBrowser = typeof document !== "undefined";
+  if (loaded && inBrowser) lastRoot = loaded;
+  const root = loaded ?? (inBrowser ? lastRoot : undefined);
   const user = root?.user;
   const { pathname, search } = useLocation();
   // /verify lands here with ?sent=1 once it has sent the link again.
@@ -490,6 +523,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="flex min-h-screen flex-col">
+        {/* The first stop for the keyboard: past the menus, to the page. */}
+        <a
+          href="#content"
+          className="sr-only rounded-md bg-fg px-3 py-2 text-sm font-medium text-bg focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70]"
+        >
+          Skip to content
+        </a>
         {root?.shell && usesAppShell(pathname, user != null) ? (
           <AppShell user={user ?? null} shell={root.shell} missing={missing} banner={banner}>
             {children}
@@ -499,7 +539,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Progress />
             <Header user={user} />
             {banner}
-            <div {...leaving} className={`grow ${leaving.className}`}>
+            <div id="content" tabIndex={-1} {...leaving} className={`grow outline-none ${leaving.className}`}>
               {children}
             </div>
             <SiteFooter user={user} />
@@ -517,13 +557,51 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  const location = useLocation();
+  const matches = useMatches();
+  // A tab left open across a deploy: load the address again as a whole
+  // page, once, rather than show an error the reload fixes.
+  const reload = reloadFixes({
+    error,
+    status: isRouteErrorResponse(error) ? error.status : undefined,
+    // The first page a tab loads has the key "default"; a client navigation's is its own.
+    clientNavigation: location.key !== "default",
+    caughtByCatchAll: matches.at(-1)?.id === "routes/not-found",
+  });
+  const href = location.pathname + location.search + location.hash;
+  useEffect(() => {
+    if (!reload) return;
+    try {
+      if (sessionStorage.getItem(RELOADED_KEY) === href) return;
+      sessionStorage.setItem(RELOADED_KEY, href);
+    } catch {
+      // No session storage: reload anyway; a document load never asks again.
+    }
+    window.location.assign(href);
+  }, [reload, href]);
+  if (reload) {
+    return (
+      <main className="mx-auto max-w-xl px-4 py-32 text-center text-sm text-muted" aria-busy="true">
+        <title>Loading · g1t</title>
+        Loading the latest version of g1t…
+      </main>
+    );
+  }
+
   let title = "Something went wrong";
   let details = "An unexpected error occurred. Try again in a moment.";
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
     // The same page for something private and something missing.
-    if (error.status === 404) return <NotFound data={error.data} />;
+    if (error.status === 404) {
+      return (
+        <>
+          <title>Not found · g1t</title>
+          <NotFound data={error.data} />
+        </>
+      );
+    }
     if (typeof error.data === "string" && error.data) {
       details = error.data;
     }

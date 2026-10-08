@@ -42,6 +42,9 @@ function count(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/** Price-book rows the table shows in rows of their own, or not at all. */
+const SHOWN_APART = new Set(["app_month", "agent_models", "agent_tokens", "gateway_models", "card_fee_percent", "card_fee_fixed"]);
+
 /** What the page says when billing cannot be reached: the published defaults. */
 const DEFAULT_FREE: Required<FreeTier> = {
   trialWorkspaceMicros: 5_000_000,
@@ -77,7 +80,7 @@ const ENTERPRISE_MAIL = "mailto:hey@flagon.io?subject=Enterprise%20billing%20for
 const HOW = [
   {
     title: "Our cost, passed through",
-    body: "Every sandbox second, build, app request and model token costs g1t money at Cloudflare or a model provider. Each is metered and charged at that cost plus 20%, from the first second and the first request. Use a little, pay a little.",
+    body: "Every sandbox second, build and app request costs g1t money at Cloudflare. Each is metered and charged at that cost plus 20%, from the first second and the first request. Models are charged at the provider's price with no markup, plus a flat agent rate per million tokens for what g1t adds around them, from prepaid AI credit. Use a little, pay a little.",
   },
   {
     title: "Prices follow costs, by themselves",
@@ -85,7 +88,7 @@ const HOW = [
   },
   {
     title: "The 20% is the overhead",
-    body: "It pays for running g1t and for building and keeping up the features you use. The same 20% on everything, and nothing bundled in.",
+    body: "It pays for running g1t and for building and keeping up the features you use. The same 20% on everything but models, whose overhead is the agent rate, and nothing bundled in.",
   },
   {
     title: "No seats, ever",
@@ -446,13 +449,59 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <tbody className="divide-y divide-line">
             <tr>
               <td className="px-4 py-3">
-                <p className="font-medium">Models</p>
-                <p className="text-xs text-faint">g1t's hosted models, through AI Gateway</p>
+                <p className="font-medium">Agent models</p>
+                <p className="text-xs text-faint">g1t's hosted models for agent runs, paid from AI credit</p>
               </td>
               <td className="px-4 py-3 text-muted">What the provider charges, per request</td>
-              <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{book?.modelMarginPercent ?? 20}%</td>
-              <td className="px-4 py-3 text-muted">Cost + {book?.modelMarginPercent ?? 20}%</td>
+              <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{book?.modelMarginPercent ?? 0}%</td>
+              <td className="px-4 py-3 text-muted">{book?.modelMarginPercent ? `Cost + ${book.modelMarginPercent}%` : "The provider's price"}</td>
             </tr>
+            {(() => {
+              const rate = book?.prices.find((p) => p.meter === "agent_tokens");
+              const gateway = book?.prices.find((p) => p.meter === "gateway_models");
+              const feePercent = book?.prices.find((p) => p.meter === "card_fee_percent");
+              const feeFixed = book?.prices.find((p) => p.meter === "card_fee_fixed");
+              const coming = book?.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
+              return (
+                <>
+                  <tr>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">g1t agent rate</p>
+                      <p className="text-xs text-faint">Context, memory, routing and orchestration, on every token an agent run uses</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted">A flat rate</td>
+                    <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
+                    <td className="px-4 py-3 font-mono text-xs tabular-nums">
+                      {rate && rate.priceMicros > 0 ? `${money(rate.priceMicros)} per million tokens` : coming ? `${money(coming.newCostMicros)} per million tokens from ${coming.effectiveAt!.slice(0, 10)}` : "$0.25 per million tokens"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">
+                        AI Gateway <span className="ml-1 rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">Free during beta</span>
+                      </p>
+                      <p className="text-xs text-faint">Your own apps calling models through g1t; your own key is free on the plan</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted">What the provider charges</td>
+                    <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{gateway?.markupPercent ?? 0}%</td>
+                    <td className="px-4 py-3 text-muted">{gateway?.markupPercent ? `Cost + ${gateway.markupPercent}%` : "The provider's price"}</td>
+                  </tr>
+                  {feePercent && feeFixed && (
+                    <tr>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">Card processing fee</p>
+                        <p className="text-xs text-faint">On AI credit bought by card, as its own line at checkout; never on invoices</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted">Stripe's fee</td>
+                      <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
+                      <td className="px-4 py-3 font-mono text-xs tabular-nums">
+                        {(feePercent.priceMicros / 10_000).toFixed(1)}% + {money(feeFixed.priceMicros)}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })()}
             <tr>
               <td className="px-4 py-3">
                 <p className="font-medium">Projects, previews and apps</p>
@@ -462,7 +511,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
               <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
               <td className="px-4 py-3 text-muted">Not charged</td>
             </tr>
-            {(book?.prices ?? []).filter((price) => price.meter !== "app_month").map((price) => (
+            {(book?.prices ?? []).filter((price) => !SHOWN_APART.has(price.meter)).map((price) => (
               <tr key={price.meter}>
                 <td className="px-4 py-3">
                   <p className="font-medium">{price.title}</p>

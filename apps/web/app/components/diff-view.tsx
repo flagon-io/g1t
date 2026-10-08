@@ -374,7 +374,9 @@ function FileSection({
   useEffect(() => {
     setHighlighted(null);
     const element = section.current;
-    if (!element || collapsed) return;
+    // Highlighted by the server already: one of the change's first files.
+    const done = file.hunks.some((hunk) => hunk.lines.some((line) => (line as HighlightedLine).html != null));
+    if (!element || collapsed || done) return;
     let cancelled = false;
     const observer = new IntersectionObserver(
       ([entry]) => {

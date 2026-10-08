@@ -227,6 +227,11 @@ pub struct RevokeRunCredentialsArgs {
 /// Operations that only read.
 pub const READ_OPERATIONS: &[&str] = &[
     "whoami",
+    "get_usage",
+    "get_budget",
+    "get_ai_credit",
+    "list_invoices",
+    "get_billing_details",
     "list_repos",
     "get_repo",
     "list_deleted_repos",
@@ -303,6 +308,9 @@ pub const READ_OPERATIONS: &[&str] = &[
 /// webhooks, secrets, workflows' controls, merging, and putting more agents
 /// to work.
 pub const NEVER: &[&str] = &[
+    // Billing is people's: agents never spend or change it.
+    "set_budget",
+    "buy_ai_credit",
     "create_workspace",
     "delete_workspace",
     "update_workspace",

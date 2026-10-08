@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   type ActivityItem,
   type Need,
+  DELETED_USER,
+  actorIds,
   ageBuckets,
   agentHours,
   dailyBuckets,
@@ -15,6 +17,7 @@ import {
   hourIn,
   issueToMerge,
   median,
+  nameActor,
   nextSeen,
   pipelineStage,
   queuedNumbers,
@@ -23,6 +26,7 @@ import {
   sparkPoints,
   splitRequest,
   stuckMinutes,
+  waitedFor,
 } from "./mission.ts";
 
 const MIN = 60_000;
@@ -231,4 +235,26 @@ test("open issues by age", () => {
     NOW,
   );
   assert.deepEqual(buckets.map((b) => b.count), [1, 1, 0, 1]);
+});
+
+test("the feed names people, not account ids", () => {
+  const actors = ["usr_b51a1a09", "g1t", null, "usr_b51a1a09", "usr_g1t_agent", "g1t_policy", "usr_gone"];
+  assert.deepEqual(actorIds(actors), ["usr_b51a1a09", "usr_gone"]);
+  const names = { usr_b51a1a09: "syntaqx" };
+  assert.equal(nameActor("usr_b51a1a09", names), "syntaqx");
+  assert.equal(nameActor("ada", names), "ada");
+  assert.equal(nameActor(null, names), null);
+  assert.equal(nameActor("usr_g1t_agent", names), "g1t");
+  // Unknown to the lookup: the account is gone. No lookup at all: only "someone".
+  assert.equal(nameActor("usr_gone", names), DELETED_USER);
+  assert.equal(nameActor("usr_gone", null), "someone");
+});
+
+test("waits read in the largest whole unit", () => {
+  assert.equal(waitedFor(0), "0 min");
+  assert.equal(waitedFor(45.7), "45 min");
+  assert.equal(waitedFor(60), "1 h");
+  assert.equal(waitedFor(1022), "17 h");
+  assert.equal(waitedFor(24 * 60), "1 d");
+  assert.equal(waitedFor(3 * 24 * 60 - 1), "2 d");
 });

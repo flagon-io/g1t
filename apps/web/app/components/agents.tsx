@@ -37,6 +37,8 @@ import {
 } from "./ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { shownStep } from "../lib/agent-step";
+import { inlinePlain } from "../lib/inline-markdown";
+import { InlineMarkdown } from "./inline-markdown";
 
 /** How often a page with something running asks again. */
 export const LIVE_MS = 4000;
@@ -257,9 +259,9 @@ export function RunCard({ run, member, showRepo }: { run: AgentRun; member: bool
         <RunStatusBadge status={run.status} />
       </div>
       {run.step && (
-        <p className={`mt-2.5 truncate font-mono text-xs ${active ? "text-fg/85" : "text-muted"}`} title={shownStep(run.step)}>
+        <p className={`mt-2.5 truncate font-mono text-xs ${active ? "text-fg/85" : "text-muted"}`} title={inlinePlain(shownStep(run.step))}>
           {active && <span className="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
-          {shownStep(run.step)}
+          <InlineMarkdown text={shownStep(run.step)} />
         </p>
       )}
       {run.status === "failed" && run.error && <p className="mt-1.5 text-xs text-danger">{run.error}</p>}
@@ -435,9 +437,9 @@ export function AgentPanel({
         <RunStatusBadge status={current.status} />
       </div>
       {current.step && (
-        <p className="mt-3 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line" title={shownStep(current.step)}>
+        <p className="mt-3 truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs text-fg/85 ring-1 ring-line" title={inlinePlain(shownStep(current.step))}>
           {active && <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-merged align-middle" />}
-          {shownStep(current.step)}
+          <InlineMarkdown text={shownStep(current.step)} />
         </p>
       )}
       {confidence && <ConfidenceLine confidence={confidence} />}
@@ -475,7 +477,7 @@ export function AgentBadge({ run }: { run: AgentRun | undefined }) {
   if (!run) return null;
   return (
     <span
-      title={run.step ? shownStep(run.step) : undefined}
+      title={run.step ? inlinePlain(shownStep(run.step)) : undefined}
       className="inline-flex shrink-0 items-center gap-1 rounded-full border border-merged/40 bg-merged/10 px-2 py-0.5 text-xs text-merged"
     >
       <Loader2 size={11} className="animate-spin" />
@@ -527,8 +529,8 @@ export function AgentStepLine({
   const run = data?.runs.find((run) => run.number === number && isActiveRun(run.status));
   if (!run?.step) return null;
   return (
-    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-faint" title={shownStep(run.step)}>
-      {RUN_KIND_LABEL[run.kind]}: {shownStep(run.step)}
+    <span className="mt-0.5 block truncate font-mono text-[0.6875rem] text-faint" title={inlinePlain(shownStep(run.step))}>
+      {RUN_KIND_LABEL[run.kind]}: <InlineMarkdown text={shownStep(run.step)} />
     </span>
   );
 }

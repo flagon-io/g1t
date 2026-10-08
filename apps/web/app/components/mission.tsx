@@ -110,6 +110,7 @@ const NEED: Record<NeedKind, { icon: ReactNode; tone: string; label: string }> =
   conflict: { icon: <Swords size={15} />, tone: "text-warn", label: "Conflict" },
   stalled: { icon: <Hand size={15} />, tone: "text-warn", label: "Stopped" },
   stuck: { icon: <TimerOff size={15} />, tone: "text-warn", label: "Quiet agent" },
+  runner: { icon: <TimerOff size={15} />, tone: "text-warn", label: "No runner" },
   review: { icon: <Eye size={15} />, tone: "text-info", label: "Review" },
   checks: { icon: <Terminal size={15} />, tone: "text-danger", label: "Checks" },
   ready: { icon: <GitMerge size={15} />, tone: "text-accent", label: "Ready" },

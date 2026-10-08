@@ -32,7 +32,10 @@ When a workspace is [renamed](/guides/workspaces/#rename-a-workspace), or a
 repository is [transferred](/guides/transferring-repositories/#deployments)
 to another workspace or [renamed](/guides/managing-repositories/), its apps
 are built again under addresses with the new name, and the old addresses
-redirect to them for 90 days.
+redirect to them for 90 days. A rebuild that fails is tried again an hour
+later, then two hours after that. After three failures with the same
+error, or after one whose commit no longer exists, it is not tried again
+until you push or choose **Redeploy**.
 
 When the [default branch changes](/guides/managing-repositories/), production
 is built again from the new default branch. An
@@ -163,6 +166,10 @@ The pull request shows the deployment as a check named **g1t / deploy**:
 
 A newer push replaces a build that is still running for the same pull
 request. Previews are marked `noindex`, so search engines leave them alone.
+
+The **Deployments** page lists the same failure of one app, repeated, as a
+single row with how many times it happened and when it last did. The row
+opens the newest of them.
 
 ## Production
 
@@ -381,7 +388,7 @@ renewed.
 
 ### Seeing what you use
 
-- **Billing**, under the plan, shows **This month's usage**: *Builds*
+- **Usage** shows **Deployments** with *Builds*
   (build minutes and their cost), *Requests & CPU* and *Custom domains*,
   in dollars, beside the rest of the workspace's usage. Requests and CPU
   time are counted from Cloudflare's analytics every 10 minutes.
@@ -448,6 +455,7 @@ you sign in to.
 | "Custom domains are being switched on" | Custom domains are not on for g1t.page yet. Domains you add are kept, and set up by themselves once they are. |
 | A domain stays at **Waiting for DNS** | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**. |
 | A domain says "This domain is not set up" | It points at g1t, but no project has added it. Add it under **Settings → Domains**. |
+| "This pull request's commit no longer exists" | The pull request's head was force-pushed over, or its branch deleted, after the build was asked for. Push to the pull request again, or close it. g1t does not try that commit again. |
 | "The build did not finish in 45 minutes" | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**. |
 
 ## Running your own g1t

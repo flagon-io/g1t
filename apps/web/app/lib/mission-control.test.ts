@@ -362,3 +362,11 @@ test("the summary says the week honestly", () => {
   assert.equal(summaryLine({ ...none, live: 1 }), "1 agent is at work. Nothing has landed this week yet.");
   assert.match(summaryLine(none), /Assign an issue/);
 });
+
+test("a job waiting for a self-hosted runner says so, not that an agent went quiet", () => {
+  const runner = { kind: "runner" as const, detail: "No runner with labels self-hosted, docker is online." };
+  assert.equal(reasonFor(runner), "stalled");
+  const why = whyFor(reasonFor(runner), runner);
+  assert.match(why, /self-hosted runner/);
+  assert.doesNotMatch(why, /agent/);
+});

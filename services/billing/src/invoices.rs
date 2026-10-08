@@ -140,7 +140,9 @@ impl Billing {
         let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
         let Some(account) = self.row(workspace).await? else { return Ok(Err("Nothing billed yet.".into())) };
         let Some(customer) = account.customer_id else { return Ok(Err("No card on file.".into())) };
-        let owed = (-account.balance_micros).max(0);
+        // AI credit left props up the balance but pays only for models: it
+        // is not money for anything else (ai.rs).
+        let owed = self.owed_with(workspace, account.balance_micros).await?;
         // Only a month's close charges no less than the minimum
         // (`MIN_CHARGE_MICROS`), so a payment's fee is never most of it;
         // less carries over. A charge because a limit was reached always

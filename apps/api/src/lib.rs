@@ -7,6 +7,7 @@
 mod addresses;
 mod alerts;
 mod audit;
+mod billing;
 mod blobs;
 mod mcp;
 mod notifications;

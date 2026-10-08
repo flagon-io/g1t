@@ -25,6 +25,7 @@ pub enum Resource {
     Account,
     Notifications,
     Workspace,
+    Billing,
     Repo,
     Code,
     Security,
@@ -41,7 +42,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 16] = [
+    pub const ALL: [Resource; 17] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -54,6 +55,7 @@ impl Resource {
         Resource::Account,
         Resource::Notifications,
         Resource::Workspace,
+        Resource::Billing,
         Resource::Access,
         Resource::Webhooks,
         Resource::Secrets,
@@ -65,6 +67,7 @@ impl Resource {
             Resource::Account => "account",
             Resource::Notifications => "notifications",
             Resource::Workspace => "workspace",
+            Resource::Billing => "billing",
             Resource::Repo => "repo",
             Resource::Code => "code",
             Resource::Security => "security",
@@ -87,6 +90,7 @@ impl Resource {
             Resource::Account => "Your account",
             Resource::Notifications => "Notifications",
             Resource::Workspace => "Workspaces",
+            Resource::Billing => "Billing",
             Resource::Repo => "Repositories",
             Resource::Code => "Code",
             Resource::Security => "Security",
@@ -157,6 +161,8 @@ pub enum Scope {
     NotificationsWrite,
     WorkspaceRead,
     WorkspaceAdmin,
+    BillingRead,
+    BillingWrite,
     AccessRead,
     AccessAdmin,
     WebhooksRead,
@@ -169,7 +175,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 33] = [
+    pub const ALL: [Scope; 35] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -195,6 +201,8 @@ impl Scope {
         Scope::NotificationsWrite,
         Scope::WorkspaceRead,
         Scope::WorkspaceAdmin,
+        Scope::BillingRead,
+        Scope::BillingWrite,
         Scope::AccessRead,
         Scope::AccessAdmin,
         Scope::WebhooksRead,
@@ -232,6 +240,8 @@ impl Scope {
             Scope::NotificationsWrite => "notifications:write",
             Scope::WorkspaceRead => "workspace:read",
             Scope::WorkspaceAdmin => "workspace:admin",
+            Scope::BillingRead => "billing:read",
+            Scope::BillingWrite => "billing:write",
             Scope::AccessRead => "access:read",
             Scope::AccessAdmin => "access:admin",
             Scope::WebhooksRead => "webhooks:read",
@@ -306,6 +316,8 @@ impl Scope {
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::WorkspaceRead => "Read workspace invites, integrations, model routes and teams",
             Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, and create, change and delete teams",
+            Scope::BillingRead => "See a workspace's usage, budget, AI credit and invoices",
+            Scope::BillingWrite => "Change a workspace's budget and buy AI credit",
             Scope::AccessRead => "See who has access to repositories",
             Scope::AccessAdmin => "Give and take away access to repositories, a team's included",
             Scope::WebhooksRead => "See webhooks and their deliveries",
@@ -534,6 +546,14 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("set_team_member", Scope::WorkspaceAdmin),
     ("remove_team_member", Scope::WorkspaceAdmin),
     ("set_team_review_assignment", Scope::WorkspaceAdmin),
+    // A workspace's billing: usage, budget, AI credit and invoices.
+    ("get_usage", Scope::BillingRead),
+    ("get_budget", Scope::BillingRead),
+    ("get_ai_credit", Scope::BillingRead),
+    ("list_invoices", Scope::BillingRead),
+    ("get_billing_details", Scope::BillingRead),
+    ("set_budget", Scope::BillingWrite),
+    ("buy_ai_credit", Scope::BillingWrite),
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
@@ -859,6 +879,20 @@ mod tests {
         }
         assert!(Preset::ReadOnly.scopes().unwrap().iter().all(|scope| scope.level() == Level::Read));
         assert_eq!(Preset::Full.scopes(), None);
+    }
+
+    #[test]
+    fn billing_is_read_by_presets_and_changed_by_none_but_full_access() {
+        assert!(Preset::ReadOnly.scopes().unwrap().contains(&Scope::BillingRead));
+        for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
+            assert!(!preset.scopes().unwrap().contains(&Scope::BillingWrite), "{}", preset.as_str());
+        }
+        assert_eq!(scope_for("set_budget"), Some(Scope::BillingWrite));
+        assert_eq!(scope_for("buy_ai_credit"), Some(Scope::BillingWrite));
+        assert_eq!(scope_for("get_usage"), Some(Scope::BillingRead));
+        let reader = token(&[Scope::BillingRead]);
+        assert!(decide(&reader, "list_invoices", &json!({})).allowed);
+        assert!(decide(&reader, "set_budget", &json!({})).reason.unwrap().contains("billing:write"));
     }
 
     #[test]

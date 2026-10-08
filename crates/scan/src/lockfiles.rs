@@ -358,7 +358,9 @@ pub fn still_locked_check(lockfile: Lockfile, path: &str, name: &str, version: &
         Lockfile::PackageLock => format!(
             "node -e {} {file}",
             quote(&format!(
-                "const l=require(require('path').resolve(process.argv[1]));const hit=Object.entries(l.packages||{{}}).some(([k,p])=>k.endsWith('node_modules/{name}')&&p.version==='{version}');process.exit(hit?1:0)"
+                // Double quotes in the script, so the shell's single quotes
+                // around it need no escaping and the check reads as written.
+                "const l=require(require(\"path\").resolve(process.argv[1]));const hit=Object.entries(l.packages||{{}}).some(([k,p])=>k.endsWith(\"node_modules/{name}\")&&p.version===\"{version}\");process.exit(hit?1:0)"
             ))
         ),
         Lockfile::PnpmLock => format!(
@@ -476,6 +478,9 @@ mod tests {
         let npm = still_locked_check(Lockfile::PackageLock, "web/package-lock.json", "lodash", "4.17.20");
         assert!(npm.starts_with("node -e '") && npm.ends_with(" 'web/package-lock.json'"));
         assert!(npm.contains("node_modules/lodash") && npm.contains("4.17.20"));
+        // Nothing for the shell to escape: it reads as the command it is.
+        assert!(!npm.contains(r"'\''"), "{npm}");
+        assert!(npm.contains("p.version===\"4.17.20\""));
         let go = still_locked_check(Lockfile::GoMod, "go.mod", "golang.org/x/net", "v0.7.0");
         assert!(go.contains("golang\\.org/x/net v0\\.7\\.0"));
         assert_eq!(test_command(Lockfile::CargoLock, ""), Some("cargo test --locked".to_owned()));

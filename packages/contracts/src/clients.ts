@@ -490,6 +490,15 @@ export function billingClient(service: ServiceBinding): BillingApi {
     limitRequests: (workspace, viewer) => call("limit_requests", { workspace, viewer }),
     confirmSpike: (actor, workspace, keepGoing) => call("confirm_spike", { actor, workspace, keepGoing }),
     setCaps: (actor, workspace, caps) => call("set_caps", { actor, workspace, ...caps }),
+    usageReport: (workspace, viewer, range) =>
+      call("usage_report", { workspace, viewer, from: range.from, until: range.until, products: range.products ?? [], projects: range.projects ?? [] }),
+    aiCredit: (workspace, viewer) => call("ai_credit", { workspace, viewer }),
+    buyAiCredit: (actor, workspace, amountCents, returnUrl) => call("buy_ai_credit", { actor, workspace, amountCents, returnUrl }),
+    confirmAiCredit: (workspace, viewer, session) => call("confirm_ai_credit", { workspace, viewer, session }),
+    setAiReload: (actor, workspace, reload) => call("set_ai_reload", { actor, workspace, ...reload }),
+    setBudget: (actor, workspace, budget) => call("set_budget", { actor, workspace, ...budget }),
+    billingDetails: (workspace, viewer) => call("billing_details", { workspace, viewer }),
+    setBillingDetails: (actor, workspace, details) => call("set_billing_details", { actor, workspace, ...details }),
   };
 }
 

@@ -48,7 +48,7 @@ function KindBadge({ kind }: { kind: MemoryKind }) {
 function KindSelect({ value }: { value?: MemoryKind }) {
   return (
     <Select name="kind" defaultValue={value ?? "fact"}>
-      <SelectTrigger size="sm" className="w-40">
+      <SelectTrigger size="sm" className="w-40" aria-label="Kind of memory">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -3,7 +3,7 @@ import { Link } from "react-router";
 
 import type { Pull } from "@g1t/contracts";
 
-import { count } from "../lib/branches";
+import type { Drift } from "../lib/branches";
 import { CheckBadge } from "./checks";
 import { host } from "./deploy";
 import { Avatar, TimeAgo } from "./ui";
@@ -11,10 +11,8 @@ import { Avatar, TimeAgo } from "./ui";
 export type ActiveBranch = {
   name: string;
   commit: { hash: string; message: string; author: string; at: string } | null;
-  ahead: number;
-  behind: number;
-  aheadMore: boolean;
-  behindMore: boolean;
+  /** Null when the two histories were not read far enough to meet. */
+  drift: Drift | null;
   pull: { number: number; title: string; checkStatus: Pull["checkStatus"]; draft: boolean } | null;
   preview: string | null;
 };
@@ -52,19 +50,21 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
             )}
           </span>
           <span className="ml-6.5 flex shrink-0 flex-wrap items-center gap-2 text-xs sm:ml-0">
-            <span
-              className="inline-flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono tabular-nums text-muted"
-              title={`${count(branch.ahead, branch.aheadMore)} commits ahead of ${main}, ${count(branch.behind, branch.behindMore)} behind`}
-            >
-              <span className="inline-flex items-center gap-0.5">
-                <ArrowUp size={11} className="text-accent" />
-                {count(branch.ahead, branch.aheadMore)}
+            {branch.drift && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono tabular-nums text-muted"
+                title={`${branch.drift.ahead} ${branch.drift.ahead === 1 ? "commit" : "commits"} ahead of ${main}, ${branch.drift.behind} behind`}
+              >
+                <span className="inline-flex items-center gap-0.5">
+                  <ArrowUp size={11} className={branch.drift.ahead > 0 ? "text-accent" : "text-faint"} />
+                  {branch.drift.ahead}
+                </span>
+                <span className="inline-flex items-center gap-0.5">
+                  <ArrowDown size={11} className={branch.drift.behind > 0 ? "text-warn" : "text-faint"} />
+                  {branch.drift.behind}
+                </span>
               </span>
-              <span className="inline-flex items-center gap-0.5">
-                <ArrowDown size={11} className={branch.behind > 0 || branch.behindMore ? "text-warn" : "text-faint"} />
-                {count(branch.behind, branch.behindMore)}
-              </span>
-            </span>
+            )}
             {branch.pull ? (
               <Link
                 to={`${base}/pull/${branch.pull.number}`}
@@ -74,6 +74,11 @@ export function ActiveBranches({ branches, base, main }: { branches: ActiveBranc
                 <GitPullRequest size={12} className={branch.pull.draft ? "text-faint" : "text-accent"} />#{branch.pull.number}
                 <CheckBadge status={branch.pull.checkStatus} />
               </Link>
+            ) : branch.drift?.ahead === 0 ? (
+              // Nothing here that the default branch lacks: no pull request to open.
+              <span className="px-1.5 py-0.5 text-faint" title={`Every commit on ${branch.name} is already on ${main}.`}>
+                Nothing to merge
+              </span>
             ) : (
               <Link
                 to={`${base}/pulls/new?branch=${encodeURIComponent(branch.name)}`}

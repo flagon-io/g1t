@@ -121,9 +121,12 @@ A repository's **Branches** tab, `g1t.sh/<workspace>/<repo>/branches`, lists
 every branch: the default one first, then those with a commit in the last 90
 days (**Active**), then the rest (**Stale**). Each shows its last commit, how
 many commits it is ahead of and behind the default branch, the pull request
-open on it with its checks, and its preview when it has one. A count with a
-`+` ran past how far back g1t reads, 40 commits on the branch and 120 on the
-default. Search narrows the list by name.
+open on it with its checks, and its preview when it has one. A branch with
+no pull request links to opening one; one with nothing the default branch
+lacks (ahead `0`) says **Nothing to merge** instead. The counts are exact,
+merges included. g1t reads up to 1,000 commits of each history to find
+where the two meet; a branch that left the default branch further back
+than that shows no counts. Search narrows the list by name.
 
 The **Tags** tab lists tags newest first, up to 100, each with its commit
 and a ZIP of its files.

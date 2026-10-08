@@ -173,13 +173,6 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
             <Tag size={14} />
             Labels
           </Link>
-          <Link
-            to={`${repo}/milestones`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
-          >
-            <MilestoneIcon size={14} />
-            Milestones
-          </Link>
         </span>
       </div>
       <Form ref={form} method="post" className="mt-4">

@@ -167,6 +167,7 @@ pub(crate) fn settings_from(rows: &[(String, String)]) -> CostSettings {
             "min_daily_cost_micros" => s.min_daily_cost_micros = value.parse().unwrap_or(s.min_daily_cost_micros),
             "anomaly_factor" => s.anomaly_factor = value.parse().unwrap_or(s.anomaly_factor),
             "anomaly_floor_micros" => s.anomaly_floor_micros = value.parse().unwrap_or(s.anomaly_floor_micros),
+            "card_fee" => s.card_fee = value != "off",
             _ => {}
         }
     }
@@ -270,6 +271,7 @@ impl Billing {
             ("min_daily_cost_micros", s.min_daily_cost_micros.to_string()),
             ("anomaly_factor", s.anomaly_factor.to_string()),
             ("anomaly_floor_micros", s.anomaly_floor_micros.to_string()),
+            ("card_fee", if s.card_fee { "on" } else { "off" }.to_owned()),
         ];
         let mut statements = Vec::new();
         for (key, value) in &pairs {

@@ -249,6 +249,13 @@ pub enum Op {
     RemoveTeamRepo,
     SetTeamReviewAssignment,
     ListUserTeams,
+    GetUsage,
+    GetBudget,
+    SetBudget,
+    GetAiCredit,
+    BuyAiCredit,
+    ListInvoices,
+    GetBillingDetails,
     RequestReviewers,
     RemoveRequestedReviewers,
     GetCodeownersErrors,
@@ -616,7 +623,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 197] = [
+    pub const ALL: [Op; 204] = [
         Op::Whoami,
         Op::CreateWorkspace,
         Op::DeleteWorkspace,
@@ -780,6 +787,13 @@ impl Op {
         Op::RemoveTeamRepo,
         Op::SetTeamReviewAssignment,
         Op::ListUserTeams,
+        Op::GetUsage,
+        Op::GetBudget,
+        Op::SetBudget,
+        Op::GetAiCredit,
+        Op::BuyAiCredit,
+        Op::ListInvoices,
+        Op::GetBillingDetails,
         Op::RequestReviewers,
         Op::RemoveRequestedReviewers,
         Op::GetCodeownersErrors,
@@ -986,6 +1000,13 @@ impl Op {
             Op::RemoveTeamRepo => "remove_team_repo",
             Op::SetTeamReviewAssignment => "set_team_review_assignment",
             Op::ListUserTeams => "list_user_teams",
+            Op::GetUsage => "get_usage",
+            Op::GetBudget => "get_budget",
+            Op::SetBudget => "set_budget",
+            Op::GetAiCredit => "get_ai_credit",
+            Op::BuyAiCredit => "buy_ai_credit",
+            Op::ListInvoices => "list_invoices",
+            Op::GetBillingDetails => "get_billing_details",
             Op::RequestReviewers => "request_reviewers",
             Op::RemoveRequestedReviewers => "remove_requested_reviewers",
             Op::GetCodeownersErrors => "get_codeowners_errors",
@@ -1446,6 +1467,27 @@ impl Op {
             }
             Op::SetTeamReviewAssignment => {
                 "Choose what happens when a team is asked to review a pull request. Off, everyone in it is asked. On (`enabled`), g1t picks `count` people from it (1 to 10, never the pull request's author) and asks them, and the team stays shown as asked beside them: `round_robin` picks whoever this team asked least recently, `load_balance` whoever has the fewest pull requests waiting on their review. `skip_busy` leaves out anyone with `busy_at` or more waiting; `include_child_teams` also picks from its child teams' people; `excluded` lists usernames never picked; `notify_team` also tells the rest of the team. Fields left out keep their current value. Owners of the workspace and the team's maintainers. People only. Returns the team."
+            }
+            Op::GetUsage => {
+                "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance` and the split `by_project`), `projects` (every repository with usage in the range), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only."
+            }
+            Op::GetBudget => {
+                "A workspace's budget: its monthly spend limit (`amount_micros`; `automatic` is true while the owners have not set one, and it is then $200 or twice last month's spend), what was charged this month (`spent_micros`), the most the owners may set it to themselves (`max_amount_micros`), its `alerts` (percent of the limit, each emailed to the owners once a month), whether usage pauses at the limit (`pause_at_limit`), the `webhook` told of each alert, and `state`: `ok`, `warning` or `stopped`, with a `message` when work is stopped or close to it. Members of the workspace only."
+            }
+            Op::SetBudget => {
+                "Change a workspace's budget. Give only what you change; the rest stays as it is. `amount_micros` is the monthly spend limit, up to `max_amount_micros`, or null for the automatic one. `alerts` is some of 50, 75, 90 and 100, in percent of the limit. `pause_at_limit` false makes the limit alert only, without pausing usage; g1t's own ceiling still applies. `webhook` is an https:// address sent a JSON POST for each alert, or null for none. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents can read the budget but never change it. Returns the budget."
+            }
+            Op::GetAiCredit => {
+                "A workspace's AI credit, which pays for agent and AI gateway usage: what is left (`balance_micros`), how much of it was bought and given, its `grants` newest first, whether new runs on g1t's models are refused for want of it (`blocked`), whether it can be bought (`can_buy`) and for how much (`min_cents`, `max_cents`, `presets_cents`, and the `card_fee` added on top), auto-reload, the agent rate and the markups on models. `free_via_discount` or `postpaid` mean no credit is needed. Members of the workspace only."
+            }
+            Op::BuyAiCredit => {
+                "Start buying AI credit. Returns `url`, a payment page to open in a browser and pay by card; it comes back to the workspace's billing page. `amount_cents` is the credit, in whole dollars from $10 (1000) to $1,000 (100000); any card fee is added on top. The credit is added once the payment goes through. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents never buy credit."
+            }
+            Op::ListInvoices => {
+                "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, activations, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only."
+            }
+            Op::GetBillingDetails => {
+                "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Members of the workspace only."
             }
             Op::ListUserTeams => {
                 "The teams someone is in within a workspace, as list_teams describes them, leaving out secret teams you cannot see. Members of the workspace only."
@@ -2673,6 +2715,66 @@ impl Op {
                 object(properties, &required)
             }
             Op::SetTeamReviewAssignment => object(team_target(review_assignment_properties()), &["workspace", "team"]),
+            Op::GetUsage => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "from": { "type": "string", "format": "date", "description": "The first day, YYYY-MM-DD (UTC). The first of this month if not given." },
+                    "until": { "type": "string", "format": "date", "description": "The last day, included, YYYY-MM-DD (UTC). Today if not given." },
+                    "products": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": crate::billing::PRODUCTS },
+                        "description": "Only these product families; all of them if not given. In a query string, separate them with commas.",
+                    },
+                    "projects": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Only these repositories, as \"owner/name\"; all of them if not given. In a query string, separate them with commas.",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "enum": crate::billing::GROUPS,
+                        "description": "Also add up the range by product, project or day, as `groups`.",
+                    },
+                }),
+                &["workspace"],
+            ),
+            Op::GetBudget | Op::GetAiCredit | Op::ListInvoices | Op::GetBillingDetails => {
+                object(json!({ "workspace": workspace_schema() }), &["workspace"])
+            }
+            Op::SetBudget => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "amount_micros": {
+                        "type": ["integer", "null"],
+                        "minimum": 0,
+                        "description": "The monthly spend limit, in millionths of a dollar: 500000000 is $500. Null for the automatic limit. Left out: unchanged.",
+                    },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer", "enum": crate::billing::ALERT_LEVELS },
+                        "description": "When to alert, in percent of the limit: some of 50, 75, 90 and 100. Replaces the whole list. Left out: unchanged.",
+                    },
+                    "pause_at_limit": { "type": "boolean", "description": "Pause usage at the limit (the default), or with false, only alert. Left out: unchanged." },
+                    "webhook": {
+                        "type": ["string", "null"],
+                        "description": "An https:// address sent a JSON POST for each alert, or null for none. Left out: unchanged.",
+                    },
+                }),
+                &["workspace"],
+            ),
+            Op::BuyAiCredit => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "amount_cents": {
+                        "type": "integer",
+                        "minimum": 1000,
+                        "maximum": 100000,
+                        "multipleOf": 100,
+                        "description": "The credit to buy, in cents, in whole dollars: 5000 is $50.",
+                    },
+                }),
+                &["workspace", "amount_cents"],
+            ),
             Op::ListUserTeams => object(
                 json!({ "workspace": workspace_schema(), "username": username_schema() }),
                 &["workspace", "username"],
@@ -2813,6 +2915,13 @@ impl Op {
                 | Op::RemoveTeamRepo
                 | Op::SetTeamReviewAssignment
                 | Op::ListUserTeams
+                | Op::GetUsage
+                | Op::GetBudget
+                | Op::SetBudget
+                | Op::GetAiCredit
+                | Op::BuyAiCredit
+                | Op::ListInvoices
+                | Op::GetBillingDetails
         )
     }
 
@@ -4565,6 +4674,15 @@ impl Op {
                 )
                 .await
             }
+            // A workspace's billing: the billing service decides, this gives
+            // each answer its public shape.
+            Op::GetUsage
+            | Op::GetBudget
+            | Op::SetBudget
+            | Op::GetAiCredit
+            | Op::BuyAiCredit
+            | Op::ListInvoices
+            | Op::GetBillingDetails => crate::billing::run(self, services, viewer, input).await,
             Op::ListUserTeams => {
                 pass(
                     identity,

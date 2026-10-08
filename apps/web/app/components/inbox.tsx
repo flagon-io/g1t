@@ -340,13 +340,23 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
 
 /**
  * Agent: g1t's agent to talk to, here to say it is coming, and not yet usable. A disabled button
- * gets no pointer events, so the tooltip hangs on a span around it.
+ * gets no pointer events, so the tooltip hangs on a span around it: shown on hover and focus,
+ * and on a tap, since a touch screen has no hover.
  */
 export function AgentButton() {
+  const [open, setOpen] = useState(false);
   return (
-    <Tooltip>
+    <Tooltip open={open} onOpenChange={setOpen}>
       <TooltipTrigger asChild>
-        <span tabIndex={0} className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <span
+          tabIndex={0}
+          // A tap opens it; without preventDefault the trigger's own click would close it again.
+          onClick={(event) => {
+            event.preventDefault();
+            setOpen(true);
+          }}
+          className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
           <button
             type="button"
             disabled
@@ -364,9 +374,10 @@ export function AgentButton() {
 }
 
 /**
- * Mission control's card of what needs the person from their inbox: the
- * newest unread items an agent is waiting on, then failures. Not shown
- * when there are none.
+ * Mission control's card of what is unread in the person's inbox and
+ * worth a look: items an agent is waiting on, then failures. Titled for
+ * the inbox, not "Needs you", which on mission control is the work list's
+ * own count. Not shown when there are none.
  */
 export function InboxNeedsCard({ items, total }: { items: InboxItem[]; total: number }) {
   if (items.length === 0) return null;
@@ -374,11 +385,11 @@ export function InboxNeedsCard({ items, total }: { items: InboxItem[]; total: nu
     <section className="rounded-xl border border-line bg-surface p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Hand size={14} className="text-warn" aria-hidden="true" />
-          Needs you
+          <Inbox size={14} className="text-warn" aria-hidden="true" />
+          From your inbox
           <span className="rounded-full bg-warn/15 px-1.5 text-[0.6875rem] font-medium tabular-nums text-warn">{total}</span>
         </h2>
-        <Link to="/inbox?tab=needs" className="text-xs font-medium text-accent hover:underline">
+        <Link to="/inbox" className="text-xs font-medium text-accent hover:underline">
           Open inbox
         </Link>
       </div>

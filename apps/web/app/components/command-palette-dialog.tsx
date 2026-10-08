@@ -43,12 +43,15 @@ export default function CommandPaletteDialog({
   onOpenChange,
   commands,
   repo,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   commands: PaletteCommand[];
   /** The repository being looked at, `owner/name`, to offer searching its code. */
   repo?: string | null;
+  /** Where focus goes once it closes (command-palette.tsx). */
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const navigate = useNavigate();
   const fetcher = useFetcher<{ q: string; hits: SiteHit[] }>();
@@ -88,6 +91,7 @@ export default function CommandPaletteDialog({
         <Primitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out motion-reduce:animate-none" />
         <Primitive.Content
           aria-describedby={undefined}
+          onCloseAutoFocus={onCloseAutoFocus}
           className="fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl shadow-black/60 outline-none"
         >
           <Primitive.Title className="sr-only">Go to or search</Primitive.Title>

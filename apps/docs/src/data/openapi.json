@@ -84,6 +84,19 @@
       ]
     },
     {
+      "name": "Billing",
+      "description": "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
+      "x-tools": [
+        "get_usage",
+        "get_budget",
+        "set_budget",
+        "get_ai_credit",
+        "buy_ai_credit",
+        "list_invoices",
+        "get_billing_details"
+      ]
+    },
+    {
       "name": "Repositories",
       "description": "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it.",
       "x-tools": [
@@ -9348,6 +9361,1081 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "username": "ana"
+        }
+      }
+    },
+    "/workspaces/{workspace}/usage": {
+      "get": {
+        "operationId": "get_usage",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get a workspace's usage",
+        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance` and the split `by_project`), `projects` (every repository with usage in the range), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
+        "x-operation": "get_usage",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "usage",
+        "x-scope": "billing:read",
+        "security": [
+          {
+            "token": [
+              "billing:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "The first day, YYYY-MM-DD (UTC). The first of this month if not given."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "The last day, included, YYYY-MM-DD (UTC). Today if not given."
+          },
+          {
+            "name": "products",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "sandboxes",
+                  "gateway",
+                  "deployments",
+                  "git_storage",
+                  "packages",
+                  "security",
+                  "search"
+                ]
+              }
+            },
+            "description": "Only these product families; all of them if not given. In a query string, separate them with commas."
+          },
+          {
+            "name": "projects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Only these repositories, as \"owner/name\"; all of them if not given. In a query string, separate them with commas."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "product",
+                "project",
+                "day"
+              ]
+            },
+            "description": "Also add up the range by product, project or day, as `groups`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "from": "2026-10-01",
+                  "until": "2026-10-07",
+                  "totals": {
+                    "price_micros": 48210000,
+                    "discount_micros": 0,
+                    "included_micros": 20000000,
+                    "credits_micros": 18000000,
+                    "charged_micros": 10210000,
+                    "pending_micros": 1340000,
+                    "cost_micros": 40100000
+                  },
+                  "days": [
+                    {
+                      "day": "2026-10-06",
+                      "product": "agent",
+                      "micros": 12400000
+                    },
+                    {
+                      "day": "2026-10-06",
+                      "product": "sandboxes",
+                      "micros": 2100000
+                    },
+                    {
+                      "day": "2026-10-07",
+                      "product": "agent",
+                      "micros": 9800000
+                    }
+                  ],
+                  "products": [
+                    {
+                      "key": "agent",
+                      "label": "Agent",
+                      "micros": 41000000,
+                      "meters": [
+                        {
+                          "key": "agent_models",
+                          "label": "Models",
+                          "product": "agent",
+                          "unit": "tokens",
+                          "quantity": 9120000,
+                          "micros": 41000000,
+                          "pending_micros": 0,
+                          "daily": [
+                            3100000,
+                            5200000,
+                            4400000,
+                            6000000,
+                            0,
+                            12400000,
+                            9800000
+                          ],
+                          "allowance": null,
+                          "by_project": [
+                            {
+                              "project": "flagon-io/g1t",
+                              "micros": 36000000,
+                              "quantity": 8010000
+                            },
+                            {
+                              "project": "flagon-io/hello",
+                              "micros": 5000000,
+                              "quantity": 1110000
+                            }
+                          ]
+                        }
+                      ],
+                      "features": [
+                        {
+                          "key": "runs",
+                          "label": "Runs",
+                          "micros": 33000000,
+                          "count": 14
+                        },
+                        {
+                          "key": "reviews",
+                          "label": "Reviews",
+                          "micros": 8000000,
+                          "count": 9
+                        }
+                      ]
+                    },
+                    {
+                      "key": "sandboxes",
+                      "label": "Sandboxes",
+                      "micros": 7210000,
+                      "meters": [
+                        {
+                          "key": "sandbox",
+                          "label": "Sandbox time",
+                          "product": "sandboxes",
+                          "unit": "seconds",
+                          "quantity": 41300,
+                          "micros": 7210000,
+                          "pending_micros": 0,
+                          "daily": [
+                            900000,
+                            1200000,
+                            800000,
+                            1100000,
+                            0,
+                            2100000,
+                            1110000
+                          ],
+                          "allowance": {
+                            "used": 41300,
+                            "of": 108000,
+                            "unit": "seconds"
+                          },
+                          "by_project": [
+                            {
+                              "project": "flagon-io/g1t",
+                              "micros": 7210000,
+                              "quantity": 41300
+                            }
+                          ]
+                        }
+                      ],
+                      "features": []
+                    }
+                  ],
+                  "projects": [
+                    "flagon-io/g1t",
+                    "flagon-io/hello"
+                  ],
+                  "included": {
+                    "used": 20,
+                    "of": 20,
+                    "unit": "dollars"
+                  },
+                  "discount_percent": null,
+                  "ai_credit_micros": 62000000,
+                  "credit_micros": 0,
+                  "trial_micros": null,
+                  "plan": "pro",
+                  "free": false,
+                  "group_by": "project",
+                  "groups": [
+                    {
+                      "key": "flagon-io/g1t",
+                      "micros": 43210000
+                    },
+                    {
+                      "key": "flagon-io/hello",
+                      "micros": 5000000
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        },
+        "x-example-query": {
+          "from": "2026-10-01",
+          "until": "2026-10-07",
+          "group_by": "project"
+        }
+      }
+    },
+    "/workspaces/{workspace}/budget": {
+      "get": {
+        "operationId": "get_budget",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get a workspace's budget",
+        "description": "A workspace's budget: its monthly spend limit (`amount_micros`; `automatic` is true while the owners have not set one, and it is then $200 or twice last month's spend), what was charged this month (`spent_micros`), the most the owners may set it to themselves (`max_amount_micros`), its `alerts` (percent of the limit, each emailed to the owners once a month), whether usage pauses at the limit (`pause_at_limit`), the `webhook` told of each alert, and `state`: `ok`, `warning` or `stopped`, with a `message` when work is stopped or close to it. Members of the workspace only.\n\nAll amounts are whole millionths of a dollar: 500000000 is $500. `max_amount_micros` is null for g1t's own workspaces, which have no ceiling. When `state` is `stopped`, new sandboxes, builds and app requests wait until the limit is raised or the month closes.",
+        "x-operation": "get_budget",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "budget",
+        "x-scope": "billing:read",
+        "security": [
+          {
+            "token": [
+              "billing:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "amount_micros": 500000000,
+                  "automatic": false,
+                  "spent_micros": 132450000,
+                  "max_amount_micros": 2000000000,
+                  "alerts": [
+                    50,
+                    75,
+                    90,
+                    100
+                  ],
+                  "pause_at_limit": true,
+                  "webhook": "https://ops.example.com/g1t/budget",
+                  "state": "ok",
+                  "message": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "put": {
+        "operationId": "set_budget",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Change a workspace's budget",
+        "description": "Change a workspace's budget. Give only what you change; the rest stays as it is. `amount_micros` is the monthly spend limit, up to `max_amount_micros`, or null for the automatic one. `alerts` is some of 50, 75, 90 and 100, in percent of the limit. `pause_at_limit` false makes the limit alert only, without pausing usage; g1t's own ceiling still applies. `webhook` is an https:// address sent a JSON POST for each alert, or null for none. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents can read the budget but never change it. Returns the budget.\n\nFields left out keep their value. A limit above `max_amount_micros` is refused with `invalid`. Called by anyone but an owner signed in as a person, or by a workspace's own token or one of g1t's agents, it is refused with `forbidden`. Each alert is sent once a month, to the owners by email and, with `webhook`, as a JSON POST.",
+        "x-operation": "set_budget",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "set_budget",
+        "x-scope": "billing:write",
+        "security": [
+          {
+            "token": [
+              "billing:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "amount_micros": 500000000,
+                  "automatic": false,
+                  "spent_micros": 132450000,
+                  "max_amount_micros": 2000000000,
+                  "alerts": [
+                    50,
+                    75,
+                    90,
+                    100
+                  ],
+                  "pause_at_limit": true,
+                  "webhook": "https://ops.example.com/g1t/budget",
+                  "state": "ok",
+                  "message": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount_micros": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "description": "The monthly spend limit, in millionths of a dollar: 500000000 is $500. Null for the automatic limit. Left out: unchanged."
+                  },
+                  "alerts": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "enum": [
+                        50,
+                        75,
+                        90,
+                        100
+                      ]
+                    },
+                    "description": "When to alert, in percent of the limit: some of 50, 75, 90 and 100. Replaces the whole list. Left out: unchanged."
+                  },
+                  "pause_at_limit": {
+                    "type": "boolean",
+                    "description": "Pause usage at the limit (the default), or with false, only alert. Left out: unchanged."
+                  },
+                  "webhook": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "An https:// address sent a JSON POST for each alert, or null for none. Left out: unchanged."
+                  }
+                }
+              },
+              "example": {
+                "amount_micros": 500000000,
+                "alerts": [
+                  50,
+                  75,
+                  90,
+                  100
+                ],
+                "webhook": "https://ops.example.com/g1t/budget"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/ai_credit": {
+      "get": {
+        "operationId": "get_ai_credit",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get a workspace's AI credit",
+        "description": "A workspace's AI credit, which pays for agent and AI gateway usage: what is left (`balance_micros`), how much of it was bought and given, its `grants` newest first, whether new runs on g1t's models are refused for want of it (`blocked`), whether it can be bought (`can_buy`) and for how much (`min_cents`, `max_cents`, `presets_cents`, and the `card_fee` added on top), auto-reload, the agent rate and the markups on models. `free_via_discount` or `postpaid` mean no credit is needed. Members of the workspace only.\n\n`card_fee.percent_micros` is per dollar charged, in millionths: 29000 is 2.9%. `blocked` is true when the credit has run out and new runs on g1t's models wait for more; runs on a model provider the workspace connected itself never need it.",
+        "x-operation": "get_ai_credit",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "ai_credit",
+        "x-scope": "billing:read",
+        "security": [
+          {
+            "token": [
+              "billing:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "balance_micros": 62000000,
+                  "purchased_micros": 50000000,
+                  "given_micros": 12000000,
+                  "grants": [
+                    {
+                      "id": "crd_01kkr2m4c8f1t7qh3d6n9w5p0x",
+                      "workspace": "flagon-io",
+                      "kind": "purchase",
+                      "amount_micros": 50000000,
+                      "used_micros": 0,
+                      "left_micros": 50000000,
+                      "note": "AI credit bought",
+                      "refund_for": null,
+                      "refund_day": null,
+                      "expires_at": "2027-10-02T00:00:00.000Z",
+                      "created_by": "ana",
+                      "created_at": "2026-10-02T16:20:00.000Z",
+                      "state": "open",
+                      "closed_at": null,
+                      "closed_note": null,
+                      "closed_by": null
+                    }
+                  ],
+                  "free_via_discount": false,
+                  "postpaid": false,
+                  "blocked": false,
+                  "can_buy": true,
+                  "presets_cents": [
+                    2500,
+                    5000,
+                    10000,
+                    25000
+                  ],
+                  "min_cents": 1000,
+                  "max_cents": 100000,
+                  "card_fee": {
+                    "on": true,
+                    "percent_micros": 29000,
+                    "fixed_cents": 30
+                  },
+                  "reload": {
+                    "enabled": false,
+                    "threshold_micros": 10000000,
+                    "target_micros": 50000000,
+                    "monthly_max_micros": 200000000,
+                    "reloaded_micros": 0,
+                    "failed_at": null,
+                    "error": null
+                  },
+                  "agent_rate_micros": 3.6,
+                  "model_markup_percent": 10,
+                  "gateway_markup_percent": 5,
+                  "upgrade_credit_micros": 10000000,
+                  "expires_days": 365
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/ai_credit/checkout": {
+      "post": {
+        "operationId": "buy_ai_credit",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Buy AI credit",
+        "description": "Start buying AI credit. Returns `url`, a payment page to open in a browser and pay by card; it comes back to the workspace's billing page. `amount_cents` is the credit, in whole dollars from $10 (1000) to $1,000 (100000); any card fee is added on top. The credit is added once the payment goes through. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents never buy credit.\n\nOpen `url` in a browser to pay. Nothing is charged until the payment is made there; the credit then shows in get_ai_credit. An amount outside `min_cents` to `max_cents`, or not in whole dollars, is refused with `invalid`; a workspace that cannot buy credit (see `can_buy`) gets `conflict` or `payment_required`.",
+        "x-operation": "buy_ai_credit",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "buy_ai_credit",
+        "x-scope": "billing:write",
+        "security": [
+          {
+            "token": [
+              "billing:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "url": "https://checkout.example.com/c/pay/cs_test_a1b2c3"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount_cents": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 100000,
+                    "multipleOf": 100,
+                    "description": "The credit to buy, in cents, in whole dollars: 5000 is $50."
+                  }
+                },
+                "required": [
+                  "amount_cents"
+                ]
+              },
+              "example": {
+                "amount_cents": 5000
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/invoices": {
+      "get": {
+        "operationId": "list_invoices",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "List a workspace's invoices",
+        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, activations, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
+        "x-operation": "list_invoices",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "invoices",
+        "x-scope": "billing:read",
+        "security": [
+          {
+            "token": [
+              "billing:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "invoices": [
+                    {
+                      "id": "in_1Q2w3E4r5T6y7U8i",
+                      "number": "FLAGON-0004",
+                      "status": "paid",
+                      "total_cents": 4210,
+                      "currency": "usd",
+                      "created_at": "2026-10-01T00:05:00.000Z",
+                      "description": "Usage for 2026-09",
+                      "hosted_url": "https://invoice.example.com/i/acct_1/in_1Q2w3E4r5T6y7U8i",
+                      "pdf_url": "https://invoice.example.com/i/acct_1/in_1Q2w3E4r5T6y7U8i/pdf"
+                    }
+                  ],
+                  "usage_invoices": [
+                    {
+                      "id": "inv_01kkqz8d3c6f9t2wq5n8h1m4r7",
+                      "workspace": "flagon-io",
+                      "reason": "month",
+                      "period": "2026-09",
+                      "amount_micros": 42100000,
+                      "status": "paid",
+                      "hosted_url": "https://invoice.example.com/i/acct_1/in_1Q2w3E4r5T6y7U8i",
+                      "pdf_url": "https://invoice.example.com/i/acct_1/in_1Q2w3E4r5T6y7U8i/pdf",
+                      "lines": [
+                        {
+                          "description": "Agent: models",
+                          "amount_micros": 35900000
+                        },
+                        {
+                          "description": "Sandbox time",
+                          "amount_micros": 6200000
+                        }
+                      ],
+                      "created_at": "2026-10-01T00:05:00.000Z"
+                    }
+                  ],
+                  "upcoming": {
+                    "closes_at": "2026-11-01T00:00:00.000Z",
+                    "subscriptions_micros": 20000000,
+                    "usage_micros": 10210000,
+                    "total_micros": 30210000
+                  },
+                  "unavailable": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/billing_details": {
+      "get": {
+        "operationId": "get_billing_details",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Get a workspace's billing details",
+        "description": "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Members of the workspace only.\n\nOwners change these on the workspace's billing page. `payment_method` is null until a card or other way to pay is saved.",
+        "x-operation": "get_billing_details",
+        "x-mcp-tool": "billing",
+        "x-mcp-action": "billing_details",
+        "x-scope": "billing:read",
+        "security": [
+          {
+            "token": [
+              "billing:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "customer": true,
+                  "email": "billing@flagon.example.com",
+                  "name": "Flagon, Inc.",
+                  "address": {
+                    "line1": "100 Market Street",
+                    "line2": "",
+                    "city": "San Francisco",
+                    "state": "CA",
+                    "postal_code": "94105",
+                    "country": "US"
+                  },
+                  "tax_id_type": "us_ein",
+                  "tax_id": "12-3456789",
+                  "po_number": null,
+                  "language": "en",
+                  "payment_method": {
+                    "kind": "card",
+                    "brand": "visa",
+                    "last4": "4242",
+                    "exp_month": 12,
+                    "exp_year": 2028
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },

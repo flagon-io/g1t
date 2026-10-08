@@ -245,6 +245,11 @@ impl Billing {
     ) -> Result<()> {
         let now = rfc3339(now_ms());
         let period_end = subscription.period_end().map(|seconds| rfc3339(seconds.max(0) as u64 * 1000));
+        // Whether this plan was on already: the upgrade credit is for starting it.
+        let was_on = self
+            .subscription_row(workspace, feature)
+            .await?
+            .is_some_and(|row| row.subscription_id == subscription.id && status_from(&row.status).on());
         self.db
             .prepare(
                 "INSERT INTO subscriptions
@@ -266,6 +271,10 @@ impl Billing {
             ])?
             .run()
             .await?;
+        // Starting the paid plan comes with $5 of AI credit, once (ai.rs).
+        if feature == Feature::Plan && !was_on && status_of(subscription) == SubscriptionStatus::Active {
+            self.grant_upgrade_credit(workspace).await?;
+        }
         Ok(())
     }
 
@@ -444,10 +453,22 @@ impl Billing {
         }
         let plan = self.plan(feature).await?;
         let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
-        // The card from the card check: the plan starts on it at once, with
-        // no second page. A card that needs the bank's approval again goes
-        // through Stripe's page instead.
-        if let (Some(customer), Some(method)) = (customer.as_deref(), self.checked_card(&workspace).await?) {
+        // The card from the card check, or else the customer's default
+        // payment method (one added on Stripe's billing page counts): the
+        // plan starts on it at once, with no second page. A card that needs
+        // the bank's approval again goes through Stripe's page instead.
+        let saved = match (customer.as_deref(), self.checked_card(&workspace).await?) {
+            (Some(_), Some(method)) => Some(method),
+            (Some(customer), None) => match stripe.default_payment_method(customer).await {
+                Ok(method) => method.map(|m| m.id),
+                Err(error) => {
+                    worker::console_log!("{workspace}: the default payment method could not be read: {error}");
+                    None
+                }
+            },
+            (None, _) => None,
+        };
+        if let (Some(customer), Some(method)) = (customer.as_deref(), saved) {
             match stripe
                 .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer, &method)
                 .await
@@ -458,7 +479,7 @@ impl Billing {
                     self.audit(
                         &account.id,
                         "plan",
-                        &format!("{workspace}: {} started on the checked card", name.to_lowercase()),
+                        &format!("{workspace}: {} started on the saved card", name.to_lowercase()),
                         &a.actor.username,
                     )
                     .await?;
@@ -469,7 +490,7 @@ impl Billing {
                     // Incomplete: let it lapse, and use the page.
                     let _ = stripe.cancel_now(&subscription.id).await;
                 }
-                Err(error) => worker::console_log!("{workspace}: the plan could not start on the checked card: {error}"),
+                Err(error) => worker::console_log!("{workspace}: the plan could not start on the saved card: {error}"),
             }
         }
         let start = |customer: Option<String>| {
@@ -489,35 +510,38 @@ impl Billing {
                     .await
             }
         };
-        let session = match start(customer.clone()).await {
-            Ok(session) => session,
+        let started = match start(customer.clone()).await {
             // A customer saved under another Stripe account: start afresh.
             Err(error) if customer.is_some() && is_missing(&error) => {
                 self.forget_customer(&workspace).await?;
-                start(None).await?
+                start(None).await
             }
-            Err(error) => return Err(error),
+            other => other,
         };
-        let Some(url) = session.url else {
-            return Err(worker::Error::RustError(
-                "the card processor returned no payment page".into(),
-            ));
+        let session = match started {
+            Ok(session) => session,
+            Err(error) => {
+                worker::console_error!("{workspace}: Stripe refused the plan's page: {error}");
+                return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
+            }
         };
-        self.db
-            .prepare(
-                "INSERT INTO checkouts (id, workspace, amount_cents, created_by, created_at, feature)
-                 VALUES (?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                session.id.into(),
-                workspace.into(),
-                plan.monthly_cents.into(),
-                a.actor.username.into(),
-                rfc3339(now_ms()).into(),
-                feature.as_str().into(),
-            ])?
-            .run()
-            .await?;
+        let Some(url) = session.url.clone() else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Stripe returned no payment page. Try again in a minute."));
+        };
+        if let Err(error) = self
+            .record_checkout(&crate::NewCheckout {
+                id: &session.id,
+                workspace: &workspace,
+                amount_cents: plan.monthly_cents,
+                fee_cents: 0,
+                created_by: &a.actor.username,
+                feature: Some(feature.as_str()),
+            })
+            .await
+        {
+            worker::console_error!("{workspace}: the plan's page could not be recorded: {error}");
+            return Ok(Outcome::fail(FailureCode::Conflict, "g1t could not keep track of the payment page. Nothing was charged; try again."));
+        }
         Ok(Outcome::Ok(Checkout { url }))
     }
 
@@ -545,7 +569,10 @@ impl Billing {
         let Some(feature) = Feature::parse(&checkout.feature) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such plan."));
         };
-        let session = stripe.session(&a.session).await?;
+        let session = match stripe.session(&a.session).await {
+            Ok(session) => session,
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
+        };
         if let (Some(subscription_id), true) = (&session.subscription, session.payment_status == "paid") {
             let claimed = self
                 .db
@@ -554,7 +581,14 @@ impl Billing {
                 .first::<Touched>(None)
                 .await?;
             if claimed.is_some() {
-                let subscription = stripe.subscription(subscription_id).await?;
+                let subscription = match stripe.subscription(subscription_id).await {
+                    Ok(subscription) => subscription,
+                    Err(error) => {
+                        // Let the next look (or the webhook) settle it.
+                        self.db.prepare("UPDATE checkouts SET status = 'open' WHERE id = ?").bind(&[a.session.as_str().into()])?.run().await?;
+                        return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
+                    }
+                };
                 self.record(&checkout.workspace, feature, &subscription, &checkout.created_by)
                     .await?;
                 // Keep the card's customer, so later payments need no retyping.
@@ -601,9 +635,10 @@ impl Billing {
             let name = if a.feature == Feature::Security { "The Security and quality activation" } else { "The g1t plan" };
             return Ok(Outcome::fail(FailureCode::NotFound, format!("{name} is not on for {workspace}.")));
         };
-        let subscription = stripe
-            .cancel_at_period_end(&row.subscription_id, !a.resume)
-            .await?;
+        let subscription = match stripe.cancel_at_period_end(&row.subscription_id, !a.resume).await {
+            Ok(subscription) => subscription,
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
+        };
         self.record(&workspace, feature, &subscription, &row.started_by)
             .await?;
         let shown = if feature == Feature::Security { Feature::Security } else { Feature::Plan };

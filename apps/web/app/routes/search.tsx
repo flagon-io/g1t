@@ -7,6 +7,7 @@ import { SEARCH_TYPES, type SearchType, searchType } from "@g1t/contracts";
 import type { Route } from "./+types/search";
 import { SearchHitView } from "../components/search";
 import { EmptyState, notACredential } from "../components/ui";
+import { TabStrip } from "../components/ui/tab-strip";
 import { Combobox } from "../components/ui/combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { page } from "../lib/meta";
@@ -166,7 +167,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
       )}
 
       {q && (
-        <nav aria-label="Kinds of results" className="mt-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <TabStrip label="Kinds of results" className="mt-6 gap-1 border-b border-line">
           {SEARCH_TYPES.map((each) => (
             <Link
               key={each}
@@ -184,7 +185,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
               )}
             </Link>
           ))}
-        </nav>
+        </TabStrip>
       )}
 
       {results && (type === "code" || type === "repositories" || type === "issues" || type === "pulls") && (

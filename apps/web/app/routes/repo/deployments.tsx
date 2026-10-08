@@ -14,6 +14,7 @@ import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
+import { buildError, groupBuilds, type BuildGroup } from "../../lib/deployments";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Deployments · ${params.owner}/${params.repo} · g1t` });
@@ -197,8 +198,8 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
               <EmptyState title="No builds yet">Push to the default branch or open a pull request.</EmptyState>
             ) : (
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
-                {builds.map((build) => (
-                  <BuildRow key={build.id} build={build} base={base} />
+                {groupBuilds(builds).map((group) => (
+                  <BuildRow key={group.build.id} group={group} base={base} />
                 ))}
               </ul>
             )}
@@ -326,22 +327,26 @@ function AppActions({ branch, up, compact }: { branch: string | null; up: boolea
   );
 }
 
-function BuildRow({ build, base }: { build: Deployment; base: string }) {
+function BuildRow({ group, base }: { group: BuildGroup<Deployment>; base: string }) {
+  const { build, count } = group;
+  const error = buildError(build);
   return (
     <li>
       <Link to={`${base}/deployments/${build.id}`} className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-surface">
         <span className="w-20 shrink-0">
           <StatusDot status={build.status} />
+          {/* A run of the same failure is one row: how many, and when the latest was. */}
+          {count > 1 && <span className="mt-0.5 block pl-3 text-xs text-muted">{count} times</span>}
         </span>
         <span className="min-w-0 grow">
           <span className="block truncate font-medium">
             {build.kind === "production" ? "Production" : `Preview of ${build.branch}`}
             <span className="ml-2 font-mono text-xs font-normal text-faint">{build.commit.slice(0, 8)}</span>
           </span>
-          {build.error && <span className="mt-0.5 block truncate text-xs text-muted">{build.error}</span>}
+          {error && <span className="mt-0.5 line-clamp-2 text-xs text-muted sm:line-clamp-1">{error}</span>}
         </span>
         <span className="shrink-0 text-xs text-faint">
-          {build.buildSeconds != null && `${build.buildSeconds} s · `}
+          {count > 1 ? "last " : build.buildSeconds != null && `${build.buildSeconds} s · `}
           <TimeAgo at={build.createdAt} />
         </span>
       </Link>

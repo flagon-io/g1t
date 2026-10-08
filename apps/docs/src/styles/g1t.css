@@ -206,6 +206,18 @@ site-search button[data-open-modal]:hover {
 		overflow-x: auto;
 	}
 }
+/*
+ * There, a name, route or value in a table is never broken, not even at a
+ * hyphen or a slash: a long one widens the table, which then scrolls.
+ */
+@media (max-width: 50rem) {
+	.sl-markdown-content td code,
+	.sl-markdown-content th code {
+		white-space: nowrap;
+		overflow-wrap: normal;
+		word-break: normal;
+	}
+}
 .sl-markdown-content th {
 	border-bottom: 1px solid var(--g1t-line-strong);
 	background: transparent;

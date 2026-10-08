@@ -153,6 +153,29 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
   }
 }
 
+/** Accounts that act for g1t itself, named in the log by fixed ids. */
+const G1T_ACTORS: Record<string, string> = { usr_g1t_agent: "g1t", g1t_policy: "g1t" };
+/** Who an account the lookup no longer knows was. */
+export const DELETED_USER = "a deleted user";
+
+/** An account id rather than a name: usernames never hold an underscore. */
+const isAccountId = (actor: string) => actor.includes("_");
+
+/** The account ids among `actors` to look up by name, once each. */
+export function actorIds(actors: (string | null)[]): string[] {
+  return [...new Set(actors.filter((actor): actor is string => actor != null && isAccountId(actor) && !(actor in G1T_ACTORS)))];
+}
+
+/**
+ * An actor by name: an account id becomes its username, from `names` (the
+ * identity service's lookup). An id it does not know is an account since
+ * deleted; with no lookup at all, the actor is only "someone".
+ */
+export function nameActor(actor: string | null, names: Record<string, string> | null): string | null {
+  if (actor == null || !isAccountId(actor)) return actor;
+  return G1T_ACTORS[actor] ?? names?.[actor] ?? (names ? DELETED_USER : "someone");
+}
+
 /** Several things one actor did in one project in a short while, read as one line. */
 export type ActivityGroup = {
   id: string;
@@ -205,7 +228,7 @@ export function groupActivity(items: ActivityItem[], window = 45 * MINUTE): Acti
 
 // --- Needs you --------------------------------------------------------------
 
-export type NeedKind = "limit" | "deploy" | "invitation" | "stalled" | "conflict" | "review" | "stuck" | "checks" | "ready";
+export type NeedKind = "limit" | "deploy" | "invitation" | "stalled" | "conflict" | "review" | "stuck" | "runner" | "checks" | "ready";
 
 /** Something waiting on the viewer, with where to act on it. */
 export type Need = {
@@ -227,6 +250,7 @@ const NEED_RANK: Record<NeedKind, number> = {
   conflict: 2,
   stalled: 3,
   stuck: 4,
+  runner: 4,
   review: 5,
   checks: 6,
   ready: 7,
@@ -238,6 +262,14 @@ export function rankNeeds(needs: Need[]): Need[] {
   return [...needs]
     .sort((a, b) => NEED_RANK[a.kind] - NEED_RANK[b.kind] || a.at - b.at)
     .filter((need) => (seen.has(need.key) ? false : (seen.add(need.key), true)));
+}
+
+/** How long something has waited, from minutes: "45 min", "17 h", "2 d". */
+export function waitedFor(minutes: number): string {
+  const whole = Math.max(0, Math.floor(minutes));
+  if (whole < 60) return `${whole} min`;
+  if (whole < 24 * 60) return `${Math.floor(whole / 60)} h`;
+  return `${Math.floor(whole / (24 * 60))} d`;
 }
 
 /** Whether a run has gone quiet: running with no new step for `quiet`. */
@@ -268,7 +300,7 @@ export function digestParts(c: DigestCounts): DigestPart[] {
   const parts: DigestPart[] = [];
   if (c.landed > 0) parts.push({ text: `${count(c.landed, "change", "changes")} landed`, tone: "accent", anchor: "activity" });
   if (c.reviews > 0) parts.push({ text: `${count(c.reviews, "pull request needs", "pull requests need")} your review`, tone: "warn", anchor: "your-pulls" });
-  if (c.stuck != null) parts.push({ text: `an agent has been quiet for ${c.stuck} min`, tone: "warn", anchor: "live" });
+  if (c.stuck != null) parts.push({ text: `an agent has been quiet for ${waitedFor(c.stuck)}`, tone: "warn", anchor: "live" });
   if (c.failedDeploys > 0) parts.push({ text: `${count(c.failedDeploys, "deploy", "deploys")} failed`, tone: "danger", anchor: "needs-you" });
   if (c.deploys > 0) parts.push({ text: `${count(c.deploys, "deploy", "deploys")} went out`, tone: "fg", anchor: "projects" });
   if (c.opened > 0) parts.push({ text: `${count(c.opened, "issue was", "issues were")} opened`, tone: "fg", anchor: "activity" });

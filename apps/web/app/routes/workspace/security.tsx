@@ -31,6 +31,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Only repositories that are still there: a deleted one's alerts stay
   // with it for its 30 days, but not on this page.
   const live = new Set(current.map((repo) => repo.id));
+  // Whether each is private, from the repository itself: the security
+  // service's own record of it can lag behind.
+  const privacy = new Map(current.map((repo) => [repo.id, repo.isPrivate]));
   const projects = unwrap(scanned).filter((project) => live.has(project.repoId));
   const total = Object.fromEntries(SEVERITIES.map((severity) => [severity, 0])) as SeverityCounts;
   for (const project of projects) {
@@ -41,7 +44,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     (a, b) =>
       SEVERITIES.reduce((order, severity) => order || b.counts[severity] - a.counts[severity], 0) || a.name.localeCompare(b.name),
   );
-  const full = overview.ok ? { ...overview.value, repos: overview.value.repos.filter((repo) => live.has(repo.repoId)) } : null;
+  const full = overview.ok
+    ? {
+        ...overview.value,
+        repos: overview.value.repos
+          .filter((repo) => live.has(repo.repoId))
+          .map((repo) => ({ ...repo, private: privacy.get(repo.repoId) ?? repo.private })),
+      }
+    : null;
   return {
     projects,
     total,

@@ -108,7 +108,7 @@ export type CreditGrant = {
   /** What it pays for: all usage, or models only (spent first). */
   scope?: "all" | "models";
   /** Where it came from. */
-  source?: "staff" | "purchase" | "promo_code";
+  source?: "staff" | "purchase" | "promo_code" | "upgrade";
 };
 
 /** A workspace's credits from g1t, newest first. */
@@ -713,6 +713,12 @@ export type Limit = {
   raisedAt?: string | null;
   /** A paid workspace's first billing cycle, on the starting ceiling. */
   firstMonth?: boolean;
+  /** The budget's alerts, in percent of the spend limit: some of 50, 75, 90 and 100. */
+  alertLevels?: number[];
+  /** Whether usage pauses at the spend limit (the default); off, it only alerts. */
+  pauseAtLimit?: boolean;
+  /** An HTTPS address told of each budget alert. */
+  budgetWebhook?: string | null;
 };
 
 /** One metered unit: what it costs g1t and what it is sold at; the price follows the cost. */
@@ -1081,6 +1087,34 @@ export interface BillingApi {
     /** `small` or `large`: the tier g1t routed the run to, on its hosted models. */
     tier?: "small" | "large" | null;
   }): Promise<Result<RunTicket | null>>;
+  /** Usage over a range of days (`YYYY-MM-DD`, both included), at price, by product, meter, project and day. Members only. */
+  usageReport(
+    workspace: string,
+    viewer: Viewer,
+    range: { from: string; until: string; products?: string[]; projects?: string[] },
+  ): Promise<Result<UsageReport>>;
+  /** The workspace's prepaid AI credit, auto-reload and prices. Members only. */
+  aiCredit(workspace: string, viewer: Viewer): Promise<Result<AiCredit>>;
+  /** Stripe's page to buy AI credit ( to ,000, the card fee on its own line). Owners only. The page's id comes back to `returnUrl` as `ai_credit`. */
+  buyAiCredit(actor: User, workspace: string, amountCents: number, returnUrl: string): Promise<Result<{ url: string }>>;
+  /** Credits a purchase once Stripe says it was paid, once. Safe to repeat. */
+  confirmAiCredit(workspace: string, viewer: Viewer, session: string): Promise<Result<AiCredit>>;
+  /** Auto-reload's settings. Owners only. */
+  setAiReload(
+    actor: User,
+    workspace: string,
+    reload: { enabled: boolean; thresholdMicros: number; targetMicros: number; monthlyMaxMicros: number },
+  ): Promise<Result<AiCredit>>;
+  /** The monthly budget: the spend limit, its alerts, whether usage pauses at 100%, and a webhook. Owners only. */
+  setBudget(
+    actor: User,
+    workspace: string,
+    budget: { amountMicros: number | null; alerts: number[]; pauseAtLimit: boolean; webhook: string | null; keepLimit?: boolean },
+  ): Promise<Result<Limit>>;
+  /** Invoice details from the Stripe customer, the default payment method, invoices and the next invoice. Members only. */
+  billingDetails(workspace: string, viewer: Viewer): Promise<Result<BillingDetails>>;
+  /** Saves invoice details on the Stripe customer; absent fields stay, empty clears. Owners only. */
+  setBillingDetails(actor: User, workspace: string, details: BillingDetailsInput): Promise<Result<BillingDetails>>;
 }
 
 
@@ -1119,6 +1153,8 @@ export type Usage = {
   discountMicros?: number;
   /** The account's discount now, in percent; with one, the slices are at price. */
   discountPercent?: number | null;
+  /** Usage at price: spent + covered + discount, from the same ledger lines. The one usage figure every page shows. */
+  priceMicros?: number;
   /** What g1t's model provider charged, before the margin. */
   costMicros: number;
   /** What runs on the workspace's own provider cost there, estimated. Not charged by g1t. */
@@ -1309,6 +1345,8 @@ export type CostSettings = {
   minDailyCostMicros: number;
   anomalyFactor: number;
   anomalyFloorMicros: number;
+  /** Pass Stripe's card fee on as its own line when AI credit is bought by card. */
+  cardFee: boolean;
 };
 
 export type CostsReport = {
@@ -1375,3 +1413,163 @@ export type CompedBudget = {
 };
 
 export type CostsRun = { lines: number; days: number; proposals: number; alerts: number; problems: string[] };
+
+/** The product families the Usage page groups meters into, in order. */
+export const PRODUCTS = [
+  { key: "agent", label: "Agent" },
+  { key: "sandboxes", label: "Sandboxes" },
+  { key: "gateway", label: "AI Gateway" },
+  { key: "deployments", label: "Deployments" },
+  { key: "git_storage", label: "Git & storage" },
+  { key: "packages", label: "Packages" },
+  { key: "security", label: "Security & quality" },
+  { key: "search", label: "Search" },
+] as const;
+
+export type ProductKey = (typeof PRODUCTS)[number]["key"];
+
+/** What usage came to over a range, and what paid for it: price − discount − included − credits = charged. */
+export type UsageTotals = {
+  /** Usage at price, pending usage included. */
+  priceMicros: number;
+  discountMicros: number;
+  /** Paid by the plan's included usage, the trial and g1t's pools. */
+  includedMicros: number;
+  /** Paid by AI credit and credit from g1t. */
+  creditsMicros: number;
+  /** Left for the workspace to pay. */
+  chargedMicros: number;
+  /** Metered this month, charged when it closes. */
+  pendingMicros: number;
+  costMicros: number;
+};
+
+export type UsageDay = { day: string; product: string; micros: number };
+
+export type UsageAllowance = { used: number; of: number; unit: string };
+
+export type ProjectUsage = { project: string; micros: number; quantity: number };
+
+/** One meter over a range. */
+export type MeterLine = {
+  key: string;
+  label: string;
+  product: string;
+  /** `tokens`, `seconds`, `bytes`, `operations`, `requests` or `entries`. */
+  unit: string;
+  quantity: number;
+  micros: number;
+  pendingMicros?: number;
+  /** Every day of the range, oldest first, at price. */
+  daily: number[];
+  allowance?: UsageAllowance | null;
+  byProject: ProjectUsage[];
+};
+
+export type FeatureUsage = { key: string; label: string; micros: number; count: number };
+
+export type ProductUsage = { key: string; label: string; micros: number; meters: MeterLine[]; features?: FeatureUsage[] };
+
+export type UsageReport = {
+  from: string;
+  until: string;
+  totals: UsageTotals;
+  days: UsageDay[];
+  products: ProductUsage[];
+  projects: string[];
+  /** The plan's included usage this month, in micros. */
+  included?: UsageAllowance | null;
+  discountPercent?: number | null;
+  aiCreditMicros: number;
+  creditMicros: number;
+  trialMicros?: number | null;
+  plan: PlanKind;
+  free: boolean;
+};
+
+export type AiReload = {
+  enabled: boolean;
+  thresholdMicros: number;
+  targetMicros: number;
+  monthlyMaxMicros: number;
+  reloadedMicros?: number;
+  failedAt?: string | null;
+  error?: string | null;
+};
+
+export type CardFee = { on: boolean; percentMicros: number; fixedCents: number };
+
+/** Prepaid AI credit: what Agent and AI Gateway usage draws on. */
+export type AiCredit = {
+  balanceMicros: number;
+  purchasedMicros: number;
+  givenMicros: number;
+  grants: CreditGrant[];
+  /** A 100% discount pays for AI usage: nothing to buy. */
+  freeViaDiscount: boolean;
+  /** Invoiced after use (an enterprise). */
+  postpaid: boolean;
+  /** New runs on g1t's models are refused for want of credit. */
+  blocked: boolean;
+  canBuy: boolean;
+  presetsCents: number[];
+  minCents: number;
+  maxCents: number;
+  cardFee: CardFee;
+  reload: AiReload;
+  /** The agent rate per million tokens, at price. */
+  agentRateMicros: number;
+  modelMarkupPercent: number;
+  gatewayMarkupPercent: number;
+  upgradeCreditMicros: number;
+  expiresDays: number;
+};
+
+export type PostalAddress = { line1: string; line2: string; city: string; state: string; postalCode: string; country: string };
+
+export type PaymentMethod = {
+  kind: string;
+  brand?: string | null;
+  last4?: string | null;
+  expMonth?: number | null;
+  expYear?: number | null;
+};
+
+export type StripeInvoice = {
+  id: string;
+  number?: string | null;
+  status: string;
+  totalCents: number;
+  currency: string;
+  createdAt: string;
+  description?: string | null;
+  hostedUrl?: string | null;
+  pdfUrl?: string | null;
+};
+
+export type UpcomingInvoice = { closesAt: string; subscriptionsMicros: number; usageMicros: number; totalMicros: number };
+
+export type BillingDetails = {
+  customer: boolean;
+  email: string | null;
+  name: string | null;
+  address: PostalAddress | null;
+  taxIdType: string | null;
+  taxId: string | null;
+  poNumber: string | null;
+  language: string | null;
+  paymentMethod: PaymentMethod | null;
+  invoices: StripeInvoice[];
+  upcoming: UpcomingInvoice;
+  unavailable?: string | null;
+};
+
+export type BillingDetailsInput = {
+  email?: string;
+  name?: string;
+  address?: PostalAddress;
+  taxIdType?: string;
+  taxId?: string;
+  poNumber?: string;
+  language?: string;
+};

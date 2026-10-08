@@ -652,7 +652,7 @@ impl Billing {
         };
         let customer = match self.customer_for(&workspace).await {
             Ok(customer) => customer,
-            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         };
         let link = async {
             let configuration = stripe.portal_configuration().await?;
@@ -673,7 +673,7 @@ impl Billing {
                 self.audit(&account.id, "billing_link", &format!("Stripe billing link for {workspace}"), &a.by).await?;
                 Ok(Outcome::Ok(link))
             }
-            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe's billing page could not be opened: {error}"))),
+            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         }
     }
 }

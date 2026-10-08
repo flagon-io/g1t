@@ -64,6 +64,13 @@ pub(crate) const EVENTS: &[&str] = &[
     "setup_intent.succeeded",
 ];
 
+/// The subscription an invoice is for: `subscription` at the API version
+/// billing asks in, `parent.subscription_details.subscription` in events
+/// sent at a newer one (a destination keeps the version it was made at).
+pub(crate) fn invoice_subscription(invoice: &Value) -> Option<&str> {
+    invoice["subscription"].as_str().or_else(|| invoice["parent"]["subscription_details"]["subscription"].as_str())
+}
+
 /// Events billing handles that `has` does not include, in billing's order.
 pub(crate) fn missing_events(has: &[String]) -> Vec<String> {
     // `*` is every event.
@@ -288,7 +295,7 @@ impl Billing {
                 self.settle_subscription(&text("id")).await?
             }
             "invoice.paid" => {
-                if let Some(subscription) = object["subscription"].as_str() {
+                if let Some(subscription) = invoice_subscription(object) {
                     self.plan_paid(subscription, &text("id"), object["amount_paid"].as_i64().unwrap_or(0)).await?;
                     self.settle_subscription(subscription).await?
                 } else if let Some(done) = self.workspace_invoice_paid(&text("id")).await? {
@@ -297,7 +304,7 @@ impl Billing {
                     self.enterprise_invoice_paid(&text("id")).await?
                 }
             }
-            "invoice.payment_failed" => match (object["subscription"].as_str(), object["metadata"]["g1t_workspace"].as_str()) {
+            "invoice.payment_failed" => match (invoice_subscription(object), object["metadata"]["g1t_workspace"].as_str()) {
                 (Some(subscription), _) => self.settle_subscription(subscription).await?,
                 (None, Some(tagged)) => {
                     // The invoice's own row names the workspace as it is
@@ -349,6 +356,14 @@ impl Billing {
             return Ok(match self.settle_card_check(session_id).await? {
                 Ok(done) => done,
                 Err(why) => format!("card check not passed: {why}"),
+            });
+        }
+        // AI credit: credited once, by whichever of this and the person
+        // coming back claims the page first (ai.rs).
+        if open.feature.as_deref() == Some(crate::ai::AI_CREDIT) {
+            return Ok(match self.settle_ai_credit(session_id).await? {
+                Ok(done) => done,
+                Err(why) => format!("AI credit not credited: {why}"),
             });
         }
         let Some(stripe) = &self.stripe else { return Ok("ignored: payments off".to_owned()) };

@@ -70,20 +70,6 @@ export const ROADMAP: RoadmapItem[] = [
       "Cost by project, by kind of work and per merged change",
     ],
   },
-  {
-    key: "milestones",
-    title: "Milestones",
-    section: "Issues",
-    summary: "Dates to land outcomes by, with what is left and what is at risk.",
-    why: "A milestone groups the issues that must land together, by a date. g1t shows what remains and which agent or person holds each part.",
-    plans: [
-      "Issues and outcomes grouped under a due date",
-      "Burn-down from merged pull requests",
-      "At-risk items flagged before the date, not after",
-    ],
-    today: { label: "Issues", path: "issues" },
-  },
-
   // --- Code ---------------------------------------------------------------
   {
     key: "docs",

@@ -36,6 +36,11 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE runs SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE credit_grants SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE checkouts SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE ai_reloads SET workspace = ?1 WHERE workspace = ?2",
+    // Auto-reload's settings: the stale slug's, when the current has none.
+    "INSERT OR IGNORE INTO ai_reload (workspace, enabled, threshold_micros, target_micros, monthly_max_micros, updated_by, updated_at, failed_at, error)
+     SELECT ?1, enabled, threshold_micros, target_micros, monthly_max_micros, updated_by, updated_at, failed_at, error FROM ai_reload WHERE workspace = ?2",
+    "DELETE FROM ai_reload WHERE workspace = ?2",
     "UPDATE workspace_invoices SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE sales_notes SET workspace = ?1 WHERE workspace = ?2",
     // Repositories are named `<slug>/<name>`. Compared exactly rather than
@@ -309,7 +314,7 @@ mod tests {
             "allowance_use", "trial_grants", "credit_grants", "storage_days",
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
             "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
-            "workspace_costs", "own_counts",
+            "workspace_costs", "own_counts", "ai_reload", "ai_reloads",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

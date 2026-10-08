@@ -304,7 +304,7 @@ export type UsageGlance = {
 };
 
 export function usageGlance(input: {
-  usage: Pick<Usage, "free" | "spentMicros" | "usedMicros" | "byTask">;
+  usage: Pick<Usage, "free" | "spentMicros" | "usedMicros" | "byTask" | "priceMicros">;
   status: PlanStatus;
   entitlements: Pick<Entitlements, "includedMicros" | "includedUsedMicros" | "trialMicrosLeft"> | null;
   limit: Pick<Limit, "spentMicros" | "spendLimitMicros"> | null;
@@ -315,7 +315,8 @@ export function usageGlance(input: {
     .filter((slice) => slice.micros > 0)
     .sort((a, b) => b.micros - a.micros)
     .map((slice) => ({ key: slice.key, label: usageTask(slice.key).label, micros: slice.micros, runs: slice.runs }));
-  const spentMicros = usage.free ? usage.usedMicros : usage.spentMicros;
+  // Usage at price, the one figure every page shows.
+  const spentMicros = usage.free ? usage.usedMicros : (usage.priceMicros ?? usage.spentMicros);
   const plain = { spentMicros, credit: null, onDemand: null, lines };
   if (usage.free) return { kind: "beta", ...plain };
   if (status.kind === "comped" || status.kind === "enterprise") return { kind: "comped", ...plain };
@@ -366,4 +367,80 @@ export function creditLine(grant: Pick<CreditGrant, "amountMicros" | "leftMicros
     parts.push(grant.state === "used" ? "all used" : grant.state === "expired" ? "expired" : "withdrawn");
   }
   return parts.join(", ");
+}
+
+/** AI credit's amounts, in dollars, as billing takes them. */
+export const AI_CREDIT = { min: 10, max: 1_000 } as const;
+
+/** A purchase of AI credit: a preset or a custom amount, whole dollars. */
+export function parseAiPurchase(form: { amount?: FormDataEntryValue | null; custom?: FormDataEntryValue | null }): Parsed<{ amountCents: number }> {
+  const chosen = String(form.amount ?? "");
+  const micros = chosen === "custom" ? readDollars(form.custom) : readDollars(chosen);
+  if (micros == null) return { ok: false, error: "Choose an amount, or give one." };
+  const dollarsAsked = micros / MICROS_PER_DOLLAR;
+  if (!Number.isInteger(dollarsAsked) || dollarsAsked < AI_CREDIT.min || dollarsAsked > AI_CREDIT.max) {
+    return { ok: false, error: `Buy between $${AI_CREDIT.min} and $${AI_CREDIT.max.toLocaleString("en-US")} of AI credit, in whole dollars.` };
+  }
+  return { ok: true, value: { amountCents: dollarsAsked * 100 } };
+}
+
+/** Auto-reload's form: on or off, below what, back to what, at most what a month. */
+export function parseAiReload(form: {
+  enabled?: FormDataEntryValue | null;
+  threshold?: FormDataEntryValue | null;
+  target?: FormDataEntryValue | null;
+  monthly?: FormDataEntryValue | null;
+}): Parsed<{ enabled: boolean; thresholdMicros: number; targetMicros: number; monthlyMaxMicros: number }> {
+  const threshold = readDollars(form.threshold);
+  const target = readDollars(form.target);
+  const monthly = readDollars(form.monthly);
+  if (threshold == null || target == null || monthly == null) return { ok: false, error: "Give each amount in whole dollars." };
+  if ([threshold, target, monthly].some((m) => m % MICROS_PER_DOLLAR !== 0 || m < 0)) return { ok: false, error: "Use whole dollars." };
+  if (target < threshold + 10 * MICROS_PER_DOLLAR) return { ok: false, error: "Reload to at least $10 more than the amount it reloads below." };
+  if (monthly < target - threshold) return { ok: false, error: "The monthly maximum has to cover at least one reload." };
+  return { ok: true, value: { enabled: form.enabled === "on", thresholdMicros: threshold, targetMicros: target, monthlyMaxMicros: monthly } };
+}
+
+/** The budget's alerts form: the levels ticked, whether usage pauses, and a webhook. */
+export function parseBudgetAlerts(form: {
+  alerts: FormDataEntryValue[];
+  pause?: FormDataEntryValue | null;
+  webhook?: FormDataEntryValue | null;
+}): Parsed<{ alerts: number[]; pauseAtLimit: boolean; webhook: string | null }> {
+  const alerts = [...new Set(form.alerts.map((a) => Number(a)).filter((a) => [50, 75, 90, 100].includes(a)))].sort((a, b) => b - a);
+  const webhook = String(form.webhook ?? "").trim();
+  if (webhook && !/^https:\/\/[^\s/]+\.[^\s]+$/.test(webhook)) return { ok: false, error: "The webhook is an https:// address." };
+  return { ok: true, value: { alerts, pauseAtLimit: form.pause === "on", webhook: webhook || null } };
+}
+
+/** The invoice details form, each field as given (empty clears it on Stripe). */
+export function parseInvoiceDetails(form: FormData): Parsed<{
+  email: string;
+  name: string;
+  address: { line1: string; line2: string; city: string; state: string; postalCode: string; country: string };
+  taxIdType: string;
+  taxId: string;
+  poNumber: string;
+  language: string;
+}> {
+  const text = (name: string) => String(form.get(name) ?? "").trim();
+  const email = text("email");
+  if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) return { ok: false, error: "That is not an email address." };
+  const country = text("country").toUpperCase();
+  if (country && !/^[A-Z]{2}$/.test(country)) return { ok: false, error: "The country is two letters, such as US or DE." };
+  const taxIdType = text("taxIdType");
+  const taxId = text("taxId");
+  if (Boolean(taxIdType) !== Boolean(taxId)) return { ok: false, error: "Give the tax ID's kind and its number together." };
+  return {
+    ok: true,
+    value: {
+      email,
+      name: text("name"),
+      address: { line1: text("line1"), line2: text("line2"), city: text("city"), state: text("state"), postalCode: text("postalCode"), country },
+      taxIdType,
+      taxId,
+      poNumber: text("poNumber"),
+      language: text("language"),
+    },
+  };
 }

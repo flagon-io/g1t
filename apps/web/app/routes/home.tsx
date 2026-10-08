@@ -22,6 +22,7 @@ import {
   type ActivityItem,
   type Need,
   TIME,
+  actorIds,
   agentHours,
   dailyBuckets,
   eventItem,
@@ -29,9 +30,11 @@ import {
   groupActivity,
   hourIn,
   isAgent,
+  nameActor,
   rankNeeds,
   readCookie,
   stuckMinutes,
+  waitedFor,
 } from "../lib/mission";
 import {
   type Fact,
@@ -59,7 +62,7 @@ import {
 import { type NotStarted, chosenRepo, delegateForm, issuePath, notStarted } from "../lib/delegate";
 import { needsYou } from "../lib/inbox";
 import { Landing } from "../components/landing";
-import { Skeleton, SkeletonCard, SkeletonLine, SkeletonRows, SkeletonStat } from "../components/ui/skeleton";
+import { Skeleton, SkeletonCard, SkeletonLine, SkeletonStat } from "../components/ui/skeleton";
 import {
   agents,
   billing,
@@ -87,6 +90,8 @@ const INBOX_READ = 50;
 const INBOX_SHOWN = 4;
 
 export function meta(args: Route.MetaArgs) {
+  // Someone signed in is on mission control; visitors get the landing page's title.
+  if (args.loaderData?.signedIn) return page(args, { title: "Mission control · g1t" });
   return page(args, {
     title: "g1t — where people and agents ship software together",
     description:
@@ -461,7 +466,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     const [namespace, name] = job.repo.split("/");
     needs.push({
       key,
-      kind: "stuck",
+      kind: "runner",
       title: `${job.name} is waiting for a self-hosted runner`,
       detail: `No runner with labels ${job.labels} is online. Start one, or change the job's runs-on.`,
       to: `/${job.repo}/actions/runs/${job.runId}`,
@@ -473,7 +478,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       repo: namespace && name ? { namespace, name } : undefined,
       facts: [
         { label: "Labels", value: job.labels, tone: null },
-        { label: "Waiting", value: `${minutes} min`, tone: "warn" },
+        { label: "Waiting", value: waitedFor(minutes), tone: "warn" },
       ],
       // Runners are the owners' to see to.
       ...(namespace && roleIn(viewer, namespace) === "owner" ? { link: { label: "Runners", to: `/${namespace}/-/runners` } } : {}),
@@ -487,7 +492,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       key,
       kind: "stuck",
       title: run.title ?? `${run.agent}'s run`,
-      detail: `${run.agent} has reported nothing for ${minutes} min${run.step ? `. Last: ${run.step}` : ""}.`,
+      detail: `${run.agent} has reported nothing for ${waitedFor(minutes)}${run.step ? `. Last: ${run.step}` : ""}.`,
       to: `/${run.repo.namespace}/${run.repo.name}/agents/runs/${run.id}`,
       action: "Look",
       at: Date.parse(run.updatedAt),
@@ -499,7 +504,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       by: who(run.agent),
       facts: [
         { label: "Run", value: RUN_LABEL[run.kind], tone: null },
-        { label: "Quiet for", value: `${minutes} min`, tone: "warn" },
+        { label: "Quiet for", value: waitedFor(minutes), tone: "warn" },
         { label: "Steps so far", value: String(run.stepCount), tone: null },
         ...(run.costUsd != null ? [{ label: "Cost so far", value: usd(run.costUsd), tone: null }] : []),
       ],
@@ -611,7 +616,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
       to: `/${slug}/-/memory`,
     });
   }
-  const groups = groupActivity(items).slice(0, 40);
+  // The log names people by account id: their usernames, in one lookup.
+  const ids = actorIds(items.map((item) => item.actor));
+  const names = ids.length > 0 ? await soft("usernames", identity.usernames(ids)) : {};
+  const groups = groupActivity(items.map((item) => ({ ...item, actor: nameActor(item.actor, names) }))).slice(0, 40);
   // Only the titles the feed names travel to the page.
   const shownTitles: Record<string, string> = {};
   for (const group of groups) {
@@ -695,20 +703,50 @@ export type Loaded = Extract<Route.ComponentProps["loaderData"], { signedIn: tru
  */
 const MissionControl = lazy(() => import("../components/mission-control"));
 
-/** Mission control's outline, the same size, while its code arrives. */
+/**
+ * Mission control's outline while its code arrives, piece for piece as
+ * components/mission-control.tsx lays it out: the greeting, the Agent box,
+ * the actions under it, the stats, then the work list beside the week. Each
+ * piece has the padding and line heights of the real one, so nothing moves
+ * when it arrives.
+ */
 function MissionControlSkeleton() {
   return (
     <main aria-busy="true" className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
       <span role="status" className="sr-only">
         Loading…
       </span>
-      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-        <div className="min-w-0 grow">
-          <SkeletonLine className="w-72 max-w-full text-[1.75rem] leading-tight sm:text-[2rem]" barClassName="h-8" />
-          <SkeletonLine className="mt-1.5 w-96 max-w-full text-sm" barClassName="h-3.5" />
+      <header>
+        <SkeletonLine className="w-72 max-w-full text-[1.75rem] leading-tight sm:text-[2rem]" barClassName="h-8" />
+        {/* The date and the week's summary: one line wide, three on a phone. */}
+        <div className="mt-1.5 text-sm">
+          <SkeletonLine className="w-[36rem] max-w-full" barClassName="h-3.5" />
+          <SkeletonLine className="w-full sm:hidden" barClassName="h-3.5" />
+          <SkeletonLine className="w-2/3 sm:hidden" barClassName="h-3.5" />
         </div>
-        <Skeleton className="h-9 w-56 rounded-md" />
       </header>
+      {/* The Agent box (components/ask-composer.tsx), then the actions under it. */}
+      <div className="space-y-3">
+        <div className="rounded-xl border border-line bg-surface">
+          <SkeletonLine className="mx-4 mt-3 w-36 text-sm" />
+          <div className="px-4 pt-3.5 pb-2 text-sm">
+            <SkeletonLine className="w-[30rem] max-w-full" />
+            <span className="block h-[1lh]" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+            <Skeleton className="h-8 w-[4.5rem] rounded-md" />
+            <Skeleton className="h-8 w-[9.5rem] rounded-md" />
+            <Skeleton className="size-8 rounded-md" />
+            <Skeleton className="size-8 rounded-md" />
+            <Skeleton className="ml-auto size-8 rounded-md" />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-[38px] w-60 rounded-md" />
+          <Skeleton className="h-[38px] w-28 rounded-md" />
+          <Skeleton className="h-[38px] w-44 rounded-md" />
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-5">
         {Array.from({ length: 5 }, (_, index) => (
           <SkeletonStat key={index} className={index === 4 ? "col-span-2 lg:col-span-1" : undefined} />
@@ -716,14 +754,37 @@ function MissionControlSkeleton() {
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="self-start overflow-hidden rounded-xl border border-line bg-surface">
-          <div className="flex h-12 items-center gap-4 border-b border-line px-5">
-            <Skeleton className="h-3.5 w-20" />
-            <Skeleton className="h-3.5 w-28" />
-            <Skeleton className="h-3.5 w-24" />
+          <div className="flex items-center gap-4 border-b border-line px-4 py-3 text-sm sm:px-5">
+            <SkeletonLine className="w-24" />
+            <SkeletonLine className="w-32" />
+            <SkeletonLine className="hidden w-28 sm:flex" />
           </div>
-          <SkeletonRows rows={5} rowClassName="h-16 px-5" />
+          <div className="divide-y divide-line">
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index}>
+                <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                  <Skeleton className="size-8 shrink-0 rounded-md" />
+                  <span className="min-w-0 grow">
+                    <SkeletonLine className="text-sm" width={`${70 - ((index * 17) % 30)}%`} />
+                    <SkeletonLine className="mt-0.5 text-xs" width={`${50 - ((index * 11) % 20)}%`} />
+                  </span>
+                  <Skeleton className="hidden h-4 w-24 shrink-0 sm:block" />
+                </div>
+                {/* The first row stands open, as the real list's does. */}
+                {index === 0 && (
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                    <Skeleton className="h-[17rem] rounded-xl" />
+                    <Skeleton className="mt-3 h-8 w-44 rounded-md" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <SkeletonCard lines={4} className="h-72 p-5" />
+        <div className="space-y-6">
+          <SkeletonCard lines={0} className="h-80 p-5" />
+          <SkeletonCard lines={6} className="p-5" />
+        </div>
       </div>
     </main>
   );

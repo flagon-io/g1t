@@ -1,12 +1,13 @@
 import { KeyRound, LayoutDashboard, Settings, ShieldQuestion } from "lucide-react";
 
 import { TabLink } from "./ui";
+import { TabStrip } from "./ui/tab-strip";
 
 /** The workspace's Security pages, as tabs. */
 export function WorkspaceSecurityTabs({ owner, pending }: { owner: string; pending?: number }) {
   const base = `/${owner}/-/security`;
   return (
-    <nav aria-label="Security" className="mb-6 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
+    <TabStrip label="Security" className="mb-6 gap-1 border-b border-line">
       <TabLink to={base} end icon={<LayoutDashboard size={14} />}>
         Overview
       </TabLink>
@@ -19,7 +20,7 @@ export function WorkspaceSecurityTabs({ owner, pending }: { owner: string; pendi
       <TabLink to={`${base}/settings`} icon={<Settings size={14} />}>
         Settings
       </TabLink>
-    </nav>
+    </TabStrip>
   );
 }
 

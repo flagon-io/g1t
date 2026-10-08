@@ -6,7 +6,7 @@ import type { AgentRun } from "@g1t/contracts";
 import type { Route } from "./+types/agents";
 import { page } from "../../lib/meta";
 import { Idle, RunCard, formatCost, splitRuns, useLiveRefresh } from "../../components/agents";
-import { agents } from "../../lib/services.server";
+import { agents, billing } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -16,8 +16,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const runs = await agents.listRuns(viewer, { workspace: params.owner, limit: 150 });
-  return { runs: unwrap(runs) };
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const [runs, usage] = await Promise.all([
+    agents.listRuns(viewer, { workspace: params.owner, limit: 150 }),
+    // Usage at price this month: the same figure as Usage and Billing.
+    billing.usage(params.owner, viewer, monthStart).catch(() => null),
+  ]);
+  return { runs: unwrap(runs), monthMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : (usage.value.priceMicros ?? usage.value.spentMicros)) : null };
 }
 
 /** What the runs shown cost, by project. */
@@ -34,7 +40,7 @@ function byProject(runs: AgentRun[]): { repo: string; runs: number; cost: number
 }
 
 export default function Fleet({ loaderData, params }: Route.ComponentProps) {
-  const { runs } = loaderData;
+  const { runs, monthMicros } = loaderData;
   const { live, done } = splitRuns(runs);
   useLiveRefresh(live.length > 0);
   const projects = byProject(runs);
@@ -54,13 +60,13 @@ export default function Fleet({ loaderData, params }: Route.ComponentProps) {
         <div className="rounded-xl border border-line bg-surface p-4">
           <p className="flex items-center gap-1 text-xs text-muted">
             <Coins size={12} />
-            Their cost, as reported
+            Usage at price, this month
           </p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {formatCost(runs.reduce((sum, run) => sum + (run.costUsd ?? 0), 0)) ?? "$0.00"}
+            {monthMicros != null ? `$${(monthMicros / 1_000_000).toFixed(2)}` : (formatCost(runs.reduce((sum, run) => sum + (run.costUsd ?? 0), 0)) ?? "$0.00")}
           </p>
           <Link to={`/${params.owner}/-/usage`} className="mt-0.5 block text-xs text-muted hover:text-fg">
-            What was charged
+            By product and project
           </Link>
         </div>
       </div>

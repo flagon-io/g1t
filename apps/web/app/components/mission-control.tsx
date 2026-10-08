@@ -253,7 +253,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
           </p>
         </div>
         <div className="min-w-0">
-          <Eyebrow>What the agent already knows</Eyebrow>
+          <Eyebrow>{row.by?.agent ? "What the agent already knows" : "What is known"}</Eyebrow>
           <div className="mt-2">
             <Facts facts={row.facts} />
           </div>
@@ -262,7 +262,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
           <p className="text-xs font-semibold text-warn">Why this needs you</p>
           <p className="mt-1.5 text-sm leading-6 text-fg-soft">{row.why}</p>
           <p className="mt-2 text-xs text-faint">
-            Waiting <TimeAgo at={row.at} />
+            Started waiting <TimeAgo at={row.at} />
           </p>
         </div>
       </div>
@@ -947,7 +947,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
         />
         <div className="col-span-2 lg:col-span-1">
           <Stat
-            label="Need you"
+            label="Needs you"
             dot="bg-warn"
             value={String(needs.length)}
             hint={blocking > 0 ? `${blocking} blocking` : needs.length > 0 ? "nothing blocking" : "all clear"}
@@ -1128,7 +1128,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
                 to={`/${workspace}/-/usage`}
                 className="mt-4 flex items-center justify-between border-t border-line pt-3 text-xs text-muted hover:text-fg"
               >
-                <span>Agents and sandboxes cost {usd(stats.weekCost)} this week</span>
+                <span>Usage at price this week: {usd(stats.weekCost)}</span>
                 <ChevronRight size={12} />
               </Link>
             )}

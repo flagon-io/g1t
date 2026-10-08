@@ -316,7 +316,7 @@ fn alerts_from(
         }
     }
     if let Some(spend_limit) = limit.spend_limit_micros {
-        let level = alert_level(limit.spent_micros, spend_limit);
+        let level = crate::limits::alert_level_in(limit.spent_micros, spend_limit, &limit.alert_levels);
         if level > 0 {
             alerts.push(UsageAlert {
                 meter: "spend_limit".into(),
@@ -894,6 +894,9 @@ mod tests {
             raise_once_micros: None,
             raised_at: None,
             first_month: false,
+            alert_levels: crate::limits::ALERT_LEVELS.to_vec(),
+            pause_at_limit: true,
+            budget_webhook: None,
         }
     }
 

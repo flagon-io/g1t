@@ -1,5 +1,6 @@
 import { ArrowUpRight, CreditCard, FileText } from "lucide-react";
-import { Form, Link, data, redirect } from "react-router";
+import { Suspense } from "react";
+import { Await, Link, data, redirect } from "react-router";
 
 import { MICROS_PER_DOLLAR, type WorkspaceInvoice } from "@g1t/contracts";
 
@@ -9,7 +10,6 @@ import {
   CapsCard,
   CreditsCard,
   OverageCard,
-  PlanCard,
   PrepayCard,
   RaiseCard,
   type SectionError,
@@ -17,19 +17,32 @@ import {
   SpikeBanner,
   TrialCard,
 } from "../../components/billing";
+import {
+  AddOns,
+  AiCreditCard,
+  BudgetAlerts,
+  InvoiceDetailsCard,
+  InvoicesCard,
+  PaymentMethodCard,
+  PlanSummary,
+  StripeSkeleton,
+} from "../../components/billing-settings";
 import { StatementView } from "../../components/statement";
-import { SecurityActivationCard } from "../../components/security-activation";
-import { SubmitButton } from "../../components/ui";
 import {
   cardCheckResult,
   dollars,
+  parseAiPurchase,
+  parseAiReload,
+  parseBudgetAlerts,
   parseCaps,
+  parseInvoiceDetails,
   parseLimitRequest,
   parsePrepay,
   parseSpendLimit,
   planStatus,
   wholeDollars,
 } from "../../lib/billing";
+import { isStaff } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -39,8 +52,12 @@ const DEFAULT_TRIAL_MICROS = 5_000_000;
 
 /** What a change says once it is done (`?done=`). */
 const DONE: Record<string, string> = {
-  subscribed: "The g1t plan is on.",
+  subscribed: "The g1t plan is on, with $5 of AI credit to start.",
   prepaid: "Payment received. Your prepaid balance and what you can use went up by as much.",
+  ai_credit: "AI credit bought. It is ready for Agent and AI Gateway usage.",
+  ai_reload: "Auto-reload saved.",
+  budget: "Budget alerts saved.",
+  details: "Invoice details saved on Stripe.",
   limit: "Spend limit saved.",
   caps: "Caps saved. They apply to runs that start from now on.",
   requested: "Sent. g1t answers within one business day, here and by email.",
@@ -73,6 +90,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const checked = await billing.confirmCardCheck(slug, viewer, cardCheck);
     throw redirect(checked.ok ? `${here}?checked=1#trial` : `${here}?problem=${encodeURIComponent(checked.error.message)}#trial`);
   }
+  const aiCredit = url.searchParams.get("ai_credit");
+  if (aiCredit) {
+    const bought = await billing.confirmAiCredit(slug, viewer, aiCredit);
+    throw redirect(bought.ok ? `${here}?done=ai_credit#ai-credit` : `${here}?problem=${encodeURIComponent(bought.error.message)}#ai-credit`);
+  }
   const session = url.searchParams.get("session");
   if (session) {
     if (url.searchParams.get("plan")) {
@@ -83,40 +105,55 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const paid = await billing.confirm(slug, viewer, session);
     throw redirect(paid.ok ? `${here}?done=prepaid#prepay` : `${here}?problem=${encodeURIComponent(paid.error.message)}#prepay`);
   }
-  // A plan started on the card already checked comes straight back.
+  // A plan started on the card already saved comes straight back.
   const plans = url.searchParams.getAll("plan");
   if (plans.includes("started")) throw redirect(`${here}?done=${plans.includes("security") ? "security_on" : "subscribed"}`);
 
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
   const group: "day" | "project" = url.searchParams.get("group") === "project" ? "project" : "day";
-  const [account, statement, features, meters, limit, invoices, entitlements, requests, book, credits] = await Promise.all([
+  // Stripe's own (payment method, invoice details, invoices) is streamed:
+  // the page does not wait on Stripe, and its sections hold their place.
+  const details = billing
+    .billingDetails(slug, viewer)
+    .then((result) => (result.ok ? result.value : null))
+    .catch(() => null);
+  const [account, statement, features, limit, invoices, entitlements, requests, book, credits, ai, report] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
-    billing.usageMeters(slug, viewer).catch(() => null),
     billing.limit(slug, viewer).catch(() => null),
     billing.invoices(slug, viewer).catch(() => null),
     billing.entitlements(slug).catch(() => null),
     billing.limitRequests(slug, viewer).catch(() => null),
     billing.prices().catch(() => null),
     billing.credits(slug, viewer).catch(() => null),
+    billing.aiCredit(slug, viewer).catch(() => null),
+    billing.usageReport(slug, viewer, { from: monthStart, until: today }).catch(() => null),
   ]);
   const featureStates = unwrap(features);
   const trialMicros = book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS;
   const done = url.searchParams.get("done");
+  // Credit from g1t for everything; AI credit has its own card.
+  const general = credits?.ok ? credits.value.grants.filter((grant) => grant.scope !== "models") : [];
   return {
     slug,
     role,
+    staff: isStaff(viewer),
     account: unwrap(account),
     statement: unwrap(statement),
     group,
     plan: featureStates.find((state) => state.plan.feature === "plan") ?? null,
     securityPlan: featureStates.find((state) => state.plan.feature === "security") ?? null,
-    meters: meters?.ok ? meters.value : null,
     limit: limit?.ok ? limit.value : null,
     invoices: invoices?.ok ? invoices.value : [],
     entitlements,
     requests: requests?.ok ? requests.value : [],
-    credits: credits?.ok && credits.value.grants.length > 0 ? credits.value : null,
+    credits: general.length > 0 && credits?.ok ? { ...credits.value, grants: general } : null,
+    ai: ai?.ok ? ai.value : null,
+    report: report?.ok ? report.value : null,
+    details,
     trialMicros,
     notice:
       url.searchParams.has("checked") && entitlements
@@ -141,9 +178,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   switch (intent) {
     case "portal": {
-      // Card, invoices and billing details live on Stripe's own page.
+      // Cards, payment methods and receipts live on Stripe's own page.
       const started = await billing.billingPortal(user, slug, here);
-      if (!started.ok) return fail("plan", started.error.message);
+      if (!started.ok) return fail("payment", started.error.message);
       throw redirect(started.value.url);
     }
     case "subscribe": {
@@ -165,6 +202,34 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const started = await billing.cardCheck(user, slug, here);
       if (!started.ok) return fail("trial", started.error.message);
       throw redirect(started.value.url);
+    }
+    case "buy-ai-credit": {
+      const parsed = parseAiPurchase({ amount: form.get("amount"), custom: form.get("custom") });
+      if (!parsed.ok) return fail("ai", parsed.error);
+      const started = await billing.buyAiCredit(user, slug, parsed.value.amountCents, here);
+      if (!started.ok) return fail("ai", started.error.message);
+      throw redirect(started.value.url);
+    }
+    case "ai-reload": {
+      const parsed = parseAiReload({ enabled: form.get("enabled"), threshold: form.get("threshold"), target: form.get("target"), monthly: form.get("monthly") });
+      if (!parsed.ok) return fail("ai", parsed.error);
+      const set = await billing.setAiReload(user, slug, parsed.value);
+      if (!set.ok) return fail("ai", set.error.message);
+      throw done("ai_reload", "#ai-credit");
+    }
+    case "budget": {
+      const parsed = parseBudgetAlerts({ alerts: form.getAll("alert"), pause: form.get("pause"), webhook: form.get("webhook") });
+      if (!parsed.ok) return fail("budget", parsed.error);
+      const set = await billing.setBudget(user, slug, { amountMicros: null, keepLimit: true, ...parsed.value });
+      if (!set.ok) return fail("budget", set.error.message);
+      throw done("budget", "#budget");
+    }
+    case "details": {
+      const parsed = parseInvoiceDetails(form);
+      if (!parsed.ok) return fail("details", parsed.error);
+      const saved = await billing.setBillingDetails(user, slug, parsed.value);
+      if (!saved.ok) return fail("details", saved.error.message);
+      throw done("details", "#details");
     }
     case "spend-limit": {
       const parsed = parseSpendLimit({ mode: form.get("mode"), limit: form.get("limit") });
@@ -219,7 +284,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, account, statement, group, plan, securityPlan, meters, limit, invoices, entitlements, requests, credits, trialMicros, notice, problem } =
+  const { slug, role, staff, account, statement, group, plan, securityPlan, limit, invoices, entitlements, requests, credits, ai, report, details, trialMicros, notice, problem } =
     loaderData;
   const { status } = account;
   const owner = role === "owner";
@@ -229,6 +294,12 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
   const paying = standing.kind === "paid" || standing.kind === "canceling" || standing.kind === "past_due";
   const free = standing.kind === "free" || standing.kind === "trial";
   const prepaid = limit?.prepaidMicros ?? entitlements?.prepaidMicros ?? 0;
+  // The spend limit and its budget are the owners' to set only where
+  // billing lets them: on the plan, never a free workspace's ceiling.
+  const selfServe = !!limit && (limit.trust === "paid" || limit.trust === "established");
+  const summary = (loaded: Awaited<typeof details>) => (
+    <PlanSummary slug={slug} state={plan} status={standing} details={loaded} report={report} owner={owner} enabled={status.enabled} staff={staff} error={err("plan")} />
+  );
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -249,28 +320,22 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         {err("spike") && <p className="mb-6 text-sm text-danger">{err("spike")}</p>}
         <Alerts alerts={entitlements?.alerts ?? []} />
 
-        <PlanCard
-          state={plan}
-          status={standing}
-          entitlements={entitlements}
-          owner={owner}
-          enabled={status.enabled}
-          live={status.live}
-          meters={meters}
-          error={err("plan")}
-        />
+        <Suspense fallback={summary(null)}>
+          <Await resolve={details}>{(loaded) => summary(loaded)}</Await>
+        </Suspense>
 
-        <SecurityActivationCard state={securityPlan} owner={owner} enabled={status.enabled} error={err("security")} />
+        {ai && status.enabled && <AiCreditCard credit={ai} owner={owner} enabled={status.enabled} staff={staff} error={err("ai")} />}
 
         {free && status.enabled && (
           <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} error={err("trial")} />
         )}
 
-        {paying && limit && limit.trust !== "internal" && (
+        {paying && limit && selfServe && (
           <>
             <SpendLimitCard limit={limit} owner={owner} error={err("limit")} />
+            <BudgetAlerts limit={limit} owner={owner} error={err("budget")} />
             <RaiseCard requests={requests} owner={owner} error={err("raise")} />
-            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live} error={err("prepay")} />
+            <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live || !staff} error={err("prepay")} />
           </>
         )}
 
@@ -282,37 +347,20 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
 
         {paying && <OverageCard requests={requests} owner={owner} error={err("overage")} />}
 
+        <AddOns plan={plan} security={securityPlan} owner={owner} enabled={status.enabled} error={err("security")} />
+
         {status.enabled && (
-          <section className="mb-10 rounded-xl border border-line bg-surface p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="font-medium">Card and invoices</h2>
-                {account.card ? (
-                  <p className="mt-1 text-sm">
-                    <span className="capitalize">{account.card.brand}</span> ending <span className="font-mono">{account.card.last4}</span>
-                    <span className="text-muted"> · expires {String(account.card.expMonth).padStart(2, "0")}/{account.card.expYear}</span>
-                  </p>
-                ) : (
-                  <p className="mt-1 max-w-xl text-sm text-muted">No card yet. The plan, the trial and prepaying each ask for one on Stripe.</p>
-                )}
-                <p className="mt-2 max-w-xl text-xs text-faint">
-                  Cards, invoices, receipts and the billing email, address and tax ID are on Stripe's billing page. g1t never sees card
-                  numbers.
-                </p>
-              </div>
-              {owner && (
-                <Form method="post">
-                  <SubmitButton variant="quiet" name="intent" value="portal" pending="Opening Stripe…">
-                    <CreditCard size={14} />
-                    Open Stripe billing
-                  </SubmitButton>
-                </Form>
+          <Suspense fallback={<StripeSkeleton />}>
+            <Await resolve={details}>
+              {(loaded) => (
+                <>
+                  <PaymentMethodCard details={loaded} owner={owner} enabled={status.enabled} staff={staff} error={err("payment")} />
+                  <InvoiceDetailsCard details={loaded} owner={owner} enabled={status.enabled} error={err("details")} />
+                  <InvoicesCard details={loaded} />
+                </>
               )}
-            </div>
-            {!status.live && (
-              <p className="mt-3 text-xs text-faint">Test mode: use card 4242 4242 4242 4242, any future date and code.</p>
-            )}
-          </section>
+            </Await>
+          </Suspense>
         )}
 
         {invoices.length > 0 && <InvoiceList invoices={invoices} />}
@@ -325,11 +373,17 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <h3 className="font-medium">How it is charged</h3>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
             <li>
-              The plan is {wholeDollars((plan?.plan.monthlyCents ?? 2000) * 10_000)} a month for the workspace. Usage is charged at what it
-              costs g1t plus {account.marginPercent}%, from the first second, after what is included.
+              The plan is {wholeDollars((plan?.plan.monthlyCents ?? 2000) * 10_000)} a month for the workspace, with $10 of usage
+              included. Usage is charged at what it costs g1t plus {account.marginPercent}%, from the first second, after what is
+              included.
             </li>
-            <li>What paid first is on each statement line: the plan's included usage, the trial, the open-source pool, or g1t.</li>
-            <li>Credit from g1t comes off what you owe, before anything prepaid, the soonest-expiring first.</li>
+            <li>
+              Agent runs: the model at the provider's price{ai && ai.modelMarkupPercent ? ` plus ${ai.modelMarkupPercent}%` : ", with no markup"}, plus
+              g1t's agent rate per million tokens{ai && ai.agentRateMicros > 0 ? ` (${dollars(ai.agentRateMicros)})` : ""}. AI Gateway: the
+              provider's price, free of markup while in beta.
+            </li>
+            <li>AI usage draws on prepaid AI credit first; at $0, new runs on g1t's models wait for more credit or auto-reload.</li>
+            <li>Credit from g1t comes off what you owe, the soonest-expiring first.</li>
             <li>
               With your own model provider, connected under{" "}
               <Link to={`/${slug}/-/integrations`} className="text-fg hover:underline">
@@ -341,12 +395,11 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               Each month closes with an itemised invoice. No card is charged less than{" "}
               {dollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR, 0)}; less carries over.
             </li>
-            <li>Alerts at 50, 75, 90 and 100% of the included usage and your limits, here and by email.</li>
             <li>No seats: add as many people and agents as you like.</li>
           </ul>
           <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
             <Link to={`/${slug}/-/usage`} className="flex items-center gap-2 text-muted hover:text-fg">
-              <FileText size={14} /> Usage, run by run
+              <FileText size={14} /> Usage, by product and project
             </Link>
             <Link to="/pricing" className="flex items-center gap-2 text-muted hover:text-fg">
               <CreditCard size={14} /> Pricing and today's prices
@@ -361,15 +414,12 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
   );
 }
 
-/** The workspace's invoices from g1t, each kept on Stripe with its PDF. */
+/** The workspace's month-end invoices from g1t, each kept on Stripe with its PDF. */
 function InvoiceList({ invoices }: { invoices: WorkspaceInvoice[] }) {
   return (
     <section className="mb-10">
-      <h2 className="font-medium">Invoices</h2>
-      <p className="mt-1 text-sm text-muted">
-        One when each month closes, and one each time g1t charges the card near your limit. Receipts and PDFs are also on Stripe's
-        billing page.
-      </p>
+      <h2 className="font-medium">Usage invoices</h2>
+      <p className="mt-1 text-sm text-muted">One when each month closes, and one each time g1t charges the card near your limit.</p>
       <ul className="mt-4 divide-y divide-line overflow-hidden rounded-xl border border-line">
         {invoices.map((invoice) => (
           <li key={invoice.invoiceId} className="px-4 py-3 text-sm">

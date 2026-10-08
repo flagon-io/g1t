@@ -44,6 +44,7 @@ import {
   type User as Actor,
 } from "@g1t/contracts";
 
+import { InlineMarkdown } from "./inline-markdown";
 import { SubmitButton, TimeAgo } from "./ui";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -332,7 +333,7 @@ function EntityRow({ entity, names }: { entity: Entity; names: Map<string, Entit
           {entity.project && entity.kind !== "project" && <span className="text-xs text-faint">{entity.project}</span>}
           {entity.private && <span className="text-[0.6875rem] text-faint">private</span>}
         </div>
-        {entity.summary && <p className="mt-0.5 text-xs text-muted">{entity.summary}</p>}
+        {entity.summary && <p className="mt-0.5 text-xs text-muted"><InlineMarkdown text={entity.summary} /></p>}
       </div>
     </li>
   );
@@ -418,7 +419,7 @@ function Hit({ hit }: { hit: SearchHit }) {
       <span className="mt-0.5 text-muted">{KIND_ICON[hit.kind]}</span>
       <div className="min-w-0 grow">
         <div className="text-sm">{title}</div>
-        {hit.snippet && <p className="mt-0.5 text-xs text-muted">{hit.snippet}</p>}
+        {hit.snippet && <p className="mt-0.5 text-xs text-muted"><InlineMarkdown text={hit.snippet} /></p>}
         <p className="mt-1 flex flex-wrap gap-x-3 text-[0.6875rem] text-faint">
           <span>{hit.kind}</span>
           <span>{hit.source}</span>

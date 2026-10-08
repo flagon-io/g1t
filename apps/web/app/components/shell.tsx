@@ -4,13 +4,14 @@ import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderDa
 
 import type { Abilities, InboxCounts, Membership, Spike, User } from "@g1t/contracts";
 
-import { CommandPalette, type PaletteCommand, usePaletteShortcut } from "./command-palette";
+import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { AgentButton, InboxBell } from "./inbox";
 import { PinButton } from "./pin-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { StatusDot, useSiteStatus } from "./footer";
 import { Logo, Mark } from "./logo";
-import { Avatar } from "./ui";
+import { Avatar, SoonPill } from "./ui";
 import { Skeleton } from "./ui/skeleton";
 import {
   DropdownMenu,
@@ -142,9 +143,7 @@ function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: Rea
     >
       <span className="shrink-0 opacity-70">{icon}</span>
       <span className="grow truncate">{children}</span>
-      <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
-        Soon
-      </span>
+      <SoonPill />
     </div>
   );
 }
@@ -181,9 +180,7 @@ function SidebarSoonLink({
     >
       <span className="shrink-0 opacity-80">{icon}</span>
       <span className="min-w-0 grow truncate">{children}</span>
-      <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
-        Soon
-      </span>
+      <SoonPill />
     </NavLink>
   );
 }
@@ -252,7 +249,7 @@ function WorkspaceSwitcher({ user, shell }: { user: User; shell: ShellData }) {
       </Link>
       <DropdownMenuTrigger
         aria-label="Switch workspace"
-        className="flex h-9 w-7 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg data-[state=open]:bg-raised data-[state=open]:text-fg"
+        className="flex h-9 w-7 shrink-0 items-center justify-center rounded-md text-faint outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-raised data-[state=open]:text-fg"
       >
         <ChevronsUpDown size={14} />
       </DropdownMenuTrigger>
@@ -930,7 +927,7 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
+        <SidebarLink to={`${base}/issues`} also={[`${base}/plans`, `${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
           Issues
         </SidebarLink>
         <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
@@ -1292,7 +1289,7 @@ function Sidebar({
         >
           <Search size={14} />
           <span className="grow text-left">Search or jump to…</span>
-          <kbd className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line">⌘K</kbd>
+          <PaletteKey className="rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line" />
         </button>
       </div>
       <Drill trail={trail} />
@@ -1307,6 +1304,8 @@ function Sidebar({
 /** Words for the sections a path can end in. */
 const SECTIONS: Record<string, string> = {
   issues: "Issues",
+  milestones: "Milestones",
+  labels: "Labels",
   pulls: "Pull requests",
   queue: "Merge queue",
   commits: "Commits",
@@ -1364,25 +1363,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
     const page = accountSettingsPage(pathname);
-    const trail = [{ label: "Settings", to: FIRST_SETTINGS_PAGE }, ...(page ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }] : [])];
-    return (
-      <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
-        {trail.map((crumb, index) => (
-          <span key={crumb.to + index} className="flex min-w-0 items-center gap-1.5">
-            {index > 0 && <span className="text-line-strong">/</span>}
-            <Link
-              to={crumb.to}
-              prefetch="intent"
-              className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
-                index === trail.length - 1 ? "font-medium text-fg" : "text-muted hover:text-fg"
-              }`}
-            >
-              {crumb.label}
-            </Link>
-          </span>
-        ))}
-      </nav>
-    );
+    return <Trail trail={[{ label: "Settings", to: FIRST_SETTINGS_PAGE }, ...(page ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }] : [])]} />;
   }
   if (reserved.includes(parts[0]!)) {
     const words: Record<string, string> = {
@@ -1405,7 +1386,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
     return <span className="truncate font-mono text-[0.8125rem] font-medium">@{parts[1]}</span>;
   }
   const [owner, second, third, fourth] = parts;
-  const trail: { label: string; to: string; mono?: boolean }[] = [{ label: owner!, to: `/${owner}`, mono: true }];
+  const trail: Crumb[] = [{ label: owner!, to: `/${owner}`, mono: true }];
   if (second === "-") {
     const page = `/${owner}/-/${third}`;
     if (third && SETTINGS_PAGE.test(page)) {
@@ -1415,8 +1396,8 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
   } else if (second) {
     const repo = `/${owner}/${second}`;
     trail.push({ label: second, to: repo, mono: true });
-    if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, to: `${repo}/pull/${fourth}` });
-    else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, to: `${repo}/issues/${fourth}` });
+    if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, short: `#${fourth}`, to: `${repo}/pull/${fourth}` });
+    else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, short: `#${fourth}`, to: `${repo}/issues/${fourth}` });
     else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
     else if (third && SECTIONS[third]) {
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
@@ -1426,22 +1407,55 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
       }
     }
   }
+  return <Trail trail={trail} />;
+}
+
+/** One link of the trail; `short` is what a phone shows when it is the page itself. */
+type Crumb = { label: string; to: string; mono?: boolean; short?: string };
+
+/**
+ * The trail of links. On a phone there is room for one: the page itself,
+ * with a way back to where it sits; the whole trail from a wider screen up.
+ */
+function Trail({ trail }: { trail: Crumb[] }) {
+  const up = trail.length > 1 ? trail[trail.length - 2]! : null;
   return (
     <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
-      {trail.map((crumb, index) => (
-        <span key={index} className="flex min-w-0 items-center gap-1.5">
-          {index > 0 && <span className="text-line-strong">/</span>}
-          <Link
-            to={crumb.to}
-            prefetch="intent"
-            className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
-              index === trail.length - 1 ? "font-medium text-fg" : "text-muted hover:text-fg"
-            } ${crumb.mono ? "font-mono text-[0.8125rem]" : ""}`}
-          >
-            {crumb.label}
-          </Link>
-        </span>
-      ))}
+      {up && (
+        <Link
+          to={up.to}
+          prefetch="intent"
+          aria-label={`Back to ${up.label}`}
+          className="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-fg sm:hidden"
+        >
+          <ChevronLeft size={16} />
+        </Link>
+      )}
+      {trail.map((crumb, index) => {
+        const last = index === trail.length - 1;
+        return (
+          <span key={index} className={`min-w-0 items-center gap-1.5 ${last ? "flex" : "hidden sm:flex"}`}>
+            {index > 0 && <span className="hidden text-line-strong sm:inline">/</span>}
+            <Link
+              to={crumb.to}
+              prefetch="intent"
+              aria-current={last ? "page" : undefined}
+              className={`truncate rounded px-1 py-0.5 transition-colors hover:bg-raised ${
+                last ? "font-medium text-fg" : "text-muted hover:text-fg"
+              } ${crumb.mono ? "font-mono text-[0.8125rem]" : ""}`}
+            >
+              {last && crumb.short ? (
+                <>
+                  <span className="sm:hidden">{crumb.short}</span>
+                  <span className="hidden sm:inline">{crumb.label}</span>
+                </>
+              ) : (
+                crumb.label
+              )}
+            </Link>
+          </span>
+        );
+      })}
     </nav>
   );
 }
@@ -1649,35 +1663,36 @@ export function AppShell({
   const leaving = useLeaving();
 
   return (
+    // The phone's menu is a sheet: a dialog that holds focus, closes on
+    // Escape or a tap outside, and gives focus back to the menu button.
+    <Sheet open={drawer} onOpenChange={setDrawer}>
     <div className="min-h-screen">
       <Progress />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))] lg:block">
         <Sidebar user={user} shell={shell} missing={missing} onFind={() => setPalette(true)} />
       </aside>
-      {drawer && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setDrawer(false)}
-          />
-          <aside className="absolute inset-y-0 left-0 w-72 border-r border-line bg-surface">
-            <Sidebar user={user} shell={shell} missing={missing} onFind={() => setPalette(true)} onClose={() => setDrawer(false)} />
-          </aside>
-        </div>
-      )}
+      <SheetContent side="left" showClose={false} aria-describedby={undefined} className="w-72 max-w-[85vw] sm:max-w-72 lg:hidden">
+        <SheetTitle className="sr-only">Menu</SheetTitle>
+        <Sidebar
+          user={user}
+          shell={shell}
+          missing={missing}
+          onFind={() => {
+            setDrawer(false);
+            setPalette(true);
+          }}
+          onClose={() => setDrawer(false)}
+        />
+      </SheetContent>
 
       <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
-          <button
-            type="button"
+          <SheetTrigger
             aria-label="Open menu"
-            onClick={() => setDrawer(true)}
             className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg lg:hidden"
           >
             <Menu size={18} />
-          </button>
+          </SheetTrigger>
           <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} />
           <div className="ml-auto flex items-center gap-1.5">
             {/* Search lives in the sidebar ("Search or jump to"); with the sidebar folded away, this opens the same palette. */}
@@ -1800,7 +1815,7 @@ export function AppShell({
           </div>
         </header>
         {banner}
-        <main {...leaving} className={`min-w-0 grow ${leaving.className}`}>
+        <main id="content" tabIndex={-1} {...leaving} className={`min-w-0 grow outline-none ${leaving.className}`}>
           {children}
         </main>
       </div>
@@ -1811,5 +1826,6 @@ export function AppShell({
         repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null}
       />
     </div>
+    </Sheet>
   );
 }

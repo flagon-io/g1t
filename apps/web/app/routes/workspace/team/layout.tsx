@@ -7,6 +7,7 @@ import type { Route } from "./+types/layout";
 import { page } from "../../../lib/meta";
 import { TeamBadges, type TeamContext } from "../../../components/teams";
 import { CopyLine, TabLink } from "../../../components/ui";
+import { TabStrip } from "../../../components/ui/tab-strip";
 import { teamPath } from "../../../lib/teams";
 import { identity } from "../../../lib/services.server";
 import { getViewer, roleIn } from "../../../lib/session.server";
@@ -53,7 +54,7 @@ export default function TeamLayout({ loaderData }: Route.ComponentProps) {
         <div className="mt-3 max-w-xs">
           <CopyLine text={teamHandle(team)} />
         </div>
-        <nav aria-label="Team" className="mt-5 flex gap-1 overflow-x-auto">
+        <TabStrip label="Team" className="mt-5 gap-1">
           <TabLink to={base} end icon={<Users size={15} />} count={team.members_count}>
             Members
           </TabLink>
@@ -68,7 +69,7 @@ export default function TeamLayout({ loaderData }: Route.ComponentProps) {
               Settings
             </TabLink>
           )}
-        </nav>
+        </TabStrip>
       </header>
       <div className="pt-6">
         <Outlet context={{ team } satisfies TeamContext} />

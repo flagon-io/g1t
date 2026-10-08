@@ -46,35 +46,19 @@ impl Billing {
         };
         let customer = match self.customer_for(&workspace).await {
             Ok(customer) => customer,
-            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         };
-        let session = match stripe.start_card_check(&workspace, &customer, &a.return_url).await {
-            Ok(session) => session,
+        let started = match stripe.start_card_check(&workspace, &customer, &a.return_url).await {
             Err(error) if crate::stripe::is_missing(&error) => {
                 self.forget_customer(&workspace).await?;
-                let customer = self.customer_for(&workspace).await?;
-                stripe.start_card_check(&workspace, &customer, &a.return_url).await?
+                match self.customer_for(&workspace).await {
+                    Ok(customer) => stripe.start_card_check(&workspace, &customer, &a.return_url).await,
+                    Err(error) => Err(error),
+                }
             }
-            Err(error) => return Err(error),
+            other => other,
         };
-        let Some(url) = session.url else {
-            return Err(worker::Error::RustError("Stripe returned no page for the card check".into()));
-        };
-        self.db
-            .prepare(
-                "INSERT INTO checkouts (id, workspace, amount_cents, created_by, created_at, feature)
-                 VALUES (?, ?, 0, ?, ?, ?)",
-            )
-            .bind(&[
-                session.id.as_str().into(),
-                workspace.as_str().into(),
-                a.actor.username.as_str().into(),
-                rfc3339(now_ms()).into(),
-                CARD_CHECK.into(),
-            ])?
-            .run()
-            .await?;
-        Ok(Outcome::Ok(Checkout { url }))
+        self.page_opened(started, &workspace, 0, 0, &a.actor.username, Some(CARD_CHECK)).await
     }
 
     /// `confirm_card_check`: records the check once Stripe says it passed.
@@ -89,10 +73,13 @@ impl Billing {
             .bind(&[a.session.as_str().into(), workspace.as_str().into(), CARD_CHECK.into()])?
             .first::<serde_json::Value>(None)
             .await?;
-        if mine.is_some()
-            && let Err(why) = self.settle_card_check(&a.session).await? {
-                return Ok(Outcome::fail(FailureCode::Conflict, why));
+        if mine.is_some() {
+            match self.settle_card_check(&a.session).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(why)) => return Ok(Outcome::fail(FailureCode::Conflict, why)),
+                Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
             }
+        }
         Ok(Outcome::Ok(self.entitlements(EntitlementsArgs { workspace }).await?))
     }
 

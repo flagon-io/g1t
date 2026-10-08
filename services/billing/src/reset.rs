@@ -27,6 +27,8 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM runs WHERE workspace = ?1",
     "DELETE FROM reservations WHERE workspace = ?1",
     "DELETE FROM checkouts WHERE workspace = ?1",
+    "DELETE FROM ai_reload WHERE workspace = ?1",
+    "DELETE FROM ai_reloads WHERE workspace = ?1",
     "DELETE FROM accounts WHERE workspace = ?1",
     "DELETE FROM plan_payments WHERE workspace = ?1",
     "DELETE FROM subscriptions WHERE workspace = ?1",
@@ -136,7 +138,7 @@ mod tests {
             "billing_accounts", "allowance_use", "trial_grants", "credit_grants", "storage_days", "package_storage_days",
             "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
             "card_checks", "alerts_sent", "price_notices", "closed_workspaces", "workspace_costs",
-            "margin_alerts", "budget_alerts",
+            "margin_alerts", "budget_alerts", "ai_reload", "ai_reloads",
         ] {
             assert!(!kept.contains(&table));
             assert!(all.contains(&format!("DELETE FROM {table} WHERE")), "{table}");

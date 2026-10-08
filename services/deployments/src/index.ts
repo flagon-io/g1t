@@ -80,7 +80,8 @@ import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
 import { CustomHostnames } from "./custom-hostnames";
 import { Domains, NOT_ENABLED_NOTICE, toDomain } from "./domains";
 import { monthCost } from "./metering";
-import { moveTargets, ownerOf, rebuildOutcome, retryDue, type DroppedBuild, type MoveTarget } from "./moves";
+import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarget } from "./moves";
+import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 
 type Env = {
@@ -122,7 +123,11 @@ const RENAME_WAITS = 3;
 /** Why a build under way was dropped by a move; the move builds it again under the new name. */
 const MOVED_ERROR = "The repository moved: built again under its new name.";
 const RENAMED_ERROR = "The workspace was renamed: built again under its new name.";
-/** A move's rebuild that could not start is tried again by the sweep after this long. */
+/**
+ * A move's rebuild that could not start, or failed, is tried again by the
+ * sweep after this long, doubled for each failure after the first, up to
+ * `MAX_IDENTICAL_FAILURES` (see retries.ts).
+ */
 const MOVE_RETRY_MS = 60 * 60 * 1000;
 
 /** A build's report of what it found the project to be, if it is one g1t knows. */
@@ -1131,6 +1136,11 @@ class Deployments {
   private async finishFailed(id: string, message: string, log: string | null, seconds: number | null): Promise<void> {
     const row = await this.deploymentRow(id);
     if (!row || (row.status !== "queued" && row.status !== "building")) return;
+    // A commit that is gone says so plainly; git's own words stay in the log.
+    if (commitMissing(message)) {
+      log = log ?? message;
+      message = missingCommitMessage(row);
+    }
     await this.db
       .prepare(
         `UPDATE deployments SET status = 'failed', error = ?, log = COALESCE(?, log), build_seconds = ?, finished_at = ?
@@ -1608,8 +1618,10 @@ class Deployments {
    * its new name only has its old names redirected; one whose rebuild is
    * queued or under way is left to it; one whose workspace has no
    * Deployments or is over its limit waits, without a refused deployment
-   * each time; with `backoff` (the sweep), one whose rebuild was tried
-   * within `MOVE_RETRY_MS` waits. Returns what could not be queued, for an
+   * each time; one whose commit is gone, or whose rebuild failed the same
+   * way `MAX_IDENTICAL_FAILURES` times, is not tried again; with `backoff`
+   * (the sweep), one whose rebuild was tried within `MOVE_RETRY_MS`,
+   * doubled for each failure, waits. Returns what could not be queued, for an
    * event's delivery to be retried.
    */
   private async followMoves(
@@ -1682,15 +1694,16 @@ class Deployments {
           await this.supersede(cloudflare, { project_id: project.id, kind: target.kind, branch: target.branch, workspace: project.workspace }, script);
           continue;
         }
-        const last = await this.db
-          .prepare("SELECT status, created_at FROM deployments WHERE script = ? ORDER BY created_at DESC LIMIT 1")
-          .bind(script)
-          .first<{ status: string; created_at: string }>();
+        const history = await this.recentBuilds(script);
+        const last = history[0];
         if (last && (last.status === "queued" || last.status === "building")) {
           result.queued++;
           continue;
         }
-        if (options.backoff && !retryDue(last?.created_at ?? null, Date.now(), MOVE_RETRY_MS)) {
+        // A commit that is gone, or a build that failed the same way a few
+        // times, is not tried again; a push or a redeploy builds it.
+        // Otherwise the sweep waits longer after each failure.
+        if (retryDecision(history, Date.now(), MOVE_RETRY_MS, { backoff: options.backoff }).kind !== "build") {
           result.waiting++;
           continue;
         }
@@ -1726,6 +1739,15 @@ class Deployments {
     }
     if (result.failed.length > 0) console.error("could not rebuild moved apps", result.failed);
     return result;
+  }
+
+  /** An app's latest builds, newest first: enough to tell a run of identical failures (see retries.ts). */
+  private async recentBuilds(script: string): Promise<PastBuild[]> {
+    const rows = await this.db
+      .prepare("SELECT status, error, commit_sha, created_at FROM deployments WHERE script = ? ORDER BY created_at DESC LIMIT ?")
+      .bind(script, MAX_IDENTICAL_FAILURES)
+      .all<PastBuild>();
+    return rows.results;
   }
 
   /** The projects built from a repository, as this service has them (projects hides a deleted one's). */
@@ -2077,7 +2099,13 @@ class Deployments {
       for (const app of paused) {
         const project = projects.get(app.project_id);
         if (!project) continue;
-        // A failed or refused rebuild leaves it paused, to try again next time.
+        // A failed or refused rebuild leaves it paused, to try again later:
+        // longer after each failure, and not once its commit is gone or it
+        // failed the same way a few times.
+        const history = await this.recentBuilds(app.script);
+        if (history[0]?.status === "queued" || history[0]?.status === "building") continue;
+        const backoff = history[0]?.status === "failed";
+        if (retryDecision(history, Date.now(), MOVE_RETRY_MS, { backoff }).kind !== "build") continue;
         const rebuilt =
           app.kind === "production"
             ? await this.deployProduction(project, app.commit_sha, "g1t")

@@ -23,6 +23,7 @@ const PAGE: u32 = 50;
 /// `Runs on your own model provider` is only on older months: those runs
 /// carried a flat fee then, and pay only their sandbox time now.
 pub(crate) const KIND_SQL: &str = "CASE
+    WHEN kind = 'top_up' AND credit_kind = 'purchased' THEN 'AI credit'
     WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN 'Credits from g1t'
     WHEN kind = 'top_up' AND amount_micros < 0 THEN 'Refunds'
     WHEN kind = 'top_up' THEN 'Payments'
@@ -35,12 +36,29 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN task = 'cache' THEN 'Actions cache storage'
     WHEN task = 'git' THEN 'Git operations'
     WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
+    WHEN reference LIKE '%/agent%' THEN 'Agent rate'
+    WHEN task = 'gateway' THEN 'AI Gateway'
+    WHEN task = 'domains' THEN 'Custom domains'
+    WHEN task = 'package_storage' THEN 'Package storage'
     ELSE 'Agent runs' END";
+
+/// A usage line at its price, in SQL: what was charged, what paid for it
+/// first (the plan's included usage, the trial, a pool, g1t), and what a
+/// discount took off. `line_price`, for a whole column. The one measure of
+/// usage every page shows.
+pub(crate) const PRICE_SQL: &str = "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
+      + COALESCE(given_micros, 0) + COALESCE(discount_micros, 0))";
+
+/// Whether a usage line is an agent run's own line (`run_…`), not its
+/// agent rate, a correction or anything else: what counts as one run.
+pub(crate) const RUN_SQL: &str = "(reference LIKE 'run%' AND instr(reference, '/') = 0)";
 
 /// The order lines appear in within a group.
 pub(crate) fn kind_order(kind: &str) -> u8 {
     match kind {
         "Agent runs" => 0,
+        "Agent rate" => 0,
+        "AI Gateway" => 1,
         "Runs on your own model provider" => 1,
         "Sandbox time" => 2,
         "Self-hosted runner time" => 2,
@@ -50,7 +68,10 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "Git operations" => 5,
         "Search embeddings" => 6,
         "Security scans" => 7,
+        "Custom domains" => 3,
+        "Package storage" => 4,
         "Payments" => 8,
+        "AI credit" => 8,
         "Credits from g1t" => 9,
         "Refunds" => 10,
         _ => 11,
@@ -59,7 +80,7 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
 
 /// Payments, credits and refunds: money in, which has no price.
 pub(crate) fn is_money_in(kind: &str) -> bool {
-    matches!(kind, "Payments" | "Credits from g1t" | "Refunds")
+    matches!(kind, "Payments" | "AI credit" | "Credits from g1t" | "Refunds")
 }
 
 /// A usage line at its price: what was charged, what paid for it first,
@@ -281,14 +302,14 @@ impl Billing {
         struct Used {
             meter: String,
             count: u32,
-            cost: Option<f64>,
+            price: Option<f64>,
         }
         // A month's close for deployments is charged in the next month;
         // it is last month's, so it is left out here.
         let ledger = self
             .db
             .prepare(format!(
-                "SELECT {METER_SQL} AS meter, COUNT(*) AS count, SUM(cost_micros) AS cost
+                "SELECT {METER_SQL} AS meter, SUM(CASE WHEN {RUN_SQL} THEN 1 ELSE 0 END) AS count, SUM({PRICE_SQL}) AS price
                  FROM ledger WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND created_at < ?3
                    AND COALESCE(reference, '') NOT LIKE 'deployments/%'
                    -- Runs on the workspace's own model provider are its provider's to bill, never g1t's.
@@ -312,11 +333,10 @@ impl Billing {
             .all()
             .await?
             .results::<Pending>()?;
-        let terms = self.terms_of(&workspace).await?;
-        let price = |cost: i64| {
-            let charge = crate::credits::with_margin(cost, self.margin_percent);
-            if terms.full_discount() { charge } else { terms.apply(charge) }
-        };
+        // At price, before any discount, as every page shows usage: the
+        // ledger's lines as they were charged, and what is metered so far
+        // at cost plus the margin.
+        let price = |cost: i64| crate::credits::with_margin(cost, self.margin_percent);
         let mut meters: Vec<MeterUsage> = METERS
             .iter()
             .map(|(key, label)| MeterUsage { key: (*key).to_owned(), label: (*label).to_owned(), micros: 0, quantity: None })
@@ -324,7 +344,7 @@ impl Billing {
         let mut agent_runs = 0;
         for used in ledger {
             if let Some(meter) = meters.iter_mut().find(|m| m.key == used.meter) {
-                meter.micros += price(used.cost.unwrap_or(0.0).round() as i64);
+                meter.micros += used.price.unwrap_or(0.0).round() as i64;
             }
             if used.meter == "agents" {
                 agent_runs = used.count;

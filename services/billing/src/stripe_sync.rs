@@ -100,11 +100,10 @@ impl Billing {
     /// with that customer.
     async fn fetch_card(&self, customer: &str) -> Result<Option<Card>> {
         let Some(stripe) = &self.stripe else { return Ok(None) };
-        let card = stripe.card(customer).await?.map(|card| Card {
-            brand: card.brand,
-            last4: card.last4,
-            exp_month: card.exp_month,
-            exp_year: card.exp_year,
+        // The card invoices are charged to (the default), not merely the
+        // newest: what Stripe's billing page made the default is the one.
+        let card = stripe.default_payment_method(customer).await?.filter(|m| m.kind == "card").and_then(|m| {
+            Some(Card { brand: m.brand?, last4: m.last4?, exp_month: m.exp_month?, exp_year: m.exp_year? })
         });
         self.db
             .prepare(

@@ -14,9 +14,13 @@ test("the chosen workspace holds while you are a member, else the first", () => 
   assert.equal(chosenWorkspace([], "syntaqx"), null);
 });
 
-test("a project in another workspace does not change which one you are in", () => {
-  // In Flagon, looking at syntaqx/g1t: still Flagon.
-  assert.equal(workspaceFor(mine, "flagon-io", { owner: "syntaqx", repo: "g1t" })?.slug, "flagon-io");
+test("a project in one of your workspaces is about that workspace", () => {
+  // Chose Flagon, looking at syntaqx/g1t: syntaqx, the project's own.
+  assert.equal(workspaceFor(mine, "flagon-io", { owner: "syntaqx", repo: "g1t" })?.slug, "syntaqx");
+  assert.equal(workspaceFor(mine, "syntaqx", { owner: "Flagon-IO", repo: "g1t" })?.slug, "flagon-io");
+});
+
+test("a project somewhere you do not belong leaves the chosen workspace", () => {
   // A public project somewhere else entirely: still Flagon.
   assert.equal(workspaceFor(mine, "flagon-io", { owner: "acme", repo: "web" })?.slug, "flagon-io");
   // Mission control: still Flagon.

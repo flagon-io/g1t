@@ -58,6 +58,7 @@ export function reasonFor(need: Pick<Need, "kind" | "detail">): Reason {
     case "ready":
       return "ready_to_merge";
     case "stuck":
+    case "runner":
       return "stalled";
     case "stalled":
       return stallReason(need.detail);
@@ -122,6 +123,8 @@ export function whyFor(
   if (need.kind === "review") return "You were asked to review it by name, so it waits for your verdict.";
   if (need.kind === "stuck")
     return "A running agent has stopped reporting. It may be working on something long, or stuck; a look at its session tells which.";
+  if (need.kind === "runner")
+    return "The job runs only on a self-hosted runner with those labels, and none is connected. It starts as soon as one is; nothing else picks it up.";
   switch (reason) {
     case "outside_guardrails":
       return "The run reached a limit set in Guardrails. g1t does not lift a cap on its own; a person raises it, then asks for the next step.";

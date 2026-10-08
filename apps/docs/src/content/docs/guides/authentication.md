@@ -326,6 +326,7 @@ On the form, scopes are a checklist grouped by area:
 | Notifications | `notifications:read`, `notifications:write` |
 | Security | `security:read`, `security:write` |
 | Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
+| Billing | `billing:read`, `billing:write` |
 | Runners | `runners:read` |
 | Dangerous | `repo:admin`, `packages:delete`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
 
@@ -360,6 +361,8 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
 | `workspace:read` | Read workspace invites, integrations, model routes and [teams](/guides/teams/) |
 | `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
+| `billing:read` | See a workspace's [usage, budget, AI credit and invoices](/guides/usage-and-billing/) |
+| `billing:write` | Change a workspace's budget and buy AI credit. Only owners, as people: a workspace's own token and g1t's agents never change billing, whatever their scopes. Not in any preset but full access. |
 | `access:read` | See who has access to repositories |
 | `access:admin` | Give people and teams access to repositories, and take it away |
 | `webhooks:read` | See webhooks and their deliveries |

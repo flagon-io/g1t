@@ -262,3 +262,47 @@ test("kinds of work without words of their own are one Other, listed once and la
   ]);
   assert.deepEqual(foldTasks([{ key: "plan", micros: 1, runs: 1 }]), [{ key: "plan", micros: 1, runs: 1 }]);
 });
+
+test("AI credit is bought in whole dollars from $10 to $1,000", async () => {
+  const { parseAiPurchase } = await import("./billing.ts");
+  assert.deepEqual(parseAiPurchase({ amount: "25" }), { ok: true, value: { amountCents: 2_500 } });
+  assert.deepEqual(parseAiPurchase({ amount: "custom", custom: "$150" }), { ok: true, value: { amountCents: 15_000 } });
+  assert.equal(parseAiPurchase({ amount: "custom", custom: "5" }).ok, false);
+  assert.equal(parseAiPurchase({ amount: "custom", custom: "12.50" }).ok, false);
+  assert.equal(parseAiPurchase({ amount: "custom", custom: "" }).ok, false);
+});
+
+test("auto-reload's amounts are checked before billing sees them", async () => {
+  const { parseAiReload } = await import("./billing.ts");
+  assert.deepEqual(parseAiReload({ enabled: "on", threshold: "10", target: "25", monthly: "100" }), {
+    ok: true,
+    value: { enabled: true, thresholdMicros: 10_000_000, targetMicros: 25_000_000, monthlyMaxMicros: 100_000_000 },
+  });
+  assert.equal(parseAiReload({ threshold: "10", target: "15", monthly: "100" }).ok, false);
+  assert.equal(parseAiReload({ threshold: "10", target: "25", monthly: "10" }).ok, false);
+  assert.equal(parseAiReload({ threshold: "10", target: "25.5", monthly: "100" }).ok, false);
+});
+
+test("budget alerts keep the levels ticked, highest first", async () => {
+  const { parseBudgetAlerts } = await import("./billing.ts");
+  assert.deepEqual(parseBudgetAlerts({ alerts: ["50", "100", "75", "12"], pause: "on", webhook: "" }), {
+    ok: true,
+    value: { alerts: [100, 75, 50], pauseAtLimit: true, webhook: null },
+  });
+  assert.equal(parseBudgetAlerts({ alerts: [], webhook: "http://x.test" }).ok, false);
+  assert.deepEqual(parseBudgetAlerts({ alerts: [], webhook: "https://hooks.acme.test/g1t" }).ok, true);
+});
+
+test("invoice details read from the form, with the country in capitals", async () => {
+  const { parseInvoiceDetails } = await import("./billing.ts");
+  const form = new FormData();
+  form.set("email", "billing@acme.test");
+  form.set("country", "de");
+  form.set("taxIdType", "eu_vat");
+  form.set("taxId", "DE123456789");
+  const parsed = parseInvoiceDetails(form);
+  assert.ok(parsed.ok);
+  assert.equal(parsed.value.address.country, "DE");
+  form.set("taxId", "");
+  assert.equal(parseInvoiceDetails(form).ok, false);
+});

@@ -360,7 +360,7 @@ function Settings({ data, manage, scope }: { data: RunnersData; manage: boolean;
             <Input name="agentLabels" defaultValue={settings.agentLabels.join(", ")} disabled={!manage} aria-label="Labels for agent work" />
           </span>
         </span>
-        <Switch name="agents" checked={agents} onCheckedChange={setAgents} disabled={!manage} />
+        <Switch name="agents" checked={agents} onCheckedChange={setAgents} disabled={!manage} aria-label="Run g1t's work on self-hosted runners" />
       </label>
       <label className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${forks ? "border-danger/50 bg-danger/5" : "border-line bg-surface"}`}>
         <span className="min-w-0">

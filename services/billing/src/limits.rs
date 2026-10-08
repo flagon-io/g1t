@@ -39,7 +39,7 @@
 
 use futures_util::future::{try_join, try_join5, try_join_all};
 use g1t_contracts::billing::{
-    BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetSpendLimitArgs, Trust,
+    BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetBudgetArgs, SetSpendLimitArgs, Trust,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
@@ -192,15 +192,48 @@ pub(crate) fn self_serve(requested: i64, available: i64, once: Option<i64>, rais
 
 /// Which alert a measure has reached: 100, 90, 75, 50, or none (0).
 pub(crate) fn alert_level(used: i64, limit: i64) -> u32 {
+    alert_level_in(used, limit, &ALERT_LEVELS)
+}
+
+/// Every alert a budget can have, highest first.
+pub(crate) const ALERT_LEVELS: [u32; 4] = [100, 90, 75, 50];
+
+/// The highest of `levels` a measure has reached, or 0.
+pub(crate) fn alert_level_in(used: i64, limit: i64, levels: &[u32]) -> u32 {
     if limit <= 0 || used <= 0 {
         return 0;
     }
-    for level in [100u32, 90, 75, 50] {
-        if used * 100 >= limit * i64::from(level) {
-            return level;
-        }
+    levels.iter().copied().filter(|level| used * 100 >= limit * i64::from(*level)).max().unwrap_or(0)
+}
+
+/// A budget's alerts as stored (`50,75,100`): every level when none were
+/// chosen, highest first.
+pub(crate) fn alert_levels(stored: Option<&str>) -> Vec<u32> {
+    let Some(stored) = stored else { return ALERT_LEVELS.to_vec() };
+    let mut levels: Vec<u32> = stored.split(',').filter_map(|l| l.trim().parse().ok()).filter(|l| ALERT_LEVELS.contains(l)).collect();
+    levels.sort_by(|a, b| b.cmp(a));
+    levels.dedup();
+    levels
+}
+
+/// Where spending stands against the budget: at 100% it stops work only
+/// when the budget pauses usage; otherwise it is a warning.
+pub(crate) fn budget_state(spent: i64, budget: Option<i64>, pause: bool) -> LimitState {
+    match state(spent, budget) {
+        LimitState::Stopped if !pause => LimitState::Warning,
+        other => other,
     }
-    0
+}
+
+/// Whether a budget webhook is an address g1t will post to: HTTPS, not
+/// g1t's own, at most 500 characters.
+pub(crate) fn webhook_ok(url: &str) -> bool {
+    let url = url.trim();
+    url.len() <= 500
+        && url.starts_with("https://")
+        && url.len() > "https://".len() + 3
+        && !url.contains(char::is_whitespace)
+        && !url["https://".len()..].split('/').next().is_some_and(|host| host == "g1t.sh" || host.ends_with(".g1t.sh") || host.starts_with("localhost") || host.starts_with("127."))
 }
 
 /// What is owed and what is prepaid, from this month's usage and payments
@@ -226,6 +259,12 @@ struct LimitRow {
     granted_ceiling_micros: Option<i64>,
     #[serde(default)]
     raised_at: Option<String>,
+    #[serde(default)]
+    alert_levels: Option<String>,
+    #[serde(default)]
+    pause_at_limit: Option<i64>,
+    #[serde(default)]
+    budget_webhook: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -266,7 +305,7 @@ impl Billing {
             self.db
                 .prepare(
                     "SELECT spend_limit_micros, spend_limit_full, autopay_failed_at, autopay_error,
-                            max_ceiling_micros, granted_ceiling_micros, raised_at
+                            max_ceiling_micros, granted_ceiling_micros, raised_at, alert_levels, pause_at_limit, budget_webhook
                      FROM limits WHERE workspace = ?",
                 )
                 .bind(&[workspace.as_str().into()])?
@@ -421,7 +460,10 @@ impl Billing {
         let declined = row.as_ref().and_then(|row| row.autopay_failed_at.clone().map(|at| (at, row.autopay_error.clone())));
         // Two limits: g1t's on what is unpaid, the owners' on what is spent.
         let risk = state(exposure, ceiling);
-        let budget = state(spent, spend_limit);
+        // A budget that does not pause usage only alerts: at 100% it is a
+        // warning, never a stop. g1t's own ceiling still stops work.
+        let pause = row.as_ref().and_then(|row| row.pause_at_limit).unwrap_or(1) != 0;
+        let budget = budget_state(spent, spend_limit, pause);
         let over_budget = budget == LimitState::Stopped;
         let state = if (declined.is_some() && exposure > 0) || risk == LimitState::Stopped || over_budget {
             LimitState::Stopped
@@ -438,6 +480,11 @@ impl Billing {
         let billing = format!("/{workspace}/-/billing");
         let message = match state {
             LimitState::Ok => None,
+            LimitState::Warning if budget == LimitState::Warning && !pause => Some(format!(
+                "{who} has spent {} of its {} monthly budget. Usage does not pause at the budget; an owner can change that at {billing}.",
+                dollars_plain(spent),
+                dollars_plain(spend_limit.unwrap_or_default()),
+            )),
             LimitState::Warning if budget == LimitState::Warning => Some(format!(
                 "{who} has spent {} of its {} monthly spend limit. At the limit, its sandboxes, builds and apps stop until the month turns or an owner raises it at {billing}.",
                 dollars_plain(spent),
@@ -496,6 +543,9 @@ impl Billing {
             raise_once_micros: raise_once,
             raised_at,
             first_month,
+            alert_levels: alert_levels(row.as_ref().and_then(|row| row.alert_levels.as_deref())),
+            pause_at_limit: pause,
+            budget_webhook: row.as_ref().and_then(|row| row.budget_webhook.clone()),
         })
     }
 
@@ -766,7 +816,10 @@ impl Billing {
                 record("skipped", 0, None, None)?.run().await?;
                 continue;
             }
-            let owed = (-account.balance.unwrap_or(0)).max(0);
+            // AI credit left at the month's end pays only for models: not
+            // money for anything else that is owed (ai.rs).
+            let ai_left = self.models_left_before(&account.workspace, &month_start).await?;
+            let owed = (ai_left - account.balance.unwrap_or(0)).max(0);
             if owed == 0 {
                 record("nothing", 0, None, None)?.run().await?;
                 continue;
@@ -881,6 +934,12 @@ impl Billing {
                     "spend_limit" => format!("g1t: {workspace} has used {}% of its spend limit", alert.level),
                     _ => format!("g1t: {workspace} has used {}% of its usage limit", alert.level),
                 };
+                // The budget's webhook hears of its alerts too, once each.
+                if alert.meter == "spend_limit"
+                    && let Some(url) = self.budget_webhook_of(&workspace).await?
+                {
+                    self.post_budget_webhook(&url, &workspace, alert.level, alert.used_micros, alert.limit_micros).await;
+                }
                 if notify(identity, &workspace, &subject, &alert.message, "Open billing", &billing).await {
                     self.db
                         .prepare(
@@ -912,6 +971,14 @@ impl Billing {
             ));
         }
         let before = self.limit_of(&workspace).await?;
+        // A free workspace has no on-demand usage to limit: its ceiling is
+        // only what it can owe for storage, and no raise applies to it.
+        if before.trust == Trust::New {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                format!("{workspace} is not on the g1t plan, so it has no usage to put a spend limit on. The plan starts with a {} limit for its first month.", dollars_plain(self.plans.paid_start_micros)),
+            ));
+        }
         let mut raising = false;
         if let (Some(requested), false) = (a.spend_limit_micros, a.use_full_limit) {
             match (before.available_micros, matches!(before.trust, Trust::Internal | Trust::Reviewed)) {
@@ -952,6 +1019,124 @@ impl Billing {
                 .await?;
         }
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
+    }
+
+    /// `set_budget`: the owners' monthly budget on usage after what the
+    /// plan includes: the spend limit (set as `set_spend_limit` sets it,
+    /// with the same bounds), which alerts to send, whether usage pauses at
+    /// 100%, and a webhook told at each alert.
+    pub(crate) async fn set_budget(&self, a: SetBudgetArgs) -> Result<Outcome<Limit>> {
+        let workspace = a.workspace.to_lowercase();
+        if a.actor.role_in(&workspace) != Some(Role::Owner) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can set the workspace's budget."));
+        }
+        if a.alerts.iter().any(|level| !ALERT_LEVELS.contains(level)) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Alerts are at 50, 75, 90 or 100% of the budget."));
+        }
+        let webhook = a.webhook.as_deref().map(str::trim).filter(|url| !url.is_empty());
+        if let Some(url) = webhook
+            && !webhook_ok(url)
+        {
+            return Ok(Outcome::fail(FailureCode::Invalid, "The webhook is an https:// address of your own, at most 500 characters."));
+        }
+        if !a.keep_limit {
+            let set = self
+                .set_spend_limit(SetSpendLimitArgs {
+                    actor: a.actor.clone(),
+                    workspace: workspace.clone(),
+                    spend_limit_micros: a.amount_micros,
+                    use_full_limit: false,
+                    raise_once: false,
+                })
+                .await?;
+            if let Outcome::Fail(failure) = set {
+                return Ok(Outcome::Fail(failure));
+            }
+        } else if self.limit_of(&workspace).await?.trust == Trust::New {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{workspace} is not on the g1t plan, so it has no budget to alert on.")));
+        } else {
+            // The row the alerts are kept on, if the workspace has none yet.
+            self.db
+                .prepare("INSERT OR IGNORE INTO limits (workspace, updated_at) VALUES (?, ?)")
+                .bind(&[workspace.as_str().into(), rfc3339(now_ms()).into()])?
+                .run()
+                .await?;
+        }
+        let mut levels = a.alerts.clone();
+        levels.sort_by(|x, y| y.cmp(x));
+        levels.dedup();
+        let stored = levels.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+        self.db
+            .prepare(
+                "UPDATE limits SET alert_levels = ?2, pause_at_limit = ?3, budget_webhook = ?4, updated_at = ?5 WHERE workspace = ?1",
+            )
+            .bind(&[
+                workspace.as_str().into(),
+                stored.as_str().into(),
+                i32::from(a.pause_at_limit).into(),
+                crate::optional(webhook),
+                rfc3339(now_ms()).into(),
+            ])?
+            .run()
+            .await?;
+        let account = self.account_of(&workspace).await?;
+        self.audit(
+            &account.id,
+            "budget",
+            &format!(
+                "{workspace}: budget {}, alerts at {}, {}{}",
+                a.amount_micros.map_or_else(|| "automatic".to_owned(), dollars_plain),
+                if stored.is_empty() { "none".to_owned() } else { format!("{stored}%") },
+                if a.pause_at_limit { "pauses usage at 100%" } else { "alerts only" },
+                if webhook.is_some() { ", with a webhook" } else { "" }
+            ),
+            &a.actor.username,
+        )
+        .await?;
+        Ok(Outcome::Ok(self.limit_of(&workspace).await?))
+    }
+
+
+    /// The budget's webhook, if the workspace has one.
+    async fn budget_webhook_of(&self, workspace: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            budget_webhook: Option<String>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT budget_webhook FROM limits WHERE workspace = ?")
+            .bind(&[workspace.into()])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|row| row.budget_webhook)
+            .filter(|url| webhook_ok(url)))
+    }
+    /// Posts a budget alert to the workspace's webhook, if it has one.
+    /// Never fails the alert: a receiver that does not answer is logged.
+    pub(crate) async fn post_budget_webhook(&self, url: &str, workspace: &str, level: u32, spent: i64, budget: i64) {
+        let body = serde_json::json!({
+            "event": "budget.alert",
+            "workspace": workspace,
+            "level_percent": level,
+            "spent_micros": spent,
+            "budget_micros": budget,
+            "sent_at": rfc3339(now_ms()),
+        });
+        let headers = worker::Headers::new();
+        let _ = headers.set("content-type", "application/json");
+        let _ = headers.set("user-agent", "g1t-billing");
+        let mut init = worker::RequestInit::new();
+        init.with_method(worker::Method::Post).with_headers(headers).with_body(Some(body.to_string().into()));
+        let sent = match worker::Request::new_with_init(url, &init) {
+            Ok(request) => worker::Fetch::Request(request).send().await.map(|r| r.status_code()),
+            Err(error) => Err(error),
+        };
+        match sent {
+            Ok(status) if (200..300).contains(&status) => {}
+            Ok(status) => worker::console_warn!("{workspace}'s budget webhook answered {status}"),
+            Err(error) => worker::console_warn!("{workspace}'s budget webhook could not be reached: {error}"),
+        }
     }
 }
 
@@ -1010,6 +1195,35 @@ pub(crate) fn previous_month(month: &str) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_budget_alerts_at_the_levels_chosen_and_pauses_only_if_asked() {
+        // Every level when none were chosen; the chosen ones, highest first.
+        assert_eq!(alert_levels(None), [100, 90, 75, 50]);
+        assert_eq!(alert_levels(Some("50,100,75")), [100, 75, 50]);
+        assert_eq!(alert_levels(Some("")), Vec::<u32>::new());
+        assert_eq!(alert_levels(Some("40, 50")), [50]);
+        // The highest chosen level reached.
+        assert_eq!(alert_level_in(80, 100, &[100, 75, 50]), 75);
+        assert_eq!(alert_level_in(80, 100, &[100, 90]), 0);
+        assert_eq!(alert_level_in(100, 100, &[100, 75, 50]), 100);
+        assert_eq!(alert_level_in(10, 0, &[50]), 0);
+        // At 100%: a stop when the budget pauses usage, else a warning.
+        assert_eq!(budget_state(100, Some(100), true), LimitState::Stopped);
+        assert_eq!(budget_state(100, Some(100), false), LimitState::Warning);
+        assert_eq!(budget_state(10, Some(100), false), LimitState::Ok);
+        assert_eq!(budget_state(10, None, true), LimitState::Ok);
+    }
+
+    #[test]
+    fn a_budget_webhook_is_someone_elses_https_address() {
+        assert!(webhook_ok("https://hooks.acme.test/g1t"));
+        assert!(!webhook_ok("http://hooks.acme.test/g1t"));
+        assert!(!webhook_ok("https://g1t.sh/x"));
+        assert!(!webhook_ok("https://api.g1t.sh/x"));
+        assert!(!webhook_ok("https://localhost:3000/x"));
+        assert!(!webhook_ok("https://a b.test/"));
+        assert!(!webhook_ok(&format!("https://acme.test/{}", "x".repeat(600))));
+    }
     #[test]
     fn the_automatic_spend_limit_follows_last_month() {
         assert_eq!(automatic_spend_limit(0), 200_000_000);

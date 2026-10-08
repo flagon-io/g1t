@@ -11,6 +11,7 @@ use g1t_contracts::security_suite::{
     TrendPoint, TypeTotals, WorkspaceAlert, WorkspaceAlertsArgs, WorkspaceOverview, WorkspaceOverviewArgs,
     WorkspaceSecuritySettingsArgs, WorkspaceSecurityView,
 };
+use g1t_contracts::repos::{MAX_READABLE, ReadableArgs, Repo};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, Role};
 use g1t_kit::now_ms;
@@ -171,18 +172,89 @@ impl Security {
     }
 
     /// The repositories of a workspace whose findings `viewer` may see,
-    /// with whether each is private.
+    /// with whether each is private: as the repositories service says now,
+    /// the record here corrected when it was wrong (a repository recorded
+    /// from an event before its visibility was known), else as recorded.
     async fn visible_repos(&self, workspace: &str, viewer: &g1t_contracts::User) -> Result<Vec<(RepoRow, bool)>> {
-        let mut out = Vec::new();
-        for repo in self.store.in_namespace(workspace).await? {
-            let target = access::RepoRef { id: &repo.repo_id, namespace: workspace, private: true };
-            if !access::can(Some(viewer), target, crate::SEE_FINDINGS) {
-                continue;
-            }
-            let (_, private) = self.store.repo_settings(&repo.repo_id).await?;
+        let rows: Vec<RepoRow> = self
+            .store
+            .in_namespace(workspace)
+            .await?
+            .into_iter()
+            .filter(|repo| {
+                let target = access::RepoRef { id: &repo.repo_id, namespace: workspace, private: true };
+                access::can(Some(viewer), target, crate::SEE_FINDINGS)
+            })
+            .collect();
+        let (recorded, live) = futures_util::future::join(
+            futures_util::future::try_join_all(rows.iter().map(|repo| self.store.repo_settings(&repo.repo_id))),
+            self.live_privacy(&rows, viewer),
+        )
+        .await;
+        let mut out = Vec::with_capacity(rows.len());
+        for (repo, (_, recorded)) in rows.into_iter().zip(recorded?) {
+            let private = match live.get(&repo.repo_id) {
+                Some(&now) => {
+                    if now != recorded {
+                        self.store.set_private(&repo.repo_id, now).await?;
+                    }
+                    now
+                }
+                None => recorded,
+            };
             out.push((repo, private));
         }
         Ok(out)
+    }
+
+    /// Whether each repository is private, by id, as the repositories
+    /// service says now: one call for all of them. Empty when it cannot say.
+    async fn live_privacy(&self, rows: &[RepoRow], viewer: &g1t_contracts::User) -> BTreeMap<String, bool> {
+        if rows.is_empty() {
+            return BTreeMap::new();
+        }
+        let ids = rows.iter().take(MAX_READABLE).map(|repo| repo.repo_id.clone()).collect();
+        let found: Result<Vec<Repo>> =
+            g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: Some(viewer.clone()) }).await;
+        match found {
+            Ok(found) => found.into_iter().map(|repo| (repo.id, repo.is_private)).collect(),
+            Err(error) => {
+                worker::console_error!("security: readable: {error}");
+                BTreeMap::new()
+            }
+        }
+    }
+
+    /// One repository's row in the overview: its features and open counts,
+    /// read at once.
+    async fn coverage(&self, workspace: &str, validity_checks: bool, repo: RepoRow, private: bool) -> Result<RepoCoverage> {
+        let ((repo_settings, custom_patterns, code_scanning_at), (secrets, code, vulnerabilities)) = futures_util::future::try_join(
+            futures_util::future::try_join3(
+                self.store.repo_settings(&repo.repo_id),
+                self.store.pattern_count(workspace, &repo.repo_id),
+                self.store.last_analysis_at(&repo.repo_id),
+            ),
+            futures_util::future::try_join3(
+                self.store.secret_severity_counts(&repo.repo_id),
+                self.store.code_counts(&repo.repo_id),
+                self.store.vulnerability_counts(&repo.repo_id),
+            ),
+        )
+        .await?;
+        Ok(RepoCoverage {
+            custom_patterns,
+            validity_checks,
+            code_scanning_at,
+            dependency_review: repo_settings.0.dependency_review,
+            security_updates: repo.upkeep != 0,
+            lockfiles: repo.scan_state().lockfiles.len() as u32,
+            secrets,
+            code,
+            vulnerabilities,
+            repo_id: repo.repo_id,
+            name: repo.name,
+            private,
+        })
     }
 
     pub(crate) async fn security_overview(&self, a: WorkspaceOverviewArgs) -> Result<Outcome<WorkspaceOverview>> {
@@ -190,37 +262,32 @@ impl Security {
         let Some(viewer) = a.viewer.as_ref().filter(|user| user.is_member(&workspace)) else {
             return Ok(fail(FailureCode::NotFound, "Workspace not found."));
         };
-        let activated = self.activated(&workspace).await;
-        let settings = self.store.workspace_settings(&workspace).await?;
-        let mut repos = Vec::new();
-        let mut hidden = 0;
-        for (repo, private) in self.visible_repos(&workspace, viewer).await? {
-            // Private repositories count with the activation only.
-            if private && !activated {
-                hidden += 1;
-                continue;
-            }
-            let (repo_settings, _) = self.store.repo_settings(&repo.repo_id).await?;
-            repos.push(RepoCoverage {
-                custom_patterns: self.store.pattern_count(&workspace, &repo.repo_id).await?,
-                validity_checks: settings.validity_checks,
-                code_scanning_at: self.store.last_analysis_at(&repo.repo_id).await?,
-                dependency_review: repo_settings.dependency_review,
-                security_updates: repo.upkeep != 0,
-                lockfiles: repo.scan_state().lockfiles.len() as u32,
-                secrets: self.store.secret_severity_counts(&repo.repo_id).await?,
-                code: self.store.code_counts(&repo.repo_id).await?,
-                vulnerabilities: self.store.vulnerability_counts(&repo.repo_id).await?,
-                repo_id: repo.repo_id,
-                name: repo.name,
-                private,
-            });
-        }
+        // Each repository's queries, and the repositories, at once: one
+        // after another they took seconds for a workspace of a dozen.
+        let (activated, settings, visible) = futures_util::future::try_join3(
+            async { Ok::<_, worker::Error>(self.activated(&workspace).await) },
+            self.store.workspace_settings(&workspace),
+            self.visible_repos(&workspace, viewer),
+        )
+        .await?;
+        // Private repositories count with the activation only.
+        let hidden = visible.iter().filter(|(_, private)| *private && !activated).count() as u32;
+        let mut repos = futures_util::future::try_join_all(
+            visible
+                .into_iter()
+                .filter(|(_, private)| !*private || activated)
+                .map(|(repo, private)| self.coverage(&workspace, settings.validity_checks, repo, private)),
+        )
+        .await?;
         let ids: Vec<String> = repos.iter().map(|repo| repo.repo_id.clone()).collect();
         let span = a.days.unwrap_or(30).clamp(7, 90);
         let since = rfc3339(now_ms().saturating_sub(u64::from(span) * DAY_MS));
+        let moved = futures_util::future::try_join_all(
+            AlertType::ALL.iter().map(|alert_type| self.store.opened_and_closed(alert_type.as_str(), &ids, &since)),
+        )
+        .await?;
         let mut totals = Vec::new();
-        for alert_type in AlertType::ALL {
+        for (alert_type, (opened, closed)) in AlertType::ALL.into_iter().zip(moved) {
             let mut open = SeverityCounts::default();
             for repo in &repos {
                 add(&mut open, match alert_type {
@@ -229,7 +296,6 @@ impl Security {
                     AlertType::Vulnerability => &repo.vulnerabilities,
                 });
             }
-            let (opened, closed) = self.store.opened_and_closed(alert_type.as_str(), &ids, &since).await?;
             totals.push(TypeTotals { alert_type: alert_type.as_str().to_owned(), open, opened, closed });
         }
         let days = days(now_ms(), span);

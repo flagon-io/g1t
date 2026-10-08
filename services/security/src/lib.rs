@@ -134,6 +134,9 @@ const ACTIVITY_SHOWN: u32 = 500;
 #[serde(rename_all = "camelCase")]
 struct Created {
     repo_id: String,
+    /// Absent from events older than the field.
+    #[serde(default)]
+    is_private: Option<bool>,
 }
 
 impl Security {
@@ -407,17 +410,25 @@ impl Security {
         if !a.viewer.as_ref().is_some_and(|user| user.is_member(&workspace)) {
             return Ok(fail(FailureCode::NotFound, "Workspace not found."));
         }
-        let mut list = Vec::new();
-        for repo in self.store.in_namespace(&workspace).await? {
-            // Only the repositories whose findings the viewer may see. The
-            // Write role is never had through being public, so treating
-            // each as private changes nothing.
-            let target = access::RepoRef { id: &repo.repo_id, namespace: &workspace, private: true };
-            if !access::can(a.viewer.as_ref(), target, SEE_FINDINGS) {
-                continue;
-            }
-            let (counts, secrets, vulnerabilities) = self.store.counts(&repo.repo_id).await?;
-            list.push(RepoSecurity {
+        // Only the repositories whose findings the viewer may see. The
+        // Write role is never had through being public, so treating each
+        // as private changes nothing.
+        let repos: Vec<RepoRow> = self
+            .store
+            .in_namespace(&workspace)
+            .await?
+            .into_iter()
+            .filter(|repo| {
+                let target = access::RepoRef { id: &repo.repo_id, namespace: &workspace, private: true };
+                access::can(a.viewer.as_ref(), target, SEE_FINDINGS)
+            })
+            .collect();
+        // Every repository's counts at once, not one after another.
+        let counts = futures_util::future::try_join_all(repos.iter().map(|repo| self.store.counts(&repo.repo_id))).await?;
+        let list = repos
+            .into_iter()
+            .zip(counts)
+            .map(|(repo, (counts, secrets, vulnerabilities))| RepoSecurity {
                 repo_id: repo.repo_id,
                 name: repo.name,
                 counts,
@@ -425,8 +436,8 @@ impl Security {
                 vulnerabilities,
                 upkeep: repo.upkeep != 0,
                 dependencies_scanned_at: repo.deps_scanned_at,
-            });
-        }
+            })
+            .collect();
         Ok(Outcome::Ok(list))
     }
 
@@ -544,7 +555,13 @@ impl Security {
             }
             "repo.created" => {
                 if let Ok(created) = serde_json::from_value::<Created>(event.data.clone()) {
-                    self.register_by_id(&created.repo_id).await?;
+                    // Recorded with its visibility, so the overview never takes a
+                    // public repository for a private one.
+                    if self.register_by_id(&created.repo_id).await?.is_some()
+                        && let Some(private) = created.is_private
+                    {
+                        self.store.set_private(&created.repo_id, private).await?;
+                    }
                 }
             }
             "repo.visibility_changed" => {

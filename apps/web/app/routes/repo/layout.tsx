@@ -1,7 +1,7 @@
 import { waitUntil } from "cloudflare:workers";
 import { Box, Lock } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link, NavLink, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
+import { Link, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Project } from "@g1t/contracts";
 
@@ -9,7 +9,8 @@ import type { Route } from "./+types/layout";
 import { Topics } from "../../components/topics";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
-import { Pill } from "../../components/ui";
+import { Pill, SoonPill } from "../../components/ui";
+import { TabStrip } from "../../components/ui/tab-strip";
 import { WatchMenu } from "../../components/notifications";
 import { PinButton } from "../../components/pin-button";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
@@ -141,14 +142,18 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const current = (tab: PageTab) =>
     [tab.path, ...(tab.also ?? [])].some((path) => rest === path || (!tab.exact && rest.startsWith(`${path}/`)));
   return (
-    <nav aria-label="Views" className="relative -mb-px flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <TabStrip label="Views" className="-mb-px gap-1">
       {tabs.map((tab) => (
-        <NavLink
+        <Link
           key={tab.path}
           to={`${base}/${tab.path}`}
           title={tab.about}
           prefetch="intent"
-          className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
+          // Current by the tab's own rule: a link's address alone would also
+          // mark Overview current on every page under it.
+          aria-current={current(tab) ? "page" : undefined}
+          data-active={current(tab) || undefined}
+          className={`flex items-center gap-1.5 border-b-2 px-3 pt-1 pb-2.5 text-sm transition-colors ${
             current(tab)
               ? "border-accent font-medium text-fg"
               : tab.soon
@@ -157,16 +162,10 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
           }`}
         >
           {tab.label}
-          {/* Soon, said quietly: a dot, with the word for screen readers. */}
-          {tab.soon && (
-            <>
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-accent/70" />
-              <span className="sr-only">(soon)</span>
-            </>
-          )}
-        </NavLink>
+          {tab.soon && <SoonPill />}
+        </Link>
       ))}
-    </nav>
+    </TabStrip>
   );
 }
 

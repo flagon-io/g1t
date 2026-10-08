@@ -50,6 +50,7 @@ export const SECTIONS: Section[] = [
     tabs: [
       { label: "Issues", path: "issues" },
       { label: "Outcomes", path: "plans" },
+      { label: "Milestones", path: "milestones" },
       ...soon("Issues"),
     ],
   },

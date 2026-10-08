@@ -67,7 +67,9 @@ pub(crate) struct Grant {
 
 /// The tasks that are not a model's work: sandbox and runner time,
 /// deployments, and the month-end meters.
-const NOT_MODELS: [&str; 8] = ["sandbox", "self_hosted", "deployments", "security", "context", "storage", "git", "cache"];
+const NOT_MODELS: [&str; 10] = [
+    "sandbox", "self_hosted", "deployments", "security", "context", "storage", "git", "cache", "domains", "package_storage",
+];
 
 /// Whether a usage line is model usage (an agent run's model cost), which
 /// credit scoped to models can pay for.
@@ -141,6 +143,10 @@ pub(crate) fn replay(opening: i64, lines: &[Line], grants: &[Grant]) -> Replay {
                 if owed == 0 {
                     break;
                 }
+                // Credit for models pays only what models owed.
+                if grant.models_only && !is_model_usage(lines[*i].task.as_deref()) {
+                    continue;
+                }
                 let take = (*unpaid).min(owed);
                 if take > 0 {
                     let paid = &lines[*i];
@@ -157,7 +163,7 @@ pub(crate) fn replay(opening: i64, lines: &[Line], grants: &[Grant]) -> Replay {
                     left -= take;
                 }
             }
-            if owed > 0 {
+            if owed > 0 && !grant.models_only {
                 // Owed from before the lines read: on the grant's own day.
                 out.draws.push(Draw {
                     grant: grant.id.clone(),
@@ -503,6 +509,64 @@ impl Billing {
             return Ok(crate::members_only());
         }
         Ok(Outcome::Ok(self.credits_of(&workspace).await?))
+    }
+
+    /// What was left of credit scoped to models (AI credit) just before
+    /// `before`, from the ledger up to then: what a month's close must not
+    /// count as money for anything else.
+    pub(crate) async fn models_left_before(&self, workspace: &str, before: &str) -> Result<i64> {
+        let grants: Vec<GrantRow> = self.grants_of(workspace).await?.into_iter().filter(|g| g.created_at.as_str() < before).collect();
+        if !grants.iter().any(|g| g.scope.as_deref() == Some("models")) {
+            return Ok(0);
+        }
+        let first = grants.iter().map(|g| g.created_at.as_str()).min().unwrap_or(before);
+        let since = format!("{}-01", crate::limits::previous_month(&first[..7]));
+        #[derive(Deserialize)]
+        struct Opening {
+            micros: Option<f64>,
+        }
+        let opening = self
+            .db
+            .prepare("SELECT SUM(amount_micros) AS micros FROM ledger WHERE workspace = ? AND created_at < ?")
+            .bind(&[workspace.into(), since.as_str().into()])?
+            .first::<Opening>(None)
+            .await?
+            .and_then(|o| o.micros)
+            .unwrap_or(0.0) as i64;
+        let lines = self
+            .db
+            .prepare(
+                "SELECT reference, kind, amount_micros, created_at, task FROM ledger
+                 WHERE workspace = ? AND created_at >= ? AND created_at < ? ORDER BY created_at, id",
+            )
+            .bind(&[workspace.into(), since.into(), before.into()])?
+            .all()
+            .await?
+            .results::<Line>()?;
+        let facts: Vec<Grant> = grants.iter().map(GrantRow::facts).collect();
+        let replay = replay(opening, &lines, &facts);
+        Ok(facts
+            .iter()
+            .filter(|g| g.models_only && open_at(g, before))
+            .map(|g| replay.left.get(&g.id).copied().unwrap_or(0).max(0))
+            .sum())
+    }
+
+    /// What credit (AI credit and credit from g1t) paid for usage entered
+    /// from `from` until before `until` (RFC 3339 or `YYYY-MM-DD`), and the
+    /// workspace's credits now.
+    pub(crate) async fn credit_paid_between(&self, workspace: &str, from: &str, until: &str) -> Result<(i64, Credits)> {
+        let grants = self.grants_of(workspace).await?;
+        let (replay, _) = self.replay_of(workspace, &grants).await?;
+        let paid = replay
+            .draws
+            .iter()
+            .filter(|d| d.reference != d.grant && d.at.as_str() >= from && d.at.as_str() < until)
+            .map(|d| d.micros)
+            .sum();
+        let now = rfc3339(now_ms());
+        let views: Vec<CreditGrant> = grants.iter().map(|g| g.view(&replay, &now)).collect();
+        Ok((paid, Credits { left_micros: views.iter().map(|g| g.left_micros).sum(), grants: views }))
     }
 
     pub(crate) async fn credits_of(&self, workspace: &str) -> Result<Credits> {
@@ -926,6 +990,29 @@ mod tests {
         assert!(is_model_usage(Some("implement")) && !is_model_usage(Some("sandbox")) && !is_model_usage(None));
     }
 
+
+    #[test]
+    fn bought_ai_credit_is_spent_on_models_first_and_never_on_what_else_was_owed() {
+        let ai = Grant { models_only: true, ..grant("cs_ai", CreditKind::Purchased, Some("2027-10-08T00:00:00Z"), "2026-10-08T00:00:00Z") };
+        let promo = grant("crd_p", CreditKind::Promotional, Some("2026-11-01T00:00:00Z"), "2026-10-01T00:00:00Z");
+        let mut sandbox = line("sbx_1", "usage", -3_000_000, "2026-10-05T00:00:00Z");
+        sandbox.task = Some("sandbox".into());
+        let lines = [
+            line("crd_p", "top_up", 2_000_000, "2026-10-01T00:00:00Z"),
+            // Owed for sandbox time when the AI credit is bought: it stays owed.
+            sandbox,
+            line("cs_ai", "top_up", 10_000_000, "2026-10-08T00:00:00Z"),
+            line("run_1", "usage", -4_000_000, "2026-10-09T00:00:00Z"),
+            line("run_1/agent", "usage", -500_000, "2026-10-09T00:00:01Z"),
+        ];
+        let r = replay(0, &lines, &[promo, ai]);
+        // The run and its agent rate from the AI credit, though the other
+        // credit expires sooner; the sandbox time from the credit for all.
+        assert_eq!(r.used("cs_ai"), 4_500_000);
+        assert_eq!(r.left["cs_ai"], 5_500_000);
+        assert_eq!(r.used("crd_p"), 2_000_000);
+        assert!(r.draws.iter().all(|d| d.grant != "cs_ai" || d.reference.starts_with("run_1")));
+    }
     #[test]
     fn credit_given_while_owing_pays_the_most_recent_usage_first() {
         let grants = [grant("crd_a", CreditKind::Goodwill, None, "2026-10-10T00:00:00Z")];

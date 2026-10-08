@@ -74,12 +74,15 @@ how much of it this month's usage has drawn.
 
 ### What it costs
 
-Every price is what g1t pays plus 20%. The live figures are on
-[g1t.sh/pricing](https://g1t.sh/pricing).
+Every price is what g1t pays plus 20%, except models: they are charged at
+the provider's price with no markup, and g1t's own part is the agent rate.
+The live figures are on [g1t.sh/pricing](https://g1t.sh/pricing).
 
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
-| Models | A run | What the provider charged | Cost + 20% |
+| Agent models | A run | What the provider charged | The provider's price, from [AI credit](#ai-credit) |
+| g1t agent rate | Million tokens a run uses (input, output and cached) | — | $0.25, from Oct 22, 2026 |
+| AI Gateway | A request | What the provider charged | The provider's price: free of markup during beta |
 | Sandbox time (agents, workflows, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
 | [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
 | Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |
@@ -113,22 +116,23 @@ Only an owner can start or end the plan.
 3. If the workspace already has a checked card, the plan starts on it at
    once. Otherwise, pay on the card page you are sent to.
 
-Back on Billing, the card says **On the g1t plan** (**first month** in
-the first billing cycle), with a meter for the month's included usage and
-**This month's usage**: what each kind of usage has come to so far, in
-dollars and in what was used (*Agents & sandboxes*, *Builds*, *Requests &
-CPU*, *Custom domains*, *Git operations & storage*, *Search & security
-scans*). Its **Total at price** is g1t's usage at cost plus 20%, before the
-included usage, the trial, a pool or a free period paid their part, so it
-can be more than what was charged. Runs on your own model provider are not
-in it: your provider bills those. The workspace's **Usage** page shows what
-was charged as **Spent**, and how much of the total was not charged. App traffic, custom domains, storage and git
-operations are counted through the month and charged when it closes. **Manage on Stripe** opens the card, invoices and
-billing details. **End at the end of the period** ends the plan then, with
-nothing more charged after; **Keep the plan** takes that back until then.
-If a renewal payment fails, the card says **Payment failed**, with
-**Update payment on Stripe**, and the plan's features stop until it is
-paid.
+Back on Billing, the plan's card says **On the g1t plan** (**first month**
+in the first billing cycle), with the billing period, a meter for the
+month's included usage, and the **Upcoming invoice**: the plan and add-ons
+at their monthly price plus usage still owed after included usage, credit
+and any discount, from g1t's own ledger (**View upcoming invoice** splits
+it). **Usage** and **Invoices** go to each. Runs on your own model provider
+are not in it: your provider bills those. App traffic, custom domains,
+storage and git operations are counted through the month and charged when
+it closes. **Downgrade to free at the period's end** ends the plan then,
+with nothing more charged after; **Keep the plan** takes that back until
+then. If a renewal payment fails, the card says **Payment failed**, and the
+plan's features stop until it is paid: update the card with **Manage in
+Stripe** under **Payment method**.
+
+Starting the plan uses the card from the card check, or else the default
+card on Stripe's billing page, without a second page; with neither, Stripe's
+page asks for one. If Stripe refuses, the page says why in a sentence.
 
 A card that says **100% discount from g1t** or **Included by g1t** is on
 under terms g1t set with the workspace, such as a
@@ -220,7 +224,12 @@ pool**.
 | Repositories, issues, pull requests, review, search, the API and MCP | No |
 
 Each run is charged when it finishes: what the model provider charged for
-it, plus 20%, and its sandbox time. A small change costs a few cents.
+it, with no markup; the agent rate on the tokens it used, on a line of its
+own (*g1t agent rate: 1,240,000 tokens for work on acme/api#12*); and its
+sandbox time. A small change costs a few cents. Tokens counted after a run
+reports are charged when it is settled. Until Oct 22, 2026 the agent rate is
+$0, and from Oct 8, 2026 models carry no markup (before, cost plus 20%); both
+are dated changes on the pricing page.
 
 Work a workspace routes to [its own model providers](/guides/models/) is
 paid for at those providers instead. Such a run is charged here only for
@@ -229,6 +238,22 @@ its [sandbox time](#sandbox-time), like any other sandbox.
 The charge goes to the workspace that owns the repository, whoever
 assigned the issue. That is why putting g1t to work on a
 repository needs the Write [role](/guides/access-and-roles/) or higher on it.
+
+## Add-ons
+
+An add-on is a monthly price per workspace that turns on more of g1t. Each
+is its own line on the workspace's Stripe subscription and is turned on or
+off from **Billing → Add-ons**.
+
+| Add-on | Price | What it adds |
+| --- | --- | --- |
+| Security and quality | $10 a month | Custom secret patterns, validity checks, delegated bypass, code scanning, dependency review and the security overview on **private** repositories. Public repositories get all of it free. |
+
+Secret scanning, push protection, vulnerability alerts, security updates,
+the dependency graph and SBOMs are free everywhere, without the add-on. An
+add-on does not need the plan, and the plan does not include one. Agent work
+it starts, such as **Fix with g1t**, is ordinary usage. See
+[What's free and what's paid](/guides/security/pricing/).
 
 ## How prices are set
 
@@ -460,6 +485,20 @@ request**. A person at g1t answers **within one business day**, in the app
 and by email, and the section shows the request and its answer. An approved amount becomes a
 floor under your ceiling, and your spend limit can go up to it.
 
+### Budget alerts
+
+The spend limit is the workspace's monthly **budget** on usage past what the
+plan includes. Under **Budget alerts**, owners choose:
+
+| Setting | Means |
+| --- | --- |
+| **Alert at** | Any of 50, 75, 90 and 100% of the spend limit. Each is emailed to the owners once a month. |
+| **Pause usage at 100%** | On (the default), new work stops at the limit. Off, the budget only alerts; g1t's own ceiling still applies. |
+| **Webhook** | An `https://` address of your own, sent a JSON `POST` at each alert: `event` (`budget.alert`), `workspace`, `level_percent`, `spent_micros`, `budget_micros`, `sent_at`. |
+
+Choose **Save alerts**. Through the API: `PUT /workspaces/:workspace/budget`,
+or the MCP `billing` tool's `set_budget` action.
+
 ### Prepay
 
 Paying in advance pays for usage as it happens, after the plan's included
@@ -529,6 +568,55 @@ to $50. Larger credits, or a second one within 12 months, are reviewed by a
 person. The credit appears on the statement with the day it happened,
 such as *Credit from g1t: accidental usage on 2026-11-12*.
 
+## AI credit
+
+Agent and AI Gateway usage is prepaid: a workspace on the plan buys **AI
+credit**, and model usage draws on it, so g1t never fronts a model's cost.
+The plan's included usage pays first; AI credit pays next, before any other
+credit. Starting the plan comes with **$5 of AI credit, once** (it expires
+a year after it is given).
+
+### Buy AI credit
+
+Only an owner can buy it.
+
+1. Open **Settings → Billing and plans**, and find **AI credit**.
+2. Choose $10, $25, $50 or $100, or **Custom** and type a whole-dollar
+   amount from $10 to $1,000.
+3. Choose **Buy AI credit**, and pay on Stripe's page.
+
+Stripe's card fee (2.9% + $0.30) is its own line on that page, **Card
+processing fee**, so the credit you get is the amount you chose. Invoiced
+billing never carries it. The credit is added once Stripe says the payment
+was made, whether or not you come back to g1t, and **expires 1 year after
+purchase**. The card is kept for auto-reload.
+
+### Auto-reload
+
+Off by default. When it is on and AI credit falls below the amount you set,
+g1t charges the saved card to bring it back to your target, in whole
+dollars and at least $10, never more than your monthly maximum in a
+calendar month (UTC).
+
+| Setting | Means |
+| --- | --- |
+| **When AI credit falls below** | The threshold, such as $10 |
+| **Reload it to** | The target, at least $10 above the threshold, at most $1,000 |
+| **At most … a month** | The most auto-reload charges in a month, up to $10,000 |
+
+g1t checks every 15 minutes, and right away when a run would otherwise
+wait. If the card cannot be charged, auto-reload turns itself off and the
+owners are emailed. Turn it on again after updating the card on Stripe.
+
+### At $0
+
+With no AI credit left and this month's included usage used, new runs on
+g1t's models do not start, and the reason says to buy credit or turn on
+auto-reload. Runs already going finish. Runs on your
+[own model provider](/guides/models/) are not affected. A workspace with a
+100% discount gets AI usage free through the discount, shown at its price
+and then the discount; an enterprise is invoiced for it after use.
+
 ## Credits from g1t
 
 g1t sometimes adds credit to a workspace: a welcome or referral credit, an
@@ -592,19 +680,32 @@ they started on.
 
 ## Your card and billing details
 
-These live on **Stripe's billing page**, not on g1t: g1t never sees or
-stores card numbers. An owner opens it with **Open Stripe billing** under
-**Card and invoices** on **Settings → Billing and plans**, and there adds or replaces the card, downloads invoices and
-receipts, and sets the billing email, address and tax ID. g1t support
-never takes card details by phone or email.
+Cards live on **Stripe's billing page**, not on g1t: g1t never sees or
+stores card numbers. On **Settings → Billing and plans**:
+
+- **Payment method** shows the default card (brand, last four digits and
+  expiry). **Manage in Stripe** opens Stripe's page, where an owner adds,
+  removes or replaces a card and makes one the default. The plan and
+  auto-reload charge the default card.
+- **Invoice details** are kept on the workspace's Stripe customer and
+  printed on every invoice: the invoice email, company name, billing
+  address, tax ID (its kind and number), a purchase order, and the invoice
+  language. An owner edits them here and chooses **Save invoice details**.
+- **Invoices** lists every invoice Stripe sent (the plan, add-ons, AI
+  credit and month-end usage), each with **View** and **PDF**.
+- **Add-ons** lists what can be turned on beside the plan, such as the
+  [Security and quality activation](/guides/security/), with its price and
+  **Turn on** or **Turn off**.
+
+g1t support never takes card details by phone or email.
 
 If a card is declined, work stops until the workspace pays, and the
 Billing page and the API say why. Replace the card or prepay to clear it.
 A payment disputed with the card's bank stops work the same way.
 
-While payments on g1t are in test mode, no real card is charged. Use the
-test card `4242 4242 4242 4242` with any future date and any code. The
-Billing page says when payments are in test mode.
+Through the API, `GET /workspaces/:workspace/billing_details` and
+`GET /workspaces/:workspace/invoices` (the MCP `billing` tool's
+`billing_details` and `invoices` actions) read the same.
 
 ## When work is stopped
 
@@ -676,31 +777,46 @@ current period ends, and is not renewed.
 
 ## The Usage page
 
-A workspace's **Usage** page, `g1t.sh/<workspace>/-/usage`, shows what its
-agents have cost. Every member can see it, from **Usage** in the
-workspace's sidebar. The workspace's overview, `g1t.sh/<workspace>`, has a
-**Usage** card with this month's spend: the plan's included usage or the
-trial credit used so far, on-demand charges past what is included, what it
-went on, and a way to **Billing**.
+A workspace's **Usage** page, `g1t.sh/<workspace>/-/usage`, shows what it
+used, by product, project and day. Every member can see it, from **Usage**
+in the workspace's sidebar. A project's own, `g1t.sh/<workspace>/<project>/usage`,
+shows the same for that project.
 
-These figures are what the agent harness reports for each run. Your model
-provider's own figures can differ by a few percent, because each prices
-the same tokens itself; the provider's invoice is what counts.
+Every amount is **usage at price**: what was charged, plus what included
+usage, credit or a discount paid for it. It is the one figure mission
+control, the agent fleet, Usage and Billing all show, so they agree.
 
-Pick a period: **This month**, **Last 7 days**, **Last 30 days** or **Last
-90 days**. The page then shows:
+The filters, in one row:
 
-| | |
+| Filter | Choices |
 | --- | --- |
-| Spent | What the period cost, and how much of it was the model provider's. |
-| Agent runs | How many runs there were. |
-| Average run | What a run cost on average. |
-| Credit left | What is prepaid and not used yet, and about how many days it lasts at the period's rate. |
-| Spend per day | A chart of each day, split by kind of work. |
-| By kind of work | Making changes, reviews, catching up and planning. A revision counts as making a change. |
-| By repository | Each repository's share. |
-| Pull requests that cost most | The ten that cost most, each linked. Planning appears as the repository, linked to its plans. |
-| By model | Each model's share. |
+| Period | **Current billing cycle** (the calendar month, UTC), **Last billing cycle**, the last 7, 30 or 90 days, or a **Custom range** of up to 400 days. The days it covers are shown beside it. |
+| Products | Any of Agent, Sandboxes, AI Gateway, Deployments, Git & storage, Packages, Security & quality and Search. |
+| Projects | Any of the projects with usage in the period. |
+| Group by | Product, project or day, for the breakdown. |
+| **⋯** | **Export CSV** (a row per day, product and meter) and the usage API. |
+
+Then:
+
+- **Included usage, credit and this range**: the plan's included usage this
+  month, AI credit and credit from g1t left, and what the range came to:
+  usage at price, then the discount (shown as *Discount (100%)* for a
+  workspace g1t covers in full), included usage and pools, credits applied,
+  and what is charged.
+- **Consumption**: a column per day, week or month (**Daily**, **Weekly**,
+  **Monthly**), stacked by product, with **Cumulative** to add them up.
+  Hover or focus a column for each product's part; **Show as a table** has
+  every number.
+- **The breakdown**: each product family with its meters (the agent's
+  model tokens, agent rate and sandbox time; sandbox time; builds; git
+  operations and private storage with what is free; and so on), each with a
+  trend line, how much was used and its charge at price. Open a meter for
+  its projects. The agent also shows its runs, reviews, plans and checks.
+
+Storage, git operations, scans and search embeddings are metered through
+the month and charged when it closes; until then they are marked pending.
+Through the API: `GET /workspaces/:workspace/usage`, or the MCP `billing`
+tool's `usage` action.
 
 ## The statement
 
@@ -784,7 +900,9 @@ None of these is a quota on the plan.
 month's usage in six lines, `agents`, `builds`, `requests`, `domains`,
 `git_storage` and `search_scans`, each with `micros` (at cost plus 20%,
 before included usage or a pool paid for it) and a `quantity` such as
-*42 build minutes*. It is what **This month's usage** on Billing shows.
+*42 build minutes*, each at price (what was charged plus what paid for it), as Usage measures it.
+
+**`usage_report`** (`workspace`, `viewer`, `from`, `until`, optional `products` and `projects`; members only) is what the Usage page reads: totals (`priceMicros`, `discountMicros`, `includedMicros`, `creditsMicros`, `chargedMicros`, `pendingMicros`), each day's usage by product, and every product family with its meters, their daily figures and their projects.
 
 **`reserve`** holds the work's estimated cost before it starts, so starts
 at the same moment cannot overshoot together. `kind` is `agent`, `check`,

@@ -1,9 +1,11 @@
 /**
  * Which of your workspaces the sidebar and Mission control are about.
  *
- * It changes only when you choose one: from the switcher, or by opening a
- * workspace's own pages. Looking at a project in another workspace, or a
- * public one, leaves it alone, so coming back finds everything as it was.
+ * The page's own workspace wins: a workspace's pages, and a project in one
+ * of your workspaces, are about that workspace, so the switcher always
+ * names the workspace you are looking at. A project somewhere you do not
+ * belong (a public one, or one shared with you) leaves the chosen one, and
+ * the choice itself changes only from the switcher or a workspace's pages.
  */
 
 export const WORKSPACE_COOKIE = "g1t_ws";
@@ -18,15 +20,15 @@ export function chosenWorkspace<M extends Membership>(memberships: M[], chosen: 
 
 /**
  * The workspace a page is about: the one in its address when it is one of
- * yours and the page is the workspace's own (not a project in it), else the
- * chosen one.
+ * yours, whether the page is the workspace's own or a project in it, else
+ * the chosen one.
  */
 export function workspaceFor<M extends Membership>(
   memberships: M[],
   chosen: string | null | undefined,
   params: { owner?: string; repo?: string },
 ): M | null {
-  if (params.owner && !params.repo) {
+  if (params.owner) {
     const here = memberships.find((m) => m.slug.toLowerCase() === params.owner!.toLowerCase());
     if (here) return here;
   }

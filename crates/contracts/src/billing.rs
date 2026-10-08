@@ -345,6 +345,12 @@ pub struct Usage {
     /// one, the slices measure usage at price.
     #[serde(default)]
     pub discount_percent: Option<u32>,
+    /// Usage at price: `spent_micros` plus `covered_micros` plus
+    /// `discount_micros`, from the same ledger lines. The one figure every
+    /// page shows as usage (mission control, the agent fleet, Usage and
+    /// Billing), labelled "usage at price".
+    #[serde(default)]
+    pub price_micros: i64,
     /// What g1t's model provider charged, before the margin.
     pub cost_micros: i64,
     /// What runs on the workspace's own provider cost there, as the harness
@@ -654,6 +660,21 @@ pub struct Limit {
     /// the starting one (`LIMIT_PAID_START_MICROS`).
     #[serde(default)]
     pub first_month: bool,
+    /// The budget's alerts, in percent of the spend limit: some of 50, 75,
+    /// 90 and 100. Each is emailed to the owners once a month.
+    #[serde(default)]
+    pub alert_levels: Vec<u32>,
+    /// Whether usage pauses at the spend limit (the default). Off, the
+    /// limit only alerts; g1t's own ceiling still applies.
+    #[serde(default = "yes")]
+    pub pause_at_limit: bool,
+    /// An HTTPS address told of each budget alert with a JSON POST.
+    #[serde(default)]
+    pub budget_webhook: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// `limit`: a workspace's limit, for its members. Returns `Outcome<Limit>`.
@@ -2870,6 +2891,10 @@ pub struct CostSettings {
     /// and at least `anomaly_floor_micros`, is flagged.
     pub anomaly_factor: f64,
     pub anomaly_floor_micros: i64,
+    /// Pass Stripe's card fee on as its own line when AI credit is bought
+    /// by card (`card_fee_percent` and `card_fee_fixed` in the price book).
+    #[serde(default = "yes")]
+    pub card_fee: bool,
 }
 
 impl Default for CostSettings {
@@ -2883,6 +2908,7 @@ impl Default for CostSettings {
             min_daily_cost_micros: 100_000,
             anomaly_factor: 1.0,
             anomaly_floor_micros: 1_000_000,
+            card_fee: true,
         }
     }
 }
@@ -3069,6 +3095,435 @@ pub struct CostsRun {
     pub alerts: u32,
     /// What could not be read, in words.
     pub problems: Vec<String>,
+}
+
+// --- The Usage page ----------------------------------------------------------
+
+/// The product families the Usage page groups meters into, in order, with
+/// their names.
+pub const PRODUCTS: [(&str, &str); 8] = [
+    ("agent", "Agent"),
+    ("sandboxes", "Sandboxes"),
+    ("gateway", "AI Gateway"),
+    ("deployments", "Deployments"),
+    ("git_storage", "Git & storage"),
+    ("packages", "Packages"),
+    ("security", "Security & quality"),
+    ("search", "Search"),
+];
+
+/// `usage_report`: a workspace's usage over a range of days, at price, by
+/// product, meter, project and day. The figures are the ledger's: the same
+/// lines the statement and invoices read, so every page agrees. Members
+/// only. Returns `Outcome<UsageReport>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReportArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// The first day, `YYYY-MM-DD` (UTC).
+    pub from: String,
+    /// The last day, `YYYY-MM-DD`, included.
+    pub until: String,
+    /// Only these product families (`agent`, `sandboxes`…); all when empty.
+    #[serde(default)]
+    pub products: Vec<String>,
+    /// Only these projects (repositories, `owner/name`); all when empty.
+    #[serde(default)]
+    pub projects: Vec<String>,
+}
+
+/// What usage came to over a range, and what paid for it. `price_micros`
+/// less `discount_micros`, `included_micros` and `credits_micros` is
+/// `charged_micros`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTotals {
+    /// Usage at price, metered usage not yet charged (`pending_micros`)
+    /// included.
+    pub price_micros: i64,
+    /// What the account's discount took off.
+    pub discount_micros: i64,
+    /// What the plan's included usage, the trial and g1t's pools paid.
+    pub included_micros: i64,
+    /// What credit paid: AI credit, credit from g1t.
+    pub credits_micros: i64,
+    /// What is left for the workspace to pay.
+    pub charged_micros: i64,
+    /// Metered this month and charged when it closes (storage, git
+    /// operations, scans, embeddings, domains), at price.
+    pub pending_micros: i64,
+    /// What it cost g1t, before any markup.
+    pub cost_micros: i64,
+}
+
+/// One day's usage of one product, at price.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDay {
+    /// `YYYY-MM-DD`.
+    pub day: String,
+    pub product: String,
+    pub micros: i64,
+}
+
+/// How much of an allowance is used, in the meter's unit.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Allowance {
+    pub used: f64,
+    pub of: f64,
+    /// `bytes`, `operations`, `dollars`…
+    pub unit: String,
+}
+
+/// One project's part of a meter.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectUsage {
+    /// `owner/name`, or empty for usage that is not one project's.
+    pub project: String,
+    pub micros: i64,
+    pub quantity: f64,
+}
+
+/// One meter over the range.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeterLine {
+    /// `agent_models`, `agent_rate`, `sandbox`, `builds`…
+    pub key: String,
+    pub label: String,
+    pub product: String,
+    /// What `quantity` counts: `tokens`, `seconds`, `bytes`, `operations`,
+    /// `entries`.
+    pub unit: String,
+    pub quantity: f64,
+    /// At price.
+    pub micros: i64,
+    /// Of `micros`, metered this month and charged when it closes.
+    #[serde(default)]
+    pub pending_micros: i64,
+    /// Every day of the range, oldest first, at price: the sparkline.
+    pub daily: Vec<i64>,
+    #[serde(default)]
+    pub allowance: Option<Allowance>,
+    pub by_project: Vec<ProjectUsage>,
+}
+
+/// A part of a product, such as the agent's runs, reviews and plans.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureUsage {
+    pub key: String,
+    pub label: String,
+    pub micros: i64,
+    pub count: u32,
+}
+
+/// One product family over the range.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductUsage {
+    pub key: String,
+    pub label: String,
+    pub micros: i64,
+    pub meters: Vec<MeterLine>,
+    /// For the agent: by what it was doing (runs, reviews, plans, checks).
+    #[serde(default)]
+    pub features: Vec<FeatureUsage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReport {
+    pub from: String,
+    pub until: String,
+    pub totals: UsageTotals,
+    /// Each day and product with usage, oldest first.
+    pub days: Vec<UsageDay>,
+    /// Every product family, in order, even with nothing used.
+    pub products: Vec<ProductUsage>,
+    /// Every project with usage in the range, for the filter.
+    pub projects: Vec<String>,
+    /// The plan's included usage this month, when the workspace has it.
+    #[serde(default)]
+    pub included: Option<Allowance>,
+    /// The account's discount, in percent, when it has one.
+    #[serde(default)]
+    pub discount_percent: Option<u32>,
+    /// AI credit left now, and credit from g1t for everything.
+    pub ai_credit_micros: i64,
+    pub credit_micros: i64,
+    /// The trial credit left, for a workspace on its trial.
+    #[serde(default)]
+    pub trial_micros: Option<i64>,
+    pub plan: PlanKind,
+    /// Nothing is charged while g1t is being built out.
+    pub free: bool,
+}
+
+// --- AI credit -----------------------------------------------------------------
+
+/// Auto-reload: when AI credit falls below `threshold_micros`, the saved
+/// card is charged to bring it back to `target_micros`, at most
+/// `monthly_max_micros` in a calendar month. Off by default. A failed
+/// charge turns it off and tells the owners.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiReload {
+    pub enabled: bool,
+    pub threshold_micros: i64,
+    pub target_micros: i64,
+    pub monthly_max_micros: i64,
+    /// Reloaded this month so far.
+    #[serde(default)]
+    pub reloaded_micros: i64,
+    /// When it last failed and was turned off, and why.
+    #[serde(default)]
+    pub failed_at: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// The card fee passed on when AI credit is bought by card.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardFee {
+    pub on: bool,
+    /// Per dollar charged, in millionths: 29,000 is 2.9%.
+    pub percent_micros: f64,
+    pub fixed_cents: u32,
+}
+
+/// `ai_credit` (`AccountArgs`): a workspace's prepaid AI credit, what it
+/// pays for and how it is bought. Members only. Returns `Outcome<AiCredit>`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiCredit {
+    /// What is left to spend on Agent and AI Gateway usage.
+    pub balance_micros: i64,
+    /// Of it, bought (paid) and given (promotional).
+    pub purchased_micros: i64,
+    pub given_micros: i64,
+    /// Its grants, newest first.
+    pub grants: Vec<CreditGrant>,
+    /// A 100% discount: AI usage is free, shown at its price then the
+    /// discount. Nothing to buy.
+    pub free_via_discount: bool,
+    /// Invoiced terms (an enterprise): models are billed after use, so no
+    /// credit is needed.
+    pub postpaid: bool,
+    /// Whether new runs on g1t's models are refused now for want of credit.
+    pub blocked: bool,
+    /// Whether the workspace may buy it: on the plan, not free.
+    pub can_buy: bool,
+    pub presets_cents: Vec<u32>,
+    pub min_cents: u32,
+    pub max_cents: u32,
+    pub card_fee: CardFee,
+    pub reload: AiReload,
+    /// The agent rate per million tokens, now, at price.
+    pub agent_rate_micros: f64,
+    /// The markup on models' provider price, in percent.
+    pub model_markup_percent: u32,
+    /// The markup on AI Gateway's provider price, in percent.
+    pub gateway_markup_percent: u32,
+    /// The AI credit given once on starting the plan.
+    pub upgrade_credit_micros: i64,
+    /// How long bought credit lasts, in days.
+    pub expires_days: u32,
+}
+
+/// `buy_ai_credit`: Stripe's page to buy AI credit, one payment by card,
+/// with the card fee as its own line. Owners only. Returns
+/// `Outcome<Checkout>`; the page's id comes back to `return_url` as
+/// `ai_credit`, for `confirm_ai_credit`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuyAiCreditArgs {
+    pub actor: User,
+    pub workspace: String,
+    /// The credit, in cents; the card fee is added on top.
+    #[serde(alias = "amount_cents")]
+    pub amount_cents: u32,
+    #[serde(alias = "return_url")]
+    pub return_url: String,
+}
+
+/// `confirm_ai_credit`: credits a purchase once Stripe says it was paid,
+/// once. Safe to repeat; the webhook does the same. Returns
+/// `Outcome<AiCredit>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfirmAiCreditArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    pub session: String,
+}
+
+/// `set_ai_reload`: auto-reload's settings. Owners only. Returns
+/// `Outcome<AiCredit>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAiReloadArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub enabled: bool,
+    #[serde(alias = "threshold_micros")]
+    pub threshold_micros: i64,
+    #[serde(alias = "target_micros")]
+    pub target_micros: i64,
+    #[serde(alias = "monthly_max_micros")]
+    pub monthly_max_micros: i64,
+}
+
+// --- Budgets ------------------------------------------------------------------
+
+/// `set_budget`: the monthly budget on usage after included usage: the
+/// owners' spend limit, its alerts, whether usage pauses at 100%, and an
+/// optional webhook. Owners only. Returns `Outcome<Limit>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetBudgetArgs {
+    pub actor: User,
+    pub workspace: String,
+    /// The amount; None keeps the automatic one.
+    #[serde(default, alias = "amount_micros")]
+    pub amount_micros: Option<i64>,
+    /// Some of 50, 75, 90 and 100.
+    #[serde(default)]
+    pub alerts: Vec<u32>,
+    #[serde(default = "yes", alias = "pause_at_limit")]
+    pub pause_at_limit: bool,
+    /// An HTTPS address, or None for no webhook.
+    #[serde(default)]
+    pub webhook: Option<String>,
+    /// Leave the spend limit as it is and change only the alerts, the
+    /// pause and the webhook.
+    #[serde(default, alias = "keep_limit")]
+    pub keep_limit: bool,
+}
+
+// --- Billing details -----------------------------------------------------------
+
+/// A postal address, as Stripe keeps it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostalAddress {
+    #[serde(default)]
+    pub line1: String,
+    #[serde(default)]
+    pub line2: String,
+    #[serde(default)]
+    pub city: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub postal_code: String,
+    /// Two letters, `US`.
+    #[serde(default)]
+    pub country: String,
+}
+
+/// The default way the workspace pays, as far as it is safe to show.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentMethod {
+    /// `card`, or another kind Stripe has.
+    pub kind: String,
+    #[serde(default)]
+    pub brand: Option<String>,
+    #[serde(default)]
+    pub last4: Option<String>,
+    #[serde(default)]
+    pub exp_month: Option<u32>,
+    #[serde(default)]
+    pub exp_year: Option<u32>,
+}
+
+/// One of the customer's invoices at Stripe: the plan, activations, AI
+/// credit and month-end usage.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StripeInvoice {
+    pub id: String,
+    #[serde(default)]
+    pub number: Option<String>,
+    /// `paid`, `open`, `void`, `uncollectible` or `draft`.
+    pub status: String,
+    pub total_cents: i64,
+    pub currency: String,
+    /// RFC 3339.
+    pub created_at: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub hosted_url: Option<String>,
+    #[serde(default)]
+    pub pdf_url: Option<String>,
+}
+
+/// What the next invoice will be, from g1t's own ledger.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpcomingInvoice {
+    /// When the month closes, RFC 3339.
+    pub closes_at: String,
+    /// The plan and activations, at their monthly price.
+    pub subscriptions_micros: i64,
+    /// Usage still owed, after included usage, credit and any discount.
+    pub usage_micros: i64,
+    pub total_micros: i64,
+}
+
+/// `billing_details` (`AccountArgs`): who the invoices are for, the default
+/// payment method, and the invoices, from the Stripe customer. Members see
+/// it; owners change it. Returns `Outcome<BillingDetails>`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillingDetails {
+    /// Whether the workspace has a Stripe customer yet.
+    pub customer: bool,
+    pub email: Option<String>,
+    pub name: Option<String>,
+    pub address: Option<PostalAddress>,
+    /// `eu_vat`, `us_ein`…, and its value.
+    pub tax_id_type: Option<String>,
+    pub tax_id: Option<String>,
+    /// Printed on invoices.
+    pub po_number: Option<String>,
+    /// The invoices' language, such as `en` or `fr`.
+    pub language: Option<String>,
+    pub payment_method: Option<PaymentMethod>,
+    pub invoices: Vec<StripeInvoice>,
+    pub upcoming: UpcomingInvoice,
+    /// Stripe could not be read: what is shown is what g1t keeps.
+    #[serde(default)]
+    pub unavailable: Option<String>,
+}
+
+/// `set_billing_details`: saves the invoice details on the Stripe customer.
+/// Owners only. Absent fields are left as they are; an empty string clears
+/// one. Returns `Outcome<BillingDetails>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetBillingDetailsArgs {
+    pub actor: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub address: Option<PostalAddress>,
+    #[serde(default, alias = "tax_id_type")]
+    pub tax_id_type: Option<String>,
+    #[serde(default, alias = "tax_id")]
+    pub tax_id: Option<String>,
+    #[serde(default, alias = "po_number")]
+    pub po_number: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 #[cfg(test)]

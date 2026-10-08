@@ -482,6 +482,7 @@ impl Billing {
         )
         .await;
         let (prices, changes, coming) = (prices?, changes?, coming?);
+        let model_markup = prices.iter().find(|row| row.meter == "agent_models").map_or(self.margin_percent, |row| row.markup_percent);
         let book: std::collections::BTreeMap<&str, f64> = prices
             .iter()
             .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
@@ -521,7 +522,9 @@ impl Billing {
                     effective_at: None,
                 }))
                 .collect(),
-            model_margin_percent: self.margin_percent,
+            // The markup on models' provider price: the price book's
+            // `agent_models` (none from 2026-10-08).
+            model_margin_percent: model_markup,
             plans,
             free: Some(g1t_contracts::billing::FreeTier {
                 trial_workspace_micros: if self.trials_on { self.plans.trial_workspace_micros } else { 0 },
@@ -624,10 +627,13 @@ impl Billing {
         // the gateway could not price all of it (see `settled_cost`).
         let (gateway_micros, short) = settled_cost(reported, gateway);
         let terms = self.terms_of(&run.workspace).await?;
+        // Models at the price book's markup on the provider's price
+        // (`agent_models`), as `finish_run` charges them.
+        let markup = self.model_markup().await?;
         // A cost's charge on the account's terms, and what a discount gave
-        // below cost plus the margin (counted as given, see `charged`).
+        // below cost plus the markup (counted as given, see `charged`).
         let charge_for = |micros: i64| {
-            if self.free { (0, 0) } else { terms.discounted(crate::margin_on(micros, self.margin_percent)) }
+            if self.free { (0, 0) } else { terms.discounted(crate::margin_on(micros, markup)) }
         };
         let settled_at = rfc3339(now_ms());
         // Claim it, so two crons never settle it twice.
@@ -649,6 +655,9 @@ impl Billing {
         if claimed.is_none() || requests == 0 {
             return Ok(());
         }
+        // Tokens counted after the run reported are charged their agent
+        // rate now (ai.rs).
+        self.charge_agent_rate(&run.id, &row).await?;
         if let Some(why) = &short {
             worker::console_warn!("run {} settled at no less than reported: {why}", run.id);
         }

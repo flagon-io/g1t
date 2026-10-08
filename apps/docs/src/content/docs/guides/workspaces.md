@@ -345,8 +345,11 @@ bookmarked or shared.
 ## The sidebar
 
 The sidebar is always about one workspace: the one the switcher at its top
-names. Choose the workspace's name to open its page, or the arrows beside
-it to switch, or for **Workspace overview** and **All projects**.
+names. On a workspace's pages, and on a project in one of your workspaces,
+that is the workspace the page belongs to; on a project somewhere you are
+not a member, it stays the one you chose last. Choose the workspace's name
+to open its page, or the arrows beside it to switch, or for **Workspace
+overview** and **All projects**.
 [Explore](https://g1t.sh/explore), public projects from all of g1t, is in
 the top bar, beside **Docs**.
 

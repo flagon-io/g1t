@@ -56,7 +56,7 @@ export function Textarea(props: ComponentProps<"textarea">) {
     <textarea
       {...notACredential(props.autoComplete)}
       {...props}
-      className={`${CONTROL} font-mono`}
+      className={`${CONTROL} font-mono placeholder:font-sans`}
     />
   );
 }
@@ -99,6 +99,15 @@ export function TabLink({
         </span>
       )}
     </NavLink>
+  );
+}
+
+/** Soon, beside something that is coming: the same small pill in the sidebar and in tabs. */
+export function SoonPill() {
+  return (
+    <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
+      Soon
+    </span>
   );
 }
 
@@ -361,13 +370,14 @@ export function CopyLine({
       aria-disabled={disabled || undefined}
       className={`group flex items-center gap-3 rounded-lg border border-line bg-surface py-2 pr-2 pl-3.5 font-mono text-[0.8125rem] ${disabled ? "cursor-not-allowed text-faint select-none" : ""}`}
     >
-      {/* Wraps rather than hides: a command or an address is no use half seen. */}
-      <code className="min-w-0 grow whitespace-pre-wrap [overflow-wrap:anywhere]">
+      {/* Wraps between words rather than hides: a command is no use half
+          seen. A word itself, an address or a flag, is never broken in
+          two, which would change what is copied by eye; one longer than
+          the line scrolls sideways instead. */}
+      <code className="min-w-0 grow overflow-x-auto whitespace-pre-wrap [scrollbar-width:thin]">
         {prompt && <span className="mr-2 text-faint select-none">$</span>}
-        {/* Short words with hyphens, such as `--transport`, stay whole when
-            the line wraps; long ones, such as addresses, may still break. */}
         {text.split(/(\s+)/).map((part, index) =>
-          part.includes("-") && part.length <= 24 ? (
+          /\S/.test(part) ? (
             <span key={index} className="whitespace-nowrap">
               {part}
             </span>

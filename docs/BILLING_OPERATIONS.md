@@ -441,16 +441,75 @@ spent, and refunded. **Credits & refunds** (`/credits`, `admin_credits`)
 lists every grant (by kind, month, staff and workspace) and the last 12
 months by kind: given, spent, expired, revoked.
 
-### Purchased and scoped credit (for prepaid AI)
+### Purchased and scoped credit (prepaid AI)
 
-`credit_grants` also has `scope` (`all`, or `models`: an agent run's model
-usage only, `grants::is_model_usage`) and `source` (`staff`, `purchase`,
-`promo_code`), and `CreditKind::Purchased`. Spending takes credit scoped
-to models first, then the soonest-expiring. Purchased credit is money paid
-in: its ledger line is a payment (not `crd…`), and the usage it pays for
-stays money in (revenue as it is spent, a liability until then), never
-given. Staff cannot give it (`admin_credit` refuses the kind).
-Nothing writes purchased grants yet: prepaying for AI builds on this.
+`credit_grants` also has `scope` (`all`, or `models`: model usage only,
+`grants::is_model_usage`, which includes the agent rate) and `source`
+(`staff`, `purchase`, `promo_code`, `upgrade`), and `CreditKind::Purchased`.
+Spending takes credit scoped to models first, then the soonest-expiring. A
+grant scoped to models given while the workspace owes pays only what models
+owed, never other usage (`replay`). Purchased credit is money paid in: its
+ledger line is a payment (Stripe's id, never `crd…`, `credit_kind`
+`purchased`, statement kind *AI credit*), and the usage it pays for stays
+money in, never given. Staff cannot give it (`admin_credit` refuses the
+kind). Code: `services/billing/src/ai.rs`; migration `0040_ai_credit.sql`.
+
+- **Buying.** `buy_ai_credit` opens Stripe Checkout (payment mode, $10 to
+  $1,000, a second line *Card processing fee* when the `card_fee` cost
+  setting is on, `setup_future_usage=off_session`), recorded in `checkouts`
+  with `feature = 'ai_credit'`, `amount_cents` the credit and `fee_cents`
+  the fee. The credit is entered by whichever comes first, the person coming
+  back (`confirm_ai_credit`, `?ai_credit=cs_…`) or
+  `checkout.session.completed`: both claim the row `open → paid`, the
+  grant's id is the session's id (`INSERT OR IGNORE`) and the ledger's
+  reference is unique, so a payment is credited exactly once. Expires 365
+  days after purchase (the daily `expire_credits`).
+- **Owed.** AI credit props up the balance but is money only for models, so
+  what is owed is `max(0, AI credit left − balance)` (`owed_with`; at a
+  month's close, `models_left_before` the month's start).
+- **Auto-reload.** `ai_reload` (settings; off by default) and `ai_reloads`
+  (one row per attempt). Each cron run (and a run that would be refused)
+  calls `reload_now`: below the threshold, it charges the customer's default
+  payment method off-session for the target less the balance (whole
+  dollars, at least $10, within the month's maximum), with the idempotency
+  key `reload/<workspace>/<YYYY-MM>/<n>` (a retry after a crash is the same
+  PaymentIntent), and grants purchased credit with the PaymentIntent's id. A
+  decline or a payment needing the person turns auto-reload off
+  (`failed_at`, `error`), emails the owners and audits `ai_reload_failed`.
+- **At $0.** `start_run` on g1t's models refuses with `payment_required`
+  when the workspace is on the paid plan (not a 100% discount, not an
+  enterprise), its included usage is used, and AI credit is $0 or less.
+- **Upgrade credit.** The first time a plan subscription is recorded active
+  (`features::record`), $5 of promotional credit scoped to models, id
+  `crd_upgrade_<workspace>`, expiring in a year: given, never revenue. Never
+  for a workspace with a 100% discount.
+
+### The agent rate and models' markup
+
+Price-book meters (migration 0040, each with versions and a public change):
+`agent_models` (per provider dollar; markup 20% until 2026-10-08, then 0,
+a fall applied at once), `agent_tokens` ($0 until 2026-10-22, then $0.25 a
+million tokens: a rise, after the 14 days' notice, emailed to owners on the
+plan by `tell_owners_of_rises`), `gateway_models` (markup 0 during beta),
+`card_fee_percent` (29,000 micros per dollar) and `card_fee_fixed`
+(300,000). Changing any is a price-book change, never a deploy. `finish_run`
+and `settle` charge models at `agent_models`' markup; `charge_agent_rate`
+charges the tokens `token_usage` counted for the run's session since it was
+last charged (`runs.agent_tokens`, claimed with a compare-and-set), on a
+line `<run>/agent` (later `<run>/agent/<tokens>`), with `quantity` the
+tokens. Runs on a workspace's own provider have no session here and are not
+charged the rate. **Card fee switch:** sudo → Costs → Guardrails → *Card fee
+on AI credit bought by card* (`cost_settings.card_fee`, `on`/`off`).
+
+### Budgets
+
+The owners' spend limit is the budget. `limits.alert_levels` (comma
+separated, default every level), `limits.pause_at_limit` (default 1; off,
+100% is a warning, never a stop; the trust ceiling still stops work) and
+`limits.budget_webhook` (an https address, not g1t's; posted once per alert
+level a month by `warn_limits`). `set_budget` sets them, with `keepLimit`
+to leave the limit itself alone. A free workspace (trust `new`) has no
+spend limit to set: `set_spend_limit` and `set_budget` say so.
 
 ### Earlier credits
 
@@ -589,6 +648,22 @@ finish, the page says so and the button does it.
 
 Billing keeps what it needs from Stripe so reads never wait on it, and
 hears of changes three ways (`webhooks.rs`, `stripe_sync.rs`).
+
+**API version.** Every request sends `Stripe-Version: 2025-02-24.acacia`
+(`stripe::STRIPE_VERSION`), the version billing's field reads are written
+for; without it Stripe answers at the account's default. Webhook events
+come at the destination's own version: billing reads an invoice's
+subscription from `subscription` or `parent.subscription_details.subscription`.
+Raising the version is a code change: read Stripe's upgrade notes for every
+field billing reads.
+
+**Failures.** No Stripe failure reaches a page as a 500: each payment page
+(`page_opened`), the portal, confirmations and plan changes turn it into
+`stripe::friendly` (Stripe's own message, never the request or a key), and
+log the full error with the workspace. Every payment page is recorded
+through one insert (`CHECKOUT_INSERT`), checked against the migrations by
+`every_checkout_insert_fills_the_table`, and has an idempotency key
+(`page/<purpose>/<workspace>/…/<10-minute bucket>`).
 
 **The webhook.** A destination made in Stripe's dashboard (Developers →
 Webhooks → Add destination) with the endpoint URL

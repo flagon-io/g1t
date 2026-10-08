@@ -120,6 +120,19 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("GET", "/workspaces/:workspace/members/:username/teams", Op::ListUserTeams, &[]),
+    // A workspace's billing: usage, budget, AI credit and invoices.
+    route(
+        "GET",
+        "/workspaces/:workspace/usage",
+        Op::GetUsage,
+        &[("from", "from"), ("until", "until"), ("products", "products"), ("projects", "projects"), ("group_by", "group_by")],
+    ),
+    route("GET", "/workspaces/:workspace/budget", Op::GetBudget, &[]),
+    route("PUT", "/workspaces/:workspace/budget", Op::SetBudget, &[]),
+    route("GET", "/workspaces/:workspace/ai_credit", Op::GetAiCredit, &[]),
+    route("POST", "/workspaces/:workspace/ai_credit/checkout", Op::BuyAiCredit, &[]),
+    route("GET", "/workspaces/:workspace/invoices", Op::ListInvoices, &[]),
+    route("GET", "/workspaces/:workspace/billing_details", Op::GetBillingDetails, &[]),
     // Code owners: the CODEOWNERS file, checked.
     route("GET", "/repos/:owner/:name/codeowners/errors", Op::GetCodeownersErrors, &[("ref", "ref")]),
     // Security alerts: secrets and vulnerable dependencies.
@@ -1000,6 +1013,23 @@ mod tests {
         let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "base": "release" })).unwrap();
         assert_eq!(route.op, Op::UpdatePullRequest);
         assert_eq!(input, json!({ "base": "release", "number": 9, "repo": "acme/web" }));
+    }
+
+    #[test]
+    fn billing_is_addressed_by_workspace() {
+        let query = [("from".to_owned(), "2026-10-01".to_owned()), ("products".to_owned(), "agent,sandboxes".to_owned())];
+        let (route, input) = resolve("GET", "/workspaces/acme/usage", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::GetUsage);
+        assert_eq!(input, json!({ "from": "2026-10-01", "products": "agent,sandboxes", "workspace": "acme" }));
+        let (route, input) = resolve("PUT", "/workspaces/acme/budget", &[], json!({ "alerts": [50] })).unwrap();
+        assert_eq!(route.op, Op::SetBudget);
+        assert_eq!(input, json!({ "alerts": [50], "workspace": "acme" }));
+        let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
+        assert_eq!(op("GET", "/workspaces/acme/budget"), Op::GetBudget);
+        assert_eq!(op("GET", "/workspaces/acme/ai_credit"), Op::GetAiCredit);
+        assert_eq!(op("POST", "/workspaces/acme/ai_credit/checkout"), Op::BuyAiCredit);
+        assert_eq!(op("GET", "/workspaces/acme/invoices"), Op::ListInvoices);
+        assert_eq!(op("GET", "/workspaces/acme/billing_details"), Op::GetBillingDetails);
     }
 
     #[test]

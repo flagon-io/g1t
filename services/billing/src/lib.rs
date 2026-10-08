@@ -18,6 +18,7 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod ai;
 mod budget;
 mod cards;
 mod closing;
@@ -25,6 +26,8 @@ mod compute;
 mod costs;
 mod margin;
 mod pricing;
+mod report;
+mod details;
 mod credits;
 mod grants;
 mod overages;
@@ -177,6 +180,46 @@ struct CheckoutRow {
     created_by: String,
 }
 
+/// A payment page started, as `checkouts` keeps it.
+pub(crate) struct NewCheckout<'a> {
+    pub id: &'a str,
+    pub workspace: &'a str,
+    /// What it pays for, in cents: the prepayment, the plan's price, the AI
+    /// credit; 0 for a card check.
+    pub amount_cents: u32,
+    /// The card fee on top, for AI credit.
+    pub fee_cents: u32,
+    pub created_by: &'a str,
+    /// None for a prepayment; `plan`, `security`, `card_check` or
+    /// `ai_credit` otherwise.
+    pub feature: Option<&'a str>,
+}
+
+/// The one insert every payment page goes through, every column named, so
+/// a column added to `checkouts` with no default is caught by
+/// `tests::every_checkout_insert_fills_the_table` rather than by a 500.
+pub(crate) const CHECKOUT_INSERT: &str = "INSERT INTO checkouts (id, workspace, amount_cents, fee_cents, created_by, created_at, feature, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'open')";
+
+impl Billing {
+    pub(crate) async fn record_checkout(&self, c: &NewCheckout<'_>) -> Result<()> {
+        self.db
+            .prepare(CHECKOUT_INSERT)
+            .bind(&[
+                c.id.into(),
+                c.workspace.into(),
+                c.amount_cents.into(),
+                c.fee_cents.into(),
+                c.created_by.into(),
+                rfc3339(now_ms()).into(),
+                optional(c.feature),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+}
+
 /// A row an `UPDATE … RETURNING` touched.
 #[derive(Deserialize)]
 struct Touched {
@@ -277,7 +320,7 @@ impl Billing {
         };
         let customer = match self.customer_for(&workspace).await {
             Ok(customer) => customer,
-            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         };
         match stripe.portal_session(&customer, &a.return_url).await {
             Ok(url) => Ok(Outcome::Ok(Checkout { url })),
@@ -286,7 +329,7 @@ impl Billing {
                 self.forget_customer(&workspace).await?;
                 Ok(Outcome::fail(FailureCode::Conflict, "Stripe no longer had this workspace's customer. Try again."))
             }
-            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe's billing page could not be opened: {error}"))),
+            Err(error) => Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
         }
     }
 
@@ -406,15 +449,10 @@ impl Billing {
         // While g1t is free, what was used at cost is what there is to show.
         // With a discount, usage at its price, so a 100% discount still
         // shows what the workspace would pay.
+        // Every slice measures usage at price (statement::PRICE_SQL), the one
+        // figure every page shows as usage, whatever paid for it.
         let discount_percent = self.terms_of(&workspace).await?.percent_off();
-        let measure = if self.free {
-            "COALESCE(cost_micros, 0)"
-        } else if discount_percent > 0 {
-            "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
-              + COALESCE(given_micros, 0) + COALESCE(discount_micros, 0))"
-        } else {
-            "-amount_micros"
-        };
+        let measure = if self.free { "COALESCE(cost_micros, 0)" } else { crate::statement::PRICE_SQL };
         let slices = |key: &str, limit: u32| {
             format!(
                 "SELECT {key} AS key, SUM({measure}) AS micros, COUNT(*) AS runs FROM ledger
@@ -447,22 +485,27 @@ impl Billing {
         #[derive(serde::Deserialize)]
         struct Totals {
             spent: Option<i64>,
-            g1t_cost: Option<i64>,
             cost: Option<i64>,
             provider: Option<i64>,
             runs: Option<u32>,
             added: Option<i64>,
             discount: Option<i64>,
+            covered: Option<i64>,
+            price: Option<i64>,
         }
         let totals = async {
             self.db
-                .prepare(
+                .prepare(format!(
                     "SELECT
                        -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
-                       SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS g1t_cost,
+                       SUM(CASE WHEN kind = 'usage' THEN COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0)
+                                + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0) END) AS covered,
+                       SUM(CASE WHEN kind = 'usage' THEN {price} END) AS price,",
+                    price = crate::statement::PRICE_SQL
+                ) + "
                        SUM(CASE WHEN kind = 'usage' AND COALESCE(billed_to, 'g1t') = 'g1t' THEN cost_micros END) AS cost,
                        SUM(CASE WHEN kind = 'usage' AND billed_to = 'workspace' THEN cost_micros END) AS provider,
-                       SUM(CASE WHEN kind = 'usage' THEN 1 ELSE 0 END) AS runs,
+                       SUM(CASE WHEN kind = 'usage' AND " + crate::statement::RUN_SQL + " THEN 1 ELSE 0 END) AS runs,
                        SUM(CASE WHEN kind = 'top_up' THEN amount_micros END) AS added,
                        SUM(CASE WHEN kind = 'usage' THEN discount_micros END) AS discount
                      FROM ledger WHERE workspace = ?1 AND created_at >= ?2",
@@ -486,21 +529,20 @@ impl Billing {
         .await?;
         let totals = totals.unwrap_or(Totals {
             spent: None,
-            g1t_cost: None,
             cost: None,
             provider: None,
             runs: None,
             added: None,
             discount: None,
+            covered: None,
+            price: None,
         });
         Ok(Outcome::Ok(Usage {
             spent_micros: totals.spent.unwrap_or_default(),
-            // At price, what g1t's usage came to, less what was charged: the
-            // part the included usage, the trial, a pool, or a free period paid.
-            covered_micros: (crate::credits::with_margin(totals.g1t_cost.unwrap_or_default(), self.margin_percent)
-                - totals.spent.unwrap_or_default()
-                - totals.discount.unwrap_or_default())
-            .max(0),
+            // What the included usage, the trial, a pool or g1t paid, as the
+            // entries record it.
+            covered_micros: totals.covered.unwrap_or_default(),
+            price_micros: if self.free { totals.cost.unwrap_or_default() } else { totals.price.unwrap_or_default() },
             cost_micros: totals.cost.unwrap_or_default(),
             provider_micros: totals.provider.unwrap_or_default(),
             used_micros: totals.cost.unwrap_or_default() + totals.provider.unwrap_or_default(),
@@ -541,43 +583,52 @@ impl Billing {
         let customer = if bank_transfer {
             match self.customer_for(&workspace).await {
                 Ok(customer) => Some(customer),
-                Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, format!("Stripe could not be reached: {error}"))),
+                Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, stripe::friendly(&error))),
             }
         } else {
             self.row(&workspace).await?.and_then(|row| row.customer_id)
         };
-        let session = match stripe
-            .start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer)
-            .await
-        {
-            Ok(session) => session,
+        let started = match stripe.start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer).await {
             // A customer saved under another Stripe account: start afresh.
             Err(error) if customer.is_some() && stripe::is_missing(&error) => {
                 self.forget_customer(&workspace).await?;
-                let customer = if bank_transfer { Some(self.customer_for(&workspace).await?) } else { None };
-                stripe.start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer).await?
+                let customer = if bank_transfer { self.customer_for(&workspace).await.ok() } else { None };
+                stripe.start_checkout(&workspace, a.amount_cents, customer.as_deref(), &a.return_url, bank_transfer).await
             }
-            Err(error) => return Err(error),
+            other => other,
         };
-        let Some(url) = session.url else {
-            return Err(worker::Error::RustError(
-                "the card processor returned no payment page".into(),
-            ));
+        self.page_opened(started, &workspace, a.amount_cents, 0, &a.actor.username, None).await
+    }
+
+    /// A payment page Stripe started (or refused), recorded in `checkouts`
+    /// and handed back; any failure as a sentence for the page, never a
+    /// raw error.
+    pub(crate) async fn page_opened(
+        &self,
+        started: Result<stripe::Session>,
+        workspace: &str,
+        amount_cents: u32,
+        fee_cents: u32,
+        created_by: &str,
+        feature: Option<&str>,
+    ) -> Result<Outcome<Checkout>> {
+        let session = match started {
+            Ok(session) => session,
+            Err(error) => {
+                worker::console_error!("{workspace}: Stripe refused a payment page ({}): {error}", feature.unwrap_or("prepay"));
+                return Ok(Outcome::fail(FailureCode::Conflict, stripe::friendly(&error)));
+            }
         };
-        self.db
-            .prepare(
-                "INSERT INTO checkouts (id, workspace, amount_cents, created_by, created_at)
-                 VALUES (?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                session.id.into(),
-                workspace.into(),
-                a.amount_cents.into(),
-                a.actor.username.into(),
-                rfc3339(now_ms()).into(),
-            ])?
-            .run()
-            .await?;
+        let Some(url) = session.url.clone() else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Stripe returned no payment page. Try again in a minute."));
+        };
+        let recorded = self
+            .record_checkout(&NewCheckout { id: &session.id, workspace, amount_cents, fee_cents, created_by, feature })
+            .await;
+        if let Err(error) = recorded {
+            worker::console_error!("{workspace}: a payment page could not be recorded: {error}");
+            return Ok(Outcome::fail(FailureCode::Conflict, "g1t could not keep track of the payment page. Nothing was charged; try again."));
+        }
         Ok(Outcome::Ok(Checkout { url }))
     }
 
@@ -606,7 +657,10 @@ impl Billing {
             // Unknown, someone else's, or already credited: nothing to do.
             return Ok(Outcome::Ok(self.standing(&workspace).await?));
         };
-        let session = stripe.session(&a.session).await?;
+        let session = match stripe.session(&a.session).await {
+            Ok(session) => session,
+            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
+        };
         let paid = session
             .amount_total
             .filter(|_| session.payment_status == "paid");
@@ -698,6 +752,13 @@ impl Billing {
         if let Some(refused) = self.out_of_credit(&workspace).await? {
             return Ok(refused);
         }
+        // On g1t's models, a workspace on the plan needs AI credit (or
+        // included usage) first: g1t never fronts a model's cost (ai.rs).
+        if a.billed_to != "workspace"
+            && let Some(why) = self.ai_refusal(&workspace).await?
+        {
+            return Ok(Outcome::fail(FailureCode::PaymentRequired, why));
+        }
         let now = now_ms();
         let run_id = new_id("run", now);
         let mut bytes = [0u8; 32];
@@ -768,7 +829,10 @@ impl Billing {
         // included usage and the trial credit pay what they can, and g1t
         // covers a free workspace's overrun (see `credits`). Agents are
         // never the open-source pool's.
-        let base = charge_micros(a.cost_usd, self.margin_percent);
+        // The model at the provider's price and the price book's markup on it
+        // (`agent_models`: none from 2026-10-08); g1t's own part is the agent
+        // rate, charged on a line of its own below.
+        let base = charge_micros(a.cost_usd, self.model_markup().await?);
         let (charge, terms_note, discount) = self.charged(&run.workspace, base).await?;
         let month = credits::month_of(&rfc3339(now_ms()));
         let eligible = credits::eligible_for(Some(ComputeKind::Agent), None);
@@ -796,6 +860,7 @@ impl Billing {
         self.record_drawn(&a.run_id, &drawn).await?;
         self.record_discount(&a.run_id, discount).await?;
         self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
+        self.charge_agent_rate(&a.run_id, &run).await?;
         Ok(Outcome::Ok(true))
     }
 }
@@ -831,8 +896,8 @@ impl Billing {
                 .prepare(
                     "INSERT INTO ledger
                        (id, workspace, kind, amount_micros, description, repo, task,
-                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros)
-                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0)",
+                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, quantity)
+                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0, ?)",
                 )
                 .bind(&[
                     new_id("led", now).into(),
@@ -841,6 +906,7 @@ impl Billing {
                     optional(a.repo.as_deref()),
                     a.reference.as_str().into(),
                     timestamp.as_str().into(),
+                    (seconds as f64).into(),
                 ])?
                 .run()
                 .await?;
@@ -893,8 +959,8 @@ impl Billing {
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?)",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -910,6 +976,8 @@ impl Billing {
                         (drawn.oss as f64).into(),
                         (drawn.given as f64).into(),
                         optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
+                        (seconds as f64).into(),
+                        optional(a.kind.map(ComputeKind::as_str)),
                     ])?,
                 self.db
                     .prepare(
@@ -1078,6 +1146,12 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.autopay().await {
         worker::console_error!("paying at the limit failed: {error}");
     }
+    // AI credit below a workspace's auto-reload threshold, reloaded (ai.rs).
+    match billing.reload_ai_credit().await {
+        Ok(0) => {}
+        Ok(done) => worker::console_log!("auto-reloaded AI credit for {done} workspaces"),
+        Err(error) => worker::console_error!("auto-reloading AI credit failed: {error}"),
+    }
     // Last month's metered usage (scans, embeddings, storage) goes on the
     // ledger before the month is closed and invoiced.
     if let Err(error) = billing.charge_pending().await {
@@ -1191,6 +1265,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "ledger" => reply(&billing.ledger(args(body)?).await?),
         "credits" => reply(&billing.credits(args(body)?).await?),
         "usage" => reply(&billing.usage(args(body)?).await?),
+        "usage_report" => reply(&billing.usage_report(args(body)?).await?),
+        "ai_credit" => reply(&billing.ai_credit(args(body)?).await?),
+        "buy_ai_credit" => reply(&billing.buy_ai_credit(args(body)?).await?),
+        "confirm_ai_credit" => reply(&billing.confirm_ai_credit(args(body)?).await?),
+        "set_ai_reload" => reply(&billing.set_ai_reload(args(body)?).await?),
+        "set_budget" => reply(&billing.set_budget(args(body)?).await?),
+        "billing_details" => reply(&billing.billing_details(args(body)?).await?),
+        "set_billing_details" => reply(&billing.set_billing_details(args(body)?).await?),
         "record_tokens" => reply(&billing.record_tokens(args(body)?).await?),
         "token_usage" => reply(&billing.token_usage(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
@@ -1330,5 +1412,141 @@ mod tests {
     #[test]
     fn an_absurd_cost_is_capped() {
         assert_eq!(charge_micros(1e9, 20), 120 * MICROS_PER_DOLLAR);
+    }
+
+    /// Every migration, in order, as D1 applies them.
+    const MIGRATIONS: &[&str] = &[
+        include_str!("../migrations/0001_init.sql"),
+        include_str!("../migrations/0002_own_provider.sql"),
+        include_str!("../migrations/0003_subscriptions.sql"),
+        include_str!("../migrations/0004_sandbox_time.sql"),
+        include_str!("../migrations/0005_limits.sql"),
+        include_str!("../migrations/0006_prices.sql"),
+        include_str!("../migrations/0007_pending_usage.sql"),
+        include_str!("../migrations/0008_accounts.sql"),
+        include_str!("../migrations/0009_autopay.sql"),
+        include_str!("../migrations/0010_month_close.sql"),
+        include_str!("../migrations/0011_limit_warnings.sql"),
+        include_str!("../migrations/0012_stripe_webhooks.sql"),
+        include_str!("../migrations/0013_invoices_trust_sales.sql"),
+        include_str!("../migrations/0014_custom_domain_price.sql"),
+        include_str!("../migrations/0015_sandbox_at_cost.sql"),
+        include_str!("../migrations/0016_plans_and_pools.sql"),
+        include_str!("../migrations/0017_flagon_comped.sql"),
+        include_str!("../migrations/0018_one_plan.sql"),
+        include_str!("../migrations/0019_closed_workspaces.sql"),
+        include_str!("../migrations/0020_syntaqx_standard.sql"),
+        include_str!("../migrations/0021_no_quotas.sql"),
+        include_str!("../migrations/0022_costs_and_margin.sql"),
+        include_str!("../migrations/0023_one_operation_mapping.sql"),
+        include_str!("../migrations/0024_spend_caps.sql"),
+        include_str!("../migrations/0025_run_tier.sql"),
+        include_str!("../migrations/0026_ledger_by_workspace_time.sql"),
+        include_str!("../migrations/0027_stripe_cache.sql"),
+        include_str!("../migrations/0028_drop_stripe_webhooks.sql"),
+        include_str!("../migrations/0029_audit_retention.sql"),
+        include_str!("../migrations/0030_token_usage.sql"),
+        include_str!("../migrations/0031_package_storage.sql"),
+        include_str!("../migrations/0032_workspace_value.sql"),
+        include_str!("../migrations/0033_given_away.sql"),
+        include_str!("../migrations/0034_given_by_why.sql"),
+        include_str!("../migrations/0035_cf_subscriptions.sql"),
+        include_str!("../migrations/0036_model_costs_in_full.sql"),
+        include_str!("../migrations/0037_security_activation.sql"),
+        include_str!("../migrations/0038_staff_credits.sql"),
+        include_str!("../migrations/0039_discounts_not_comped.sql"),
+        include_str!("../migrations/0040_ai_credit.sql"),
+    ];
+
+    /// The columns of `table` after the migrations: each with whether an
+    /// insert must give it (NOT NULL, no default).
+    fn columns(table: &str) -> Vec<(String, bool)> {
+        let mut out = vec![];
+        for sql in MIGRATIONS {
+            let sql: String = sql.lines().map(|l| l.split("--").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
+            if let Some(start) = sql.find(&format!("CREATE TABLE {table} (")) {
+                let body = &sql[start + format!("CREATE TABLE {table} (").len()..];
+                let body = &body[..body.find(");").unwrap()];
+                for column in body.split(",\n") {
+                    let column = column.trim();
+                    let name = column.split_whitespace().next().unwrap_or("").to_owned();
+                    if name.is_empty() || name == "PRIMARY" {
+                        continue;
+                    }
+                    let required = column.contains("NOT NULL") && !column.contains("DEFAULT") && !column.contains("PRIMARY KEY");
+                    out.push((name, required || column.contains("PRIMARY KEY")));
+                }
+            }
+            for statement in sql.split(';') {
+                let s = statement.trim();
+                if let Some(rest) = s.strip_prefix(&format!("ALTER TABLE {table} ADD COLUMN ")) {
+                    let name = rest.split_whitespace().next().unwrap().to_owned();
+                    out.push((name, rest.contains("NOT NULL") && !rest.contains("DEFAULT")));
+                }
+            }
+        }
+        out
+    }
+
+    /// The columns an `INSERT INTO table (…)` names.
+    fn inserted(sql: &str, table: &str) -> Vec<String> {
+        let start = sql.find(&format!("INSERT INTO {table} (")).unwrap() + format!("INSERT INTO {table} (").len();
+        sql[start..start + sql[start..].find(')').unwrap()].split(',').map(|c| c.trim().to_owned()).collect()
+    }
+
+
+    #[test]
+    fn ai_prices_are_price_book_data_with_dated_versions() {
+        let sql = include_str!("../migrations/0040_ai_credit.sql");
+        let row = |needle: &str| sql.lines().find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no {needle}")).to_owned();
+        // AI Gateway: the provider's price, no markup while in beta.
+        assert!(row("('gateway_models', 'AI Gateway models'").contains("1000000, 0, 'list'"));
+        // Models lose their markup from 2026-10-08, a fall that applies at once…
+        assert!(row("('pv_agent_models_2'").contains("1000000, 0, '2026-10-08"));
+        // …and the agent rate is $0.25 a million tokens after 14 days' notice.
+        assert!(row("('pv_agent_tokens_2'").contains("250000, 0, '2026-10-22"));
+        // The card fee is 2.9% + 30¢, switchable.
+        assert!(row("('card_fee_percent'").contains("29000"));
+        assert!(row("('card_fee_fixed'").contains("300000"));
+        assert!(row("('card_fee', 'on'").contains("'on'"));
+    }
+    #[test]
+    fn every_checkout_insert_fills_the_table() {
+        // The plan's, the activation's, a card check's, a prepayment's and
+        // AI credit's pages all go through one insert, and it names every
+        // column the table needs and none it lacks: a missing NOT NULL
+        // column, or one from a migration not yet applied, was a 500.
+        let table = columns("checkouts");
+        let names: Vec<&str> = table.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["id", "workspace", "amount_cents", "created_by", "status", "created_at", "feature", "fee_cents"]);
+        let given = inserted(CHECKOUT_INSERT, "checkouts");
+        for column in &given {
+            assert!(names.contains(&column.as_str()), "the insert names {column}, which checkouts does not have");
+        }
+        for (column, required) in &table {
+            assert!(!required || given.contains(column), "checkouts needs {column}, which the insert leaves out");
+        }
+        // As many values as columns.
+        let values = CHECKOUT_INSERT.split("VALUES").nth(1).unwrap();
+        assert_eq!(values.matches('?').count() + values.matches("'open'").count(), given.len());
+        // And no page writes a row of its own any more.
+        for (file, source) in [
+            ("lib.rs", include_str!("lib.rs")),
+            ("features.rs", include_str!("features.rs")),
+            ("cards.rs", include_str!("cards.rs")),
+            ("ai.rs", include_str!("ai.rs")),
+        ] {
+            let inserts = source.matches(concat!("INSERT INTO ", "checkouts")).count();
+            assert!(inserts <= usize::from(file == "lib.rs"), "{file} inserts into checkouts on its own");
+        }
+    }
+
+    #[test]
+    fn a_new_ledger_column_has_a_default() {
+        // The ledger is written from a dozen places; a column without a
+        // default would break every one that does not name it.
+        for (column, required) in columns("ledger") {
+            assert!(!required || ["id", "workspace", "kind", "amount_micros", "description", "reference", "created_at"].contains(&column.as_str()), "{column}");
+        }
     }
 }

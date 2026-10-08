@@ -143,12 +143,14 @@ Up to five branches other than the default, the most recently changed
 first. Each shows its last commit and who made it, how many commits it is
 ahead of the default branch and behind it, and its open pull request,
 with its checks, and preview, if it has them. A branch with no pull
-request links to opening one.
+request links to opening one, unless it has nothing the default branch
+lacks, which says **Nothing to merge**.
 
-Ahead and behind are counted from the last 40 commits of the branch and
-the last 120 of the default branch. A count that runs past that shows as
-`40+`. Ten branches are read, those with open pull requests first; a
-project with more says how many it has.
+Ahead and behind are exact, merges included. g1t reads up to 1,000
+commits of each history to find where the two meet; a branch that left
+the default branch further back than that shows no counts. Ten branches
+are read, those with open pull requests first; a project with more says
+how many it has.
 
 ## Settings
 
