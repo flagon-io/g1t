@@ -143,7 +143,7 @@ export const DEFAULT_ROUTING: AgentRouting = {
       price: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
     },
   },
-  tasks: { implement: "large", revise: "large", answer: "small", review: "change", update: "small", plan: "frontier" },
+  tasks: { implement: "large", revise: "large", answer: "small", review: "change", update: "small", plan: "large" },
   smallChange: { files: 10, lines: 200 },
   largeChange: { files: 60, lines: 3000 },
   largeLabels: ["security"],

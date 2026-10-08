@@ -44,13 +44,14 @@ function customHeaders(vars: Record<string, string>): Record<string, string> {
 
 const small: ChangeSize = { files: 3, lines: 80, sensitive: [] };
 
-test("Auto starts each kind of job on its tier: fast for catching up and answering, standard for changes, most capable for plans", () => {
+test("Auto starts each kind of job on its tier: fast for catching up and answering, standard for changes and plans", () => {
   assert.equal(chooseTier("update", {}, routes), "small");
   assert.equal(chooseTier("answer", {}, routes), "small");
   assert.equal(chooseTier("implement", {}, routes), "large");
   assert.equal(chooseTier("revise", {}, routes), "large");
   assert.equal(chooseTier("implement", { change: small }, routes), "large");
-  assert.equal(chooseTier("plan", {}, routes), "frontier");
+  assert.equal(chooseTier("plan", {}, routes), "large");
+  assert.equal(chooseTier("plan", { labels: ["architecture"] }, routes), "frontier");
 });
 
 test("revising and answering go to the workspace's implement route and bill", () => {
@@ -84,7 +85,7 @@ test("labels move work: architecture to the most capable, documentation to the f
   assert.equal(chooseTier("implement", { labels: ["docs"] }, routes), "small");
   assert.equal(chooseTier("answer", { labels: ["typo"] }, routes), "small");
   // A small label never takes a review or a plan down.
-  assert.equal(chooseTier("plan", { labels: ["docs"] }, routes), "frontier");
+  assert.equal(chooseTier("plan", { labels: ["docs"] }, routes), "large");
   // Security outranks documentation.
   assert.equal(chooseTier("implement", { labels: ["docs", "security"] }, routes), "large");
 });
@@ -121,8 +122,8 @@ test("a repository whose fast runs finish nearly always steps the work down", ()
   // Too few runs to tell, or not quite enough of them finished: no change.
   assert.equal(chooseTier("implement", { history: ok("small", 4) }, routes), "large");
   assert.equal(chooseTier("implement", { history: [...ok("small", 8), ...bad("small", 2)] }, routes), "large");
-  // Plans step down from the most capable model the same way.
-  assert.equal(chooseTier("plan", { history: ok("large", 6) }, routes), "large");
+  // Plans step down the same way.
+  assert.equal(chooseTier("plan", { history: ok("small", 6) }, routes), "small");
 });
 
 test("learning never steps down sensitive or labelled work, nor a retry", () => {
@@ -198,7 +199,7 @@ test("the configuration decides the catalogue, the rules and the limits", () => 
   assert.deepEqual(parsed.tiers.frontier, DEFAULT_ROUTING.tiers.frontier);
   assert.equal(chooseTier("update", {}, parsed), "large");
   // A rule that names no tier keeps the default.
-  assert.equal(chooseTier("plan", {}, parsed), "frontier");
+  assert.equal(chooseTier("plan", {}, parsed), "large");
   assert.equal(parsed.tasks.answer, "change");
   assert.equal(chooseTier("review", { change: { ...small, lines: 51 } }, parsed), "large");
   assert.equal(chooseTier("review", { change: { ...small, files: 10, lines: 50 } }, parsed), "small");
