@@ -2611,8 +2611,20 @@
           "job": "test",
           "message": "`services` containers (such as a database) are not started on g1t yet."
         }
+      ],
+      "attempts": [
+        {
+          "attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "actor": "syntaqx",
+          "debug": false,
+          "started_at": "2026-10-04T15:42:09.020Z",
+          "finished_at": "2026-10-04T15:44:31.877Z"
+        }
       ]
-    }
+    },
+    "notes": "Each re-run is a new attempt. Read an earlier one with `attempt`, or at `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}`; its jobs have ids of their own, so `get_job_logs` reads the log each had then. A job that is `cancelling` was cancelled and is running its cleanup steps."
   },
   "get_job_logs": {
     "params": {
@@ -2747,6 +2759,61 @@
       "started_at": null,
       "finished_at": null
     }
+  },
+  "rerun_job": {
+    "params": {
+      "job": "job_01kpx7b3d0e4f8g2h6j0k4m8ns"
+    },
+    "request": {
+      "enable_debug_logging": true
+    },
+    "response": {
+      "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+      "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+      "path": ".g1t/workflows/ci.yml",
+      "name": "CI",
+      "title": "Greeting should name the caller",
+      "number": 12,
+      "attempt": 2,
+      "event": "push",
+      "ref": "refs/heads/main",
+      "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "pull": null,
+      "status": "queued",
+      "conclusion": null,
+      "error": null,
+      "actor": "syntaqx",
+      "created_at": "2026-10-04T15:42:07.318Z",
+      "started_at": null,
+      "finished_at": null
+    },
+    "notes": "Runs the job again with every job that needs it, as a new attempt; the rest keep how they ended. A job of a matrix runs again with the rest of its matrix, and a job of a called workflow with the job that calls it. The run must have finished."
+  },
+  "force_cancel_workflow_run": {
+    "params": {
+      "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr"
+    },
+    "response": {
+      "id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
+      "workflow_id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
+      "path": ".g1t/workflows/ci.yml",
+      "name": "CI",
+      "title": "Greeting should name the caller",
+      "number": 12,
+      "attempt": 1,
+      "event": "push",
+      "ref": "refs/heads/main",
+      "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "pull": null,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "error": null,
+      "actor": "syntaqx",
+      "created_at": "2026-10-04T15:42:07.318Z",
+      "started_at": "2026-10-04T15:42:09.020Z",
+      "finished_at": "2026-10-04T15:43:02.411Z"
+    },
+    "notes": "Stops running jobs at once, without their `if: always()`, `cancelled()` or post steps. Use it when a job's cleanup hangs."
   },
   "update_workflow": {
     "params": {

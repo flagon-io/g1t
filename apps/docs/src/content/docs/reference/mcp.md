@@ -412,11 +412,11 @@ deployments; and the self-hosted runners workflows run on. See
 | --- | --- | --- | --- |
 | [`list`](/reference/api/actions/list-workflows/) | The workflows, with their events, state, problems, notes on what runs differently, manual-run inputs and last run. | `repo` | `workflows:read` |
 | [`list_runs`](/reference/api/actions/list-runs-of-workflow/) | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | `repo` | `workflows:read` |
-| [`get_run`](/reference/api/actions/get-workflow-run/) | A run with its jobs, their steps and annotations. | `repo`, `id` | `workflows:read` |
+| [`get_run`](/reference/api/actions/get-workflow-run/) | A run with its jobs, their steps and annotations, and its `attempts`; `attempt` reads an earlier attempt, with the jobs it had then. | `repo`, `id` | `workflows:read` |
 | [`job_logs`](/reference/api/actions/get-job-logs/) | A job's log after `after`; `done` says if more will come. | `repo`, `job` | `workflows:read` |
 | [`dispatch`](/reference/api/actions/dispatch-workflow/) | Run a `workflow_dispatch` workflow on `ref` with `inputs`. Write role. | `repo`, `workflow` | `workflows:write` |
-| [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run. Write role. | `repo`, `id` | `workflows:write` |
-| [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again; `failed_only` for the jobs that did not succeed. Write role. | `repo`, `id` | `workflows:write` |
+| [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run: running jobs stop their step and run their cleanup steps first. `force` (or cancelling again) stops them outright. Write role. | `repo`, `id` | `workflows:write` |
+| [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again as a new attempt; `failed_only` for the jobs that did not succeed, `job` for one job and those that need it, `debug` for debug logging. Write role. | `repo`, and `id` or `job` | `workflows:write` |
 | [`update`](/reference/api/actions/update-workflow/) | Turn a workflow on or off. Maintain role. | `repo`, `workflow`, `enabled` | `workflows:write` |
 | [`list_artifacts`](/reference/api/actions/list-artifacts/) | The repository's artifacts, newest first, with size, digest and expiry; `name`, `page`, `per_page`. | `repo` | `workflows:read` |
 | [`run_artifacts`](/reference/api/actions/list-workflow-run-artifacts/) | One run's artifacts; `name`. | `repo`, `id` (the run) | `workflows:read` |

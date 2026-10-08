@@ -14,6 +14,7 @@ mod blobs;
 mod checks;
 mod deployments;
 mod deploy_keys;
+mod logs;
 mod mcp;
 mod notifications;
 mod oauth;
@@ -640,6 +641,14 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     }
     if on_mcp {
         return mcp::handle(request, &services, &viewer).await;
+    }
+
+    // Workflow logs to download: a run's as a zip, a job's as text (logs.rs).
+    if method == "GET" {
+        let text = url.query_pairs().any(|(name, value)| name == "format" && value == "text");
+        if let Some(wanted) = logs::wanted(&path, text) {
+            return logs::download(&services, &viewer, wanted).await;
+        }
     }
 
     match (method, path.trim_end_matches('/')) {

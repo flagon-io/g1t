@@ -1472,7 +1472,7 @@ impl Op {
                 "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, or a commit."
             }
             Op::GetWorkflowRun => {
-                "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs."
+                "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs. `attempts` lists every attempt (each re-run is one) with who started it and how it ended; give `attempt` to read an earlier one, whose jobs keep their own ids and logs."
             }
             Op::GetJobLogs => {
                 "A job's log, in order, after `after` (a sequence number from an earlier call). `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages."
@@ -1480,9 +1480,11 @@ impl Op {
             Op::DispatchWorkflow => {
                 "Run a workflow that has `on: workflow_dispatch`, on a branch or tag (the default branch if none), with its inputs. Needs the Write role or higher."
             }
-            Op::CancelWorkflowRun => "Cancel a run that is still going: its waiting jobs are cancelled and its running ones stopped. Needs the Write role or higher.",
+            Op::CancelWorkflowRun => {
+                "Cancel a run that is still going: its waiting jobs are cancelled at once, and its running ones stop the step they are on, run their `if: always()` and `cancelled()` steps and post steps, and end cancelled (stopped outright after 5 minutes). Cancelling a run that is already cancelling, or `force`, stops its jobs outright. Needs the Write role or higher."
+            }
             Op::RerunWorkflowRun => {
-                "Run a finished workflow run again: every job, or with failed_only the jobs that did not succeed and the jobs that need them. Needs the Write role or higher."
+                "Run a finished workflow run again, as a new attempt: every job, with failed_only the jobs that did not succeed, or with `job` one job (by its id in the latest attempt); each with the jobs that need them. `debug` (or GitHub's `enable_debug_logging`) runs the attempt with debug logging. The attempt before is kept, with its jobs' logs. Needs the Write role or higher."
             }
             Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Needs the Maintain role or higher.",
             Op::ListActionsSecrets => {
@@ -2529,7 +2531,11 @@ impl Op {
                 &["repo"],
             ),
             Op::GetWorkflowRun => object(
-                json!({ "repo": repo_schema(), "id": { "type": "string", "description": "The run's id." } }),
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The run's id." },
+                    "attempt": { "type": "integer", "description": "An earlier attempt, from 1. The latest if not given." },
+                }),
                 &["repo", "id"],
             ),
             Op::GetJobLogs => object(
@@ -2550,16 +2556,23 @@ impl Op {
                 &["repo", "workflow"],
             ),
             Op::CancelWorkflowRun => object(
-                json!({ "repo": repo_schema(), "id": { "type": "string", "description": "The run's id." } }),
+                json!({
+                    "repo": repo_schema(),
+                    "id": { "type": "string", "description": "The run's id." },
+                    "force": { "type": "boolean", "description": "Stop running jobs outright, without their cleanup steps." },
+                }),
                 &["repo", "id"],
             ),
             Op::RerunWorkflowRun => object(
                 json!({
                     "repo": repo_schema(),
-                    "id": { "type": "string", "description": "The run's id." },
+                    "id": { "type": "string", "description": "The run's id. Not needed with `job`." },
                     "failed_only": { "type": "boolean", "description": "Only the jobs that did not succeed, and those that need them." },
+                    "job": { "type": "string", "description": "One job to run again, by its id in the latest attempt, with the jobs that need it." },
+                    "debug": { "type": "boolean", "description": "Run the new attempt with debug logging: RUNNER_DEBUG=1, and ACTIONS_STEP_DEBUG and ACTIONS_RUNNER_DEBUG set to true." },
+                    "enable_debug_logging": { "type": "boolean", "description": "The same as `debug`, by GitHub's name for it." },
                 }),
-                &["repo", "id"],
+                &["repo"],
             ),
             Op::UpdateWorkflow => object(
                 json!({
@@ -4618,7 +4631,9 @@ impl Op {
                 )
                 .await
             }
-            Op::GetWorkflowRun => pass(actions, "run", &json!({ "repo": repo, "viewer": viewer, "id": text(input, "id") })).await,
+            Op::GetWorkflowRun => {
+                pass(actions, "run", &json!({ "repo": repo, "viewer": viewer, "id": text(input, "id"), "attempt": integer(input, "attempt") })).await
+            }
             Op::GetJobLogs => {
                 pass(
                     actions,
@@ -4650,6 +4665,9 @@ impl Op {
                         "repo": repo,
                         "id": text(input, "id"),
                         "failed_only": input["failed_only"].as_bool() == Some(true),
+                        "job": optional_text(input, "job"),
+                        "debug": input["debug"].as_bool() == Some(true) || input["enable_debug_logging"].as_bool() == Some(true),
+                        "force": input["force"].as_bool() == Some(true),
                     }),
                 )
                 .await
