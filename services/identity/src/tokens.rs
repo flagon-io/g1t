@@ -9,6 +9,7 @@
 use g1t_contracts::identity::*;
 use g1t_contracts::scopes::{FULL_ACCESS, JobToken, Scope, TokenAccess, parse_scopes, scopes_text};
 use g1t_contracts::time::{SQL_NOW, rfc3339};
+use g1t_contracts::tokens::TokenKind;
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, Viewer, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -23,12 +24,15 @@ const LAST_USED_RESOLUTION_MS: u64 = 5 * 60 * 1000;
 const MAX_TOKENS_PER_WORKSPACE: usize = 50;
 const WORKSPACE_ID_PREFIX: &str = "wsp_";
 
-const TOKEN_COLUMNS: &str = "access_tokens.id, access_tokens.name, access_tokens.created_at,
+pub(crate) const TOKEN_COLUMNS: &str = "access_tokens.id, access_tokens.name, access_tokens.created_at,
   access_tokens.last_used_at, users.username AS created_by, access_tokens.scopes,
-  access_tokens.expires_at";
+  access_tokens.expires_at, access_tokens.kind, access_tokens.description, access_tokens.admin,
+  access_tokens.workspace_id, access_tokens.repository_selection, access_tokens.permissions,
+  access_tokens.status, access_tokens.review_reason,
+  (SELECT slug FROM workspaces WHERE workspaces.id = access_tokens.owner_workspace_id) AS owner_workspace";
 
 /// Who a new token belongs to.
-enum Owner<'a> {
+pub(crate) enum Owner<'a> {
     User(&'a str),
     Workspace {
         id: &'a str,
@@ -37,7 +41,7 @@ enum Owner<'a> {
 }
 
 #[derive(Deserialize)]
-struct TokenRow {
+pub(crate) struct TokenRow {
     id: String,
     name: String,
     created_at: String,
@@ -45,6 +49,10 @@ struct TokenRow {
     created_by: Option<String>,
     scopes: Option<String>,
     expires_at: Option<String>,
+    /// What a fine-grained token, and a workspace's, add (migration 0034;
+    /// see token_reach.rs).
+    #[serde(flatten)]
+    pub(crate) more: crate::token_reach::TokenRowMore,
 }
 
 /// What a token or grant may do, as it is to be stored. A token reaches
@@ -112,6 +120,11 @@ struct Presented {
     job_run_id: Option<String>,
     #[serde(default)]
     job_pulls: Option<u32>,
+    /// A fine-grained token's resource owner and status, a workspace
+    /// token's Admin, and when it was made and expires, for the rules of
+    /// the workspaces it reaches (token_reach.rs).
+    #[serde(flatten)]
+    facts: crate::token_reach::Facts,
 }
 
 #[derive(Deserialize)]
@@ -133,7 +146,8 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name,
-                   repo, job_id, job_run_id, job_pulls
+                   repo, job_id, job_run_id, job_pulls, created_at, expires_at, kind,
+                   owner_workspace_id, repository_selection, status, admin
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
@@ -189,14 +203,19 @@ impl Identity {
                     }),
                     _ => None,
                 },
+                ..TokenAccess::default()
             }));
+            // What it reaches: a fine-grained token's resource owner and
+            // repositories, the workspaces whose rules let it in, a
+            // workspace token's role.
+            self.apply_reach(user, &presented.id, presented.user_id.is_some(), &presented.facts).await?;
         }
         Ok(viewer)
     }
 
-    fn info(row: TokenRow) -> AccessToken {
+    pub(crate) fn info(row: TokenRow) -> AccessToken {
         let (scopes, legacy) = stored_scopes(row.scopes.as_deref());
-        AccessToken {
+        let mut info = AccessToken {
             id: row.id,
             name: row.name,
             created_at: row.created_at,
@@ -205,7 +224,10 @@ impl Identity {
             scopes,
             legacy,
             expires_at: row.expires_at,
-        }
+            ..AccessToken::default()
+        };
+        row.more.describe(&mut info);
+        info
     }
 
     /// A workspace as the actor behind one of its own tokens. It can do
@@ -246,7 +268,7 @@ impl Identity {
         Ok(())
     }
 
-    async fn mint(
+    pub(crate) async fn mint(
         &self,
         owner: Owner<'_>,
         name: &str,
@@ -277,6 +299,8 @@ impl Identity {
                 .map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
             expires_at: expires_at.clone(),
+            kind: if workspace_id.is_some() { TokenKind::Workspace } else { TokenKind::Classic },
+            ..AccessToken::default()
         };
         self.db
             .prepare(
@@ -348,7 +372,7 @@ impl Identity {
             .db
             .prepare(
                 "UPDATE access_tokens SET scopes = ?
-                 WHERE id = ? AND user_id = ? AND agent_scope IS NULL
+                 WHERE id = ? AND user_id = ? AND agent_scope IS NULL AND kind IS NULL
                  RETURNING id",
             )
             .bind(&[
@@ -418,8 +442,10 @@ impl Identity {
     }
 
     pub async fn list_access_tokens(&self, a: UserArgs) -> Result<Vec<AccessToken>> {
-        self.tokens_where("access_tokens.user_id = ?", &a.user.id)
-            .await
+        let mut tokens = self.tokens_where("access_tokens.user_id = ?", &a.user.id).await?;
+        // A fine-grained token's selected repositories, by name.
+        self.name_repositories(&mut tokens, &Some(a.user)).await?;
+        Ok(tokens)
     }
 
     /// The tokens a person or workspace made on purpose: those that do not
@@ -516,6 +542,15 @@ impl Identity {
             )
             .await?;
         created.info.created_by = Some(a.actor.username);
+        // Admin on the workspace's repositories, only when the owner says.
+        if a.admin {
+            self.db
+                .prepare("UPDATE access_tokens SET admin = 1 WHERE id = ?")
+                .bind(&[created.info.id.as_str().into()])?
+                .run()
+                .await?;
+            created.info.admin = true;
+        }
         Ok(Outcome::Ok(created))
     }
 

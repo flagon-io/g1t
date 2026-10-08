@@ -17,7 +17,7 @@ pub struct SshKey {
     pub created_at: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccessToken {
     pub id: String,
@@ -38,6 +38,19 @@ pub struct AccessToken {
     /// RFC 3339. Null: it does not expire.
     #[serde(default)]
     pub expires_at: Option<String>,
+    /// Classic, fine-grained, or a workspace's own.
+    #[serde(default)]
+    pub kind: crate::tokens::TokenKind,
+    /// What it is for, as its owner wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// A fine-grained token's resource owner, repositories, permissions and
+    /// status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fine_grained: Option<crate::tokens::FineGrainedDetails>,
+    /// A workspace's own token an owner gave Admin when making it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub admin: bool,
 }
 
 /// `sign_in`: verifies a username, or any confirmed email address of the
@@ -699,6 +712,10 @@ pub struct CreateWorkspaceTokenArgs {
     /// listed with the workspace's tokens either way. Null: no expiry.
     #[serde(default)]
     pub ttl_seconds: Option<u64>,
+    /// Admin on the workspace's repositories, rather than Write: given by
+    /// the owner on purpose, when making it.
+    #[serde(default)]
+    pub admin: bool,
 }
 
 /// `remove_workspace_token`: owners only. Returns `Outcome<bool>`.

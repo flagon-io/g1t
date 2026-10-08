@@ -37,6 +37,7 @@ pub mod security;
 pub mod teams;
 pub mod security_suite;
 pub mod time;
+pub mod tokens;
 pub mod updates;
 pub mod webhooks;
 pub mod work;

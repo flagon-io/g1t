@@ -24,6 +24,7 @@ mod run_credentials;
 mod security;
 mod teams;
 mod throttle;
+mod token_reach;
 mod tokens;
 mod workspaces;
 
@@ -887,6 +888,14 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_access_tokens" => reply(&identity.list_access_tokens(args(body)?).await?),
         "create_access_token" => reply(&identity.create_access_token(args(body)?).await?),
         "update_access_token" => reply(&identity.update_access_token(args(body)?).await?),
+        // Fine-grained tokens and workspaces' rules for tokens; see token_reach.rs.
+        "create_fine_grained_token" => reply(&identity.create_fine_grained_token(args(body)?).await?),
+        "update_fine_grained_token" => reply(&identity.update_fine_grained_token(args(body)?).await?),
+        "get_token_policy" => reply(&identity.get_token_policy(args(body)?).await?),
+        "set_token_policy" => reply(&identity.set_token_policy(args(body)?).await?),
+        "list_member_tokens" => reply(&identity.list_member_tokens(args(body)?).await?),
+        "review_token_request" => reply(&identity.review_token_request(args(body)?).await?),
+        "revoke_member_token" => reply(&identity.revoke_member_token(args(body)?).await?),
         "create_agent_token" => reply(&identity.create_agent_token(args(body)?).await?),
         "agent_scope" => reply(&identity.agent_scope(args(body)?).await?),
         "create_run_credential" => reply(&identity.create_run_credential(args(body)?).await?),

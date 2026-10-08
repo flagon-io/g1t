@@ -754,6 +754,12 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
     if let Err(error) = resolve(db, events).await {
         worker::console_error!("inbox: agent threads not closed: {error}");
     }
+    // A workspace's own notices, about no repository (workspace_notices).
+    for event in events.iter().filter(|event| WORKSPACE_EVENTS.contains(&event.kind.as_str())) {
+        if let Err(error) = deliver_workspace(db, event).await {
+            worker::console_error!("inbox: {} {} not delivered: {error}", event.kind, event.id);
+        }
+    }
     let wanted: Vec<(&Event, Wanted)> = events
         .iter()
         .filter_map(|event| wants(event).map(|wanted| (event, wanted)))
@@ -799,6 +805,92 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
     if let Err(error) = email(db, sources.identity, written).await {
         worker::console_error!("inbox: emails not sent: {error}");
     }
+}
+
+/// Events about a workspace rather than a repository, each naming who to
+/// tell (`notify`), what to say (`title`, `body`) and where it is (`link`):
+/// identity's personal access token approvals.
+///
+/// | Event | Who | Reason | Severity |
+/// | --- | --- | --- | --- |
+/// | `token.approval_requested` | the workspace's owners | review_requested | warning |
+/// | `token.approval_reviewed` | the token's owner | author | info |
+pub const WORKSPACE_EVENTS: [&str; 2] = ["token.approval_requested", "token.approval_reviewed"];
+
+/// The notices a workspace event calls for, and the thread they go to.
+pub fn workspace_notices(event: &Event, actor: Option<&str>) -> (String, Vec<Notice>) {
+    let data = &event.data;
+    let text = |key: &str| data[key].as_str().unwrap_or_default().to_owned();
+    let (reason, severity) = match event.kind.as_str() {
+        "token.approval_requested" => (Reason::ReviewRequested, Severity::Warning),
+        _ => (Reason::Author, Severity::Info),
+    };
+    let thread = format!("workspace:{}/token/{}", text("workspace"), text("tokenId"));
+    let notices = names(data, "notify")
+        .into_iter()
+        .map(|name| name.to_lowercase())
+        .filter(|name| actor.is_none_or(|actor| !actor.eq_ignore_ascii_case(name)) && !is_g1t(name))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(|username| Notice { username, reason, severity, title: text("title"), body: text("body") })
+        .collect();
+    (thread, notices)
+}
+
+/// Writes a workspace event's notices: a thread each, with no repository.
+async fn deliver_workspace(db: &D1Database, event: &Event) -> Result<()> {
+    let (thread, told) = workspace_notices(event, None);
+    if told.is_empty() {
+        return Ok(());
+    }
+    let now = now_ms();
+    let workspace = event.data["workspace"].as_str().unwrap_or_default().to_lowercase();
+    let link = event.data["link"].as_str().filter(|link| link.starts_with('/'));
+    let mut statements = Vec::new();
+    for notice in &told {
+        let username = notice.username.as_str();
+        statements.push(db.prepare(BUMP).bind(&[
+            new_id("ntf", now).into(),
+            username.into(),
+            thread.as_str().into(),
+            event.id.as_str().into(),
+            event.kind.as_str().into(),
+            notice.reason.as_str().into(),
+            notice.severity.as_str().into(),
+            notice.title.as_str().into(),
+            notice.body.as_str().into(),
+            workspace.as_str().into(),
+            JsValue::NULL,
+            JsValue::NULL,
+            JsValue::NULL,
+            JsValue::NULL,
+            JsValue::NULL,
+            link.map_or(JsValue::NULL, JsValue::from),
+            JsValue::NULL,
+            event.time.as_str().into(),
+            new_id("ntf", now).into(),
+        ])?);
+        statements.push(
+            db.prepare(
+                "INSERT OR IGNORE INTO inbox_activity (id, item_id, username, event_id, event, reason, severity, title, body, actor, created_at)
+                 SELECT ?1, id, ?2, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10 FROM inbox_items WHERE username = ?2 AND thread = ?3",
+            )
+            .bind(&[
+                new_id("ntf", now).into(),
+                username.into(),
+                thread.as_str().into(),
+                event.id.as_str().into(),
+                event.kind.as_str().into(),
+                notice.reason.as_str().into(),
+                notice.severity.as_str().into(),
+                notice.title.as_str().into(),
+                notice.body.as_str().into(),
+                event.time.as_str().into(),
+            ])?,
+        );
+    }
+    db.batch(statements).await?;
+    Ok(())
 }
 
 /// Closes what an agent was waiting on a person for once it is over.
@@ -2171,5 +2263,26 @@ mod tests {
             assert!(BUMP.contains(&format!("?{at}")), "?{at}");
         }
         assert!(!BUMP.contains("?20"));
+    }
+
+    #[test]
+    fn token_approvals_tell_the_people_named_about_no_repository() {
+        let mut asked = event(
+            "token.approval_requested",
+            Some("usr_ana"),
+            json!({ "workspace": "acme", "tokenId": "tok_1", "notify": ["Bo", "cy", "bo", "g1t"], "title": "ana asks", "body": "ci: contents: write", "link": "/acme/-/settings/tokens" }),
+        );
+        asked.repo_id = None;
+        let (thread, told) = workspace_notices(&asked, None);
+        assert_eq!(thread, "workspace:acme/token/tok_1");
+        let mut names: Vec<&str> = told.iter().map(|notice| notice.username.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["bo", "cy"], "each once, lowercased, never g1t");
+        assert!(told.iter().all(|notice| notice.reason == Reason::ReviewRequested && notice.severity == Severity::Warning));
+        assert!(wants(&asked).is_none(), "about no repository");
+        let reviewed = event("token.approval_reviewed", None, json!({ "workspace": "acme", "tokenId": "tok_1", "notify": ["ana"], "title": "approved" }));
+        let (_, told) = workspace_notices(&reviewed, None);
+        assert_eq!(told[0].reason, Reason::Author);
+        assert!(WORKSPACE_EVENTS.contains(&"token.approval_reviewed"));
     }
 }

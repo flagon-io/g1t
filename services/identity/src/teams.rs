@@ -199,10 +199,14 @@ pub fn nesting_problem(
     None
 }
 
-/// The workspace role the viewer has, counting a workspace's own token and
-/// g1t acting in it as owners.
+/// The workspace role the viewer has, counting g1t acting in it, and a
+/// workspace's own token an owner gave Admin, as owners. Any other
+/// workspace token is a member.
 fn role_of(viewer: &User, workspace: &str) -> Option<Role> {
     if matches!(viewer.kind, PrincipalKind::Workspace | PrincipalKind::System) && viewer.is_member(workspace) {
+        if viewer.kind == PrincipalKind::Workspace && viewer.token.as_deref().is_some_and(|token| !token.admin) {
+            return Some(Role::Member);
+        }
         return Some(Role::Owner);
     }
     viewer.role_in(workspace)
@@ -1606,7 +1610,11 @@ mod tests {
             workspaces: vec![g1t_contracts::Membership::member("acme")],
             ..User::default()
         };
-        assert_eq!(role_of(&token, "acme"), Some(Role::Owner));
+        assert_eq!(role_of(&token, "acme"), Some(Role::Owner), "the workspace itself, with no token: a service");
         assert_eq!(role_of(&token, "globex"), None);
+        let mut writer = User { token: Some(Box::new(g1t_contracts::scopes::TokenAccess::full())), ..token.clone() };
+        assert_eq!(role_of(&writer, "acme"), Some(Role::Member), "a workspace token is a member unless given Admin");
+        writer.token.as_mut().unwrap().admin = true;
+        assert_eq!(role_of(&writer, "acme"), Some(Role::Owner));
     }
 }
