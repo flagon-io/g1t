@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, KanbanSquare, KeyRound, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Sparkles, Ticket, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -471,7 +471,7 @@ function AccountMenu({ user }: { user: User }) {
  * still open these.
  */
 const SETTINGS_PAGE =
-  /^\/([^/]+)\/-\/(settings|repositories|tokens|guardrails|secrets|runners|integrations|webhooks|billing|audit)(\/|$)/;
+  /^\/([^/]+)\/-\/(settings|repositories|tokens|rules|guardrails|secrets|runners|integrations|webhooks|billing|audit)(\/|$)/;
 /** A project's settings pages, which the project's menu drills into. */
 const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 
@@ -821,6 +821,9 @@ function SettingsMenu({ slug, owner }: { slug: string; owner: boolean }) {
         <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
           Access tokens
         </SidebarLink>
+        <SidebarLink to={`/${slug}/-/rules`} icon={<Scale size={15} />}>
+          Rules
+        </SidebarLink>
       </div>
       <SidebarGroup title="Agents and runs" className="mt-3">
         <SidebarLink to={`/${slug}/-/guardrails`} icon={<Gauge size={15} />}>
@@ -1040,6 +1043,11 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
         {shows("branches") && (
           <SidebarLink to={`${base}/settings/branches`} icon={<GitBranch size={15} />}>
             Branches and merging
+          </SidebarLink>
+        )}
+        {shows("rules") && (
+          <SidebarLink to={`${base}/settings/rules`} icon={<Scale size={15} />}>
+            Rules
           </SidebarLink>
         )}
         {shows("secrets") && (
@@ -1334,6 +1342,7 @@ const SECTIONS: Record<string, string> = {
   webhooks: "Webhooks",
   domains: "Domains",
   guardrails: "Guardrails",
+  rules: "Rules",
   audit: "Audit log",
   tree: "Files",
   blob: "Files",

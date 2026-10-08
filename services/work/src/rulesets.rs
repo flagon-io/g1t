@@ -209,8 +209,16 @@ pub(crate) fn overlay(stored: RepoSettings, requirements: &Requirements, default
 }
 
 /// What the merge box shows: each rule not met, and how to meet it.
-pub(crate) fn merge_rules(judged: &[Judged], requirements: &Requirements) -> MergeRules {
-    let mut out = MergeRules { merge_queue: requirements.merge_queue.is_some(), ..MergeRules::default() };
+/// `default_branch`: whether it merges into the default branch, where the
+/// merge queue lands.
+pub(crate) fn merge_rules(judged: &[Judged], requirements: &Requirements, default_branch: bool) -> MergeRules {
+    let mut out = MergeRules {
+        merge_queue: requirements.merge_queue.is_some() && default_branch,
+        required_approvals: requirements.required_approvals,
+        strict: requirements.strict,
+        allow_bypass_on_merge: requirements.allow_bypass_on_merge,
+        ..MergeRules::default()
+    };
     for one in judged {
         match (one.enforcement, one.verdict()) {
             (Enforcement::Active, Verdict::Fail) => out.unmet.extend(one.violations.iter().cloned()),

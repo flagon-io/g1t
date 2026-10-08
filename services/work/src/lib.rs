@@ -1454,7 +1454,7 @@ impl Work {
         let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
         Ok(Outcome::Ok(PullDetail {
             required_checks: required_checks(&settings.required_checks, &statuses),
-            rules: gate.map(|gate| rulesets::merge_rules(&gate.judged, &gate.requirements)),
+            rules: gate.map(|gate| rulesets::merge_rules(&gate.judged, &gate.requirements, pull.base_branch(&repo.default_branch) == repo.default_branch)),
             code_owners,
             comments,
             checks,

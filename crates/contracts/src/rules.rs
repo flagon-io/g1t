@@ -1222,6 +1222,15 @@ pub struct MergeRules {
     pub rulesets: Vec<RulesetSummary>,
     /// Whether merging joins the merge queue.
     pub merge_queue: bool,
+    /// What the active rules ask, as they stack: the approvals a merge
+    /// needs, whether it must be up to date, and whether a merger may merge
+    /// past required checks that have not passed.
+    #[serde(default)]
+    pub required_approvals: u32,
+    #[serde(default)]
+    pub strict: bool,
+    #[serde(default)]
+    pub allow_bypass_on_merge: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

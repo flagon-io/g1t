@@ -395,6 +395,14 @@ export function workClient(service: ServiceBinding): WorkApi {
     catchUpJob: (pullId) => call("catch_up_job", { pullId }),
     wakeForMessages: (pullId) => call("wake_for_messages", { pullId }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
+    // Rulesets travel in snake_case (rules.ts).
+    listRulesets: (owner, viewer, includeParents = false) =>
+      call("list_rulesets", { viewer, ...owner, include_parents: includeParents }),
+    getRuleset: (owner, id, viewer) => call("get_ruleset", { viewer, ...owner, id }),
+    saveRuleset: (actor, owner, ruleset, id) => call("save_ruleset", { actor, ...owner, id: id ?? null, ruleset }),
+    deleteRuleset: (actor, owner, id) => call("delete_ruleset", { actor, ...owner, id }),
+    effectiveRules: (repo, name, viewer, target = "branch") => call("effective_rules", { viewer, repo, name, target }),
+    ruleEvaluations: (owner, viewer, filter = {}) => call("rule_evaluations", { viewer, ...owner, ...filter }),
     seenChecks: (repo, viewer) => call("seen_checks", { repo, viewer }),
     codeownersErrors: (repo, viewer, ref) => call("codeowners_errors", { repo, viewer, ref: ref ?? null }),
     updateSettings: (actor, repo, settings) =>
