@@ -54,6 +54,15 @@ with git.
 git push origin :refs/tags/v1.2.0
 ```
 
+## Workflows and webhooks
+
+Each change to a release starts the repository's workflows that run
+`on: release`, at the commit its tag names, and is sent to webhooks as
+`release.created`, `release.published` and the rest. See
+[releases in Actions](/guides/actions/#releases) for which change is which
+activity type, and [webhooks](/guides/webhooks/) for what each event
+carries. A release a workflow job's own token makes starts no workflows.
+
 ## From the API and MCP
 
 | Route | MCP | What it does |

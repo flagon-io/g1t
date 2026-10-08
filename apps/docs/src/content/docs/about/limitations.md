@@ -246,8 +246,6 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 
 ### Workflow features not supported yet
 
-- Reusable workflows from another repository. Ones in the same repository
-  work.
 - Actions that upload or download artifacts with the toolkit's artifact
   library themselves. The library refuses to run against any server but
   github.com. `actions/upload-artifact`, `actions/download-artifact` and

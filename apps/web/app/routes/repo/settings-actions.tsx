@@ -1,7 +1,7 @@
 import { Form, Link } from "react-router";
 
-import { APPROVAL_POLICIES } from "@g1t/contracts";
-import type { ActionsSettingsChange, ApprovalPolicy } from "@g1t/contracts";
+import { ACTIONS_ACCESS_LEVELS, APPROVAL_POLICIES } from "@g1t/contracts";
+import type { ActionsAccessLevel, ActionsSettingsChange, ApprovalPolicy } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-actions";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
@@ -37,6 +37,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // Only where the workspace allows it is the box there to send.
   if (form.has("pullRequestsShown")) change.canApprovePullRequests = form.get("canApprovePullRequests") === "on";
   if ((APPROVAL_POLICIES as readonly string[]).includes(policy)) change.approvalPolicy = policy as ApprovalPolicy;
+  const access = String(form.get("accessLevel"));
+  if ((ACTIONS_ACCESS_LEVELS as readonly string[]).includes(access)) change.accessLevel = access as ActionsAccessLevel;
   const saved = await actions.setActionsSettings(user, { namespace: params.owner, name: params.repo }, change);
   return saved.ok ? { saved: true, error: null } : { saved: false, error: saved.error.message };
 }
@@ -153,6 +155,30 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
             </Link>{" "}
             to make deployments wait for a review.
           </p>
+        </Section>
+
+        <Section
+          title="Access"
+          about={
+            <>
+              Which other repositories' workflows may use this repository's actions (
+              <code className="font-mono text-xs">uses: {params.owner}/{params.repo}@main</code>) and reusable workflows while it
+              is private. A public repository's actions and workflows are anyone's.
+            </>
+          }
+        >
+          <RadioGroup name="accessLevel" defaultValue={settings.accessLevel ?? "none"} className="gap-3">
+            <RadioOption
+              value="none"
+              label="Not accessible"
+              description="Only this repository's own workflows use them. The default."
+            />
+            <RadioOption
+              value="organization"
+              label={`Accessible from repositories in ${params.owner}`}
+              description={`Workflows in ${params.owner}'s other private repositories may use them. A public repository's workflows never can, since their logs are public.`}
+            />
+          </RadioGroup>
         </Section>
 
         <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
