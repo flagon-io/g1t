@@ -3,7 +3,7 @@
  * sets a `style` attribute: the content security policy allows no inline
  * styles, so sizes and colours that vary are drawn as SVG attributes.
  */
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Info } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { Link, type LinkProps, useRouteLoaderData } from "react-router";
 
@@ -53,8 +53,24 @@ export function Textarea({ className = "", ...props }: ComponentProps<"textarea"
   return <textarea {...NOT_A_CREDENTIAL} {...props} className={`${CONTROL} ${className}`} />;
 }
 
+/** Classes that size or place the control, which belong on its wrapper. */
+const LAYOUT = /^(?:[a-z0-9]+:)*(?:w-|min-w-|max-w-|flex-|shrink|grow|basis-|self-|col-|row-|order-|m[trblxy]?-)/;
+
+/**
+ * A native select drawn as shadcn's NativeSelect: the browser's own arrow
+ * hidden, a chevron of ours in its place. Native because sudo ships no
+ * JavaScript, so it still opens, types to search and works on phones.
+ */
 export function Select({ className = "", ...props }: ComponentProps<"select">) {
-  return <select {...props} className={`${CONTROL} ${className}`} />;
+  const classes = className.split(/\s+/).filter(Boolean);
+  const outer = classes.filter((name) => LAYOUT.test(name)).join(" ");
+  const inner = classes.filter((name) => !LAYOUT.test(name)).join(" ");
+  return (
+    <span className={`relative block w-full ${outer}`}>
+      <select {...props} className={`${CONTROL} cursor-pointer appearance-none pr-9 ${inner}`} />
+      <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted" />
+    </span>
+  );
 }
 
 type Variant = "primary" | "quiet" | "danger" | "lavender";
