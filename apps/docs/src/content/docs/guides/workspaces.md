@@ -732,7 +732,7 @@ your address, commit with your noreply address:
 | One of your confirmed addresses, or your noreply address | You |
 | An address added to an account but not confirmed | The name in the commit |
 | An address no account has | The name in the commit, with a plain picture, no link and no card |
-| A deleted account's noreply address | `ghost` |
+| A deleted account's noreply address, or any of its confirmed addresses during the 30 days it can be restored | `ghost` |
 | g1t's own (`g1t@users.noreply.g1t.sh`) | `g1t` |
 
 `Co-authored-by` trailers are matched the same way, and their pictures sit

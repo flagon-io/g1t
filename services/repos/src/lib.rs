@@ -2686,6 +2686,16 @@ async fn handle_events(batch: &MessageBatch<Event>, env: &Env, registry: &Regist
             }
             continue;
         }
+        // An account deleted or restored: kept contributors that name it
+        // (or ghost, for a restore) are worked out again, so it shows as
+        // ghost for its 30 days, and as itself again if restored.
+        if let Some(needle) = stats::shown_differently(&event.kind, &event.data) {
+            let db = env.d1("DB")?;
+            if let Err(error) = stats::rework_naming(&db, &needle).await {
+                worker::console_error!("{} {}: contributors not marked to be counted again: {error}", event.kind, event.id);
+            }
+            continue;
+        }
         if event.kind != "workspace.renamed" {
             continue;
         }

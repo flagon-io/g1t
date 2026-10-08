@@ -1042,7 +1042,7 @@ At once, when you delete it:
 | Access tokens, SSH keys and applications | Your personal access tokens (classic and fine-grained), SSH keys, connected applications and sign-ins from a tool stop working and are removed, and so do the deploy keys you added to repositories. A workspace's own tokens are not affected, even ones you made. |
 | Workspaces, teams and repositories | You leave every workspace and team, and lose the roles you were given on single repositories. Repository invitations waiting for you are withdrawn, and invites you made that nobody used are revoked. |
 | Your profile | `g1t.sh/<username>` answers 404, and you drop out of search. Nobody can add you to a workspace, team or repository, and nothing more is emailed to you. |
-| What you wrote | Stays where it is, under your username for now. |
+| What you wrote | Stays where it is, under your username for now. Commits made with your confirmed or noreply addresses show as `ghost`, and as yours again if your account is restored. |
 | Your username | Held for your account. Nobody else can take it. |
 
 Within 30 days, support can restore it: write to support@g1t.sh from one
