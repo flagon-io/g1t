@@ -600,6 +600,7 @@ more runs, and masking missed multi-line and encoded secrets. Now:
   annotations masked.
 - A job's own `concurrency:` is honoured, `create` runs on new branches and
   tags, and `on: delete` says plainly that it never runs yet.
+
 ### Docker in workflow jobs (built 2026-10-08)
 
 > **2026-10-08:** "Why didn't we give CI docker then? We need GitHub
