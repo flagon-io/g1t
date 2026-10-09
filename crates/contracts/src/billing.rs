@@ -3313,6 +3313,10 @@ pub struct OverallMargin {
     /// given, never a leak.
     #[serde(default)]
     pub given_reset_micros: i64,
+    /// What workspaces were charged while payments were not live (Stripe's
+    /// test mode): no real money came in, so it is given, never money in.
+    #[serde(default)]
+    pub given_unpaid_micros: i64,
     /// Credits over the range: given (every kind), spent on usage, and
     /// refunds' money given back.
     #[serde(default)]
@@ -3341,6 +3345,16 @@ pub struct OverallMargin {
     /// they pay Stripe's fee, so they are not revenue either.
     #[serde(default)]
     pub card_fees_micros: i64,
+    /// Cloudflare's subscriptions over the range: each day's share of the
+    /// billing cycle it is in (a month's price over the cycle's days), the
+    /// same accrual g1t's own spend uses for the calendar month.
+    #[serde(default)]
+    pub subscriptions_micros: i64,
+    /// What AI Gateway priced g1t's own provider traffic at over the range
+    /// (Cloudflare-billed requests left out): what the providers bill, to
+    /// set beside `models_cost_micros`, the ledger's figure.
+    #[serde(default)]
+    pub gateway_cost_micros: i64,
 }
 
 /// A count, cost or leak that does not add up.
@@ -3543,6 +3557,77 @@ pub struct CostsReport {
     /// g1t's own spend against its two caps.
     #[serde(default)]
     pub caps: SpendCaps,
+    /// Cloudflare's current billing cycle: its usage cost so far, by meter,
+    /// and where it is heading. Absent until the bill has been read.
+    #[serde(default)]
+    pub cycle: Option<CloudflareCycle>,
+    /// The last read of Cloudflare's billable usage: what came back.
+    #[serde(default)]
+    pub bill_read: Option<BillRead>,
+    /// Of the range's cost, what no workspace's usage could carry (a day
+    /// with no usage at all): running g1t, attributed to no one. The
+    /// workspaces' costs and this add up to the cost.
+    #[serde(default)]
+    pub unattributed_micros: i64,
+}
+
+/// Cloudflare's billing cycle (monthly, from the day the account's
+/// subscription renews), as Cloudflare's Billable usage page shows it.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudflareCycle {
+    /// The cycle's first and last days, YYYY-MM-DD, UTC.
+    pub start: String,
+    pub end: String,
+    pub days: u32,
+    /// Days from its start to today, today included.
+    pub days_elapsed: u32,
+    /// Usage cost so far, after the included allowances.
+    pub usage_micros: i64,
+    /// `usage_micros` over the days elapsed, times the cycle's days.
+    pub projected_micros: i64,
+    pub average_daily_micros: i64,
+    /// Cloudflare's subscriptions for the cycle (not on the usage bill).
+    pub subscriptions_micros: i64,
+    pub meters: Vec<CycleMeter>,
+}
+
+/// One of Cloudflare's meters over the cycle so far.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CycleMeter {
+    pub product: String,
+    pub meter: String,
+    pub raw_name: String,
+    pub unit: String,
+    /// What was used.
+    pub quantity: f64,
+    /// What the cycle includes, in the same unit; None without a list price.
+    pub included: Option<f64>,
+    /// Past the included amount, as Cloudflare bills it.
+    pub billable_quantity: f64,
+    pub cost_micros: i64,
+    /// `cloudflare` (the cost Cloudflare put on its lines), `list` (the
+    /// list price past the included amount, while Cloudflare's lines carry
+    /// no cost), or `none` (no list price known: costed at $0).
+    pub basis: String,
+}
+
+/// What the last read of Cloudflare's billable usage got back.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillRead {
+    pub read_at: String,
+    pub since: String,
+    pub until: String,
+    pub rows: u32,
+    pub pages: u32,
+    /// Rows with a consumed quantity (`ConsumedQuantity`), and rows with
+    /// only a pricing quantity.
+    pub consumed_rows: u32,
+    pub pricing_only_rows: u32,
+    /// Rows Cloudflare put a cost on.
+    pub costed_rows: u32,
 }
 
 /// What g1t itself pays for, against its caps (billing's `budget`): the
@@ -3595,6 +3680,10 @@ pub struct SpendCaps {
     /// Each subscription, when read from Cloudflare.
     #[serde(default)]
     pub fixed_items: Vec<FixedCost>,
+    /// Of `fixed_monthly_micros`, this calendar month's days so far: each
+    /// day's share of the billing cycle it is in, today included.
+    #[serde(default)]
+    pub fixed_month_micros: i64,
     /// Money in this month, through the last reconciled day.
     pub revenue_micros: i64,
     /// Of this month's buckets, what was spent on workspaces whose billing

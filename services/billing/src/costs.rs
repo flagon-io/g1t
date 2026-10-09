@@ -20,9 +20,12 @@
 //!   what g1t counted (`margin`).
 //!
 //! Each becomes cost lines in `cost_lines`, one per (day, source,
-//! product, meter), upserted, so reading a day again replaces it. The
-//! first run reads the last 31 days; after that the last few, since
-//! Cloudflare restates recent days as usage settles.
+//! product, meter), upserted, so reading a day again replaces it. The bill
+//! is read over whole billing cycles, every page of it, and priced over
+//! each cycle (`cycle`): its included amounts are the account's, once a
+//! cycle. The Artifacts events: the first run reads the last 31 days; after
+//! that the last few, since Cloudflare restates recent days as usage
+//! settles.
 //!
 //! The token is `CLOUDFLARE_BILLING_TOKEN` (Account: Billing Read and
 //! Account Analytics Read), or the keeper's `CLOUDFLARE_USAGE_TOKEN`,
@@ -52,7 +55,7 @@ pub(crate) const RESTATE_DAYS: u64 = 4;
 pub(crate) const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// One day of one meter of one Cloudflare product.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct CostLine {
     /// YYYY-MM-DD, UTC.
     pub day: String,
@@ -65,10 +68,20 @@ pub(crate) struct CostLine {
     pub meter: String,
     pub unit: String,
     pub quantity: f64,
-    /// What g1t pays, in dollars: contracted, billed, or list.
+    /// What g1t pays, in dollars: for billable usage, set over the billing
+    /// cycle by `cycle::price_lines` (Cloudflare's own cost where its lines
+    /// carry one, else the list price past the included amount).
     pub cost_usd: f64,
     /// The name as Cloudflare gave it, for people.
     pub raw_name: String,
+    /// What Cloudflare's line itself said it cost (contracted, billed or
+    /// effective; never list, which is before the included amounts).
+    pub billed_usd: f64,
+    /// Of `quantity`, what is past the cycle's included amount.
+    pub billable_quantity: f64,
+    /// Where `cost_usd` came from: `cycle::BASIS_*`, or empty for lines
+    /// that are not billable usage.
+    pub basis: &'static str,
 }
 
 /// `Workers for Platforms CPU ms (First 60M ms are included)` →
@@ -126,9 +139,22 @@ fn number(row: &Value, keys: &[&str]) -> Option<f64> {
         .find_map(|k| row[*k].as_f64().or_else(|| row[*k].as_str().and_then(|s| s.trim().parse().ok())))
 }
 
+/// FOCUS's consumed quantity: what was used, in the meter's own units.
+const CONSUMED: [&str; 2] = ["ConsumedQuantity", "consumed_quantity"];
+/// FOCUS's pricing quantity: in pricing units, which can be blocks.
+const PRICING: [&str; 2] = ["PricingQuantity", "pricing_quantity"];
+/// What a line cost g1t, as Cloudflare says: contracted, billed, effective.
+/// Never `ListCost`: that is before the included amounts.
+const COSTS: [&[&str]; 3] = [&["ContractedCost", "contracted_cost"], &["BilledCost", "billed_cost"], &["EffectiveCost", "effective_cost"]];
+
+fn billed(row: &Value) -> f64 {
+    COSTS.iter().find_map(|keys| number(row, keys).filter(|c| *c > 0.0)).unwrap_or(0.0)
+}
+
 /// One row of billable usage, read leniently: the API is new, and its
 /// field names are FOCUS's (in either case). None without a service or a
-/// day.
+/// day. The quantity is what was consumed (the included amounts are applied
+/// to it over the cycle, `cycle`), else the pricing quantity.
 pub(crate) fn line_from_focus(row: &Value) -> Option<CostLine> {
     let service = text(row, &["ServiceName", "service_name", "service"]);
     let day = text(row, &["ChargePeriodStart", "charge_period_start", "UsageDate", "date"]);
@@ -137,25 +163,76 @@ pub(crate) fn line_from_focus(row: &Value) -> Option<CostLine> {
     }
     let family = text(row, &["ServiceFamilyName", "service_family_name", "ServiceCategory"]);
     let (product, meter) = product_and_meter(family, service);
-    // What g1t pays: contracted, else billed, else list.
-    let cost = [
-        &["ContractedCost", "contracted_cost"][..],
-        &["BilledCost", "billed_cost"][..],
-        &["EffectiveCost", "effective_cost"][..],
-        &["ListCost", "list_cost"][..],
-    ]
-    .iter()
-    .find_map(|keys| number(row, keys).filter(|c| *c > 0.0))
-    .unwrap_or(0.0);
+    let consumed = number(row, &CONSUMED);
+    let billed = billed(row);
     Some(CostLine {
         day: day[..10].to_owned(),
         source: SOURCE_BILLABLE,
         product,
         meter,
-        unit: text(row, &["PricingUnit", "pricing_unit", "ConsumedUnit", "consumed_unit"]).to_owned(),
-        quantity: number(row, &["PricingQuantity", "pricing_quantity", "ConsumedQuantity", "consumed_quantity"]).unwrap_or(0.0),
-        cost_usd: cost,
+        unit: if consumed.is_some() {
+            text(row, &["ConsumedUnit", "consumed_unit", "PricingUnit", "pricing_unit"])
+        } else {
+            text(row, &["PricingUnit", "pricing_unit", "ConsumedUnit", "consumed_unit"])
+        }
+        .to_owned(),
+        quantity: consumed.or_else(|| number(row, &PRICING)).unwrap_or(0.0),
+        cost_usd: billed,
         raw_name: if family.is_empty() { service.to_owned() } else { format!("{family} / {service}") },
+        billed_usd: billed,
+        ..CostLine::default()
+    })
+}
+
+/// What a read of billable usage got back, to tell from sudo whether it
+/// was all of it and in which units.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct ReadStats {
+    pub rows: u32,
+    pub pages: u32,
+    pub consumed_rows: u32,
+    pub pricing_only_rows: u32,
+    pub costed_rows: u32,
+}
+
+pub(crate) fn read_stats(body: &Value, pages: u32) -> ReadStats {
+    let rows = body["result"].as_array().cloned().unwrap_or_default();
+    let mut stats = ReadStats { rows: rows.len() as u32, pages, ..ReadStats::default() };
+    for row in &rows {
+        if number(row, &CONSUMED).is_some() {
+            stats.consumed_rows += 1;
+        } else if number(row, &PRICING).is_some() {
+            stats.pricing_only_rows += 1;
+        }
+        if billed(row) > 0.0 {
+            stats.costed_rows += 1;
+        }
+    }
+    stats
+}
+
+/// The query for the page after `page` of a v4 answer: by cursor where it
+/// gives one, else by page number while `total_pages` says there are more.
+/// None when that was the last.
+pub(crate) fn next_page(body: &Value, page: u32) -> Option<String> {
+    let info = &body["result_info"];
+    if body["result"].as_array().is_some_and(Vec::is_empty) {
+        return None;
+    }
+    if let Some(cursor) = info["cursor"].as_str().filter(|c| !c.is_empty()) {
+        let encoded: String = cursor
+            .bytes()
+            .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+            .collect();
+        return Some(format!("cursor={encoded}"));
+    }
+    let total = info["total_pages"].as_u64().or_else(|| {
+        let (count, per) = (info["total_count"].as_u64()?, info["per_page"].as_u64().filter(|p| *p > 0)?);
+        Some(count.div_ceil(per))
+    })?;
+    (u64::from(page) < total).then(|| match info["per_page"].as_u64() {
+        Some(per) => format!("page={}&per_page={per}", page + 1),
+        None => format!("page={}", page + 1),
     })
 }
 
@@ -172,6 +249,8 @@ pub(crate) fn aggregate(lines: Vec<CostLine>) -> Vec<CostLine> {
             Some(existing) => {
                 existing.quantity += line.quantity;
                 existing.cost_usd += line.cost_usd;
+                existing.billed_usd += line.billed_usd;
+                existing.billable_quantity += line.billable_quantity;
             }
             None => out.push(line),
         }
@@ -232,6 +311,7 @@ pub(crate) fn lines_from_artifacts(body: &Value) -> std::result::Result<Vec<Cost
                     quantity: g["count"].as_f64().unwrap_or(0.0),
                     cost_usd: 0.0,
                     raw_name: format!("Artifacts / {kind}"),
+                    ..CostLine::default()
                 })
             })
             .collect(),
@@ -310,6 +390,7 @@ pub(crate) fn lines_from_gateway(body: &Value) -> std::result::Result<Vec<CostLi
             quantity,
             cost_usd,
             raw_name: format!("AI Gateway / {provider} / {model}{}", if wholesale { " (billed by Cloudflare)" } else { "" }),
+            ..CostLine::default()
         };
         lines.push(line(name.clone(), "requests", g["count"].as_f64().unwrap_or(0.0), sum("cost").max(0.0)));
         lines.push(line(format!("{name}{GATEWAY_TOKENS}"), "tokens", sum("tokensIn") + sum("tokensOut"), 0.0));
@@ -575,16 +656,20 @@ pub(crate) fn weighted(raw: &[(String, f64)], mapping: &BTreeMap<String, (f64, f
 }
 
 impl Billing {
-    /// Reads Cloudflare's bill for the days due (see `window`) into
-    /// `cost_lines`: the days read and how many lines. None without a
-    /// token. What could not be read is added to `problems`, and what AI
-    /// Gateway's analytics answered to `gateway`.
+    /// Reads Cloudflare's bill into `cost_lines`: the billable usage over
+    /// whole billing cycles (`cycle::bill_since`), every page of it, priced
+    /// over each cycle (`cycle::price_lines`) and replacing what was kept
+    /// for those days; Artifacts' events and AI Gateway's analytics for the
+    /// days due (`window`). Returns those days, how many lines, and the
+    /// first day of the bill's read. None without a token. What could not be
+    /// read is added to `problems`, and what AI Gateway's analytics answered
+    /// to `gateway`.
     pub(crate) async fn read_cloudflare(
         &self,
         keeper: &Keeper,
         problems: &mut Vec<String>,
         gateway: &mut GatewayRead,
-    ) -> Result<Option<(String, String, u32)>> {
+    ) -> Result<Option<(String, String, u32, String)>> {
         if !keeper.can_read_bill() {
             return Ok(None);
         }
@@ -602,8 +687,33 @@ impl Billing {
         let (since, until) = window(last.as_deref(), now_ms());
         let fetched_at = rfc3339(now_ms());
         let mut written = 0;
-        match keeper.billable_usage_body(&since, &until).await.map_err(|e| e.to_string()).and_then(|b| lines_from_billable(&b)) {
-            Ok(lines) => written += self.upsert_lines(&lines, &fetched_at).await?,
+        // The bill over whole cycles, every time: Cloudflare posts a day a
+        // day or two late and restates recent ones, and a cycle's included
+        // amounts can only be applied to all of its days.
+        let anchor = self.cycle_anchor().await?;
+        let bill_since = crate::cycle::bill_since(&until, anchor, RESTATE_DAYS as u32, last.is_none());
+        let read = keeper
+            .billable_usage_pages(&bill_since, &until)
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|(body, pages)| Ok((lines_from_billable(&body)?, read_stats(&body, pages))));
+        match read {
+            Ok((_, stats)) if stats.rows == 0 && last.is_some() => {
+                problems.push(format!("Cloudflare's billable usage answered no rows for {bill_since} to {until}; what was read before is kept."));
+                self.keep_read(&bill_since, &until, &stats, &fetched_at).await?;
+            }
+            Ok((mut lines, stats)) => {
+                crate::cycle::price_lines(&mut lines, anchor);
+                // The days read are replaced whole: a meter gone from a day
+                // must not keep its old line.
+                self.db
+                    .prepare("DELETE FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3")
+                    .bind(&[SOURCE_BILLABLE.into(), bill_since.as_str().into(), until.as_str().into()])?
+                    .run()
+                    .await?;
+                written += self.upsert_lines(&lines, &fetched_at).await?;
+                self.keep_read(&bill_since, &until, &stats, &fetched_at).await?;
+            }
             Err(error) => problems.push(format!("Cloudflare's billable usage could not be read: {error}")),
         }
         match keeper.graphql(artifacts_variables(keeper.account(), &since, &until)).await.map_err(|e| e.to_string()) {
@@ -653,7 +763,32 @@ impl Billing {
                 }
             }
         }
-        Ok(Some((since, until, written)))
+        Ok(Some((since, until, written, bill_since)))
+    }
+
+    /// What the last read of billable usage got back (`cost_reads`).
+    async fn keep_read(&self, since: &str, until: &str, stats: &ReadStats, read_at: &str) -> Result<()> {
+        self.db
+            .prepare(
+                "INSERT INTO cost_reads (source, read_at, since, until, rows, pages, consumed_rows, pricing_only_rows, costed_rows)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT (source) DO UPDATE SET read_at = ?2, since = ?3, until = ?4, rows = ?5, pages = ?6,
+                   consumed_rows = ?7, pricing_only_rows = ?8, costed_rows = ?9",
+            )
+            .bind(&[
+                SOURCE_BILLABLE.into(),
+                read_at.into(),
+                since.into(),
+                until.into(),
+                stats.rows.into(),
+                stats.pages.into(),
+                stats.consumed_rows.into(),
+                stats.pricing_only_rows.into(),
+                stats.costed_rows.into(),
+            ])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// Cloudflare's own per-workspace counts for the days, replacing what
@@ -705,10 +840,11 @@ impl Billing {
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT INTO cost_lines (day, source, product, meter, unit, quantity, cost_usd, raw_name, fetched_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                            "INSERT INTO cost_lines (day, source, product, meter, unit, quantity, cost_usd, raw_name, fetched_at, billed_usd, billable_quantity, basis)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                              ON CONFLICT (day, source, product, meter) DO UPDATE SET
-                               unit = ?5, quantity = ?6, cost_usd = ?7, raw_name = ?8, fetched_at = ?9",
+                               unit = ?5, quantity = ?6, cost_usd = ?7, raw_name = ?8, fetched_at = ?9,
+                               billed_usd = ?10, billable_quantity = ?11, basis = ?12",
                         )
                         .bind(&[
                             line.day.as_str().into(),
@@ -720,6 +856,9 @@ impl Billing {
                             line.cost_usd.into(),
                             line.raw_name.as_str().into(),
                             fetched_at.into(),
+                            line.billed_usd.into(),
+                            line.billable_quantity.into(),
+                            line.basis.into(),
                         ])?,
                 );
             }
@@ -983,11 +1122,47 @@ mod tests {
         assert!((artifacts.cost_usd - 4.5).abs() < 1e-9, "billed, not list: {}", artifacts.cost_usd);
         let wfp = lines.iter().find(|l| l.meter.starts_with("workers_for_platforms")).unwrap();
         assert_eq!(wfp.product, "workers");
-        // No billed cost: the list cost.
-        assert_eq!(wfp.cost_usd, 1.5);
+        // A list cost is before the included amounts: never what g1t pays.
+        // The cycle prices it (`cycle::price_lines`).
+        assert_eq!((wfp.cost_usd, wfp.billed_usd), (0.0, 0.0));
         let memory = lines.iter().find(|l| l.product == "containers").unwrap();
         assert_eq!((memory.day.as_str(), memory.quantity, memory.cost_usd), ("2026-10-03", 14_000.0, 0.0));
         assert!(lines_from_billable(&json!({ "success": false, "errors": [{ "code": 10000 }] })).is_err());
+    }
+
+    #[test]
+    fn the_quantity_is_what_was_consumed_not_the_pricing_blocks() {
+        // FOCUS: ConsumedQuantity in the meter's units; PricingQuantity in
+        // pricing units, which can be blocks of a million.
+        let row = json!({
+            "ChargePeriodStart": "2026-10-07T00:00:00Z",
+            "ServiceFamilyName": "Workers",
+            "ServiceName": "Workers CPU ms (first 30M are included)",
+            "ConsumedQuantity": 11160000, "ConsumedUnit": "ms",
+            "PricingQuantity": 11.16, "PricingUnit": "1M ms",
+            "BilledCost": 0, "ListCost": 0.2232
+        });
+        let line = line_from_focus(&row).unwrap();
+        assert_eq!((line.quantity, line.unit.as_str(), line.cost_usd), (11_160_000.0, "ms", 0.0));
+        let body = json!({ "result": [row, { "ServiceName": "x", "ChargePeriodStart": "2026-10-07", "PricingQuantity": 3, "BilledCost": 0.5 }] });
+        assert_eq!(
+            read_stats(&body, 2),
+            ReadStats { rows: 2, pages: 2, consumed_rows: 1, pricing_only_rows: 1, costed_rows: 1 }
+        );
+    }
+
+    #[test]
+    fn every_page_of_an_answer_is_read() {
+        let page = |info: Value| json!({ "success": true, "result": [{ "ServiceName": "x" }], "result_info": info });
+        assert_eq!(next_page(&page(json!({ "page": 1, "per_page": 50, "total_pages": 3 })), 1).as_deref(), Some("page=2&per_page=50"));
+        assert_eq!(next_page(&page(json!({ "page": 3, "per_page": 50, "total_pages": 3 })), 3), None);
+        // From the count when the pages are not given.
+        assert_eq!(next_page(&page(json!({ "per_page": 100, "total_count": 230 })), 2).as_deref(), Some("page=3&per_page=100"));
+        assert_eq!(next_page(&page(json!({ "cursor": "a+b/c=" })), 1).as_deref(), Some("cursor=a%2Bb%2Fc%3D"));
+        assert_eq!(next_page(&page(json!({ "cursor": "" })), 1), None);
+        // No paging said, or nothing on the page: that was all.
+        assert_eq!(next_page(&json!({ "result": [{}] }), 1), None);
+        assert_eq!(next_page(&json!({ "result": [], "result_info": { "total_pages": 9 } }), 1), None);
     }
 
     #[test]

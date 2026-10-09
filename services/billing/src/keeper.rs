@@ -86,9 +86,11 @@ impl Keeper {
             .ok_or_else(|| worker::Error::RustError("no CLOUDFLARE_BILLING_TOKEN or CLOUDFLARE_USAGE_TOKEN".into()))
     }
 
-    /// Billable usage from `from` to `to` (dates), as Cloudflare answers it.
-    pub(crate) async fn billable_usage_body(&self, from: &str, to: &str) -> Result<Value> {
-        send_with(self.billing_token()?, Method::Get, &self.api(&format!("/billable-usage?from={from}&to={to}")), None).await
+    /// Billable usage from `from` to `to` (dates), every page of it, as one
+    /// answer (`result` holds all the rows), and how many pages it took.
+    /// An answer that says it failed is returned as it is.
+    pub(crate) async fn billable_usage_pages(&self, from: &str, to: &str) -> Result<(Value, u32)> {
+        usage_pages(self.billing_token()?, &self.api(&format!("/billable-usage?from={from}&to={to}"))).await
     }
 
     /// The account's subscriptions (Workers Paid, add-ons), as Cloudflare
@@ -178,9 +180,10 @@ impl Keeper {
     /// The account's billable usage, one row per service per day, as
     /// Cloudflare reports it.
     async fn billable_usage(&self, from: &str, to: &str) -> Result<Vec<UsageRow>> {
-        let body = self
-            .send(Method::Get, &self.api(&format!("/billable-usage?from={from}&to={to}")), None)
-            .await?;
+        let Some(token) = &self.token else {
+            return Err(worker::Error::RustError("no CLOUDFLARE_USAGE_TOKEN".into()));
+        };
+        let (body, _) = usage_pages(token, &self.api(&format!("/billable-usage?from={from}&to={to}"))).await?;
         let rows = body["result"].as_array().cloned().unwrap_or_default();
         Ok(rows.iter().filter_map(UsageRow::from_value).collect())
     }
@@ -222,6 +225,31 @@ pub(crate) fn refused(error: &str) -> bool {
 
 /// A request to Cloudflare's API with a bearer token; anything but 200 is
 /// an error with what Cloudflare said.
+/// The most pages of billable usage read in one go: far more than a few
+/// months of g1t's meters.
+const MAX_USAGE_PAGES: u32 = 50;
+
+/// Every page of a billable-usage answer, its rows together. Before
+/// 2026-10-09 only the first page was read.
+async fn usage_pages(token: &str, url: &str) -> Result<(Value, u32)> {
+    let mut rows: Vec<Value> = Vec::new();
+    let mut pages = 0;
+    let mut next = url.to_owned();
+    loop {
+        let body = send_with(token, Method::Get, &next, None).await?;
+        if body["success"] == Value::Bool(false) {
+            return Ok((body, pages + 1));
+        }
+        pages += 1;
+        rows.extend(body["result"].as_array().cloned().unwrap_or_default());
+        match crate::costs::next_page(&body, pages).filter(|_| pages < MAX_USAGE_PAGES) {
+            Some(query) => next = format!("{url}&{query}"),
+            None => break,
+        }
+    }
+    Ok((json!({ "success": true, "result": rows }), pages))
+}
+
 async fn send_with(token: &str, method: Method, url: &str, body: Option<Value>) -> Result<Value> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {token}"))?;

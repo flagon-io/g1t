@@ -119,6 +119,11 @@
 		// reconciles only what g1t counted itself. See
 		// docs/BILLING_OPERATIONS.md.
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
+		// The day of the month the account's billing cycle starts on (Sep 28
+		// to Oct 27): the usage bill's included amounts are a cycle's
+		// (src/cycle.rs). The subscriptions' read (current_period_start)
+		// takes over once it has worked.
+		"CLOUDFLARE_BILLING_DAY": "28",
 		"AI_GATEWAY_ID": "g1t",
 		// Where margin alerts go: a product or all of g1t under the margin
 		// floor, leaks, drift. Empty sends none (sudo still shows them).

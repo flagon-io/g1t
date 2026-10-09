@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { CostDay, SpendCaps } from "@g1t/contracts";
+import type { CloudflareCycle, CostDay, SpendCaps } from "@g1t/contracts";
 
 import {
+  basisLabel,
+  billReadNote,
+  cycleHeadline,
   daySeries,
   daysBetween,
+  givenParts,
   marginOnPrice,
   marginPercent,
   marginTone,
@@ -19,6 +23,7 @@ import {
   spendRows,
   subscriptionsOver,
   unitDollars,
+  unpricedMeters,
   versionCells,
   whoPaid,
 } from "./costs.ts";
@@ -199,4 +204,62 @@ test("a rise replaced before its date says so, rather than missing its date", ()
   assert.equal(proposalOutcome({ status: "applied", decidedBy: "guardrail", effectiveAt: "2026-10-22T04:18:12.571Z" }), "applied by guardrail");
   assert.equal(proposalOutcome({ status: "superseded", decidedBy: null, effectiveAt: null }), "replaced by a later measurement");
   assert.equal(proposalOutcome({ status: "open", decidedBy: null, effectiveAt: null }), null);
+});
+
+test("subscriptions over the range are billing's, day by day by the billing cycle", () => {
+  // Billing's accrual wins over a month's over 30 days.
+  assert.equal(subscriptionsOver(30_000_000, 30, { subscriptionsMicros: 29_032_258 }), 29_032_258);
+  assert.equal(subscriptionsOver(30_000_000, 30, {}), 30_000_000);
+  // The month view: this month's days so far, not the whole month.
+  const { rows, totalMicros } = spendRows(caps({ fixedMonthMicros: 9_000_000 }));
+  const fixed = rows.find((r) => r.key === "fixed")!;
+  assert.equal(fixed.micros, 9_000_000);
+  assert.match(fixed.note, /days so far, each its billing cycle's share of \$30\.00 a month/);
+  assert.equal(totalMicros, 55_000_000);
+});
+
+test("test-mode charges are given away, never money in", () => {
+  const parts = givenParts({ usageMicros: 0, plansMicros: 0, costMicros: 0, marginMicros: 0, marginPercent: null, givenUnpaidMicros: 7_610_000, givenCompedMicros: 2_370_000 });
+  assert.deepEqual(parts, [
+    ["100% discounts", 2_370_000],
+    ["charged without real money", 7_610_000],
+  ]);
+});
+
+const cycle = (over: Partial<CloudflareCycle> = {}): CloudflareCycle => ({
+  start: "2026-09-28",
+  end: "2026-10-27",
+  days: 30,
+  daysElapsed: 12,
+  usageMicros: 292_175,
+  projectedMicros: 730_438,
+  averageDailyMicros: 24_347,
+  subscriptionsMicros: 30_000_000,
+  meters: [
+    { product: "workers", meter: "workers_cpu_ms", rawName: "Workers / Workers CPU ms", unit: "ms", quantity: 39_160_000, included: 30_000_000, billableQuantity: 9_160_000, costMicros: 200_000, basis: "list" },
+    { product: "email", meter: "email_service_emails_sent", rawName: "Email / Emails sent", unit: "Count", quantity: 7, included: null, billableQuantity: 0, costMicros: 0, basis: "none" },
+    { product: "kv", meter: "kv_list_operations", rawName: "KV list", unit: "Count", quantity: 0, included: null, billableQuantity: 0, costMicros: 0, basis: "none" },
+  ],
+  ...over,
+});
+
+test("the billing cycle reads as Cloudflare's Billable usage page does", () => {
+  const headline = cycleHeadline(cycle());
+  assert.equal(headline.title, "2026-09-28 to 2026-10-27, day 12 of 30");
+  assert.equal(headline.detail, "$0.29 so far, $0.02 a day; projected $0.73 for the cycle, and $30.00 of subscriptions");
+  // Used with no list price: said, not hidden. Unused ones are no news.
+  assert.deepEqual(unpricedMeters(cycle().meters).map((m) => m.meter), ["email_service_emails_sent"]);
+  assert.equal(basisLabel("list"), "List price past the included amount");
+  assert.equal(basisLabel("cloudflare"), "Cloudflare's cost");
+  assert.equal(basisLabel("none"), "No list price: counted at $0");
+});
+
+test("the last read of the bill says when it may be incomplete", () => {
+  const read = { readAt: "2026-10-09T04:17:00Z", since: "2026-09-28", until: "2026-10-09", rows: 412, pages: 3, consumedRows: 412, pricingOnlyRows: 0, costedRows: 0 };
+  assert.deepEqual(billReadNote(read), {
+    text: "412 rows in 3 pages for 2026-09-28 to 2026-10-09; none with a cost of Cloudflare's, so the list prices apply.",
+    warn: false,
+  });
+  assert.equal(billReadNote({ ...read, pricingOnlyRows: 5 }).warn, true);
+  assert.equal(billReadNote({ ...read, rows: 0, pages: 1, consumedRows: 0 }).warn, true);
 });
