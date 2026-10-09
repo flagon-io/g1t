@@ -514,6 +514,7 @@ impl Security {
                 runtime: Runtime::External,
                 // Security updates are for the default branch.
                 base: None,
+                draft: false,
             },
         )
         .await?;

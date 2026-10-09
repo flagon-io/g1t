@@ -924,6 +924,7 @@ impl Security {
                 runtime: Runtime::External,
                 // Into `target-branch`, which it was made from.
                 base: row.bump().and_then(|bump| bump.base),
+                draft: false,
             },
         )
         .await?;

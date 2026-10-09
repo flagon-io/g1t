@@ -4692,6 +4692,7 @@ impl Op {
                             .unwrap_or_else(|| if g1t_contracts::rules::is_agent(&user) { "agent".into() } else { user.username.clone() }),
                         runtime: Runtime::External,
                         base: optional_text(input, "base"),
+                        draft: input.get("draft").and_then(|value| value.as_bool()).unwrap_or(false),
                     },
                 )
                 .await?;
