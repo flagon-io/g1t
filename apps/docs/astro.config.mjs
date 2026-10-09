@@ -16,7 +16,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'g1t docs',
-			description: 'Guides and reference for g1t, where people and agents ship software together.',
+			description: 'Guides and reference for g1t, the workspace where a team and its agents talk, work and ship.',
 			components: {
 				Footer: './src/components/Footer.astro',
 				Head: './src/components/Head.astro',
@@ -70,6 +70,16 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Chat and agents',
+					items: [
+						{ label: 'Chat', slug: 'guides/chat' },
+						{ label: 'Agents', slug: 'guides/agents' },
+						{ label: 'What agents can do for whom', slug: 'guides/agent-access' },
+						{ label: 'Docs', slug: 'guides/docs', badge: { text: 'Soon', variant: 'default' } },
+						{ label: 'Agents in your chat app', slug: 'guides/chat-app', badge: { text: 'Soon', variant: 'default' } },
+					],
+				},
+				{
 					label: 'Projects',
 					items: [
 						{ label: 'Projects', slug: 'guides/projects' },
@@ -100,7 +110,7 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Agents',
+					label: 'Agents on code',
 					items: [
 						{ label: "g1t's agent", slug: 'guides/working-with-g1t' },
 						{ label: 'Guardrails', slug: 'guides/guardrails' },

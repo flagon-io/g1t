@@ -107,7 +107,33 @@ export default [
     route("-/packages/:ecosystem/*", "routes/workspace/package.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
-    route("-/agents", "routes/workspace/agents.tsx"),
+    // Agents mode: the fleet's runs first, then each of the workspace's own
+    // agents (docs/WORKSPACE.md). `new` is no agent's handle.
+    route("-/agents", "routes/workspace/agents/layout.tsx", [
+      index("routes/workspace/agents.tsx"),
+      route("new", "routes/workspace/agents/new.tsx"),
+      route(":handle", "routes/workspace/agents/agent.tsx", [
+        index("routes/workspace/agents/desk.tsx"),
+        route("profile", "routes/workspace/agents/profile.tsx"),
+        route("spend", "routes/workspace/agents/spend.tsx"),
+        route("activity", "routes/workspace/agents/activity.tsx"),
+      ]),
+    ]),
+    // Chat mode: channels by name, direct messages by id, and what the page
+    // calls as it runs: the live socket and the JSON for sending and reading.
+    route("-/chat/live", "routes/workspace/chat/live.ts"),
+    route("-/chat/api", "routes/workspace/chat/api.ts"),
+    route("-/chat", "routes/workspace/chat/layout.tsx", [
+      index("routes/workspace/chat/index.tsx"),
+      route("browse", "routes/workspace/chat/browse.tsx"),
+      route("dm/:id", "routes/workspace/chat/channel.tsx", { id: "routes/workspace/chat/dm" }),
+      route(":channel", "routes/workspace/chat/channel.tsx"),
+    ]),
+    // Docs mode, coming; Home for a member without Code; and what Code's
+    // pages say to them (docs/WORKSPACE.md, "Members without Code").
+    route("-/docs", "routes/workspace/docs.tsx"),
+    route("-/home", "routes/workspace/home.tsx"),
+    route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
     route("-/context", "routes/workspace/context.tsx"),
     route("-/security", "routes/workspace/security.tsx"),

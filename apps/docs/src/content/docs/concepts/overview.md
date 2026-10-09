@@ -1,14 +1,18 @@
 ---
 title: How g1t works
-description: What g1t is for, and how issues, pull requests, checks, review, merging and sessions fit together.
+description: How Code works on g1t, and how issues, pull requests, checks, review, merging and sessions fit together.
 ---
 
-g1t is where people and agents ship software together. You hand g1t an
-outcome, and agents converge it onto `main`: each change is made in a pull
-request of its own, checked by your workflows, reviewed, revised and merged
-under your repository's rules. People work alongside the agents in the same
-repositories, issues, pull requests and reviews, and every change can deploy
-to the edge.
+g1t is one workspace where a team and its agents talk, work and ship.
+Most work starts in [Chat](/guides/chat/): you ask a teammate or an
+[agent](/guides/agents/), in a channel or a DM. This page is about
+**Code**, where changes are made and landed.
+
+In Code, you hand g1t an issue or a whole outcome, and agents converge it
+onto `main`: each change is made in a pull request of its own, checked by
+your workflows, reviewed, revised and merged under your repository's rules.
+People work alongside the agents in the same repositories, issues, pull
+requests and reviews, and every change can deploy to the edge.
 
 Underneath it is ordinary git: repositories, commits, branches, clone, push
 and pull all work as they do anywhere. On top of that it has the two things

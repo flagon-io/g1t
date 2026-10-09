@@ -6,10 +6,13 @@ import {
   redirect,
 } from "react-router";
 
-import { type Result, type Role, type User, type Viewer, httpStatus } from "@g1t/contracts";
+import { type Result, type Role, type User, type Viewer, hasCodeAccess, httpStatus } from "@g1t/contracts";
 
 import { confirmGate } from "./confirm-gate";
+import { readCookie } from "./mission";
 import { safeNext } from "./next";
+import { WORKSPACE_COOKIE, chosenWorkspace } from "./workspace-choice";
+import { codeGate } from "./workspace-nav";
 import { identity } from "./services.server";
 
 const SESSION_COOKIE = "g1t_session";
@@ -54,6 +57,16 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
   // from wherever it was going (lib/confirm-gate.ts).
   const gated = confirmGate(pathname, search, viewer);
   if (gated) throw redirect(gated);
+  // A member without Code access in a workspace (docs/WORKSPACE.md,
+  // "Members without Code"): their Home in place of Mission control, and
+  // the page that says to ask an owner in place of anything of Code's.
+  // The services enforce it too; this keeps the site from offering it.
+  const noCode = (viewer?.workspaces ?? []).filter((m) => !hasCodeAccess(m)).map((m) => m.slug.toLowerCase());
+  if (request.method === "GET" && noCode.length > 0) {
+    const chosen = chosenWorkspace(viewer?.workspaces ?? [], readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE));
+    const around = codeGate(pathname, search, noCode, chosen?.slug ?? null);
+    if (around) throw redirect(around);
+  }
   if (
     request.method === "GET" &&
     viewer?.verified &&

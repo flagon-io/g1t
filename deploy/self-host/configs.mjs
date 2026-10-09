@@ -70,6 +70,7 @@ export const RUNNING = STACK.filter((unit) => unit.self_host === "run")
 const OFF_NAMES = {
   "g1t-runner": "Agents",
   "g1t-context": "Context search and memory",
+  "g1t-models": "Hosted models",
 };
 const OFF = Object.fromEntries(
   STACK.filter((unit) => unit.self_host === "off").map((unit) => [unit.worker, OFF_NAMES[unit.worker] ?? unit.worker]),

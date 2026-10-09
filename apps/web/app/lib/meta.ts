@@ -23,7 +23,7 @@ export const OG = "https://og.g1t.sh";
 
 /** What g1t is, for pages with nothing more particular to say. */
 export const DESCRIPTION =
-  "The open-source git platform where people and agents ship software together, from the first issue to production on the edge. Priced at cost plus 20%, never per seat.";
+  "One workspace where a team and its agents talk, work and ship: chat with people and agents, agents with a job and a budget, and code that lands through checks. Open source, never per seat.";
 
 /** As much of `MetaArgs` as the tags need. */
 export type PageArgs = {

@@ -144,6 +144,9 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   const next = going && going.pathname !== pathname ? workspacePage(going.pathname, workspace.slug) : null;
   const shown = next ?? here;
   const parts = (pathname.split("/-/")[1] ?? "").split("/").filter(Boolean);
+  // Chat fills the page edge to edge: its conversation, thread and details
+  // are columns of their own (components/chat/channel.tsx).
+  if (parts[0] === "chat" && !next) return <Outlet />;
   if (shown !== "overview") {
     const key = shown ?? parts[0] ?? "";
     const heading = PAGES[key];

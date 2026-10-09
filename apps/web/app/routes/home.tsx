@@ -96,9 +96,9 @@ export function meta(args: Route.MetaArgs) {
   // Someone signed in is on mission control; visitors get the landing page's title.
   if (args.loaderData?.signedIn) return page(args, { title: "Mission control · g1t" });
   return page(args, {
-    title: "g1t — where people and agents ship software together",
+    title: "g1t · Your team and its agents, working in one place",
     description:
-      "The open-source git platform for people and agents: issues, pull requests and review, agents you assign like teammates, a merge queue that keeps main green, and deployments to the edge. Priced at cost plus 20%, never per seat.",
+      "Chat with your team and your agents in channels and DMs. Agents are teammates with a role, a personality and a budget, and their code lands through pull requests, checks and a merge queue. Chat is free on every plan, never per seat.",
   });
 }
 

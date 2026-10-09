@@ -12,7 +12,7 @@ export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "Pricing · g1t",
     description:
-      "The forge is free. One plan, $20 a month per workspace with $10 of usage included; usage at what it costs g1t plus 20%. No seats, ever.",
+      "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Agents pay the model's price plus a flat agent rate, from each agent's budget. No seats, ever.",
   });
 }
 
@@ -95,6 +95,64 @@ const DEFAULT_PLAN: FeaturePlan = {
   overage: "Everything is metered from the first unit at what it costs g1t plus 20%. Unused included usage does not roll over.",
 };
 
+/** How each part of a workspace is charged: the plan's Pricing table (docs/WORKSPACE.md). */
+const WORKSPACE_CHARGES: { what: string; how: string; soon?: boolean }[] = [
+  {
+    what: "People chatting",
+    how: "Included on every plan, the free one too: channels, direct messages, threads, mentions and live delivery. No seats, and history is never cut off.",
+  },
+  { what: "Docs", how: "Included on every plan, like chat: pages, live editing and history.", soon: true },
+  {
+    what: "An agent replying in chat",
+    how: "The model provider's price, with no markup, plus the g1t agent rate on the tokens it used. Paid from the plan's included usage, then AI credit, and counted against that agent's budget.",
+  },
+  {
+    what: "An agent working on code",
+    how: "The same model price and agent rate, plus sandbox time at cost plus 20%.",
+  },
+  {
+    what: "An agent on your own provider",
+    how: "Your provider bills you for the model directly. g1t charges the agent rate for your own model key only.",
+  },
+  {
+    what: "Files in chat and Docs",
+    how: "The storage meter, at cost plus 20%, past what is free.",
+    soon: true,
+  },
+  { what: "An idle agent", how: "Nothing. An agent costs money only while it is answering or working." },
+];
+
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "Do people pay to use Chat?",
+    a: "No. Messages, channels, threads and live delivery are included on every plan, with no per-person price and no limit on history. A workspace on the plan can add as many people as it likes at the same price.",
+  },
+  {
+    q: "Who pays for an agent's reply?",
+    a: "The workspace the agent belongs to. Each reply is charged as the model's price plus the agent rate, and counts against that agent's monthly budget, whoever asked it.",
+  },
+  {
+    q: "What does an agent cost when nobody talks to it?",
+    a: "Nothing. Agents have no monthly fee. They are charged only for replies and work, so an agent you made and forgot costs nothing.",
+  },
+  {
+    q: "How do I stop an agent from spending too much?",
+    a: "Give it a monthly budget and a cap per task. At its budget it stops taking new work and says so in the channel. The workspace's spend limit and the per-run caps still apply above it.",
+  },
+  {
+    q: "Can agents use our own model provider?",
+    a: "Yes. Connect a provider in Integrations and limit an agent to it. The provider bills you for the model; g1t charges the agent rate for your own model key only.",
+  },
+  {
+    q: "Does adding the whole company cost more?",
+    a: "No. There are no seats. People who only chat, and ask agents questions, cost nothing until their questions use an agent; then the agent's reply is charged like any other.",
+  },
+  {
+    q: "Is Docs included?",
+    a: "Docs is coming soon. When it ships, pages, editing and history are included on every plan, like chat. Files are on the storage meter.",
+  },
+];
+
 /** The ways to reach g1t about an enterprise account. */
 const ENTERPRISE_MAIL = "mailto:hey@flagon.io?subject=Enterprise%20billing%20for%20g1t";
 
@@ -130,6 +188,24 @@ type Row = { what: string; free: string; plan: string; note?: string };
 
 function rows(tier: Required<FreeTier>): Row[] {
   return [
+    {
+      what: "Chat",
+      free: "Included, for the people already in the workspace",
+      plan: "Included, for unlimited members",
+      note: "Channels, direct messages, threads, mentions and live delivery. History is never cut off.",
+    },
+    {
+      what: "Docs (coming soon)",
+      free: "Included",
+      plan: "Included",
+      note: "Pages, live editing and history, once Docs ships.",
+    },
+    {
+      what: "Workspace agents",
+      free: "After a card check, from the trial",
+      plan: "From the plan's included usage, then AI credit, under each agent's budget",
+      note: "Replies and work are charged as model price plus the g1t agent rate. An idle agent costs nothing.",
+    },
     {
       what: "The forge",
       free: "Free",
@@ -210,13 +286,22 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
   const securityPlan = book?.plans?.find((p) => p.feature === "security") ?? null;
   const price = plan.monthlyCents / 100;
   const dollars = wholeDollars;
+  const agentRate = book?.prices.find((p) => p.meter === "agent_tokens");
+  const agentRateComing = book?.changes.find((c) => c.meter === "agent_tokens" && c.effectiveAt);
+  const agentRateLine =
+    agentRate && agentRate.priceMicros > 0
+      ? `${money(agentRate.priceMicros)} per million tokens`
+      : agentRateComing
+        ? `$0, and ${money(agentRateComing.newCostMicros)} per million tokens from ${agentRateComing.effectiveAt!.slice(0, 10)}`
+        : "as listed under Usage below";
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <p className="text-sm font-medium text-accent">Pricing</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">One plan, and usage at cost plus 20%</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">People chat free. What runs is priced at cost.</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        The forge is free for everyone. Work that runs on g1t's machines is metered at what it costs g1t, plus 20%. The
-        numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added where it applies.
+        People chatting and the forge are free for everyone. Agents and the work that runs on g1t's machines are metered
+        at what they cost g1t, plus a flat agent rate for models and 20% for everything else. The numbers on this page are
+        the live price book g1t charges from. Prices exclude tax, which is added where it applies.
       </p>
       {free && (
         <div className="mt-5 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
@@ -297,6 +382,37 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <p className="mt-3 text-xs text-faint">{securityPlan.overage}</p>
         </section>
       )}
+
+      <section id="workspace" className="mt-14">
+        <h2 className="text-xl font-semibold tracking-tight">Chat, Docs and agents</h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          People talking costs g1t very little, so it is included. Agents use models, so they are charged for what they
+          use, to the agent that used it.
+        </p>
+        <div className="mt-4 overflow-hidden rounded-xl border border-line">
+          <dl className="divide-y divide-line text-sm">
+            {WORKSPACE_CHARGES.map((row) => (
+              <div key={row.what} className="grid gap-1 px-4 py-3 sm:grid-cols-[14rem_1fr] sm:gap-4">
+                <dt className="font-medium">
+                  {row.what}
+                  {row.soon && (
+                    <span className="ml-2 inline-block rounded bg-raised px-1.5 py-0.5 text-xs font-normal whitespace-nowrap text-muted">Coming soon</span>
+                  )}
+                </dt>
+                <dd className="text-muted">{row.how}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <p className="mt-3 text-sm text-muted">
+          The agent rate today: {agentRateLine}. A chat reply is usually a few thousand tokens on a fast model, so most
+          replies cost a fraction of a cent. See{" "}
+          <a href="https://docs.g1t.sh/guides/agents/#what-an-agent-costs" className="text-accent hover:underline">
+            what an agent costs
+          </a>
+          .
+        </p>
+      </section>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Free and the plan, side by side</h2>
       <p className="mt-1 text-sm text-muted">
@@ -664,6 +780,16 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       ) : (
         <p className="mt-2 text-sm text-muted">None yet. When a price moves, it is listed here with why.</p>
       )}
+
+      <h2 id="faq" className="mt-14 text-xl font-semibold tracking-tight">Questions</h2>
+      <dl className="mt-4 divide-y divide-line rounded-xl border border-line">
+        {FAQ.map((item) => (
+          <div key={item.q} className="px-4 py-4 text-sm">
+            <dt className="font-medium">{item.q}</dt>
+            <dd className="mt-1.5 text-muted">{item.a}</dd>
+          </div>
+        ))}
+      </dl>
 
       <a
         href="https://docs.g1t.sh/guides/usage-and-billing/"

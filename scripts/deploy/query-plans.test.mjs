@@ -77,3 +77,37 @@ test("actions: a self-hosted runner's poll finds queued jobs by namespace, whate
   );
   assertSearches(steps, "jobs_self_hosted_lower");
 });
+
+test("chat: a channel's messages and a thread's replies, newest first, page by page", () => {
+  const db = migrated("chat");
+  // The first page passes `~` as the cursor, so both read as a range.
+  const top = plan(
+    db,
+    `SELECT * FROM messages WHERE channel_id = ?1 AND thread_root IS NULL AND id < ?2
+       AND (deleted_at IS NULL OR reply_count > 0) ORDER BY id DESC LIMIT ?3`,
+    "chn_1",
+    "~",
+    51,
+  );
+  assertSearches(top, "messages_by_channel");
+  assert.ok(!top.some((step) => step.includes("TEMP B-TREE")), top.join("\n"));
+  const thread = plan(db, "SELECT * FROM messages WHERE thread_root = ?1 AND channel_id = ?2 AND id < ?3 ORDER BY id DESC LIMIT ?4", "msg_1", "chn_1", "~", 51);
+  assertSearches(thread, "messages_by_thread");
+});
+
+test("chat: the sidebar's unread messages are read from each channel's index, after the last read", () => {
+  const steps = plan(
+    migrated("chat"),
+    `SELECT msg.channel_id, msg.id, msg.author, msg.mentions
+     FROM channel_members m
+     JOIN channels c ON c.id = m.channel_id
+     JOIN messages msg ON msg.channel_id = m.channel_id AND msg.id > COALESCE(m.last_read_id, '')
+     WHERE m.principal = ?1 AND c.workspace_id = ?2 AND c.archived_at IS NULL
+       AND msg.deleted_at IS NULL AND msg.author != ?1
+     LIMIT 5000`,
+    "user:usr_1",
+    "wsp_1",
+  );
+  assertSearches(steps, "channel_members_by_principal");
+  assert.ok(steps.some((step) => step.includes("messages_by_channel (channel_id=? AND id>?)")), steps.join("\n"));
+});

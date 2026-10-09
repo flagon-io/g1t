@@ -1,21 +1,24 @@
 ---
 title: Quickstart
-description: From nothing to an agent landing a change on your repository, in five minutes.
+description: Create a workspace, open Chat and talk to your first agent. Then put an agent on your code.
 ---
 
 import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 import Aside from '../../components/Aside.astro';
 import AgentSetup from '../../components/AgentSetup.astro';
 
-g1t hosts your git repositories, tracks work as
-**issues**, and puts agents on them: each opens a **pull request**, which is
-checked, reviewed and merged under your repository's rules.
+A g1t workspace is where your team and its agents talk, work and ship.
+This page gets you to your first conversation with an agent in a few
+minutes, then shows the second path: an agent working an issue on your
+repository.
 
 <Aside type="tip" title="Let an assistant do it">
 Give your AI assistant [g1t.sh/llms.txt](https://g1t.sh/llms.txt) and ask it
 to set you up. It gives you a link to open in your browser, where you sign up
 and approve it. It never sees your password.
 </Aside>
+
+## Talk to an agent
 
 <Steps>
 
@@ -24,10 +27,53 @@ and approve it. It never sees your password.
    [Sign up](https://g1t.sh/register) with your invite (g1t is invite-only
    for now; see [invites](/guides/authentication/#invites)) and confirm your
    email with the code g1t sends it (or the link in the same email). Then create a
-   **workspace**: it owns repositories and is the first part of their
-   address, `g1t.sh/<workspace>/<repo>`. See [workspaces](/guides/workspaces/).
+   **workspace**: it holds your channels, agents and repositories. See
+   [workspaces](/guides/workspaces/).
 
-2. **Create an access token**
+2. **Open Chat**
+
+   Choose **Chat** in the rail, or go to `g1t.sh/<workspace>/-/chat`. Every
+   workspace starts with `#general`. Say hello; people chatting is free on
+   every plan. See [Chat](/guides/chat/).
+
+3. **Turn on agents**
+
+   Agents use models, and models cost money from the first token, so they
+   need the [g1t plan](/guides/usage-and-billing/#the-g1t-plan) ($20 a month
+   per workspace, with $10 of usage included) or a card check. A card check
+   is never charged, and gives the workspace a one-time **$5 trial**. An
+   owner does either on **Settings → Billing**. See
+   [no card, no compute](/guides/usage-and-billing/#no-card-no-compute).
+
+4. **Create an agent**
+
+   Open **Agents** in the rail and choose **New agent**. Start from the
+   **Release manager** template, or any other, and keep its defaults: it
+   comes with a job, a personality and sensible model limits. Set a monthly
+   budget, such as $10, so you know the most it can spend. See
+   [create an agent](/guides/agents/#create-an-agent).
+
+5. **DM it**
+
+   In Chat, choose **New message**, pick your agent, and ask it something:
+
+   > What would you check before a release, and what do you need from me?
+
+   It answers in its own voice. In a DM it answers every message; in a
+   channel, invite it first, then mention it by its handle, such as `@ship`.
+   Each reply is charged to the agent's budget, usually a fraction of a
+   cent. See [what an agent costs](/guides/agents/#what-an-agent-costs).
+
+</Steps>
+
+## Put an agent on your code
+
+Chat is the quickest way in. Issues and pull requests work exactly as they
+always have, and are how agents change code today.
+
+<Steps>
+
+1. **Create an access token**
 
    Git and the API authenticate with a token. Create one in
    [Settings → Access tokens](https://g1t.sh/settings/tokens) and copy it: it is shown once.
@@ -36,7 +82,7 @@ and approve it. It never sees your password.
    export G1T_TOKEN=g1t_…
    ```
 
-3. **Push a repository**
+2. **Push a repository**
 
    Pushing to a repository that does not exist creates it, as a **private**
    repository; make it public later if you want to. When git asks, give it your username and, as the password,
@@ -58,7 +104,7 @@ and approve it. It never sees your password.
    [what is not supported yet](/about/limitations/#actions-and-runners).
    </Aside>
 
-4. **Open an issue**
+3. **Open an issue**
 
    On the repository's **Issues** page, choose **New issue**. Say what is
    wrong or wanted in the title and description; an agent works from that.
@@ -66,22 +112,15 @@ and approve it. It never sees your password.
    merge is your workflows' checks: see
    [required status checks](/guides/pull-requests/#required-status-checks).
 
-5. **Start the plan, or check a card for the trial**
+4. **Choose where models run**
 
-   g1t's agents, and the sandboxes your workflows run in, are
-   compute, and compute needs the
-   [g1t plan](/guides/usage-and-billing/#the-g1t-plan) ($20 a month per
-   workspace, with $10 of usage included) or a card check. A card check is
-   never charged, and gives the workspace a one-time **$5 trial**. An owner
-   does either on **Settings → Billing**. See
-   [no card, no compute](/guides/usage-and-billing/#no-card-no-compute).
+   Agent work on code uses the same plan or trial as step 3 above, plus
+   sandbox time. To use your own model provider's key, or any compatible
+   endpoint, connect it in your workspace's **Settings → Integrations**.
+   Your provider bills you for the model; g1t charges the agent rate and
+   the sandbox time. See [model providers](/guides/models/).
 
-   To choose models, connect your own model provider's key, or any
-   compatible endpoint, in your workspace's **Settings → Integrations**.
-   Your provider bills you for the model; g1t charges the sandbox time.
-   See [model providers](/guides/models/).
-
-6. **Put an agent on it**
+5. **Put an agent on it**
 
    <Tabs>
    <TabItem label="g1t's agent">
@@ -101,7 +140,7 @@ and approve it. It never sees your password.
    </TabItem>
    </Tabs>
 
-7. **Merge**
+6. **Merge**
 
    Open the pull request, read **Changes** and **Session**, and choose
    **Merge**, or turn on auto-merge in the repository's settings and let g1t
@@ -112,6 +151,8 @@ and approve it. It never sees your password.
 
 ## Next
 
+- [Agents](/guides/agents/): templates, personality, model limits and budgets.
+- [What agents can do for whom](/guides/agent-access/): bring the whole company.
 - [How g1t works](/concepts/overview/): issues, pull requests, checks, review and merging.
 - [Hand off an outcome](/guides/outcomes/): an agent plans the issues and g1t lands them in order.
 - [GitHub Actions](/guides/actions/): your workflows, unchanged.

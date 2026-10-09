@@ -298,7 +298,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
   return (
     <AuthCard
       title={showForm ? "Create your account" : "g1t is invite-only for now"}
-      subtitle={showForm ? "Where people and agents ship software together" : "Enter your invite, or ask for one"}
+      subtitle={showForm ? "Your team and its agents, working in one place" : "Enter your invite, or ask for one"}
       footer={
         <>
           Already have an account?{" "}

@@ -2,7 +2,7 @@ import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type InboxCounts, type Membership, type Spike, type User, mayCreateTeams } from "@g1t/contracts";
+import { type Abilities, type InboxCounts, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -25,7 +25,12 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
-import { SETTINGS_PAGES, sidebarCurrent } from "../lib/workspace-nav";
+import { type ModeKey, SETTINGS_PAGES, modeOf, sidebarCurrent } from "../lib/workspace-nav";
+import { AgentsSidebar } from "./agents-mode";
+import { ChatSidebar } from "./chat/sidebar";
+import { Rail } from "./rail";
+import { useChatSidebar } from "./chat/actions";
+import { unreadTotals } from "../lib/chat";
 import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
 import { VISITOR_LINKS, projectPages } from "../lib/chrome";
 import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
@@ -76,6 +81,8 @@ export type ShellData = {
   compute?: { paused: string | null; spike: Spike | null; owner: boolean } | null;
   /** What is unread in their inbox, for the bell. Absent for a visitor. */
   inbox?: InboxCounts | null;
+  /** What is unread in chat, for the rail's badge; null when chat did not answer. */
+  chat?: { unread: number; mentions: number } | null;
 };
 
 function SidebarLink({
@@ -368,7 +375,7 @@ function StatusSummary({ open }: { open: boolean }) {
 /** A menu row: an icon, words, and whatever sits at its end. */
 const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
 
-function AccountMenu({ user }: { user: User }) {
+function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
   // Name, primary address and invites left: asked for once, as soon as the
@@ -387,6 +394,18 @@ function AccountMenu({ user }: { user: User }) {
   const profile = `/u/${user.username}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
+      {rail ? (
+        // On the rail: the avatar alone, with a dot that says you are here.
+        <DropdownMenuTrigger
+          aria-label={`Account menu for ${user.username}`}
+          onPointerEnter={prefetch}
+          onFocus={prefetch}
+          className="relative rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
+        >
+          <Avatar name={user.username} image={user.avatar} size={34} />
+          <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full bg-success ring-[2.5px] ring-[#0b0b0d]" />
+        </DropdownMenuTrigger>
+      ) : (
       <DropdownMenuTrigger
         aria-label={`Account menu for ${user.username}`}
         onPointerEnter={prefetch}
@@ -397,7 +416,8 @@ function AccountMenu({ user }: { user: User }) {
         <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
         <ChevronsUpDown size={14} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-[17.5rem] p-1.5">
+      )}
+      <DropdownMenuContent align={rail ? "end" : "start"} side={rail ? "right" : "top"} collisionPadding={8} className="w-[17.5rem] p-1.5">
         {/* Who is signed in, and a way to their profile. */}
         <DropdownMenuItem asChild className="gap-3 px-2 py-2">
           <Link to={profile} aria-label={`${me?.name ?? user.username} (@${user.username}), your profile`}>
@@ -1436,6 +1456,10 @@ const SECTIONS: Record<string, string> = {
   observability: "Observability",
   insights: "Insights",
   sessions: "Sessions",
+  chat: "Chat",
+  docs: "Docs",
+  home: "Home",
+  "code-access": "Code access",
 };
 
 /** Settings pages whose name differs from the section's of the same word. */
@@ -1713,6 +1737,24 @@ export function Progress() {
   );
 }
 
+/** The mode's sidebar beside the rail: a shade lighter than the page. */
+const SIDEBAR_BOX = "h-full border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]";
+
+/**
+ * Which sidebar sits beside the rail: Chat's and Agents' own, Code's (the
+ * one with projects, also on Mission control and the inbox for someone with
+ * Code), or none (Docs, and Home or the inbox without Code).
+ */
+function sidebarFor(mode: ModeKey | null, code: boolean, pathname: string): "code" | "chat" | "agents" | null {
+  if (mode == null) return "code";
+  if (mode === "chat") return "chat";
+  if (mode === "agents") return "agents";
+  if (mode === "docs") return null;
+  if (mode === "code") return "code";
+  if (!code) return null;
+  return mode === "inbox" || pathname === "/" ? "code" : null;
+}
+
 /**
  * The app: a sidebar with the workspace, its repositories and the sections
  * of the one being looked at; a slim bar with search and the account; and
@@ -1755,31 +1797,68 @@ export function AppShell({
   usePaletteShortcut(() => setPalette((open) => !open));
   const leaving = useLeaving();
 
+  // The rail and the mode's sidebar (docs/WORKSPACE.md, "Shell"), for
+  // someone in a workspace. A visitor, or someone with none, keeps the one
+  // sidebar.
+  const going = useNavigation().location?.pathname;
+  const ws = user ? shell.workspace : null;
+  const mode: ModeKey | null = ws ? modeOf(going ?? pathname, ws.slug) : null;
+  const panel = sidebarFor(mode, ws ? hasCodeAccess(ws) : true, going ?? pathname);
+  const { sidebar: chatSidebar } = useChatSidebar();
+  const chatUnread = chatSidebar ? unreadTotals(chatSidebar.entries) : (shell.chat ?? { unread: 0, mentions: 0 });
+  const sidebarNode = (inSheet: boolean) =>
+    panel === "chat" && ws ? (
+      <ChatSidebar slug={ws.slug} />
+    ) : panel === "agents" && ws ? (
+      <AgentsSidebar slug={ws.slug} />
+    ) : panel === "code" ? (
+      <Sidebar
+        user={user}
+        shell={shell}
+        missing={missing}
+        onFind={() => {
+          if (inSheet) setDrawer(false);
+          setPalette(true);
+        }}
+        onClose={inSheet ? () => setDrawer(false) : undefined}
+      />
+    ) : null;
+  const rail =
+    user && ws ? (
+      <Rail
+        user={user}
+        workspace={ws}
+        unread={{ inbox: shell.inbox?.unread ?? 0, chat: chatUnread.unread, mentions: chatUnread.mentions }}
+        account={<AccountMenu user={user} rail />}
+      />
+    ) : null;
+  const pad = rail ? (panel ? "lg:pl-[21rem]" : "lg:pl-20") : "lg:pl-64";
+
   return (
     // The phone's menu is a sheet: a dialog that holds focus, closes on
     // Escape or a tap outside, and gives focus back to the menu button.
     <Sheet open={drawer} onOpenChange={setDrawer}>
     <div className="min-h-screen">
       <Progress />
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))] lg:block">
-        <Sidebar user={user} shell={shell} missing={missing} onFind={() => setPalette(true)} />
+      <aside className="fixed inset-y-0 left-0 z-40 hidden lg:flex">
+        {rail}
+        {panel && <div className={`${SIDEBAR_BOX} w-64`}>{sidebarNode(false)}</div>}
       </aside>
-      <SheetContent side="left" showClose={false} aria-describedby={undefined} className="w-72 max-w-[85vw] sm:max-w-72 lg:hidden">
+      <SheetContent
+        side="left"
+        showClose={false}
+        aria-describedby={undefined}
+        className={`lg:hidden ${rail ? `flex flex-row ${panel ? "w-[21rem] max-w-[92vw] sm:max-w-[21rem]" : "w-20 sm:max-w-20"}` : "w-72 max-w-[85vw] sm:max-w-72"}`}
+      >
         <SheetTitle className="sr-only">Menu</SheetTitle>
-        <Sidebar
-          user={user}
-          shell={shell}
-          missing={missing}
-          onFind={() => {
-            setDrawer(false);
-            setPalette(true);
-          }}
-          onClose={() => setDrawer(false)}
-        />
+        {rail}
+        {panel && <div className={`min-w-0 grow ${rail ? SIDEBAR_BOX : ""}`}>{sidebarNode(true)}</div>}
       </SheetContent>
 
-      <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
+      <div className={`flex min-h-screen min-w-0 flex-col ${pad}`}>
+        <header
+          className={`sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6 ${mode === "chat" ? "lg:hidden" : ""}`}
+        >
           <SheetTrigger
             aria-label="Open menu"
             className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg lg:hidden"

@@ -97,7 +97,20 @@ export type Membership = {
   org_roles?: OrgRole[];
   /** What the workspace lets its members do. Absent means the defaults. */
   privileges?: MemberPrivileges;
+  /**
+   * Whether this member uses Code: repositories, issues, pull requests,
+   * checks, deploys. False for people who only use Chat, Docs and agents
+   * (support, sales, finance): they see no repository, whatever the base
+   * permission, and agents treat them as unable to change code. Absent
+   * means true.
+   */
+  code_access?: boolean;
 };
+
+/** Whether a member uses Code. See `Membership.code_access`. */
+export function hasCodeAccess(membership: Pick<Membership, "code_access"> | null | undefined): boolean {
+  return membership?.code_access !== false;
+}
 
 /** How long an old workspace slug redirects, and stays reserved for it, after a rename. */
 export const SLUG_HOLD_DAYS = 90;

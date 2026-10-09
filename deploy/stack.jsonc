@@ -17,7 +17,8 @@
 	//
 	// migrations: every pending D1 migration, before any code.
 	// core:       the services, reached through service bindings.
-	// edge:       public endpoints other than the site: API, MCP, models, g1t.page, status.
+	// edge:       public endpoints other than the site: API, MCP, g1t.page, status
+	//             (models is public too, but in core: agents binds to it).
 	// front:      the site, sudo and the docs.
 	"stages": ["migrations", "core", "edge", "front"],
 
@@ -112,6 +113,33 @@
 			"d1": { "database": "g1t-projects", "migrations": "migrations" },
 			"stage": "core",
 			"secrets": [],
+			"self_host": "run"
+		},
+		"chat": {
+			"path": "services/chat",
+			"kind": "ts-worker",
+			"worker": "g1t-chat",
+			"d1": { "database": "g1t-chat", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-chat, then put its id in services/chat/wrangler.jsonc"
+			],
+			"self_host": "run"
+		},
+		"agents": {
+			"path": "services/agents",
+			"kind": "ts-worker",
+			"worker": "g1t-agents",
+			"d1": { "database": "g1t-agents", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-agents, then put its id in services/agents/wrangler.jsonc"
+			],
+			// Replies route and gate model work exactly as runs do, with the
+			// runner's own modules: its routing policy and who may use hosted models.
+			"inputs": ["services/runner/src/model-env.ts", "services/runner/src/hosted.ts"],
 			"self_host": "run"
 		},
 		"billing": {
@@ -248,10 +276,14 @@
 			"path": "services/models",
 			"kind": "ts-worker",
 			"worker": "g1t-models",
-			"stage": "edge",
+			// Core, though it is public at models.g1t.sh: the agents service
+			// reaches it by service binding for chat replies. It binds only to
+			// core services itself.
+			"stage": "core",
 			"secrets": ["AI_GATEWAY_TOKEN"],
 			"setup": ["The AI Gateway `g1t`"],
-			"self_host": "none"
+			// Not run self-hosted, but bound to the off Worker: agents binds to it.
+			"self_host": "off"
 		},
 		"pages": {
 			"path": "services/pages",

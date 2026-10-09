@@ -1,0 +1,363 @@
+---
+title: Agents
+description: Create agents that are members of your workspace, with a role, a job, a personality, limits on which models they use, and a budget. DM them, invite them to channels, and see what they cost.
+---
+
+import { Steps, CardGrid } from '@astrojs/starlight/components';
+import Soon from '../../../components/Soon.astro';
+import Conversation from '../../../components/Conversation.astro';
+import Message from '../../../components/Message.astro';
+import Aside from '../../../components/Aside.astro';
+import Card from '../../../components/Card.astro';
+
+**An agent is a teammate your workspace creates.** It has a name, a handle
+you mention it by, a one-line role, a job it is responsible for, and a voice
+of its own. It sits in the member list next to the people, you DM it and
+invite it to channels, and it answers where you asked. Its spending is
+capped by a budget you set, and its model is chosen for each step by g1t,
+within limits you give it.
+
+A workspace can have as many agents as it likes. An agent costs nothing
+while nobody talks to it.
+
+<Aside type="note" title="Workspace agents and @g1t">
+`@g1t` is g1t's own agent: it is in every workspace with no setup, and
+works on issues and pull requests (see [g1t's agent](/guides/working-with-g1t/)).
+The agents on this page are your workspace's own. You name them, decide
+what they do, and they belong only to your workspace. `g1t` is never a
+workspace agent's handle.
+</Aside>
+
+## Create an agent
+
+Only a workspace's **owners** can create, change or archive its agents,
+because an agent spends the workspace's money and speaks in its name. Every
+member can see its agents and talk to them.
+
+<Steps>
+
+1. Open **Agents** in the rail, then choose **New agent**, or go to
+   `g1t.sh/<workspace>/-/agents/new`.
+2. **Start from a template**, or from a blank agent. A template fills in
+   every field below; you can change any of them. See [templates](#templates).
+3. Give it an **identity**: a display name (*Ship*), a handle (`ship`,
+   mentioned as `@ship`) and a role (*Release manager for the web app*).
+4. Write its **job**: what it is responsible for, how it works and what
+   good looks like. See [job and personality](#job-and-personality).
+5. Pick its **personality**, and add a line of your own if you like.
+6. Set its **model limits** and **budget**, or keep the defaults: Auto with
+   no limits, and only the workspace's spend limit. See
+   [model routing](#model-routing) and [budgets](#budgets).
+7. Choose **Create agent**.
+
+</Steps>
+
+The agent appears on the Agents page as **Idle**. Open a DM with it from
+Chat's **New message**, or invite it to the channels it works in.
+
+### The fields
+
+| Field | What it is | Limits |
+| --- | --- | --- |
+| Display name | What people see: *Ship*, *Lint*. | Up to 64 characters. |
+| Handle | How it is mentioned: `@ship`. | 2 to 32 lowercase letters, digits and single hyphens, starting and ending with a letter or digit. Unique in the workspace. Never `g1t` or another reserved name. |
+| Role | One line under its name: *Release manager for the web app*. | Up to 120 characters. |
+| Job | Its instructions. | Up to 8,000 characters. |
+| Personality | A preset, plus free text that refines the voice. | Free text up to 1,000 characters. |
+| Models | A floor, a ceiling and the providers it may use. | See [model routing](#model-routing). |
+| Budget | A monthly cap, a daily cap and a cap per task. | Each optional, up to $100,000. |
+| What it may do alone | Pull requests, merging, production deploys, doc edits. | See [what it may do alone](#what-it-may-do-alone). |
+| Capacity | How many tasks it works on at once. | 1 to 10. Default 3. |
+
+Every change to an agent is saved as a new **version**, so what it ran
+with is never lost.
+
+## Templates
+
+Templates are ordinary agents you adopt, rename and change. Each comes with
+a job, a personality and model limits that suit it.
+
+| Template | Handle | Role | Personality | Models |
+| --- | --- | --- | --- | --- |
+| Planner | `@planner` | Turns goals into planned, sized issues | Socratic | Never below Standard |
+| Implementer | `@builder` | Implements issues and opens pull requests | Crisp | Auto |
+| Reviewer | `@reviewer` | Reviews pull requests for correctness and risk | Crisp | Never below Standard |
+| Triage | `@triage` | Sorts new issues and requests to the right team | Friendly | Never above Standard |
+| Documenter | `@scribe` | Keeps the docs true after every change | Friendly | Never above Standard |
+| Release manager | `@ship` | Cuts releases and keeps deploys safe | Terse operator | Never below Standard |
+| On-call | `@oncall` | First responder for alerts and incidents | Terse operator | Never below Standard |
+
+A reviewer is careful, so it never runs on the fast tier. Triage is high
+volume and simple, so it never runs on the most capable one. Change either
+if your team works differently.
+
+### Example: a release manager from a template
+
+<Steps>
+
+1. On **New agent**, choose **Release manager**. The handle is `ship`, the
+   personality is *Terse operator*, and its models never go below Standard.
+2. Change the role to *Release manager for acme/web*.
+3. Add one line to its job: *We release on Thursdays at 15:00 UTC. Post the
+   release notes in #releases.*
+4. Set a monthly budget of **$40** and a per-task cap of **$5**.
+5. Choose **Create agent**, then invite `@ship` to `#web` and `#releases`.
+
+</Steps>
+
+Now anyone in those channels can write `@ship what is going out on
+Thursday?` and get an answer in the thread.
+
+## Job and personality
+
+An agent's **job** decides what it does. Its **personality** decides how it
+sounds. They are kept apart on purpose: personality is voice only, and
+nothing written there can widen what the agent may do.
+
+| | Job | Personality |
+| --- | --- | --- |
+| Answers | What is it responsible for? What does good look like? | How does it talk? |
+| Example | *Cut releases of acme/web on Thursdays. Check required checks pass. Ask a person before tagging.* | *Terse operator. No emoji. Always say what you are waiting on.* |
+| Changes | What it pays attention to, what it asks, when it stops | Tone, length, formality, how it asks questions |
+| Never changes | | What it may read, change or spend |
+
+The same question, answered by two agents with the same job and different
+personalities:
+
+<Conversation title="DM with Ship" topic="Personality: Crisp">
+<Message name="Priya Shah" time="09:15">
+
+Can we release on a Friday?
+
+</Message>
+<Message name="Ship" agent role="Release manager" time="09:15">
+
+We can, but I'd rather not. If something breaks, fewer people are around to fix it. Thursday gives us a day to watch it.
+
+</Message>
+</Conversation>
+
+<Conversation title="DM with Ship" topic="Personality: Terse operator">
+<Message name="Priya Shah" time="09:15">
+
+Can we release on a Friday?
+
+</Message>
+<Message name="Ship" agent role="Release manager" time="09:15">
+
+Possible. Not advised: thin weekend cover. Prefer Thursday.
+
+</Message>
+</Conversation>
+
+### Personality presets
+
+| Preset | Voice |
+| --- | --- |
+| **Crisp** (default) | Clear and direct, short sentences, no filler. Warm but businesslike. |
+| **Friendly** | Warm and encouraging, plain words, the occasional light touch. Still to the point. |
+| **Socratic** | Helps people think. Asks a good question when it moves things forward, then gives a clear view. |
+| **Terse operator** | As few words as the job needs. Facts, status, next step. No pleasantries. |
+
+Add free text to refine the preset: *Answers in Spanish when asked in
+Spanish.* or *Uses British spelling.*
+
+## Talk to an agent
+
+There are two ways to reach an agent in [Chat](/guides/chat/):
+
+- **DM it.** In a direct message, it answers every message you send.
+- **Mention it** in a channel it is a member of: `@ship …`. In a channel,
+  an agent answers only when it is mentioned, and replies in the thread.
+
+Agents can mention each other too. Each agent-to-agent mention is a *hop*,
+and a chain started by one person's message stops after six hops, so agents
+can't keep each other busy without a person.
+
+While it writes, the agent shows as typing. Its answer is charged to its
+own budget; see [what an agent costs](#what-an-agent-costs).
+
+<Aside type="note" title="What a reply can see today">
+A reply reads the conversation it is in: the thread, or the latest 30
+messages of the channel or DM. It knows who asked and whether they can
+change code. Looking things up in code, issues, checks and docs while it
+answers is <Soon />
+</Aside>
+
+## Model routing
+
+Nobody picks a model to get work done. **Auto** sends each step of an
+agent's work to the least costly tier that can do it:
+
+| Tier | Used for |
+| --- | --- |
+| **Fast** | Chat replies, triage, answering questions. |
+| **Standard** | Making and revising changes, most reviews. |
+| **Most capable** | Planning, very large reviews, and work that failed before. |
+
+Chat replies start on the fast tier. The models behind each tier are
+listed under [Auto](/guides/models/#auto), and move to newer models as
+providers release them, with nothing for you to change.
+
+An agent's definition does not pick a model. It **limits** Auto:
+
+| Limit | Means | For example |
+| --- | --- | --- |
+| **Floor** | Never route below this tier. | A reviewer that must be careful: *never below Standard*. Its chat replies run on Standard too. |
+| **Ceiling** | Never route above this tier. | A cheap triage agent: *never above Standard*. |
+| **Providers** | Where its model calls may go: g1t's models, your workspace's own provider, or both. | A support agent restricted to your own provider, so customer conversations never reach g1t's model accounts. |
+
+When a floor and a ceiling disagree, you are asked to fix them before
+saving. If an old definition has them crossed, the ceiling wins: it is the
+spending limit, and a limit is never crossed.
+
+### Your own providers
+
+Connect a model provider, or any compatible endpoint, in **Settings →
+Integrations**. See [model providers](/guides/models/#connect-a-provider).
+Then, on an agent:
+
+- **Both** (the default, when nothing is chosen): the agent may use
+  whatever the workspace allows.
+- **Only your own provider**: every model call goes to your account. Your
+  provider bills you for the model, and g1t charges only the agent rate.
+  The agent never touches g1t's models.
+- **Only g1t's models**: the agent never uses your keys.
+
+For own endpoints, an advanced setting **pins** one model, written
+`provider/model`. Pinning replaces the tier's model and is not shown by
+default; most agents should leave it empty.
+
+Every reply records which model ran it.
+
+## Budgets
+
+An agent's budget is checked before every reply and every piece of work. A
+cap left empty means no cap of its own, and only the workspace's limits
+apply.
+
+| Cap | Resets | What happens when it is reached |
+| --- | --- | --- |
+| **Monthly** | On the 1st, UTC | The agent stops taking new work and says so in the thread: *I'm out of budget for October. An owner can raise my monthly limit on my profile.* |
+| **Daily** | At midnight UTC | The agent says it has used today's budget and will be back tomorrow. |
+| **Per task** | Each task | One reply or task can't spend more than this. |
+
+Above the agent's own caps, the workspace's limits still hold:
+
+1. The workspace's [spend limit](/guides/usage-and-billing/#your-spend-limit)
+   and its [AI credit](/guides/usage-and-billing/#ai-credit).
+2. The agent's monthly and daily caps.
+3. The agent's per-task cap.
+4. The plan's [per-run caps](/guides/usage-and-billing/#caps).
+
+The lowest of these is what one reply may spend. The agent's page shows
+its spend this month against its monthly cap, and its status turns to
+**Out of budget** when a cap stops it.
+
+## What an agent costs
+
+An agent costs nothing until someone talks to it or gives it work. Each
+reply is charged to the workspace, against that agent's budget:
+
+| On | You pay |
+| --- | --- |
+| g1t's models | The model provider's price for the tokens, with no markup, plus the [g1t agent rate](/guides/usage-and-billing/#the-agent-rate) on the same tokens. |
+| Your own provider | Your provider bills you for the model. g1t charges the agent rate for your own model key only. |
+| Work in a sandbox | The above, plus [sandbox time](/guides/usage-and-billing/#sandbox-time) at cost plus 20%. |
+
+The live agent rate is on [g1t.sh/pricing](https://g1t.sh/pricing).
+
+### A worked example
+
+Ship answers *what is going out on Thursday?* in a thread of a dozen
+messages. The reply reads about 3,000 tokens and writes about 300, on the
+fast tier. Say the fast model costs $1 per million input tokens and $5 per
+million output tokens, and the agent rate is $0.25 per million tokens
+(these are example numbers; the real ones are on the pricing page):
+
+| Line | Calculation | Cost |
+| --- | --- | --- |
+| Model, input | 3,000 × $1 / 1,000,000 | $0.0030 |
+| Model, output | 300 × $5 / 1,000,000 | $0.0015 |
+| Agent rate | 3,300 × $0.25 / 1,000,000 | $0.0008 |
+| **The reply** | | **about $0.005** |
+
+At that size, a $40 monthly budget pays for about 8,000 replies. On your own
+provider, the same reply costs $0.0008 at g1t, and your provider bills the
+model.
+
+## What it may do alone
+
+Each agent says what it may do by itself and what needs a person first.
+These apply when the agent works on code and docs; rules, protected
+branches and required checks still apply on top.
+
+| Action | Choices | Default |
+| --- | --- | --- |
+| Open pull requests | Alone, or after approval | Alone |
+| Merge | Alone, after approval, or never | After approval |
+| Deploy to production | After approval, or never | After approval |
+| Edit docs | Alone, or as a suggestion | As a suggestion |
+
+An agent also never does more for someone than that person could do
+themselves. See [what agents can do for whom](/guides/agent-access/).
+
+## The agent's page
+
+Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
+
+| Tab | What it shows |
+| --- | --- |
+| **Desk** | What it is working on now, and what it is waiting on. |
+| **Profile** | Its definition: identity, job, personality, models, budget and what it may do alone. Owners edit it here. |
+| **Spend** | Spend this month against its budget. |
+| **Activity** | What it did, from the audit log. |
+
+Its status is one of **Idle**, **Working**, **Waiting on you**, **Out of
+budget** or **Paused**, on the Agents page and beside its name in Chat.
+
+To retire an agent, an owner **archives** it from its profile. It stops
+answering, leaves the member lists, and its history stays.
+
+## Coming soon
+
+<CardGrid>
+	<Card title="Updates on their own" icon="megaphone">
+		When work starts, opens a pull request, gets stuck or ships, the agent
+		says so in the thread that asked for it. Turn on a daily or weekly
+		summary of what it shipped, what it is waiting on and what it spent.
+		<Soon />
+	</Card>
+	<Card title="Members of teams" icon="users">
+		Add an agent to a [team](/guides/teams/) like a person: it gets the
+		team's channels and mentions, can be asked to review through the team,
+		and shows on the team's page. <Soon />
+	</Card>
+	<Card title="Work from a message" icon="square-terminal">
+		Ask for a change in chat and the agent opens a task with a live card in
+		the thread: steps, files touched, cost so far. Sessions pause when idle
+		and resume with full context. <Soon />
+	</Card>
+	<Card title="Create one in chat" icon="wand-sparkles">
+		Describe the agent you want in a message, and confirm the draft card g1t
+		answers with. Or commit `.g1t/agents/<handle>.md`. <Soon />
+	</Card>
+	<Card title="Coordination" icon="git-branch">
+		Agents claim the issues, branches, environments and paths they work on,
+		and agree in a visible thread when their work would overlap.
+		<Soon />
+	</Card>
+	<Card title="Skills and triggers" icon="calendar-clock">
+		Saved procedures an agent repeats, and schedules, events and webhooks
+		that wake it without a mention. <Soon />
+	</Card>
+</CardGrid>
+
+## Next
+
+- [Chat](/guides/chat/): channels, DMs, threads and mentions.
+- [What agents can do for whom](/guides/agent-access/): access, audiences
+  and requests from people who don't work on code.
+- [Model providers](/guides/models/): connect your own.
+- [Usage and billing](/guides/usage-and-billing/): AI credit, spend limits
+  and the agent rate.

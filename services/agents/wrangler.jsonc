@@ -1,0 +1,62 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-agents",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings: the site, the API and the chat
+	// service. Chat hands it messages to answer (`deliver`).
+	"workers_dev": false,
+	"placement": { "mode": "off" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-agents",
+			// npx wrangler d1 create g1t-agents, and its id here.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Each agent's desk: one object per agent, which queues what it is
+	// handed and works at most its capacity of replies at once (src/desk.ts).
+	"durable_objects": {
+		"bindings": [{ "name": "DESKS", "class_name": "Desk" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Desk"] }],
+	"services": [
+		// Reading the conversation, typing, and posting replies as the agent.
+		{ "binding": "CHAT", "service": "g1t-chat" },
+		// Workspaces by slug.
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// The compute gate (reserve, settle), runs (start_run, finish_run),
+		// the price book and staff's model defaults.
+		{ "binding": "BILLING", "service": "g1t-billing" },
+		// The workspace's own model provider, and a model session for each
+		// reply, as runs get.
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+		// The audit log: agents created, changed and archived.
+		{ "binding": "EVENTS", "service": "g1t-events" },
+		// The model proxy, which replies' model requests go through with a
+		// model session's token, as sandboxes' do: it holds the keys, g1t's or
+		// the workspace's own, and counts what each answer cost. A binding,
+		// not its address: same-zone Worker-to-Worker fetches can be refused.
+		{ "binding": "MODELS", "service": "g1t-models" }
+	],
+	"vars": {
+		// Who may use g1t's hosted models while billing takes no real money:
+		// the same list as the runner's (services/runner/wrangler.jsonc, and
+		// src/hosted.ts there, which this service uses). Keep the two equal.
+		"HOSTED_AGENT_WORKSPACES": "flagon-io",
+		// The runner's routing policy, the same JSON as its AGENT_ROUTING:
+		// the model behind each tier. Staff's defaults in sudo (billing's
+		// model_defaults) go on top, read once a minute, as in the runner.
+		// Chat replies start on the small tier; an agent's floor and ceiling
+		// move them. Keep it equal to the runner's.
+		"AGENT_ROUTING": "{\"tiers\":{\"small\":{\"modelName\":\"Claude Haiku 5.5\",\"model\":\"claude-haiku-5-5\",\"price\":{\"input\":0.1,\"output\":0.5,\"cacheRead\":0.01,\"cacheWrite\":0.125}},\"large\":{\"modelName\":\"Claude Sonnet 5.5\",\"model\":\"claude-sonnet-5-5\",\"price\":{\"input\":2,\"output\":10,\"cacheRead\":0.1,\"cacheWrite\":2.5}},\"frontier\":{\"modelName\":\"Claude Opus 5.5\",\"model\":\"claude-opus-5-5\",\"price\":{\"input\":4,\"output\":20,\"cacheRead\":0.2,\"cacheWrite\":5}}},\"tasks\":{\"implement\":\"large\",\"revise\":\"large\",\"answer\":\"small\",\"review\":\"change\",\"update\":\"small\",\"plan\":\"small\"},\"effort\":{\"plan\":\"high\",\"answer\":\"medium\",\"update\":\"low\"},\"smallChange\":{\"files\":10,\"lines\":200},\"largeChange\":{\"files\":60,\"lines\":3000},\"largeLabels\":[\"security\"],\"frontierLabels\":[\"architecture\"],\"smallLabels\":[\"documentation\",\"docs\",\"typo\"],\"frontierAfter\":2,\"learning\":{\"window\":20,\"minRuns\":5,\"stepDownAt\":0.9,\"stepUpAt\":0.5}}",
+		// The model proxy's address, used only without the MODELS binding
+		// (an installation that runs its proxy elsewhere).
+		"MODELS_URL": "https://models.g1t.sh"
+	},
+	// Every log kept while replies are new: a failed one must be traceable.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
+}

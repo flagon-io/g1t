@@ -1,0 +1,51 @@
+---
+// A conversation in Chat, drawn the way the product shows it: a channel or
+// DM header, then <Message> children. For examples in the guides.
+interface Props {
+	/** `#web`, or a DM's title. */
+	title: string;
+	/** One line under the title, such as the channel's topic. */
+	topic?: string;
+}
+const { title, topic } = Astro.props;
+---
+
+<figure class="conversation not-content" aria-label={`An example conversation in ${title}`}>
+	<header>
+		<span class="title">{title}</span>
+		{topic && <span class="topic">{topic}</span>}
+	</header>
+	<div class="messages"><slot /></div>
+</figure>
+
+<style>
+	.conversation {
+		margin-block: 1.5rem;
+		border: 1px solid var(--g1t-line);
+		border-radius: 0.875rem;
+		background: var(--g1t-surface);
+		overflow: hidden;
+	}
+	header {
+		display: flex;
+		align-items: baseline;
+		gap: 0.6rem;
+		padding: 0.7rem 1rem;
+		border-bottom: 1px solid var(--g1t-line);
+	}
+	.title {
+		color: var(--g1t-fg);
+		font-weight: 600;
+		font-size: 0.875rem;
+	}
+	.topic {
+		color: var(--g1t-faint);
+		font-size: 0.8125rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.messages {
+		padding-block: 0.4rem;
+	}
+</style>

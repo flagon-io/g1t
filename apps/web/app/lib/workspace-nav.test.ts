@@ -88,3 +88,35 @@ test("a click's data request for an alias leads to the page, not its data", () =
     "/flagon-io/g1t/pulls?state=closed",
   );
 });
+
+test("the rail's mode follows the address", async () => {
+  const { modeOf, modeHome } = await import("./workspace-nav.ts");
+  assert.equal(modeOf("/", "acme"), "home");
+  assert.equal(modeOf("/inbox", "acme"), "inbox");
+  assert.equal(modeOf("/acme/-/chat/general", "acme"), "chat");
+  assert.equal(modeOf("/acme/-/chat/dm/c1.data", "acme"), "chat");
+  assert.equal(modeOf("/acme/-/agents", "acme"), "agents");
+  assert.equal(modeOf("/acme/-/agents/ship/profile", "acme"), "agents");
+  assert.equal(modeOf("/acme/-/docs", "acme"), "docs");
+  assert.equal(modeOf("/acme/-/home", "acme"), "home");
+  assert.equal(modeOf("/acme", "acme"), "code");
+  assert.equal(modeOf("/acme/web/pulls", "acme"), "code");
+  // Another workspace's chat is not this one's mode.
+  assert.equal(modeOf("/other/-/chat", "acme"), "code");
+  assert.equal(modeHome("home", "acme", false), "/acme/-/home");
+  assert.equal(modeHome("chat", "acme"), "/acme/-/chat");
+});
+
+test("a member without Code access is sent around Code's pages", async () => {
+  const { codeGate } = await import("./workspace-nav.ts");
+  const none = ["acme"];
+  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/home");
+  assert.equal(codeGate("/", "", none, "other"), null);
+  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/home");
+  assert.equal(codeGate("/acme/web/pull/3", "?x=1", none, "acme"), "/acme/-/code-access?from=%2Facme%2Fweb%2Fpull%2F3%3Fx%3D1");
+  assert.equal(codeGate("/acme/-/projects", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fprojects");
+  assert.equal(codeGate("/acme/-/chat/general", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/-/code-access", "", none, "acme"), null);
+  assert.equal(codeGate("/other/web", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/web", "", [], "acme"), null);
+});

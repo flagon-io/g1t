@@ -57,7 +57,8 @@ import { PageMain } from "./components/landmark";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./components/command-palette";
-import { billing, inbox, projects } from "./lib/services.server";
+import { billing, chat, inbox, projects } from "./lib/services.server";
+import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
@@ -166,7 +167,7 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts] = await Promise.all([
+  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread] = await Promise.all([
     // Every project, for the palette and the count; the sidebar lists only
     // the person's pinned and recent ones (lib/pins.ts).
     workspace ? workspaceProjects(workspace.slug, user) : Promise.resolve(null),
@@ -182,6 +183,8 @@ async function shellFor(
     inbox.counts(user.username).catch(() => null),
     // Never kept: opening a project moves it up Recent.
     workspace ? projects.shortcuts(workspace.slug, user).catch(() => null) : Promise.resolve(null),
+    // The rail's Chat badge: never kept, and never waited on for long.
+    workspace ? chatUnreadFor(workspace.slug, user) : Promise.resolve(null),
   ]);
   return {
     workspace,
@@ -217,11 +220,25 @@ async function shellFor(
         : null,
     shared,
     inbox: unread,
+    chat: chatUnread,
     // While g1t is free every charge is zero, so usage is shown at cost.
     // Usage at price, the one figure every page shows.
     monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : (usage.value.priceMicros ?? usage.value.spentMicros)) : null,
   };
 }
+
+/** What is unread in chat, or null when chat is slow to answer or does not. */
+async function chatUnreadFor(slug: string, user: User): Promise<ShellData["chat"]> {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
+  const read = chat
+    .sidebar(slug, user)
+    .then((result) => (result.ok ? unreadTotals(result.value.entries) : null))
+    .catch(() => null);
+  return Promise.race([read, timeout]);
+}
+
+/** The longest the rail's Chat badge holds up a page. */
+const CHAT_BADGE_WAIT_MS = 300;
 
 /**
  * How long the sidebar's workspace answers are kept: as long as someone's

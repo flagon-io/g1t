@@ -19,7 +19,7 @@ import { rememberWorkspace } from "../lib/workspace-choice";
 export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "You're invited · g1t",
-    description: "An invite to g1t, where people and agents ship software together.",
+    description: "An invite to g1t, one workspace where a team and its agents talk, work and ship.",
   });
 }
 
@@ -173,16 +173,16 @@ function Headline({ invite }: { invite: InvitePreview }) {
 function about(invite: InvitePreview, signedIn: boolean): string {
   const signingUp = !signedIn && !invite.hasAccount && invite.kind === "account";
   if (invite.workspace) {
-    return `g1t is where people and agents ship software together. ${
+    return `g1t is one workspace where a team and its agents talk, work and ship. ${
       signingUp ? "Make your account below and you join" : "Accepting joins you to"
     } ${invite.workspace.name} as a member.`;
   }
   if (invite.repository) {
-    return `g1t is where people and agents ship software together. ${
+    return `g1t is one workspace where a team and its agents talk, work and ship. ${
       signingUp ? "Make your account below and you get" : "Accepting gives you"
     } the ${invite.repository.role} role on ${invite.repository.name}.`;
   }
-  return "g1t is where people and agents ship software together: plan in issues, assign work to agents like teammates, and land it through checks that hold. This invite gets you in.";
+  return "g1t is one workspace where a team and its agents talk, work and ship: chat with people and agents, give agents a job and a budget, and land code through checks that hold. This invite gets you in.";
 }
 
 /** What accepting is called on its button. */

@@ -128,6 +128,9 @@ export function recordHandler(id: string, kind: "loader" | "action", ms: number)
 export function finishResponse(request: Request, response: Response): Response {
   const perf = scope.getStore();
   if (!perf) return response;
+  // A WebSocket handed over (chat's live socket) goes back as it is: a
+  // copy would lose the socket.
+  if (response.status === 101 || (response as Response & { webSocket?: unknown }).webSocket) return response;
   // A redirect's headers cannot be changed; a copy's can.
   const answered = new Response(response.body, response);
   const sessions = [...perf.sessions].map(([service, how]) => `${service}=${how}`).join(" ");

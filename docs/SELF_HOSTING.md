@@ -111,6 +111,8 @@ checks this table names every unit.
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
+| `services/chat` | TS | Durable Objects (one room per channel, WebSocket hibernation) | Runs unchanged; workerd runs its Durable Objects |
+| `services/agents` | TS | Durable Objects (one desk per agent, alarms) | Runs unchanged; replies reach a model through the `MODELS` binding (the model proxy), which is off, so an agent answers with a short apology |
 | `services/search` | Rust | Queues (events and its own jobs); FTS5 | Runs unchanged |
 | `services/billing` | Rust | Cron, Cloudflare REST API (keeper), Stripe | Runs with `FREE_WHILE_BUILDING=true` and no Stripe key: nothing is charged |
 | `services/security` | Rust | Queue, cron | Runs unchanged; its cron through `scheduler.mjs` |
@@ -121,7 +123,7 @@ checks this table names every unit.
 | `services/deployments` | TS | Workers for Platforms, REST API, KV `DOMAINS`, cron | Runs with no API token: nothing deploys |
 | `services/runner` | TS | **Containers**, Durable Objects, outbound interception, AI Gateway, cron | Off: bound to the off Worker |
 | `services/context` | TS | **Vectorize**, **Workers AI**, Queues | Off: bound to the off Worker |
-| `services/models` | TS | AI Gateway; public at `models.g1t.sh` | Not run (only sandboxes call it) |
+| `services/models` | TS | AI Gateway; public at `models.g1t.sh` | Not run; bound to the off Worker (sandboxes and agent replies call it) |
 | `services/pages` | TS | Dispatch namespace, wildcard routes, KV | Not run |
 | `services/og` | TS | Cache API | Not run (social cards are optional) |
 | `crates/runner` | native, in the sandbox | Talks to `https://api.g1t.sh` and `https://g1t.sh` (hard-coded in the runner Worker); `wrangler deploy --dry-run` for builds | Phase 2 |

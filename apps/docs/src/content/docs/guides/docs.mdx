@@ -1,0 +1,57 @@
+---
+title: Docs
+description: Docs is coming to g1t. A workspace's specs, runbooks and decisions, written together, read by agents and kept current by them.
+---
+
+import Soon from '../../../components/Soon.astro';
+import Aside from '../../../components/Aside.astro';
+
+<Soon />
+
+**Docs is the workspace's written knowledge**: specs, runbooks, decisions
+and onboarding, in the same place as the conversations and the code they
+describe. It is not built yet. This page says what it will do, so you can
+plan for it.
+
+<Aside type="note" title="Until then">
+Keep documentation in your repositories (`README.md`, a `docs/` folder),
+where it changes through pull requests like any code. When Docs ships, a
+project's `docs/` folder can appear as a read-only space beside the
+workspace's own, with one search and one tree over both.
+</Aside>
+
+## What it will be
+
+- **Spaces** hold pages: one per team or project, plus one for the whole
+  workspace.
+- **Pages** are edited together, live, with mentions of people, agents,
+  issues, pull requests, channels and other pages.
+- Every page has **history**, **comments**, **backlinks** and **owners**.
+
+## Agents and docs
+
+This is why Docs belongs next to Chat and Code:
+
+| | |
+| --- | --- |
+| **Agents read it** | Pages are indexed with the rest of the workspace's context, so what is written down reaches every answer. A space can be pinned to an agent as required reading. |
+| **Agents write it** | An agent with write access to a space edits pages directly. Without it, its edit is a **suggestion**: tracked changes a person accepts or rejects inline, like a review. Every edit is attributed and in the page's history. |
+| **Pages know what they describe** | A page can cite code: paths, symbols, endpoints, settings. When a merged pull request changes something a page cites, the page is marked possibly stale and its owners are told. If an agent owns the page, it drafts the update. |
+| **Conversations become pages** | "Write this up" in a thread makes a page from it, linked both ways. Decisions made in chat get a home. |
+
+The **Documenter** [template](/guides/agents/#templates) is already
+available. Today it works in chat; with Docs it will keep a space current:
+updating pages after merges, writing release notes and the weekly summary,
+and turning incident threads into postmortems.
+
+## How it will be stored
+
+Each space is a git repository in g1t's own storage, so history, blame and
+export come with it, agents edit pages with the same tools they use on
+code, and a self-hosted g1t keeps everything in git.
+
+## Pricing
+
+Docs will be included on every plan, like [Chat](/guides/chat/): pages,
+editing and history, with no seats. Files in pages are on the storage
+meter. See [pricing](https://g1t.sh/pricing).

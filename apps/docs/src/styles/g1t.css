@@ -442,3 +442,15 @@ site-search button[data-open-modal]:hover {
 	font-size: 0.625rem;
 	line-height: 1.6;
 }
+
+/* "Soon" beside a sidebar entry for a feature not built yet: quiet, like
+   the site's Coming soon tag, not a call to action. */
+.sidebar-content .sl-badge {
+	background: var(--g1t-raised);
+	border: 1px solid var(--g1t-line-strong);
+	color: var(--g1t-muted);
+	font-family: var(--g1t-font-mono);
+	font-size: 0.625rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}

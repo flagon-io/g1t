@@ -166,3 +166,76 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
   if (to === undefined) return null;
   return `/${slug}${to ? `/${to}` : ""}${search && search !== "?" ? (search.startsWith("?") ? search : `?${search}`) : ""}`;
 }
+
+/**
+ * The rail's modes (docs/WORKSPACE.md, "Shell"): Home and the Inbox span
+ * the workspace; Code, Chat, Docs and Agents each have a sidebar of their
+ * own. Which one is lit follows the address.
+ */
+export type ModeKey = "home" | "code" | "chat" | "docs" | "agents" | "inbox";
+
+/** The mode a path is in, for the workspace `slug`. Anything not another mode's is Code's. */
+export function modeOf(pathname: string, slug: string | null): ModeKey {
+  const path = pagePath(pathname);
+  if (path === "/") return "home";
+  if (path === "/inbox" || path.startsWith("/inbox/")) return "inbox";
+  const parts = path.split("/").filter(Boolean);
+  if (slug && parts[0]?.toLowerCase() === slug.toLowerCase() && parts[1] === "-") {
+    if (parts[2] === "home") return "home";
+    if (parts[2] === "chat") return "chat";
+    if (parts[2] === "docs") return "docs";
+    if (parts[2] === "agents") return "agents";
+  }
+  return "code";
+}
+
+/** Where each mode's rail button goes, in the workspace `slug`. */
+export function modeHome(mode: ModeKey, slug: string, code = true): string {
+  switch (mode) {
+    case "home":
+      return code ? "/" : `/${slug}/-/home`;
+    case "inbox":
+      return "/inbox";
+    case "chat":
+      return `/${slug}/-/chat`;
+    case "docs":
+      return `/${slug}/-/docs`;
+    case "agents":
+      return `/${slug}/-/agents`;
+    case "code":
+      return `/${slug}`;
+  }
+}
+
+/** The page a member without Code access sees in place of anything of Code's. */
+export function codeAccessPath(slug: string, from?: string): string {
+  return `/${slug}/-/code-access${from ? `?from=${encodeURIComponent(from)}` : ""}`;
+}
+
+/** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
+const CODE_PAGES = new Set(["projects", "repositories", "packages", "security", "rules", "runners", "actions", "context", "memory", "insights", "soon"]);
+
+/**
+ * Where a member without Code access goes instead of `pathname`, or null
+ * when the page is open to them. `noCode` is the workspaces (by slug) where
+ * they lack it; `chosen` is the one they are in. Mission control (`/`) is
+ * their Home in that workspace; its overview, its projects and every
+ * repository page is the page that says to ask an owner.
+ */
+export function codeGate(pathname: string, search: string, noCode: readonly string[], chosen: string | null): string | null {
+  if (noCode.length === 0) return null;
+  const path = pagePath(pathname);
+  if (path === "/") {
+    const slug = chosen && noCode.includes(chosen.toLowerCase()) ? chosen.toLowerCase() : null;
+    return slug ? `/${slug}/-/home` : null;
+  }
+  const parts = path.split("/").filter(Boolean);
+  const slug = parts[0]?.toLowerCase();
+  if (!slug || !noCode.includes(slug)) return null;
+  const from = `${path}${search && search !== "?" ? search : ""}`;
+  // The workspace's own page is Code's overview: their Home instead.
+  if (parts.length === 1) return `/${slug}/-/home`;
+  if (parts[1] === "-") return CODE_PAGES.has(parts[2] ?? "") ? codeAccessPath(slug, from) : null;
+  // A repository, and everything in it.
+  return codeAccessPath(slug, from);
+}

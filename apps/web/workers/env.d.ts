@@ -22,6 +22,13 @@ declare global {
       CONTEXT: ServiceBinding;
       /** Search across all of g1t, and Explore. */
       SEARCH: ServiceBinding;
+      /**
+       * Chat: channels, messages and read state over RPC, and the live
+       * socket, forwarded as it is (app/lib/chat-live.server.ts).
+       */
+      CHAT: ServiceBinding & { fetch(request: Request): Promise<Response> };
+      /** The workspace's own agents: definitions, templates and desks. */
+      AGENTS: ServiceBinding;
       /** Production screenshots, from the og service's `Screenshots` entrypoint. */
       SCREENSHOTS?: {
         image(input: { host: string; commit: string; since?: string }): Promise<{

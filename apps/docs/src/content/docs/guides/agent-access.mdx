@@ -1,0 +1,185 @@
+---
+title: What agents can do for whom
+description: Agents act with the access of the person asking and answer only with what their audience may see. How that works for engineers, for the rest of the company, and for members without Code access.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Soon from '../../../components/Soon.astro';
+import Conversation from '../../../components/Conversation.astro';
+import Message from '../../../components/Message.astro';
+import Aside from '../../../components/Aside.astro';
+
+Chat is for the whole company: support, sales, finance, design and
+leadership as well as the people who build. Most of them never change
+code, and an agent must never become a way around that. They still get the
+full value of the same agents: they ask questions, get answers, and have
+their requests reach the right team.
+
+Two rules make that safe. Neither needs a new role or setting; both follow
+from the access people already have.
+
+## Rule one: the asker's access caps the agent
+
+**An agent never does more for someone than that person could do
+themselves.**
+
+An agent acts with the *overlap* of its own access and the access of the
+person who asked. An agent that may open pull requests on `acme/web` opens
+one for an engineer with write access to `acme/web`. Asked by someone with
+read access only, it can explain the code, but not change it, whatever the
+agent's own settings say.
+
+| Who asks | What the agent may do for them |
+| --- | --- |
+| A member with write access to the repository | Anything the agent itself may do there, under [what it may do alone](/guides/agents/#what-it-may-do-alone). |
+| A member with read access | Explain and answer. A change becomes a request for the team that owns it. |
+| An outside collaborator | Only what their [repository roles](/guides/access-and-roles/) allow. |
+| A member without Code access <Soon /> | Answer about the product without showing source code. Changes become requests. |
+
+Every agent knows who asked and whether they can change code, and every
+action it takes records the person who asked. When an approval is needed,
+it goes to people who hold the access the work needs, not to whoever
+happened to ask.
+
+## Rule two: the audience caps the answer
+
+**An agent answers only with what everyone who can read the reply may
+see.**
+
+| Where you ask | Who can read the answer | What the agent may draw on |
+| --- | --- | --- |
+| A direct message | You (and anyone else in the DM) | What every member of the DM may see. |
+| A private channel | The channel's members | What every member of the channel may see. |
+| A public channel | The whole workspace | What every member of the workspace may see. |
+
+So a private repository, a private channel or a private doc space never
+leaks into a place with a wider audience. When an agent can't answer
+somewhere because of who else is there, it will say so and offer to answer
+you in a DM instead.
+
+<Aside type="note" title="Today">
+A reply reads only the conversation it is in, which everyone there can
+already read, so nothing wider can leak. When replies gain tools to look up
+code, issues and docs <Soon />, every
+lookup is filtered by the audience before its result reaches the model.
+</Aside>
+
+## A support lead asks for a change
+
+Dana leads support. She has read access to `acme/billing` and no write
+access. She DMs the workspace's triage agent:
+
+<Conversation title="DM with Triage" topic="Dana has read access to acme/billing">
+<Message name="Dana Ruiz" time="14:05">
+
+Customers on annual plans get charged twice when they downgrade mid-month. Can you fix it?
+
+</Message>
+<Message name="Triage" agent role="Sorts new issues and requests to the right team" time="14:05">
+
+I can't change the billing code for you, but I can make sure the right people see this. Here is a bug report in your words:
+
+**Annual plans charged twice on mid-month downgrade.** Customers on annual plans who downgrade before the month ends see two charges. Reported by support.
+
+Shall I send it to the billing team? Anything to add, such as a customer or an invoice number?
+
+</Message>
+</Conversation>
+
+The agent didn't refuse, and didn't pretend it could change the code. It
+wrote the request up and offered to route it.
+
+### Requests become intake
+
+When someone who can't change the code asks for a change, the agent turns
+it into intake:
+
+<Steps>
+
+1. **It drafts the request**: a bug or a feature request, in the asker's
+   words, with the agent's understanding of it.
+2. **It routes the request** to the team that owns the area, from code
+   owners, the project's team or the workspace's intake settings.
+   <Soon />
+3. **It tells the asker where it went.**
+4. **It tells them again** when the request is triaged, scheduled and
+   shipped: *the export fix you asked for is live.*
+   <Soon />
+
+</Steps>
+
+Today the agent drafts the request in the conversation, and a person files
+it. People with write access can still say "just do it".
+
+## Members without Code access
+
+<Soon />
+
+Not everyone in a company needs the code. **Code access** is a switch on
+each membership, set by owners:
+
+- **On by default** for everyone, so nothing changes for existing members.
+- **Turn it off** for people who don't work on code: support, sales,
+  finance, leadership.
+- **It costs nothing either way.** There are no seats. Adding the whole
+  company costs nothing until people use agents, and then the agent's
+  reply is charged like any other.
+
+A member without Code access:
+
+| | |
+| --- | --- |
+| **Sees** | Chat, Docs, Agents and the inbox. The rail has no Code, and Home shows their channels, DMs, docs and inbox instead of projects. |
+| **Can't open** | Any repository, issue, pull request, check or deploy page. The workspace's base permission and team grants don't apply to them. |
+| **Still sees work reach them** | Cards about issues, pull requests and deploys appear in their channels as summaries: title, state and who is on it. Opening one asks for Code access. |
+| **Can ask agents** | Anything about the product. Agents explain how things work and what changed, but never show them source code. Owners can tighten this so agents answer only from Docs. |
+
+Turning Code access back on restores what their teams and roles give them.
+
+## Files and customer data
+
+<Soon />
+
+People will upload what their work needs: spreadsheets, contracts,
+exports, screenshots. Each file gets a level, set by the uploader:
+**Public**, **Internal** (the default), **Confidential** or **Customer
+data**.
+
+- Each level lists which model providers may process it. For example,
+  customer data may go only to the workspace's own provider. An agent that
+  may not send a file to any allowed model says so; it never quietly skips
+  it.
+- Agents never write customer data into their memory, or into issues, pull
+  requests or channels with a wider audience than the file's.
+- Every time an agent reads a Confidential or customer-data file, the
+  [audit log](/guides/audit-log/) records it, with the person who asked.
+
+## Agents that listen
+
+<Soon />
+
+A channel can let agents **listen**. It is off by default and shown in the
+channel's header. A listening agent doesn't answer every message. It
+watches for complaints, bug reports, feature requests and unanswered
+questions, groups related ones (*three customers hit the CSV export timeout
+this week*), and files one request linked to every message. It speaks only
+when asked, or to close a loop: *this was fixed yesterday in #418*.
+
+## Beyond code
+
+<Soon />
+
+Agents will work across the company's other systems through connectors the
+workspace adds, such as a customer database or a help desk. The same rules
+apply there: the asker's access caps the agent, the audience caps the
+answer, and file levels decide which models see the data.
+
+## Summary
+
+| Question | Decided by |
+| --- | --- |
+| What can an agent see? | Its own access, the channels it was invited to, and the audience of the conversation. An invite grants read, never write. |
+| What can it change? | The overlap of its access and the asker's, then rules, protected branches and environment rules. |
+| When must it ask? | [What it may do alone](/guides/agents/#what-it-may-do-alone), plus policy. |
+| What can it spend? | The workspace, then the agent, then the task. See [budgets](/guides/agents/#budgets). |
+| Who did what? | The [audit log](/guides/audit-log/): the agent, the person who asked, and what was allowed. |

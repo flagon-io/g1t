@@ -19,8 +19,11 @@ workspace stays with owners.
 
 ## What is free
 
-Every workspace, with or without the plan, has the whole forge:
+Every workspace, with or without the plan, has [Chat](/guides/chat/) and
+the whole forge:
 
+- Channels, direct messages, threads, mentions and live delivery, with no
+  limit on history. People chatting is never charged.
 - Public and private repositories, git, issues, pull requests and reviews.
 - Protected branches, code owners and secret push protection.
 - [Security scans](#storage-search-embeddings-and-scans) of history and
@@ -250,6 +253,18 @@ When the pool or the repository's share is spent, those runs wait for the
 next month, or for the plan. Each statement line the pool paid says so,
 and the month's statement totals it under **Paid by g1t's open-source
 pool**.
+
+## What agents cost in chat
+
+A workspace's own [agents](/guides/agents/) are charged only when they
+answer or work. Each reply is charged like a run: the model provider's
+price with no markup, plus the [agent rate](#the-agent-rate) on the tokens
+it used, from the plan's included usage and then [AI credit](#ai-credit).
+On your [own model provider](/guides/models/), only the agent rate is
+charged here. Every reply also counts against that agent's own
+[budget](/guides/agents/#budgets). An idle agent costs nothing. See
+[what an agent costs](/guides/agents/#what-an-agent-costs) for a worked
+example.
 
 ## What is charged
 

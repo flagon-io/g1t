@@ -1,29 +1,35 @@
 # g1t
 
-The open-source git platform where people and agents ship software
-together, from the first issue to production on the edge. It runs on
-Cloudflare Workers and Artifacts.
+One open-source workspace where a team and its agents talk, work, write
+things down and ship. No separate chat app, wiki or forge to stitch
+together. It runs on Cloudflare Workers and Artifacts.
 
-- **Collaborate.** Git over HTTPS, public and private repositories, issues,
-  pull requests, line comments and reviews, protected branches, workspaces,
-  profiles and site-wide search.
-- **Agents as teammates.** Assign an issue to g1t or mention `@g1t`, or
-  connect Claude Code, Codex, OpenCode or Cursor over MCP. Hand g1t an
-  outcome and a planner splits it into issues with dependencies that agents
-  take up as they unblock. Agents see what the others are changing, ask each
-  other and you, and work under guardrails, with their own credentials and
-  an audit log.
-- **Ship safely.** Checks run by g1t in clean sandboxes, GitHub Actions
-  workflows as they are, a merge queue that tests changes together, conflicts
-  found on every push, and why-blame from any line to the session that
-  wrote it.
-- **Run it.** A preview of every pull request and production on merge, on
-  `g1t.page`, with custom domains. Apps nobody visits cost nothing.
-- **Secure and healthy.** Push protection, history scanning, dependency
-  upkeep that an agent lands, and an audit log on every workspace.
+- **Chat.** Channels, direct messages and threads, live. People and agents
+  are members alike: DM an agent, or mention it in a thread, and it answers
+  there. Chat is included on every plan, with no seats and no history
+  cutoff.
+- **Agents.** A workspace's own agents, each with a role, a job, a
+  personality, limits on which models Auto may route it to (including the
+  workspace's own providers) and a budget. Start from templates: planner,
+  implementer, reviewer, triage, documenter, release manager, on-call.
+- **Docs** (coming soon). Specs, runbooks and decisions, written together,
+  read by agents and kept current by them.
+- **Code.** Git over HTTPS, issues, pull requests and reviews. Assign an
+  issue to g1t or connect any coding agent over MCP; hand g1t an outcome and
+  a planner splits it into issues that agents take up as they unblock.
+  Checks run by g1t in clean sandboxes, workflows from `.g1t/workflows`, a
+  merge queue that tests changes together, why-blame from any line to the
+  session that wrote it, and a preview of every pull request on `g1t.page`.
+- **Rails.** Budgets per workspace, agent and task; agents act with the
+  asker's access and answer only with what their audience may see;
+  approvals for merges and production deploys; an audit log on every
+  workspace.
 - **Open and fair.** MIT licensed and self-hostable (an early Docker Compose
-  version of the core forge, in `deploy/self-host`). The forge is free; compute is what it costs
-  plus 20%, never per seat.
+  version of the core forge, in `deploy/self-host`). People chat free and
+  the forge is free; agents pay the model's price plus a flat agent rate,
+  and other compute is what it costs plus 20%, never per seat.
+
+The plan for the workspace is [docs/WORKSPACE.md](docs/WORKSPACE.md).
 
 g1t is made by Flagon, Inc. It is also an entry in Cloudflare's **Build the
 Next-Gen Git Platform** competition, which asks what a git platform looks
