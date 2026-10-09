@@ -16,9 +16,13 @@ export function moreInvitesMailto(about?: string): string {
   return `mailto:${INVITES_CONTACT}?subject=${encodeURIComponent(subject)}`;
 }
 
-/** What the sign-up buttons say. While invite-only, nobody can just sign up. */
-export function signUpCopy(inviteOnly: boolean): { primary: string; secondary: string | null } {
-  return inviteOnly ? { primary: "Request access", secondary: "Have an invite?" } : { primary: "Sign up", secondary: null };
+/**
+ * What the sign-up buttons say: Sign up, whether or not registration is
+ * invite-only. Only the sign-up page itself says how to get in (an invite,
+ * or a request for one), so nothing else reads as a waiting room.
+ */
+export function signUpCopy(): { primary: string; secondary: string | null } {
+  return { primary: "Sign up", secondary: null };
 }
 
 /** The /register address that opens on the invite-code field. */

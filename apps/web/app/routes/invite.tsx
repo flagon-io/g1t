@@ -182,7 +182,7 @@ function about(invite: InvitePreview, signedIn: boolean): string {
       signingUp ? "Make your account below and you get" : "Accepting gives you"
     } the ${invite.repository.role} role on ${invite.repository.name}.`;
   }
-  return "g1t is where people and agents ship software together: plan in issues, assign work to agents like teammates, and land it through checks that hold. It is invite-only for now; this invite gets you in.";
+  return "g1t is where people and agents ship software together: plan in issues, assign work to agents like teammates, and land it through checks that hold. This invite gets you in.";
 }
 
 /** What accepting is called on its button. */
@@ -424,7 +424,7 @@ function Dead({ loaded }: { loaded: Loaded }) {
         </div>
       )}
       <div className="mt-8 flex flex-wrap gap-3">
-        <ButtonLink to="/register#request">Request access</ButtonLink>
+        <ButtonLink to="/register#request">Sign up</ButtonLink>
         <ButtonLink to={loaded.viewer ? "/" : "/login"} variant="quiet">
           {loaded.viewer ? "Go to g1t" : "Sign in"}
         </ButtonLink>

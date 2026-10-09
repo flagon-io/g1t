@@ -12,7 +12,7 @@ export function useInviteOnly(): boolean {
   return root?.inviteOnly ?? true;
 }
 
-/** What the sign-up buttons say on this page. */
+/** What the sign-up buttons say on this page: Sign up, in every registration mode. */
 export function useSignUpCopy() {
-  return signUpCopy(useInviteOnly());
+  return signUpCopy();
 }

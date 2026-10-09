@@ -71,7 +71,7 @@ export function InvitesSection({
     <section id="invites" className="scroll-mt-20">
       <p className="text-sm text-muted">
         {overview.mode === "invite"
-          ? "g1t is invite-only for now. Each invite lets one person make an account. "
+          ? "Each invite lets one person make an account. "
           : "Anyone can make an account, but an invite still says who sent it. "}
         A revoked or expired invite that was never used comes back to you.
       </p>

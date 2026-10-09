@@ -1,15 +1,11 @@
 ---
 // The header's right side: where people go from the docs, then the source.
 import { GitBranch } from '@lucide/astro';
-
-// g1t.sh is invite-only for now. A build with PUBLIC_G1T_REGISTRATION=open
-// (an installation that lets anyone register) says Sign up again.
-const inviteOnly = (import.meta.env.PUBLIC_G1T_REGISTRATION ?? 'invite') !== 'open';
 ---
 
 <nav class="g1t-nav" aria-label="g1t">
 	<a href="https://g1t.sh/">g1t.sh</a>
-	<a href="https://g1t.sh/register" class="g1t-nav-cta">{inviteOnly ? 'Request access' : 'Sign up'}</a>
+	<a href="https://g1t.sh/register" class="g1t-nav-cta">Sign up</a>
 	<a href="https://g1t.sh/flagon-io/g1t" aria-label="Source on g1t" title="Source on g1t" class="g1t-nav-icon">
 		<GitBranch />
 	</a>

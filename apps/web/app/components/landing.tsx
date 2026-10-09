@@ -8,8 +8,6 @@ import { AgentSetup } from "./agent-setup";
 import { DeployArt, HeroArt, Live, PlanArt, QueueArt, TeamArt, WhyArt } from "./art";
 import { ProviderMark } from "./model-providers";
 import { ButtonLink, CopyLine } from "./ui";
-import { HAVE_AN_INVITE } from "../lib/invites";
-import { useInviteOnly } from "../lib/registration";
 
 const DOCS = "https://docs.g1t.sh";
 
@@ -213,7 +211,6 @@ const PLATFORM = ["Workers", "Artifacts", "Containers", "D1", "Queues", "Durable
  * It lists no one's repositories; those are a click away under Explore.
  */
 export function Landing() {
-  const inviteOnly = useInviteOnly();
   return (
     <main className="overflow-x-clip">
       {/* The opening. */}
@@ -244,23 +241,16 @@ export function Landing() {
           </p>
           <div className="mt-9 flex animate-fade-up flex-wrap items-center justify-center gap-3">
             <ButtonLink to="/register" variant="primary" large>
-              {inviteOnly ? "Request access" : "Start for free"}
+              Start for free
               <ArrowRight size={15} />
             </ButtonLink>
-            {inviteOnly ? (
-              <ButtonLink to={HAVE_AN_INVITE} variant="quiet" large>
-                Have an invite?
-              </ButtonLink>
-            ) : (
-              <ButtonLink to="#how" variant="quiet" large>
-                See how it works
-              </ButtonLink>
-            )}
+            <ButtonLink to="#how" variant="quiet" large>
+              See how it works
+            </ButtonLink>
           </div>
           <p className="mx-auto mt-5 max-w-xl animate-fade-up text-sm text-fg-soft/60 text-balance">
-            {inviteOnly
-              ? "g1t is invite-only while we open it up. The forge is free, with no card; agents and checks start with a trial after a card check, and deployments come with the g1t plan."
-              : "The forge is free, with no card. Agents and checks start with a trial after a card check; deployments come with the g1t plan."}
+            The forge is free, with no card. Agents and checks start with a trial after a card check;
+            deployments come with the g1t plan.
           </p>
         </div>
         <Live className="relative mx-auto max-w-6xl px-2 pt-6 pb-2 sm:px-4">
@@ -626,14 +616,9 @@ export function Landing() {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <ButtonLink to="/register" variant="primary" large>
-              {inviteOnly ? "Request access" : "Create your workspace"}
+              Create your workspace
               <ArrowRight size={15} />
             </ButtonLink>
-            {inviteOnly && (
-              <ButtonLink to={HAVE_AN_INVITE} variant="quiet" large>
-                Have an invite?
-              </ButtonLink>
-            )}
             <ButtonLink to={`${DOCS}/quickstart/`} variant="quiet" large>
               Read the quickstart
             </ButtonLink>

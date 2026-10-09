@@ -85,7 +85,7 @@ export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
-  // What sign-up buttons say: Request access while g1t is invite-only.
+  // Whether sign-up takes an invite: only the sign-up page says so.
   const [shell, mode] = await Promise.all([
     // An account still confirming its address sees only the pages that
     // allows (lib/confirm-gate.ts), in the visitor's frame.
@@ -271,7 +271,7 @@ const PUBLIC_COMMANDS: PaletteCommand[] = [
   { label: "Sign up", to: "/register", icon: <Plus size={15} /> },
 ];
 
-/** Sign up, or Request access while g1t is invite-only. */
+/** Sign up: the sign-up page says whether it takes an invite. */
 function SignUpButton() {
   const copy = useSignUpCopy();
   return <ButtonLink to="/register">{copy.primary}</ButtonLink>;

@@ -38,7 +38,7 @@ const MAILBOXES: { icon: ReactNode; title: string; address: string; about: strin
     icon: <Ticket size={16} />,
     title: "Invites",
     address: CONTACT.support,
-    about: "More invites for you or your workspace while g1t is invite-only. Say who you would like to bring.",
+    about: "More invites for you or your workspace. Say who you would like to bring.",
   },
   {
     icon: <CreditCard size={16} />,

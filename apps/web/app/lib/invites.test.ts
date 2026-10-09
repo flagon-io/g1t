@@ -26,8 +26,8 @@ import {
 const CODE = "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk";
 
 test("while invite-only, nobody is offered a plain sign-up", () => {
-  assert.deepEqual(signUpCopy(true), { primary: "Request access", secondary: "Have an invite?" });
-  assert.deepEqual(signUpCopy(false), { primary: "Sign up", secondary: null });
+  // Sign up everywhere; only the sign-up page says registration takes an invite.
+  assert.deepEqual(signUpCopy(), { primary: "Sign up", secondary: null });
   assert.equal(HAVE_AN_INVITE, "/register#invite");
 });
 
