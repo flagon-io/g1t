@@ -59,6 +59,12 @@ pub const MAX_TIMEOUT_MINUTES: u32 = 60;
 pub const SELF_HOSTED_MAX_TIMEOUT_MINUTES: u32 = 24 * 60;
 /// A running job that has said nothing for this long is taken as lost.
 pub const SILENT_MS: u64 = 10 * 60 * 1000;
+/// Schedules pause in a repository that has had no push for this long; the
+/// next push resumes them.
+pub const SCHEDULE_IDLE_MS: u64 = 60 * 24 * 60 * 60 * 1000;
+/// How long a workflow's schedule waits after billing refused to start a
+/// job of one of its scheduled runs, before it tries again.
+pub const SCHEDULE_REFUSED_MS: u64 = 60 * 60 * 1000;
 pub const SITE: &str = "https://g1t.sh";
 pub const API: &str = "https://api.g1t.sh";
 

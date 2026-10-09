@@ -100,7 +100,33 @@ impl Schedule {
         };
         self.minutes[minute] && self.hours[hour] && self.months[month as usize] && date_ok
     }
+
+    /// Whether its minutes come closer together than
+    /// [`MIN_INTERVAL_MINUTES`], counting round the hour.
+    pub fn too_frequent(&self) -> bool {
+        let set: Vec<usize> = (0..60).filter(|&m| self.minutes[m]).collect();
+        let Some(&first) = set.first() else { return false };
+        let wrap = first + 60 - set[set.len() - 1];
+        set.windows(2).map(|pair| pair[1] - pair[0]).chain([wrap]).any(|gap| gap < MIN_INTERVAL_MINUTES as usize)
+    }
+
+    /// Whether a workflow on this schedule runs in the minute starting at
+    /// `ms`. A schedule no more frequent than every
+    /// [`MIN_INTERVAL_MINUTES`] runs when it fires. A more frequent one
+    /// runs on the five-minute marks, at each one it fired at or since the
+    /// last: at most every five minutes.
+    pub fn runs_at(&self, ms: u64) -> bool {
+        if !self.too_frequent() {
+            return self.fires_at(ms);
+        }
+        let minute = ms / 60_000;
+        minute % MIN_INTERVAL_MINUTES == 0
+            && (0..MIN_INTERVAL_MINUTES).any(|back| minute >= back && self.fires_at((minute - back) * 60_000))
+    }
 }
+
+/// The shortest interval a workflow's schedule runs at, in minutes.
+pub const MIN_INTERVAL_MINUTES: u64 = 5;
 
 /// The date of a day counted from 1970-01-01 (Howard Hinnant's algorithm).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
@@ -165,6 +191,32 @@ mod tests {
         let schedule = Schedule::parse("0 0 1 * mon").unwrap();
         assert!(schedule.fires_at(at(MONDAY, 0, 0)));
         assert!(!schedule.fires_at(at(MONDAY + 1, 0, 0)));
+    }
+
+    #[test]
+    fn schedules_run_at_most_every_five_minutes() {
+        let runs = |text: &str| -> Vec<u64> {
+            let schedule = Schedule::parse(text).unwrap();
+            (0..30).filter(|&m| schedule.runs_at(at(MONDAY, 3, m))).collect()
+        };
+        assert_eq!(runs("* * * * *"), [0, 5, 10, 15, 20, 25]);
+        assert_eq!(runs("*/2 * * * *"), [0, 5, 10, 15, 20, 25]);
+        // Every five minutes or less often: exactly when it fires.
+        assert_eq!(runs("*/5 * * * *"), [0, 5, 10, 15, 20, 25]);
+        assert_eq!(runs("7,17 * * * *"), [7, 17]);
+        assert_eq!(runs("*/10 * * * *"), [0, 10, 20]);
+        // Two minutes close together: the later one waits for the mark.
+        assert_eq!(runs("0,3 * * * *"), [0, 5]);
+        // Close across the hour counts too.
+        assert!(Schedule::parse("2,58 * * * *").unwrap().too_frequent());
+        assert!(!Schedule::parse("0 9 * * mon").unwrap().too_frequent());
+        // Every minute of one hour: the marks of that hour, and the one
+        // that closes it.
+        let nine = Schedule::parse("* 9 * * *").unwrap();
+        assert!(nine.runs_at(at(MONDAY, 9, 0)));
+        assert!(!nine.runs_at(at(MONDAY, 9, 1)));
+        assert!(nine.runs_at(at(MONDAY, 10, 0)));
+        assert!(!nine.runs_at(at(MONDAY, 10, 5)));
     }
 
     #[test]
