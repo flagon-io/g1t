@@ -79,6 +79,9 @@ export const SCOPES = [
   { scope: "runners:admin", description: "Register and remove self-hosted runners, change their groups and settings" },
   { scope: "models:read", description: "See the workspace's AI Gateway requests: their models, tokens, cost and status" },
   { scope: "models:write", description: "Send model requests through the AI Gateway, which uses the workspace's AI credit" },
+  { scope: "artifacts:read", description: "List, read and search artifacts you can see, their versions, and the numbers their dashboards show" },
+  { scope: "artifacts:write", description: "Create, rename, move, edit, trash and restore artifacts, and propose changes to them" },
+  { scope: "artifacts:admin", description: "Share artifacts, change who can open them, and delete them for good" },
 ] as const;
 
 /**
@@ -86,15 +89,12 @@ export const SCOPES = [
  * `Resource::offered`). They parse in Rust and are typed here, but no
  * preset, full access, OAuth request or token form hands them out, and no
  * operation needs them. When one ships, its rows move to the end of
- * `SCOPES` and `SCOPE_RESOURCES`.
+ * `SCOPES` and `SCOPE_RESOURCES`. Empty now: Artifacts shipped last.
  */
-export const UPCOMING_SCOPES = [
-  { scope: "artifacts:read", description: "List, read and search artifacts you can see, their versions, and the numbers their dashboards show" },
-  { scope: "artifacts:write", description: "Create, rename, move, edit, trash and restore artifacts, and propose changes to them" },
-  { scope: "artifacts:admin", description: "Share artifacts, change who can open them, and delete them for good" },
+export const UPCOMING_SCOPES: readonly { scope: Scope; description: string }[] = [
 ] as const;
 
-export type Scope = (typeof SCOPES)[number]["scope"] | (typeof UPCOMING_SCOPES)[number]["scope"];
+export type Scope = (typeof SCOPES)[number]["scope"];
 
 /** Where a resource sits on the token form; only a person's token may hold account ones. */
 export type ResourceGroup = "repository" | "workspace" | "account";
@@ -122,11 +122,11 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "secrets", label: "Secrets and variables", group: "repository" },
   { resource: "runners", label: "Self-hosted runners", group: "workspace" },
   { resource: "models", label: "AI Gateway", group: "workspace" },
+  { resource: "artifacts", label: "Artifacts", group: "workspace" },
 ];
 
 /** Resources not offered yet, as `UPCOMING_SCOPES`: settings never show them. */
 export const UPCOMING_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
-  { resource: "artifacts", label: "Artifacts", group: "workspace" },
 ];
 
 const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
@@ -218,10 +218,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "deployments:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "deployments:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read", "artifacts:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
@@ -599,6 +599,25 @@ export const OPERATION_SCOPES = [
   // The AI Gateway. Sending a request to a model needs `models:write`,
   // checked by the model proxy at models.g1t.sh.
   ["list_gateway_requests", "models:read"],
+  // Artifacts mode's docs, slides, designs and dashboards (the `artifact`
+  // MCP tool). The docs service then checks the person's role on each.
+  ["list_workspace_artifacts", "artifacts:read"],
+  ["search_workspace_artifacts", "artifacts:read"],
+  ["get_workspace_artifact", "artifacts:read"],
+  ["get_workspace_artifact_content", "artifacts:read"],
+  ["list_workspace_artifact_versions", "artifacts:read"],
+  ["get_workspace_artifact_access", "artifacts:read"],
+  ["list_workspace_artifact_templates", "artifacts:read"],
+  ["list_workspace_artifact_spaces", "artifacts:read"],
+  ["query_workspace_dataset", "artifacts:read"],
+  ["create_workspace_artifact", "artifacts:write"],
+  ["update_workspace_artifact", "artifacts:write"],
+  ["edit_workspace_artifact", "artifacts:write"],
+  ["trash_workspace_artifact", "artifacts:write"],
+  ["restore_workspace_artifact", "artifacts:write"],
+  ["restore_workspace_artifact_version", "artifacts:write"],
+  ["set_workspace_artifact_access", "artifacts:admin"],
+  ["purge_workspace_artifact", "artifacts:admin"],
 ] as const;
 
 /**
@@ -632,6 +651,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "billing", label: "Billing", scopes: ["billing:read", "billing:write"] },
   { id: "runners", label: "Runners", scopes: ["runners:read"] },
   { id: "models", label: "AI Gateway", scopes: ["models:read", "models:write"] },
+  { id: "artifacts", label: "Artifacts", scopes: ["artifacts:read", "artifacts:write"] },
 ];
 
 /** The admin and delete scopes, shown under "Dangerous" behind a warning. */
