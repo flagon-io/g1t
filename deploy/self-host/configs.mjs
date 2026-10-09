@@ -98,12 +98,13 @@ const GITHUB_SECRETS = {
 
 /**
  * Services whose cron triggers scheduler.mjs runs here: sweeps and
- * reminders that need nothing self-hosting lacks. Not run: actions (its
+ * reminders that need nothing self-hosting lacks (the docs service's is
+ * emptying artifacts' trash after 30 days). Not run: actions (its
  * minute would start scheduled workflows with no runner to take them),
  * billing (reconciles against Cloudflare and Stripe), deployments (calls
  * Cloudflare's API) and the services that are off.
  */
-const SELF_HOST_CRONS = new Set(["g1t-repos", "g1t-events", "g1t-identity", "g1t-security", "g1t-webhooks", "g1t-packages"]);
+const SELF_HOST_CRONS = new Set(["g1t-repos", "g1t-events", "g1t-identity", "g1t-security", "g1t-webhooks", "g1t-packages", "g1t-docs-service"]);
 
 /** Queues whose consumers are off: events stops sending to them. */
 const OFF_QUEUES = new Set(["g1t-events-runner", "g1t-events-context"]);

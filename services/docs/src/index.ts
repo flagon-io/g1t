@@ -11,6 +11,13 @@
  * Each page has a room (src/room.ts), a Durable Object that owns its Yjs
  * document. Everything that changes a page's content goes through the
  * room; this Worker decides who may ask.
+ *
+ * The docs service also hosts folios (Artifacts mode, docs/ARTIFACTS_MODE.md):
+ * docs, slides, designs and dashboards, in src/folios/ with their own
+ * room (FolioRoom). `/rpc/<method>` asks the folio table (src/folios/rpc.ts)
+ * first, then Docs' own switch below; `/live?folio=` and
+ * `PUT /files?folio=` are a folio's. Docs' pages keep working on their
+ * tables until Phase 7 retires them.
  */
 
 import {
@@ -95,8 +102,12 @@ import { BUILTIN_TEMPLATES, builtinTemplate } from "./templates.ts";
 import type { ThreadResult } from "./threads.ts";
 import { onEvent } from "./staleness.ts";
 import { descendants, exportPaths, lastPosition, placeBefore, wouldCycle, ancestors } from "./tree.ts";
+import type { FolioRoom } from "./folios/room.ts";
+import { folioHandler } from "./folios/rpc.ts";
+import { Folios, purgeTrash, runReacl } from "./folios/service.ts";
 
 export { PageRoom } from "./room.ts";
+export { FolioRoom } from "./folios/room.ts";
 
 type Env = FileStoreEnv & {
   DB: D1Database;
@@ -114,8 +125,12 @@ type Env = FileStoreEnv & {
   AI?: Ai;
   /** The semantic index, Vectorize `g1t-docs` (src/vectors.ts, src/indexer.ts). */
   VECTORS?: Vectorize;
-  /** The docs service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts). */
+  /** The docs service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts) and folio access jobs (`folios.reacl`). */
   JOBS?: Queue<DocsJob>;
+  /** One room per folio (Artifacts mode, src/folios/room.ts). */
+  FOLIOS: DurableObjectNamespace<FolioRoom>;
+  /** Folios' semantic index, Vectorize `g1t-folios`; optional (words only without it). */
+  FOLIO_VECTORS?: Vectorize;
 };
 
 /** Queries' embeddings, a minute per isolate (src/recall.ts). */
@@ -2698,17 +2713,21 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const defer = (work: Promise<unknown>) => ctx.waitUntil(work);
-    if (request.method === "GET" && url.pathname === "/live") return new Docs(env, defer).live(request);
-    if (request.method === "PUT" && url.pathname === "/files") return new Docs(env, defer).upload(request);
+    if (request.method === "GET" && url.pathname === "/live") return url.searchParams.has("folio") ? new Folios(env, defer).live(request) : new Docs(env, defer).live(request);
+    if (request.method === "PUT" && url.pathname === "/files") return url.searchParams.has("folio") ? new Folios(env, defer).upload(request) : new Docs(env, defer).upload(request);
     const file = /^\/files\/([0-9a-f]{64})$/.exec(url.pathname);
-    if ((request.method === "GET" || request.method === "HEAD") && file) return new Docs(env, defer).file(file[1]!);
+    if ((request.method === "GET" || request.method === "HEAD") && file) return (await new Folios(env, defer).file(file[1]!)) ?? new Docs(env, defer).file(file[1]!);
     const match = url.pathname.match(/^\/rpc\/([a-z_]+)$/);
     if (request.method !== "POST" || !match) return new Response("Not found\n", { status: 404 });
     // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
     const opened = openD1(env.DB, request);
-    const service = new Docs(Object.create(env, { DB: { value: opened.db } }) as Env, defer);
+    const scoped = Object.create(env, { DB: { value: opened.db } }) as Env;
     const args = (await request.json().catch(() => ({}))) as any;
     try {
+      // Folios first (src/folios/rpc.ts), then Docs' pages.
+      const folio = folioHandler(match[1]!);
+      if (folio) return opened.finish(Response.json(await folio(new Folios(scoped, defer), args)));
+      const service = new Docs(scoped, defer);
       return opened.finish(await answer(service, match[1]!, args));
     } catch (error) {
       console.error("docs:", match[1], error);
@@ -2731,7 +2750,12 @@ export default {
       try {
         const body = message.body;
         if (body.type === "docs.index") {
-          await runBackfill(env, (body as DocsJob).workspace_id);
+          await runBackfill(env, (body as Extract<DocsJob, { type: "docs.index" }>).workspace_id);
+          message.ack();
+          continue;
+        }
+        if (body.type === "folios.reacl") {
+          await runReacl(env, (body as Extract<DocsJob, { type: "folios.reacl" }>).folio_id);
           message.ack();
           continue;
         }
@@ -2747,5 +2771,16 @@ export default {
         message.retry();
       }
     }
+  },
+
+  /** Daily (wrangler.jsonc `triggers`): folios in the trash for over 30 days are deleted for good. */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      purgeTrash(env)
+        .then((n) => {
+          if (n) console.log("folios purged from the trash", n);
+        })
+        .catch((error: unknown) => console.error("folios could not purge the trash", String(error))),
+    );
   },
 } satisfies ExportedHandler<Env, G1tEvent | DocsJob>;

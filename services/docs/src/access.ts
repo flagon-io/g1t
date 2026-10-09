@@ -288,11 +288,11 @@ export function folioScope(chain: readonly FolioAclNode[], grants: FolioGrants):
   return `folio:${root.id}`;
 }
 
-export type FolioAccessRow = { folio_id: string; principal: string; role: DocRole; via: string; since: string };
+export type FolioAccessRecord = { folio_id: string; principal: string; role: DocRole; via: string; since: string };
 
 /** The rows of `folio_access` for these folios: everything `explicitAccess` finds along each one's chain. */
-export function materialize(ids: readonly string[], byId: ReadonlyMap<string, FolioAclNode>, grants: FolioGrants): FolioAccessRow[] {
-  const out: FolioAccessRow[] = [];
+export function materialize(ids: readonly string[], byId: ReadonlyMap<string, FolioAclNode>, grants: FolioGrants): FolioAccessRecord[] {
+  const out: FolioAccessRecord[] = [];
   for (const id of ids) {
     const chain = aclChain(id, byId);
     if (!chain.length) continue;

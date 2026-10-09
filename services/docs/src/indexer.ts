@@ -16,6 +16,8 @@
  * on the queue (`docs.index` jobs, on the docs service's own events queue).
  */
 import { chunkId, chunkMarkdown, embedText, repoFileId, textHash } from "./chunks.ts";
+import { scopesOf, type FolioRow, FOLIO_COLUMNS } from "./folios/access-store.ts";
+import { kindModel } from "./kinds/index.ts";
 import { cloudflareEmbedder, cloudflareVectors, type Embedder, type VectorMetadata, type VectorStore } from "./vectors.ts";
 
 /** Passages embedded per workspace per hour at most. Logged when reached. */
@@ -27,10 +29,21 @@ const BACKFILL_STALE_MS = 2 * 60 * 60 * 1000;
 /** How long a run waits when the hour's cap is reached. */
 const CAP_DELAY_SECONDS = 3600;
 
-/** A job on the queue: index more of a workspace's docs. */
-export type DocsJob = { type: "docs.index"; workspace_id: string };
+/**
+ * A job on the queue: index more of a workspace's docs and folios; or
+ * bring a large folio subtree's access, rooms and index scope up to date
+ * after a move or a sharing change (src/folios/service.ts).
+ */
+export type DocsJob = { type: "docs.index"; workspace_id: string } | { type: "folios.reacl"; folio_id: string };
 
-export type IndexEnv = { DB: D1Database; AI?: Ai; VECTORS?: Vectorize; JOBS?: Queue<DocsJob> };
+export type IndexEnv = {
+  DB: D1Database;
+  AI?: Ai;
+  VECTORS?: Vectorize;
+  /** Folios' semantic index, Vectorize `g1t-folios`. Optional: without it folios match words only. */
+  FOLIO_VECTORS?: Vectorize;
+  JOBS?: Queue<DocsJob>;
+};
 
 /** The embedder and store this deployment has; null without them (words only). */
 export function adapters(env: IndexEnv): { embedder: Embedder | null; store: VectorStore | null } {
@@ -333,11 +346,11 @@ async function enqueue(env: IndexEnv, workspaceId: string, delaySeconds: number)
  */
 export async function ensureIndexed(env: IndexEnv, workspaceId: string): Promise<void> {
   const row = await env.DB.prepare(
-    "SELECT (SELECT 1 FROM doc_index_runs WHERE workspace_id = ?1) AS ran, (SELECT 1 FROM pages WHERE workspace_id = ?1 AND archived_at IS NULL LIMIT 1) AS page, (SELECT 1 FROM repo_spaces WHERE workspace_id = ?1 LIMIT 1) AS repo",
+    "SELECT (SELECT 1 FROM doc_index_runs WHERE workspace_id = ?1) AS ran, (SELECT 1 FROM pages WHERE workspace_id = ?1 AND archived_at IS NULL LIMIT 1) AS page, (SELECT 1 FROM folios WHERE workspace_id = ?1 AND trashed_at IS NULL LIMIT 1) AS folio, (SELECT 1 FROM repo_spaces WHERE workspace_id = ?1 LIMIT 1) AS repo",
   )
     .bind(workspaceId)
-    .first<{ ran: number | null; page: number | null; repo: number | null }>();
-  if (!row || row.ran || (!row.page && !row.repo)) return;
+    .first<{ ran: number | null; page: number | null; folio: number | null; repo: number | null }>();
+  if (!row || row.ran || (!row.page && !row.folio && !row.repo)) return;
   await startBackfill(env, workspaceId);
 }
 
@@ -355,7 +368,24 @@ export async function runBackfill(env: IndexEnv, workspaceId: string, chain = tr
   let pages = 0;
   let files = 0;
   let capped = false;
-  if (cursor.startsWith("p:")) {
+  if (cursor.startsWith("o:")) {
+    // Folios, after pages and before projects' docs.
+    const rows = (
+      await env.DB.prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE workspace_id = ? AND trashed_at IS NULL AND id > ? ORDER BY id LIMIT ?`)
+        .bind(workspaceId, cursor.slice(2), BACKFILL_BATCH)
+        .all<FolioRow>()
+    ).results;
+    for (const row of rows) {
+      const result = await indexFolio(env, row.id);
+      pages++;
+      if (result.capped) {
+        capped = true;
+        break;
+      }
+      next = `o:${row.id}`;
+    }
+    if (!capped && rows.length < BACKFILL_BATCH) next = "f:";
+  } else if (cursor.startsWith("p:")) {
     const rows = (
       await env.DB.prepare("SELECT id, workspace_id, space_id, title, markdown, archived_at FROM pages WHERE workspace_id = ? AND archived_at IS NULL AND id > ? ORDER BY id LIMIT ?")
         .bind(workspaceId, cursor.slice(2), BACKFILL_BATCH)
@@ -371,7 +401,7 @@ export async function runBackfill(env: IndexEnv, workspaceId: string, chain = tr
       }
       next = `p:${page.id}`;
     }
-    if (!capped && rows.length < BACKFILL_BATCH) next = "f:";
+    if (!capped && rows.length < BACKFILL_BATCH) next = "o:";
   } else {
     const [space, path] = splitFileCursor(cursor.slice(2));
     const rows = (
@@ -405,4 +435,161 @@ function splitFileCursor(cursor: string): [string, string] {
   const at = cursor.indexOf("\n");
   // Empty: from the start.
   return at < 0 ? ["", ""] : [cursor.slice(0, at), cursor.slice(at + 1)];
+}
+
+// ── Folios (Artifacts mode) ─────────────────────────────────────────────
+
+let saidNoFolioIndex = false;
+
+/**
+ * The embedder and folio index this deployment has. Without Workers AI or
+ * the `g1t-folios` index (FOLIO_VECTORS, which is made by hand before a
+ * deploy that uses it), folios keep their passages in D1 and recall and
+ * search match words; that is said once per isolate.
+ */
+export function folioAdapters(env: IndexEnv): { embedder: Embedder | null; store: VectorStore | null } {
+  if (env.AI && env.FOLIO_VECTORS) return { embedder: cloudflareEmbedder(env.AI), store: cloudflareVectors(env.FOLIO_VECTORS) };
+  if (!saidNoFolioIndex) {
+    saidNoFolioIndex = true;
+    console.log(`folios: no ${env.AI ? "FOLIO_VECTORS (Vectorize g1t-folios)" : "AI"} binding, so artifacts are searched and recalled by their words only`);
+  }
+  return { embedder: null, store: null };
+}
+
+type FolioChunkRow = { id: string; seq: number; scope: string; hash: string; vector_hash: string | null };
+
+/**
+ * Brings one folio's passages up to date, as `indexDoc` does for pages:
+ * rows and full text in D1, under the folio's index scope, and vectors
+ * for passages whose text or scope changed (a passage whose text the
+ * index already holds keeps its vector; only its metadata is written
+ * again). Forgets it when it is gone or in the trash. Never throws.
+ */
+export async function indexFolio(env: IndexEnv, folioId: string, now = new Date()): Promise<{ capped: boolean }> {
+  try {
+    const db = env.DB;
+    const row = await db.prepare(`SELECT ${FOLIO_COLUMNS.replace("'' AS text", "text")} FROM folios WHERE id = ?`).bind(folioId).first<FolioRow>();
+    if (!row || row.trashed_at) {
+      await forgetFolios(env, [folioId]);
+      return { capped: false };
+    }
+    const scope = (await scopesOf(db, [row])).get(row.id) ?? `folio:${row.acl_root}`;
+    const model = kindModel(row.kind);
+    const at = now.toISOString();
+    const chunks = (model ? model.chunks(row.text, row.title) : chunkMarkdown(row.text, row.title)).map((c) => {
+      const embed = embedText(row.title, c);
+      return { ...c, id: chunkId(row.id, c.seq), embed, hash: textHash(embed) };
+    });
+    const old = (await db.prepare("SELECT id, seq, scope, hash, vector_hash FROM folio_chunks WHERE folio_id = ?").bind(row.id).all<FolioChunkRow>()).results;
+    const byId = new Map(old.map((r) => [r.id, r]));
+    const statements: D1PreparedStatement[] = [];
+    for (const c of chunks) {
+      const was = byId.get(c.id);
+      if (was && was.hash === c.hash && was.scope === scope) continue;
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO folio_chunks (id, workspace_id, folio_id, kind, scope, seq, heading, text, hash, vector_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+             ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, scope = excluded.scope, heading = excluded.heading, text = excluded.text, hash = excluded.hash, updated_at = excluded.updated_at`,
+          )
+          .bind(c.id, row.workspace_id, row.id, row.kind, scope, c.seq, c.heading, c.text, c.hash, at),
+        db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(c.id),
+        db.prepare("INSERT INTO folio_chunks_fts (chunk_id, scope, folio_id, heading, text) VALUES (?, ?, ?, ?, ?)").bind(c.id, scope, row.id, c.heading ?? "", c.text),
+      );
+    }
+    const keep = new Set(chunks.map((c) => c.id));
+    const gone = old.filter((r) => !keep.has(r.id));
+    for (const r of gone) statements.push(db.prepare("DELETE FROM folio_chunks WHERE id = ?").bind(r.id), db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(r.id));
+    for (let i = 0; i < statements.length; i += 60) await db.batch(statements.slice(i, i + 60));
+
+    const { embedder, store } = folioAdapters(env);
+    if (!embedder || !store) return { capped: false };
+    // What needs a vector written: text the index doesn't hold under this id, or a new scope.
+    const stale = chunks.filter((c) => {
+      const was = byId.get(c.id);
+      return !was || was.vector_hash !== c.hash || was.scope !== scope;
+    });
+    let capped = false;
+    if (stale.length) {
+      const held = new Map<string, string>();
+      for (const r of old) if (r.vector_hash) held.set(r.vector_hash, r.id);
+      const reuse = stale.filter((c) => held.has(c.hash));
+      const fresh = stale.filter((c) => !held.has(c.hash));
+      const budget = fresh.length ? await allowance(db, row.workspace_id, now) : 0;
+      const embedNow = fresh.slice(0, budget);
+      capped = embedNow.length < fresh.length;
+      if (capped) console.log("folios embedding cap reached", row.workspace_id, `${fresh.length - embedNow.length} passages wait for the next hour`);
+      const metadata: VectorMetadata = { workspace_id: row.workspace_id, scope, kind: row.kind, folio_id: row.id };
+      const done: { id: string; hash: string }[] = [];
+      try {
+        const vectors: { id: string; values: number[]; metadata: VectorMetadata }[] = [];
+        if (reuse.length) {
+          const values = new Map((await store.get([...new Set(reuse.map((c) => held.get(c.hash)!))])).map((v) => [v.id, v.values]));
+          for (const c of reuse) {
+            const v = values.get(held.get(c.hash)!);
+            if (v) vectors.push({ id: c.id, values: v, metadata });
+          }
+        }
+        if (embedNow.length) {
+          const embedded = await embedder.embed(embedNow.map((c) => c.embed));
+          embedNow.forEach((c, i) => vectors.push({ id: c.id, values: embedded[i]!, metadata }));
+          await meter(
+            db,
+            row.workspace_id,
+            embedNow.length,
+            embedNow.reduce((n, c) => n + c.embed.length, 0),
+            now,
+          );
+        }
+        if (vectors.length) await store.upsert(vectors);
+        const hashOf = new Map(chunks.map((c) => [c.id, c.hash]));
+        for (const v of vectors) done.push({ id: v.id, hash: hashOf.get(v.id)! });
+      } catch (error) {
+        console.error("folios could not embed passages; the next save tries again", row.id, String(error));
+      }
+      if (done.length) {
+        const updates = done.map((d) => db.prepare("UPDATE folio_chunks SET vector_hash = ? WHERE id = ?").bind(d.hash, d.id));
+        for (let i = 0; i < updates.length; i += 60) await db.batch(updates.slice(i, i + 60));
+      }
+    }
+    try {
+      if (gone.some((r) => r.vector_hash)) await store.delete(gone.filter((r) => r.vector_hash).map((r) => r.id));
+    } catch (error) {
+      console.error("folios could not drop old passages from the index", row.id, String(error));
+    }
+    if (capped) await startBackfill(env, row.workspace_id, { delaySeconds: CAP_DELAY_SECONDS });
+    return { capped };
+  } catch (error) {
+    console.error("folios could not index", folioId, String(error));
+    return { capped: false };
+  }
+}
+
+/** Takes folios' passages out of D1 and the index. Never throws. */
+export async function forgetFolios(env: IndexEnv, ids: readonly string[]): Promise<void> {
+  if (!ids.length) return;
+  const db = env.DB;
+  try {
+    const found: string[] = [];
+    for (let i = 0; i < ids.length; i += 500) {
+      const rows = await db
+        .prepare("SELECT id FROM folio_chunks WHERE folio_id IN (SELECT value FROM json_each(?))")
+        .bind(JSON.stringify(ids.slice(i, i + 500)))
+        .all<{ id: string }>();
+      found.push(...rows.results.map((r) => r.id));
+    }
+    if (!found.length) return;
+    const { store } = folioAdapters(env);
+    if (store) {
+      try {
+        await store.delete(found);
+      } catch (error) {
+        console.error("folios could not drop passages from the index", found.length, String(error));
+      }
+    }
+    const statements = found.flatMap((id) => [db.prepare("DELETE FROM folio_chunks WHERE id = ?").bind(id), db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(id)]);
+    for (let i = 0; i < statements.length; i += 80) await db.batch(statements.slice(i, i + 80));
+  } catch (error) {
+    console.error("folios could not forget passages", String(error));
+  }
 }

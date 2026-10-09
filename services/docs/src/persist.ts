@@ -4,9 +4,13 @@
  * newly mentioned in the page. Run by the room (src/room.ts), which owns
  * the live document; nothing here reads the document itself.
  */
-import { newId, notifyClient, type DocCitation, type DocVersionKind, type FeedNotification, type ServiceBinding } from "@g1t/contracts";
+import { newId, notifyClient, type DocCitation, type DocVersionKind, type FeedNotification, type FolioKind, type FolioVersionKind, type ServiceBinding } from "@g1t/contracts";
 
 import { publishDocEvent } from "./events.ts";
+import { fileStore, type FileStoreEnv } from "./files.ts";
+import { workspaceReadable } from "./folios/access-store.ts";
+import { publishFolioEvent } from "./folios/events.ts";
+import type { Rendition } from "./kinds/types.ts";
 import { excerpt, searchText } from "./markdown.ts";
 import { linkedPageIds, pageSlug } from "./slugs.ts";
 
@@ -147,4 +151,123 @@ export async function save(env: SaveEnv, input: Save, now = new Date()): Promise
     }
   }
   return { version_id: versionId, changed };
+}
+
+// ── Folios (Artifacts mode) ─────────────────────────────────────────────
+
+export type SaveFolioEnv = SaveEnv & FileStoreEnv;
+
+export type SaveFolio = {
+  folio_id: string;
+  /** What the kind rendered from the document (src/kinds/types.ts). */
+  rendition: Rendition;
+  /** The editors since the last save, member keys, last one last. */
+  editors: string[];
+  /** The usernames of the people who made these edits, lowercased. */
+  editor_names: string[];
+  state: Uint8Array;
+  version: { kind: FolioVersionKind; note: string | null; authors: string[] } | null;
+  pending_authors: string[];
+  last_version_at: number;
+  workspace_slug: string | null;
+};
+
+type FolioSaveRow = { id: string; workspace_id: string; kind: FolioKind; title: string; text: string; preview: string | null; mentioned: string; space_id: string | null; trashed_at: string | null };
+
+/**
+ * What a folio's room saves to D1 after a burst of edits: its text
+ * rendition, card, search text, links, citations and history. Returns the
+ * version recorded (if one was), whether the text changed (so the room
+ * indexes it again), and the people newly mentioned, whom the room tells
+ * only if they can read the folio (src/folios/notify.ts).
+ */
+export async function saveFolio(env: SaveFolioEnv, input: SaveFolio, now = new Date()): Promise<{ version_id: string | null; changed: boolean; mentioned: string[]; last: string | null }> {
+  const at = now.toISOString();
+  const db = env.DB;
+  const folio = await db.prepare("SELECT id, workspace_id, kind, title, text, preview, mentioned, space_id, trashed_at FROM folios WHERE id = ?").bind(input.folio_id).first<FolioSaveRow>();
+  if (!folio) return { version_id: null, changed: false, mentioned: [], last: null };
+  const r = input.rendition;
+  const changed = folio.text !== r.text;
+  const last = input.editors[input.editors.length - 1] ?? null;
+  const statements: D1PreparedStatement[] = [];
+  const preview = r.preview ? JSON.stringify(r.preview) : null;
+  // A folio made from text that already reads as the kind renders it still needs its card.
+  if (!changed && preview !== folio.preview) statements.push(db.prepare("UPDATE folios SET preview = ? WHERE id = ?").bind(preview, folio.id));
+  if (changed) {
+    statements.push(
+      db
+        .prepare("UPDATE folios SET text = ?, excerpt = ?, preview = ?, edited_at = ?, edited_by = COALESCE(?, edited_by), updated_at = ? WHERE id = ?")
+        .bind(r.text, excerpt(r.text), preview, at, last, at, folio.id),
+      db.prepare("DELETE FROM folios_fts WHERE folio_id = ?").bind(folio.id),
+      db.prepare("INSERT INTO folios_fts (folio_id, kind, title, body) VALUES (?, ?, ?, ?)").bind(folio.id, folio.kind, folio.title, searchText(r.text)),
+      db.prepare("DELETE FROM folio_links WHERE from_folio = ?").bind(folio.id),
+      db.prepare("DELETE FROM folio_citations WHERE folio_id = ? AND source = 'body'").bind(folio.id),
+    );
+    for (const to of r.links.filter((id) => id !== folio.id).slice(0, 200)) {
+      statements.push(db.prepare("INSERT OR IGNORE INTO folio_links (from_folio, to_folio) VALUES (?, ?)").bind(folio.id, to));
+    }
+    for (const c of r.citations) {
+      statements.push(
+        db.prepare("INSERT OR IGNORE INTO folio_citations (folio_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, ?, ?, ?, 'body')").bind(folio.id, c.repo, c.path, c.kind, c.label ?? "", c.ref),
+      );
+    }
+  }
+  // A version: asked for, or the first save with changes after enough time.
+  let versionId: string | null = null;
+  const timed = input.pending_authors.length > 0 && now.getTime() - input.last_version_at >= VERSION_EVERY_MS;
+  if (input.version || (timed && changed)) {
+    versionId = newId("ver", now.getTime());
+    const authors = input.version?.authors.length ? input.version.authors : input.pending_authors;
+    let state: Uint8Array | null = input.state.byteLength <= MAX_VERSION_STATE ? input.state : null;
+    let stateKey: string | null = null;
+    if (!state) {
+      // Too large for a row: the file store keeps it.
+      try {
+        stateKey = `docs/versions/${folio.id}/${versionId}`;
+        await fileStore(env).put(stateKey, input.state, "application/octet-stream");
+      } catch (error) {
+        console.error("folios could not keep a large version's state; its text is kept", folio.id, String(error));
+        stateKey = null;
+        state = null;
+      }
+    }
+    statements.push(
+      db
+        .prepare("INSERT INTO folio_versions (id, folio_id, created_at, kind, authors, note, text, state, state_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(versionId, folio.id, at, input.version?.kind ?? "edit", JSON.stringify([...new Set(authors)]), input.version?.note ?? null, r.text, state, stateKey),
+    );
+  }
+  let told: string[] = [];
+  try {
+    told = JSON.parse(folio.mentioned) as string[];
+  } catch {
+    told = [];
+  }
+  const editors = new Set(input.editor_names);
+  const fresh = r.mentions.filter((name) => !told.includes(name) && !editors.has(name));
+  if (fresh.length || r.mentions.length !== told.length) {
+    statements.push(db.prepare("UPDATE folios SET mentioned = ? WHERE id = ?").bind(JSON.stringify([...new Set([...told.filter((n) => r.mentions.includes(n)), ...fresh])]), folio.id));
+  }
+  if (statements.length) await db.batch(statements);
+  const kind = input.version?.kind ?? "edit";
+  if (versionId && kind !== "created" && input.workspace_slug && !folio.trashed_at) {
+    const open = await workspaceReadable(db, folio.id).catch(() => false);
+    await publishFolioEvent(
+      env.EVENTS,
+      "folio.updated",
+      {
+        workspace: input.workspace_slug,
+        workspaceId: folio.workspace_id,
+        folioId: folio.id,
+        kind: folio.kind,
+        spaceId: folio.space_id,
+        title: open ? folio.title : null,
+        versionId,
+        versionKind: kind,
+        authors: [...new Set(input.version?.authors.length ? input.version.authors : input.pending_authors)],
+      },
+      last,
+    );
+  }
+  return { version_id: versionId, changed, mentioned: folio.trashed_at ? [] : fresh, last };
 }

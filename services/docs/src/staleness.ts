@@ -32,6 +32,8 @@ import {
 } from "@g1t/contracts";
 
 import { touchedPaths } from "./citations.ts";
+import { foliosCite, recordFolioChanges } from "./folios/staleness.ts";
+import type { FolioRoom } from "./folios/room.ts";
 import type { PageRoom } from "./room.ts";
 import { publishDocEvent } from "./events.ts";
 import { pageSlug } from "./slugs.ts";
@@ -44,6 +46,8 @@ export type StaleEnv = {
   NOTIFY?: ServiceBinding;
   EVENTS?: ServiceBinding;
   PAGES?: DurableObjectNamespace<PageRoom>;
+  /** Folios' rooms (Artifacts mode): folios cite code too (src/folios/staleness.ts). */
+  FOLIOS?: DurableObjectNamespace<FolioRoom>;
 };
 
 /** What a change touched, as this module records it. */
@@ -77,7 +81,8 @@ async function interested(db: D1Database, repo: string, repoId: string): Promise
     db.prepare("SELECT 1 AS yes FROM citations c JOIN pages p ON p.id = c.page_id WHERE c.repo = ? AND p.archived_at IS NULL LIMIT 1").bind(repo),
     db.prepare("SELECT 1 AS yes FROM repo_spaces WHERE repo_id = ? LIMIT 1").bind(repoId),
   ]);
-  return { cited: !!cited?.results.length, spaces: !!spaces?.results.length };
+  const folios = cited?.results.length ? false : await foliosCite(db, repo).catch(() => false);
+  return { cited: !!cited?.results.length || folios, spaces: !!spaces?.results.length };
 }
 
 /** What a push to the default branch changed: the files between where it was and where it is. */
@@ -256,6 +261,9 @@ async function followMove(env: StaleEnv, event: G1tEvent): Promise<void> {
       db.prepare("UPDATE OR IGNORE citations SET repo = ? WHERE repo = ?").bind(current, old),
       db.prepare("UPDATE OR IGNORE page_changes SET repo = ? WHERE repo = ?").bind(current, old),
       db.prepare("UPDATE OR IGNORE page_projects SET repo = ? WHERE repo = ?").bind(current, old),
+      db.prepare("UPDATE OR IGNORE folio_citations SET repo = ? WHERE repo = ?").bind(current, old),
+      db.prepare("UPDATE OR IGNORE folio_changes SET repo = ? WHERE repo = ?").bind(current, old),
+      db.prepare("UPDATE OR IGNORE folio_projects SET repo = ? WHERE repo = ?").bind(current, old),
       db.prepare("UPDATE OR IGNORE space_projects SET repo = ? WHERE repo = ?").bind(current, old),
       db.prepare("UPDATE repo_spaces SET repo = ? WHERE repo_id = ?").bind(current, move.repoId),
     );
@@ -284,11 +292,15 @@ export async function onEvent(env: StaleEnv, event: G1tEvent, reindex: (repoId: 
     if (!wants.cited) return;
     const changed = await pushChange(env, path, repoId, event.data.before, event.data.after);
     if (!changed?.length) return;
-    await record(env, { repo, repo_id: repoId, commit: event.data.after, pull: null, changed, actor: event.actor });
+    const change: Change = { repo, repo_id: repoId, commit: event.data.after, pull: null, changed, actor: event.actor };
+    await record(env, change);
+    await recordFolioChanges(env, change);
     return;
   }
   if (!wants.cited) return;
   const pulled = await pullChange(env, path, repoId, event.data.number);
   if (!pulled?.changed.length) return;
-  await record(env, { repo, repo_id: repoId, commit: event.data.commit, pull: { number: event.data.number, title: pulled.title }, changed: pulled.changed, actor: event.actor });
+  const change: Change = { repo, repo_id: repoId, commit: event.data.commit, pull: { number: event.data.number, title: pulled.title }, changed: pulled.changed, actor: event.actor };
+  await record(env, change);
+  await recordFolioChanges(env, change);
 }

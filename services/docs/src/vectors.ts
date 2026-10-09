@@ -7,6 +7,10 @@
  * Vectorize (the `g1t-docs` index, cosine, metadata indexes on
  * `workspace_id` and `space_id`). Without them (no AI or VECTORS
  * binding), Docs keeps its passages in D1 and recall matches words only.
+ *
+ * Folios (Artifacts mode) have an index of their own, `g1t-folios`
+ * (binding FOLIO_VECTORS), filtered by `workspace_id`, `scope` and `kind`:
+ * the same two adapters, another index.
  */
 
 /**
@@ -25,17 +29,23 @@ export type Embedder = {
 
 export type VectorMetadata = {
   workspace_id: string;
-  space_id: string;
-  kind: "page" | "repo_file";
+  /** Docs' pages and projects' docs (index `g1t-docs`). */
+  space_id?: string;
+  /** Folios (index `g1t-folios`): `space:<id>` or `folio:<access root>` (src/access.ts `folioScope`). */
+  scope?: string;
+  kind: "page" | "repo_file" | "doc" | "slides" | "design" | "dashboard";
   page_id?: string;
   repo_file_id?: string;
   repo_id?: string;
+  folio_id?: string;
 };
 
 export type VectorFilter = {
   workspace_id: string;
   /** Only these spaces; absent for every space (then the caller filters what comes back). */
   space_ids?: string[];
+  /** Folios: only these scopes; absent for every scope (then the caller filters what comes back). */
+  scopes?: string[];
 };
 
 export type VectorMatch = { id: string; score: number };
@@ -91,6 +101,7 @@ export function cloudflareVectors(index: Vectorize): VectorStore {
     async query(vector, options) {
       const filter: Record<string, unknown> = { workspace_id: options.filter.workspace_id };
       if (options.filter.space_ids) filter.space_id = { $in: options.filter.space_ids };
+      if (options.filter.scopes) filter.scope = { $in: options.filter.scopes };
       const found = await index.query(vector, { topK: options.topK, returnMetadata: "none", returnValues: false, filter: filter as VectorizeVectorMetadataFilter });
       return found.matches.map((m) => ({ id: m.id, score: m.score }));
     },

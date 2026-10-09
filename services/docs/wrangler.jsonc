@@ -34,8 +34,20 @@
 	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=workspace_id --type=string
 	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=space_id --type=string
 	// Without them Docs still keeps passages in D1 and recall matches words.
+	//
+	// Folios (Artifacts mode, docs/ARTIFACTS_MODE.md section 5) have an
+	// index of their own, filtered by workspace, scope and kind. Create it
+	// once, before the first deploy that has this binding:
+	//   npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine
+	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=workspace_id --type=string
+	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=scope --type=string
+	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=kind --type=string
+	// Without FOLIO_VECTORS, artifacts are searched and recalled by words.
 	"ai": { "binding": "AI" },
-	"vectorize": [{ "binding": "VECTORS", "index_name": "g1t-docs" }],
+	"vectorize": [
+		{ "binding": "VECTORS", "index_name": "g1t-docs" },
+		{ "binding": "FOLIO_VECTORS", "index_name": "g1t-folios" }
+	],
 	"services": [
 		// Workspaces by slug, people's names and avatars, and teams.
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
@@ -63,10 +75,20 @@
 		"consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	// One room per page: it holds the page's Yjs document and open sockets,
-	// hibernating while nobody types (src/room.ts).
+	// hibernating while nobody types (src/room.ts). And one per folio
+	// (Artifacts mode, src/folios/room.ts): PageRoom stays until Phase 7
+	// deletes it (`deleted_classes` in a v3 migration).
 	"durable_objects": {
-		"bindings": [{ "name": "PAGES", "class_name": "PageRoom" }]
+		"bindings": [
+			{ "name": "PAGES", "class_name": "PageRoom" },
+			{ "name": "FOLIOS", "class_name": "FolioRoom" }
+		]
 	},
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["PageRoom"] }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["PageRoom"] },
+		{ "tag": "v2", "new_sqlite_classes": ["FolioRoom"] }
+	],
+	// Daily: folios in the trash for over 30 days are deleted for good.
+	"triggers": { "crons": ["17 3 * * *"] },
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }
