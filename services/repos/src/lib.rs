@@ -1984,6 +1984,7 @@ impl<S: GitStore> Repos<S> {
             default_branch.as_deref(),
             limits,
             scan,
+            timing,
         )
         .await?;
         let turned_down = matches!(
@@ -2004,6 +2005,7 @@ impl<S: GitStore> Repos<S> {
                     default_branch.as_deref(),
                     git_http::PushLimits::default(),
                     nothing,
+                    timing,
                 )
                 .await?;
             }

@@ -287,7 +287,11 @@ GIT_TRACE_CURL=1 git ls-remote https://g1t.sh/<owner>/<repo>.git 2>&1 | grep -i 
 | `access` | Deciding whether you may fetch from or push to it |
 | `kept` | A free workspace's limits, and looking for a ref listing and a store credential made a moment ago |
 | `mint` | Only when no credential was kept: the git store making one for the request |
-| `store` | The git store's answer; for a push, checking it for secrets first |
+| `store` | The git store's answer to a clone or fetch |
+| `recv` | Only for a push: receiving it from git |
+| `rules` | Only for a push: checking it against the rules of the branches and tags it changes, and for workflow files a token may not change |
+| `scan` | Only for a push: checking it for secrets and private email addresses |
+| `upload` | Only for a push: handing it to the git store and its answer |
 | `refs` | Only for a push: recording that the repository's refs changed |
 | `total` | Everything g1t did |
 | `repos` | The same, measured where your request arrived |

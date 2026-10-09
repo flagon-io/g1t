@@ -866,6 +866,7 @@ pub async fn forward(
     default_branch: Option<&str>,
     limits: PushLimits,
     scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
+    timing: &mut Timing,
 ) -> Result<Push> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
@@ -881,7 +882,7 @@ pub async fn forward(
     let namespace = crate::store::health_namespace(&access.remote);
 
     if method == Method::Post && git.endpoint == "git-receive-pack" {
-        return push(request, &url, headers, rules, limits, scan, &namespace).await;
+        return push(request, &url, headers, rules, limits, scan, &namespace, timing).await;
     }
 
     // A read: the ref advertisement, `ls-refs`, or a fetch of objects.
@@ -962,7 +963,8 @@ pub async fn forward(
     }))
 }
 
-/// A receive-pack request; see [`forward`].
+/// A receive-pack request; see [`forward`]. Its steps: `recv` (the push
+/// read), `rules`, `scan` (push protection), `upload` (the store's answer).
 #[allow(clippy::too_many_arguments)]
 async fn push(
     mut request: Request,
@@ -972,6 +974,7 @@ async fn push(
     limits: PushLimits,
     scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
     namespace: &str,
+    timing: &mut Timing,
 ) -> Result<Push> {
     let mut stream = request.stream()?;
     let mut head: Vec<u8> = Vec::new();
@@ -993,9 +996,12 @@ async fn push(
             }
         }
     }
+    timing.mark("recv");
     // The rules of the branches and tags it changes, first: what they
     // refuse is refused whatever else is wrong with it.
-    if let Some(response) = rules(&head, ended).await? {
+    let ruled = rules(&head, ended).await?;
+    timing.mark("rules");
+    if let Some(response) = ruled {
         if !ended {
             drain(&mut stream).await?;
         }
@@ -1018,7 +1024,9 @@ async fn push(
     init.with_method(Method::Post).with_headers(headers);
     let started = g1t_kit::now_ms();
     let (answered, pack_bytes, sent, unscanned) = if ended {
-        if let Some(response) = scan(&head).await? {
+        let scanned = scan(&head).await?;
+        timing.mark("scan");
+        if let Some(response) = scanned {
             return Ok(Push::Blocked(response));
         }
         let pack = pack_bytes(&head);
@@ -1061,6 +1069,7 @@ async fn push(
         (answered, pack, first + walked.1, true)
     };
     let ms = g1t_kit::now_ms().saturating_sub(started);
+    timing.mark("upload");
     let failure = match &answered {
         Ok(response) => resilience::classify_status(response.status_code()),
         Err(_) => Some(Failure::Transient),
