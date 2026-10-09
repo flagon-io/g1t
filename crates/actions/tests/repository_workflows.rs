@@ -161,12 +161,24 @@ fn deploy_stages_follow_one_another() {
     assert!(!starts(&deploy, "front", &[("migrate", "success"), ("core", "failure"), ("edge", "skipped")], &all, push.clone(), false));
     // A cancelled run starts nothing more.
     assert!(!starts(&deploy, "edge", &[("migrate", "success"), ("core", "success")], &all, push.clone(), true));
-    // A failed check: plan, and every stage after it, is skipped, and
-    // failure() still sees the check's failure through them.
-    let skipped = [("plan", "skipped"), ("migrate", "skipped"), ("core", "skipped"), ("edge", "skipped")];
-    assert!(!starts_after(&deploy, "plan", &[("check", "failure")], &all, push.clone(), false, false));
-    assert!(!starts_after(&deploy, "core", &skipped, &all, push.clone(), false, true));
+    // Check and plan run side by side: plan waits for nothing.
+    let plan = deploy.jobs.iter().find(|j| j.id == "plan").unwrap();
+    assert!(plan.needs.is_empty(), "{:?}", plan.needs);
+    for id in ["migrate", "core", "edge", "front", "smoke"] {
+        let job = deploy.jobs.iter().find(|j| j.id == id).unwrap();
+        assert!(job.needs.iter().any(|n| n == "check") && job.needs.iter().any(|n| n == "plan"), "{id}: {:?}", job.needs);
+    }
+    // A failed check, though plan succeeded: nothing migrates or deploys,
+    // and failure() still sees the check's failure through skipped jobs.
+    assert!(!starts(&deploy, "migrate", &[("check", "failure"), ("plan", "success")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "core", &[("check", "failure"), ("plan", "success"), ("migrate", "skipped")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "front", &[("check", "failure"), ("plan", "success"), ("migrate", "skipped"), ("core", "skipped"), ("edge", "skipped")], &all, push.clone(), false));
+    let skipped = [("migrate", "skipped"), ("core", "skipped"), ("edge", "skipped")];
     assert!(!starts_after(&deploy, "front", &skipped, &all, push.clone(), false, true));
+    assert!(!starts(&deploy, "smoke", &[("check", "failure"), ("core", "skipped"), ("edge", "skipped"), ("front", "skipped")], &all, push.clone(), false));
+    // A failed plan stops everything too.
+    assert!(!starts(&deploy, "migrate", &[("plan", "failure")], &all, push.clone(), false));
+    assert!(!starts(&deploy, "core", &[("plan", "failure"), ("migrate", "skipped")], &all, push.clone(), false));
 
     // Smoke follows the last stage that ran, and not a failed one.
     assert!(starts(&deploy, "smoke", &[("core", "success"), ("edge", "success"), ("front", "success")], &all, push.clone(), false));

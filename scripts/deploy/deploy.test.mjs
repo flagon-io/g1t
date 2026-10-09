@@ -24,7 +24,20 @@ import {
   writeDeployConfig,
 } from "./image.mjs";
 
-import { annotation, commitFrom, liveCommit, pendingFrom, versionFrom } from "./cloudflare.mjs";
+import {
+  annotation,
+  apiAuth,
+  commitFrom,
+  databaseOf,
+  liveCommit,
+  liveFromApi,
+  migrationFiles,
+  pendingAgainst,
+  pendingFrom,
+  pendingMigrations,
+  readLive,
+  versionFrom,
+} from "./cloudflare.mjs";
 import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
 import { decide, planJson, pool } from "./plan.mjs";
 import {
@@ -532,6 +545,104 @@ Migrations to be applied:
   assert.deepEqual(pendingFrom(pending), ["0021_confidence.sql", "0022_more.sql"]);
   assert.deepEqual(pendingFrom("Resource location: remote\n\n✅ No migrations to apply!"), []);
   assert.equal(versionFrom("Deployed g1t-events triggers\nCurrent Version ID: 2c7fc93a-82d9-4850-8a77-ba887d157a4f\n"), "2c7fc93a-82d9-4850-8a77-ba887d157a4f");
+});
+
+// Cloudflare's REST answers, as the API sends them (Wrangler's --json
+// prints the first deployment, and the versions' items).
+const AUTH = { token: "t", account: "acct" };
+const ok = (result) => ({ success: true, errors: [], messages: [], result });
+const refused = (code, message) => ({ success: false, errors: [{ code, message }], messages: [], result: null });
+/** A fetch that answers by path: { "GET /path": [status, body] }. */
+function fakeFetch(answers, calls = []) {
+  return async (url, init) => {
+    const path = url.replace("https://api.cloudflare.com/client/v4", "");
+    calls.push({ path, init });
+    const found = answers[`${init.method} ${path}`];
+    if (!found) throw new Error(`unexpected ${init.method} ${path}`);
+    const [status, body] = found;
+    return { status, text: async () => (typeof body === "string" ? body : JSON.stringify(body)) };
+  };
+}
+const SCRIPT = "/accounts/acct/workers/scripts/g1t-events";
+const deploymentsAnswer = (id) =>
+  ok({
+    deployments: [
+      { id: "d2", source: "wrangler", strategy: "percentage", versions: [{ version_id: id, percentage: 100 }], annotations: { "workers/triggered_by": "deployment" } },
+      { id: "d1", source: "wrangler", strategy: "percentage", versions: [{ version_id: "v1", percentage: 100 }] },
+    ],
+  });
+const versionsAnswer = ok({ items: [version("v1", 1, annotation(OLD).message), version("v2", 2, null, "secret")] });
+
+test("the API's answers: the live commit as Wrangler's would give it", async () => {
+  const calls = [];
+  const fetchImpl = fakeFetch({ [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v2")], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] }, calls);
+  const found = await readLive(unit("events"), { auth: AUTH, fetchImpl });
+  assert.equal(found.sha, OLD);
+  assert.equal(found.version, "v2");
+  assert.equal(found.at, "2026-10-05T00:00:00Z");
+  assert.equal(calls[0].init.headers.authorization, "Bearer t");
+  // The same as liveCommit over what Wrangler printed.
+  assert.deepEqual(liveFromApi("w", deploymentsAnswer("v2").result, versionsAnswer.result), liveCommit(deploymentsAnswer("v2").result.deployments[0], versionsAnswer.result.items));
+  // Versions that cannot be read: the live one is not among them.
+  assert.match(liveFromApi("w", deploymentsAnswer("v2").result, null).why, /not among/);
+  // No deployment at all is an error, as `deployments status` made it.
+  assert.match(liveFromApi("w", { deployments: [] }, versionsAnswer.result).error, /no deployments/);
+});
+
+test("the API's answers: a Worker never deployed, and a refusal, never throw", async () => {
+  const missing = fakeFetch({
+    [`GET ${SCRIPT}/deployments`]: [404, refused(10007, "workers.api.error.script_not_found")],
+    [`GET ${SCRIPT}/versions?deployable=true`]: [404, refused(10007, "workers.api.error.script_not_found")],
+  });
+  assert.deepEqual(await readLive(unit("events"), { auth: AUTH, fetchImpl: missing }), { sha: null, missing: true, why: "never deployed" });
+  const denied = fakeFetch({
+    [`GET ${SCRIPT}/deployments`]: [400, refused(10000, "Authentication error")],
+    [`GET ${SCRIPT}/versions?deployable=true`]: [400, refused(10000, "Authentication error")],
+  });
+  const found = await readLive(unit("events"), { auth: AUTH, fetchImpl: denied });
+  assert.equal(found.sha, null);
+  assert.match(found.error, /Authentication error \(10000\)/);
+  const broken = async () => {
+    throw new Error("connect ECONNREFUSED");
+  };
+  const offline = await readLive(unit("events"), { auth: AUTH, fetchImpl: broken });
+  assert.match(offline.error, /ECONNREFUSED/);
+  const garbled = fakeFetch({ [`GET ${SCRIPT}/deployments`]: [200, "<html>"], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] });
+  assert.match((await readLive(unit("events"), { auth: AUTH, fetchImpl: garbled })).error, /<html>/);
+});
+
+test("the API is used only with the token Wrangler would be given", () => {
+  assert.equal(apiAuth({ CLOUDFLARE_API_TOKEN: "shell" }), null);
+  assert.deepEqual(apiAuth({ CI: "true", CLOUDFLARE_API_TOKEN: "ci", CLOUDFLARE_ACCOUNT_ID: "a" }), { token: "ci", account: "a" });
+  assert.equal(apiAuth({ CLOUDFLARE_DEPLOY_TOKEN: "mine" }).token, "mine");
+  assert.equal(apiAuth({ CLOUDFLARE_DEPLOY_TOKEN: "mine" }).account, "1e6f2cffa3f445920836e8ebe446bb58");
+});
+
+test("pending migrations: the folder's files less the names in d1_migrations", async () => {
+  const events = unit("events");
+  const db = databaseOf(events);
+  assert.equal(db.id, events.config.d1_databases[0].database_id);
+  assert.equal(db.table, "d1_migrations");
+  const files = migrationFiles(join(ROOT, db.dir));
+  assert.ok(files.length > 2 && files.every((f) => f.endsWith(".sql")));
+  assert.deepEqual(files, [...files].sort());
+
+  assert.deepEqual(pendingAgainst(["0001_a.sql", "0002_b.sql", "0003_c.sql"], [{ results: [{ name: "0001_a.sql" }, { name: "0002_b.sql" }], success: true, meta: {} }]), ["0003_c.sql"]);
+  assert.deepEqual(pendingAgainst(["0001_a.sql"], [{ results: [], success: true }]), ["0001_a.sql"]);
+
+  const query = `POST /accounts/acct/d1/database/${db.id}/query`;
+  const calls = [];
+  const applied = files.slice(0, -1).map((name, i) => ({ name, id: i + 1 }));
+  const found = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [200, ok([{ results: applied, success: true, meta: {} }])] }, calls) });
+  assert.deepEqual(found, { pending: files.slice(-1) });
+  assert.match(JSON.parse(calls[0].init.body).sql, /^SELECT name FROM "d1_migrations"/);
+  const upToDate = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [200, ok([{ results: files.map((name) => ({ name })) }])] }) });
+  assert.deepEqual(upToDate, { pending: [] });
+  // A database never migrated has no table: everything is pending.
+  const fresh = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [400, refused(7500, "no such table: d1_migrations: SQLITE_ERROR")] }) });
+  assert.deepEqual(fresh, { pending: files });
+  const denied = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [400, refused(10000, "Authentication error")] }) });
+  assert.match(denied.error, /Authentication error/);
 });
 
 test("the pool runs everything, no more than its limit at once", async () => {

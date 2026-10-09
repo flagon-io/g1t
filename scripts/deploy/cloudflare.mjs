@@ -1,9 +1,12 @@
-// Wrangler, as the deploy tool uses it: reading which commit each Worker
-// runs, D1 migrations, and deploying. Every call runs in the unit's own
-// folder, so Wrangler reads that unit's config (and not a .env at the
-// repository root, which may hold a token meant for something else).
+// Cloudflare, as the deploy tool uses it: reading which commit each Worker
+// runs and which D1 migrations are pending (Cloudflare's REST API when a
+// token is set, Wrangler otherwise), applying migrations, and deploying.
+// Every Wrangler call runs in the unit's own folder, so Wrangler reads that
+// unit's config (and not a .env at the repository root, which may hold a
+// token meant for something else).
 
 import { spawn } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { ROOT } from "./stack.mjs";
@@ -134,8 +137,127 @@ export function liveCommit(status, versions) {
   return { sha: null, version: version.id, why: "its live version was not deployed by scripts/deploy.mjs" };
 }
 
+// ── Reading production ───────────────────────────────────────────────────
+//
+// The plan reads Cloudflare's REST API directly when it has a token (always
+// in CI): one request per question, all in parallel, where a Wrangler
+// process would boot Node and check its login before each. Without one (a
+// laptop's `wrangler login`) it asks Wrangler, as it always did. The
+// requests are the ones Wrangler makes: `deployments status` prints the
+// first of GET .../deployments, `versions list` the items of GET
+// .../versions?deployable=true, and `d1 migrations list` compares the names
+// in the database's d1_migrations table with the files in its migrations
+// folder.
+
+const API = "https://api.cloudflare.com/client/v4";
+/** At most this many requests to Cloudflare at once. */
+export const API_CONCURRENCY = 16;
+
+/**
+ * The token and account the plan reads Cloudflare's API with: the token
+ * Wrangler would be given (see wranglerEnv), or null, and then Wrangler is
+ * asked instead, with your `wrangler login`.
+ */
+export function apiAuth(base = process.env) {
+  const env = wranglerEnv(base);
+  if (!env.CLOUDFLARE_API_TOKEN) return null;
+  return { token: env.CLOUDFLARE_API_TOKEN, account: env.CLOUDFLARE_ACCOUNT_ID };
+}
+
+let inFlight = 0;
+const waiting = [];
+async function limited(task) {
+  while (inFlight >= API_CONCURRENCY) await new Promise((resolve) => waiting.push(resolve));
+  inFlight++;
+  try {
+    return await task();
+  } finally {
+    inFlight--;
+    waiting.shift()?.();
+  }
+}
+
+/** Cloudflare's errors in an answer, as one line. */
+export function apiError(status, body) {
+  const errors = (body?.errors ?? []).map((e) => (e.code ? `${e.message} (${e.code})` : e.message)).filter(Boolean);
+  return `Cloudflare API ${status || "request"} failed${errors.length ? `: ${errors.join("; ")}` : ""}`;
+}
+
+/**
+ * One request to Cloudflare's API. Resolves with { status, result } or
+ * { status, error, codes }; never throws. Retried once after a refusal
+ * that may pass (a 403 while a token propagates, 429, 5xx, the network).
+ */
+export async function cloudflareApi(auth, path, { method = "GET", body, fetchImpl = fetch, retries = 1, timeoutMs = 30_000 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    let status = 0;
+    let data = null;
+    let error = null;
+    try {
+      const response = await limited(async () => {
+        const res = await fetchImpl(`${API}${path}`, {
+          method,
+          headers: { authorization: `Bearer ${auth.token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+          body: body === undefined ? undefined : JSON.stringify(body),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        return { status: res.status, text: await res.text() };
+      });
+      status = response.status;
+      try {
+        data = JSON.parse(response.text);
+      } catch {
+        error = `Cloudflare API ${status}: ${response.text.trim().slice(0, 300) || "an empty answer"}`;
+      }
+    } catch (failure) {
+      error = `Cloudflare API request failed: ${failure?.message ?? failure}`;
+    }
+    if (!error && status < 400 && data?.success !== false) return { status, result: data?.result ?? null };
+    error ??= apiError(status, data);
+    const codes = (data?.errors ?? []).map((e) => e.code);
+    const mayPass = status === 0 || status === 403 || status === 429 || status >= 500;
+    if (attempt >= retries || !mayPass) return { status, error, codes };
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+}
+
+/** Cloudflare's code for a Worker that does not exist. */
+const SCRIPT_NOT_FOUND = 10007;
+
+/**
+ * The live commit from the API's answers: `deployments` is the result of
+ * GET .../deployments ({ deployments: [newest first] }), `versions` that of
+ * GET .../versions?deployable=true ({ items }), or null if it could not be
+ * read. `wrangler deployments status --json` prints the first deployment,
+ * and `versions list --json` those items.
+ */
+export function liveFromApi(worker, deployments, versions) {
+  const latest = deployments?.deployments?.[0];
+  if (!latest) return { sha: null, error: `The Worker ${worker} has no deployments.` };
+  return liveCommit(latest, versions?.items ?? []);
+}
+
 /** Reads the commit a unit's Worker runs. Never throws. */
-export async function readLive(unit) {
+export async function readLive(unit, { auth = apiAuth(), fetchImpl = fetch } = {}) {
+  if (!auth) return readLiveWithWrangler(unit);
+  const script = `/accounts/${auth.account}/workers/scripts/${encodeURIComponent(unit.worker)}`;
+  const [deployments, versions] = await Promise.all([
+    cloudflareApi(auth, `${script}/deployments`, { fetchImpl }),
+    cloudflareApi(auth, `${script}/versions?deployable=true`, { fetchImpl }),
+  ]);
+  if (deployments.error) {
+    if (deployments.status === 404 || deployments.codes.includes(SCRIPT_NOT_FOUND)) return { sha: null, missing: true, why: "never deployed" };
+    return { sha: null, error: deployments.error };
+  }
+  try {
+    return liveFromApi(unit.worker, deployments.result, versions.error ? null : versions.result);
+  } catch (error) {
+    return { sha: null, error: String(error.message ?? error) };
+  }
+}
+
+/** readLive through Wrangler: `deployments status` and `versions list`. */
+async function readLiveWithWrangler(unit) {
   const cwd = join(ROOT, unit.path);
   const [status, versions] = await Promise.all([
     wrangler(["deployments", "status", "--name", unit.worker, "--json"], { cwd }),
@@ -159,8 +281,63 @@ export function pendingFrom(out) {
   return [...new Set(names)];
 }
 
-/** Pending migrations of a unit's database: { pending } or { error }. */
-export async function pendingMigrations(unit) {
+/** Wrangler's default name for the table of applied migrations. */
+export const MIGRATIONS_TABLE = "d1_migrations";
+
+/**
+ * A unit's database as its wrangler.jsonc names it: { id, table, dir }
+ * (dir relative to the repository), or null.
+ */
+export function databaseOf(unit) {
+  const db = (unit.config?.d1_databases ?? []).find((d) => d.database_name === unit.d1?.database);
+  if (!db?.database_id) return null;
+  return { id: db.database_id, table: db.migrations_table || MIGRATIONS_TABLE, dir: join(unit.path, unit.d1.migrations) };
+}
+
+/** The migration files in a folder, as Wrangler finds them: its *.sql files. */
+export function migrationFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+/**
+ * The files not yet applied, in the files' order, given the D1 query API's
+ * result for `SELECT name FROM d1_migrations` ([{ results: [{ name }] }]).
+ */
+export function pendingAgainst(files, result) {
+  const applied = new Set((result?.[0]?.results ?? []).map((row) => row.name));
+  return files.filter((file) => !applied.has(file));
+}
+
+const quoteIdentifier = (name) => `"${name.replaceAll('"', '""')}"`;
+
+/** Pending migrations of a unit's database: { pending } or { error }. Never throws. */
+export async function pendingMigrations(unit, { auth = apiAuth(), fetchImpl = fetch, root = ROOT } = {}) {
+  const db = databaseOf(unit);
+  if (!auth || !db) return pendingMigrationsWithWrangler(unit);
+  let files;
+  try {
+    files = migrationFiles(join(root, db.dir));
+  } catch (error) {
+    return { error: `Could not read ${db.dir}: ${error.message ?? error}` };
+  }
+  const answer = await cloudflareApi(auth, `/accounts/${auth.account}/d1/database/${db.id}/query`, {
+    method: "POST",
+    body: { sql: `SELECT name FROM ${quoteIdentifier(db.table)} ORDER BY id` },
+    fetchImpl,
+  });
+  if (answer.error) {
+    // A database no migration was ever applied to has no table yet.
+    if (/no such table/i.test(answer.error)) return { pending: files };
+    return { error: answer.error };
+  }
+  return { pending: pendingAgainst(files, answer.result) };
+}
+
+/** pendingMigrations through Wrangler: `d1 migrations list --remote`. */
+async function pendingMigrationsWithWrangler(unit) {
   const list = () => wrangler(["d1", "migrations", "list", unit.d1.database, "--remote"], { cwd: join(ROOT, unit.path) });
   // Once more after a failure: Cloudflare's API sometimes answers 403
   // while Wrangler's login refreshes (seen on 2026-10-06).

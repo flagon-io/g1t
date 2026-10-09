@@ -4,7 +4,8 @@
 #
 #   check    the deploy manifest is consistent, and the tool's tests pass
 #   plan     what changed since each Worker's live commit, and pending migrations
-#   migrate  pending D1 migrations, before any code
+#            (beside check, not after it: neither waits for the other)
+#   migrate  pending D1 migrations, before any code, once check and plan pass
 #   core, edge, front   the units of each stage, in jobs that share a build;
 #            a stage starts only when the one before it succeeded
 #   smoke    sign-in, sign-up and the waitlist still work on g1t.sh
@@ -76,9 +77,9 @@ jobs:
       - name: The deploy tool's tests
         run: npm run test:deploy
 
+  # Runs beside check: nothing deploys until both have succeeded.
   plan:
     name: Plan
-    needs: check
     runs-on: ubuntu-latest
     # Production's secrets, without a deployment: planning deploys nothing.
     environment:
@@ -99,8 +100,8 @@ jobs:
         with:
           # Each Worker's live commit is compared with this one.
           fetch-depth: 0
-      - name: Install Wrangler
-        run: npm ci --workspaces=false --no-audit --no-fund
+      # No npm ci: with CLOUDFLARE_API_TOKEN the plan reads Cloudflare's API
+      # itself (scripts/deploy/cloudflare.mjs), and needs no Wrangler.
       - name: Plan
         id: plan
         env:
@@ -115,7 +116,7 @@ jobs:
 
   migrate:
     name: Migrations
-    needs: plan
+    needs: [check, plan]
     if: ${{ needs.plan.outputs.migrate == 'true' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     environment:
@@ -133,7 +134,7 @@ jobs:
 
   core:
     name: core (${{ matrix.group }})
-    needs: [plan, migrate]
+    needs: [check, plan, migrate]
     # Runs when nothing before it failed: a migrate job skipped for having
     # nothing to apply is not a failure.
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
@@ -226,7 +227,7 @@ jobs:
 
   edge:
     name: edge (${{ matrix.group }})
-    needs: [plan, migrate, core]
+    needs: [check, plan, migrate, core]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
     runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
     environment:
@@ -241,7 +242,7 @@ jobs:
 
   front:
     name: front (${{ matrix.group }})
-    needs: [plan, migrate, core, edge]
+    needs: [check, plan, migrate, core, edge]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
     runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
     environment:
@@ -260,7 +261,7 @@ jobs:
   # real waitlist is never touched. scripts/ops/smoke.mjs.
   smoke:
     name: Smoke
-    needs: [plan, core, edge, front]
+    needs: [check, plan, core, edge, front]
     if: ${{ !failure() && !cancelled() && inputs.dry_run != true && (needs.plan.outputs.has_core == 'true' || needs.plan.outputs.has_edge == 'true' || needs.plan.outputs.has_front == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
