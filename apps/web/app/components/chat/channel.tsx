@@ -3,6 +3,9 @@ import {
   ArchiveRestore,
   ChevronLeft,
   Copy,
+  Ellipsis,
+  FileText,
+  Link2,
   Pencil,
   Trash2,
   BellOff,
@@ -31,7 +34,7 @@ import {
 } from "@g1t/contracts";
 
 import { useChatData, useChatSend, useChatSidebar } from "./actions";
-import { CardBox, CardToasts } from "./card";
+import { CardBox, CardToasts, showToast } from "./card";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
@@ -41,6 +44,9 @@ import { Avatar } from "../ui";
 import { localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
+import { WriteUpDialog } from "./write-up";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { threadLink, writeUpAgents } from "../../lib/write-up";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -112,6 +118,9 @@ export function ChannelView({ data }: { data: Loaded }) {
   const [older, setOlder] = useState<string | null>(data.older);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [thread, setThread] = useState<ShownMessage[] | null>(null);
+  // The message the open thread is under, as its page says, for when it is
+  // further back than the conversation has loaded (a long-running session's card).
+  const [threadRoot, setThreadRoot] = useState<ShownMessage | null>(null);
   const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number }>>(new Map());
   const [joined, setJoined] = useState(data.joined);
   const [members, setMembers] = useState<ChannelMember[]>(data.members);
@@ -244,15 +253,18 @@ export function ChannelView({ data }: { data: Loaded }) {
     if (!threadId) return setThread(null);
     try {
       const response = await fetch(`/${slug}/-/chat/api?channel=${encodeURIComponent(data.channel.id)}&thread=${encodeURIComponent(threadId)}`);
-      const result = (await response.json()) as Result<{ messages: ChatMessage[] }>;
+      const result = (await response.json()) as Result<{ messages: ChatMessage[]; root?: ChatMessage | null }>;
       // The page reaches back to the message the thread is under: shown above it, not among the replies.
       setThread(result.ok ? mergeMessages([], result.value.messages.filter((m) => m.id !== threadId && !m.deleted_at)) : []);
+      const root = result.ok ? (result.value.root ?? result.value.messages.find((m) => m.id === threadId) ?? null) : null;
+      setThreadRoot(root);
     } catch {
       setThread([]);
     }
   }, [threadId, slug, data.channel.id]);
   useEffect(() => {
     setThread(null);
+    setThreadRoot(null);
     void loadThread();
   }, [loadThread]);
 
@@ -281,6 +293,8 @@ export function ChannelView({ data }: { data: Loaded }) {
         } else {
           if (event.type === "message.updated") serverCounted.current.add(message.id);
           setMessages((now) => mergeMessages(now, [keepMine(now, message)]));
+          // The open thread's root, a session's card say, changes in place at its top too.
+          if (message.id === threadId) setThreadRoot((now) => (now ? keepMine([now], message) : now));
         }
         // Whoever just spoke is no longer typing.
         setTyping((now) => {
@@ -295,6 +309,7 @@ export function ChannelView({ data }: { data: Loaded }) {
         const gone = (m: ShownMessage) => (m.id === event.id ? { ...m, deleted_at: new Date().toISOString() } : m);
         setMessages((now) => now.map(gone));
         setThread((now) => now?.map(gone) ?? now);
+        setThreadRoot((now) => (now ? gone(now) : now));
       } else if (event.type === "reaction.added" || event.type === "reaction.removed") {
         if (event.channel_id !== data.channel.id) return;
         setMessages((now) => applyReactionEvent(now, event, me?.id ?? null));
@@ -477,6 +492,33 @@ export function ChannelView({ data }: { data: Loaded }) {
     setParams(next, { preventScrollReset: true, replace: !!threadId && !!id });
   };
 
+  // A thread's link, to copy and to cite; and "Write this up in Docs", which
+  // asks an agent, in the thread and as the person, for a page about it.
+  const [writeUp, setWriteUp] = useState<string | null>(null);
+  const linkToThread = (root: string) => threadLink(window.location.origin, channelPath(slug, channel), root);
+  const copyThreadLink = (root: string) => {
+    const done = navigator.clipboard?.writeText(linkToThread(root));
+    if (!done) return showToast(false, "Couldn't copy the link here.");
+    done.then(
+      () => showToast(true, "Link to the thread copied."),
+      () => showToast(false, "Couldn't copy the link here."),
+    );
+  };
+  const writers = useMemo(() => writeUpAgents(members.map((m) => m.member)), [members]);
+  const askForWriteUp = async (body: string): Promise<string | null> => {
+    const root = writeUp;
+    if (!root) return null;
+    // The thread open already: posted as any reply is, shown at once.
+    if (root === threadId) {
+      void post(body, root);
+      return null;
+    }
+    const saved = await send<ChatMessage>({ intent: "post", channel_id: data.channel.id, body, thread_root: root });
+    if (!saved.ok) return saved.error.message;
+    openThread(root);
+    return null;
+  };
+
   const updateChannel = useCallback(
     async (change: ChannelChange): Promise<Result<unknown>> => {
       const done = await send<{ channel: Channel }>({ intent: "update_channel", channel_id: data.channel.id, ...change });
@@ -519,7 +561,7 @@ export function ChannelView({ data }: { data: Loaded }) {
   const placeholder = isDm
     ? `Message ${others.map(shownName).join(", ") || "yourself"}`
     : `Message #${name}. @ a teammate or an agent`;
-  const rootMessage = threadId ? messages.find((m) => m.id === threadId) ?? null : null;
+  const rootMessage = threadId ? (messages.find((m) => m.id === threadId) ?? (threadRoot?.id === threadId ? threadRoot : null)) : null;
   const cardContext = useMemo(
     () => ({
       slug,
@@ -594,6 +636,8 @@ export function ChannelView({ data }: { data: Loaded }) {
                   onThread={() => openThread(row.message.id)}
                   onRetry={() => retry(row.message)}
                   onLongPress={() => setActions(row.message)}
+                  onCopyLink={() => copyThreadLink(row.message.id)}
+                  onWriteUp={joined && !archived ? () => setWriteUp(row.message.id) : undefined}
                   threadOpen={row.message.id === threadId}
                 />
               ),
@@ -642,7 +686,12 @@ export function ChannelView({ data }: { data: Loaded }) {
         </div>
       </section>
       {threadId ? (
-        <SidePanel title="Thread" subtitle={isDm ? undefined : `#${name}`} onClose={() => openThread(null)}>
+        <SidePanel
+          title="Thread"
+          subtitle={isDm ? undefined : `#${name}`}
+          onClose={() => openThread(null)}
+          menu={<ThreadMenu onCopyLink={() => copyThreadLink(threadId)} onWriteUp={joined && !archived ? () => setWriteUp(threadId) : undefined} />}
+        >
           <ThreadPanel
             root={rootMessage}
             replies={thread}
@@ -683,6 +732,8 @@ export function ChannelView({ data }: { data: Loaded }) {
         mine={actions != null && actions.author.kind === "user" && actions.author.id === me?.id}
         onClose={() => setActions(null)}
         onThread={(id) => openThread(id)}
+        onCopyLink={(message) => copyThreadLink(message.thread_root ?? message.id)}
+        onWriteUp={joined && !archived ? (message) => setWriteUp(message.thread_root ?? message.id) : undefined}
         onEdit={(message) => setEditing({ id: message.id, body: message.body })}
         onDelete={async (message) => {
           // Gone at once; back if the service refuses.
@@ -690,6 +741,14 @@ export function ChannelView({ data }: { data: Loaded }) {
           const done = await send({ intent: "remove", channel_id: data.channel.id, id: message.id });
           if (!done.ok) setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: null } : m)));
         }}
+      />
+      <WriteUpDialog
+        open={writeUp != null}
+        onOpenChange={(open) => !open && setWriteUp(null)}
+        slug={slug}
+        agents={writers}
+        link={writeUp && typeof window !== "undefined" ? linkToThread(writeUp) : ""}
+        onSend={askForWriteUp}
       />
       <BottomSheet open={editing != null} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
         {editing && (
@@ -1078,6 +1137,8 @@ function MessageActions({
   mine,
   onClose,
   onThread,
+  onCopyLink,
+  onWriteUp,
   onEdit,
   onDelete,
 }: {
@@ -1085,6 +1146,9 @@ function MessageActions({
   mine: boolean;
   onClose: () => void;
   onThread: (id: string) => void;
+  onCopyLink: (message: ShownMessage) => void;
+  /** Absent where the person cannot post (not joined, archived). */
+  onWriteUp?: (message: ShownMessage) => void;
   onEdit: (message: ShownMessage) => void;
   onDelete: (message: ShownMessage) => void;
 }) {
@@ -1110,6 +1174,16 @@ function MessageActions({
           <SheetRow icon={<Copy />} onClick={act(() => void navigator.clipboard?.writeText(message.body || message.card?.title || ""))}>
             Copy text
           </SheetRow>
+          {!message.pending && (
+            <SheetRow icon={<Link2 />} onClick={act(() => onCopyLink(message))}>
+              Copy link to thread
+            </SheetRow>
+          )}
+          {!message.pending && onWriteUp && (
+            <SheetRow icon={<FileText />} onClick={act(() => onWriteUp(message))}>
+              Write this up in Docs
+            </SheetRow>
+          )}
           {mine && message.kind === "text" && (
             <SheetRow icon={<Pencil />} onClick={act(() => onEdit(message))}>
               Edit
@@ -1141,11 +1215,16 @@ function MessageRow({
   onThread,
   onRetry,
   onLongPress,
+  onCopyLink,
+  onWriteUp,
   threadOpen,
   inThread,
 }: {
   /** A phone: a long press opens the message's actions. */
   onLongPress?: () => void;
+  /** The hover toolbar's "⋯": copy the link to its thread, write it up in Docs. */
+  onCopyLink?: () => void;
+  onWriteUp?: () => void;
   message: ShownMessage;
   head: boolean;
   zone: string | undefined;
@@ -1248,9 +1327,65 @@ function MessageRow({
               <MessageSquareText size={15} />
             </button>
           </Hint>
+          {onCopyLink && <MoreActions onCopyLink={onCopyLink} onWriteUp={onWriteUp} />}
         </div>
       )}
     </article>
+  );
+}
+
+/** A message's "⋯" in its hover toolbar. */
+function MoreActions({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWriteUp?: () => void }) {
+  return (
+    <DropdownMenu>
+      <Hint label="More actions">
+        <DropdownMenuTrigger
+          aria-label="More actions"
+          className="flex size-7 items-center justify-center rounded-md text-muted outline-none hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
+          <Ellipsis size={15} />
+        </DropdownMenuTrigger>
+      </Hint>
+      <DropdownMenuContent align="end">
+        <ThreadMenuItems onCopyLink={onCopyLink} onWriteUp={onWriteUp} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ThreadMenuItems({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWriteUp?: () => void }) {
+  return (
+    <>
+      <DropdownMenuItem onSelect={onCopyLink}>
+        <Link2 />
+        Copy link to thread
+      </DropdownMenuItem>
+      {onWriteUp && (
+        <DropdownMenuItem onSelect={onWriteUp}>
+          <FileText />
+          Write this up in Docs
+        </DropdownMenuItem>
+      )}
+    </>
+  );
+}
+
+/** The thread panel's "⋯", in its header. */
+function ThreadMenu({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWriteUp?: () => void }) {
+  return (
+    <DropdownMenu>
+      <Hint label="Thread actions">
+        <DropdownMenuTrigger
+          aria-label="Thread actions"
+          className="flex size-10 items-center justify-center rounded-full text-muted outline-none hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/50 active:bg-raised lg:size-7 lg:rounded-md"
+        >
+          <Ellipsis size={16} />
+        </DropdownMenuTrigger>
+      </Hint>
+      <DropdownMenuContent align="end">
+        <ThreadMenuItems onCopyLink={onCopyLink} onWriteUp={onWriteUp} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1291,7 +1426,7 @@ function TypingLine({ members }: { members: MemberProfile[] }) {
  * is a screen of its own, pushed over the conversation, as tall as what
  * the keyboard leaves.
  */
-function SidePanel({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode }) {
+function SidePanel({ title, subtitle, onClose, menu, children }: { title: string; subtitle?: string; onClose: () => void; menu?: ReactNode; children: ReactNode }) {
   const swipe = useSwipeBack(onClose);
   return (
     <aside
@@ -1305,9 +1440,12 @@ function SidePanel({ title, subtitle, onClose, children }: { title: string; subt
         </button>
         <h2 className="text-[0.9375rem] font-semibold">{title}</h2>
         {subtitle && <span className="truncate text-sm text-faint">{subtitle}</span>}
-        <button type="button" onClick={onClose} aria-label="Close" className="ml-auto hidden rounded-md p-1 text-faint hover:bg-raised hover:text-fg lg:block">
-          <X size={16} />
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {menu}
+          <button type="button" onClick={onClose} aria-label="Close" className="hidden rounded-md p-1 text-faint hover:bg-raised hover:text-fg lg:block">
+            <X size={16} />
+          </button>
+        </div>
       </div>
       <div className="flex min-h-0 grow flex-col">{children}</div>
     </aside>
@@ -1349,7 +1487,7 @@ function ThreadPanel({
         {root ? (
           <MessageRow message={root} head zone={zone} context={context} code={code} slug={slug} onRetry={() => onRetry(root)} inThread />
         ) : (
-          <p className="px-4 py-2 text-sm text-faint">The message this thread is under is further back.</p>
+          replies != null && <p className="px-4 py-2 text-sm text-faint">The message this thread is under is further back.</p>
         )}
         <div className="my-2 flex items-center gap-3 px-4 text-xs text-faint">
           {replies == null ? "Loading replies…" : `${replies.filter((r) => !r.deleted_at).length} ${replies.length === 1 ? "reply" : "replies"}`}

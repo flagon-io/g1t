@@ -3,10 +3,11 @@ import { type FormEvent, type ReactNode, useLayoutEffect, useRef, useState } fro
 
 import type { FeedNotification, NotificationKind } from "@g1t/contracts";
 
+import { NotificationCardActions } from "./card-actions";
 import { MemberAvatar } from "../chat/marks";
 import { Avatar } from "../ui";
 import { closeOffer, currentSink, declinePush, dismiss, enablePush, useNotifyState } from "../../lib/notify-client";
-import { TOAST_GUESS, TOAST_MS, canQuickReply, hiddenToFit, quickReplyRequest } from "../../lib/notify-store";
+import { TOAST_GUESS, TOAST_MS, canQuickReply, hiddenToFit, notificationActions, quickReplyRequest } from "../../lib/notify-store";
 
 const KIND: Record<NotificationKind, { label: string; icon: ReactNode }> = {
   dm: { label: "Direct message", icon: <MessageCircle /> },
@@ -109,6 +110,8 @@ function QuickReply({ notification, onSent }: { notification: FeedNotification; 
 function ToastCard({ notification, paused }: { notification: FeedNotification; paused: boolean }) {
   const kind = KIND[notification.kind];
   const loud = LOUD.has(notification.kind);
+  // A card's actions (Approve more, Stop, File issue…): more time to decide.
+  const card = notificationActions(notification).length > 0;
   const open = () => {
     dismiss(notification.id);
     currentSink().open(notification.href);
@@ -143,11 +146,12 @@ function ToastCard({ notification, paused }: { notification: FeedNotification; p
       >
         <X size={14} />
       </button>
-      {canQuickReply(notification) && <QuickReply notification={notification} onSent={() => dismiss(notification.id)} />}
+      {card && <NotificationCardActions notification={notification} className="px-3 pb-3 sm:pl-14" />}
+      {!card && canQuickReply(notification) && <QuickReply notification={notification} onSent={() => dismiss(notification.id)} />}
       <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-line">
         <span
           className="g1t-toast-timer block h-full bg-accent/70"
-          style={{ animationDuration: `${TOAST_MS}ms`, animationPlayState: paused ? "paused" : "running" }}
+          style={{ animationDuration: `${card ? TOAST_MS * 2 : TOAST_MS}ms`, animationPlayState: paused ? "paused" : "running" }}
           onAnimationEnd={() => dismiss(notification.id)}
         />
       </span>

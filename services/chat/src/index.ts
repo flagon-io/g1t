@@ -1030,11 +1030,16 @@ class Chat {
           .all<MessageRow>();
     const page = pageOf(rows.results, size);
     let list = page.rows;
-    if (root && page.older === null) {
-      const first = await this.messageRow(channel.id, root);
-      if (first) list = [...list, first];
-    }
-    return ok({ messages: await this.toMessages(slug, workspace, list, userKey(a.viewer!)), older: page.older });
+    // The message a thread is under: the oldest once the page reaches the
+    // start, and, on the first page, as `root` however long the thread is,
+    // so a session's card stays at the top of its thread.
+    const firstPage = before === "~";
+    const rootRow = root && (page.older === null || firstPage) ? await this.messageRow(channel.id, root) : null;
+    if (rootRow && page.older === null) list = [...list, rootRow];
+    const messages = await this.toMessages(slug, workspace, list, userKey(a.viewer!));
+    if (!rootRow || !firstPage) return ok({ messages, older: page.older });
+    const shown = messages.find((m) => m.id === rootRow.id) ?? (await this.toMessages(slug, workspace, [rootRow], userKey(a.viewer!)))[0] ?? null;
+    return ok({ messages, older: page.older, root: shown });
   }
 
   /**
@@ -1110,7 +1115,7 @@ class Chat {
     );
     // Notify: counts for everyone in the conversation, a notification for those it is for.
     this.defer(
-      notifyMessage(this.db, this.env.NOTIFY, (keys) => this.profiles(place.slug, workspace, keys), { slug: place.slug, channel, row, handles }).catch(
+      notifyMessage(this.db, this.env.NOTIFY, (keys) => this.profiles(place.slug, workspace, keys), { slug: place.slug, channel, row, handles, asked_by: chain.asked_by }).catch(
         (error) => console.error("chat could not notify about", row.id, error),
       ),
     );

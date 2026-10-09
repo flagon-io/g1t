@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { FeedNotification } from "@g1t/contracts";
 
 import { applyCounts, totals } from "./counts.ts";
-import { STALE_MS, anyFocused, cleanNotification, decide, levelFor, mergePreferences, pushPayload, readPreferences, wants } from "./prefs.ts";
+import { STALE_MS, anyFocused, cleanCard, cleanNotification, decide, levelFor, mergePreferences, pushActions, pushPayload, readPreferences, wants } from "./prefs.ts";
 
 const NOW = 1_800_000_000_000;
 const dms = { level: "dms_mentions" as const, workspaces: {} };
@@ -134,4 +134,59 @@ test("totals leave muted unread out, as the rail does, but count their mentions"
     ],
     complete: true,
   });
+});
+
+const capped = {
+  channel_id: "chn_1",
+  message_id: "msg_card",
+  actions: [
+    { id: "approve", label: "Approve more", style: "primary", input: { kind: "money", label: "New cap", initial: "4.00" } },
+    { id: "stop", label: "Stop", style: "danger", confirm: "Stop this session and everything under it?" },
+    { id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/ses_1" },
+  ],
+};
+
+test("a notification's card is checked: its place, its actions, links kept on the site", () => {
+  const card = cleanCard(capped)!;
+  assert.equal(card.message_id, "msg_card");
+  assert.deepEqual(
+    card.actions.map((a) => [a.id, a.style, a.input?.kind ?? null, a.href ?? null]),
+    [
+      ["approve", "primary", "money", null],
+      ["stop", "danger", null, null],
+      ["open", "default", null, "/acme/-/agents/g1t/sessions/ses_1"],
+    ],
+  );
+  assert.equal(card.actions[1].confirm, "Stop this session and everything under it?");
+  assert.equal(cleanCard({ ...capped, actions: [{ id: "x", label: "X", href: "https://evil.example/" }] })!.actions[0].href, null);
+  assert.equal(cleanCard({ ...capped, message_id: "" }), null);
+  assert.equal(cleanCard({ ...capped, actions: [{ id: "", label: "" }] }), null);
+  assert.equal(cleanCard("nope"), null);
+  // Carried on the notification when it is one; left off otherwise.
+  const n = cleanNotification({ id: "approval:ses_1:2000000", kind: "approval", workspace: "acme", title: "g1t needs more budget", card: capped })!;
+  assert.equal(n.card?.actions.length, 3);
+  assert.equal("card" in cleanNotification({ id: "n", kind: "dm", title: "t" })!, false);
+});
+
+test("a push shows only the card's actions that need nothing typed or confirmed, two at most", () => {
+  const card = cleanCard(capped)!;
+  // Stop asks first in the app; a push can't, so it isn't offered there.
+  assert.deepEqual(pushActions(card), [{ id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/ses_1" }]);
+  assert.deepEqual(pushActions(null), []);
+  const payload = pushPayload({
+    id: "approval:ses_1:2000000",
+    kind: "approval",
+    workspace: "acme",
+    title: "g1t needs more budget",
+    body: "",
+    href: "/acme/-/agents/g1t/sessions/ses_1",
+    actor: { kind: "agent", id: "a1", name: "g1t" },
+    channel_id: "chn_1",
+    card,
+    created_at: "2026-10-08T00:00:00Z",
+  });
+  assert.deepEqual(payload.card, { channel_id: "chn_1", message_id: "msg_card" });
+  assert.equal(payload.workspace, "acme");
+  // Its own notification: a later message in the conversation does not replace it.
+  assert.equal(payload.tag, "approval:approval:ses_1:2000000");
 });

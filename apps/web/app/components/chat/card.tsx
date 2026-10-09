@@ -125,7 +125,8 @@ function dismissToast(id: number) {
   setToasts(toasts.filter((t) => t.id !== id));
 }
 
-function showToast(ok: boolean, message: string) {
+/** Says something in the conversation's toasts: what a card's action did, or that a link was copied. */
+export function showToast(ok: boolean, message: string) {
   const id = ++toastSeq;
   // Three at most; a fourth pushes the oldest out.
   setToasts([...toasts.slice(-2), { id, ok, message }]);

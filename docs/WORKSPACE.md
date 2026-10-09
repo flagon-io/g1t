@@ -532,8 +532,18 @@ space, edits as pull requests) remain the next step for repository docs.
 For self-hosting, the Durable Object, R2 and D1 sit behind the room,
 `FileStore` and SQL; nothing above them depends on Cloudflare.
 
-Not built yet: citations and staleness, "write this up" from a thread,
-the documenter agent, repository docs as spaces, `doc.page.*` events and
+"Write this up" from a thread is built as an ask, not a hidden job: **⋯ →
+Write this up in Docs** (a message's menu, the long-press sheet, the thread
+panel's header) picks a space the person can edit, an optional title and
+the writer (@g1t, or an agent in the conversation), then posts, as the
+person, in the thread: `@g1t write this thread up as a Docs page in <space>
+titled "<title>": what was decided, why, and what's next. Link this thread
+as the source: <thread link>`. The normal agent flow does the rest
+(a session if needed, `create_page`). The page linking back is the agent's
+doing; the thread link it cites is `<conversation path>?thread=<id>`, which
+**Copy link to thread** also gives.
+
+Not built yet: citations and staleness, the documenter agent, repository docs as spaces, `doc.page.*` events and
 indexing pages in `services/context`.
 
 ## Chat
@@ -999,6 +1009,26 @@ Rules, in code: chat checks the person can read the conversation and that
 the card offers the action; the owner checks everything else. An action
 that needs a value (an amount, a line of text) asks for it inline. Agents
 never file, approve or stop anything on their own through a card.
+
+**From a notification.** A notification about a card carries
+`card: { channel_id, message_id, actions }` (`FeedNotification.card`), and
+pressing one of those actions sends the same `card_action` as the card.
+
+- Chat attaches it to any notification about a message whose card has an
+  owner and something to press, and an agent's card that asks someone to
+  act (a primary action: File issue, Approve more) notifies whoever asked
+  the agent as `agent_waiting`, if they are in the conversation.
+- The agents service sends `approval` (a session at its cap) with the
+  session card's place and actions.
+- The toast shows the actions (amounts inline, confirmations inline); the
+  inbox panel lists **Waiting on you in chat**: the newest notification per
+  card from the last day, until it is acted on in that tab.
+- A push has buttons only for actions with no input (two at most: Stop,
+  Open, File issue, Discard). The service worker posts `card_action` with
+  the person's session and shows the answer as a notification.
+- A thread's first page carries `root`, the message it is under, however
+  long the thread is, so a session's live card stays at the top of its
+  thread panel.
 
 ## Live notifications
 

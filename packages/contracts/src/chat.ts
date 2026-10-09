@@ -294,6 +294,12 @@ export type MessagePage = {
   /** Pass as `before` to read further back; null at the beginning. */
   older: string | null;
   /**
+   * For a thread's first page: the message the thread is under, however
+   * many replies it has, so a thread panel always shows it (a session's
+   * live card, say) at its top.
+   */
+  root?: ChatMessage | null;
+  /**
    * Set when the page was read with `after`: pass it as `after` again for
    * the next messages, or null when this page reached the newest.
    */

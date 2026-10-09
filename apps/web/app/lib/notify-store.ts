@@ -5,7 +5,7 @@
  * reconnecting. Pure, so they are tested apart from the socket
  * (lib/notify-client.ts) and the toasts (components/notifications/).
  */
-import type { ChatSidebarEntry, FeedCounts, FeedNotification } from "@g1t/contracts";
+import type { CardAction, ChatSidebarEntry, FeedCounts, FeedNotification } from "@g1t/contracts";
 
 /** The most toasts on screen; a fourth pushes the oldest out. */
 export const MAX_TOASTS = 3;
@@ -92,6 +92,69 @@ export function quickReplyRequest(notification: FeedNotification, body: string):
     url: `/${notification.workspace}/-/chat/api`,
     body: { intent: "post", channel_id: notification.channel_id!, body: text, thread_root: notification.thread_root ?? null },
   };
+}
+
+// ── Cards ─────────────────────────────────────────────────────────────────
+
+/** A card's actions on its notification: what the toast and the panel offer (docs/WORKSPACE.md, "Cards"). */
+export function notificationActions(notification: FeedNotification): CardAction[] {
+  const card = notification.card;
+  if (!card || !notification.workspace || !card.channel_id || !card.message_id) return [];
+  return card.actions.filter((a) => !!a.id && !!a.label);
+}
+
+/** What pressing one posts: the same `card_action` the card itself sends, to the chat api route. */
+export function cardActionRequest(
+  notification: FeedNotification,
+  action: CardAction,
+  input: string | null,
+): { url: string; body: { intent: "card_action"; channel_id: string; message_id: string; action_id: string; input: string | null } } | null {
+  const card = notification.card;
+  if (action.href || !card || !notificationActions(notification).some((a) => a.id === action.id)) return null;
+  return {
+    url: `/${notification.workspace}/-/chat/api`,
+    body: { intent: "card_action", channel_id: card.channel_id, message_id: card.message_id, action_id: action.id, input },
+  };
+}
+
+/** How long a card's notification stays in the panel's "Waiting on you". */
+export const WAITING_MS = 24 * 3600_000;
+/** The most notifications the panel keeps to look through. */
+export const RECENT_KEPT = 50;
+
+/** Notifications as the feed tells them, newest first, each once, at most `RECENT_KEPT`. */
+export function addRecent(recent: FeedNotification[], incoming: FeedNotification[]): FeedNotification[] {
+  const seen = new Set<string>();
+  const out: FeedNotification[] = [];
+  for (const n of [...incoming, ...recent]) {
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+  }
+  return out.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, RECENT_KEPT);
+}
+
+/**
+ * The cards waiting on the person, for the panel: notifications with
+ * actions from the last day, the newest one per card, unless it was acted
+ * on or put away here.
+ */
+export function waitingCards(recent: FeedNotification[], settled: ReadonlySet<string>, now: number, workspace?: string | null): FeedNotification[] {
+  const cards = new Set<string>();
+  const out: FeedNotification[] = [];
+  for (const n of recent) {
+    if (!notificationActions(n).length) continue;
+    if (workspace && n.workspace !== workspace.toLowerCase()) continue;
+    // The newest about a card speaks for it: once that one is acted on, older ones are moot.
+    const key = `${n.card!.channel_id}:${n.card!.message_id}`;
+    if (cards.has(key)) continue;
+    cards.add(key);
+    if (settled.has(n.id)) continue;
+    const at = Date.parse(n.created_at);
+    if (Number.isFinite(at) && now - at > WAITING_MS) continue;
+    out.push(n);
+  }
+  return out;
 }
 
 // ── Counts ────────────────────────────────────────────────────────────────

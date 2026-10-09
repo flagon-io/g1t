@@ -5,7 +5,13 @@ import type { ChatSidebarEntry, FeedCounts, FeedNotification } from "@g1t/contra
 
 import {
   MAX_TOASTS,
+  RECENT_KEPT,
+  WAITING_MS,
+  addRecent,
   addToast,
+  cardActionRequest,
+  notificationActions,
+  waitingCards,
   attentionCount,
   badgesOf,
   canQuickReply,
@@ -164,4 +170,49 @@ test("a stack taller than the screen folds its oldest toasts into a pill, never 
   // The offer always shows and takes its room first.
   assert.equal(hiddenToFit([100, 100], 276, 60), 0);
   assert.equal(hiddenToFit([100, 100], 275, 60), 1);
+});
+
+const capCard = {
+  channel_id: "chn_9",
+  message_id: "msg_card",
+  actions: [
+    { id: "approve", label: "Approve more", style: "primary" as const, input: { kind: "money" as const, label: "New cap" } },
+    { id: "stop", label: "Stop", style: "danger" as const, confirm: "Stop this session?" },
+    { id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/ses_1" },
+  ],
+};
+
+test("a card's notification offers its actions and presses them as the card does", () => {
+  const n = note("approval:ses_1:2000000", { kind: "approval", channel_id: null, card: capCard });
+  assert.deepEqual(notificationActions(n).map((a) => a.id), ["approve", "stop", "open"]);
+  assert.deepEqual(notificationActions(note("m1")), []);
+  assert.deepEqual(cardActionRequest(n, capCard.actions[0]!, "5.00"), {
+    url: "/acme/-/chat/api",
+    body: { intent: "card_action", channel_id: "chn_9", message_id: "msg_card", action_id: "approve", input: "5.00" },
+  });
+  // A link opens its page; an action the card does not offer is not sent.
+  assert.equal(cardActionRequest(n, capCard.actions[2]!, null), null);
+  assert.equal(cardActionRequest(n, { id: "merge", label: "Merge" }, null), null);
+  assert.equal(cardActionRequest(note("m1"), capCard.actions[1]!, null), null);
+});
+
+test("recent notifications are kept newest first, once each", () => {
+  const a = note("a", { created_at: "2026-10-08T00:00:01Z" });
+  const b = note("b", { created_at: "2026-10-08T00:00:02Z" });
+  assert.deepEqual(addRecent([a], [b, a]).map((n) => n.id), ["b", "a"]);
+  const many = Array.from({ length: RECENT_KEPT + 5 }, (_, i) => note(`n${i}`, { created_at: new Date(Date.UTC(2026, 9, 8, 0, 0, i)).toISOString() }));
+  assert.equal(addRecent([], many).length, RECENT_KEPT);
+});
+
+test("the panel waits on the newest notification per card, for a day, until it is acted on", () => {
+  const now = Date.parse("2026-10-09T12:00:00Z");
+  const older = note("approval:ses_1:1000000", { kind: "approval", card: capCard, created_at: "2026-10-09T10:00:00Z" });
+  const newer = note("approval:ses_1:2000000", { kind: "approval", card: capCard, created_at: "2026-10-09T11:00:00Z" });
+  const draft = note("msg_d", { kind: "agent_waiting", workspace: "side", card: { ...capCard, message_id: "msg_draft" }, created_at: "2026-10-09T11:30:00Z" });
+  const stale = note("msg_s", { kind: "agent_waiting", card: { ...capCard, message_id: "msg_stale" }, created_at: new Date(now - WAITING_MS - 1).toISOString() });
+  const recent = addRecent([], [older, newer, draft, stale, note("plain")]);
+  assert.deepEqual(waitingCards(recent, new Set(), now).map((n) => n.id), ["msg_d", "approval:ses_1:2000000"]);
+  assert.deepEqual(waitingCards(recent, new Set(), now, "Acme").map((n) => n.id), ["approval:ses_1:2000000"]);
+  // Acting on the newest puts the card away; the older one about it does not come back.
+  assert.deepEqual(waitingCards(recent, new Set(["approval:ses_1:2000000"]), now, "acme"), []);
 });

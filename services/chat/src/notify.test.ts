@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { MemberProfile } from "@g1t/contracts";
 
-import { conversationHref, countsAfterRead, messageDeliveries, preview, recipients, type Person } from "./notify.ts";
+import { asksToAct, conversationHref, countsAfterRead, messageDeliveries, notificationCard, preview, recipients, type Person } from "./notify.ts";
 
 const person = (id: string, username: string, muted = false): Person => ({ key: `user:${id}`, user_id: id, username, muted });
 const ana = person("u1", "ana");
@@ -93,4 +93,56 @@ test("counts after a read: what is left past the mark, mentions included, never 
   ];
   assert.deepEqual(countsAfterRead(rows, "c", "user:u1", "ana", "m2"), { unread: 2, mentions: 1 });
   assert.deepEqual(countsAfterRead([], "c", "user:u1", "ana", "m9"), { unread: 0, mentions: 0 });
+});
+
+test("a card's actions ride on a notification only when it has an owner and something to press", () => {
+  const draft = {
+    kind: "draft_issue",
+    title: "Fix the login",
+    owner: "agents",
+    actions: [
+      { id: "file", label: "File issue", style: "primary" },
+      { id: "discard", label: "Discard" },
+    ],
+  };
+  const card = notificationCard("chn_1", "msg_1", draft)!;
+  assert.deepEqual(card, { channel_id: "chn_1", message_id: "msg_1", actions: draft.actions });
+  assert.ok(asksToAct(card));
+  // Links only, no owner, or no actions: nothing to press from a toast.
+  assert.equal(notificationCard("chn_1", "msg_1", { ...draft, actions: [{ id: "open", label: "Open", href: "/x" }] }), null);
+  assert.equal(notificationCard("chn_1", "msg_1", { ...draft, owner: null }), null);
+  assert.equal(notificationCard("chn_1", "msg_1", { kind: "pull", title: "t" }), null);
+  assert.equal(notificationCard("chn_1", "msg_1", null), null);
+  // A working session's card (Message, Stop, Open) is pressable but asks nobody.
+  const working = notificationCard("chn_1", "msg_2", {
+    owner: "agents",
+    actions: [
+      { id: "steer", label: "Message", input: { kind: "text", label: "Tell it" } },
+      { id: "stop", label: "Stop", style: "danger" },
+      { id: "open", label: "Open", href: "/acme/-/agents/g1t/sessions/s1" },
+    ],
+  });
+  assert.equal(working?.actions.length, 3);
+  assert.equal(asksToAct(working), false);
+});
+
+test("an agent's card that asks someone to act notifies whoever asked, with its actions", () => {
+  const g1t: MemberProfile = { kind: "agent", id: "a1", name: "g1t", display_username: null, display_name: "g1t", avatar: null, role: null };
+  const card = notificationCard("chn_1", "msg_9", { owner: "agents", actions: [{ id: "file", label: "File issue", style: "primary" }, { id: "discard", label: "Discard" }] });
+  const items = messageDeliveries({
+    slug: "acme",
+    channel: { id: "chn_1", kind: "channel", name: "design" },
+    message: { id: "msg_9", author: "agent:a1", body: "", card_title: "Fix the login", thread_root: "msg_1", created_at: "2026-10-08T00:00:00Z" },
+    author: g1t,
+    card,
+    recipients: recipients({ author: "agent:a1", channelKind: "channel", people: [ana, bo], mentioned: [], thread: new Set(["user:u2"]), waitingOn: "user:u1" }),
+  });
+  const [toAna, toBo] = items;
+  assert.equal(toAna.notification?.kind, "agent_waiting");
+  assert.equal(toAna.notification?.body, "Fix the login");
+  assert.deepEqual(toAna.notification?.card, card);
+  assert.equal(toBo.notification?.kind, "thread_reply");
+  assert.equal(toBo.notification?.card?.message_id, "msg_9");
+  // A mention still reads as a mention.
+  assert.deepEqual(kinds(recipients({ author: "agent:a1", channelKind: "channel", people: [ana], mentioned: ["ana"], thread: null, waitingOn: "user:u1" })), { u1: "mention" });
 });

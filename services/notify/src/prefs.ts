@@ -10,7 +10,7 @@
  *   says it has focus over its socket, and a tab that has said nothing for
  *   `STALE_MS` counts as gone (a laptop lid closed on it).
  */
-import type { FeedNotification, NotificationKind, NotifyLevel, NotifyPreferences } from "@g1t/contracts";
+import type { CardAction, FeedNotification, NotificationCard, NotificationKind, NotifyLevel, NotifyPreferences } from "@g1t/contracts";
 
 // The same as NOTIFY_LEVELS and DEFAULT_NOTIFY_PREFERENCES in @g1t/contracts, kept here so
 // Node runs the tests on this file without the contracts package.
@@ -118,6 +118,7 @@ export function cleanNotification(value: unknown): FeedNotification | null {
   const href = text(n.href, 2000);
   const a = (n.actor && typeof n.actor === "object" ? n.actor : {}) as Record<string, unknown>;
   const actorKind = a.kind === "user" || a.kind === "agent" ? a.kind : "system";
+  const card = cleanCard(n.card);
   return {
     id,
     kind,
@@ -135,21 +136,102 @@ export function cleanNotification(value: unknown): FeedNotification | null {
     },
     channel_id: text(n.channel_id, 100) || null,
     thread_root: text(n.thread_root, 100) || null,
+    ...(card ? { card } : {}),
     created_at: text(n.created_at, 40) || new Date().toISOString(),
   };
+}
+
+/** The most of a card's actions a notification carries, and a push shows (browsers show two). */
+const CARD_ACTIONS = 4;
+const PUSH_ACTIONS = 2;
+
+/** A site path, or null: a notification never links somewhere else. */
+function sitePath(value: unknown): string | null {
+  const href = typeof value === "string" ? value.trim().slice(0, 2000) : "";
+  return href.startsWith("/") && !href.startsWith("//") ? href : null;
+}
+
+/**
+ * The card a notification is about, checked: where it is and its actions
+ * as the card offers them. Null when it is not one, or has nothing to press.
+ */
+export function cleanCard(value: unknown): NotificationCard | null {
+  if (!value || typeof value !== "object") return null;
+  const c = value as Record<string, unknown>;
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const channel_id = text(c.channel_id, 100);
+  const message_id = text(c.message_id, 100);
+  if (!channel_id || !message_id || !Array.isArray(c.actions)) return null;
+  const actions: CardAction[] = [];
+  for (const raw of c.actions.slice(0, CARD_ACTIONS)) {
+    if (!raw || typeof raw !== "object") continue;
+    const a = raw as Record<string, unknown>;
+    const id = text(a.id, 40);
+    const label = text(a.label, 60);
+    if (!id || !label) continue;
+    const style = a.style === "primary" || a.style === "danger" ? a.style : "default";
+    const input = a.input && typeof a.input === "object" ? (a.input as Record<string, unknown>) : null;
+    actions.push({
+      id,
+      label,
+      style,
+      confirm: text(a.confirm, 200) || null,
+      input:
+        input && (input.kind === "money" || input.kind === "text")
+          ? { kind: input.kind, label: text(input.label, 100), placeholder: text(input.placeholder, 100) || null, initial: text(input.initial, 40) || null }
+          : null,
+      href: sitePath(a.href),
+    });
+  }
+  return actions.length ? { channel_id, message_id, actions } : null;
+}
+
+/**
+ * A push's buttons: a card's actions that need nothing typed (a push has no
+ * field) and nothing confirmed (a push can't ask first, so Stop waits for
+ * the app), links and all.
+ */
+export type PushAction = { id: string; label: string; href: string | null };
+
+export function pushActions(card: NotificationCard | null | undefined): PushAction[] {
+  if (!card) return [];
+  return card.actions
+    .filter((a) => !a.input && !a.confirm && a.style !== "danger")
+    .slice(0, PUSH_ACTIONS)
+    .map((a) => ({ id: a.id, label: a.label, href: a.href ?? null }));
 }
 
 /**
  * What a push carries: little, under the 4 KB a push may hold. `tag` makes
  * the notifications of one conversation replace each other.
  */
-export function pushPayload(n: FeedNotification): { title: string; body: string; href: string; tag: string; kind: NotificationKind; urgent: boolean } {
+export type PushPayload = {
+  title: string;
+  body: string;
+  href: string;
+  tag: string;
+  kind: NotificationKind;
+  urgent: boolean;
+  /** The workspace's slug, for a card action's request. */
+  workspace: string;
+  /** Buttons on the notification: a card's actions that need nothing typed. */
+  actions: PushAction[];
+  /** Where the card is, for those that run (public/sw.js posts `card_action`). */
+  card: { channel_id: string; message_id: string } | null;
+};
+
+export function pushPayload(n: FeedNotification): PushPayload {
+  const actions = pushActions(n.card);
   return {
     title: n.title,
     body: n.body.slice(0, 240),
     href: n.href,
-    tag: n.channel_id ? `chat:${n.channel_id}` : `${n.kind}:${n.id}`,
+    // A card's notification is its own, so a newer message does not replace it.
+    tag: n.channel_id && !actions.length ? `chat:${n.channel_id}` : `${n.kind}:${n.id}`,
     kind: n.kind,
     urgent: DIRECT.has(n.kind),
+    workspace: n.workspace,
+    actions,
+    card: actions.length && n.card ? { channel_id: n.card.channel_id, message_id: n.card.message_id } : null,
   };
 }

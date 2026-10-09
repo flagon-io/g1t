@@ -7,6 +7,7 @@
  * events service about every inbox item, and the site forwards each tab's
  * `/-/live` socket to it. Wire shapes are snake_case end to end.
  */
+import type { CardAction } from "./chat";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
 
@@ -43,7 +44,25 @@ export type FeedNotification = {
   channel_id?: string | null;
   /** The thread it is in, for a reply: quick replies go there. */
   thread_root?: string | null;
+  /**
+   * The chat card it is about, when that card has something to press: a
+   * session at its cap (Approve more, Stop, Open), a draft issue (File
+   * issue, Discard). The toast and the notifications panel show these
+   * actions, and pressing one goes to the site's `card_action`, exactly as
+   * on the card itself (docs/WORKSPACE.md, "Cards").
+   */
+  card?: NotificationCard | null;
   created_at: string;
+};
+
+/** A card's place and its main actions, carried on a notification about it. */
+export type NotificationCard = {
+  /** The conversation the card is in. */
+  channel_id: string;
+  /** The message that is the card. */
+  message_id: string;
+  /** The card's actions as it offers them: ids, labels, inputs and links, the same as on the card. */
+  actions: CardAction[];
 };
 
 /** How much a person hears of. Counts always move; this governs toasts and pushes. */

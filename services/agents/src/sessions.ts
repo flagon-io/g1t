@@ -992,6 +992,12 @@ export async function approve(env: SessionEnv, row: SessionRow, by: string, capM
 /** Tells whoever asked, and the agent's maker, that a session waits for more budget. */
 async function notifyApproval(env: SessionEnv, row: SessionRow, agent: Row): Promise<void> {
   if (!env.NOTIFY) return;
+  // The card's own buttons ride along, so it can be approved from the notification.
+  const { root } = await speaker(env.DB, row);
+  const href = `/${row.workspace}/-/agents/${agent.handle}/sessions/${row.id}`;
+  const card = root.card_message_id
+    ? { channel_id: root.channel_id, message_id: root.card_message_id, actions: sessionActions("needs_approval", row.cap_micros, row.charged_micros, href) }
+    : null;
   const targets = new Set<string>();
   if (row.asked_by_username) targets.add(row.asked_by_username);
   if (agent.created_by) targets.add(agent.created_by);
@@ -1007,9 +1013,11 @@ async function notifyApproval(env: SessionEnv, row: SessionRow, agent: Row): Pro
           workspace: row.workspace,
           title: `${agent.display_name} needs more budget`,
           body: `"${row.title}" reached its cap of ${dollars(row.cap_micros ?? 0)}.`,
-          href: `/${row.workspace}/-/agents/${agent.handle}/sessions/${row.id}`,
+          href,
           actor: { kind: "agent", id: agent.id, name: agent.display_name, avatar_seed: agent.avatar_seed || agent.handle },
-          channel_id: null,
+          // While that conversation is open the card is there already: no toast.
+          channel_id: root.channel_id,
+          card,
           created_at: iso(),
         },
       }),

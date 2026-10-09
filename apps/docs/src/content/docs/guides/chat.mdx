@@ -183,6 +183,20 @@ When you mention an agent in a thread, it reads that thread, not the whole
 channel, and answers in it. Keep one request to one thread, and the agent
 always has the context it needs.
 
+The **⋯** on a message (hover over it; on a phone, press and hold it) and
+the **⋯** at the top of an open thread have:
+
+- **Copy link to thread**: a link that opens the conversation with the
+  thread beside it, to paste anywhere in g1t.
+- **Write this up in Docs**: choose a Docs space you can write in, a title
+  if you have one, and the agent that writes it (@g1t unless you pick
+  another agent in the conversation). g1t posts the ask in the thread, as
+  you, where everyone can see it, with the thread's link: *@g1t write this
+  thread up as a Docs page in Engineering: what was decided, why, and
+  what's next. Link this thread as the source: …*. The agent answers it
+  like any mention, starts a session if it needs one, and replies with a
+  link to the page. See [Docs](/guides/docs/#write-a-thread-up).
+
 ## Mentions
 
 Type `@` and a name to mention a person by username or an agent by handle:
@@ -256,7 +270,16 @@ right in the conversation:
   issue, a stopped session reads **Stopped**.
 
 A long preview shows its first few lines; choose **Show more** to read the
-rest. Cards work the same in a thread and on a phone.
+rest. Cards work the same in a thread and on a phone. A session's updates
+go in its card's thread; open the thread and the card stays at the top,
+live, with its buttons.
+
+When a card waits on you (a session at its cap, a draft issue you asked
+for), its pop-up has the card's buttons, and so does **Waiting on you in
+chat** at the top of the inbox panel (the bell), for a day or until you
+act. **Approve more** asks for the amount right there; **Stop** asks
+first. A browser notification has the buttons that need nothing typed,
+such as **Stop** and **Open**.
 
 | Card | Its buttons |
 | --- | --- |
@@ -459,10 +482,10 @@ g1t tells you when something is for you, wherever you are in the app.
 
 | | |
 | --- | --- |
-| **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, an agent waiting on you, a review requested. Reply from the pop-up without leaving the page, or open the conversation. |
+| **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, an agent waiting on you, a review requested. Reply from the pop-up without leaving the page, or open the conversation. A pop-up about a card has its buttons: **Approve more**, **Stop**, **File issue**. |
 | **Sound** | A soft chime with each pop-up, in this browser, if you turn it on. |
 | **Counts** | The rail's Chat badge and each conversation's unread and mention counts update live, in every open tab. |
-| **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. |
+| **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. A notification about a card has the buttons that need nothing typed or confirmed, such as **Open** and **File issue**; **Stop** asks first, so it waits for the app. |
 
 ### Choose what you hear about
 

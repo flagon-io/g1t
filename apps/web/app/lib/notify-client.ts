@@ -23,6 +23,7 @@ import { isIdle, mergePeople } from "./presence";
 
 import {
   HEARTBEAT_MS,
+  addRecent,
   addToast,
   attentionCount,
   badgesOf,
@@ -31,6 +32,7 @@ import {
   offerPush,
   reconnectDelay,
   titleWith,
+  waitingCards,
   type LiveBadges,
   type PushChoice,
   type Toast,
@@ -175,9 +177,25 @@ export type NotifyState = {
   people: Record<string, PresenceEntry>;
   /** Your own presence, status and Do Not Disturb, once the feed has said. */
   me: OwnPresence | null;
+  /** The latest notifications, newest first: the panel's cards waiting on you come from these. */
+  recent: FeedNotification[];
+  /** Card notifications acted on (or put away) in this tab, by id. */
+  settled: ReadonlySet<string>;
 };
 
-let state: NotifyState = { connected: false, counts: {}, inbox: null, toasts: [], preferences: null, vapidKey: null, offer: false, people: {}, me: null };
+let state: NotifyState = {
+  connected: false,
+  counts: {},
+  inbox: null,
+  toasts: [],
+  preferences: null,
+  vapidKey: null,
+  offer: false,
+  people: {},
+  me: null,
+  recent: [],
+  settled: new Set(),
+};
 const listeners = new Set<() => void>();
 const SERVER_STATE = state;
 
@@ -205,6 +223,18 @@ export function useLiveBadges(workspace: string | null | undefined): Partial<Liv
 export function useLiveCounts(workspace: string | null | undefined): FeedCounts | null {
   const s = useNotifyState();
   return workspace ? (s.counts[workspace.toLowerCase()] ?? null) : null;
+}
+
+/** A card's notification was acted on, or put away: its toast goes, and the panel stops waiting on it. */
+export function settle(id: string): void {
+  if (state.settled.has(id)) return;
+  set({ settled: new Set(state.settled).add(id), toasts: dismissToast(state.toasts, id) });
+}
+
+/** The chat cards waiting on the person (docs/WORKSPACE.md, "Cards"), newest first, for the panel. */
+export function useWaitingCards(workspace?: string | null): FeedNotification[] {
+  const s = useNotifyState();
+  return waitingCards(s.recent, s.settled, Date.now(), workspace);
 }
 
 /** People's presence by user id, with an index by username (lowercased). */
@@ -338,7 +368,7 @@ export function reportInbox(unread: number): void {
 function onEvent(event: FeedEvent): void {
   switch (event.type) {
     case "hello":
-      set({ preferences: event.preferences, vapidKey: event.vapid_public_key });
+      set({ preferences: event.preferences, vapidKey: event.vapid_public_key, recent: addRecent(state.recent, event.notifications ?? []) });
       break;
     case "counts": {
       const { type: _, ...counts } = event;
@@ -346,6 +376,7 @@ function onEvent(event: FeedEvent): void {
       break;
     }
     case "notification":
+      set({ recent: addRecent(state.recent, [event.notification]) });
       sink.deliver(event.notification, { toast: event.toast, focused: focused() });
       break;
     case "preferences":
