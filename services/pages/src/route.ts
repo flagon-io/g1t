@@ -47,3 +47,16 @@ export function redirectTo(requestUrl: string, target: string): string {
   const url = new URL(requestUrl);
   return `https://${target}${url.pathname}${url.search}`;
 }
+
+/**
+ * What one request to an app may use: CPU time, not counting time spent
+ * waiting on the network, and requests it makes of its own. Static assets
+ * are served without running the app, and use neither. No plan sets
+ * others; the Deployments guide names these.
+ */
+export const APP_LIMITS = { cpuMs: 50, subRequests: 50 } as const;
+
+/** Whether an app's failure was going over `APP_LIMITS`, as the runtime words it. */
+export function overLimits(error: unknown): boolean {
+  return /exceeded (its )?cpu|cpu time limit|too many subrequests|subrequest limit/i.test(String(error));
+}

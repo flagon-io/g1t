@@ -5,7 +5,8 @@
  * Platforms namespace (`web-git-fix-login-acme.g1t.page` is the fix-login
  * branch's preview of acme's web project), so the app is fetched by name
  * and runs only for as long as it answers. An app no one visits runs
- * nothing and costs nothing. The one lookup is for an address an app
+ * nothing and costs nothing. Each request it serves is held to
+ * `APP_LIMITS`, so one app cannot spend without bound. The one lookup is for an address an app
  * had before its project moved: `DOMAINS` holds a redirect under the old
  * hostname for as long as the old name is held, and it is followed before
  * anything the old script would answer (such as a paused notice).
@@ -18,7 +19,7 @@
  * people sign in to.
  */
 
-import { DOMAIN, FALLBACK, parseEntry, redirectTo, route, type DomainEntry } from "./route.ts";
+import { APP_LIMITS, DOMAIN, FALLBACK, overLimits, parseEntry, redirectTo, route, type DomainEntry } from "./route.ts";
 
 type Env = {
   APPS: DispatchNamespace;
@@ -76,7 +77,7 @@ async function lookup(env: Env, hostname: string): Promise<DomainEntry | null> {
 async function dispatch(env: Env, request: Request, script: string, shown: string, missing: () => Response): Promise<Response> {
   let app: Fetcher;
   try {
-    app = env.APPS.get(script);
+    app = env.APPS.get(script, {}, { limits: APP_LIMITS });
   } catch {
     return missing();
   }
@@ -84,6 +85,14 @@ async function dispatch(env: Env, request: Request, script: string, shown: strin
     return await app.fetch(request);
   } catch (error) {
     if (/worker not found|script not found|does not exist/i.test(String(error))) return missing();
+    if (overLimits(error)) {
+      return page(
+        503,
+        "The app went over its limits",
+        `<p>The app at <code>${escape(shown)}</code> used more than ${APP_LIMITS.cpuMs} ms of CPU time, or made more than ${APP_LIMITS.subRequests} requests of its own, answering this request.</p>`,
+        shown,
+      );
+    }
     return page(
       502,
       "The app failed",
