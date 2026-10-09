@@ -142,6 +142,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Accounts and sign-in', slug: 'guides/authentication' },
 						{ label: 'GitHub', slug: 'guides/github' },
+						{ label: 'Mirroring', slug: 'guides/mirroring' },
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
 						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
 						{ label: 'Teams', slug: 'guides/teams' },

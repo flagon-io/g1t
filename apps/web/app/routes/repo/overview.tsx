@@ -52,6 +52,7 @@ import { Hint } from "../../components/ui/hint";
 import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
+import { MirrorOverviewNote, useRepoMirror } from "../../components/mirror";
 import { distinctFacts } from "../../lib/memory-facts";
 import { githubApp } from "../../lib/github.server";
 import { Avatar, ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
@@ -491,18 +492,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const saved = await projects.update(user, params.owner, params.repo, projectChanges(form));
     return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
   }
-  // Syncing from GitHub is pushing; stopping it is an integration; deploying is compute.
-  const refused = await refusal(context, params, intent === "github-sync" ? "push" : intent === "github-stop" ? "manage_integrations" : "run");
+  // Deploying is compute. Syncing with GitHub is under Settings → Mirroring.
+  const refused = await refusal(context, params, "run");
   if (refused) return { error: refused };
-  if (intent === "github-sync" || intent === "github-stop") {
-    const repo = await repos.get({ namespace: params.owner, name: params.repo }, user);
-    if (!repo.ok) return { error: repo.error.message };
-    const done =
-      intent === "github-sync" ? await githubApp.sync(user, repo.value.id) : await githubApp.unlinkRepo(user, repo.value.id);
-    return done.ok
-      ? { notice: intent === "github-sync" ? "Synced with GitHub." : "It is no longer kept in step with GitHub." }
-      : { error: done.error.message };
-  }
   const started = await deployments.redeploy(user, { workspace: params.owner, slug: params.repo }, null);
   return started.ok ? { notice: "Production is building." } : { error: started.error.message };
 }
@@ -791,6 +783,8 @@ function Overview({
   const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library, checks } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  // What it is to its remotes, from the repository layout.
+  const { repo: mirrorRepo, briefs: mirrorBriefs, admin: mirrorAdmin } = useRepoMirror();
   const production = live.find((app) => app.kind === "production") ?? null;
   // The project's own domain, once it is active, is where production is visited.
   const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
@@ -819,7 +813,18 @@ function Overview({
 
   return (
     <div className="space-y-8">
-      {loaderData.github && <GithubLinkStrip link={loaderData.github} />}
+      {loaderData.github?.mode === "import" ? (
+        <GithubLinkStrip link={loaderData.github} />
+      ) : (
+        <MirrorOverviewNote
+          base={base}
+          mirror={mirrorRepo?.mirror}
+          briefs={mirrorBriefs}
+          admin={mirrorAdmin}
+          syncedAt={loaderData.github?.syncedAt}
+          lastError={loaderData.github?.lastError}
+        />
+      )}
       {/* What the project is, running, and where its code is. */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
         {project && (

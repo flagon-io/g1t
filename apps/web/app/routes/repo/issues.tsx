@@ -5,9 +5,10 @@ import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
-import { ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
+import { Button, ButtonLink, ComputeNote, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
+import { mirrorReason, type MirroredRepo } from "../../lib/mirror";
 import {
   Assignee,
   AssigneeStack,
@@ -105,8 +106,10 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
   kept.delete("q");
 
   // An archived repository's issues are locked: no new ones.
-  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
+  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: MirroredRepo & { archivedAt?: string | null } } | undefined;
   const archived = Boolean(layout?.repo?.archivedAt);
+  // A mirror takes no new issues until someone takes over: the button says why.
+  const mirrorBlocked = mirrorReason(layout?.repo);
   // Handed over: the ticks are cleared. Refused: they stay, to try again.
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -119,7 +122,14 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
         state={state}
         query={kept.toString()}
         action={
-          archived ? undefined : (
+          archived ? undefined : mirrorBlocked ? (
+            <Hint label={mirrorBlocked} disabled>
+              <Button type="button" disabled>
+                <Plus size={15} />
+                New issue
+              </Button>
+            </Hint>
+          ) : (
             <ButtonLink to={`${base}/new`}>
               <Plus size={15} />
               New issue
@@ -184,9 +194,11 @@ export default function Issues({ loaderData, actionData, params }: Route.Compone
               Tick the issues to hand over. g1t takes each one in a run of its own,
               and they all work at once.
             </p>
-            <SubmitButton variant="accent" pending="Starting sandboxes…">
-              Assign to g1t
-            </SubmitButton>
+            <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+              <SubmitButton variant="accent" pending="Starting sandboxes…" disabled={mirrorBlocked != null}>
+                Assign to g1t
+              </SubmitButton>
+            </Hint>
             {loaderData.computeNote && (
               <div className="basis-full">
                 <ComputeNote note={loaderData.computeNote} />

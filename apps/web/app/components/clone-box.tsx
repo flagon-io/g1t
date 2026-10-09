@@ -2,12 +2,17 @@ import { Link } from "react-router";
 
 import { cloneUrl, sshUrl, useAddresses } from "../lib/addresses";
 import { AgentSetup } from "./agent-setup";
+import { MirrorCloneNote, useRepoMirror } from "./mirror";
 import { CopyLine } from "./ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 /** The ways to get a repository onto a machine or in front of an agent. */
 export function CloneBox({ path }: { path: string }) {
   const addresses = useAddresses();
+  // A mirror takes no pushes until someone takes over: it says where to push.
+  const { repo, admin } = useRepoMirror();
+  const mirror = repo && `${repo.namespace}/${repo.name}` === path ? repo.mirror : null;
+  const readOnly = mirror != null && mirror.state !== "takeover";
   return (
     <Tabs defaultValue="https">
       <TabsList>
@@ -17,13 +22,16 @@ export function CloneBox({ path }: { path: string }) {
       </TabsList>
       <TabsContent value="https">
         <CopyLine text={cloneUrl(addresses, path)} />
-        <p className="mt-2 text-xs text-muted">
-          To push, use your username and an{" "}
-          <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
-            access token
-          </Link>{" "}
-          as the password.
-        </p>
+        <MirrorCloneNote mirror={mirror} base={`/${path}`} admin={admin} />
+        {!readOnly && (
+          <p className="mt-2 text-xs text-muted">
+            To push, use your username and an{" "}
+            <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
+              access token
+            </Link>{" "}
+            as the password.
+          </p>
+        )}
       </TabsContent>
       <TabsContent value="ssh">
         <CopyLine text={sshUrl(addresses, path)} disabled />

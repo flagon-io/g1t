@@ -81,12 +81,12 @@ export const MODES = [
   },
   {
     id: "mirror",
-    title: "Mirror",
-    text: "Keep the code on GitHub. Every push there is fetched into g1t, so agents can work on it, and deployments build it once you turn them on.",
+    title: "Standby mirror",
+    text: "g1t keeps a read-only copy that follows GitHub. Take over whenever you need to work here.",
   },
   {
     id: "push",
     title: "Move to g1t",
-    text: "Work on g1t from now on. Every push here is pushed to GitHub, so it stays up to date for everyone else.",
+    text: "g1t leads; GitHub follows every push.",
   },
 ] as const;

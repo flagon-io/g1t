@@ -8,6 +8,8 @@ import type { Route } from "./+types/issue-new";
 import { page } from "../../lib/meta";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
+import { Hint } from "../../components/ui/hint";
+import { useMirrorReason } from "../../components/mirror";
 import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
@@ -95,6 +97,8 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
   const [params] = useSearchParams();
   const refused = actionData && "notStarted" in actionData ? actionData.notStarted : null;
   const names = loaderData.sources.map((source) => PROVIDERS[source].label);
+  // A mirror takes no new issues until someone takes over.
+  const mirrorBlocked = useMirrorReason();
   return (
     <div className="max-w-2xl">
       {names.length > 0 && (
@@ -113,9 +117,11 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
               <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
             </div>
             <CheckboxOption name="assign" label="Put an agent on it" className="items-center" labelClassName="text-muted" />
-            <SubmitButton variant="quiet" match={{ intent: "import" }} pending="Importing…">
-              Import
-            </SubmitButton>
+            <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+              <SubmitButton variant="quiet" match={{ intent: "import" }} pending="Importing…" disabled={mirrorBlocked != null}>
+                Import
+              </SubmitButton>
+            </Hint>
           </div>
           {actionData && "importError" in actionData && (
             <div className="mt-2">
@@ -217,9 +223,11 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
           </div>
         )}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
-        <SubmitButton name="intent" value="open" pending="Opening…">
-          Open issue
-        </SubmitButton>
+        <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+          <SubmitButton name="intent" value="open" pending="Opening…" disabled={mirrorBlocked != null}>
+            Open issue
+          </SubmitButton>
+        </Hint>
       </Form>
     </div>
   );

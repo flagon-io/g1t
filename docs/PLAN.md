@@ -1175,6 +1175,12 @@ its project stays `hosted` and deploys like any other; the tie lives in
 integrations' `github_repos`. Not yet: previews and statuses on GitHub's own
 pull requests, comments and pull requests copied, GitLab and Bitbucket.
 
+**Mirroring, built 2026-10-08:** a mirror stands by as a read-only copy of
+the remote that leads, until someone takes over on g1t, then hands back ref
+by ref or moves it to g1t for good; CI failover runs the remote's
+workflows on g1t. Links to GitHub, another g1t or any git host. Design and
+what is not yet: [MIRRORING.md](MIRRORING.md).
+
 ### People and search
 
 > **2026-10-04:** "pull up user profiles, using a /u/username prefix kinda

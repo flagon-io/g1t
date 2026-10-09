@@ -19,8 +19,28 @@ local actions under `.g1t/actions/` and anything else you keep there.
 Workflows that still say `uses: ./.github/actions/setup` find it under
 `.g1t/` once `.github` is gone.
 
-g1t never reads `.github`. A repository mirrored to both places can keep
-`.github` for GitHub and `.g1t` for g1t, side by side.
+Otherwise g1t doesn't read `.github`, so a repository that lives in both
+places can keep `.github` for GitHub and `.g1t` for g1t, side by side.
+
+### On a mirror
+
+A [mirror](/guides/mirroring/) of a GitHub repository runs nothing while it
+stands by: its workflows run on GitHub. Its owners can change that:
+
+- **CI failover** runs its workflows on g1t for each push copied in from
+  GitHub, `.github/workflows` as well as `.g1t/workflows`. Use it when
+  GitHub's workflows aren't running.
+- **Taking over** runs them for everything pushed to g1t, until it's handed
+  back.
+- **Keep CI warm** runs `.g1t/workflows`, and only those, on each push
+  copied in while it stands by.
+
+When both folders have a workflow of the same `name:`, the one in `.g1t`
+runs. A workflow that deploys (any job names an `environment:`) waits for
+approval during CI failover and takeovers, so it doesn't deploy from two
+places, unless the mirror's settings say otherwise. A push copied in from
+GitHub that changes workflows or local actions waits for approval before
+it can use the repository's secrets.
 
 Then add your [secrets and variables](#secrets-and-variables): GitHub never
 gives their values out, so they cannot be copied across.

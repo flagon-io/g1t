@@ -37,6 +37,8 @@ export const SETTINGS_CAPABILITY: Record<string, Capability> = {
   runners: "manage_integrations",
   deployments: "manage_integrations",
   domains: "manage_integrations",
+  // Taking over, handing back and adding remotes: Admins.
+  mirroring: "manage_integrations",
   dependencies: "manage_settings",
   // Write and up can see who has access; Admins change it.
   access: "push",

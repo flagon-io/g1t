@@ -119,6 +119,8 @@ export type RemoteBrief = {
   name: string;
   state: RemoteState;
   reachable: boolean;
+  /** When g1t last copied from it or pushed to it. */
+  syncedAt?: string | null;
 };
 
 export type MirrorAddInput = {

@@ -96,6 +96,7 @@ import { CommitChecksBadge } from "../../components/commit-checks";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
+import { useMirrorReason } from "../../components/mirror";
 import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
 
 const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
@@ -788,8 +789,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const [bypassing, setBypassing] = useState(false);
   const rulesUnmet = (rules?.unmet ?? []).filter((violation) => violation.rule !== "required_status_checks");
   const rulesBypassable = rules?.bypassable ?? [];
+  // A mirror takes no merges until someone takes over.
+  const mirrorBlocked = useMirrorReason();
   // Why the merge button cannot be pressed, if it cannot.
-  const mergeBlocked = conflicting
+  const mergeBlocked = mirrorBlocked ?? (conflicting
     ? "Resolve the conflicts first."
     : probing
       ? "Waiting to find out whether it merges cleanly."
@@ -803,7 +806,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               ? `Rules for ${defaultBranch} are not met. You may bypass them.`
               : ownersMissing
                 ? "Code owners have to approve first."
-                : null;
+                : null);
 
   return (
     // The changes get the whole width; people and settings are a tab away.

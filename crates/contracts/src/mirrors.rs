@@ -413,6 +413,9 @@ pub struct RemoteBrief {
     pub name: String,
     pub state: RemoteState,
     pub reachable: bool,
+    /// When g1t last copied from it or pushed to it.
+    #[serde(default)]
+    pub synced_at: Option<String>,
 }
 
 /// The payload of the `mirror.*` events: `mirror.unreachable` (a mirror's

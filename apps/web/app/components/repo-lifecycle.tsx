@@ -35,6 +35,7 @@ export function ConfirmDialog({
   danger = true,
   action,
   trigger,
+  extra,
 }: {
   intent: string;
   /** Other hidden fields to post with it. */
@@ -53,6 +54,8 @@ export function ConfirmDialog({
   /** Where to post, when not the page's own action. */
   action?: string;
   trigger: (open: () => void) => ReactNode;
+  /** More fields to post, under the list: a choice that goes with it. */
+  extra?: ReactNode;
 }) {
   const [open, setOpen] = useState(Boolean(error));
   const [typed, setTyped] = useState("");
@@ -89,6 +92,7 @@ export function ConfirmDialog({
               {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
             </AlertDialogHeader>
             {children && <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">{children}</ul>}
+            {extra}
             {confirm != null && (
               <FormField>
                 <FieldLabel htmlFor={`${id}-confirm`}>

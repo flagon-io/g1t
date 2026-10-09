@@ -5,6 +5,8 @@ import type { Route } from "./+types/pull-new";
 import { page } from "../../lib/meta";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { Combobox } from "../../components/ui/combobox";
+import { Hint } from "../../components/ui/hint";
+import { useMirrorReason } from "../../components/mirror";
 import {
   SubmitButton,
   CopyLine,
@@ -78,6 +80,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
   const { defaultBranch, base, bases, branches, selected, issue } = loaderData;
   const remote = cloneUrl(useAddresses(), `${params.owner}/${params.repo}`);
+  // A mirror takes no pull requests until someone takes over.
+  const mirrorBlocked = useMirrorReason();
 
   if (branches.length === 0) {
     return (
@@ -140,7 +144,11 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
         <Input name="issue" type="number" min={1} defaultValue={issue} placeholder="12" />
       </Field>
       <ErrorText>{actionData?.error}</ErrorText>
-      <SubmitButton pending="Opening…">Open pull request</SubmitButton>
+      <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+        <SubmitButton pending="Opening…" disabled={mirrorBlocked != null}>
+          Open pull request
+        </SubmitButton>
+      </Hint>
     </Form>
   );
 }

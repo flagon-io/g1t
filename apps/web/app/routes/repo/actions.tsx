@@ -9,6 +9,8 @@ import { page } from "../../lib/meta";
 import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { Button, ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { useWorkflowReason } from "../../components/mirror";
+import { Hint } from "../../components/ui/hint";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { useAddresses } from "../../lib/addresses";
@@ -181,6 +183,8 @@ function InputField({ name, spec }: { name: string; spec: DispatchInput }) {
 
 function RunWorkflow({ workflow }: { workflow: Workflow }) {
   const [open, setOpen] = useState(false);
+  // A mirror standing by runs nothing; in CI failover it runs them.
+  const blocked = useWorkflowReason();
   // Open, saying it is starting, until the run shows below or the error does.
   const running = usePending({ intent: "dispatch", workflow: workflow.id });
   const was = useRef(false);
@@ -192,10 +196,12 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
   const booleans = inputs.filter(([, spec]) => spec.type === "boolean").map(([name]) => name);
   return (
     <div className="relative">
-      <Button type="button" variant="quiet" onClick={() => setOpen((v) => !v)}>
-        <Play size={14} />
-        Run workflow
-      </Button>
+      <Hint label={blocked} disabled={blocked != null}>
+        <Button type="button" variant="quiet" disabled={blocked != null} onClick={() => setOpen((v) => !v)}>
+          <Play size={14} />
+          Run workflow
+        </Button>
+      </Hint>
       {open && (
         <Form
           method="post"

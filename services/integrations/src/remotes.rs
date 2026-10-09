@@ -535,6 +535,7 @@ impl Mirrors {
                 name: row.name.clone(),
                 state: row.state(),
                 reachable: hosts.get(&row.host()).is_none_or(|host| host.unreachable_since.is_none()),
+                synced_at: row.synced_at.clone(),
             })
             .collect())
     }

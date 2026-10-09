@@ -9,6 +9,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   agents: { title: "Agents", about: "How g1t picks up work here, and what it reads first." },
   guardrails: { title: "Guardrails", about: "What agents may reach, run and spend while they work here." },
   repository: { title: "Repository", about: "Its name, details and default branch, who can see it, and archiving, moving or deleting it." },
+  mirroring: { title: "Mirroring", about: "Copies of this repository on other hosts: which one leads, taking over and handing back, and remotes that follow it." },
   access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
   keys: { title: "Deploy keys", about: "SSH keys that let a machine clone this repository, or push to it, and reach nothing else." },
   branches: { title: "Branches and merging", about: "How pull requests merge, what g1t's agents do with theirs, and who owns which files." },

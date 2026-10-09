@@ -209,6 +209,7 @@ export default [
     route("plans/:id", "routes/repo/plan.tsx"),
     route("settings", "routes/repo/settings.tsx"),
     route("settings/repository", "routes/repo/settings-repository.tsx"),
+    route("settings/mirroring", "routes/repo/settings-mirroring.tsx"),
     route("settings/access", "routes/repo/settings-access.tsx"),
     route("settings/keys", "routes/repo/settings-deploy-keys.tsx"),
     route("settings/branches", "routes/repo/settings-branches.tsx"),
