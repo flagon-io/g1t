@@ -611,7 +611,8 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
   `resources.kv`, then the ids in the configs.
 - Queues: `npx wrangler queues create <queue>` for each queue in the
   manifest: `g1t-events`, `g1t-events-<service>` for every subscriber,
-  `g1t-search-jobs`, `g1t-context-jobs`.
+  `g1t-search-jobs`, `g1t-context-jobs`, and the dead-letter queue
+  `g1t-events-dlq` (below).
 - R2: `npx wrangler r2 bucket create g1t-screenshots`,
   `npx wrangler r2 bucket create g1t-actions-cache` (with its two
   lifecycle rules, above), and `npx wrangler r2 bucket create g1t-git-packs`,
@@ -630,6 +631,23 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
 Then `node scripts/deploy.mjs deploy --all`. A Worker bound to a service
 that does not exist yet may be refused; deploy that service first with
 `--only`.
+
+## The dead-letter queue
+
+Every queue consumer (`g1t-events`, each `g1t-events-<service>`,
+`g1t-search-jobs`, `g1t-context-jobs`) names `max_retries` and the
+dead-letter queue `g1t-events-dlq`, so a message that keeps failing stops
+after its retries instead of being retried for ever. A consumer bound to a
+queue that does not exist fails to deploy, so create it once per account,
+before the first deploy that names it:
+
+```sh
+npx wrangler queues create g1t-events-dlq
+```
+
+Nothing consumes it: read what landed there with `npx wrangler queues
+info g1t-events-dlq`, fix the cause, and replay by hand if needed. The
+manifest lists each unit's dead-letter queues under `queues.dead_letter`.
 
 ## OIDC tokens for workflow jobs
 

@@ -379,6 +379,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_event_that_settles_a_copy_is_sent_to_this_queue() {
+        let users = ["user.deleting", "user.restored"];
+        for kind in g1t_contracts::webhooks::EVENT_TYPES.iter().chain(users.iter()) {
+            let acts = pull_change(kind).is_some()
+                || crate::stats::shown_differently(kind, &serde_json::json!({ "username": "ana" })).is_some();
+            if acts {
+                assert!(g1t_contracts::subscribers::routed("SUBSCRIBER_REPOS", kind), "{kind} is not routed to repos");
+            }
+        }
+        for kind in ["workspace.renamed", "workspace.deleting", "workspace.restored", "workspace.deleted"] {
+            assert!(g1t_contracts::subscribers::routed("SUBSCRIBER_REPOS", kind));
+        }
+    }
+
+    #[test]
     fn a_copy_is_removed_days_after_its_pull_request_settles() {
         let settled = 1_791_936_000_000; // 2026-10-14T00:00:00Z
         assert_eq!(retire_after(settled, 7), "2026-10-21T00:00:00.000Z");

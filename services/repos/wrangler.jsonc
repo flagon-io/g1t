@@ -122,7 +122,7 @@
 	// A workspace renamed moves its repositories to the new slug; one
 	// deleted purges the repositories it left in Recently deleted.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"observability": { "enabled": true }
 }

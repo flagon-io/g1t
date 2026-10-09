@@ -17,6 +17,9 @@ use crate::Work;
 
 const MAX_REQUIRED_APPROVALS: u32 = 6;
 const MAX_REVISIONS: u32 = 5;
+/// The most times in a day people's mentions may send g1t back to one pull
+/// request. They outrank `MAX_REVISIONS` and a stall, but not this.
+pub(crate) const MAX_MENTION_REVISIONS_PER_DAY: u32 = 10;
 
 #[derive(Deserialize)]
 struct SettingsRow {

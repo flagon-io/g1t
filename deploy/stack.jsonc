@@ -58,6 +58,9 @@
 			"d1": { "database": "g1t-events", "migrations": "migrations" },
 			"stage": "core",
 			"secrets": [],
+			"setup": [
+				"The dead-letter queue every queue consumer sends what it gave up on to, before any unit that names it deploys: npx wrangler queues create g1t-events-dlq"
+			],
 			"self_host": "run"
 		},
 		"identity": {

@@ -67,7 +67,7 @@
 	"triggers": { "crons": ["*/5 * * * *"] },
 	// Events it reacts to: a pull request ready for review, or its head moving.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"vars": {
 		// Each workspace chooses where its agents' model spend goes: its own

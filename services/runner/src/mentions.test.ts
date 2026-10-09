@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { LifecycleJob, MentionJob, Result } from "@g1t/contracts";
 
-import { type MentionPorts, buildMentionPrompt, handleMention, planMention } from "./mentions.ts";
+import { type MentionPorts, buildMentionPrompt, handleMention, jobTokenRefusal, planMention } from "./mentions.ts";
 
 const ana = { id: "usr_ana", username: "ana", verified: true, workspaces: [{ slug: "acme", role: "member" as const }] };
 
@@ -162,3 +162,11 @@ function fakePorts(options: { refusal?: string; revision?: Result<LifecycleJob> 
   };
   return { ports, replies, started, recorded };
 }
+
+test("a workflow job's token never puts g1t to work; a person's own token can", () => {
+  const job = { ...ana, token: { scopes: ["repo"], job: { run_id: "run_9", job_id: "job_1" } } };
+  assert.match(jobTokenRefusal(job) ?? "", /job's token/);
+  assert.equal(jobTokenRefusal({ ...ana, token: { scopes: ["repo"] } }), null);
+  assert.equal(jobTokenRefusal(ana), null);
+  assert.equal(jobTokenRefusal(null), null);
+});

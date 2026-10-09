@@ -184,6 +184,21 @@ git push origin main
 
 Each push sends only what the one before did not.
 
+### Pushes of many branches or tags
+
+Every branch and tag in a push is stored. Each one is also announced as a
+`git.push` event, which starts workflows, mirrors the repository and
+calls webhooks, except in a push of many:
+
+| A push of | What is announced |
+| --- | --- |
+| Up to 3 tags | Each tag |
+| More than 3 tags (`git push --tags`, say) | None of the tags |
+| Up to 1,000 branches | Each branch |
+| More than 1,000 branches | Only the default branch, if it moved |
+
+To have tags start workflows, push them 3 or fewer at a time.
+
 ### When the store is busy
 
 If Cloudflare Artifacts is rate limiting g1t or not answering, g1t tries

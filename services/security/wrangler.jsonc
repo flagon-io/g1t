@@ -36,7 +36,7 @@
 	// failing checks (security updates move on), new repositories (their
 	// history is scanned once) and renamed workspaces.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-security", "max_batch_size": 10, "max_batch_timeout": 5 }]
+		"consumers": [{ "queue": "g1t-events-security", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	// Continues history scans a page at a time, and reads every
 	// repository's dependencies again once a day (every 30 minutes); runs

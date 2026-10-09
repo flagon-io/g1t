@@ -1063,6 +1063,13 @@ Each job gets a token of its own, `${{ secrets.G1T_TOKEN }}`
   or a comment made with it runs nothing, so a workflow cannot set itself
   off. `workflow_dispatch` and [`repository_dispatch`](#repository-dispatch)
   are the exceptions, for a workflow that means to start another.
+- It **never puts g1t to work**. A comment it posts that mentions
+  `@g1t` starts nothing, and it cannot assign an issue or a plan to g1t,
+  queue one for it, hand it work or ask it for a review. Otherwise a
+  workflow that asks g1t to fix a failing check would run again on g1t's
+  push, and ask again, without end. A step that should put g1t to work
+  uses a token of a person's own, stored as a
+  [secret](/guides/secrets-and-variables/).
 
 `permissions:` goes at the top of the workflow, for every job, or on a job,
 which then ignores the workflow's. Once either is written, every permission

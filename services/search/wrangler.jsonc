@@ -29,9 +29,9 @@
 		// of the backfill. One at a time, so each stays within its caps.
 		"producers": [{ "binding": "JOBS", "queue": "g1t-search-jobs" }],
 		"consumers": [
-			// Every event, to keep the index current.
-			{ "queue": "g1t-events-search", "max_batch_size": 20, "max_batch_timeout": 2 },
-			{ "queue": "g1t-search-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3 }
+			// The events that change what is indexed, to keep it current.
+			{ "queue": "g1t-events-search", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" },
+			{ "queue": "g1t-search-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }
 		]
 	},
 	"observability": { "enabled": true }
