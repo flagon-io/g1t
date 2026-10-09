@@ -16,7 +16,7 @@ import { microsFromDollars } from "../../lib/agent-form";
 import { page } from "../../lib/meta";
 import { useRefreshWhile } from "../../lib/refresh";
 import { workspaceAgents } from "../../lib/services.server";
-import { getViewer, roleIn } from "../../lib/session.server";
+import { requireUser, roleIn } from "../../lib/session.server";
 import { money } from "../../lib/usage";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -24,8 +24,9 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 /** Agents mode's front page: the budget, what is waiting and working, the roster, and where the month went. */
-export async function loader({ params, context }: Route.LoaderArgs): Promise<{ overview: AgentsOverview | null }> {
-  const viewer = getViewer(context);
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ overview: AgentsOverview | null }> {
+  // Signed out, sign in first (as Chat and Docs do), rather than a 404.
+  const viewer = requireUser(context, request);
   if (!viewer || !roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   return { overview: await readOrNull(workspaceAgents.overview(params.owner.toLowerCase(), viewer)) };
 }
