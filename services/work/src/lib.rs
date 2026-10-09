@@ -490,6 +490,9 @@ impl Work {
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
         check!(allowed(Some(&a.actor), &repo, Capability::Run));
+        if let Some(refused) = mentions::refuse_job_token(&a.actor) {
+            return Ok(refused);
+        }
         self.open_issue(OpenIssueArgs {
             actor: a.actor,
             repo: a.repo,

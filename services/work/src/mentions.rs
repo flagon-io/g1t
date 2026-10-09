@@ -23,6 +23,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
+use crate::settings::MAX_MENTION_REVISIONS_PER_DAY;
 use crate::lifecycle::{POLICY_ACTOR_ID, POLICY_ACTOR_NAME, made_by_g1t};
 use crate::reviews::{AGENT_ID, AGENT_NAME};
 use crate::rows::{NumberRow, ValueRow};
@@ -388,10 +389,38 @@ fn normalize_label(label: Option<&str>) -> std::result::Result<Option<String>, &
     Ok(Some(label.to_lowercase()))
 }
 
+/// Whether `actor` mentioning `@g1t` may set it to work. g1t and other
+/// agents may not, so no agent can set another to work; neither may a
+/// workflow job's token (`G1T_TOKEN`), or a workflow that comments on a
+/// failing check would start an agent whose push runs it again, and so on
+/// without end.
+pub(crate) fn may_summon(actor: &User) -> bool {
+    actor.kind != PrincipalKind::Agent
+        && !actor.is_system()
+        && actor.id != AGENT_ID
+        && g1t_contracts::events::job_run_of(actor).is_none()
+}
+
+/// Why a workflow job's token may not put g1t to work (`may_summon`).
+pub(crate) const JOB_TOKEN_REFUSED: &str =
+    "A workflow job's token (G1T_TOKEN) cannot put g1t to work. A person, or a token of their own, can.";
+
+/// A refusal for an actor acting with a workflow job's token, which may
+/// not start agents by any path: queueing an issue, assigning a plan's or
+/// handing one over.
+pub(crate) fn refuse_job_token<T>(actor: &User) -> Option<Outcome<T>> {
+    g1t_contracts::events::job_run_of(actor).map(|_| Outcome::fail(FailureCode::Forbidden, JOB_TOKEN_REFUSED))
+}
+
+/// The start of the day `mention_revision` counts back over, from `now`.
+fn day_before(now: u64) -> String {
+    rfc3339(now.saturating_sub(24 * 60 * 60 * 1000))
+}
+
 impl Work {
     /// Records a comment's mention of `@g1t`, if it makes one, for
-    /// the runner to take when it hears of the comment. g1t mentioning
-    /// itself is not recorded, so no agent can set another to work.
+    /// the runner to take when it hears of the comment. What agents and
+    /// workflow jobs say is not recorded (`may_summon`).
     pub(crate) async fn note_mention(
         &self,
         actor: &User,
@@ -400,11 +429,7 @@ impl Work {
         comment: &Comment,
         pull_id: Option<&str>,
     ) -> Result<()> {
-        if actor.kind == PrincipalKind::Agent
-            || actor.is_system()
-            || actor.id == AGENT_ID
-            || !mentions_agent(&comment.body)
-        {
+        if !may_summon(actor) || !mentions_agent(&comment.body) {
             return Ok(());
         }
         // Whether it may set the agent to work: mentioning spends compute.
@@ -571,7 +596,25 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::NotFound, "Pull request not found."));
         };
         let base = pull.base_branch(&repo.default_branch).to_owned();
-        // A person asking outranks a stop and the limit on revisions.
+        // A person asking outranks a stop and the limit on revisions, but
+        // not this ceiling: each revision spends compute, and nothing
+        // should send g1t back to one pull request without end.
+        let now = now_ms();
+        let today = self
+            .db
+            .prepare("SELECT count(*) AS n FROM agent_mentions WHERE pull_id = ? AND revised_at >= ?")
+            .bind(&[pull.id.as_str().into(), day_before(now).into()])?
+            .first::<NumberRow>(None)
+            .await?
+            .map_or(0, |row| row.n);
+        if today >= MAX_MENTION_REVISIONS_PER_DAY {
+            return Ok(Outcome::fail(
+                FailureCode::Limit,
+                format!(
+                    "g1t has been sent back to this pull request {MAX_MENTION_REVISIONS_PER_DAY} times in the last day, the most it takes. Mention it again tomorrow, or push the change yourself."
+                ),
+            ));
+        }
         let was_stalled = self.is_stalled(&pull.id).await?;
         self.db
             .prepare("UPDATE pulls SET stalled = NULL WHERE id = ?")
@@ -587,6 +630,11 @@ impl Work {
                 "g1t is already taking a step on this pull request.",
             ));
         }
+        self.db
+            .prepare("UPDATE agent_mentions SET revised_at = ? WHERE comment_id = ?")
+            .bind(&[rfc3339(now).into(), row.comment_id.as_str().into()])?
+            .run()
+            .await?;
         let round = self
             .db
             .prepare("SELECT revisions FROM pulls WHERE id = ?")
@@ -787,7 +835,7 @@ impl Work {
         // the repository is public does not matter here.
         let target = access::RepoRef { id: &issue.repo_id, namespace: &path.namespace, private: true };
         if !actor.verified
-            || actor.kind == PrincipalKind::Agent
+            || !may_summon(actor)
             || !access::can(Some(actor), target, Capability::Run)
         {
             return Ok(());
@@ -817,6 +865,29 @@ impl Work {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_people_and_their_own_tokens_may_summon_g1t() {
+        let mut ana = User { id: "usr_ana".into(), username: "ana".into(), verified: true, ..User::default() };
+        assert!(may_summon(&ana));
+        assert!(refuse_job_token::<()>(&ana).is_none());
+        ana.token = Some(Box::new(g1t_contracts::scopes::TokenAccess::default()));
+        assert!(may_summon(&ana), "a person's own token speaks for them");
+        ana.token = Some(Box::new(g1t_contracts::scopes::TokenAccess {
+            job: Some(g1t_contracts::scopes::JobToken { run_id: "run_9".into(), job_id: "job_1".into(), pull_requests: true }),
+            ..Default::default()
+        }));
+        assert!(!may_summon(&ana), "a workflow's comment would set off the workflow again");
+        assert!(matches!(refuse_job_token::<()>(&ana), Some(Outcome::Fail(_))));
+        let g1t = User { id: AGENT_ID.into(), username: AGENT_NAME.into(), ..User::default() };
+        assert!(!may_summon(&g1t));
+    }
+
+    #[test]
+    fn a_day_of_mention_revisions_counts_back_from_now() {
+        assert_eq!(day_before(2 * 24 * 60 * 60 * 1000), rfc3339(24 * 60 * 60 * 1000));
+        assert_eq!(day_before(5), rfc3339(0));
+    }
 
     #[test]
     fn a_mention_is_found_whatever_its_case() {

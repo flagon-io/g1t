@@ -11,6 +11,17 @@
  */
 import type { Comment, LifecycleJob, MentionJob, MentionsApi, Pull, RepoPath, Result, User } from "@g1t/contracts";
 
+/**
+ * Why a workflow job's token (`G1T_TOKEN`) may not put g1t to work, or
+ * null for anyone else. A workflow that could summon an agent on a failing
+ * check would start one whose push runs the workflow again, without end.
+ */
+export function jobTokenRefusal(actor: User | null | undefined): string | null {
+  return actor?.token?.job
+    ? "A workflow job's token (G1T_TOKEN) cannot put g1t to work. A person, or a token of their own, can."
+    : null;
+}
+
 /** What a mention leads to. */
 export type MentionPlan =
   | { kind: "not_member" }

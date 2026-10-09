@@ -91,7 +91,7 @@ import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandbox
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
-import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
+import { buildMentionPrompt, describeThread, handleMention, jobTokenRefusal, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
 import {
@@ -2438,6 +2438,9 @@ export default class RunnerService
    * the actor is a member or a collaborator.
    */
   private async refusal(actor: User, repo: RepoPath): Promise<Result<never> | null> {
+    // Agent compute is never started by a workflow job's token.
+    const byJob = jobTokenRefusal(actor);
+    if (byJob) return fail("forbidden", byJob);
     const closed = await this.closedRepo(actor, repo);
     if (closed) return closed;
     if (!(await this.workspaceAllowed(repo.namespace))) {
@@ -2840,6 +2843,8 @@ export default class RunnerService
 
   async delegate(actor: User, repo: RepoPath, input: DelegateInput): Promise<Result<Delegated>> {
     // Who may put agents to work here is settled before anything is opened.
+    const byJob = jobTokenRefusal(actor);
+    if (byJob) return fail("forbidden", byJob);
     const closed = await this.closedRepo(actor, repo);
     if (closed) return closed;
     if (!actor || !(await this.repoAllows(actor, repo, "run"))) return fail("forbidden", needs("run"));
