@@ -130,15 +130,28 @@ const TERMINATE_GRACE: Duration = Duration::from_millis(2500);
 
 /// Sends `signal` to the process's group (it leads its own), so what the
 /// step started hears it too. Windows has no signals: it is left to `kill`.
+/// Sent with kill(2) itself: a machine without the `kill` program (procps
+/// is not in every image) would otherwise give the step no SIGINT at all,
+/// and leave what it started running after the step was killed.
+#[cfg(unix)]
 fn signal(child: &std::process::Child, signal: &str) {
-    if cfg!(unix) {
-        let _ = Command::new("kill")
-            .args([format!("-{signal}"), "--".into(), format!("-{}", child.id())])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+    let number = match signal {
+        "INT" => libc::SIGINT,
+        "TERM" => libc::SIGTERM,
+        _ => libc::SIGKILL,
+    };
+    let Ok(group) = libc::pid_t::try_from(child.id()) else {
+        return;
+    };
+    // SAFETY: kill(2) with a negative pid signals that process group; it
+    // reads no memory of ours.
+    unsafe {
+        libc::kill(-group, number);
     }
 }
+
+#[cfg(not(unix))]
+fn signal(_child: &std::process::Child, _signal: &str) {}
 
 /// Runs the command, sending its output (stdout and stderr together, a
 /// line at a time) through `commands` to the log, until it ends or
@@ -158,7 +171,23 @@ fn run_until(
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // A group of its own, so a cancellation reaches what the step started.
     #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+        // A shell cannot trap a signal it was started with ignored, and a
+        // runner started in the background (as a service, or under `&`)
+        // passes SIGINT on ignored. Back to the defaults, so a cancelled
+        // step hears SIGINT and its own trap runs.
+        // SAFETY: only signal(), which is async-signal-safe, between fork and exec.
+        unsafe {
+            command.pre_exec(|| {
+                for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGQUIT] {
+                    libc::signal(signal, libc::SIG_DFL);
+                }
+                Ok(())
+            });
+        }
+    }
     let mut child = command.spawn()?;
     let (sender, lines) = mpsc::channel::<String>();
     let mut readers = Vec::new();

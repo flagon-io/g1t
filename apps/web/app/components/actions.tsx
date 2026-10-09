@@ -83,6 +83,19 @@ export function duration(start: string | null, end: string | null): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/**
+ * How long something ran, as text. While it is still running the server and
+ * the browser count to a different now, so the text may differ on hydration
+ * (as TimeAgo's does).
+ */
+export function Duration({ start, end, className }: { start: string | null; end: string | null; className?: string }) {
+  return (
+    <span className={className} suppressHydrationWarning>
+      {duration(start, end)}
+    </span>
+  );
+}
+
 /** `main` from `refs/heads/main`, `v1.2` from a tag, `#12` for a pull request. */
 export function shortRef(ref: string): string {
   const pull = /^refs\/pull\/(\d+)\//.exec(ref);
