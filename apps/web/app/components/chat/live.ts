@@ -4,6 +4,9 @@ import type { ChatLiveEvent } from "@g1t/contracts";
 
 import { backoff } from "../../lib/chat";
 
+/** How long a conversation's socket stays open after leaving it, while the next one opens. */
+const HANDOFF_MS = 1500;
+
 export type LiveState = "connecting" | "open" | "reconnecting";
 
 /**
@@ -83,8 +86,17 @@ export function useChatLive(
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", now);
       window.removeEventListener("online", now);
-      socket.current?.close();
+      // Switching conversations: the next one's socket opens before this
+      // one closes, so nothing said in between is missed by either (each
+      // channel is its own room). This one stops delivering at once.
+      const old = socket.current;
       socket.current = null;
+      if (old) {
+        old.onmessage = null;
+        old.onclose = null;
+        old.onerror = null;
+        setTimeout(() => old.close(), HANDOFF_MS);
+      }
     };
   }, [slug, channelId]);
 

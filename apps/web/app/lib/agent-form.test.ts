@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cleanHandle, dollarsField, microsFromDollars, readAgentForm } from "./agent-form.ts";
+import { clampRouting, cleanHandle, dollarsField, microsFromDollars, readAgentForm } from "./agent-form.ts";
 
 function form(fields: Record<string, string>): FormData {
   const data = new FormData();
@@ -19,7 +19,9 @@ test("the agent form becomes what the service takes, in micro-dollars", () => {
     form({
       display_name: "Ship",
       handle: "",
-      role: "Cuts releases",
+      title: "Release Manager",
+      department: "Engineering",
+      responsibility: "Cut releases",
       instructions: "Cut a release on Tuesdays.",
       personality_preset: "terse",
       floor: "large",
@@ -40,12 +42,15 @@ test("the agent form becomes what the service takes, in micro-dollars", () => {
   assert.equal(read.input.autonomy?.merge, "never");
   assert.equal(read.input.autonomy?.open_pull_requests, "alone");
   assert.equal(read.input.capacity, 2);
+  assert.equal(read.input.title, "Release Manager");
+  assert.deepEqual(read.input.responsibilities, ["Cut releases"]);
+  assert.equal(read.input.team, null);
 });
 
 test("the agent form says what to fix", () => {
   const read = readAgentForm(form({ display_name: "", handle: "g1t", floor: "frontier", ceiling: "small", monthly: "lots", capacity: "0" }));
   assert.ok(!read.ok);
-  assert.deepEqual(Object.keys(read.errors).sort(), ["capacity", "ceiling", "display_name", "handle", "instructions", "monthly", "role"]);
+  assert.deepEqual(Object.keys(read.errors).sort(), ["capacity", "ceiling", "display_name", "handle", "instructions", "monthly", "title"]);
 });
 
 test("dollars and micro-dollars", () => {
@@ -54,4 +59,10 @@ test("dollars and micro-dollars", () => {
   assert.ok(Number.isNaN(microsFromDollars("lots")));
   assert.equal(dollarsField(2_500_000), "2.50");
   assert.equal(dollarsField(50_000_000), "50");
+});
+
+test("a subagent's routing stays within its agent's", () => {
+  assert.deepEqual(clampRouting({ floor: "small", ceiling: "frontier" }, { floor: "large", ceiling: "large" }), { floor: "large", ceiling: "large" });
+  assert.deepEqual(clampRouting({ floor: null, ceiling: null }, { floor: null, ceiling: "large" }), { floor: null, ceiling: "large" });
+  assert.deepEqual(clampRouting({ floor: "frontier", ceiling: null }, { floor: null, ceiling: "large" }), { floor: "large", ceiling: "large" });
 });

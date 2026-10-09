@@ -1,7 +1,12 @@
 import { Fragment, type ReactNode, useMemo } from "react";
 import { Link } from "react-router";
 
+import { MemberCard } from "./profile-card";
 import { type Block, type Span, blocks, onlyEmoji } from "../../lib/chat";
+// The workspace's own emoji, drawn where `:name:` is written (components/emoji).
+import { useEmojiContext } from "../emoji/context";
+import { renderEmoji } from "../emoji/render";
+import { onlyEmojiOrCustom } from "../../lib/emoji";
 
 /** How the text's references resolve, from what the page knows. */
 export type TextContext = {
@@ -21,9 +26,10 @@ export type TextContext = {
 const PILL = "rounded-[4px] px-1 py-px font-medium";
 
 function SpanView({ span, context }: { span: Span; context: TextContext }): ReactNode {
+  const emoji = useEmojiContext();
   switch (span.t) {
     case "text":
-      return span.v;
+      return renderEmoji(span.v, emoji.byName, emoji.usercontent);
     case "code":
       return <code className="rounded-[4px] border border-line bg-raised px-1 py-px font-mono text-[0.84em] text-fg-soft">{span.v}</code>;
     case "strong":
@@ -51,15 +57,19 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
       const self = context.me != null && name === context.me.toLowerCase();
       const agent = context.agents.has(name);
       const to = agent ? `/${context.slug}/-/agents/${name}` : name.includes("/") ? `/${context.slug}/-/teams/${name.split("/")[1]}` : `/u/${name}`;
+      const pill = `${PILL} transition-colors ${self ? "bg-warn/20 text-warn hover:bg-warn/30" : "bg-accent/15 text-accent hover:bg-accent/25"}`;
+      // A person or an agent: their card. A team: its page.
+      if (name.includes("/")) {
+        return (
+          <Link to={to} className={pill}>
+            @{span.name}
+          </Link>
+        );
+      }
       return (
-        <Link
-          to={to}
-          className={`${PILL} transition-colors ${
-            self ? "bg-warn/20 text-warn hover:bg-warn/30" : "bg-accent/15 text-accent hover:bg-accent/25"
-          }`}
-        >
+        <MemberCard member={{ kind: agent ? "agent" : "user", name }} className={`inline ${pill}`}>
           @{span.name}
-        </Link>
+        </MemberCard>
       );
     }
     case "channel":
@@ -126,7 +136,9 @@ function BlockView({ block, context }: { block: Block; context: TextContext }) {
 /** A message's text, rendered from parsed blocks: never as HTML. */
 export function MessageText({ body, context }: { body: string; context: TextContext }) {
   const parsed = useMemo(() => blocks(body), [body]);
+  const emoji = useEmojiContext();
   if (onlyEmoji(body)) return <p className="text-3xl leading-tight">{body.trim()}</p>;
+  if (onlyEmojiOrCustom(body, emoji.byName)) return <p className="text-3xl leading-tight">{renderEmoji(body.trim(), emoji.byName, emoji.usercontent, 32)}</p>;
   return (
     <div className="space-y-1.5 text-[0.9375rem] leading-[1.55] break-words text-fg-soft">
       {parsed.map((block, index) => (

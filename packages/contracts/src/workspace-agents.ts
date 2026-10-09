@@ -1,8 +1,9 @@
 /**
  * A workspace's own agents: named members with a job, a personality,
  * routing limits and a budget, kept by the agents service
- * (`services/agents`). `@g1t` is the platform's agent and is not one of
- * these. Plan: docs/WORKSPACE.md.
+ * (`services/agents`). Every workspace also has `@g1t`, its built-in
+ * orchestrator, kept the same way (`builtin`). Plan: docs/WORKSPACE.md,
+ * "g1t, the orchestrator".
  *
  * Wire shapes are snake_case end to end.
  */
@@ -13,6 +14,12 @@ import type { Result } from "./result";
 // Model tiers (`ModelTier`, `MODEL_TIERS`) are integrations.ts's, the
 // same ones runs are routed between.
 import type { ModelTier } from "./integrations";
+
+/** The built-in orchestrator's handle; nobody else's agent may take it. */
+export const BUILTIN_AGENT_HANDLE = "g1t";
+
+/** The built-in orchestrator's template id: not one a workspace can adopt. */
+export const ORCHESTRATOR_TEMPLATE = "orchestrator";
 
 /** Voice presets; free text in `personality` refines them. */
 export type PersonalityPreset = "crisp" | "friendly" | "socratic" | "terse";
@@ -59,8 +66,38 @@ export type WorkspaceAgent = {
   display_name: string;
   /** Uploaded avatar hash, or null for the generated mark. */
   avatar: string | null;
-  /** One line: "Reviews every pull request in g1t". */
+  /**
+   * What its generated avatar is drawn from: a little pixel creature, the
+   * same for the same seed everywhere. Set from the handle when it is
+   * made; changing it gives the agent a new face.
+   */
+  avatar_seed: string;
+  /**
+   * One line, as lists show it: "QA Engineer on the QA team". Made from
+   * the title and team (or department) when not written.
+   */
   role: string;
+  /**
+   * Agents are hired into roles, not tasks (docs/WORKSPACE.md, "Roles, not
+   * tasks"): a title, a team, and broad responsibilities.
+   */
+  title: string;
+  /** The team it is on, by slug, from the workspace's teams; null for none. */
+  team: string | null;
+  /** A label for where it works when it is on no team: "QA", "Sales". */
+  department: string;
+  /** What it is responsible for: 2 to 8 short duties, or none yet. */
+  responsibilities: string[];
+  /**
+   * Specialised help it will use inside its own work. Never members, never
+   * wider than their agent. Stored now; they run with tasks and sessions.
+   */
+  subagents: SubagentDef[];
+  /**
+   * Who it works with: `internal`, the workspace's own people (back
+   * office), or `customers` (front office). Only `internal` for now.
+   */
+  faces: AgentFaces;
   /** The job: what it is responsible for and how it works. */
   instructions: string;
   personality_preset: PersonalityPreset;
@@ -73,6 +110,13 @@ export type WorkspaceAgent = {
   capacity: number;
   /** The template it was made from, if any. */
   template: string | null;
+  /**
+   * The workspace's built-in orchestrator, `@g1t`: every workspace has one,
+   * made the first time its agents are asked for. It cannot be archived,
+   * and its handle, name, role and job are fixed; its `instructions` are
+   * added to that job. Listed first.
+   */
+  builtin: boolean;
   version: number;
   status: AgentStatus;
   /** Spend this calendar month, in micro-dollars. */
@@ -83,10 +127,40 @@ export type WorkspaceAgent = {
   archived_at: string | null;
 };
 
+/**
+ * Back office or front office (docs/WORKSPACE.md, "Back office and front
+ * office"). Customer-facing agents are not available yet.
+ */
+export type AgentFaces = "internal" | "customers";
+
+/**
+ * A subagent: help an agent keeps for its own work, such as Margo's
+ * `flake-hunter`. Its routing limits sit within its agent's: a floor below
+ * the agent's is raised to it, a ceiling above is lowered to it.
+ */
+export type SubagentDef = {
+  /** Lowercase letters, digits and hyphens: `flake-hunter`. Unique on the agent. */
+  name: string;
+  /** One line: what it is for. */
+  description: string;
+  instructions: string;
+  routing: { floor: ModelTier | null; ceiling: ModelTier | null };
+  /** How many of it may run at once inside one task, 1 to 8. */
+  max_parallel: number;
+};
+
 export type NewWorkspaceAgent = {
   handle: string;
   display_name: string;
-  role: string;
+  /** Left out or empty: made from the title and team. */
+  role?: string;
+  title?: string;
+  team?: string | null;
+  department?: string;
+  responsibilities?: string[];
+  subagents?: SubagentDef[];
+  /** Only `internal` for now; `customers` is refused. */
+  faces?: AgentFaces;
   instructions: string;
   personality_preset?: PersonalityPreset;
   personality?: string;
@@ -95,13 +169,26 @@ export type NewWorkspaceAgent = {
   autonomy?: Partial<AgentAutonomy>;
   capacity?: number;
   template?: string | null;
+  /** Its avatar's seed; left out, the handle. */
+  avatar_seed?: string;
 };
 
+/**
+ * A role to hire an agent into, by department. Agents get names, not job
+ * titles ("Margo", the QA Engineer).
+ */
 export type AgentTemplate = {
   id: string;
+  /** The name it suggests first. */
   display_name: string;
   handle: string;
+  /** Other names that suit it, for the form's shuffle. Each is also a valid handle, lowercased. */
+  name_ideas: string[];
   role: string;
+  title: string;
+  department: string;
+  responsibilities: string[];
+  subagents: SubagentDef[];
   instructions: string;
   personality_preset: PersonalityPreset;
   routing: AgentRouting;
@@ -130,6 +217,13 @@ export type AgentDelivery = {
    * service: the agent then treats the asker as unable to change code.
    */
   asker?: AskerAccess | null;
+  /**
+   * The agents that handled this request before this one, by id, oldest
+   * first; the last sent the work here. An agent never hands back or
+   * consults the one that sent it work, and the hop limit counts every
+   * hand-off and consult along the chain. Absent: none (a person asked).
+   */
+  chain?: string[];
   /**
    * Where the conversation is: g1t's own chat, or later another chat app
    * the workspace connected (docs/WORKSPACE.md, "Working from another chat
@@ -189,6 +283,12 @@ export type WorkspaceAgentsApi = {
   ): Promise<Result<WorkspaceAgent>>;
   archive(workspace: string, handle: string, viewer: User): Promise<Result<null>>;
   templates(): Promise<AgentTemplate[]>;
+  /**
+   * Internal: the workspace's built-in `@g1t` agent, made if it does not
+   * exist yet. The chat service asks for it when someone mentions @g1t in
+   * a channel it is not in yet.
+   */
+  builtin(workspace: string, workspaceId: string): Promise<Result<WorkspaceAgent>>;
   /** The chat service hands over a message for an agent to answer. Returns at once. */
   deliver(delivery: AgentDelivery): Promise<Result<null>>;
 };
@@ -215,6 +315,7 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     update: (workspace, handle, viewer, changes) => call("update", { workspace, handle, viewer, changes }),
     archive: (workspace, handle, viewer) => call("archive", { workspace, handle, viewer }),
     templates: () => call("templates", {}),
+    builtin: (workspace, workspaceId) => call("builtin", { workspace, workspace_id: workspaceId }),
     deliver: (delivery) => call("deliver", delivery),
   };
 }

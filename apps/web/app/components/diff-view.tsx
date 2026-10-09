@@ -5,6 +5,7 @@ import {
   FileDiff as FileIcon,
   FileMinus,
   FilePlus,
+  Files,
   Folder,
   MessageSquarePlus,
   Rows3,
@@ -23,6 +24,7 @@ import type {
 import { Markdown } from "./markdown";
 import { Avatar, Button, EmptyState, SubmitButton, Textarea, TimeAgo } from "./ui";
 import { Checkbox } from "./ui/checkbox";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 
 const ROW_STYLES: Record<DiffLine["kind"], string> = {
   context: "",
@@ -65,7 +67,20 @@ function store(key: string, value: string | null) {
   }
 }
 
-/** `+12 −3` with a five-block bar. */
+/** Whether the screen is phone-sized: a change is shown unified there, never split. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 639px)");
+    const update = () => setNarrow(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return narrow;
+}
+
+/** `+12 −3` with a five-block bar (the bar from `sm` up). */
 export function Stat({ additions, deletions }: { additions: number; deletions: number }) {
   const total = additions + deletions;
   const green = total === 0 ? 0 : Math.round((additions / total) * 5);
@@ -73,7 +88,7 @@ export function Stat({ additions, deletions }: { additions: number; deletions: n
     <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
       <span className="text-success">+{additions}</span>
       <span className="text-danger">−{deletions}</span>
-      <span className="flex gap-px" aria-hidden="true">
+      <span className="hidden gap-px sm:flex" aria-hidden="true">
         {Array.from({ length: 5 }, (_, i) => (
           <span
             key={i}
@@ -166,7 +181,7 @@ function Thread({
   );
 }
 
-function CommentButton({ line, onClick }: { line: number; onClick: () => void }) {
+function CommentButton({ line, onClick }: { line: number; onClick: (event: React.MouseEvent) => void }) {
   return (
     <button
       type="button"
@@ -199,16 +214,26 @@ function UnifiedRows({ file, comments, canComment }: FileProps) {
               return (
                 <Fragment key={index}>
                   <tr className={`group ${ROW_STYLES[line.kind]}`}>
-                    <td className={`w-12 px-2 text-right select-none ${GUTTER_STYLES[line.kind]}`}>
+                    <td className={`w-9 px-1 text-right select-none sm:w-12 sm:px-2 ${GUTTER_STYLES[line.kind]}`}>
                       {line.old}
                     </td>
-                    <td className={`relative w-12 px-2 text-right select-none ${GUTTER_STYLES[line.kind]}`}>
+                    <td
+                      // A tap on the number comments on the line: a touch screen has no hover for the button.
+                      onClick={canComment && line.new != null ? () => setWriting(open ? null : line.new) : undefined}
+                      className={`relative w-9 px-1 text-right select-none sm:w-12 sm:px-2 ${canComment && line.new != null ? "cursor-pointer" : ""} ${GUTTER_STYLES[line.kind]}`}
+                    >
                       {line.new}
                       {canComment && line.new != null && (
-                        <CommentButton line={line.new} onClick={() => setWriting(open ? null : line.new)} />
+                        <CommentButton
+                          line={line.new}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setWriting(open ? null : line.new);
+                          }}
+                        />
                       )}
                     </td>
-                    <td className={`w-5 text-center select-none ${fileToneFor(line.kind)}`}>
+                    <td className={`w-4 text-center select-none sm:w-5 ${fileToneFor(line.kind)}`}>
                       {MARKERS[line.kind]}
                     </td>
                     <td className="pr-4 whitespace-pre">
@@ -403,10 +428,12 @@ function FileSection({
       ref={section}
       id={`file-${file.path}`}
       data-diff-file={file.path}
-      className="scroll-mt-28 rounded-xl border border-line"
+      // Lands below the site bar and the change's toolbar, whatever their height.
+      className="scroll-mt-[calc(4rem+var(--diff-toolbar,3rem))] rounded-xl border border-line"
     >
       <header
-        className={`sticky top-14 z-20 flex items-center gap-2.5 border-line bg-surface/95 px-3 py-2 backdrop-blur ${
+        // Sticks under the change's toolbar (its height is --diff-toolbar), not behind it.
+        className={`sticky top-[calc(3.5rem+var(--diff-toolbar,0px))] z-20 flex items-center gap-2 border-line bg-surface/95 px-2 py-2 backdrop-blur sm:gap-2.5 sm:px-3 ${
           collapsed ? "rounded-xl" : "rounded-t-xl border-b"
         }`}
       >
@@ -415,17 +442,19 @@ function FileSection({
           onClick={onToggle}
           aria-label={collapsed ? `Show ${file.path}` : `Hide ${file.path}`}
           aria-expanded={!collapsed}
-          className="rounded p-0.5 text-faint hover:bg-raised hover:text-fg"
+          className="-m-1.5 shrink-0 rounded p-2 text-faint hover:bg-raised hover:text-fg sm:m-0 sm:p-0.5"
         >
           {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
         </button>
-        <Icon size={15} className={fileTone(file.status)} />
+        <Icon size={15} className={`hidden shrink-0 sm:block ${fileTone(file.status)}`} />
+        {/* A long path is cut at its start, so the file's own name shows. */}
         <button
           type="button"
           onClick={onToggle}
+          dir="rtl"
           className={`min-w-0 grow truncate text-left font-mono text-[0.8125rem] ${viewed ? "text-muted" : ""}`}
         >
-          {file.path}
+          <bdi>{file.path}</bdi>
         </button>
         {comments.length > 0 && (
           <span className="flex items-center gap-1 text-xs text-muted">
@@ -448,7 +477,7 @@ function FileSection({
           </span>
         )}
         <label
-          className={`ml-1 flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs transition-colors select-none ${
+          className={`ml-1 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors select-none sm:py-0.5 ${
             viewed ? "border-accent/40 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg"
           }`}
         >
@@ -457,7 +486,7 @@ function FileSection({
             onCheckedChange={(checked) => onViewed(checked === true)}
             className="size-3.5 rounded-[4px] [&_svg]:size-2.5"
           />
-          Viewed
+          <span className="sr-only sm:not-sr-only">Viewed</span>
         </label>
       </header>
       {!collapsed && (
@@ -593,12 +622,32 @@ export function DiffView({
   fileBase?: string;
 }) {
   const { files, truncated } = comparison;
-  const [layout, setLayout] = useState<Layout>("unified");
+  const [chosenLayout, setLayout] = useState<Layout>("unified");
+  // Side by side has no room on a phone.
+  const narrow = useNarrow();
+  const layout: Layout = narrow ? "unified" : chosenLayout;
+  const [picking, setPicking] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [viewed, setViewed] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<string | null>(files[0]?.path ?? null);
   const [filter, setFilter] = useState("");
   const filterInput = useRef<HTMLInputElement>(null);
+  // The toolbar's height, as it wraps at each width, so the files' own
+  // sticky headers sit below it rather than under it.
+  const frame = useRef<HTMLDivElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+  const noFiles = files.length === 0;
+  useEffect(() => {
+    const bar = toolbar.current;
+    const root = frame.current;
+    if (!bar || !root) return;
+    const measure = () => root.style.setProperty("--diff-toolbar", `${bar.offsetHeight}px`);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [noFiles]);
   const viewedKey = `g1t:viewed:${comparison.head}`;
 
   // Preferences live in the browser: read them once it is there.
@@ -717,8 +766,8 @@ export function DiffView({
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
   const allCollapsed = files.every((file) => collapsed.has(file.path));
   return (
-    <div>
-      <div className="sticky top-14 z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
+    <div ref={frame}>
+      <div ref={toolbar} className="sticky top-14 z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
         <span className="text-sm text-muted">
           <span className="font-medium text-fg">{files.length}</span> {files.length === 1 ? "file" : "files"}
         </span>
@@ -733,6 +782,17 @@ export function DiffView({
           {viewed.size}/{files.length} viewed
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {files.length > 1 && (
+            // Below xl the tree is not beside the diffs: it opens as a sheet.
+            <button
+              type="button"
+              onClick={() => setPicking(true)}
+              className="flex min-h-9 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg xl:hidden"
+            >
+              <Files size={13} />
+              Files
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(files.map((file) => file.path)))}
@@ -740,7 +800,7 @@ export function DiffView({
           >
             {allCollapsed ? "Expand all" : "Collapse all"}
           </button>
-          <div className="flex rounded-md border border-line p-0.5" role="radiogroup" aria-label="Layout">
+          <div className="hidden rounded-md border border-line p-0.5 sm:flex" role="radiogroup" aria-label="Layout">
             {(
               [
                 ["unified", <Rows3 key="u" size={13} />, "Unified"],
@@ -751,10 +811,10 @@ export function DiffView({
                 key={value}
                 type="button"
                 role="radio"
-                aria-checked={layout === value}
+                aria-checked={chosenLayout === value}
                 onClick={() => changeLayout(value)}
                 className={`flex items-center gap-1.5 rounded px-2 py-0.5 text-xs transition-colors ${
-                  layout === value ? "bg-raised text-fg" : "text-muted hover:text-fg"
+                  chosenLayout === value ? "bg-raised text-fg" : "text-muted hover:text-fg"
                 }`}
               >
                 {icon}
@@ -764,6 +824,49 @@ export function DiffView({
           </div>
         </div>
       </div>
+      {files.length > 1 && (
+        <Sheet open={picking} onOpenChange={setPicking}>
+          <SheetContent
+            side="left"
+            // No keyboard popping up over the list on a phone: the filter is a tap away.
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            className="inset-x-0 top-auto bottom-0 h-[80dvh] max-w-none rounded-t-2xl border-t border-r-0 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in sm:max-w-none xl:hidden"
+          >
+            <SheetHeader>
+              <SheetTitle>Files changed</SheetTitle>
+              <SheetDescription>
+                {files.length} files · {viewed.size} viewed
+              </SheetDescription>
+            </SheetHeader>
+            <div className="relative px-4 pt-3">
+              <Search size={14} className="pointer-events-none absolute top-1/2 left-6.5 mt-1.5 -translate-y-1/2 text-faint" />
+              <input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder="Filter files"
+                aria-label="Filter files"
+                autoComplete="off"
+                data-1p-ignore
+                className="h-10 w-full rounded-md border border-line bg-bg pr-3 pl-8 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
+              />
+            </div>
+            <nav aria-label="Files changed" className="min-h-0 grow overflow-y-auto px-2 py-2 [&_button]:min-h-10 [&_button]:text-[0.8125rem] [&_p]:min-h-8 [&_p]:text-[0.8125rem]">
+              <Tree
+                nodes={tree}
+                depth={0}
+                active={active}
+                viewed={viewed}
+                onPick={(path) => {
+                  setPicking(false);
+                  // Once the sheet has let the page go, so its scroll is not undone.
+                  setTimeout(() => jump(path), 50);
+                }}
+              />
+              {shownFiles.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted">No file matches.</p>}
+            </nav>
+          </SheetContent>
+        </Sheet>
+      )}
       <div className="flex gap-4">
         {files.length > 1 && (
           <aside className="sticky top-28 hidden max-h-[calc(100vh-8rem)] w-60 shrink-0 flex-col self-start xl:flex">
@@ -802,7 +905,10 @@ export function DiffView({
         )}
         <div className="min-w-0 grow space-y-3">
           {review?.canComment && (
-            <p className="text-xs text-faint">Hover a line and press the button beside its number to comment on it.</p>
+            <p className="text-xs text-faint">
+              <span className="pointer-coarse:hidden">Hover a line and press the button beside its number to comment on it.</span>
+              <span className="hidden pointer-coarse:inline">Tap a line number to comment on it.</span>
+            </p>
           )}
           {shownFiles.map((file) => (
             <FileSection

@@ -5,6 +5,7 @@ import type { WorkspaceAgent } from "@g1t/contracts";
 
 import type { Route } from "./+types/agent";
 import { AgentFace } from "../../../components/agents-mode";
+import { isOrchestrator } from "../../../components/orchestrator";
 import { AgentPill, StatusDot, statusLabel } from "../../../components/chat/marks";
 import { TabLink } from "../../../components/ui";
 import { channelPath } from "../../../lib/chat";
@@ -77,7 +78,7 @@ export default function AgentPage({ loaderData, params }: Route.ComponentProps) 
     <div>
       <header className="flex flex-wrap items-start gap-4">
         <span className="relative">
-          <AgentFace agent={agent} size={56} />
+          <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={56} />
           <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 size-3 ring-[3px] ring-bg" />
         </span>
         <div className="min-w-0 grow">

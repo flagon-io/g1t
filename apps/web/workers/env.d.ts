@@ -29,6 +29,12 @@ declare global {
       CHAT: ServiceBinding & { fetch(request: Request): Promise<Response> };
       /** The workspace's own agents: definitions, templates and desks. */
       AGENTS: ServiceBinding;
+      /**
+       * Live notifications, counts and browser push (services/notify): RPC,
+       * and each tab's feed socket, forwarded as it is (routes/notify/live.ts).
+       * Absent where it is not deployed: pages work without it.
+       */
+      NOTIFY?: ServiceBinding & { fetch(request: Request): Promise<Response> };
       /** Production screenshots, from the og service's `Screenshots` entrypoint. */
       SCREENSHOTS?: {
         image(input: { host: string; commit: string; since?: string }): Promise<{

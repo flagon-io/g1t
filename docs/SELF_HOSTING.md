@@ -111,7 +111,8 @@ checks this table names every unit.
 | `services/work` | Rust | Queue consumer | Runs unchanged |
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
-| `services/chat` | TS | Durable Objects (one room per channel, WebSocket hibernation) | Runs unchanged; workerd runs its Durable Objects |
+| `services/chat` | TS | Durable Objects (one room per channel, WebSocket hibernation), KV `AVATARS` (custom emoji images, under `emoji/`) | Runs unchanged; workerd runs its Durable Objects, and the site serves emoji images from the same KV |
+| `services/notify` | TS | Durable Objects (one feed per person: WebSocket hibernation, SQLite storage); outbound HTTPS to browsers' push services | Runs unchanged; browser push needs a VAPID key pair (`node scripts/ops/vapid-keys.mjs`), else notifications are live in open tabs only |
 | `services/agents` | TS | Durable Objects (one desk per agent, alarms) | Runs unchanged; replies reach a model through the `MODELS` binding (the model proxy), which is off, so an agent answers with a short apology |
 | `services/search` | Rust | Queues (events and its own jobs); FTS5 | Runs unchanged |
 | `services/billing` | Rust | Cron, Cloudflare REST API (keeper), Stripe | Runs with `FREE_WHILE_BUILDING=true` and no Stripe key: nothing is charged |

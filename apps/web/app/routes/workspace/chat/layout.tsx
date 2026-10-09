@@ -14,6 +14,8 @@ import { requireUser, roleIn } from "../../../lib/session.server";
  */
 export type ChatLayoutData = {
   slug: string;
+  /** The viewer's role: owners may make agents. */
+  role: string;
   me: { id: string; username: string; avatar: string | null };
   sidebar: ChatSidebar | null;
   people: Mentionable[];
@@ -22,10 +24,11 @@ export type ChatLayoutData = {
 
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<ChatLayoutData> {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  const role = roleIn(viewer, params.owner);
+  if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const [sidebar, { people, agents }] = await Promise.all([sidebarOrNull(slug, viewer), workspacePeople(slug, viewer)]);
-  return { slug, me: { id: viewer.id, username: viewer.username, avatar: viewer.avatar ?? null }, sidebar, people, agents };
+  return { slug, role, me: { id: viewer.id, username: viewer.username, avatar: viewer.avatar ?? null }, sidebar, people, agents };
 }
 
 /**

@@ -49,6 +49,8 @@
 		{ "binding": "CHAT", "service": "g1t-chat" },
 		// The workspace's own agents: definitions, templates, desks (services/agents).
 		{ "binding": "AGENTS", "service": "g1t-agents" },
+		// Live notifications, counts and browser push: each tab's feed socket (services/notify).
+		{ "binding": "NOTIFY", "service": "g1t-notify" },
 		// Production screenshots for a project's overview (services/og).
 		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
 	],

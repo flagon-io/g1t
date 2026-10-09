@@ -2,6 +2,7 @@ import { Sparkles } from "lucide-react";
 
 import type { AgentStatus } from "@g1t/contracts";
 
+import { AgentAvatar } from "../agent-avatar";
 import { Avatar } from "../ui";
 import { cn } from "../../lib/cn";
 
@@ -26,12 +27,10 @@ export function MemberAvatar({
   member,
   size = 20,
 }: {
-  member: { kind: "user" | "agent"; name: string; avatar: string | null };
+  member: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null; avatar_seed?: string | null };
   size?: number;
 }) {
-  if (member.kind === "agent") {
-    return member.avatar ? <Avatar name={member.name} image={member.avatar} size={size} square /> : <AgentMark size={size} />;
-  }
+  if (member.kind === "agent") return <AgentAvatar agent={member} size={size} />;
   return <Avatar name={member.name} image={member.avatar} size={size} />;
 }
 

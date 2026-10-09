@@ -10,3 +10,13 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+
+# The web app manifest, so a phone installs g1t to its home screen.
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+
+# The service worker (browser notifications only): always checked for a
+# newer one, never kept, and allowed to control the whole site.
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /

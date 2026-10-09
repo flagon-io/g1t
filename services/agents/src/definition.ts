@@ -8,6 +8,8 @@ import type {
   AgentRouting,
   NewWorkspaceAgent,
   PersonalityPreset,
+  AgentFaces,
+  SubagentDef,
 } from "@g1t/contracts";
 
 import { checkHandle } from "./handle.ts";
@@ -28,7 +30,7 @@ export const DEFAULT_AUTONOMY: AgentAutonomy = {
 export const DEFAULT_CAPACITY = 3;
 export const MAX_CAPACITY = 10;
 
-const LIMITS = { displayName: 64, role: 120, instructions: 8000, personality: 1000, providers: 10, pinned: 200 };
+const LIMITS = { displayName: 64, role: 120, title: 60, department: 40, duty: 160, instructions: 8000, personality: 1000, providers: 10, pinned: 200 };
 /** $100,000 in millionths: a cap above this is a typo. */
 const MAX_MICROS = 100_000_000_000;
 
@@ -45,7 +47,25 @@ export type Definition = {
   autonomy: AgentAutonomy;
   capacity: number;
   template: string | null;
+  /** What its generated avatar is drawn from. */
+  avatar_seed: string;
+  title: string;
+  team: string | null;
+  department: string;
+  responsibilities: string[];
+  subagents: SubagentDef[];
+  faces: AgentFaces;
 };
+
+/** The one-line role a title and team (or department) make: "QA Engineer on the qa team". */
+export function roleOf(d: Pick<Definition, "title" | "team" | "department">): string {
+  const title = d.title.trim();
+  if (!title) return "";
+  if (d.team) return `${title} on the ${d.team} team`;
+  return d.department.trim() ? `${title}, ${d.department.trim()}` : title;
+}
+
+export const MAX_SUBAGENTS = 8;
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; message: string };
 
@@ -122,11 +142,72 @@ function autonomyOf(base: AgentAutonomy, given: unknown): Checked<AgentAutonomy>
   return { ok: true, value: next as AgentAutonomy };
 }
 
+function responsibilitiesOf(given: unknown): Checked<string[]> {
+  if (!Array.isArray(given) || given.some((d) => typeof d !== "string")) return bad("Responsibilities are a list of short duties.");
+  const duties = [...new Set((given as string[]).map((d) => d.trim()).filter(Boolean))];
+  if (duties.length && (duties.length < 2 || duties.length > 8)) return bad("Give 2 to 8 responsibilities, or none yet.");
+  if (duties.some((d) => d.length > LIMITS.duty)) return bad(`Each responsibility is at most ${LIMITS.duty} characters.`);
+  return { ok: true, value: duties };
+}
+
+const ORDER = ["small", "large", "frontier"] as const;
+
+/** A subagent's limits held within its agent's: never a lower floor, never a higher ceiling. */
+export function withinParent(
+  sub: { floor: AgentRouting["floor"]; ceiling: AgentRouting["ceiling"] },
+  parent: Pick<AgentRouting, "floor" | "ceiling">,
+): { floor: AgentRouting["floor"]; ceiling: AgentRouting["ceiling"] } {
+  const at = (tier: AgentRouting["floor"]) => (tier ? ORDER.indexOf(tier) : -1);
+  let floor = sub.floor;
+  let ceiling = sub.ceiling;
+  if (parent.floor && at(floor) < at(parent.floor)) floor = parent.floor;
+  if (parent.ceiling && (!ceiling || at(ceiling) > at(parent.ceiling))) ceiling = parent.ceiling;
+  // Held inside, a floor can end above the ceiling: the ceiling, the spending rail, wins.
+  if (floor && ceiling && at(floor) > at(ceiling)) floor = ceiling;
+  return { floor, ceiling };
+}
+
+function subagentsOf(given: unknown): Checked<SubagentDef[]> {
+  if (!Array.isArray(given)) return bad("Subagents are a list.");
+  if (given.length > MAX_SUBAGENTS) return bad(`An agent keeps at most ${MAX_SUBAGENTS} subagents.`);
+  const out: SubagentDef[] = [];
+  for (const raw of given as Partial<SubagentDef>[]) {
+    if (!raw || typeof raw !== "object") return bad("Each subagent has a name, a description and instructions.");
+    const name = typeof raw.name === "string" ? raw.name.trim().toLowerCase() : "";
+    if (!/^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/.test(name)) return bad("A subagent's name is 2 to 32 lowercase letters, digits and single hyphens.");
+    if (out.some((sub) => sub.name === name)) return bad(`Two subagents are called ${name}.`);
+    const description = text(raw.description, `${name}'s description`, 200, true);
+    if (!description.ok) return description;
+    const instructions = text(raw.instructions, `${name}'s instructions`, 4000, true);
+    if (!instructions.ok) return instructions;
+    const routing = raw.routing ?? { floor: null, ceiling: null };
+    for (const tier of [routing.floor, routing.ceiling]) {
+      if (tier !== null && tier !== undefined && !isTier(tier)) return bad(`${name}'s limits are small, large, frontier or none.`);
+    }
+    if (!limitsAgree(routing.floor ?? null, routing.ceiling ?? null)) return bad(`${name}'s floor is above its ceiling.`);
+    const parallel = raw.max_parallel ?? 2;
+    if (typeof parallel !== "number" || !Number.isInteger(parallel) || parallel < 1 || parallel > 8) return bad(`${name} runs 1 to 8 at once.`);
+    out.push({
+      name,
+      description: description.value,
+      instructions: instructions.value,
+      routing: { floor: routing.floor ?? null, ceiling: routing.ceiling ?? null },
+      max_parallel: parallel,
+    });
+  }
+  return { ok: true, value: out };
+}
+
 /**
  * `changes` applied to `base` (a new agent's defaults, or its current
  * definition), checked. `templates` are the template ids an agent may name.
  */
-export function applyChanges(base: Definition | null, changes: Partial<NewWorkspaceAgent>, templates: string[]): Checked<Definition> {
+export function applyChanges(
+  base: Definition | null,
+  changes: Partial<NewWorkspaceAgent>,
+  templates: string[],
+  options: { builtin?: boolean } = {},
+): Checked<Definition> {
   if (!changes || typeof changes !== "object") return bad("Send the agent's fields.");
   const creating = base === null;
   const from: Definition = base ?? {
@@ -141,8 +222,17 @@ export function applyChanges(base: Definition | null, changes: Partial<NewWorksp
     autonomy: DEFAULT_AUTONOMY,
     capacity: DEFAULT_CAPACITY,
     template: null,
+    avatar_seed: "",
+    title: "",
+    team: null,
+    department: "",
+    responsibilities: [],
+    subagents: [],
+    faces: "internal",
   };
   const next: Definition = { ...from };
+  // Whether the role was made from the title and team, so it follows them.
+  const roleDerived = !from.role || from.role === roleOf(from);
   if (creating || changes.handle !== undefined) {
     const handle = checkHandle(changes.handle);
     if (!handle.ok) return bad(handle.message);
@@ -150,8 +240,11 @@ export function applyChanges(base: Definition | null, changes: Partial<NewWorksp
   }
   const fields = [
     ["display_name", "A display name", LIMITS.displayName, true],
-    ["role", "The role", LIMITS.role, true],
-    ["instructions", "The instructions", LIMITS.instructions, true],
+    ["role", "The role", LIMITS.role, false],
+    ["title", "The title", LIMITS.title, false],
+    ["department", "The department", LIMITS.department, false],
+    // The built-in agent's instructions are added to its fixed job, and may be empty.
+    ["instructions", "The instructions", LIMITS.instructions, !options.builtin],
     ["personality", "The personality", LIMITS.personality, false],
   ] as const;
   for (const [key, what, max, required] of fields) {
@@ -160,6 +253,27 @@ export function applyChanges(base: Definition | null, changes: Partial<NewWorksp
     if (!value.ok) return value;
     next[key] = value.value;
   }
+  if (changes.team !== undefined) {
+    if (changes.team === null || changes.team === "") next.team = null;
+    else if (typeof changes.team !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(changes.team.trim().toLowerCase())) {
+      return bad("A team is named by its slug.");
+    } else next.team = changes.team.trim().toLowerCase();
+  }
+  if (changes.responsibilities !== undefined) {
+    const duties = responsibilitiesOf(changes.responsibilities);
+    if (!duties.ok) return duties;
+    next.responsibilities = duties.value;
+  }
+  // A role left empty, or made from the title and team before, follows them.
+  if (!next.role || (changes.role === undefined && roleDerived)) next.role = roleOf(next);
+  if (!next.role) return bad("Give the agent a title or a one-line role.");
+  if (changes.avatar_seed !== undefined) {
+    const seed = text(changes.avatar_seed, "The avatar seed", 64, false);
+    if (!seed.ok) return seed;
+    next.avatar_seed = seed.value;
+  }
+  // A new face from the handle, unless one was chosen; renaming keeps the face.
+  if (!next.avatar_seed) next.avatar_seed = next.handle;
   if (changes.personality_preset !== undefined) {
     if (!PRESETS.includes(changes.personality_preset)) return bad(`The personality preset is one of ${PRESETS.join(", ")}.`);
     next.personality_preset = changes.personality_preset;
@@ -184,6 +298,18 @@ export function applyChanges(base: Definition | null, changes: Partial<NewWorksp
     if (changes.template !== null && !templates.includes(changes.template)) return bad("There is no such template.");
     next.template = changes.template;
   }
+  if (changes.subagents !== undefined) {
+    const subagents = subagentsOf(changes.subagents);
+    if (!subagents.ok) return subagents;
+    next.subagents = subagents.value;
+  }
+  if (changes.faces !== undefined) {
+    if (changes.faces === "customers") return bad("Customer-facing agents aren't available yet.");
+    if (changes.faces !== "internal") return bad("An agent faces internal: the workspace's own people.");
+    next.faces = "internal";
+  }
+  // Never wider than their agent, whichever of the two changed.
+  next.subagents = next.subagents.map((sub) => ({ ...sub, routing: withinParent(sub.routing, next.routing) }));
   return { ok: true, value: next };
 }
 

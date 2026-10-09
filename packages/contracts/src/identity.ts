@@ -986,6 +986,13 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
   userByUsername(username: string): Promise<Viewer>;
   /** The names behind account and workspace ids; unknown ids are left out. */
   usernames(ids: string[]): Promise<Record<string, string>>;
+  /**
+   * Internal: the people behind these ids (at most 50) with their
+   * workspaces, roles and repository grants, as a signed-in viewer has
+   * them. For the agents service's audience checks only. Ids of no live
+   * account are left out.
+   */
+  usersForAudience(ids: string[]): Promise<User[]>;
 
   /** A person's public profile, or null if there is no such account. Never an email address. */
   profile(username: string): Promise<Profile | null>;

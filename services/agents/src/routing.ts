@@ -75,8 +75,9 @@ export type ReplyModel = {
 };
 
 /**
- * The model a reply runs on: the reply tier (or the tier the workspace
- * chose for replies), held to the agent's limits, and the model the policy
+ * The model a reply runs on: the reply tier (or `start`, where the work
+ * calls for another, or the tier the workspace chose for replies), held to
+ * the agent's limits, and the model the policy
  * puts behind it. A pinned model, or a workspace route that names its own
  * model, replaces the tier's model; it is not priced here, since it runs on
  * the workspace's provider.
@@ -84,9 +85,9 @@ export type ReplyModel = {
 export function replyModel(
   policy: Pick<Policy, "tiers">,
   limits: Pick<AgentLimits, "floor" | "ceiling" | "pinned">,
-  options: { chosen?: ModelTier | null; named?: string | null } = {},
+  options: { chosen?: ModelTier | null; named?: string | null; start?: ModelTier } = {},
 ): ReplyModel {
-  const start = options.chosen && isTier(options.chosen) ? options.chosen : REPLY_TIER;
+  const start = options.chosen && isTier(options.chosen) ? options.chosen : (options.start ?? REPLY_TIER);
   const tier = clampTier(start, limits.floor, limits.ceiling);
   const named = options.named || pinnedModel(limits.pinned);
   if (named) return { tier, model: named, modelName: named, price: null };

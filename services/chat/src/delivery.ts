@@ -27,7 +27,34 @@ export type Wake = { agent_id: string; hops: number };
  * the one it was answering, so an agent woken three hops along never does
  * more than the person who asked could.
  */
-export type Chain<A> = { hops: number; asked_by: string; asker: A | null };
+export type Chain<A> = {
+  hops: number;
+  asked_by: string;
+  asker: A | null;
+  /** The agents that handled the request so far, by id, oldest first: for an agent's message, ending with its author. */
+  chain: string[];
+};
+
+/** The most agent ids a chain carries: the hop limit's worth, and some. */
+const MAX_CHAIN = 16;
+
+/**
+ * An agent's post's chain: the one it was answering, as the agents service
+ * passed it back, with the agent itself added. Anything that is not a list
+ * of ids is no chain.
+ */
+export function chainFor(given: unknown, author: string): string[] {
+  const before = Array.isArray(given) ? given.filter((id): id is string => typeof id === "string" && !!id).slice(-MAX_CHAIN) : [];
+  return [...before, author];
+}
+
+/**
+ * The agent that sent the author its work: the one before the author in
+ * the chain. The author's message never goes back to it (no ping-pong).
+ */
+export function sender(chain: string[]): string | null {
+  return chain.length >= 2 ? chain[chain.length - 2] : null;
+}
 
 /** What the agents service is handed for one wake (AgentDelivery), on g1t's own chat. */
 export function delivery<P extends object, A>(
@@ -43,6 +70,7 @@ export function delivery<P extends object, A>(
     thread_root: message.thread_root,
     asked_by: chain.asked_by,
     asker: chain.asker,
+    chain: chain.chain,
     hops: wake.hops,
     surface: "g1t" as const,
   };
@@ -58,6 +86,8 @@ export function deliveries(input: {
   agents: AgentMember[];
   /** Handles the message @mentions, lowercased. */
   mentioned: string[];
+  /** For an agent's message: the agent that sent it the work, never handed it back. */
+  notTo?: string | null;
 }): Wake[] {
   const mentioned = new Set(input.mentioned.map((h) => h.toLowerCase()));
   const named = (agent: AgentMember) => mentioned.has(agent.handle.toLowerCase());
@@ -68,6 +98,20 @@ export function deliveries(input: {
   const hops = Math.max(0, Math.floor(input.hops || 0)) + 1;
   if (hops > MAX_HOPS) return [];
   return input.agents
-    .filter((agent) => named(agent) && `agent:${agent.id}` !== input.author)
+    .filter((agent) => named(agent) && `agent:${agent.id}` !== input.author && agent.id !== input.notTo)
     .map((agent) => ({ agent_id: agent.id, hops }));
+}
+
+/** The built-in orchestrator's handle. Same as BUILTIN_AGENT_HANDLE in @g1t/contracts. */
+export const ORCHESTRATOR = "g1t";
+
+/**
+ * Whether a message brings @g1t into the conversation: every workspace has
+ * it, so mentioning it in a channel adds it as a member the first time,
+ * with no invite. A direct message is made with its members and never
+ * gains one; to talk to @g1t alone, open a DM with it.
+ */
+export function addsOrchestrator(input: { channelKind: "channel" | "dm"; mentioned: string[]; orchestratorIsMember: boolean }): boolean {
+  if (input.channelKind !== "channel" || input.orchestratorIsMember) return false;
+  return input.mentioned.some((handle) => handle.toLowerCase() === ORCHESTRATOR);
 }

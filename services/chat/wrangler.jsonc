@@ -21,7 +21,9 @@
 		// Workspaces by slug, and people's names and avatars for members.
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		// The workspace's agents: who they are, and handing them messages to answer.
-		{ "binding": "AGENTS", "service": "g1t-agents" }
+		{ "binding": "AGENTS", "service": "g1t-agents" },
+		// Live notifications and unread counts for the people in a conversation (services/notify).
+		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],
 	// One room per channel for live delivery: it holds the channel's open
 	// sockets, hibernating while nobody says anything (src/room.ts).
@@ -29,5 +31,9 @@
 		"bindings": [{ "name": "ROOMS", "class_name": "ChannelRoom" }]
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelRoom"] }],
+	// Custom emoji images, kept by their hash under `emoji/` in the avatars
+	// namespace and served from the usercontent origin at /emoji/<hash>
+	// (apps/web/workers/usercontent.ts), never from the site.
+	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

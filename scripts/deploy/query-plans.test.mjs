@@ -111,3 +111,12 @@ test("chat: the sidebar's unread messages are read from each channel's index, af
   assertSearches(steps, "channel_members_by_principal");
   assert.ok(steps.some((step) => step.includes("messages_by_channel (channel_id=? AND id>?)")), steps.join("\n"));
 });
+
+test("chat: a page's reactions are read by message, and a workspace's emoji by name", () => {
+  const db = migrated("chat");
+  const reactions = plan(db, "SELECT message_id, emoji, principal, created_at FROM reactions WHERE message_id IN (SELECT value FROM json_each(?))", '["msg_1","msg_2"]');
+  assertSearches(reactions, "sqlite_autoindex_reactions_1");
+  const emoji = plan(db, "SELECT * FROM custom_emoji WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name", "wsp_1");
+  assertSearches(emoji, "custom_emoji_by_name");
+  assert.ok(!emoji.some((step) => step.includes("TEMP B-TREE")), emoji.join("\n"));
+});

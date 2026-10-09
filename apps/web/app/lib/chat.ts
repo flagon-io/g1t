@@ -294,16 +294,38 @@ export function filterEntries(entries: ChatSidebarEntry[], filter: ChatFilter, q
   });
 }
 
-/** The sidebar's sections, in the order they show. */
-export function sections(entries: ChatSidebarEntry[]): { starred: ChatSidebarEntry[]; channels: ChatSidebarEntry[]; dms: ChatSidebarEntry[] } {
+/** Whether a conversation is a direct message with one agent: it is listed under Agents, not Direct messages. */
+export function agentDmOf(entry: ChatSidebarEntry): string | null {
+  const only = entry.others.length === 1 ? entry.others[0]! : null;
+  return entry.channel.kind === "dm" && only?.kind === "agent" ? only.id : null;
+}
+
+/**
+ * The sidebar's sections, in the order they show: what is pinned (the
+ * `starred` preference), channels, the direct message with each agent (by
+ * agent id, for the Agents section), and direct messages with people,
+ * groups that mix people and agents included.
+ */
+export function sections(entries: ChatSidebarEntry[]): {
+  pinned: ChatSidebarEntry[];
+  channels: ChatSidebarEntry[];
+  agentDms: Map<string, ChatSidebarEntry>;
+  dms: ChatSidebarEntry[];
+} {
   const byName = (a: ChatSidebarEntry, b: ChatSidebarEntry) => a.title.localeCompare(b.title);
   // Direct messages: the latest conversation first, as people scan them.
   const byRecent = (a: ChatSidebarEntry, b: ChatSidebarEntry) =>
     (b.channel.last_message_at ?? b.channel.created_at).localeCompare(a.channel.last_message_at ?? a.channel.created_at);
+  const agentDms = new Map<string, ChatSidebarEntry>();
+  for (const entry of entries) {
+    const agent = agentDmOf(entry);
+    if (agent) agentDms.set(agent, entry);
+  }
   return {
-    starred: entries.filter((e) => e.starred).sort(byName),
+    pinned: entries.filter((e) => e.starred).sort(byName),
     channels: entries.filter((e) => !e.starred && e.channel.kind === "channel").sort(byName),
-    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort(byRecent),
+    agentDms,
+    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm" && !agentDmOf(e)).sort(byRecent),
   };
 }
 

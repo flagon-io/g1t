@@ -58,6 +58,7 @@ export const SETTINGS_PAGES = [
   "runners",
   "integrations",
   "webhooks",
+  "emoji",
   "billing",
   "audit",
 ] as const;
@@ -114,7 +115,6 @@ const TAB_WORDS: Record<string, string> = {
 /** Workspace pages that moved, by their old name under `-/`. */
 const MOVED: Record<string, string> = {
   members: "-/people",
-  overview: "",
   "soon/teams": "-/teams",
   "soon/insights": "-/insights",
 };
@@ -168,32 +168,75 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The rail's modes (docs/WORKSPACE.md, "Shell"): Home and the Inbox span
- * the workspace; Code, Chat, Docs and Agents each have a sidebar of their
- * own. Which one is lit follows the address.
+ * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Chat, Docs, Agents
+ * and Code are where work happens; the Inbox spans them; Workspace is the
+ * workspace itself: its people, money, policies and settings. `account` is
+ * your own settings, under the avatar. Each has a sidebar of its own, or
+ * none, and which one is lit follows the address.
  */
-export type ModeKey = "home" | "code" | "chat" | "docs" | "agents" | "inbox";
+export type ModeKey = "home" | "chat" | "docs" | "agents" | "code" | "inbox" | "workspace" | "account";
 
-/** The mode a path is in, for the workspace `slug`. Anything not another mode's is Code's. */
+/** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
+const PAGE_MODES: Record<string, ModeKey> = {
+  home: "home",
+  chat: "chat",
+  docs: "docs",
+  agents: "agents",
+  context: "agents",
+  memory: "agents",
+  workspace: "workspace",
+  people: "workspace",
+  members: "workspace",
+  teams: "workspace",
+  usage: "workspace",
+  gateway: "workspace",
+  billing: "workspace",
+  integrations: "workspace",
+  guardrails: "workspace",
+  rules: "workspace",
+  audit: "workspace",
+  settings: "workspace",
+  repositories: "workspace",
+  tokens: "workspace",
+  "personal-access-tokens": "workspace",
+  secrets: "workspace",
+  actions: "workspace",
+  runners: "workspace",
+  webhooks: "workspace",
+  emoji: "workspace",
+};
+
+/** First segments that are g1t's own pages, never a workspace: none is Code's. */
+const SITE_PAGES = new Set(["explore", "search", "support", "policies", "security", "status", "u", "invite", "workspaces"]);
+
+/**
+ * The mode a path is in, for the workspace `slug`. A repository (anyone's)
+ * and a new project are Code's; g1t's own pages (Explore, search, a
+ * profile) sit under Home, which is never Code.
+ */
 export function modeOf(pathname: string, slug: string | null): ModeKey {
   const path = pagePath(pathname);
   if (path === "/") return "home";
   if (path === "/inbox" || path.startsWith("/inbox/")) return "inbox";
+  if (path === "/settings" || path.startsWith("/settings/")) return "account";
   const parts = path.split("/").filter(Boolean);
-  if (slug && parts[0]?.toLowerCase() === slug.toLowerCase() && parts[1] === "-") {
-    if (parts[2] === "home") return "home";
-    if (parts[2] === "chat") return "chat";
-    if (parts[2] === "docs") return "docs";
-    if (parts[2] === "agents") return "agents";
+  if (SITE_PAGES.has(parts[0] ?? "")) return "home";
+  if (slug && parts[0]?.toLowerCase() === slug.toLowerCase()) {
+    if (parts.length === 1) return "home";
+    if (parts[1] === "-") {
+      // The workspace's security settings are a policy; its alerts are Code's.
+      if (parts[2] === "security" && parts[3] === "settings") return "workspace";
+      return PAGE_MODES[parts[2] ?? ""] ?? "code";
+    }
   }
   return "code";
 }
 
 /** Where each mode's rail button goes, in the workspace `slug`. */
-export function modeHome(mode: ModeKey, slug: string, code = true): string {
+export function modeHome(mode: ModeKey, slug: string): string {
   switch (mode) {
     case "home":
-      return code ? "/" : `/${slug}/-/home`;
+      return `/${slug}/-/home`;
     case "inbox":
       return "/inbox";
     case "chat":
@@ -203,8 +246,26 @@ export function modeHome(mode: ModeKey, slug: string, code = true): string {
     case "agents":
       return `/${slug}/-/agents`;
     case "code":
-      return `/${slug}`;
+      return `/${slug}/-/overview`;
+    case "workspace":
+      return `/${slug}/-/workspace`;
+    case "account":
+      return "/settings";
   }
+}
+
+/**
+ * Where Mission control's old addresses (`/`, `/<workspace>`) lead in the
+ * workspace `slug`: Home, or Code's Overview when the query asks for its
+ * panels (a tab, or `?agent=new` to put an agent on something).
+ */
+export function homePath(slug: string, search = ""): string {
+  const params = new URLSearchParams(search);
+  params.delete("_routes");
+  params.delete("index");
+  const query = params.toString();
+  if (params.has("agent") || params.has("tab") || params.has("sort")) return `/${slug}/-/overview?${query}`;
+  return `/${slug}/-/home`;
 }
 
 /** The page a member without Code access sees in place of anything of Code's. */
@@ -213,7 +274,7 @@ export function codeAccessPath(slug: string, from?: string): string {
 }
 
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
-const CODE_PAGES = new Set(["projects", "repositories", "packages", "security", "rules", "runners", "actions", "context", "memory", "insights", "soon"]);
+const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "context", "memory", "insights", "soon"]);
 
 /**
  * Where a member without Code access goes instead of `pathname`, or null
@@ -233,7 +294,7 @@ export function codeGate(pathname: string, search: string, noCode: readonly stri
   const slug = parts[0]?.toLowerCase();
   if (!slug || !noCode.includes(slug)) return null;
   const from = `${path}${search && search !== "?" ? search : ""}`;
-  // The workspace's own page is Code's overview: their Home instead.
+  // The workspace's own page is their Home.
   if (parts.length === 1) return `/${slug}/-/home`;
   if (parts[1] === "-") return CODE_PAGES.has(parts[2] ?? "") ? codeAccessPath(slug, from) : null;
   // A repository, and everything in it.

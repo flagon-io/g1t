@@ -27,6 +27,7 @@ export * from "./integrations";
 export * from "./members";
 export * from "./mentions";
 export * from "./names";
+export * from "./notify";
 export * from "./oauth";
 export * from "./og";
 export * from "./packages";

@@ -15,10 +15,9 @@
  */
 import { DurableObject } from "cloudflare:workers";
 
-import type { AgentDelivery } from "@g1t/contracts";
 
 import { DEFAULT_CAPACITY, MAX_CAPACITY } from "./definition.ts";
-import { type ReplyEnv, reply } from "./reply.ts";
+import { type DeskWork, type ReplyEnv, reply } from "./reply.ts";
 
 /** Messages a desk holds at most; past this the oldest are dropped, as nobody is waiting on them any more. */
 const MAX_QUEUE = 50;
@@ -27,8 +26,8 @@ const BUSY_MS = 3 * 60_000;
 
 export class Desk extends DurableObject<ReplyEnv> {
   /** Queues a message for the agent and makes sure the desk is working. Returns at once. */
-  async take(delivery: AgentDelivery): Promise<void> {
-    const queue = (await this.ctx.storage.get<AgentDelivery[]>("queue")) ?? [];
+  async take(delivery: DeskWork): Promise<void> {
+    const queue = (await this.ctx.storage.get<DeskWork[]>("queue")) ?? [];
     if (queue.some((held) => held.message_id === delivery.message_id)) return;
     queue.push(delivery);
     await this.ctx.storage.put("queue", queue.slice(-MAX_QUEUE));
@@ -39,7 +38,7 @@ export class Desk extends DurableObject<ReplyEnv> {
   async alarm(): Promise<void> {
     let agent: string | null = null;
     for (;;) {
-      const queue = (await this.ctx.storage.get<AgentDelivery[]>("queue")) ?? [];
+      const queue = (await this.ctx.storage.get<DeskWork[]>("queue")) ?? [];
       if (!queue.length) break;
       agent = queue[0].agent_id;
       const row = await this.env.DB.prepare("SELECT capacity FROM agents WHERE id = ?").bind(agent).first<{ capacity: number }>();
@@ -50,7 +49,7 @@ export class Desk extends DurableObject<ReplyEnv> {
       await Promise.allSettled(batch.map((delivery) => reply(this.env, delivery)));
       // Taken off only once worked: what arrived meanwhile stays queued.
       const done = new Set(batch.map((delivery) => delivery.message_id));
-      const left = ((await this.ctx.storage.get<AgentDelivery[]>("queue")) ?? []).filter((held) => !done.has(held.message_id));
+      const left = ((await this.ctx.storage.get<DeskWork[]>("queue")) ?? []).filter((held) => !done.has(held.message_id));
       await this.ctx.storage.put("queue", left);
     }
     if (agent) await this.busy(agent, null);

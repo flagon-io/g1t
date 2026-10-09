@@ -44,6 +44,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
+  workspace: {
+    title: "Workspace",
+    about: "Who is in it, what it is on, and what it has spent this month. Everything about the workspace itself is in this sidebar.",
+  },
   settings: { title: "General", about: "The workspace's name, icon, address and description, who can create teams, and deleting it." },
   people: {
     title: "People",
@@ -147,6 +151,8 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   // Chat fills the page edge to edge: its conversation, thread and details
   // are columns of their own (components/chat/channel.tsx).
   if (parts[0] === "chat" && !next) return <Outlet />;
+  // Code's Overview lays itself out, as Mission control did.
+  if (parts[0] === "overview" && parts.length === 1 && !next) return <Outlet />;
   if (shown !== "overview") {
     const key = shown ?? parts[0] ?? "";
     const heading = PAGES[key];
@@ -155,7 +161,12 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     const titled = heading && (shown != null || parts.length === 1);
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-        {titled && <PageHeader title={heading.title} about={heading.about} />}
+        {titled && (
+          // A phone's Agents tab opens on its list of agents (agents/layout.tsx); the fleet's heading would sit above it.
+          <div className={key === "agents" ? "max-md:hidden" : undefined}>
+            <PageHeader title={heading.title} about={heading.about} />
+          </div>
+        )}
         {next ? <WorkspacePageSkeleton page={next} /> : <Outlet />}
       </div>
     );

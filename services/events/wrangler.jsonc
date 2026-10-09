@@ -48,7 +48,9 @@
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" }
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// Each new inbox item, told live in the person's tabs and pushed (services/notify).
+		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],
 	// Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
 	// everyone (keep it at least billing's AUDIT_MAX_DAYS), then each

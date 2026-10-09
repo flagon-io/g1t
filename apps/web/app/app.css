@@ -36,6 +36,8 @@
 
   --animate-fade-up: fade-up 0.6s ease-out both;
   --animate-dash: dash 1.2s linear infinite;
+  /* An agent's face, on hover: a small, quick wiggle (components/agent-avatar.tsx). */
+  --animate-wiggle: wiggle 0.45s ease-in-out;
 
   /* Menus, popovers and dialogs (components/ui): in quickly, out quicker. */
   --animate-pop-in: pop-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
@@ -49,6 +51,12 @@
   --animate-sheet-out-right: sheet-out-right 0.16s ease-in forwards;
   --animate-sheet-in-left: sheet-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-sheet-out-left: sheet-out-left 0.16s ease-in forwards;
+}
+
+@keyframes sheet-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
 }
 
 @keyframes sheet-in-right {
@@ -123,6 +131,15 @@
   }
 }
 
+@keyframes wiggle {
+  25% {
+    transform: rotate(-8deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+}
+
 @keyframes dash {
   to {
     stroke-dashoffset: -16;
@@ -132,6 +149,39 @@
 html {
   color-scheme: dark;
   scroll-behavior: smooth;
+  /* A tap shows the control's own active state, not the browser's grey flash. */
+  -webkit-tap-highlight-color: transparent;
+  /* Phones: no text inflation on rotation. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/*
+ * Phones: a field under 16px makes iOS zoom the page when it is focused, so
+ * every field is at least that; and nothing scrolls the page sideways.
+ */
+/*
+ * The phone's tab bar (components/mobile.tsx): how much of the bottom it
+ * takes, for the shell to keep every page's end clear of it.
+ */
+:root {
+  --tabbar-h: 0px;
+}
+@media (max-width: 767px) {
+  :root {
+    --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+  body {
+    overflow-x: clip;
+  }
 }
 
 body {
@@ -605,4 +655,17 @@ body {
 .dusk-planet {
   background: radial-gradient(circle at 70% 30%, rgb(182 168 255 / 0.12), rgb(255 189 140 / 0.04) 45%, transparent 70%);
   box-shadow: inset 14px -8px 50px rgb(255 214 186 / 0.07);
+}
+
+/*
+ * On a phone, every field's text is at least 16px: iOS zooms the page into
+ * a field set smaller as soon as it is focused. Unlayered, so it wins over
+ * a field's text-sm utility.
+ */
+@media (max-width: 639px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
 }

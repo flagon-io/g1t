@@ -1,6 +1,6 @@
 import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, ListTree, Plus, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { Link, useFetcher, useRouteLoaderData, useSearchParams } from "react-router";
+import { Link, useFetcher, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
 
 import { trialClosed } from "../lib/trial";
 import { type ActivityGroup, type Verb, greetingFor, isAgent } from "../lib/mission";
@@ -28,7 +28,6 @@ import {
 } from "../lib/mission-control";
 import { cn } from "../lib/cn";
 import { AgentComposer, type ComposerResult } from "./agent-composer";
-import { AskComposer } from "./ask-composer";
 import { AgentSetup } from "./agent-setup";
 import { InboxNeedsCard } from "./inbox";
 import type { ShellData } from "./shell";
@@ -38,7 +37,7 @@ import { TokenUsagePanel } from "./token-usage";
 import { Avatar, SubmitButton, TimeAgo } from "./ui";
 import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import type { Loaded } from "../routes/home";
+import type { Loaded } from "../lib/mission-control.server";
 
 /*
  * Mission control: the home page of someone signed in. It answers where
@@ -673,7 +672,17 @@ const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting o
 const TAB_SHORT: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting", landed: "Today" };
 const SORT_LABEL: Record<Sort, string> = { impact: "By impact", newest: "Newest" };
 
-export default function MissionControl({ loaderData, delegated = null }: { loaderData: Loaded; delegated?: ComposerResult }) {
+export default function MissionControl({
+  loaderData,
+  delegated = null,
+  variant = "code",
+}: {
+  loaderData: Loaded;
+  delegated?: ComposerResult;
+  /** Code's Overview: its own title in place of the greeting, and the actions on their own (Home has the Agent box). */
+  variant?: "code";
+}) {
+  const { pathname } = useLocation();
   const shell = useRouteLoaderData("root")?.shell as ShellData | null | undefined;
   const loaded: Loaded = loaderData;
   const [params] = useSearchParams();
@@ -743,7 +752,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
       else next.set(key, value);
     }
     const text = next.toString();
-    return text ? `?${text}` : "/";
+    return text ? `?${text}` : pathname;
   };
 
   const steps: Step[] = [
@@ -814,6 +823,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
     repos.length > 0 ? (
       <div className="flex items-stretch">
         <AgentComposer
+          action={pathname}
           repos={repos}
           open={params.get("agent") === "new" || delegated != null}
           result={delegated}
@@ -865,8 +875,8 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
-          <h1 className="text-[1.75rem] leading-tight font-semibold tracking-tight sm:text-[2rem]" suppressHydrationWarning>
-            {greeting}, {loaded.name}
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight" suppressHydrationWarning>
+            {variant === "code" ? "Overview" : `${greeting}, ${loaded.name}`}
           </h1>
           <p className="mt-1.5 text-sm text-muted" suppressHydrationWarning>
             <span className="text-fg-soft">{date}</span> · {loaded.summary}
@@ -874,8 +884,8 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
         </div>
       </header>
 
-      {/* The agent is not on yet; the actions under it do the work today. */}
-      <AskComposer>
+      {/* The ways to start work. The Agent box itself is on Home. */}
+      <section aria-label="Start work" className="flex flex-wrap items-center gap-2">
         {newIssue}
         {repos.length > 0 && (
           <DropdownMenu>
@@ -904,7 +914,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
             Review {needs.length} that need{needs.length === 1 ? "s" : ""} you <ArrowRight size={14} />
           </Link>
         )}
-      </AskComposer>
+      </section>
 
       {starting && <GetStarted steps={steps} />}
 
@@ -962,7 +972,7 @@ export default function MissionControl({ loaderData, delegated = null }: { loade
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[minmax(0,1fr)_23rem]">
         <section id="work" className="min-w-0 scroll-mt-20 self-start overflow-hidden rounded-xl border border-line bg-surface">
           <div className="flex items-center gap-2 border-b border-line px-2 sm:px-3">
-            <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto [scrollbar-width:none]" aria-label="Mission control">
+            <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto [scrollbar-width:none]" aria-label="Overview">
               {(["needs", "waiting", "landed"] as const).map((value) => (
                 <Link
                   key={value}

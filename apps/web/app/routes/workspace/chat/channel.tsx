@@ -1,9 +1,12 @@
+import { useEffect } from "react";
 import { type ShouldRevalidateFunctionArgs, data } from "react-router";
+
 
 import type { Channel, ChannelMember, ChatMessage, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/channel";
 import { ChannelView } from "../../../components/chat/channel";
+import { conversationCache } from "../../../components/chat/conversation-cache";
 import { ChatUnavailable } from "../../../components/chat/empty";
 import { channelPath } from "../../../lib/chat";
 import { rememberChat } from "../../../lib/chat.server";
@@ -91,7 +94,37 @@ export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShoul
   return defaultShouldRevalidate;
 }
 
+/** Conversations already seen in this tab (lib/chat-cache.ts), kept by the page as it changes. */
+const cache = conversationCache;
+
+/**
+ * Switching conversations: one seen before draws at once from the cache,
+ * and the server is asked again behind it; what it answers is merged in by
+ * id (components/chat/channel.tsx listens for `g1t:chat-fresh`). One not
+ * seen waits for the server, and is kept for next time.
+ */
+export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
+  const key = new URL(request.url).pathname;
+  const kept = cache.peek(key) ?? (await cache.load(key));
+  const fresh = serverLoader().then((value) => {
+    if (!value.unavailable) {
+      cache.set(key, value);
+      window.dispatchEvent(new CustomEvent("g1t:chat-fresh", { detail: { key, value } }));
+    }
+    return value;
+  });
+  if (kept && !kept.unavailable) {
+    fresh.catch(() => undefined);
+    return kept;
+  }
+  return fresh;
+}
+
 export default function ChannelPage({ loaderData }: Route.ComponentProps) {
+  // What the server drew first is kept too, for coming back.
+  useEffect(() => {
+    if (!loaderData.unavailable) cache.set(window.location.pathname, loaderData);
+  }, [loaderData]);
   if (loaderData.unavailable) return <ChatUnavailable title={loaderData.title} />;
   return <ChannelView key={loaderData.channel.id} data={loaderData} />;
 }
