@@ -85,14 +85,23 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
         {shown.map((channel) => {
           const isIn = joined.has(channel.id);
           return (
-            <li key={channel.id} className="flex items-center gap-3 px-4 py-3">
+            // The whole row opens the channel: its name's link reaches over
+            // it (`after:inset-0`), and Join sits above that, so nothing
+            // interactive nests inside anything else.
+            <li
+              key={channel.id}
+              className="group/card relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/50 has-[a:focus-visible]:bg-raised/50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent has-[a:focus-visible]:ring-inset"
+            >
               {channel.private ? (
                 <Lock size={15} className="shrink-0 text-faint" aria-label="Private" />
               ) : (
                 <Hash size={16} className="shrink-0 text-faint" aria-label="Public" />
               )}
               <div className="min-w-0 grow">
-                <Link to={channelPath(loaderData.slug, channel)} className="font-medium hover:text-accent">
+                <Link
+                  to={channelPath(loaderData.slug, channel)}
+                  className="font-medium outline-none group-hover/card:text-accent after:absolute after:inset-0 after:content-['']"
+                >
                   {channel.name}
                 </Link>
                 {channel.private && <span className="ml-2 text-xs text-faint">Private</span>}
@@ -112,7 +121,7 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
                     setJoining(null);
                     if (done.ok) navigate(channelPath(loaderData.slug, channel));
                   }}
-                  className="h-8 rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised disabled:opacity-50"
+                  className="relative z-10 h-8 rounded-md border border-line px-3 text-[0.8125rem] font-medium text-fg/90 transition-colors hover:border-line-strong hover:bg-raised disabled:opacity-50"
                 >
                   {joining === channel.id ? "Joining…" : "Join"}
                 </button>

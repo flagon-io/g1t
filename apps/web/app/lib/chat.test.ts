@@ -153,8 +153,8 @@ test("the sidebar: sections, filters and the rail's count", () => {
   const { pinned, channels, agentDms, dms } = sections(all);
   assert.deepEqual(pinned.map((e) => e.title), ["general"]);
   assert.deepEqual(channels.map((e) => e.title), ["noisy", "random"]);
-  // A direct message with one agent is the agent's, under Agents.
-  assert.deepEqual(dms.map((e) => e.title), ["ana"]);
+  // Direct messages, the latest first: people and agents alike.
+  assert.deepEqual(dms.map((e) => e.title), ["ana", "reviewer"]);
   assert.equal(agentDms.get("a1")?.title, "reviewer");
   assert.deepEqual(filterEntries(all, "unread", "").map((e) => e.title), ["general", "reviewer", "noisy"]);
   assert.deepEqual(filterEntries(all, "mentions", "").map((e) => e.title), ["reviewer"]);

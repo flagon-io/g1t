@@ -296,7 +296,7 @@ export function filterEntries(entries: ChatSidebarEntry[], filter: ChatFilter, q
   });
 }
 
-/** Whether a conversation is a direct message with one agent: it is listed under Agents, not Direct messages. */
+/** The agent a conversation is a direct message with, when it is with one agent alone; else null. */
 export function agentDmOf(entry: ChatSidebarEntry): string | null {
   const only = entry.others.length === 1 ? entry.others[0]! : null;
   return entry.channel.kind === "dm" && only?.kind === "agent" ? only.id : null;
@@ -304,9 +304,10 @@ export function agentDmOf(entry: ChatSidebarEntry): string | null {
 
 /**
  * The sidebar's sections, in the order they show: what is pinned (the
- * `starred` preference), channels, the direct message with each agent (by
- * agent id, for the Agents section), and direct messages with people,
- * groups that mix people and agents included.
+ * `starred` preference), channels, and direct messages, the latest first,
+ * with people and agents alike (an agent is a member you message like
+ * anyone). `agentDms` finds the direct message with each agent, by agent
+ * id, so the Agents section lists only the agents you have not talked to.
  */
 export function sections(entries: ChatSidebarEntry[]): {
   pinned: ChatSidebarEntry[];
@@ -327,7 +328,7 @@ export function sections(entries: ChatSidebarEntry[]): {
     pinned: entries.filter((e) => e.starred).sort(byName),
     channels: entries.filter((e) => !e.starred && e.channel.kind === "channel").sort(byName),
     agentDms,
-    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm" && !agentDmOf(e)).sort(byRecent),
+    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort(byRecent),
   };
 }
 
