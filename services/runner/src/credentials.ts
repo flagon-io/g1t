@@ -100,6 +100,22 @@ export async function holdCredentials(
 }
 
 /**
+ * Tells integrations the most the run may spend on models, for the model
+ * tokens `holdCredentials` kept, so the model proxy holds them to it
+ * whatever the sandbox does (the harness's own cap is only the sandbox's
+ * word). No cap, or no model token, leaves the proxy's backstop. Never
+ * stops the sandbox from starting.
+ */
+export async function capModelTokens(integrations: ServiceBinding, storage: Storage, budgetUsd: number | null | undefined): Promise<void> {
+  if (typeof budgetUsd !== "number" || !Number.isFinite(budgetUsd) || budgetUsd <= 0) return;
+  const models = await storage.get<string[]>(MODEL_STORAGE_KEY);
+  if (!models?.length) return;
+  await call(integrations, "cap_model_sessions", { token_hashes: models, cap_micros: Math.round(budgetUsd * 1_000_000) }).catch((error: unknown) =>
+    console.log("model sessions not capped", String(error)),
+  );
+}
+
+/**
  * Ends a sandbox's credentials, once: its g1t tokens, and, when
  * `integrations` is given, its model tokens, which the model proxy then
  * refuses within seconds rather than when they would lapse.

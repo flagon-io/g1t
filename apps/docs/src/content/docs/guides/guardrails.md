@@ -275,6 +275,14 @@ the cap, not a running total.
   spend the same way it reports it for billing and stops the agent once
   the spend reaches the cap. The step in flight when it does can take the
   run a little past it.
+- g1t's model proxy holds the run to the same cap, whatever happens in the
+  sandbox. It adds up what each of the run's model answers cost, and once
+  the run has spent its cap it refuses the run's model requests with
+  `402` and the error code `run_cap_reached`, which shows in the run's log.
+  The proxy also takes at most 16 of a run's model requests at a time,
+  and a run's model token reaches only `/v1/messages` (with
+  `/v1/messages/count_tokens`) and `/v1/models`. The token stops working
+  when the run ends.
 - The time cap is enforced twice: the harness stops the agent when it
   passes, and the sandbox itself is stopped three minutes after, whatever
   is running in it.

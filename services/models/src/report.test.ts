@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { ModelUpstream } from "@g1t/contracts";
 
-import { isAnswer, tokenReport } from "./report.ts";
+import { isAnswer, runMayCall, tokenReport } from "./report.ts";
 import { NO_TOKENS, measure } from "./usage.ts";
 
 const upstream: ModelUpstream = {
@@ -61,4 +61,17 @@ test("the model that answered is read from the answer", async () => {
   const whole = measure(Response.json({ model: "claude-y", usage: { output_tokens: 2 } }));
   await whole.response.text();
   assert.equal(await whole.model, "claude-y");
+});
+
+test("a run's token reaches answers, token counts and the model list, and nothing else", () => {
+  assert.ok(runMayCall("/v1/messages", "POST"));
+  assert.ok(runMayCall("/v1/messages?beta=true", "POST"));
+  assert.ok(runMayCall("/v1/messages/count_tokens", "POST"));
+  assert.ok(runMayCall("/v1/models", "GET"));
+  assert.ok(runMayCall("/v1/models/claude-sonnet-5-5", "GET"));
+  assert.equal(runMayCall("/v1/messages/batches", "POST"), false);
+  assert.equal(runMayCall("/v1//messages", "POST"), false);
+  assert.equal(runMayCall("/v1/complete", "POST"), false);
+  assert.equal(runMayCall("/v1/models", "POST"), false);
+  assert.equal(runMayCall("/v1/files", "GET"), false);
 });

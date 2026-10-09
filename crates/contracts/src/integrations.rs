@@ -464,6 +464,12 @@ pub struct ModelUpstream {
     /// gateway's own token, sent as `cf-aig-authorization`.
     #[serde(default)]
     pub gateway_token: Option<String>,
+    /// The most the run may spend on models, in millionths of a dollar: the
+    /// lower of its project's cost cap and its plan's. The proxy refuses
+    /// the run's requests once it has spent this. `None` until the sandbox
+    /// sets it (`cap_model_sessions`), and for the AI Gateway.
+    #[serde(default)]
+    pub cap_micros: Option<i64>,
 }
 
 // --- Methods -----------------------------------------------------------------
@@ -720,6 +726,19 @@ pub struct GatewayProvider {
 pub struct CloseModelSessionsArgs {
     #[serde(alias = "tokenHashes")]
     pub token_hashes: Vec<String>,
+}
+
+/// `cap_model_sessions`: sets the most the runs whose model tokens hash to
+/// these (SHA-256, lowercase hex) may spend on models, in millionths of a
+/// dollar, which the model proxy holds them to. The sandbox sets it once
+/// it knows the run's guardrails and plan; zero or less clears it. Returns
+/// how many open sessions it set.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CapModelSessionsArgs {
+    #[serde(alias = "tokenHashes")]
+    pub token_hashes: Vec<String>,
+    #[serde(alias = "capMicros")]
+    pub cap_micros: i64,
 }
 
 /// `model_provider`: the workspace's own model connection, if it has one.

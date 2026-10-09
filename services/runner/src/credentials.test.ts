@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 
-import { credentialHashes, holdCredentials, modelTokenHashes, pushGrant, remotePath, revokeCredentials, sha256Hex } from "./credentials.ts";
+import { capModelTokens, credentialHashes, holdCredentials, modelTokenHashes, pushGrant, remotePath, revokeCredentials, sha256Hex } from "./credentials.ts";
 
 test("a remote names its repository", () => {
   assert.deepEqual(remotePath("https://g1t.sh/acme/rocket.git"), { namespace: "acme", name: "rocket" });
@@ -97,4 +97,24 @@ test("a sandbox with only a model token still has it closed", async () => {
   await revokeCredentials(identity, storage, integrations);
   assert.equal(integrations.calls[0]?.method, "close_model_sessions");
   assert.equal(identity.calls.length, 0);
+});
+
+test("a run's model token is held to its cost cap, in millionths", async () => {
+  const integrations = fakeIdentity();
+  const storage = memoryStorage();
+  const token = "g1tm_0123456789abcdef";
+  await holdCredentials(fakeIdentity(), storage, { ANTHROPIC_API_KEY: token }, null);
+  await capModelTokens(integrations, storage, 2.5);
+  assert.equal(integrations.calls[0]?.method, "cap_model_sessions");
+  assert.deepEqual(integrations.calls[0].body, { token_hashes: [await sha256Hex(token)], cap_micros: 2_500_000 });
+});
+
+test("no cap, or no model token, asks integrations nothing", async () => {
+  const integrations = fakeIdentity();
+  const storage = memoryStorage();
+  await capModelTokens(integrations, storage, 2);
+  await holdCredentials(fakeIdentity(), storage, { ANTHROPIC_API_KEY: "g1tm_x" }, null);
+  await capModelTokens(integrations, storage, null);
+  await capModelTokens(integrations, storage, 0);
+  assert.equal(integrations.calls.length, 0);
 });

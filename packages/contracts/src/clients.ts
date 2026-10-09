@@ -755,6 +755,7 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     closeModelSessions: (tokenHashes) => call("close_model_sessions", { token_hashes: tokenHashes }),
     routes: (workspace, viewer) => call("routes", { workspace, viewer }),
     setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),
+    capModelSessions: (tokenHashes, capMicros) => call("cap_model_sessions", { token_hashes: tokenHashes, cap_micros: capMicros }),
   };
 }
 

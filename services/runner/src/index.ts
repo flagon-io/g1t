@@ -90,7 +90,7 @@ import { delegateInput, noModelMessage, notStarted, queued, started } from "./de
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
-import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
+import { capModelTokens, holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
@@ -450,6 +450,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     const tracked = track ? await this.openRun(track, envVars, guard) : null;
     // Its credentials are tied to the run, and revoked when it stops.
     await holdCredentials(this.env.IDENTITY, this.ctx.storage, envVars, tracked?.runId ?? null);
+    // Its model token is held to its cost cap by the model proxy too.
+    await capModelTokens(this.env.INTEGRATIONS, this.ctx.storage, guard?.policy.budgetUsd ?? limits?.budgetUsd);
     try {
       const vars = tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars;
       // The workspace's own runner, not a container: the same environment,
