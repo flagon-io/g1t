@@ -1,6 +1,6 @@
 //! A workspace's rules for personal access tokens, over REST and MCP: the
-//! policy (which kinds reach it, approval, lifetime), the members' tokens
-//! that reach it, approving or denying fine-grained tokens that wait for
+//! policy (which tokens reach it, approval, lifetime), the members' tokens
+//! that reach it, approving or denying tokens made for it that wait for
 //! approval, and revoking a token there. Identity decides and keeps all of
 //! it (services/identity/src/token_reach.rs); owners only, as people.
 
@@ -50,20 +50,20 @@ impl TokenOp {
             TokenOp::GetTokenPolicy => "Get a workspace's personal access token policy",
             TokenOp::SetTokenPolicy => "Set a workspace's personal access token policy",
             TokenOp::ListMemberTokens => "List the personal access tokens that reach a workspace",
-            TokenOp::ListTokenRequests => "List fine-grained tokens waiting for approval",
-            TokenOp::ReviewTokenRequest => "Approve or deny a fine-grained token",
+            TokenOp::ListTokenRequests => "List personal access tokens waiting for approval",
+            TokenOp::ReviewTokenRequest => "Approve or deny a personal access token",
             TokenOp::RevokeMemberToken => "Revoke a member's token in a workspace",
         }
     }
 
     pub fn description(self) -> &'static str {
         match self {
-            TokenOp::GetTokenPolicy => "A workspace's rules for its members' personal access tokens: allow_classic (classic tokens reach it), allow_fine_grained (fine-grained tokens may name it as their resource owner), require_approval (a fine-grained token naming it waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a fine-grained token lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only.",
+            TokenOp::GetTokenPolicy => "A workspace's rules for its members' personal access tokens: allow_tokens_for_all_workspaces (a token made for every workspace of its owner reaches this one), allow_tokens_for_this_workspace (a token may be made for this workspace alone), require_approval (a token made for this workspace waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a token with an expiry lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only.",
             TokenOp::SetTokenPolicy => "Change a workspace's rules for personal access tokens; fields left out stay as they are. max_lifetime_days of 0 removes the limit. The rules apply from each token's next request, to tokens made before them too. Owners only, as people.",
-            TokenOp::ListMemberTokens => "The personal access tokens of the workspace's members and outside collaborators that can reach it: every fine-grained token naming it as its resource owner, whatever its status, and every classic token that has not expired. Each with its owner, kind, name, scopes, a fine-grained token's permissions, repository_selection, repositories and status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, classic tokens not allowed, lasts too long, never expires). Never the token itself. kind narrows it to classic or fine_grained. Owners only, as people.",
-            TokenOp::ListTokenRequests => "The fine-grained tokens naming the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people.",
-            TokenOp::ReviewTokenRequest => "Approve or deny a fine-grained token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people.",
-            TokenOp::RevokeMemberToken => "Take a member's token out of the workspace, with an optional reason its owner is shown. A fine-grained token naming the workspace stops reaching it for good; a classic token keeps working everywhere else but never reaches this workspace again. Recorded in the audit log as token.revoked. Owners only, as people.",
+            TokenOp::ListMemberTokens => "The personal access tokens of the workspace's members and outside collaborators that can reach it and have not expired: every token made for this workspace, whatever its status, and every token made for all of its owner's workspaces. Each with its owner, name, description, permissions (each resource at its level, such as {\"issues\": \"write\"}), scopes, workspace (the one it is made for; null for all of its owner's), repository_selection (all, selected or public), repositories, status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, tokens for all workspaces not allowed, tokens made for this workspace not allowed, lasts too long, never expires). Never the token itself. Owners only, as people.",
+            TokenOp::ListTokenRequests => "The tokens made for the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people.",
+            TokenOp::ReviewTokenRequest => "Approve or deny a token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people.",
+            TokenOp::RevokeMemberToken => "Take a member's token out of the workspace, with an optional reason its owner is shown. A token made for this workspace stops reaching it for good; a token made for all of its owner's workspaces keeps working everywhere else but never reaches this one again. Recorded in the audit log as token.revoked. Owners only, as people.",
         }
     }
 
@@ -78,22 +78,15 @@ impl TokenOp {
         let id = json!({ "type": "string", "description": "The token's id, tok_…." });
         let reason = json!({ "type": "string", "description": "Why, shown to the token's owner." });
         let (properties, required): (Value, &[&str]) = match self {
-            TokenOp::GetTokenPolicy | TokenOp::ListTokenRequests => (json!({ "workspace": workspace }), &["workspace"]),
+            TokenOp::GetTokenPolicy | TokenOp::ListTokenRequests | TokenOp::ListMemberTokens => (json!({ "workspace": workspace }), &["workspace"]),
             TokenOp::SetTokenPolicy => (
                 json!({
                     "workspace": workspace,
-                    "allow_classic": { "type": "boolean", "description": "Classic tokens reach the workspace." },
-                    "allow_fine_grained": { "type": "boolean", "description": "Fine-grained tokens may name the workspace as their resource owner." },
-                    "require_approval": { "type": "boolean", "description": "A fine-grained token naming the workspace waits for an owner's approval." },
+                    "allow_tokens_for_all_workspaces": { "type": "boolean", "description": "A token made for every workspace of its owner reaches this one." },
+                    "allow_tokens_for_this_workspace": { "type": "boolean", "description": "A token may be made for this workspace alone." },
+                    "require_approval": { "type": "boolean", "description": "A token made for this workspace waits for an owner's approval." },
                     "max_lifetime_days": { "type": "integer", "description": "The longest a token reaching it may last, in days, 1 to 3650; 0 for no limit." },
                     "forbid_no_expiry": { "type": "boolean", "description": "A token that never expires does not reach the workspace." },
-                }),
-                &["workspace"],
-            ),
-            TokenOp::ListMemberTokens => (
-                json!({
-                    "workspace": workspace,
-                    "kind": { "type": "string", "enum": ["classic", "fine_grained"], "description": "Only tokens of this kind." },
                 }),
                 &["workspace"],
             ),
@@ -138,22 +131,15 @@ fn flag(input: &Value, key: &str) -> Option<bool> {
     }
 }
 
-/// A member's token in one flat shape: the token's fields, a fine-grained
-/// token's beside them, and its owner and whether it reaches the workspace.
-/// Keys stay as identity sends them (`camelCase`); the API's converter
-/// writes them out in `snake_case`.
+/// A member's token in one flat shape: the token's fields, and its owner
+/// and whether it reaches the workspace. Keys stay as identity sends them
+/// (`camelCase`); the API's converter writes them out in `snake_case`.
 pub(crate) fn member_view(member: &Value) -> Value {
     let mut out = Map::new();
     if let Some(token) = member["token"].as_object() {
         for (key, value) in token {
-            if key != "fineGrained" && key != "legacy" {
+            if key != "legacy" && key != "workspaceOwned" && key != "admin" {
                 out.insert(key.clone(), value.clone());
-            }
-        }
-        if let Some(details) = token.get("fineGrained").and_then(Value::as_object) {
-            for (key, value) in details {
-                let key = if key == "workspace" { "resourceOwner".to_owned() } else { key.clone() };
-                out.insert(key, value.clone());
             }
         }
     }
@@ -196,8 +182,8 @@ pub async fn run(op: TokenOp, services: &Services, viewer: &Viewer, input: &Valu
                 &json!({
                     "actor": actor,
                     "slug": workspace,
-                    "allow_classic": flag(input, "allow_classic"),
-                    "allow_fine_grained": flag(input, "allow_fine_grained"),
+                    "allow_tokens_for_all_workspaces": flag(input, "allow_tokens_for_all_workspaces"),
+                    "allow_tokens_for_this_workspace": flag(input, "allow_tokens_for_this_workspace"),
                     "require_approval": flag(input, "require_approval"),
                     "max_lifetime_days": days,
                     "forbid_no_expiry": flag(input, "forbid_no_expiry"),
@@ -207,14 +193,8 @@ pub async fn run(op: TokenOp, services: &Services, viewer: &Viewer, input: &Valu
             .await?
         }
         TokenOp::ListMemberTokens | TokenOp::ListTokenRequests => {
-            let kind = text(input, "kind");
-            if kind.as_deref().is_some_and(|kind| kind != "classic" && kind != "fine_grained") {
-                return Ok(Outcome::fail(FailureCode::Invalid, "kind is classic or fine_grained."));
-            }
             let status = (op == TokenOp::ListTokenRequests).then_some("pending");
-            let kind = if op == TokenOp::ListTokenRequests { Some("fine_grained".to_owned()) } else { kind };
-            let members: Outcome<Value> =
-                g1t_kit::call(identity, "list_member_tokens", &json!({ "actor": actor, "slug": workspace, "status": status, "kind": kind })).await?;
+            let members: Outcome<Value> = g1t_kit::call(identity, "list_member_tokens", &json!({ "actor": actor, "slug": workspace, "status": status })).await?;
             map(members, list)
         }
         TokenOp::ReviewTokenRequest => {
@@ -275,17 +255,17 @@ mod tests {
             "token": {
                 "id": "tok_1", "name": "ci", "createdAt": "2026-10-08T00:00:00.000Z", "lastUsedAt": null,
                 "createdBy": null, "scopes": ["repo:read", "code:read"], "legacy": false, "expiresAt": "2026-11-07T00:00:00.000Z",
-                "kind": "fine_grained",
-                "fineGrained": { "workspace": "acme", "repositorySelection": "selected", "repositories": ["acme/web"], "permissions": { "contents": "read", "metadata": "read" }, "status": "pending" },
+                "permissions": { "code": "read", "repo": "read" },
+                "workspace": "acme", "repositorySelection": "selected", "repositories": ["acme/web"], "status": "pending",
             },
         }));
         assert_eq!(view["owner"], "ana");
-        assert_eq!(view["resourceOwner"], "acme");
+        assert_eq!(view["workspace"], "acme");
         assert_eq!(view["repositorySelection"], "selected");
-        assert_eq!(view["permissions"]["contents"], "read");
+        assert_eq!(view["permissions"]["code"], "read");
         assert_eq!(view["status"], "pending");
         assert_eq!(view["blockedBy"], "pending approval");
-        assert!(view.get("fineGrained").is_none() && view.get("legacy").is_none());
+        assert!(view.get("legacy").is_none());
     }
 
     #[test]

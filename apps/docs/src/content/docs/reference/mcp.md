@@ -131,8 +131,10 @@ curl https://mcp.g1t.sh \
 ## What you see depends on your token
 
 Each action needs one [scope](/guides/authentication/#scopes), shown in the
-tables below; `whoami` needs none. `tools/list` shows a token only what its
-scopes allow:
+tables below; `whoami` needs none. A scope is one level of one of a token's
+[permissions](/guides/authentication/#permissions): `issues:write` is
+Issues: read and write. `tools/list` shows a token only what its
+permissions allow:
 
 - The `action` field lists only the actions the token may use, and the
   schema has only their fields.
@@ -147,12 +149,14 @@ and `account` with `whoami`. A token with the
 [Read only preset](/guides/authentication/#presets) sees only the reading
 actions of each tool, and no `agent` tool at all.
 
-What a token may do is also bounded by the role of whoever it acts as: it
-reaches what they can reach, and no more. See
+What a token may do is also bounded by the role of whoever it acts as, and
+by [where it reaches](/guides/authentication/#where-a-token-reaches): all
+of their workspaces, one, or none. See
 [scopes](/guides/authentication/#scopes).
 
-A token or OAuth sign-in made before tokens had scopes, a token from
-signing in from a tool, and a token made with full access see every tool.
+A token with every permission at its highest level, such as one from
+signing in from a tool, and an OAuth sign-in made before applications had
+scopes, see every tool.
 
 ### Annotations
 
@@ -678,12 +682,12 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`update_ruleset`](/reference/api/rules/update-workspace-ruleset/) | Change one. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`delete_ruleset`](/reference/api/rules/delete-workspace-ruleset/) | Delete one. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`rule_evaluations`](/reference/api/rules/list-workspace-rule-evaluations/) | How rules judged changes across its repositories, with insights. Members only. | `workspace` | `workspace:read` |
-| [`get_token_policy`](/reference/api/personal-access-tokens/get-token-policy/) | Its [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens): `allow_classic`, `allow_fine_grained`, `require_approval`, `max_lifetime_days` and `forbid_no_expiry`. Members only. | `workspace` | `workspace:read` |
+| [`get_token_policy`](/reference/api/personal-access-tokens/get-token-policy/) | Its [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens): `allow_tokens_for_this_workspace`, `allow_tokens_for_all_workspaces`, `require_approval`, `max_lifetime_days` and `forbid_no_expiry`. Members only. | `workspace` | `workspace:read` |
 | [`set_token_policy`](/reference/api/personal-access-tokens/set-token-policy/) | Change them; fields left out stay. `max_lifetime_days` of 0 removes the limit. Owners only, as people. | `workspace` | `workspace:admin` |
-| [`list_member_tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | The personal access tokens of its members and outside collaborators that can reach it, with their owner, permissions or scopes, last use, expiry, and whether each reaches it now (`reaches`, `blocked_by`). `kind` narrows to `classic` or `fine_grained`. Never the token itself. Owners only, as people. | `workspace` | `access:read` |
-| [`list_token_requests`](/reference/api/personal-access-tokens/list-token-requests/) | Fine-grained tokens naming it that wait for approval. Owners only, as people. | `workspace` | `access:read` |
+| [`list_member_tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | The personal access tokens of its members and outside collaborators that can reach it, with their owner, permissions, scopes, reach (`workspace`, `repository_selection`, `repositories`), last use, expiry, and whether each reaches it now (`reaches`, `blocked_by`). Never the token itself. Owners only, as people. | `workspace` | `access:read` |
+| [`list_token_requests`](/reference/api/personal-access-tokens/list-token-requests/) | Tokens made for it that wait for approval. Owners only, as people. | `workspace` | `access:read` |
 | [`review_token_request`](/reference/api/personal-access-tokens/review-token-request/) | Approve or deny one: `decision` is `approve` or `deny`, with an optional `reason` its owner is shown. Owners only, as people. | `workspace`, `id`, `decision` | `access:admin` |
-| [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A fine-grained token naming it stops reaching it; a classic one keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
+| [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A token made for it stops reaching it; one made for all of its owner's workspaces keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
 
 ## `billing`
 

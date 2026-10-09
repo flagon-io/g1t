@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 import type { AgentStatus } from "@g1t/contracts";
 
 import { AgentAvatar } from "../agent-avatar";
+import { WithPresence } from "../presence";
 import { Avatar } from "../ui";
 import { cn } from "../../lib/cn";
 
@@ -22,16 +23,31 @@ export function AgentMark({ size = 20, className }: { size?: number; className?:
   );
 }
 
-/** A member's face: a person's avatar, or an agent's picture or mark. */
+/**
+ * A member's face: a person's avatar, or an agent's picture or mark. With
+ * `presence`, a person's carries their dot (active, away, notifications
+ * paused; components/presence.tsx), cut out of `ring`, the colour behind
+ * it. Agents keep their own status, shown apart.
+ */
 export function MemberAvatar({
   member,
   size = 20,
+  presence = false,
+  ring,
 }: {
   member: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null; avatar_seed?: string | null };
   size?: number;
+  presence?: boolean;
+  ring?: string;
 }) {
   if (member.kind === "agent") return <AgentAvatar agent={member} size={size} />;
-  return <Avatar name={member.name} image={member.avatar} size={size} />;
+  const avatar = <Avatar name={member.name} image={member.avatar} size={size} />;
+  if (!presence) return avatar;
+  return (
+    <WithPresence person={{ id: member.id, username: member.name }} size={size} ring={ring}>
+      {avatar}
+    </WithPresence>
+  );
 }
 
 /** AGENT, beside an agent's name wherever it speaks. */

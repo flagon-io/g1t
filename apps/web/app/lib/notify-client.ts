@@ -9,10 +9,17 @@
  * Nothing here polls. The feed sends counts on connect and after every
  * change; while the socket is down, `connected` is false and the pages
  * that used to poll may fall back to a slow refresh.
+ *
+ * Presence rides the same socket: the tab says when it goes idle (no input
+ * for `IDLE_MS`) or comes back, the feed sends how everyone in the
+ * workspace shows (`presence`) and your own (`me`), and `setPresence`
+ * changes yours (lib/presence.ts, components/presence.tsx).
  */
 import { useSyncExternalStore } from "react";
 
-import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences } from "@g1t/contracts";
+import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry } from "@g1t/contracts";
+
+import { isIdle, mergePeople } from "./presence";
 
 import {
   HEARTBEAT_MS,
@@ -164,9 +171,13 @@ export type NotifyState = {
   vapidKey: string | null;
   /** Whether to show the offer to turn on browser notifications. */
   offer: boolean;
+  /** How the people who share a workspace with you show, by user id. */
+  people: Record<string, PresenceEntry>;
+  /** Your own presence, status and Do Not Disturb, once the feed has said. */
+  me: OwnPresence | null;
 };
 
-let state: NotifyState = { connected: false, counts: {}, inbox: null, toasts: [], preferences: null, vapidKey: null, offer: false };
+let state: NotifyState = { connected: false, counts: {}, inbox: null, toasts: [], preferences: null, vapidKey: null, offer: false, people: {}, me: null };
 const listeners = new Set<() => void>();
 const SERVER_STATE = state;
 
@@ -194,6 +205,34 @@ export function useLiveBadges(workspace: string | null | undefined): Partial<Liv
 export function useLiveCounts(workspace: string | null | undefined): FeedCounts | null {
   const s = useNotifyState();
   return workspace ? (s.counts[workspace.toLowerCase()] ?? null) : null;
+}
+
+/** People's presence by user id, with an index by username (lowercased). */
+let peopleIndex: { from: Record<string, PresenceEntry>; byName: Map<string, PresenceEntry> } = { from: {}, byName: new Map() };
+
+function byName(people: Record<string, PresenceEntry>): Map<string, PresenceEntry> {
+  if (peopleIndex.from !== people) {
+    peopleIndex = { from: people, byName: new Map(Object.values(people).map((entry) => [entry.username.toLowerCase(), entry])) };
+  }
+  return peopleIndex.byName;
+}
+
+/**
+ * How a person shows, by id or username, or null while the feed has not
+ * said (they share no workspace with you, or the socket is not up yet).
+ * Your own comes from `me`, so it moves the moment you change it.
+ */
+export function usePresenceOf(person: { id?: string | null; username?: string | null } | null | undefined): PresenceEntry | null {
+  const s = useNotifyState();
+  if (!person) return null;
+  const mine = s.me && ((person.id && person.id === s.me.user_id) || (person.username && person.username.toLowerCase() === s.me.username.toLowerCase()));
+  if (mine) return s.me;
+  if (person.id && s.people[person.id]) return s.people[person.id]!;
+  return person.username ? (byName(s.people).get(person.username.toLowerCase()) ?? null) : null;
+}
+
+export function useOwnPresence(): OwnPresence | null {
+  return useNotifyState().me;
 }
 
 /** Whether the feed is up: pages fall back to a slow refresh only while it is not. */
@@ -256,10 +295,34 @@ function focused(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus();
 }
 
+// ── Idle ─────────────────────────────────────────────────────────────────
+
+let lastInput = Date.now();
+let idle = false;
+
+/** Input in this tab: back from idle at once, if it was. */
+function onInput(): void {
+  lastInput = Date.now();
+  if (idle) {
+    idle = false;
+    sendState();
+  }
+}
+
+/** Every heartbeat: gone idle since the last one? */
+function checkIdle(): void {
+  if (!idle && isIdle(lastInput, Date.now())) {
+    idle = true;
+    sendState();
+  }
+}
+
+const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+
 function sendState(): void {
   if (socket?.readyState !== WebSocket.OPEN) return;
   try {
-    socket.send(JSON.stringify({ type: "state", focused: focused(), path: viewing.path }));
+    socket.send(JSON.stringify({ type: "state", focused: focused(), path: viewing.path, idle }));
   } catch {
     // Closing; it comes back.
   }
@@ -290,6 +353,14 @@ function onEvent(event: FeedEvent): void {
       break;
     case "inbox":
       set({ inbox: event.unread });
+      break;
+    case "presence": {
+      const people = mergePeople(state.people, event.people, event.full);
+      if (people !== state.people) set({ people });
+      break;
+    }
+    case "me":
+      set({ me: event.me });
       break;
   }
 }
@@ -367,8 +438,12 @@ export function startFeed(forWorkspace: string | null): () => void {
   running = true;
   connect();
   beat = setInterval(() => {
+    checkIdle();
     if (socket?.readyState === WebSocket.OPEN) socket.send("ping");
   }, HEARTBEAT_MS);
+  lastInput = Date.now();
+  idle = false;
+  for (const name of INPUT_EVENTS) window.addEventListener(name, onInput, { passive: true, capture: true });
   document.addEventListener("visibilitychange", now);
   window.addEventListener("focus", now);
   window.addEventListener("blur", sendState);
@@ -394,6 +469,7 @@ export function stopFeed(): void {
   window.removeEventListener("blur", sendState);
   window.removeEventListener("online", now);
   window.removeEventListener("g1t:chat-read", onRead);
+  for (const name of INPUT_EVENTS) window.removeEventListener(name, onInput, { capture: true });
   unbridge?.();
   unbridge = null;
   set({ connected: false });
@@ -594,6 +670,27 @@ export async function savePreferences(preferences: import("@g1t/contracts").Noti
   const saved = (await response.json()) as NotifyPreferences;
   set({ preferences: saved });
   return saved;
+}
+
+/**
+ * Changes your own presence: a status, being away, Do Not Disturb. Shown
+ * at once, and put back if the feed refuses; every tab and everyone who
+ * shares a workspace with you hear of it over the socket.
+ */
+export async function setPresence(change: PresenceChange, optimistic?: Partial<OwnPresence>): Promise<OwnPresence | null> {
+  const before = state.me;
+  if (before && optimistic) set({ me: { ...before, ...optimistic } });
+  try {
+    const response = await api({ intent: "presence", change });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    const me = (await response.json()) as OwnPresence;
+    set({ me });
+    return me;
+  } catch (error) {
+    console.error("notify: could not change presence", error);
+    if (optimistic) set({ me: before });
+    return null;
+  }
 }
 
 export async function sendTest(): Promise<{ ok: boolean; pushed: number } | null> {

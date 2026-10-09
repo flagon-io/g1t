@@ -23,7 +23,7 @@ import {
 import type { ReactNode } from "react";
 import { Form, Link, redirect, useNavigate, useSearchParams } from "react-router";
 
-import type { Authored, AuthoredItem, AuthoredSort, AuthoredState, Contributions, Profile, StarredRepo } from "@g1t/contracts";
+import { type Authored, type AuthoredItem, type AuthoredSort, type AuthoredState, type Contributions, type Profile, type StarredRepo, shownUsername } from "@g1t/contracts";
 
 import type { Route } from "./+types/user";
 import { page } from "../lib/meta";
@@ -50,7 +50,8 @@ const EMPTY: Authored = {
 const RECENT = 8;
 
 function displayName(profile: Profile): string {
-  return profile.name ? `${profile.name} (@${profile.username})` : profile.username;
+  const handle = shownUsername(profile);
+  return profile.name ? `${profile.name} (@${handle})` : handle;
 }
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -58,7 +59,7 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   if (!profile) return page(args, { title: `${params.username} · g1t` });
   return page(args, {
     title: `${displayName(profile)} · g1t`,
-    description: profile.bio || `${profile.name ?? profile.username} (@${profile.username}) on g1t: their pull requests, issues and workspaces.`,
+    description: profile.bio || `${profile.name ?? shownUsername(profile)} (@${shownUsername(profile)}) on g1t: their pull requests, issues and workspaces.`,
     // What the card shows, so it is drawn again when any of it changes.
     version: [profile.name, profile.bio, profile.avatar, loaderData.publicCounts],
   });
@@ -184,11 +185,11 @@ function PersonColumn({
               <h1 className="text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">
                 {profile.name}
               </h1>
-              <p className="mt-0.5 font-mono text-base text-muted">@{profile.username}</p>
+              <p className="mt-0.5 font-mono text-base text-muted">@{shownUsername(profile)}</p>
             </>
           ) : (
             <h1 className="font-mono text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">
-              {profile.username}
+              {shownUsername(profile)}
             </h1>
           )}
           {profile.pronouns && <p className="mt-1 text-sm text-faint">{profile.pronouns}</p>}
@@ -338,7 +339,7 @@ type Data = Route.ComponentProps["loaderData"];
 
 function Overview({ profile, activity, failed, contributions }: Data) {
   const { counts, items } = activity;
-  const who = profile.name ?? profile.username;
+  const who = profile.name ?? shownUsername(profile);
   return (
     <div className="space-y-8">
       {contributions && (

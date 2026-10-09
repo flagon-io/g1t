@@ -67,11 +67,11 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   tokens: {
     title: "Access tokens",
-    about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team. Each has Write on the workspace's repositories, or Admin when an owner gives it that.",
+    about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
   },
   "personal-access-tokens": {
     title: "Personal access tokens",
-    about: "Which of your members' own tokens may reach the workspace and for how long, the fine-grained tokens waiting for an owner's approval, and every token that can reach it.",
+    about: "Which of your members' own tokens may reach the workspace and for how long, the tokens made for it that wait for an owner's approval, and every token that can reach it.",
   },
   packages: {
     title: "Packages",

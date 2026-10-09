@@ -19,6 +19,7 @@ import type { Route } from "./+types/people";
 import { page } from "../../lib/meta";
 import { Avatar, Button, CopyLine, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { PersonStatusEmoji, WithPresence } from "../../components/presence";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -333,13 +334,16 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       <ul className="divide-y divide-line rounded-xl border border-line">
         {members.map((member) => (
           <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <Avatar name={member.username} image={member.avatar} size={28} />
+            <WithPresence person={{ username: member.username }} size={28}>
+              <Avatar name={member.username} image={member.avatar} size={28} />
+            </WithPresence>
             <div className="min-w-0 grow truncate">
               <UserCard username={member.username}>
                 <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
                   {member.username}
                 </Link>
               </UserCard>
+              <PersonStatusEmoji person={{ username: member.username }} size={13} className="ml-1.5 align-[-2px]" />
               {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
               {(teams[member.username] ?? []).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">

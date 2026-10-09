@@ -65,7 +65,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Personal access tokens",
-        "A workspace's rules for its members' personal access tokens: whether classic and fine-grained tokens reach it, whether fine-grained tokens wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
+        "A workspace's rules for its members' personal access tokens: whether tokens made for all of a member's workspaces reach it, whether tokens may be made for it alone and wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
         &[
             Op::Tokens(TokenOp::GetTokenPolicy),
             Op::Tokens(TokenOp::SetTokenPolicy),

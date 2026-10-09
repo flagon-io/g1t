@@ -19,7 +19,6 @@ pub mod codeowners;
 pub mod credentials;
 pub mod deploy_keys;
 pub mod events;
-pub mod fine_grained;
 pub mod github;
 pub mod guardrails;
 pub mod identity;
@@ -48,8 +47,8 @@ pub mod work;
 
 pub use ids::new_id;
 pub use names::{
-    aliasable_name, claimable_namespace, is_namespace_shaped, is_reserved_name, is_route_name, is_valid_namespace,
-    is_valid_repo_name,
+    Username, aliasable_name, claimable_namespace, claimable_username, is_namespace_shaped, is_reserved_name, is_route_name,
+    is_valid_namespace, is_valid_repo_name,
 };
 pub use outcome::{Failure, FailureCode, Outcome};
 
@@ -172,7 +171,13 @@ pub mod system {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
+    /// Lowercased: what the person is found, linked and mentioned by.
     pub username: String,
+    /// The username as its owner wrote it (`Ana`), when that differs from
+    /// `username`: what pages show. Set on the signed-in person and on
+    /// people looked up by name; absent elsewhere, where `username` is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_username: Option<String>,
     #[serde(default)]
     pub kind: PrincipalKind,
     /// Whether the account's email address has been confirmed. Unverified

@@ -1,6 +1,6 @@
 //! Workflow files: a token adds, changes or deletes files under
 //! `.g1t/workflows/` or `.github/workflows/` only with the
-//! `workflow_files:write` scope (a fine-grained token's Workflows
+//! `workflow_files:write` scope (a token's Workflow files: write
 //! permission). A workflow job's token never may. Without the gate, a token
 //! that can push code could write a workflow that runs with the
 //! repository's secrets and a stronger token than its own.

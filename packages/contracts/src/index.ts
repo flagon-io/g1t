@@ -16,7 +16,6 @@ export * from "./d1";
 export * from "./deploy-keys";
 export * from "./deployments";
 export * from "./events";
-export * from "./fine-grained";
 export * from "./github";
 export * from "./guardrails";
 export * from "./identity";

@@ -75,9 +75,13 @@ export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
   { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },
-  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
-  // Installable: name, icons and colours for "Add to Home Screen" (public/manifest.webmanifest).
-  { rel: "manifest", href: "/manifest.webmanifest" },
+  { rel: "icon", type: "image/png", sizes: "512x512", href: "/icon-512.png" },
+  // Home screens and password managers look for a square, opaque 180px tile;
+  // the "-precomposed" name is served too, for the ones that ask for it.
+  { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+  // Installable: name, icons and colours for "Add to Home Screen" (public/site.webmanifest;
+  // manifest.webmanifest is the same file, kept for installs that already point at it).
+  { rel: "manifest", href: "/site.webmanifest" },
   // The text and headline faces are wanted on every page, so they start
   // loading with the stylesheet; mono waits until something uses it.
   { rel: "preload", href: sansFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },

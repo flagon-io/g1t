@@ -2,6 +2,8 @@ import { Building2, Clock, GitCommitHorizontal, MapPin } from "lucide-react";
 import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
+import { shownUsername } from "@g1t/contracts";
+
 import { type Card, type UserCard as UserCardData, cardHref, committedLabel } from "../lib/hovercard";
 import { G1T_MENTION_HREF } from "../lib/markdown-plugins";
 import { localTime } from "../lib/time-zone";
@@ -100,10 +102,10 @@ function PersonCard({ card }: { card: UserCardData }) {
             {card.name ? (
               <>
                 <span className="font-semibold wrap-anywhere">{card.name}</span>{" "}
-                <span className="font-mono text-[0.8125rem] text-muted">{card.username}</span>
+                <span className="font-mono text-[0.8125rem] text-muted">{shownUsername(card)}</span>
               </>
             ) : (
-              <span className="font-mono font-semibold">{card.username}</span>
+              <span className="font-mono font-semibold">{shownUsername(card)}</span>
             )}
           </Link>
           {card.pronouns && <p className="mt-0.5 text-xs text-faint">{card.pronouns}</p>}

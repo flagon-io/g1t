@@ -3,9 +3,10 @@
  * `crates/contracts/src/scopes.rs`, which is the source of truth; a Rust
  * test keeps the tables here the same.
  *
- * A token reaches whatever its owner can reach (a workspace's token, that
- * workspace); what a request may do is the intersection of the owner's
- * role and the token's scopes.
+ * A token's permissions are its scopes read per resource: each resource
+ * at none or one level, such as issues: write. What a request may do is
+ * the intersection of the owner's role, the token's reach (the workspace
+ * it is made for, and its repositories) and its permissions.
  */
 
 export type ScopeResource =
@@ -81,29 +82,32 @@ export const SCOPES = [
 
 export type Scope = (typeof SCOPES)[number]["scope"];
 
-/** Resources in the order settings show them, with their names for people. */
-export const SCOPE_RESOURCES: { resource: ScopeResource; label: string }[] = [
-  { resource: "repo", label: "Repositories" },
-  { resource: "code", label: "Code" },
-  { resource: "security", label: "Security" },
-  { resource: "packages", label: "Packages" },
-  { resource: "issues", label: "Issues" },
-  { resource: "pull_requests", label: "Pull requests" },
-  { resource: "agents", label: "g1t agents" },
-  { resource: "workflows", label: "Workflows" },
-  { resource: "workflow_files", label: "Workflow files" },
-  { resource: "checks", label: "Checks and statuses" },
-  { resource: "deployments", label: "Deployments" },
-  { resource: "memory", label: "Memory and context" },
-  { resource: "account", label: "Your account" },
-  { resource: "notifications", label: "Notifications" },
-  { resource: "workspace", label: "Workspaces" },
-  { resource: "billing", label: "Billing" },
-  { resource: "access", label: "Who has access" },
-  { resource: "webhooks", label: "Webhooks" },
-  { resource: "secrets", label: "Secrets and variables" },
-  { resource: "runners", label: "Self-hosted runners" },
-  { resource: "models", label: "AI Gateway" },
+/** Where a resource sits on the token form; only a person's token may hold account ones. */
+export type ResourceGroup = "repository" | "workspace" | "account";
+
+/** Resources in the order settings show them, with their names for people and their group. */
+export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
+  { resource: "repo", label: "Repositories", group: "repository" },
+  { resource: "code", label: "Code", group: "repository" },
+  { resource: "security", label: "Security", group: "repository" },
+  { resource: "packages", label: "Packages", group: "repository" },
+  { resource: "issues", label: "Issues", group: "repository" },
+  { resource: "pull_requests", label: "Pull requests", group: "repository" },
+  { resource: "agents", label: "g1t agents", group: "repository" },
+  { resource: "workflows", label: "Workflows", group: "repository" },
+  { resource: "workflow_files", label: "Workflow files", group: "repository" },
+  { resource: "checks", label: "Checks and statuses", group: "repository" },
+  { resource: "deployments", label: "Deployments", group: "repository" },
+  { resource: "memory", label: "Memory and context", group: "repository" },
+  { resource: "account", label: "Your account", group: "account" },
+  { resource: "notifications", label: "Notifications", group: "account" },
+  { resource: "workspace", label: "Workspaces", group: "workspace" },
+  { resource: "billing", label: "Billing", group: "workspace" },
+  { resource: "access", label: "Who has access", group: "repository" },
+  { resource: "webhooks", label: "Webhooks", group: "repository" },
+  { resource: "secrets", label: "Secrets and variables", group: "repository" },
+  { resource: "runners", label: "Self-hosted runners", group: "workspace" },
+  { resource: "models", label: "AI Gateway", group: "workspace" },
 ];
 
 const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
@@ -142,6 +146,44 @@ export function scopeIncludes(held: Scope, needed: Scope): boolean {
 export function levelsOf(resource: ScopeResource): ScopeLevel[] {
   return SCOPES.filter((row) => scopeResource(row.scope) === resource).map((row) => scopeLevel(row.scope));
 }
+
+/** The token form's groups, in order. */
+export const RESOURCE_GROUPS: { group: ResourceGroup; label: string; about: string }[] = [
+  { group: "repository", label: "Repository permissions", about: "What it may do in the repositories it reaches." },
+  { group: "workspace", label: "Workspace permissions", about: "What it may do with the workspaces it reaches themselves." },
+  { group: "account", label: "Account permissions", about: "What it may do with your own account. Personal tokens only." },
+];
+
+/** A token's permissions: each resource held, at its highest level; left out is none. */
+export type Permissions = Partial<Record<ScopeResource, ScopeLevel>>;
+
+/** Scopes as permissions. Null scopes (full access) are every resource at its highest. */
+export function permissionsOf(scopes: readonly string[] | null): Permissions {
+  const permissions: Permissions = {};
+  const held = scopes === null ? SCOPES.map((row) => row.scope) : parseScopes(scopes.join(" "));
+  for (const scope of held) {
+    const resource = scopeResource(scope);
+    const now = permissions[resource];
+    if (!now || LEVEL_ORDER[scopeLevel(scope)] > LEVEL_ORDER[now]) permissions[resource] = scopeLevel(scope);
+  }
+  return permissions;
+}
+
+/** Permissions as the scopes a token stores: the highest of each resource, in table order. */
+export function scopesOfPermissions(permissions: Permissions): Scope[] {
+  const wanted = new Set(
+    Object.entries(permissions)
+      .filter(([, level]) => level)
+      .map(([resource, level]) => `${resource}:${level}`),
+  );
+  return SCOPES.map((row) => row.scope).filter((scope) => wanted.has(scope));
+}
+
+/** The longest a token with an expiry may last, in days. */
+export const MAX_TOKEN_LIFETIME_DAYS = 366;
+
+/** The most repositories a token may select. */
+export const MAX_SELECTED_REPOSITORIES = 50;
 
 /** Scopes from text separated by spaces or commas, in table order; unknown ones are left out. */
 export function parseScopes(text: string): Scope[] {

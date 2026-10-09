@@ -160,7 +160,7 @@ that scope in `needed_scope`:
 }
 ```
 
-Give the token that scope in
+Give the token that permission on its page under
 [Settings → Access tokens](https://g1t.sh/settings/tokens), or use another
 token. A `403` for any other reason has no `needed_scope`.
 

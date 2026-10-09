@@ -671,9 +671,9 @@ for or lose the password to.
 | --- | --- | --- |
 | Belongs to | You | The workspace |
 | Acts as | You | The workspace: its name is the author of what it does |
-| Can reach | A classic token, every workspace you belong to; a fine-grained one, the one it names | That workspace only |
-| Can do | What its [scopes](/guides/authentication/#scopes) or permissions allow, never more than you can | What its scopes allow, with Write on the workspace's repositories (Admin only when an owner gives it that); it cannot manage people, tokens or workspaces |
-| Expires | A classic token: 7, 30 or 90 days (the default), 1 year, or never. A fine-grained one: within a year | 7, 30 or 90 days, 1 year, or never |
+| Can reach | All your workspaces, one of them, or none ([where a token reaches](/guides/authentication/#where-a-token-reaches)) | That workspace only: all of its repositories, or the ones chosen |
+| Can do | What its [permissions](/guides/authentication/#permissions) allow, never more than you can | What its permissions allow, with Write on the workspace's repositories (Admin with Repositories: admin); it cannot manage people, tokens or workspaces, and holds no account permissions |
+| Expires | 7 days to 1 year, or never where the workspaces it reaches allow | 7 days to 1 year, or never |
 | When its creator leaves | Stops working | Keeps working |
 | Created by | You, in [Settings → Access tokens](https://g1t.sh/settings/tokens) | An owner, under the workspace's **Settings → Access tokens** |
 
@@ -683,13 +683,15 @@ username works; the token is the password. `GET /user` answers with
 `"kind": "workspace"` for one, and `"kind": "user"` for a personal token.
 
 Every member can see a workspace's tokens: the name, who created each,
-when it was last used and when it expires. Only owners can create or
-delete them. An owner creates one with a name, an expiry (No expiry shows
-a warning) and the same scope checklist as a classic personal token,
-starting on the CI preset. Each token shows **Write** or **Admin**: tick
-**Admin on the workspace's repositories** when making it to let it manage
-webhooks, secrets, deploy keys and who has access, and teams as an owner
-would. A token made before this choice existed has Write.
+its permissions and repositories, when it was last used and when it
+expires. Only owners can create, change or delete them. An owner selects
+**New token** and fills in the same form as a personal token: a name, an
+expiration (No expiration shows a warning), its repositories (all, or the
+ones chosen) and its permissions, starting on the CI preset. Each token
+shows **Write** or **Admin**: give it **Repositories: admin** to let it
+manage webhooks, secrets, deploy keys and who has access, and teams as an
+owner would. Select a token to change its permissions or repositories, or
+to delete it.
 
 Which of your members' own personal tokens reach the workspace is set under
 **Settings → Personal access tokens**; see

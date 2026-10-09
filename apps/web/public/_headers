@@ -15,6 +15,9 @@
 /manifest.webmanifest
   Content-Type: application/manifest+json
 
+/site.webmanifest
+  Content-Type: application/manifest+json
+
 # The service worker (browser notifications only): always checked for a
 # newer one, never kept, and allowed to control the whole site.
 /sw.js

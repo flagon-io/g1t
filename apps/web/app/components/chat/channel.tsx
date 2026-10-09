@@ -41,6 +41,7 @@ import { useChatData, useChatSend, useChatSidebar } from "./actions";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
+import { PersonStatusEmoji, PersonStatusLine, PresenceSummary, WithPresence } from "../presence";
 import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
 import { Avatar } from "../ui";
 import { localTime } from "../../lib/time-zone";
@@ -813,7 +814,7 @@ function ChannelHeader({
             <span className="flex shrink-0 -space-x-1.5">
               {others.slice(0, 3).map((member) => (
                 <span key={`${member.kind}:${member.id}`} className="rounded-full ring-2 ring-bg">
-                  <MemberAvatar member={member} size={26} />
+                  <MemberAvatar member={member} size={26} presence={others.length === 1} />
                 </span>
               ))}
             </span>
@@ -825,6 +826,8 @@ function ChannelHeader({
               {agentDm && (titleOf(agentDm) ?? agentDm.role) && (
                 <p className="truncate text-xs leading-tight text-muted">{titleOf(agentDm) ?? agentDm.role}</p>
               )}
+              {/* One person: their status under their name, as their card has it. */}
+              {!agentDm && others.length === 1 && others[0]!.kind === "user" && <PersonStatusLine person={{ id: others[0]!.id, username: others[0]!.name }} className="truncate text-xs leading-tight text-muted" />}
             </div>
             <StarButton starred={starred} onClick={onStar} />
           </>
@@ -1061,12 +1064,15 @@ function ProfilePanel({
   const time = card ? localTime(card.timezone, Date.now()) : null;
   return (
     <div className="min-h-0 grow overflow-y-auto p-5 [scrollbar-width:thin]">
-      <Avatar name={username} image={card?.avatar ?? null} size={88} />
+      <WithPresence person={{ username }} size={88}>
+        <Avatar name={username} image={card?.avatar ?? null} size={88} />
+      </WithPresence>
       <h3 className="mt-3 text-xl font-semibold tracking-tight">{card?.name?.trim() || username}</h3>
       <p className="font-mono text-sm text-muted">
         @{username}
         {card?.pronouns ? <span className="font-sans"> · {card.pronouns}</span> : null}
       </p>
+      <PresenceSummary person={{ username }} className="mt-3 text-sm text-muted" />
       {card?.bio && <p className="mt-3 text-sm leading-relaxed text-fg-soft">{card.bio}</p>}
       <dl className="mt-4 space-y-2 text-sm">
         {card && card.teams.length > 0 && (
@@ -1269,6 +1275,7 @@ function MessageRow({
             <MemberCard member={author} className="truncate text-[0.9375rem] font-semibold text-fg hover:underline">
               {shownName(author)}
             </MemberCard>
+            {author.kind === "user" && <PersonStatusEmoji person={{ id: author.id, username: author.name }} size={14} className="self-center" />}
             {author.kind === "agent" && <AgentPill className="self-center" />}
             <time dateTime={message.created_at} suppressHydrationWarning className="shrink-0 text-xs text-faint tabular-nums">
               {time}
@@ -1643,10 +1650,11 @@ function InfoPanel({
           {humans.map(({ member, role }) => (
             <li key={member.id}>
               <MemberCard member={member} className="flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-raised/60 max-md:min-h-11">
-                <MemberAvatar member={member} size={26} />
+                <MemberAvatar member={member} size={26} presence />
                 <span className="min-w-0 grow truncate text-sm">
                   {shownName(member)}
                   {member.display_name !== member.name && <span className="ml-1.5 text-faint">@{member.name}</span>}
+                  <PersonStatusEmoji person={{ id: member.id, username: member.name }} size={13} className="ml-1.5 align-[-2px]" inert />
                 </span>
                 {role === "owner" && <span className="text-[0.6875rem] text-faint">Owner</span>}
               </MemberCard>

@@ -38,13 +38,13 @@ Every workspace keeps an audit log. It records:
 | `workspace.ownership_transferred` | An owner handed the workspace to another member. |
 | `workspace.member_privileges_changed` | An owner turned a [member privilege](/guides/workspaces/#member-privileges) on or off. |
 | `workspace.two_factor_required`, `workspace.two_factor_not_required` | An owner started or stopped [requiring two-factor authentication](/guides/workspaces/#require-two-factor-authentication). |
-| `workspace_token.created`, `workspace_token.deleted` | An owner made or deleted one of the workspace's [access tokens](/guides/workspaces/#workspace-access-tokens). |
-| `token.created`, `token.deleted`, `token.rescoped` | A member made, deleted or changed the scopes of one of their own [access tokens](/guides/authentication/#access-tokens). Recorded in each of their workspaces. |
+| `workspace_token.created`, `workspace_token.changed`, `workspace_token.deleted` | An owner made, changed the permissions or repositories of, or deleted one of the workspace's [access tokens](/guides/workspaces/#workspace-access-tokens). |
+| `token.created`, `token.deleted`, `token.rescoped` | A member made, deleted or changed the permissions or repositories of one of their own [access tokens](/guides/authentication/#access-tokens). Recorded in each of their workspaces. |
 | `ssh_key.added`, `ssh_key.removed` | A member added or removed an SSH key. Recorded in each of their workspaces. |
 | `oauth_grant.created`, `oauth_grant.rescoped`, `oauth_grant.revoked` | A member [signed in to an application](/guides/authentication/#signing-in-with-oauth), changed what it may do, or signed it out. Recorded in each of their workspaces. |
 | `two_factor.enabled`, `two_factor.disabled` | A member turned [two-factor authentication](/guides/authentication/#two-factor-authentication) on or off. Recorded in each of their workspaces. |
 | `token.policy_changed` | An owner changed the workspace's [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens). |
-| `token.approval_requested`, `token.approved`, `token.denied` | A member's fine-grained token asked to reach the workspace, and an owner approved or denied it, with their note. |
+| `token.approval_requested`, `token.approved`, `token.denied` | A member's token made for the workspace asked to reach it, and an owner approved or denied it, with their note. |
 | `token.revoked` | An owner revoked a member's token in the workspace, with their note. |
 | `workspace.team_creation_changed` | An owner changed who can create teams. See [who can create teams](/guides/teams/#who-can-create-teams). |
 | `team.created`, `team.edited`, `team.deleted` | A [team](/guides/teams/) was created, changed or deleted. |

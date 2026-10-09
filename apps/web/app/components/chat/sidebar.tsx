@@ -9,6 +9,7 @@ import { conversationCache } from "./conversation-cache";
 import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
 import { MemberAvatar, StatusDot, statusLabel } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
+import { PersonStatusEmoji } from "../presence";
 import { isOrchestrator } from "../orchestrator";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
@@ -118,7 +119,8 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   );
 
   return (
-    <div className="flex h-full flex-col">
+    // The colour behind it, for the dots cut out of people's avatars.
+    <div className="flex h-full flex-col [--chat-sidebar-bg:color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]">
       {heading && (
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-line pr-2.5 pl-4">
           <h2 className="text-[0.9375rem] font-semibold">Chat</h2>
@@ -343,7 +345,8 @@ function ConversationRow({
   const icon = agent ? (
     <AgentAvatar agent={{ ...agent, builtin: isOrchestrator(agent) }} size={18} />
   ) : entry.channel.kind === "dm" && other ? (
-    <MemberAvatar member={other} size={18} />
+    // One person: their dot, cut out of the sidebar behind it.
+    <MemberAvatar member={other} size={18} presence={entry.others.length === 1} ring="var(--chat-sidebar-bg)" />
   ) : entry.channel.private ? (
     <Lock size={14} />
   ) : (
@@ -361,7 +364,12 @@ function ConversationRow({
           }`}
         >
           <span className={`flex w-[18px] shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
-          <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>{entry.title}</span>
+          <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>
+            {entry.title}
+            {entry.channel.kind === "dm" && other?.kind === "user" && entry.others.length === 1 && (
+              <PersonStatusEmoji person={{ id: other.id, username: other.name }} size={13} className="ml-1.5 align-[-2px]" inert />
+            )}
+          </span>
           {entry.muted && <BellOff size={12} className="shrink-0 text-faint" aria-label="Muted" />}
           <Count entry={entry} />
         </NavLink>

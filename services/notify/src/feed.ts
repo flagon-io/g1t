@@ -9,7 +9,13 @@
  * focus and page (`serializeAttachment`), which survive hibernation.
  *
  * Kept in the object's own SQLite storage: the latest notifications, the
- * unread counts per conversation, push subscriptions and preferences.
+ * unread counts per conversation, push subscriptions and preferences, and
+ * the person's status, Do Not Disturb and whether they set themselves away.
+ *
+ * Presence is worked out here from the tabs (src/presence.ts) and told to
+ * the room of every workspace the person belongs to (src/room.ts), which
+ * passes it to everyone there who is online. A status or Do Not Disturb
+ * that runs out is cleared by an alarm and told the same way.
  *
  * The feed authorizes nothing: the Worker reaches it only for the person
  * the site checked (src/index.ts).
@@ -19,6 +25,9 @@ import { DurableObject } from "cloudflare:workers";
 import {
   NOTIFY_SEED_HEADER,
   type ChannelCounts,
+  type OwnPresence,
+  type PresenceChange,
+  type PresenceEntry,
   type FeedDelivery,
   type FeedEvent,
   type FeedNotification,
@@ -30,12 +39,37 @@ import {
 
 import { applyCounts, totals } from "./counts.ts";
 import { cleanNotification, decide, mergePreferences, pushPayload, readPreferences, type TabState } from "./prefs.ts";
+import {
+  OFFLINE_GRACE_MS,
+  applyChange,
+  cleanWorkspaces,
+  current,
+  dndOn,
+  entryOf,
+  nextExpiry,
+  ownOf,
+  presenceOf,
+  readKept,
+  sameEntry,
+  type Kept,
+} from "./presence.ts";
+import type { Room } from "./room.ts";
 import { sendPush, type Vapid } from "./webpush.ts";
 
-export type FeedEnv = { VAPID_PUBLIC_KEY?: string; VAPID_PRIVATE_KEY?: string; VAPID_SUBJECT?: string };
+export type FeedEnv = {
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+  /** One presence room per workspace (src/room.ts); without it, presence stays in the person's own tabs. */
+  ROOMS?: DurableObjectNamespace<Room>;
+};
 
-/** What each socket carries. */
-type Tab = { focused: boolean; path: string; at: number };
+/** The headers the Worker passes the person's id and username in, with a socket (src/index.ts). */
+export const FEED_USERNAME_HEADER = "x-g1t-notify-username";
+export const FEED_USER_ID_HEADER = "x-g1t-notify-user-id";
+
+/** What each socket carries: focus, page, whether it has gone idle, and the workspace it is open in. */
+type Tab = { focused: boolean; path: string; at: number; idle?: boolean; workspace?: string | null };
 
 /** Notifications kept for a tab that opens later. */
 const KEPT = 100;
@@ -111,6 +145,105 @@ export class Feed extends DurableObject<FeedEnv> {
     return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM subscriptions").one().n;
   }
 
+  // ── Presence ────────────────────────────────────────────────────────────
+
+  private kept(): Kept {
+    return readKept(this.meta("presence"));
+  }
+
+  /** Who this feed is for, as the site last said. */
+  private person(): { user_id: string; username: string } {
+    return { user_id: this.meta("user_id") ?? "", username: this.meta("username") ?? "" };
+  }
+
+  /** The open tabs as presence sees them, leaving out one that is closing. */
+  private presenceTabs(closing?: WebSocket): { idle: boolean }[] {
+    return this.ctx
+      .getWebSockets()
+      .filter((socket) => socket !== closing && socket.readyState === WebSocket.OPEN)
+      .map((socket) => ({ idle: (socket.deserializeAttachment() as Tab | null)?.idle === true }));
+  }
+
+  private entry(closing?: WebSocket): PresenceEntry {
+    const kept = this.kept();
+    return entryOf(this.person(), presenceOf(this.presenceTabs(closing), kept.away_manual), kept, Date.now());
+  }
+
+  private room(workspace: string) {
+    const rooms = this.env.ROOMS;
+    return rooms ? rooms.get(rooms.idFromName(workspace)) : null;
+  }
+
+  private memberOf(): string[] {
+    try {
+      return cleanWorkspaces(JSON.parse(this.meta("workspaces") ?? "[]"));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Works presence out again and, when how the person shows has changed,
+   * tells their own tabs and every workspace's room. `force` tells them
+   * anyway (a tab just connected, so a room may have missed the last word).
+   */
+  private async refresh(options: { closing?: WebSocket; force?: boolean } = {}): Promise<PresenceEntry> {
+    const now = Date.now();
+    // What ran out goes, so nobody is told of it again.
+    const kept = this.kept();
+    const live = current(kept, now);
+    if (JSON.stringify(live) !== JSON.stringify(kept)) this.setMeta("presence", JSON.stringify(live));
+    const entry = this.entry(options.closing);
+    let before: PresenceEntry | null = null;
+    try {
+      before = JSON.parse(this.meta("reported") ?? "null") as PresenceEntry | null;
+    } catch {
+      before = null;
+    }
+    const changed = !sameEntry(before, entry);
+    if (changed || options.force) {
+      this.setMeta("reported", JSON.stringify(entry));
+      this.send({ type: "me", me: ownOf(entry, live) }, options.closing);
+      // Without an id there is nobody to name: the site always sends one with a socket.
+      if (entry.user_id) await Promise.allSettled(this.memberOf().map((workspace) => this.room(workspace)?.report(workspace, entry)));
+    }
+    await this.schedule();
+    return entry;
+  }
+
+  /** The next alarm: when a status or Do Not Disturb runs out, or when a person whose last tab closed shows offline. */
+  private async schedule(): Promise<void> {
+    const now = Date.now();
+    const times = [nextExpiry(this.kept(), now), Number(this.meta("offline_at") ?? 0) || null].filter((at): at is number => at != null && at > now);
+    if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
+    else await this.ctx.storage.deleteAlarm();
+  }
+
+  override async alarm(): Promise<void> {
+    const offlineAt = Number(this.meta("offline_at") ?? 0);
+    if (offlineAt && offlineAt <= Date.now()) this.setMeta("offline_at", "0");
+    await this.refresh();
+  }
+
+  /** A tab just connected: everyone hears it is here, and it hears how everyone in its workspace shows. */
+  private async connected(socket: WebSocket, workspace: string | null): Promise<void> {
+    this.setMeta("offline_at", "0");
+    const entry = await this.refresh({ force: true });
+    if (!workspace || !entry.user_id) return;
+    const people = await this.room(workspace)
+      ?.report(workspace, entry, true)
+      .catch((error: unknown) => {
+        console.error("notify: reading a presence room failed", error);
+        return null;
+      });
+    if (!people) return;
+    try {
+      socket.send(JSON.stringify({ type: "presence", workspace, people, full: true } satisfies FeedEvent));
+    } catch {
+      // Gone already.
+    }
+  }
+
   // ── Sockets ─────────────────────────────────────────────────────────────
 
   private tabs(): TabState[] {
@@ -121,9 +254,10 @@ export class Feed extends DurableObject<FeedEnv> {
     });
   }
 
-  private send(event: FeedEvent): void {
+  private send(event: FeedEvent, except?: WebSocket): void {
     const text = JSON.stringify(event);
     for (const socket of this.ctx.getWebSockets()) {
+      if (socket === except) continue;
       try {
         socket.send(text);
       } catch {
@@ -143,10 +277,15 @@ export class Feed extends DurableObject<FeedEnv> {
       seed = null;
     }
     if (seed) this.applySeed(seed);
+    const username = request.headers.get(FEED_USERNAME_HEADER);
+    const userId = request.headers.get(FEED_USER_ID_HEADER);
+    this.remember({ user_id: userId ?? "", username: username ?? "" });
+    if (Array.isArray(seed?.workspaces)) this.setMeta("workspaces", JSON.stringify(cleanWorkspaces(seed.workspaces)));
+    const workspace = seed?.workspace?.toLowerCase() || null;
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ focused: false, path: "", at: Date.now() } satisfies Tab);
+    server.serializeAttachment({ focused: false, path: "", at: Date.now(), idle: false, workspace } satisfies Tab);
     const hello: FeedEvent = {
       type: "hello",
       notifications: this.latest(HELLO),
@@ -157,6 +296,8 @@ export class Feed extends DurableObject<FeedEnv> {
     const shown = new Set(this.workspaces());
     if (seed?.workspace) shown.add(seed.workspace);
     for (const workspace of shown) server.send(JSON.stringify(this.counts(workspace)));
+    // Presence after the socket is handed back: the rooms are not waited on.
+    this.ctx.waitUntil(this.connected(server, workspace));
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -192,7 +333,17 @@ export class Feed extends DurableObject<FeedEnv> {
       return;
     }
     if (frame.type === "state") {
-      socket.serializeAttachment({ focused: frame.focused === true, path: String(frame.path ?? "").slice(0, 500), at: Date.now() } satisfies Tab);
+      const before = (socket.deserializeAttachment() as Tab | null) ?? { focused: false, path: "", at: 0 };
+      const idle = frame.idle === true;
+      socket.serializeAttachment({
+        focused: frame.focused === true,
+        path: String(frame.path ?? "").slice(0, 500),
+        at: Date.now(),
+        idle,
+        workspace: before.workspace ?? null,
+      } satisfies Tab);
+      // Gone idle, or back: away or active.
+      if (idle !== (before.idle === true)) await this.refresh();
     } else if (frame.type === "inbox" && Number.isFinite(frame.unread)) {
       // The inbox count a page just read: every tab shows it at once.
       await this.setInbox(Number(frame.unread));
@@ -205,9 +356,26 @@ export class Feed extends DurableObject<FeedEnv> {
     } catch {
       // Already closed.
     }
+    await this.left(socket);
   }
 
-  override async webSocketError(): Promise<void> {}
+  override async webSocketError(socket: WebSocket): Promise<void> {
+    await this.left(socket);
+  }
+
+  /**
+   * A tab went. The last one leaves the person showing as they were for a
+   * moment, so a reload or a switch of workspace is not leaving; the alarm
+   * then says offline if no tab came back.
+   */
+  private async left(socket: WebSocket): Promise<void> {
+    if (this.presenceTabs(socket).length === 0) {
+      this.setMeta("offline_at", String(Date.now() + OFFLINE_GRACE_MS));
+      await this.schedule();
+      return;
+    }
+    await this.refresh({ closing: socket });
+  }
 
   // ── Notifications ───────────────────────────────────────────────────────
 
@@ -231,7 +399,10 @@ export class Feed extends DurableObject<FeedEnv> {
   private async tell(notification: FeedNotification, test = false): Promise<number> {
     if (!test && !this.keep(notification)) return 0;
     const subscriptions = this.subscriptionCount();
-    const decision = decide({ prefs: this.preferences(), notification, tabs: this.tabs(), subscriptions, now: Date.now(), test });
+    const now = Date.now();
+    // Do Not Disturb: kept and counted, neither toasted nor pushed.
+    const quiet = dndOn(this.kept().dnd_until, now);
+    const decision = decide({ prefs: this.preferences(), notification, tabs: this.tabs(), subscriptions, now, test, dnd: quiet });
     this.send({ type: "notification", notification, toast: decision.toast });
     return decision.push ? this.push(notification) : 0;
   }
@@ -344,6 +515,41 @@ export class Feed extends DurableObject<FeedEnv> {
     this.setMeta("preferences", JSON.stringify(preferences));
     this.send({ type: "preferences", preferences });
     return preferences;
+  }
+
+  /** Tabs open in `workspace` hear how these people now show (from its room). */
+  async presence(workspace: string, people: PresenceEntry[]): Promise<void> {
+    const text = JSON.stringify({ type: "presence", workspace, people, full: false } satisfies FeedEvent);
+    for (const socket of this.ctx.getWebSockets()) {
+      const tab = socket.deserializeAttachment() as Tab | null;
+      if (tab?.workspace !== workspace) continue;
+      try {
+        socket.send(text);
+      } catch {
+        // Closing already.
+      }
+    }
+  }
+
+  /** The person's own: presence, status, Do Not Disturb. */
+  async own(person: { user_id: string; username: string }): Promise<OwnPresence> {
+    this.remember(person);
+    const kept = current(this.kept(), Date.now());
+    return ownOf(this.entry(), kept);
+  }
+
+  /** A change to the person's own, told to their tabs and to every workspace they are in. */
+  async setPresence(person: { user_id: string; username: string }, change: PresenceChange): Promise<OwnPresence> {
+    this.remember(person);
+    const kept = applyChange(this.kept(), change, Date.now());
+    this.setMeta("presence", JSON.stringify(kept));
+    const entry = await this.refresh();
+    return ownOf(entry, current(this.kept(), Date.now()));
+  }
+
+  private remember(person: { user_id: string; username: string }): void {
+    if (person.user_id) this.setMeta("user_id", person.user_id.slice(0, 100));
+    if (person.username) this.setMeta("username", person.username.slice(0, 100));
   }
 
   async test(username: string): Promise<{ ok: boolean; pushed: number }> {

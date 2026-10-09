@@ -5,10 +5,10 @@
  * the first client render agree (t = 0).
  *
  * The story: a person asks g1t in #web to fix the CSV export; g1t hands it
- * to @otto and the review to @margo; Otto's desk works it, consulting
- * Margo on the way; the pull request goes green and
- * merges; g1t says it shipped and Izzy tells #support; Inky updates the
- * docs page.
+ * to @otto and the review to @margo (agents the workspace hired from role
+ * templates; only g1t is built in); Otto works it in a session, bringing
+ * Margo in on the way; the pull request goes green and merges; g1t says
+ * it shipped and Izzy tells #support; Inky updates the docs page.
  */
 
 export type Scene = "chat" | "agents" | "code" | "docs";
@@ -138,7 +138,8 @@ export const LOOP_MS = BEAT.end;
 /** The step pills under the frame: where each starts, for jumping to it. */
 export const PILLS: { scene: Scene; label: string; start: number; soon: boolean }[] = [
   { scene: "chat", label: "Chat", start: 0, soon: false },
-  { scene: "agents", label: "Agents", start: BEAT.agents, soon: true },
+  // Sessions, colleagues brought in, spend against a cap: built.
+  { scene: "agents", label: "Agents", start: BEAT.agents, soon: false },
   { scene: "code", label: "Code", start: BEAT.code, soon: false },
   { scene: "docs", label: "Docs", start: BEAT.docs, soon: true },
 ];

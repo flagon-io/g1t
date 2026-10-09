@@ -35,7 +35,10 @@ export default [
     route("notifications", "routes/settings/notifications.tsx"),
     route("invites", "routes/settings/invites.tsx"),
     route("keys", "routes/settings/keys.tsx"),
+    // Your access tokens: the list, a new one, and each one's page.
     route("tokens", "routes/settings/tokens.tsx"),
+    route("tokens/new", "routes/settings/token-new.tsx"),
+    route("tokens/:id", "routes/settings/token.tsx"),
     route("github", "routes/settings/github.tsx"),
     route("applications", "routes/settings/applications.tsx"),
     route("two-factor", "routes/settings/two-factor.tsx"),
@@ -101,7 +104,10 @@ export default [
       route("repositories", "routes/workspace/team/repositories.tsx"),
       route("settings", "routes/workspace/team/settings.tsx"),
     ]),
+    // The workspace's own access tokens: the list, a new one, and each one's page.
     route("-/tokens", "routes/workspace/tokens.tsx"),
+    route("-/tokens/new", "routes/workspace/token-new.tsx"),
+    route("-/tokens/:id", "routes/workspace/token.tsx"),
     // Its rules for members' personal access tokens, and approving them.
     route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),

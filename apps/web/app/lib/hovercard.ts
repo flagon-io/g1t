@@ -15,7 +15,10 @@ export type CommittedWithin = "day" | "week" | "month";
 
 export type UserCard = {
   kind: "user";
+  /** Lowercased: what links and lookups use. */
   username: string;
+  /** The username as its owner wrote it, when that differs: what the card shows. */
+  display_username?: string | null;
   name: string | null;
   pronouns: string | null;
   bio: string | null;
@@ -110,6 +113,7 @@ export async function buildCard(
   return {
     kind: "user",
     username: profile.username,
+    ...(profile.displayUsername ? { display_username: profile.displayUsername } : {}),
     name: profile.name,
     pronouns: profile.pronouns,
     bio: profile.bio,

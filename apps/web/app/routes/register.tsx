@@ -2,6 +2,7 @@ import { CheckCircle2, Ticket } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
 
 import type { InvitePreview } from "@g1t/contracts";
+import { USERNAME_PATTERN } from "@g1t/contracts";
 
 import type { Route } from "./+types/register";
 import { page } from "../lib/meta";
@@ -176,7 +177,7 @@ function SignUpForm({
         ) : null}
         <Field
           label="Username"
-          hint="Lowercase letters, digits and hyphens. It is how you sign in and how others see you."
+          hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it."
         >
           <Input
             name="username"
@@ -184,7 +185,7 @@ function SignUpForm({
             required
             autoFocus
             maxLength={39}
-            pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*"
+            pattern={USERNAME_PATTERN}
           />
         </Field>
         <Field

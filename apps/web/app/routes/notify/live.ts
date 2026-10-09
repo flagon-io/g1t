@@ -30,6 +30,8 @@ async function seedFor(viewer: User, workspace: string | null): Promise<FeedSeed
       ? sidebar.value.entries.map((e) => ({ channel_id: e.channel.id, unread: e.unread, mentions: e.mentions, muted: e.muted }))
       : null,
     inbox_unread: counts ? counts.unread : null,
+    // Presence: every workspace whose members see this person (services/notify, src/room.ts).
+    workspaces: (viewer.workspaces ?? []).map((membership) => membership.slug.toLowerCase()),
   };
 }
 

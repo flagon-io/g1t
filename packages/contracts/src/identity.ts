@@ -1,5 +1,5 @@
 import type { AccessClient, BasePermission, RepoGrant } from "./access";
-import type { PermissionAccess, RepositorySelection } from "./fine-grained";
+import type { Permissions, ScopeLevel, ScopeResource } from "./scopes";
 import type { MemberPrivileges, OrgRole, PolicyHold } from "./members";
 import type { Acting, CreateRunCredentialInput, RunBinding } from "./audit";
 import type { RepoPath } from "./repos";
@@ -10,7 +10,14 @@ import type { EmailConfirmed } from "./accounts";
 
 export type User = {
   id: string;
+  /** Lowercased: what the person is found, linked and mentioned by. */
   username: string;
+  /**
+   * The username as its owner wrote it (`Ana`), when that differs from
+   * `username`: what pages show (`shownUsername`). Set on the signed-in
+   * person and on people looked up by name.
+   */
+  display_username?: string;
   /**
    * `workspace` when a workspace is acting through one of its own access
    * tokens: `id` is then the workspace's and `username` its slug. `system`
@@ -55,13 +62,16 @@ export type User = {
     legacy?: boolean;
     /** The token's name, as its owner gave it. */
     name?: string;
-    /** A fine-grained token's reach: its resource owner and repositories. */
+    /**
+     * A token narrowed to one workspace (or none): its workspace and
+     * repositories. The key is kept from before tokens were one kind.
+     */
     fine_grained?: {
       workspace?: string | null;
       repositories?: "all" | "selected" | "public";
       repo_ids?: string[];
     };
-    /** A workspace's own token an owner gave Admin. */
+    /** A workspace's own token with Repositories: admin. */
     admin?: boolean;
     /** Set on what a deploy key resolves to. */
     deploy_key?: string;
@@ -551,58 +561,72 @@ export type AccessToken = {
    * once that account is gone, and on personal tokens.
    */
   createdBy: string | null;
-  /** Its scopes, as `resource:level`. Null: full access. */
+  /** Its scopes, as `resource:level`, the highest of each resource. Null: full access. */
   scopes: string[] | null;
   /** Made before tokens had scopes: full access until someone narrows it. */
   legacy: boolean;
   /** RFC 3339. Null: it does not expire. */
   expiresAt: string | null;
-  /** Classic, fine-grained, or a workspace's own. */
-  kind?: TokenKind;
+  /** Its scopes as permissions: each resource it may use, at the highest level. */
+  permissions?: Permissions;
   /** What it is for, as its owner wrote it. */
   description?: string | null;
-  /** A fine-grained token's resource owner, repositories, permissions and status. */
-  fineGrained?: FineGrainedDetails | null;
-  /** A workspace's own token an owner gave Admin when making it. */
+  /**
+   * A personal token's reach: the workspace it is made for; null for every
+   * workspace you belong to (or, with `repositorySelection` public, none).
+   * Null on a workspace's own token, which reaches its workspace.
+   */
+  workspace?: string | null;
+  /** Which repositories of that workspace it reaches. */
+  repositorySelection?: RepositorySelection;
+  /** With `selected`: the repositories, as `owner/name`, that you can see. */
+  repositories?: string[];
+  /** Whether a token made for a workspace that approves tokens may be used there yet. */
+  status?: TokenStatus;
+  /** Why an owner denied or revoked it. */
+  reviewReason?: string | null;
+  /** A workspace's own token, acting as the workspace. */
+  workspaceOwned?: boolean;
+  /** A workspace's own token with Repositories: admin, an admin of its repositories. */
   admin?: boolean;
 };
 
-export type TokenKind = "classic" | "fine_grained" | "workspace";
+/** Which repositories a token reaches in its workspace: all, the selected ones, or public ones only. */
+export type RepositorySelection = "all" | "selected" | "public";
 
-/** Whether a fine-grained token may be used on its resource owner. */
+/** Whether a token made for a workspace may be used there yet. */
 export type TokenStatus = "active" | "pending" | "denied" | "revoked";
 
-export type FineGrainedDetails = {
-  /** The resource owner's slug; null for your own account. */
-  workspace: string | null;
-  repositorySelection: RepositorySelection;
-  /** With `selected`: the repositories, as `owner/name`, that you can see. */
-  repositories: string[];
-  permissions: Partial<Record<string, PermissionAccess>>;
-  status: TokenStatus;
-  /** Why an owner denied or revoked it. */
-  reviewReason?: string | null;
-};
-
-/** What a new fine-grained token is. */
-export type FineGrainedTokenInput = {
+/** A new access token: a person's, or (with `owner`) a workspace's. */
+export type TokenInput = {
+  /** A workspace's slug to make that workspace's token; null for your own. */
+  owner?: string | null;
   name: string;
   description?: string | null;
-  /** Between 1 and 366 days, and no more than the workspace allows. */
-  ttlSeconds: number;
-  /** The resource owner: a workspace's slug, or null for your own account. */
+  /** 1 to 366 days; null for no expiry, where the workspaces it reaches allow that. */
+  ttlSeconds: number | null;
+  /**
+   * A personal token's reach: a workspace's slug, or null for every
+   * workspace you belong to (with `repositorySelection` public: none).
+   */
   workspace: string | null;
   repositorySelection: RepositorySelection;
   /** With `selected`: `owner/name` or names in the workspace. */
   repositories: string[];
-  /** Each permission's level by name; names left out are none. */
-  permissions: Record<string, PermissionAccess>;
+  /** Each resource's level; left out is no access. */
+  permissions: Partial<Record<ScopeResource, ScopeLevel>>;
 };
+
+/** A change to a token; what is left out stays. */
+export type TokenChange = Partial<Pick<TokenInput, "name" | "description" | "repositorySelection" | "repositories" | "permissions">>;
 
 /** A workspace's rules for personal access tokens. */
 export type TokenPolicy = {
-  allowClassic: boolean;
-  allowFineGrained: boolean;
+  /** A token made for every workspace of its owner reaches this one. */
+  allowTokensForAllWorkspaces: boolean;
+  /** A token may be made for this workspace alone. */
+  allowTokensForThisWorkspace: boolean;
+  /** A token made for this workspace waits for an owner's approval. */
   requireApproval: boolean;
   /** Null: no limit. */
   maxLifetimeDays: number | null;
@@ -617,7 +641,7 @@ export type MemberToken = {
   token: AccessToken;
   /** Whether it reaches the workspace now. */
   reaches: boolean;
-  /** Why not: pending approval, denied, revoked, classic tokens not allowed, lasts too long, never expires. */
+  /** Why not: pending approval, denied, revoked, tokens for all workspaces not allowed, tokens made for this workspace not allowed, lasts too long, never expires. */
   blockedBy?: string | null;
 };
 
@@ -878,28 +902,22 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
    * it, and keep working when the member who made one leaves. Members only.
    */
   listWorkspaceTokens(slug: string, viewer: Viewer): Promise<Result<AccessToken[]>>;
-  /** Owners only. The plaintext token is returned once and never stored. */
-  createWorkspaceToken(
-    actor: User,
-    slug: string,
-    name: string,
-    grant?: TokenGrant & { ttlSeconds?: number; admin?: boolean },
-  ): Promise<Result<{ token: string; info: AccessToken }>>;
   /** Owners only. */
   removeWorkspaceToken(actor: User, slug: string, id: string): Promise<Result<boolean>>;
 
   /**
-   * A fine-grained personal access token: one resource owner, some of its
-   * repositories, a level for each permission. People only. It starts
-   * pending when its workspace asks for approval and you are not an owner.
+   * An access token: yours, or (with `input.owner`, owners only) a
+   * workspace's. People only, signed in. The plaintext token is returned
+   * once and never stored. A personal token made for a workspace that asks
+   * for approval starts pending unless you are an owner there.
    */
-  createFineGrainedToken(user: User, input: FineGrainedTokenInput): Promise<Result<{ token: string; info: AccessToken }>>;
-  /** Its owner changes it; what is left out stays. Widening it asks for approval again. */
-  updateFineGrainedToken(
-    user: User,
-    id: string,
-    change: Partial<Omit<FineGrainedTokenInput, "ttlSeconds" | "workspace">>,
-  ): Promise<Result<AccessToken>>;
+  createToken(actor: User, input: TokenInput): Promise<Result<{ token: string; info: AccessToken }>>;
+  /**
+   * Changes a token of yours, or (with `owner`, owners only) a
+   * workspace's; what is left out stays. Widening a token made for a
+   * workspace that approves tokens asks for approval again.
+   */
+  updateToken(actor: User, id: string, change: TokenChange, owner?: string | null): Promise<Result<AccessToken>>;
   /** A workspace's rules for personal access tokens. Members only. */
   getTokenPolicy(slug: string, viewer: Viewer): Promise<Result<TokenPolicy>>;
   /** Owners only, as people. `maxLifetimeDays` of 0 removes the limit. */
@@ -912,9 +930,9 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
   listMemberTokens(
     actor: User,
     slug: string,
-    filter?: { status?: TokenStatus; kind?: TokenKind },
+    filter?: { status?: TokenStatus },
   ): Promise<Result<MemberToken[]>>;
-  /** Approve or deny a fine-grained token waiting for approval. Owners only. */
+  /** Approve or deny a token waiting for approval. Owners only. */
   reviewTokenRequest(actor: User, slug: string, id: string, approve: boolean, reason?: string | null): Promise<Result<MemberToken>>;
   /** Take a member's token out of the workspace. Owners only. */
   revokeMemberToken(actor: User, slug: string, id: string, reason?: string | null): Promise<Result<boolean>>;
@@ -1012,10 +1030,10 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
 
   listAccessTokens(user: User): Promise<AccessToken[]>;
   /**
-   * The plaintext token is returned once and never stored. With
-   * `ttlSeconds` the token expires and is left out of token lists; that
-   * form is used for hosted agents. A token made for a workspace acting
-   * through a token of its own belongs to that workspace too.
+   * A credential minted for a person or workspace by another service. The
+   * plaintext token is returned once and never stored. With `ttlSeconds`
+   * the token expires and is left out of token lists; that form is used
+   * for hosted agents. Tokens people make use `createToken`.
    */
   createAccessToken(
     user: User,
@@ -1023,8 +1041,6 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
     ttlSeconds?: number,
     grant?: TokenGrant & { listed?: boolean },
   ): Promise<{ token: string; info: AccessToken }>;
-  /** Changes what one of a person's tokens may do; the token is unchanged. */
-  updateAccessToken(user: User, id: string, grant: TokenGrant): Promise<Result<AccessToken>>;
   /**
    * A token for a g1t agent working for `onBehalfOf`: it acts as
    * `g1t`, in `scope.repo` only, and only for `scope.operations`.
@@ -1056,7 +1072,10 @@ export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, 
 
 /** What anyone may see about a person, at `g1t.sh/u/<username>`. */
 export type Profile = {
+  /** Lowercased: what the profile is found and linked by. */
   username: string;
+  /** The username as its owner wrote it (`Ana`), when that differs: what the page shows. */
+  displayUsername?: string | null;
   /** The name they go by, if they gave one. */
   name: string | null;
   bio: string | null;

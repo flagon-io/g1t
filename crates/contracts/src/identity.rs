@@ -33,7 +33,8 @@ pub struct AccessToken {
     /// For a workspace's token, the username of the member who made it.
     /// Null once that account is gone, and on personal tokens.
     pub created_by: Option<String>,
-    /// Its scopes, as `resource:level`. Null: full access.
+    /// Its scopes, as `resource:level`, the highest of each resource.
+    /// Null: full access (an application's or an agent's credential).
     #[serde(default)]
     pub scopes: Option<Vec<String>>,
     /// Made before tokens had scopes: full access until someone narrows it.
@@ -42,17 +43,39 @@ pub struct AccessToken {
     /// RFC 3339. Null: it does not expire.
     #[serde(default)]
     pub expires_at: Option<String>,
-    /// Classic, fine-grained, or a workspace's own.
+    /// Its scopes as permissions: each resource it may use, by name, at
+    /// the highest level, such as `{"issues": "write"}`. Every resource at
+    /// its highest when `scopes` is null.
     #[serde(default)]
-    pub kind: crate::tokens::TokenKind,
+    pub permissions: std::collections::BTreeMap<String, String>,
     /// What it is for, as its owner wrote it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// A fine-grained token's resource owner, repositories, permissions and
-    /// status.
+    /// A personal token's reach: the workspace it is made for, by slug;
+    /// null for every workspace its owner belongs to (or, with
+    /// `repository_selection` public, none). Null on a workspace's own
+    /// token, which reaches its workspace.
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// Which repositories of that workspace it reaches.
+    #[serde(default)]
+    pub repository_selection: crate::scopes::RepositorySelection,
+    /// With `selected`: the repositories, as `owner/name`, that the viewer
+    /// can see.
+    #[serde(default)]
+    pub repositories: Vec<String>,
+    /// Whether a token made for a workspace that approves tokens may be
+    /// used there yet.
+    #[serde(default)]
+    pub status: crate::tokens::TokenStatus,
+    /// Why an owner denied or revoked it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fine_grained: Option<crate::tokens::FineGrainedDetails>,
-    /// A workspace's own token an owner gave Admin when making it.
+    pub review_reason: Option<String>,
+    /// Whether it is a workspace's own token, acting as the workspace.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub workspace_owned: bool,
+    /// A workspace's own token with Repositories: admin, which acts as an
+    /// admin of the workspace's repositories rather than with Write.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub admin: bool,
 }
@@ -210,17 +233,6 @@ pub struct CreateJobTokenArgs {
 #[serde(rename_all = "camelCase")]
 pub struct RevokeJobTokensArgs {
     pub job_id: String,
-}
-
-/// `update_access_token`: changes what one of a person's tokens may do.
-/// The token itself is unchanged. Returns `Outcome<AccessToken>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateAccessTokenArgs {
-    pub user: User,
-    pub id: String,
-    /// Null: full access.
-    #[serde(default)]
-    pub scopes: Option<Vec<String>>,
 }
 
 /// The plaintext token is returned once and never stored.
@@ -737,27 +749,6 @@ pub struct WorkspaceTokensArgs {
     pub viewer: crate::Viewer,
 }
 
-/// `create_workspace_token`: owners only. The token belongs to the
-/// workspace, acts as it, and keeps working when the member who made it
-/// leaves. Returns `Outcome<CreatedAccessToken>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateWorkspaceTokenArgs {
-    pub actor: User,
-    pub slug: String,
-    pub name: String,
-    /// Its scopes; null for full access.
-    #[serde(default)]
-    pub scopes: Option<Vec<String>>,
-    /// When set, the token stops working after this many seconds. It is
-    /// listed with the workspace's tokens either way. Null: no expiry.
-    #[serde(default)]
-    pub ttl_seconds: Option<u64>,
-    /// Admin on the workspace's repositories, rather than Write: given by
-    /// the owner on purpose, when making it.
-    #[serde(default)]
-    pub admin: bool,
-}
-
 /// `remove_workspace_token`: owners only. Returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RemoveWorkspaceTokenArgs {
@@ -989,7 +980,11 @@ pub const MAX_PROFILE_TIMEZONE: usize = 64;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
+    /// Lowercased: what the profile is found and linked by.
     pub username: String,
+    /// The username as its owner wrote it, when that differs: what the page shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_username: Option<String>,
     /// The name they go by, if they gave one.
     pub name: Option<String>,
     /// One or two lines about them, at most [`MAX_PROFILE_BIO`] characters.

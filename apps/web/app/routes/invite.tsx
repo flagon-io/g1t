@@ -2,6 +2,7 @@ import { CircleAlert, Lock, MailCheck, Ticket } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
 
 import type { InvitePreview, User } from "@g1t/contracts";
+import { USERNAME_PATTERN } from "@g1t/contracts";
 
 import type { Route } from "./+types/invite";
 import { page } from "../lib/meta";
@@ -233,7 +234,7 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
             <Input name="email" type="email" autoComplete="email" required maxLength={254} />
           </Field>
         )}
-        <Field label="Username" hint="Lowercase letters, digits and hyphens. It is how you sign in and how others see you.">
+        <Field label="Username" hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it.">
           <Input
             name="username"
             autoComplete="username"
@@ -241,7 +242,7 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
             autoFocus
             maxLength={39}
             defaultValue={loaded.suggestion}
-            pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*"
+            pattern={USERNAME_PATTERN}
           />
         </Field>
         <Field label="Password" hint="At least 10 characters.">

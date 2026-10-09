@@ -157,9 +157,9 @@ does not let a member delete an owner's package.
 
 | Token | Reaches |
 | --- | --- |
-| A personal access token | What its owner may do, limited by its scopes. |
-| A fine-grained token | Packages linked to a repository in its selection, and the unlinked packages of its resource owner. Elsewhere it pulls public packages only. |
-| A workspace's own token | The workspace's packages, as a member with Write; with Admin when an owner gave the token Admin. |
+| A personal access token for all your workspaces | What its owner may do, limited by its permissions. |
+| A personal access token for one workspace | Packages linked to a repository in its selection, and the unlinked packages of its workspace. Elsewhere it pulls public packages only. |
+| A workspace's own token | The workspace's packages, as a member with Write; with Admin when it has Repositories: admin. With selected repositories, linked packages of those only. |
 | A workflow job's `G1T_TOKEN` | Its own repository's packages, and those that list its repository under [Manage Actions access](#manage-actions-access), as the job's `permissions:` allow. |
 | A deploy key | No packages. |
 

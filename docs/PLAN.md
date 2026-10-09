@@ -500,6 +500,17 @@ workspaces or repositories and left classic tokens only. The reason it is
 reversed: the owner chose GitHub parity, and GitHub has fine-grained tokens
 beside classic ones, with workspaces (organizations) governing both.
 
+> **2026-10-09 (owner): one kind of token.** "We don't need classic and
+> fine-grained tokens ... not 2 different implementations we don't need to
+> maintain." identity/0041 folds both into one access token: a level per
+> resource (each level *is* a scope, so every check below reads scopes
+> unchanged), a reach (all your workspaces, one workspace with all,
+> selected or only public repositories, or none), an owner (a person or a
+> workspace) and an expiry. `TokenKind` and `g1t_contracts::fine_grained`
+> are gone; the reach type is `TokenReach`. The governance below now reads
+> "allow tokens for all workspaces" and "allow tokens for this workspace".
+> The history below is kept for why.
+
 - **Fine-grained personal access tokens** (identity/0034,
   `services/identity/src/token_reach.rs`, `g1t_contracts::fine_grained`):
   one resource owner (a workspace the person belongs to, or their own

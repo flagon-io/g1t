@@ -101,11 +101,12 @@ job's token and a [deploy key](/guides/git/#deploy-keys) have Write at most,
 on their one repository. What is for people only, such as transferring or
 deleting a repository, still needs a person.
 
-A [fine-grained personal access token](/guides/authentication/#create-a-fine-grained-token)
-has your role only in its resource owner's repositories that it reaches:
-all of them, the ones chosen, or none. Everywhere else it reads public
-repositories, as anyone can, and does nothing more. A classic token has
-your role wherever you have one, unless a workspace's
+A [personal access token](/guides/authentication/#where-a-token-reaches)
+made for one workspace has your role only in that workspace's repositories
+that it reaches: all of them, the ones chosen, or none. Everywhere else it
+reads public repositories, as anyone can, and does nothing more. A token
+made for all your workspaces has your role wherever you have one, unless a
+workspace's
 [rules for tokens](/guides/authentication/#a-workspaces-rules-for-tokens)
 keep it out.
 

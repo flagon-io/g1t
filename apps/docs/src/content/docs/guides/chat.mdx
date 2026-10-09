@@ -1,6 +1,6 @@
 ---
 title: Chat
-description: Talk to your team and your agents in channels, direct messages and threads, live. Mention an agent and it answers in the thread. React, add your workspace's own emoji, and choose what notifies you.
+description: Talk to your team and your agents in channels, direct messages and threads, live. Mention an agent and it answers in the thread. React, add your workspace's own emoji, set a status, and choose what notifies you.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -342,6 +342,56 @@ comes from.
 Changing a setting doesn't change what already exists: channels already
 made stay, whoever made them.
 
+## Presence and status
+
+Everyone you share a workspace with can see whether you're here, and what
+you've said about yourself, wherever your name shows: beside a direct
+message in the sidebar, on the card over your name, in a channel's member
+list, on the workspace's People page and after your name on your messages.
+It all moves live; nobody has to reload.
+
+| The dot on an avatar | It means |
+| --- | --- |
+| Green | **Active**: g1t is open and they've used it in the last 10 minutes. |
+| A ring | **Away**: every tab they have open has sat untouched for 10 minutes, or they set themselves away. |
+| Amber, with a bar | **Notifications paused**: they're here, but nothing pops up for them until the time they chose. |
+| None | **Offline**: no tab of g1t is open. |
+
+Agents have dots of their own, which say what they're doing (idle,
+working, out of budget), not whether they're here.
+
+### Set a status
+
+Open the menu on your avatar at the bottom of the rail (on a phone, the
+workspace avatar at the top left) and choose **Set a status**. Give it an
+emoji and a few words, or pick one:
+
+| | Clears after |
+| --- | --- |
+| 🗓️ In a meeting | 1 hour |
+| 🚌 Commuting | 30 minutes |
+| 🎯 Focusing | 1 hour |
+| 🤒 Out sick | Today |
+| 🌴 On vacation | Never: it stays until you change it |
+
+**Clear after** can be 30 minutes, 1 hour, 4 hours, today (your midnight),
+this week (the end of your Sunday), never, or a time you choose. When the
+time comes your status goes, for everyone at once, whether or not you're
+online. Clear it sooner with **Clear status** in the same menu.
+
+### Away
+
+Your dot turns to a ring by itself after 10 minutes without using g1t, and
+back to green as soon as you do. **Set yourself away** keeps you away
+however much you use it, until you choose **Set yourself active**.
+
+### Statuses from other apps
+
+A status has a source: you, a calendar, or another integration. Calendar
+and integration statuses (such as "In a meeting" while one is on your
+calendar) are coming with those integrations. One you set yourself always
+wins: a calendar never replaces or clears it. <Soon />
+
 ## Notifications
 
 g1t tells you when something is for you, wherever you are in the app.
@@ -366,6 +416,14 @@ Open **Settings → Notifications** (`g1t.sh/settings/notifications`):
 Under **For a workspace**, you can give one workspace a different level,
 such as **Everything** for a small team and **DMs and mentions** for a big
 one. **Send a test notification** shows you what one looks like.
+
+### Pause notifications
+
+From the menu on your avatar, **Pause notifications** for 30 minutes, an
+hour, or until tomorrow morning (9:00 your time). Until then nothing pops
+up and no browser notification is sent, whatever your settings; counts and
+your inbox still update, and everyone sees your amber dot. **Resume
+notifications** ends it early.
 
 [Your inbox](/guides/inbox/) is separate: it keeps every item until you
 deal with it, whatever these settings say.

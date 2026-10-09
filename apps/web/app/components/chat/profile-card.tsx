@@ -2,13 +2,14 @@ import { Clock, MapPin, MessageSquare, UserRound, Users } from "lucide-react";
 import { type ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-import type { WorkspaceAgent } from "@g1t/contracts";
+import { type WorkspaceAgent, shownUsername } from "@g1t/contracts";
 
 import { useChatSend } from "./actions";
 import { AgentPill, StatusDot, statusLabel } from "./marks";
 import { AgentAvatar } from "../agent-avatar";
 import { placeOf } from "../agents-mode";
 import { BottomSheet } from "../mobile";
+import { PresenceSummary, WithPresence } from "../presence";
 import { isOrchestrator } from "../orchestrator";
 import { Avatar } from "../ui";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -89,15 +90,19 @@ function PersonBody({ username, display, avatar, ctx, open, close }: { username:
   return (
     <div className="w-full">
       <div className="flex items-start gap-3.5">
-        <Avatar name={username} image={card?.avatar ?? avatar} size={56} />
+        <WithPresence person={{ username }} size={56} ring="var(--color-raised)">
+          <Avatar name={username} image={card?.avatar ?? avatar} size={56} />
+        </WithPresence>
         <div className="min-w-0 pt-1">
           <p className="truncate text-base font-semibold">{card?.name?.trim() || display}</p>
           <p className="truncate font-mono text-xs text-muted">
-            @{username}
+            @{card ? shownUsername(card) : username}
             {card?.pronouns ? <span className="font-sans"> · {card.pronouns}</span> : null}
           </p>
         </div>
       </div>
+      {/* Live: their status and whether they are here (components/presence.tsx). */}
+      <PresenceSummary person={{ username }} className="mt-3 text-[0.8125rem] text-muted" />
       <div className="mt-3 space-y-1.5 text-[0.8125rem] text-muted">
         {card === undefined ? (
           <>

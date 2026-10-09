@@ -117,7 +117,7 @@ pub struct AccountDeletion {
     pub username: String,
     /// Live workspaces it is a member or owner of, which it leaves.
     pub workspaces: u32,
-    /// Its personal access tokens, classic and fine-grained.
+    /// Its personal access tokens.
     pub tokens: u32,
     pub ssh_keys: u32,
     /// Applications signed in as it (OAuth).

@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { DropdownMenu as Primitive } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -67,5 +68,49 @@ export function DropdownMenuSeparator({
       className={cn("-mx-1 my-1 h-px bg-line", className)}
       {...props}
     />
+  );
+}
+
+export const DropdownMenuSub = Primitive.Sub;
+
+/** A row that opens a submenu beside it, with a chevron at its end. */
+export function DropdownMenuSubTrigger({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof Primitive.SubTrigger>) {
+  return (
+    <Primitive.SubTrigger
+      className={cn(
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-fg/90 outline-none select-none",
+        "data-highlighted:bg-line data-highlighted:text-fg data-[state=open]:bg-line data-[state=open]:text-fg data-disabled:opacity-50",
+        "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-faint",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRight className="ml-auto" />
+    </Primitive.SubTrigger>
+  );
+}
+
+export function DropdownMenuSubContent({
+  className,
+  sideOffset = 6,
+  ...props
+}: ComponentProps<typeof Primitive.SubContent>) {
+  return (
+    <Primitive.Portal>
+      <Primitive.SubContent
+        sideOffset={sideOffset}
+        className={cn(
+          "z-50 min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-line-strong bg-raised p-1 text-sm shadow-xl shadow-black/40",
+          "data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out motion-reduce:animate-none",
+          className,
+        )}
+        {...props}
+      />
+    </Primitive.Portal>
   );
 }

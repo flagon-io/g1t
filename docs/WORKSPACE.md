@@ -918,6 +918,15 @@ plan free of compute.
 A rail on the left, as in the mockups: Home, Code, Chat, Docs, Agents,
 Inbox, then the account.
 
+- The workspace's avatar (its switcher) sits at the top of the rail in the
+  top bar's line: the same height, rule and colour as the top bar, so it
+  reads as part of it, as the mode's sidebar heading does.
+- The landing page's product tour (`components/product-tour.tsx`) is a
+  miniature of this shell, not a different one: the same rail and order,
+  each mode's sidebar with its real sections and words, the same top bar,
+  the app's own cards and avatars. A change to the shell changes the tour
+  in the same change.
+
 - Each mode has its own sidebar, and no mode's sidebar lists another mode's
   things.
 - Code keeps today's sidebar.
@@ -977,6 +986,49 @@ Nothing polls: one socket per tab carries everything live.
   and mentions (the default), or nothing, with a level per workspace; this
   browser's notifications on or off; the sound; a test.
 
+## Presence and status
+
+Whether someone is here, and what they say about themselves, shown
+wherever a person is: DMs in the Chat sidebar, cards over names, member
+lists, the People page, after their name on their messages. Live over the
+same socket as notifications; nothing polls.
+
+- **Presence** is worked out by the person's feed (`services/notify`,
+  `src/presence.ts`) from their open tabs: `active` while any tab has had
+  input in the last 10 minutes (each tab says when it goes idle or comes
+  back, in its `state` frame), `away` when every tab is idle or they set
+  themselves away, `offline` when no tab is open (after 30 seconds, so a
+  reload or a switch of workspace is not leaving).
+- **Status**: an emoji, a few words and `clear_at`. Presets: In a meeting,
+  Commuting, Focusing, Out sick, On vacation. Clear after 30 minutes, an
+  hour, 4 hours, today, this week, never or a chosen time (the browser
+  turns these into an instant in the person's own time).
+- **Do Not Disturb** (`dnd_until`): the feed toasts and pushes nothing until
+  then; counts and the inbox still move. 30 minutes, an hour, or until 9
+  tomorrow morning.
+- **Source** (`manual`, `calendar`, `integration`): integrations will set a
+  status through `set_presence` with their own source. One set by hand is
+  never replaced or cleared by them.
+- **Where it is kept.** In the person's feed (their Durable Object's
+  SQLite), not identity's D1: it is per-person live state like the feed's
+  sockets and preferences, the feed must read Do Not Disturb on every
+  notification, and expiry is an alarm on that one object. Nothing about it
+  needs a query across people.
+- **Who hears.** One room per workspace (`src/room.ts`, a Durable Object
+  named by its slug) keeps every member's latest word. A feed tells the
+  rooms of the workspaces its person belongs to (the site sends the list
+  with each socket) whenever how they show changes, and when a status or
+  Do Not Disturb runs out (an alarm). The room passes it to the feeds of
+  the members online now, which send it to their tabs open in that
+  workspace; a tab connecting reads everyone from its workspace's room.
+- **Wire.** `FeedEvent` gains `presence` (`people`, `full`) and `me`;
+  `FeedClientFrame`'s `state` gains `idle`; `FeedSeed` gains `workspaces`.
+  RPCs: `presence` and `set_presence` (`NotifyApi.presence`,
+  `NotifyApi.setPresence`). The site's `POST /-/notify` takes
+  `intent: "presence"` with a `PresenceChange`, always as `manual`.
+- Agents keep their own status (idle, working, out of budget); none of this
+  applies to them.
+
 ### Desktop app
 
 An Electron shell that loads the web app, so it is the same g1t, plus what
@@ -997,7 +1049,7 @@ Following the architecture principles: separate services, interfaces in
 
 | Service | Owns |
 | --- | --- |
-| `services/notify` (new, TS) | One feed per person: live notifications and unread counts over each tab's socket, browser push (VAPID), preferences. Durable Object SQLite storage, no D1. |
+| `services/notify` (new, TS) | One feed per person: live notifications and unread counts over each tab's socket, browser push (VAPID), preferences, presence, status and Do Not Disturb; one presence room per workspace. Durable Object SQLite storage, no D1. |
 | `services/chat` (new, TS) | Channels, members, messages, threads, reactions, read state; one Durable Object per channel for live delivery with WebSocket hibernation. |
 | `services/agents` (new, TS) | Agent definitions and versions, the desk Durable Object per agent, the coordinator Durable Object per workspace (claims), replies (the no-sandbox model loop over g1t MCP). |
 | `services/docs` (new, TS) | Spaces, pages, the page Durable Object (CRDT), suggestions, comments, citations and staleness, git-backed storage. |

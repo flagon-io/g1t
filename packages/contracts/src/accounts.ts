@@ -302,7 +302,7 @@ export function securityEventLabel(event: Pick<SecurityEvent, "kind" | "detail">
     case "token_deleted":
       return `Deleted access token ${detail}`;
     case "token_rescoped":
-      return `Changed the scopes of access token ${detail}`;
+      return `Changed the permissions of access token ${detail}`;
     case "ssh_key_added":
       return `Added SSH key ${detail}`;
     case "ssh_key_removed":

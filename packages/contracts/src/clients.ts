@@ -98,20 +98,12 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     setWorkspaceAvatar: (actor, slug, image) => call("set_workspace_avatar", { actor, slug, image }),
     setUserAvatar: (user, image) => call("set_user_avatar", { user, image }),
     listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
-    createWorkspaceToken: (actor, slug, name, grant) =>
-      call("create_workspace_token", {
-        actor,
-        slug,
-        name,
-        scopes: grant?.scopes ?? null,
-        ttl_seconds: grant?.ttlSeconds ?? null,
-        admin: grant?.admin ?? false,
-      }),
     removeWorkspaceToken: (actor, slug, id) =>
       call("remove_workspace_token", { actor, slug, id }),
-    createFineGrainedToken: (user, input) =>
-      call("create_fine_grained_token", {
-        user,
+    createToken: (actor, input) =>
+      call("create_token", {
+        actor,
+        owner: input.owner ?? null,
         name: input.name,
         description: input.description ?? null,
         ttl_seconds: input.ttlSeconds,
@@ -120,10 +112,11 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         repositories: input.repositories,
         permissions: input.permissions,
       }),
-    updateFineGrainedToken: (user, id, change) =>
-      call("update_fine_grained_token", {
-        user,
+    updateToken: (actor, id, change, owner) =>
+      call("update_token", {
+        actor,
         id,
+        owner: owner ?? null,
         name: change.name ?? null,
         description: change.description ?? null,
         repository_selection: change.repositorySelection ?? null,
@@ -135,15 +128,15 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("set_token_policy", {
         actor,
         slug,
-        allow_classic: change.allowClassic ?? null,
-        allow_fine_grained: change.allowFineGrained ?? null,
+        allow_tokens_for_all_workspaces: change.allowTokensForAllWorkspaces ?? null,
+        allow_tokens_for_this_workspace: change.allowTokensForThisWorkspace ?? null,
         require_approval: change.requireApproval ?? null,
         max_lifetime_days: change.maxLifetimeDays ?? null,
         forbid_no_expiry: change.forbidNoExpiry ?? null,
         surface: "web",
       }),
     listMemberTokens: (actor, slug, filter = {}) =>
-      call("list_member_tokens", { actor, slug, status: filter.status ?? null, kind: filter.kind ?? null }),
+      call("list_member_tokens", { actor, slug, status: filter.status ?? null }),
     reviewTokenRequest: (actor, slug, id, approve, reason) =>
       call("review_token_request", { actor, slug, id, approve, reason: reason ?? null, surface: "web" }),
     revokeMemberToken: (actor, slug, id, reason) =>
@@ -196,8 +189,6 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         scopes: grant?.scopes ?? null,
         listed: grant?.listed ?? false,
       }),
-    updateAccessToken: (user, id, grant) =>
-      call("update_access_token", { user, id, scopes: grant.scopes }),
     createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
       call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),

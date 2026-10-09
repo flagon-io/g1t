@@ -88,6 +88,67 @@ export type FeedCounts = {
   complete: boolean;
 };
 
+// ── Presence and status ──────────────────────────────────────────────────
+//
+// Presence is worked out live by the person's feed from their open tabs:
+// `active` while a tab has been used in the last few minutes, `away` when
+// every tab has sat idle (or they set themselves away), `offline` once no
+// tab is open. Status is what they say about themselves: an emoji and a
+// few words, cleared at a time they chose. Do Not Disturb silences toasts
+// and pushes until a time; counts still move.
+//
+// Both are kept by the notify service (the feed, one per person) and told
+// to everyone who shares a workspace with them, over the same socket,
+// through one presence room per workspace. Nothing polls.
+
+export type Presence = "active" | "away" | "offline";
+
+/**
+ * Who set a status: the person, or something acting for them. Calendars
+ * and other integrations set `calendar` or `integration` (with their own
+ * `clear_at`); a status the person set by hand is never replaced by one.
+ */
+export type StatusSource = "manual" | "calendar" | "integration";
+
+export const STATUS_SOURCES: readonly StatusSource[] = ["manual", "calendar", "integration"];
+
+export type PersonStatus = {
+  /** One emoji, or a custom emoji's `:name:`; null for none. */
+  emoji: string | null;
+  /** A few words: "In a meeting". At most 100 characters. */
+  text: string;
+  /** When it clears itself (RFC 3339); null keeps it until changed. */
+  clear_at: string | null;
+  source: StatusSource;
+  /** When it was set (RFC 3339). */
+  set_at: string;
+};
+
+/** How a person shows to the people who share a workspace with them. */
+export type PresenceEntry = {
+  user_id: string;
+  username: string;
+  presence: Presence;
+  /** Do Not Disturb, until then (RFC 3339); null when off. */
+  dnd_until: string | null;
+  status: PersonStatus | null;
+  /** When this last changed, in ms: a later word wins. */
+  at: number;
+};
+
+/** The signed-in person's own: what everyone sees, and whether they set themselves away. */
+export type OwnPresence = PresenceEntry & { away_manual: boolean };
+
+/**
+ * A change to your own. `status: null` clears it; `away` sets (or ends)
+ * being away by hand; `dnd_until: null` resumes notifications.
+ */
+export type PresenceChange = {
+  status?: { emoji?: string | null; text: string; clear_at?: string | null; source?: StatusSource } | null;
+  away?: boolean;
+  dnd_until?: string | null;
+};
+
 /** What the feed socket sends a tab. */
 export type FeedEvent =
   | { type: "hello"; notifications: FeedNotification[]; vapid_public_key: string | null; preferences: NotifyPreferences }
@@ -95,15 +156,23 @@ export type FeedEvent =
   | ({ type: "counts" } & FeedCounts)
   | { type: "preferences"; preferences: NotifyPreferences }
   /** The person's inbox count as it now is, after items arrive or are marked anywhere. */
-  | { type: "inbox"; unread: number };
+  | { type: "inbox"; unread: number }
+  /**
+   * People in a workspace: everyone known on connect (`full`), then each
+   * one as they change.
+   */
+  | { type: "presence"; workspace: string; people: PresenceEntry[]; full: boolean }
+  /** Your own presence, status and Do Not Disturb, on connect and after every change. */
+  | { type: "me"; me: OwnPresence };
 
 /**
  * What a tab sends over the feed socket: plain `ping` every 25 s (answered
  * without waking the feed), and a state frame whenever it gains or loses
- * focus or moves to another page, and the inbox count the page last read.
+ * focus, moves to another page, or goes idle (no input for a while) or
+ * back, and the inbox count the page last read.
  */
 export type FeedClientFrame =
-  | { type: "state"; focused: boolean; path: string }
+  | { type: "state"; focused: boolean; path: string; idle?: boolean }
   | { type: "inbox"; unread: number };
 
 /**
@@ -129,6 +198,8 @@ export type FeedSeed = {
   workspace: string | null;
   per_channel: ChannelCounts[] | null;
   inbox_unread: number | null;
+  /** Every workspace the person belongs to, by slug: whose rooms hear of their presence. */
+  workspaces?: string[] | null;
 };
 
 /** Headers the site sets on a forwarded feed socket. */
@@ -156,6 +227,14 @@ export type NotifyApi = {
   setPreferences(user: User, preferences: NotifyPreferencesChange): Promise<NotifyPreferences>;
   /** Sends the person a test notification, toasted and pushed whatever their focus. */
   test(user: User): Promise<{ ok: boolean; pushed: number }>;
+  /** Your own presence, status and Do Not Disturb. */
+  presence(user: User): Promise<OwnPresence>;
+  /**
+   * Changes your own, and tells everyone who shares a workspace with you.
+   * Integrations set a status for someone the same way, with their own
+   * `source`; one the person set by hand is kept over theirs.
+   */
+  setPresence(user: Pick<User, "id" | "username">, change: PresenceChange): Promise<OwnPresence>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -178,5 +257,7 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     status: (user, endpoint) => call("status", { user_id: user.id, endpoint: endpoint ?? null }),
     setPreferences: (user, preferences) => call("set_preferences", { user_id: user.id, preferences }),
     test: (user) => call("test", { user_id: user.id, username: user.username }),
+    presence: (user) => call("presence", { user_id: user.id, username: user.username }),
+    setPresence: (user, change) => call("set_presence", { user_id: user.id, username: user.username, change }),
   };
 }

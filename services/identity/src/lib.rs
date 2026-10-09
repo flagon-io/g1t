@@ -35,7 +35,7 @@ mod workspaces;
 
 use g1t_contracts::identity::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::{FailureCode, Outcome, User, Viewer, claimable_namespace, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, Viewer, claimable_username, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
 use tokens::TOKEN_PREFIX;
@@ -48,10 +48,17 @@ const MIN_PASSWORD_LENGTH: usize = 10;
 const PASSWORD_TOO_SHORT: &str = "Use a password of at least 10 characters.";
 
 /// A user as selected from the database; `verified` arrives as 0 or 1.
+/// What a username may be, as registration and GitHub sign-up say when one is refused.
+pub(crate) const USERNAME_RULES: &str =
+    "Usernames use letters of either case, digits and single hyphens, up to 39 characters, not starting or ending with a hyphen, and cannot be a reserved word.";
+
 #[derive(Deserialize)]
 struct Account {
     id: String,
     username: String,
+    /// Selected where the person is shown: their username as they wrote it.
+    #[serde(default)]
+    display_username: Option<String>,
     verified: u8,
     /// Selected only where the person is being shown to themselves.
     #[serde(default)]
@@ -63,6 +70,7 @@ impl From<Account> for User {
         User {
             id: row.id,
             username: row.username,
+            display_username: row.display_username,
             verified: row.verified != 0,
             avatar: row.avatar,
             ..User::default()
@@ -369,8 +377,10 @@ impl Identity {
     }
 
     async fn register(&self, a: RegisterArgs) -> Result<Outcome<SignedIn>> {
-        let username = a.username.trim().to_lowercase();
-        let claimable = claimable_namespace(&username).is_some();
+        // Kept as typed for showing; found, linked and mentioned lowercased.
+        let chosen = claimable_username(&a.username);
+        let username = chosen.as_ref().map_or_else(|| a.username.trim().to_lowercase(), |name| name.canonical.clone());
+        let claimable = chosen.is_some();
         let email = a.email.trim().to_lowercase();
         let invalid = |message: &str| Ok(Outcome::fail(FailureCode::Invalid, message));
         let invite_code = a.invite_code.as_deref().map(str::trim).filter(|code| !code.is_empty());
@@ -379,9 +389,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Forbidden, invites::MISSING));
         }
         if !claimable {
-            return invalid(
-                "Usernames use lowercase letters, digits and single hyphens, up to 39 characters, and cannot be a reserved word.",
-            );
+            return invalid(USERNAME_RULES);
         }
         let well_formed_email = email
             .split_once('@')
@@ -423,6 +431,7 @@ impl Identity {
         let user = match self
             .create_account(invites::NewAccount {
                 username: &username,
+                display_username: chosen.as_ref().and_then(|name| name.display_if_cased()),
                 email: &email,
                 password_hash: &password_hash,
                 verified: false,
@@ -508,7 +517,7 @@ impl Identity {
     async fn user_for_session(&self, a: SessionArgs) -> Result<Viewer> {
         self.find_user(
             &format!(
-                "SELECT users.id, users.username, users.email_verified_at IS NOT NULL AS verified,
+                "SELECT users.id, users.username, users.display_username, users.email_verified_at IS NOT NULL AS verified,
                    users.avatar
                  FROM sessions JOIN users ON users.id = sessions.user_id
                  WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW} AND users.deleted_at IS NULL"
@@ -540,7 +549,7 @@ impl Identity {
     async fn user_by_username(&self, a: UsernameArgs) -> Result<Viewer> {
         self.find_public_user(
             // A deleted account is nobody's to find, mention or add.
-            "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ? AND deleted_at IS NULL",
+            "SELECT id, username, display_username, email_verified_at IS NOT NULL AS verified FROM users WHERE username = ? AND deleted_at IS NULL",
             &a.username.to_lowercase(),
         )
         .await
@@ -872,7 +881,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             reply(&outcome)
         }
         "list_workspace_tokens" => reply(&identity.list_workspace_tokens(args(body)?).await?),
-        "create_workspace_token" => reply(&identity.create_workspace_token(args(body)?).await?),
         "remove_workspace_token" => reply(&identity.remove_workspace_token(args(body)?).await?),
         // Signing in with GitHub; see github.rs.
         "github_enabled" => reply(&identity.github_enabled()),
@@ -960,10 +968,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "principal_for_ssh_key" => reply(&identity.principal_for_ssh_key(args(body)?).await?),
         "list_access_tokens" => reply(&identity.list_access_tokens(args(body)?).await?),
         "create_access_token" => reply(&identity.create_access_token(args(body)?).await?),
-        "update_access_token" => reply(&identity.update_access_token(args(body)?).await?),
-        // Fine-grained tokens and workspaces' rules for tokens; see token_reach.rs.
-        "create_fine_grained_token" => reply(&identity.create_fine_grained_token(args(body)?).await?),
-        "update_fine_grained_token" => reply(&identity.update_fine_grained_token(args(body)?).await?),
+        // Making and changing a person's or a workspace's token, and
+        // workspaces' rules for tokens; see token_reach.rs.
+        "create_token" => reply(&identity.create_token(args(body)?).await?),
+        "update_token" => reply(&identity.update_token(args(body)?).await?),
         "get_token_policy" => reply(&identity.get_token_policy(args(body)?).await?),
         "set_token_policy" => reply(&identity.set_token_policy(args(body)?).await?),
         "list_member_tokens" => reply(&identity.list_member_tokens(args(body)?).await?),
@@ -1076,8 +1084,16 @@ mod register_tests {
     fn nobody_registers_as_g1t() {
         // What register checks the username with, whatever its case.
         for username in ["g1t", "G1T", "g1t-agent", "G1t-Agent"] {
-            assert_eq!(claimable_namespace(username), None, "{username}");
+            assert!(claimable_username(username).is_none(), "{username}");
         }
-        assert_eq!(claimable_namespace("ana").as_deref(), Some("ana"));
+        assert_eq!(claimable_username("ana").map(|name| name.canonical).as_deref(), Some("ana"));
+    }
+
+    #[test]
+    fn a_username_keeps_the_case_it_was_chosen_in() {
+        let name = claimable_username("Ana-Lopez").unwrap();
+        assert_eq!(name.canonical, "ana-lopez");
+        assert_eq!(name.display_if_cased(), Some("Ana-Lopez"));
+        assert!(USERNAME_RULES.contains("either case"));
     }
 }

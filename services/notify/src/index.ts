@@ -13,8 +13,14 @@
  *   conversation, a notification for those it is for) and every read;
  * - events: `notify`, for every inbox item, and `set_inbox`, the count after
  *   items arrive or are marked, naming the person by username;
- * - the site: `subscribe`, `unsubscribe`, `status`, `set_preferences` and
- *   `test`, for the person signed in.
+ * - the site: `subscribe`, `unsubscribe`, `status`, `set_preferences`,
+ *   `test`, `presence` and `set_presence`, for the person signed in;
+ * - integrations, later: `set_presence` with a status of `source`
+ *   `calendar` or `integration`, for the person they act for.
+ *
+ * Presence: each feed works out its person's from their tabs and tells
+ * one room per workspace (src/room.ts), which tells everyone there who is
+ * online. See docs/WORKSPACE.md, "Presence and status".
  */
 import {
   NOTIFY_VIEWER_HEADER,
@@ -24,9 +30,10 @@ import {
   type Viewer,
 } from "@g1t/contracts";
 
-import { Feed, type FeedEnv } from "./feed.ts";
+import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from "./feed.ts";
 
 export { Feed } from "./feed.ts";
+export { Room } from "./room.ts";
 
 type Env = FeedEnv & {
   IDENTITY: ServiceBinding;
@@ -80,6 +87,12 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
       return Response.json(await stub.setPreferences(args.preferences));
     case "test":
       return Response.json(await stub.test(typeof args.username === "string" ? args.username : ""));
+    case "presence":
+      return Response.json(await stub.own({ user_id: userId, username: typeof args.username === "string" ? args.username : "" }));
+    case "set_presence":
+      return Response.json(
+        await stub.setPresence({ user_id: userId, username: typeof args.username === "string" ? args.username : "" }, args.change ?? {}),
+      );
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
@@ -103,6 +116,9 @@ async function live(request: Request, env: Env): Promise<Response> {
   if (!viewer?.id) return new Response("Sign in first\n", { status: 401 });
   const headers = new Headers(request.headers);
   headers.delete(NOTIFY_VIEWER_HEADER);
+  // Who the feed is for, so it can name them to the presence rooms.
+  headers.set(FEED_USER_ID_HEADER, viewer.id);
+  headers.set(FEED_USERNAME_HEADER, viewer.username);
   return feed(env, viewer.id).fetch(new Request(request.url, { method: "GET", headers }));
 }
 

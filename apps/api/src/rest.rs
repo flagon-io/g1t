@@ -58,7 +58,7 @@ pub const ROUTES: &[Route] = &[
     // A workspace's rules for personal access tokens, and its members' tokens.
     route("GET", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::GetTokenPolicy), &[]),
     route("PATCH", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::SetTokenPolicy), &[]),
-    route("GET", "/workspaces/:workspace/personal-access-tokens", Op::Tokens(TokenOp::ListMemberTokens), &[("kind", "kind")]),
+    route("GET", "/workspaces/:workspace/personal-access-tokens", Op::Tokens(TokenOp::ListMemberTokens), &[]),
     route("POST", "/workspaces/:workspace/personal-access-tokens/:id", Op::Tokens(TokenOp::RevokeMemberToken), &[]),
     route("GET", "/workspaces/:workspace/personal-access-token-requests", Op::Tokens(TokenOp::ListTokenRequests), &[]),
     route("POST", "/workspaces/:workspace/personal-access-token-requests/:id", Op::Tokens(TokenOp::ReviewTokenRequest), &[]),

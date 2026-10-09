@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { data } from "react-router";
 
-import { notifyClient, type NotifyPreferencesChange, type PushSubscriptionJson } from "@g1t/contracts";
+import { notifyClient, type NotifyPreferencesChange, type PresenceChange, type PushSubscriptionJson } from "@g1t/contracts";
 
 import type { Route } from "./+types/api";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -14,7 +14,8 @@ function client() {
 /**
  * The signed-in person's notification settings, as JSON: `GET` their
  * status (with `?endpoint=` for whether this browser gets pushes), `POST`
- * a change: `subscribe`, `unsubscribe`, `preferences` or `test`.
+ * a change: `subscribe`, `unsubscribe`, `preferences`, `test`, or
+ * `presence` (your status, being away, Do Not Disturb).
  */
 export async function loader({ context, request }: Route.LoaderArgs) {
   const user = requireUser(context, request);
@@ -28,6 +29,7 @@ type Sent = {
   subscription?: PushSubscriptionJson & { expirationTime?: number | null };
   endpoint?: string;
   preferences?: NotifyPreferencesChange;
+  change?: PresenceChange;
 };
 
 export async function action({ context, request }: Route.ActionArgs) {
@@ -48,6 +50,12 @@ export async function action({ context, request }: Route.ActionArgs) {
       return Response.json(await notify.setPreferences(user, sent.preferences ?? {}));
     case "test":
       return Response.json(await notify.test(user));
+    case "presence": {
+      // Set by hand here: a calendar's or an integration's comes through their own door.
+      const change = sent.change ?? {};
+      const status = change.status ? { ...change.status, source: "manual" as const } : change.status;
+      return Response.json(await notify.setPresence(user, { ...change, ...("status" in change ? { status } : {}) }));
+    }
     default:
       return Response.json({ ok: false }, { status: 400 });
   }

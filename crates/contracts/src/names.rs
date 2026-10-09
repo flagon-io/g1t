@@ -102,6 +102,38 @@ pub fn claimable_namespace(value: &str) -> Option<String> {
     is_valid_namespace(&value).then_some(value)
 }
 
+/// A username as someone typed it, if it can be registered: the name
+/// everything finds them by (`canonical`, lowercased: URLs, lookups,
+/// mentions, git) and the name as they wrote it (`display`, trimmed, its
+/// case kept). Letters of either case, digits and single hyphens, not
+/// starting or ending with a hyphen, 1 to 39 characters, never reserved
+/// in any case. ASCII only, so no other letter lowercases into one.
+pub fn claimable_username(value: &str) -> Option<Username> {
+    let display = value.trim();
+    if !display.is_ascii() {
+        return None;
+    }
+    let canonical = display.to_ascii_lowercase();
+    is_valid_namespace(&canonical).then(|| Username { canonical, display: display.to_owned() })
+}
+
+/// A username in its two forms: see [`claimable_username`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Username {
+    /// Lowercased: what it is stored, found, linked and mentioned by.
+    pub canonical: String,
+    /// As its owner chose to write it: what it is shown as.
+    pub display: String,
+}
+
+impl Username {
+    /// The display form, when it differs from the canonical one: what is
+    /// kept beside it (`users.display_username`); none means the same.
+    pub fn display_if_cased(&self) -> Option<&str> {
+        (self.display != self.canonical).then_some(self.display.as_str())
+    }
+}
+
 /// Namespaces follow GitHub's rules: letters, digits and single hyphens,
 /// not starting or ending with a hyphen, at most 39 characters.
 pub fn is_valid_namespace(value: &str) -> bool {
@@ -142,6 +174,33 @@ mod tests {
         assert_eq!(claimable_namespace("G1T-Bot").as_deref(), Some("g1t-bot"));
         assert_eq!(claimable_namespace(" Ana ").as_deref(), Some("ana"));
         assert_eq!(claimable_namespace("an--a"), None);
+    }
+
+    #[test]
+    fn usernames_keep_their_case_and_are_found_without_it() {
+        let name = claimable_username(" Octo-Cat ").unwrap();
+        assert_eq!(name.canonical, "octo-cat");
+        assert_eq!(name.display, "Octo-Cat");
+        assert_eq!(name.display_if_cased(), Some("Octo-Cat"));
+        let plain = claimable_username("ana").unwrap();
+        assert_eq!(plain.display_if_cased(), None);
+        assert_eq!(claimable_username("A").unwrap().canonical, "a");
+        assert_eq!(claimable_username(&"Z".repeat(39)).unwrap().display.len(), 39);
+    }
+
+    #[test]
+    fn usernames_follow_the_common_rules_in_any_case() {
+        let long = "a".repeat(40);
+        for bad in ["", " ", "-Ana", "Ana-", "An--a", "An_a", "Ana.B", "Ana B", long.as_str()] {
+            assert_eq!(claimable_username(bad), None, "{bad:?}");
+        }
+        // Reserved whatever the case: routes and g1t's own.
+        for reserved in ["G1T", "G1t-Agent", "Ghost", "Settings", "API", "U"] {
+            assert_eq!(claimable_username(reserved), None, "{reserved}");
+        }
+        // A letter that lowercases into ASCII is not one: the Kelvin sign is not K.
+        assert_eq!(claimable_username("\u{212A}elvin"), None);
+        assert_eq!(claimable_username("Ana\u{0301}"), None);
     }
 
     #[test]

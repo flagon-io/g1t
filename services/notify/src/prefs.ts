@@ -5,6 +5,7 @@
  * - Counts always move, whatever the preferences.
  * - A notification is shown (toasted in open tabs, pushed to browsers) when
  *   the person's level for its workspace wants its kind.
+ * - Under Do Not Disturb nothing is toasted or pushed.
  * - It is pushed only when no tab of theirs is in front of them: a tab
  *   says it has focus over its socket, and a tab that has said nothing for
  *   `STALE_MS` counts as gone (a laptop lid closed on it).
@@ -94,8 +95,11 @@ export function decide(input: {
   subscriptions: number;
   now: number;
   test?: boolean;
+  /** Do Not Disturb holds: nothing is toasted or pushed (a test still is). */
+  dnd?: boolean;
 }): Decision {
   if (input.test) return { toast: true, push: input.subscriptions > 0 };
+  if (input.dnd) return { toast: false, push: false };
   const shown = wants(levelFor(input.prefs, input.notification.workspace), input.notification.kind);
   return { toast: shown, push: shown && input.subscriptions > 0 && !anyFocused(input.tabs, input.now) };
 }

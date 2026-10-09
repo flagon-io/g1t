@@ -46,7 +46,7 @@ export type AccountDeletion = {
   username: string;
   /** Live workspaces it is in, which it leaves. */
   workspaces: number;
-  /** Personal access tokens, classic and fine-grained. */
+  /** Personal access tokens. */
   tokens: number;
   ssh_keys: number;
   /** Applications signed in as it. */

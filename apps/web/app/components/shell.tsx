@@ -2,7 +2,7 @@ import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookO
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams } from "@g1t/contracts";
+import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -44,6 +44,7 @@ import { STATUS_URL, statusTitle } from "../lib/status";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
 import { useLiveBadges } from "../lib/notify-client";
+import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -393,6 +394,8 @@ const MENU_ROW = "h-9 gap-2.5 px-2.5 text-[0.8125rem]";
 function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
   const submit = useSubmit();
   const [open, setOpen] = useState(false);
+  // Your status's dialog: outside the menu, so the menu closes behind it.
+  const [editing, setEditing] = useState(false);
   // Name, primary address and invites left: asked for once, as soon as the
   // pointer or focus reaches the button, so they are there when it opens.
   const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
@@ -410,42 +413,43 @@ function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
   const invitesListed = useInviteOnly() || me?.invites_page === true;
   const profile = `/u/${user.username}`;
   return (
+    <>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       {rail ? (
-        // On the rail: the avatar alone, with a dot that says you are here.
+        // On the rail: the avatar alone, with a dot that says how others see you (components/presence.tsx).
         <DropdownMenuTrigger
-          aria-label={`Account menu for ${user.username}`}
+          aria-label={`Account menu for ${shownUsername(user)}`}
           onPointerEnter={prefetch}
           onFocus={prefetch}
           className="relative rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
         >
           <Avatar name={user.username} image={user.avatar} size={34} />
-          <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full bg-success ring-[2.5px] ring-[#0b0b0d]" />
+          <OwnPresenceDot ring="#0b0b0d" className="absolute -right-0.5 -bottom-0.5" />
         </DropdownMenuTrigger>
       ) : (
       <DropdownMenuTrigger
-        aria-label={`Account menu for ${user.username}`}
+        aria-label={`Account menu for ${shownUsername(user)}`}
         onPointerEnter={prefetch}
         onFocus={prefetch}
         className="flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-accent/60 data-[state=open]:bg-raised"
       >
         <Avatar name={user.username} image={user.avatar} size={22} />
-        <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{user.username}</span>
+        <span className="min-w-0 grow truncate text-[0.8125rem] font-medium">{shownUsername(user)}</span>
         <ChevronsUpDown size={14} className="shrink-0 text-faint" />
       </DropdownMenuTrigger>
       )}
       <DropdownMenuContent align={rail ? "end" : "start"} side={rail ? "right" : "top"} collisionPadding={8} className="w-[17.5rem] p-1.5">
         {/* Who is signed in, and a way to their profile. */}
         <DropdownMenuItem asChild className="gap-3 px-2 py-2">
-          <Link to={profile} aria-label={`${me?.name ?? user.username} (@${user.username}), your profile`}>
+          <Link to={profile} aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}>
             <Avatar name={user.username} image={user.avatar} size={36} />
             <span className="flex min-w-0 grow flex-col leading-tight" aria-busy={loading}>
               {loading ? (
                 <Skeleton className="my-[0.1875rem] h-3.5 w-28" />
               ) : (
-                <span className="truncate text-sm font-medium text-fg">{me?.name ?? user.username}</span>
+                <span className="truncate text-sm font-medium text-fg">{me?.name ?? shownUsername(user)}</span>
               )}
-              <span className="truncate font-mono text-xs text-muted">@{user.username}</span>
+              <span className="truncate font-mono text-xs text-muted">@{shownUsername(user)}</span>
               {loading ? (
                 <Skeleton className="mt-1 h-3 w-40" />
               ) : (
@@ -454,6 +458,11 @@ function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
             </span>
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator className="my-1.5" />
+        {/* Your status, away, and pausing notifications. */}
+        <DropdownMenuGroup>
+          <OwnPresenceItems className="min-h-9 py-1.5 text-[0.8125rem]" onEdit={() => setEditing(true)} />
+        </DropdownMenuGroup>
         <DropdownMenuSeparator className="my-1.5" />
         <DropdownMenuGroup>
           <DropdownMenuItem asChild className={MENU_ROW}>
@@ -516,6 +525,8 @@ function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
         <MenuLegalRow />
       </DropdownMenuContent>
     </DropdownMenu>
+    <StatusDialog open={editing} onOpenChange={setEditing} />
+    </>
   );
 }
 
@@ -815,7 +826,7 @@ function MainMenu({ user, shell }: { user: User | null; shell: ShellData }) {
           <Rule />
           <div className="space-y-px">
             <SidebarLink to={`/${ws.slug}/-/agents`} icon={<Bot size={15} />} current={here === "agents"}>
-              Agent fleet
+              Agents
             </SidebarLink>
             <SidebarLink to={`/${ws.slug}/-/context`} icon={<Network size={15} />} current={here === "context"}>
               Context
@@ -1795,12 +1806,12 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
 
 /** A profile's place in the top bar: the person's avatar and @handle, from the page once it has loaded. */
 function ProfileCrumb({ username }: { username: string }) {
-  const page = useRouteLoaderData("routes/user") as { profile?: { username: string; avatar: string | null } } | undefined;
+  const page = useRouteLoaderData("routes/user") as { profile?: { username: string; displayUsername?: string | null; avatar: string | null } } | undefined;
   const profile = page?.profile?.username.toLowerCase() === username.toLowerCase() ? page.profile : null;
   return (
     <Link to={`/u/${profile?.username ?? username}`} aria-current="page" className="flex min-w-0 items-center gap-2 rounded px-1 py-0.5 transition-colors hover:bg-raised">
       <Avatar name={profile?.username ?? username} image={profile?.avatar ?? null} size={20} />
-      <span className="truncate font-mono text-[0.8125rem] font-medium">@{profile?.username ?? username}</span>
+      <span className="truncate font-mono text-[0.8125rem] font-medium">@{profile ? shownUsername(profile) : username}</span>
     </Link>
   );
 }

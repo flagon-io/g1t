@@ -371,9 +371,10 @@ export function looksAutomated(form: { get(name: string): unknown }, now = Date.
 }
 
 /**
- * A username to offer someone signing up with `email`: its local part, as
- * usernames are written (lowercase letters, digits and single hyphens, up
- * to 39). Empty when nothing usable is left. Identity checks it is free.
+ * A username to offer someone signing up with `email`: its local part,
+ * lowercased, with anything a username cannot hold made single hyphens,
+ * up to 39. They can type it in any case they like. Empty when nothing
+ * usable is left. Identity checks it is free.
  */
 export function suggestUsername(email: string | null | undefined): string {
   const local = (email ?? "").split("@")[0]?.split("+")[0] ?? "";

@@ -92,9 +92,9 @@ export function settingsPathForHash(hash: string): string | null {
   return page ? `/settings/${page}` : null;
 }
 
-/** Which settings page a path is, or null when it is none. */
+/** Which settings page a path is, or null when it is none. A page within one (a token under Access tokens) is that page's. */
 export function accountSettingsPage(pathname: string): AccountSettingsPage | null {
-  const match = /^\/settings\/([^/]+)\/?$/.exec(pathname);
+  const match = /^\/settings\/([^/]+)(?:\/.*)?$/.exec(pathname);
   const page = match?.[1];
   return page && page in ACCOUNT_SETTINGS ? (page as AccountSettingsPage) : null;
 }

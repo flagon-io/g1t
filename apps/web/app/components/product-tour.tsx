@@ -11,37 +11,61 @@
  * Motion is transforms and opacity only. Reduced motion gets a still frame
  * per step, chosen with the pills.
  *
- * Parts of the story are not built yet (handoffs between agents, desks,
- * Docs); the frame says so in its top bar, and the caption under it.
+ * It is an honest miniature of the app: the same rail (the workspace on
+ * the top bar's line, then Home, Code, Chat, Docs, Agents and the Inbox,
+ * with names), each mode's sidebar with its real sections and words, the
+ * same top bar (where you are, Explore, Docs, Ask g1t, the inbox and +),
+ * which Chat gives up to the conversation's own header as the app does,
+ * and the app's own cards. Parts of the story are not built yet (g1t
+ * splitting a request between colleagues, and Docs); the line under the
+ * frame says so as they play, and the caption under the steps.
  */
 import {
+  Activity,
   ArrowRight,
   AtSign,
+  BarChart3,
   Bell,
   BookOpen,
   Bot,
+  Box,
+  Brain,
+  Building2,
   Check,
   ChevronDown,
+  ChevronLeft,
+  CircleDot,
+  CircleHelp,
   Code2,
+  Compass,
+  CornerDownRight,
   FileText,
   GitMerge,
   GitPullRequest,
   Hash,
-  Home,
+  House,
   Inbox,
   MessagesSquare,
+  Network,
   Paperclip,
-  Pin,
+  PlayCircle,
   Plus,
+  Rocket,
   Search,
   SendHorizontal,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  SquarePen,
 } from "lucide-react";
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { cn } from "../lib/cn";
 import { ASK, CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, STEPS, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
 import { AgentAvatar } from "./agent-avatar";
-import { Mark } from "./logo";
+import { G1tMark } from "./orchestrator";
+import { Avatar } from "./ui";
+import { Badge } from "./ui/badge";
 
 /** The frame's design size; it scales to fit, keeping its aspect. */
 const W = 992;
@@ -164,13 +188,31 @@ function pillOf(frame: Frame): number {
   return 0;
 }
 
-/** What the frame's top bar says about the step: shipped today, or a preview. */
+/** What the line under the frame says about the moment: working today, or a preview. */
 function honesty(frame: Frame): { today: boolean; label: string } {
   if (frame.scene === "docs") return { today: false, label: "Docs: coming soon" };
-  if (frame.scene === "agents") return { today: false, label: "Desks: coming soon" };
+  if (frame.scene === "agents") return { today: true, label: "Sessions work today" };
   if (frame.scene === "code") return { today: true, label: "Works today" };
-  if (frame.handoff) return { today: false, label: "Handoffs: coming soon" };
+  if (frame.handoff && !frame.shipped) return { today: false, label: "g1t splitting work between colleagues: coming soon" };
   return { today: true, label: "Works today" };
+}
+
+/** The line under the frame: today, or soon. Not part of the app, so it sits outside it. */
+function HonestyNote({ frame, className }: { frame: Frame; className?: string }) {
+  const note = honesty(frame);
+  return (
+    <span
+      key={note.label}
+      className={cn(
+        "tour-fade inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1",
+        note.today ? "bg-success/10 text-success ring-success/25" : "bg-raised text-muted ring-line-strong",
+        className,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", note.today ? "bg-success" : "bg-faint")} />
+      {note.label}
+    </span>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -192,16 +234,31 @@ const AGENTS: Record<string, { title: string; team: string }> = {
   Bruno: { title: "Operations Engineer", team: "Operations" },
 };
 
-/** A face: an agent's own creature (g1t keeps its pixel 1), or a person's round letter. */
+/** A face: an agent's own creature (g1t keeps its pixel 1), or a person's avatar, as the app draws them. */
 function Face({ who, size = 28 }: { who: string; size?: number }) {
-  if (!PEOPLE[who]) return <AgentAvatar agent={{ handle: who.toLowerCase(), name: who }} size={size} />;
+  if (!PEOPLE[who]) return <AgentAvatar agent={{ handle: who.toLowerCase(), name: who, builtin: who === "g1t" }} size={size} />;
+  return <Avatar name={who.toLowerCase()} size={size} />;
+}
+
+/** A person's presence, as the app shows it on their avatar: active, or away. */
+function PresenceDot({ away, ring = "var(--tour-side)" }: { away?: boolean; ring?: string }) {
   return (
     <span
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
-      className="flex shrink-0 items-center justify-center rounded-full bg-raised font-semibold text-fg-soft ring-1 ring-line-strong"
-    >
-      {who.charAt(0)}
-    </span>
+      className={cn("absolute -right-0.5 -bottom-0.5 size-[7px] rounded-full", away ? "bg-[var(--tour-side)] shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success")}
+      style={{ boxShadow: `0 0 0 1.5px ${ring}${away ? ", inset 0 0 0 1.5px var(--color-faint)" : ""}` }}
+    />
+  );
+}
+
+/** An agent's status dot, as chat/marks.tsx draws it: working glows green, idle is quiet. */
+function AgentDot({ working }: { working: boolean }) {
+  return (
+    <span
+      className={cn(
+        "size-1.5 shrink-0 rounded-full transition-colors duration-500",
+        working ? "bg-success shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-success)_18%,transparent)]" : "bg-faint/70",
+      )}
+    />
   );
 }
 
@@ -255,45 +312,34 @@ function Dots() {
   );
 }
 
-/** The task card g1t posts into #web; it follows the task wherever the story is. */
+/**
+ * The session's card in #web, drawn as chat draws an agent session's card
+ * (components/chat/channel.tsx, CardBox): it changes in place as the
+ * session moves, wherever the story is.
+ */
 function TaskCard({ frame }: { frame: Frame }) {
-  const state = frame.shipped
-    ? { text: "Deployed", tone: "bg-success/15 text-success" }
-    : frame.cardMerged
-      ? { text: "Merged · deploying", tone: "bg-merged/15 text-merged" }
-      : { text: "Working", tone: "bg-warn/15 text-warn" };
+  const done = frame.cardMerged;
+  const cost = STEPS[frame.steps - 1]?.cost ?? 0;
   return (
-    <div className="max-w-[26rem] rounded-xl bg-bg ring-1 ring-line">
-      <div className="flex items-start gap-3 px-3.5 py-3">
-        {frame.cardMerged ? (
-          <GitMerge size={15} className="mt-0.5 shrink-0 text-merged" />
-        ) : (
-          <Bot size={15} className="mt-0.5 shrink-0 text-accent" />
+    <div className="mt-1.5 flex max-w-[26rem] items-start gap-3 rounded-xl border border-line bg-surface px-3.5 py-3">
+      <span className={cn("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors", done ? "bg-raised text-muted" : "bg-accent/10 text-accent")}>
+        <Bot size={16} />
+      </span>
+      <span className="min-w-0 grow">
+        <span className="line-clamp-2 text-[13px] font-medium text-fg">CSV export times out for big accounts</span>
+        <span className="mt-0.5 block truncate font-mono text-[11px] text-muted tabular-nums">
+          @otto · {frame.steps} of {STEPS.length} steps · ${cost.toFixed(2)}
+        </span>
+      </span>
+      <Badge key={done ? "done" : "working"} tone={done ? "success" : "accent"} className="tour-pop mt-0.5">
+        {!done && (
+          <span aria-hidden="true" className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60 motion-reduce:animate-none" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-current" />
+          </span>
         )}
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-fg">CSV export times out for big accounts</p>
-          <p className="mt-0.5 text-[11px] text-faint">
-            <span className="text-fg-soft">@otto</span> is on it · <span className="text-fg-soft">@margo</span> reviews
-          </p>
-        </div>
-        <span key={state.text} className={cn("tour-pop shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", state.tone)}>
-          {state.text}
-        </span>
-      </div>
-      <div className="flex items-center gap-3 border-t border-line px-3.5 py-2 text-[11px] text-muted">
-        <span className="flex gap-0.5" aria-hidden="true">
-          {STEPS.map((step, index) => (
-            <span
-              key={step.text}
-              className={cn("h-1 w-5 rounded-full transition-colors duration-500", index < frame.steps ? "bg-accent" : "bg-raised")}
-            />
-          ))}
-        </span>
-        <span>
-          {frame.steps} of {STEPS.length} steps
-        </span>
-        <span className="ml-auto font-mono tabular-nums">${(STEPS[frame.steps - 1]?.cost ?? 0).toFixed(2)}</span>
-      </div>
+        {done ? "Done" : "Working"}
+      </Badge>
     </div>
   );
 }
@@ -302,139 +348,217 @@ function TaskCard({ frame }: { frame: Frame }) {
 /* The app frame                                                       */
 /* ------------------------------------------------------------------ */
 
-const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scene?: Scene }[] = [
-  { key: "home", icon: <Home size={17} />, label: "Home" },
-  { key: "code", icon: <Code2 size={17} />, label: "Code", target: "rail-code", scene: "code" },
-  { key: "chat", icon: <MessagesSquare size={17} />, label: "Chat", target: "rail-chat", scene: "chat" },
-  { key: "docs", icon: <BookOpen size={17} />, label: "Docs", target: "rail-docs", scene: "docs" },
-  { key: "agents", icon: <Bot size={17} />, label: "Agents", target: "rail-agents", scene: "agents" },
-  { key: "inbox", icon: <Inbox size={17} />, label: "Inbox" },
+/** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
+const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scene?: Scene; badge?: number }[] = [
+  { key: "home", icon: <House size={15} />, label: "Home" },
+  { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scene: "code" },
+  { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scene: "chat", badge: 3 },
+  { key: "docs", icon: <BookOpen size={15} />, label: "Docs", target: "rail-docs", scene: "docs" },
+  { key: "agents", icon: <Sparkles size={15} />, label: "Agents", target: "rail-agents", scene: "agents" },
+  { key: "inbox", icon: <Inbox size={15} />, label: "Inbox", badge: 2 },
 ];
 
-function TopBar({ frame }: { frame: Frame }) {
-  const note = honesty(frame);
+/** One rail item: the square behind its icon, filled for the mode you are in, and its name under it. */
+function RailItem({ icon, label, on, target, badge }: { icon: ReactNode; label: string; on: boolean; target?: CursorTarget; badge?: number }) {
   return (
-    <div className="flex h-11 items-center gap-3 border-b border-line bg-bg px-3">
-      <span className="flex size-8 items-center justify-center text-fg">
-        <Mark className="size-6" />
-      </span>
-      <span className="flex items-center gap-1 text-[13px] font-medium text-fg">
-        Acme <ChevronDown size={13} className="text-faint" />
-      </span>
-      <span className="mx-auto flex h-7 w-72 items-center gap-2 rounded-md bg-surface px-2.5 text-[12px] text-faint ring-1 ring-line">
-        <Search size={13} />
-        Search Acme
-        <span className="ml-auto font-mono text-[10px]">Ctrl K</span>
-      </span>
+    <span className="flex w-full flex-col items-center gap-[3px] py-0.5">
       <span
-        key={note.label}
+        data-tour={target}
         className={cn(
-          "tour-fade flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1",
-          note.today ? "bg-success/10 text-success ring-success/25" : "bg-raised text-muted ring-line-strong",
+          "relative flex size-7 items-center justify-center rounded-[8px] transition-colors duration-500",
+          on ? "bg-[#2c2c33] text-fg shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" : "text-muted",
         )}
       >
-        <span className={cn("size-1.5 rounded-full", note.today ? "bg-success" : "bg-faint")} />
-        {note.label}
+        {icon}
+        {badge ? (
+          <span className="absolute -top-1 -right-1.5 min-w-[0.875rem] rounded-full bg-accent px-[3px] text-center text-[8px] leading-[0.875rem] font-bold text-bg tabular-nums ring-[1.5px] ring-[#0b0b0d]">
+            {badge}
+          </span>
+        ) : null}
       </span>
-      <Bell size={15} className="text-faint" />
-      <Face who="Priya" size={26} />
-    </div>
+      <span className={cn("text-[9px] leading-none font-medium transition-colors duration-500", on ? "text-fg" : "text-faint")}>{label}</span>
+    </span>
   );
 }
 
+/**
+ * The rail, as the app has it: the workspace on the top bar's line (its
+ * switcher), the modes with their names, then the workspace's own pages,
+ * help, and you, with the dot that says how others see you.
+ */
 function Rail({ scene }: { scene: Scene }) {
-  const active = RAIL.findIndex((item) => item.scene === scene);
   return (
-    <nav aria-hidden="true" className="relative flex w-14 shrink-0 flex-col items-center gap-1 border-r border-line bg-bg py-3">
-      <span
-        className="absolute top-3 left-1/2 -ml-[18px] size-9 rounded-lg bg-accent/15 transition-transform duration-500 ease-[cubic-bezier(.4,0,.2,1)]"
-        style={{ transform: `translateY(${active * 40}px)` }}
-      />
-      {RAIL.map((item, index) => (
-        <span
-          key={item.key}
-          data-tour={item.target}
-          className={cn(
-            "relative flex size-9 items-center justify-center rounded-lg transition-colors duration-500",
-            index === active ? "text-accent" : "text-faint",
-          )}
-        >
-          {item.icon}
+    <nav aria-hidden="true" className="flex w-16 shrink-0 flex-col items-center bg-[#0b0b0d] pb-2.5 shadow-[inset_-1px_0_0_var(--color-line)]">
+      <div className="flex h-11 w-full shrink-0 items-center justify-center border-b border-line bg-bg shadow-[inset_-1px_0_0_var(--color-line)]">
+        <Avatar name="acme" size={28} square />
+      </div>
+      <div className="mt-2.5 flex w-full flex-col items-center gap-1.5 px-1">
+        {RAIL.map((item) => (
+          <RailItem key={item.key} icon={item.icon} label={item.label} on={item.scene === scene} target={item.target} badge={item.badge} />
+        ))}
+      </div>
+      <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
+        <RailItem icon={<Building2 size={15} />} label="Workspace" on={false} />
+        <RailItem icon={<CircleHelp size={15} />} label="Help" on={false} />
+        <span className="relative mt-1">
+          <Avatar name="priya" size={26} />
+          <PresenceDot ring="#0b0b0d" />
         </span>
-      ))}
+      </div>
     </nav>
   );
 }
 
-function SideHead({ children, action }: { children: ReactNode; action?: boolean }) {
+/**
+ * The top bar, as the app has it (components/shell.tsx): where you are,
+ * then Explore, Docs, Ask g1t, the inbox and the + menu. Chat has none on
+ * a computer: the conversation's header takes its line.
+ */
+function TopBar({ crumbs }: { crumbs: { label: string; mono?: boolean }[] }) {
   return (
-    <p className="flex items-center justify-between px-2 text-[13px] font-semibold text-fg">
+    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-bg px-4">
+      <span className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
+        {crumbs.map((crumb, index) => (
+          <Fragment key={crumb.label}>
+            {index > 0 && <span className="text-line-strong">/</span>}
+            <span className={cn("truncate", index === crumbs.length - 1 ? "font-medium text-fg" : "text-muted", crumb.mono && "font-mono text-[12px]")}>{crumb.label}</span>
+          </Fragment>
+        ))}
+      </span>
+      <span className="ml-auto flex items-center gap-1 text-[12px]">
+        <span className="px-1.5 text-muted">Explore</span>
+        <span className="px-1.5 text-muted">Docs</span>
+        <span className="flex h-7 items-center gap-1.5 rounded-md border border-line px-2 text-fg/90">
+          <G1tMark size={14} />
+          Ask g1t
+        </span>
+        <span className="relative flex size-7 items-center justify-center text-muted">
+          <Bell size={14} />
+          <span className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
+        </span>
+        <span className="mx-1 h-4 w-px bg-line" />
+        <span className="flex h-7 items-center gap-0.5 rounded-md border border-line px-1.5 text-fg/90">
+          <Plus size={13} />
+          <ChevronDown size={11} className="text-muted" />
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/** A mode's sidebar heading (ModeHeader): on the top bar's line, with what it makes. */
+function SideHead({ children, action, soon }: { children: ReactNode; action?: ReactNode; soon?: boolean }) {
+  return (
+    <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line pr-2 pl-3.5">
+      <span className="flex items-center gap-2 text-[13px] font-semibold text-fg">
+        {children}
+        {soon && <Soon />}
+      </span>
+      {action && <span className="flex size-6 items-center justify-center text-faint">{action}</span>}
+    </div>
+  );
+}
+
+/** A section's heading, with its fold, as Chat's sections have it. */
+function SideLabel({ children, fold = true }: { children: ReactNode; fold?: boolean }) {
+  return (
+    <p className="mt-3 mb-0.5 flex items-center gap-1 px-1 text-[10.5px] font-medium text-faint">
+      {fold && <ChevronDown size={10} />}
       {children}
-      {action && <Plus size={14} className="text-faint" />}
     </p>
   );
 }
 
-function SideLabel({ children, tight }: { children: ReactNode; tight?: boolean }) {
-  return <p className={cn("mb-1 px-2 text-[11px] font-medium text-faint", tight ? "mt-3" : "mt-5")}>{children}</p>;
+function SideRow({ on, children, bold }: { on?: boolean; children: ReactNode; bold?: boolean }) {
+  return (
+    <div className={cn("flex h-7 items-center gap-2 rounded-md px-2 text-[12px]", on ? "bg-raised text-fg" : bold ? "text-fg" : "text-muted", bold && "font-semibold")}>
+      {children}
+    </div>
+  );
 }
 
-function SideRow({ on, children }: { on?: boolean; children: ReactNode }) {
+/** The search at the top of a sidebar. */
+function SideSearch({ children, keys }: { children: ReactNode; keys?: boolean }) {
   return (
-    <div className={cn("flex items-center gap-2 rounded-md px-2 py-[5px] text-[13px]", on ? "bg-raised text-fg" : "text-muted")}>{children}</div>
+    <span className="flex h-7 items-center gap-2 rounded-md bg-surface px-2 text-[11px] text-faint ring-1 ring-line">
+      <Search size={12} className="shrink-0" />
+      <span className="grow truncate">{children}</span>
+      {keys && <span className="rounded bg-raised px-1 font-mono text-[9px] text-muted ring-1 ring-line">Ctrl K</span>}
+    </span>
   );
 }
 
 /* Chat ---------------------------------------------------------------- */
 
 function ChatSide({ frame }: { frame: Frame }) {
-  // Otto works from the handoff until the merge; everyone else is around.
+  // Otto works from the handoff until the merge; everyone else is idle.
   const ottoBusy = frame.handoff && !frame.merged;
-  const agents: { who: string; dot: string }[] = [
-    { who: "g1t", dot: "bg-success" },
-    { who: "Otto", dot: ottoBusy ? "bg-warn" : "bg-success" },
-    { who: "Margo", dot: "bg-success" },
-    { who: "Inky", dot: "bg-success" },
-    { who: "Izzy", dot: "bg-success" },
+  const margoBusy = frame.consult && !frame.approved;
+  const agents: { who: string; working: boolean }[] = [
+    { who: "g1t", working: frame.g1tTyping },
+    { who: "Otto", working: ottoBusy },
+    { who: "Margo", working: margoBusy },
+    { who: "Inky", working: frame.docUpdated },
+    { who: "Izzy", working: frame.shipped && !frame.izzy },
   ];
   return (
     <>
-      <SideHead action>Chat</SideHead>
-      <SideLabel tight>Pinned</SideLabel>
-      <SideRow>
-        <FileText size={13} className="text-faint" />
-        <span className="flex-1">Release checklist</span>
-      </SideRow>
-      <SideRow>
-        <Pin size={13} className="text-faint" />
-        <span className="flex-1 truncate">Thursday release</span>
-      </SideRow>
-      <SideLabel tight>Channels</SideLabel>
-      {["web", "releases", "support"].map((name) => (
-        <SideRow key={name} on={name === "web"}>
-          <Hash size={13} className="text-faint" />
-          <span className="flex-1">{name}</span>
-          {name === "support" && <span className="rounded-full bg-accent px-1.5 text-[10px] font-semibold text-bg">3</span>}
+      <SideHead action={<SquarePen size={14} />}>Chat</SideHead>
+      <div className="space-y-2 px-2 pt-2.5">
+        <SideSearch>Jump to channel or person</SideSearch>
+        <span className="grid grid-cols-3 rounded-md bg-surface p-0.5 text-center text-[10px] font-medium ring-1 ring-line">
+          <span className="rounded-[4px] bg-raised py-0.5 text-fg ring-1 ring-line-strong">All</span>
+          <span className="py-0.5 text-muted">Unread</span>
+          <span className="py-0.5 text-muted">Mentions</span>
+        </span>
+      </div>
+      <div className="px-2">
+        <SideLabel>Pinned</SideLabel>
+        <SideRow>
+          <Hash size={12} className="text-faint" />
+          <span className="flex-1">releases</span>
         </SideRow>
-      ))}
-      <SideLabel tight>Agents</SideLabel>
-      {agents.map((agent) => (
-        <SideRow key={agent.who}>
-          <Face who={agent.who} size={18} />
-          <span className="min-w-0 flex-1 truncate">
-            {agent.who}
-            <span className="text-faint"> · {AGENTS[agent.who].title}</span>
-          </span>
-          <span className={cn("size-1.5 shrink-0 rounded-full transition-colors duration-500", agent.dot)} />
-        </SideRow>
-      ))}
-      <SideLabel tight>Direct messages</SideLabel>
-      {["Dana", "Sam"].map((who) => (
-        <SideRow key={who}>
-          <Face who={who} size={18} />
-          <span className="flex-1">{PEOPLE[who]}</span>
-        </SideRow>
-      ))}
+        <SideLabel>Channels</SideLabel>
+        {["web", "support", "general"].map((name) => (
+          <SideRow key={name} on={name === "web"} bold={name === "support"}>
+            <Hash size={12} className="text-faint" />
+            <span className="flex-1">{name}</span>
+            {name === "support" && <span className="min-w-4 rounded-full bg-line-strong px-1 text-center text-[9.5px] font-semibold text-fg">3</span>}
+          </SideRow>
+        ))}
+        <SideLabel>Agents</SideLabel>
+        {agents.map((agent) => (
+          <SideRow key={agent.who}>
+            <Face who={agent.who} size={16} />
+            <span className="min-w-0 flex-1 truncate">
+              {agent.who}
+              <span className="text-faint"> · {AGENTS[agent.who].title}</span>
+            </span>
+            {agent.who !== "g1t" && <AgentDot working={agent.working} />}
+          </SideRow>
+        ))}
+        <SideLabel>Direct messages</SideLabel>
+        {[
+          { who: "Dana", away: false, status: null },
+          { who: "Sam", away: true, status: "🗓️" },
+        ].map((person) => (
+          <SideRow key={person.who}>
+            <span className="relative flex">
+              <Face who={person.who} size={16} />
+              <PresenceDot away={person.away} />
+            </span>
+            <span className="flex-1 truncate">
+              {PEOPLE[person.who]}
+              {person.status && <span className="ml-1.5 text-[11px]">{person.status}</span>}
+            </span>
+          </SideRow>
+        ))}
+        <div className="mt-2 flex h-7 items-center gap-2 px-2 text-[12px] text-muted">
+          <Compass size={13} className="text-faint" />
+          <span className="flex-1">Browse all channels</span>
+          <span className="text-[10.5px] text-faint">6</span>
+        </div>
+      </div>
     </>
   );
 }
@@ -443,10 +567,11 @@ function ChatMain({ frame }: { frame: Frame }) {
   const typing = ASK.slice(0, frame.typed);
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line px-5 py-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-5">
         <Hash size={15} className="text-faint" />
         <span className="text-sm font-semibold text-fg">web</span>
-        <span className="truncate text-xs text-faint">The web app, its releases and its bugs</span>
+        <span aria-hidden="true" className="h-3.5 w-px bg-line" />
+        <span className="truncate text-xs text-muted">The web app, its releases and its bugs</span>
         <span className="ml-auto flex -space-x-1.5" aria-hidden="true">
           {["Priya", "g1t", "Otto", "Margo", "Dana"].map((who) => (
             <span key={who} className="rounded-lg ring-2 ring-surface">
@@ -508,7 +633,7 @@ function ChatMain({ frame }: { frame: Frame }) {
         <div
           data-tour="composer"
           className={cn(
-            "flex items-center gap-2 rounded-xl bg-bg px-3 py-2.5 text-[13px] ring-1 transition-shadow duration-300",
+            "flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-[13px] ring-1 transition-shadow duration-300",
             frame.typed > 0 ? "ring-accent/50 shadow-[0_0_0_3px_rgb(182_168_255/0.08)]" : "ring-line",
           )}
         >
@@ -541,40 +666,68 @@ function ChatMain({ frame }: { frame: Frame }) {
 
 /* Agents -------------------------------------------------------------- */
 
-const SPECIALISTS: { who: string; tone: string }[] = [
-  { who: "Otto", tone: "bg-warn" },
-  { who: "Margo", tone: "bg-faint" },
-  { who: "Inky", tone: "bg-success" },
-  { who: "Izzy", tone: "bg-success" },
-  { who: "Dot", tone: "bg-success" },
-  { who: "David", tone: "bg-success" },
-]
+/** The specialists the demo workspace hired, from the role templates, by team (agents-mode.tsx, orgChart). */
+const SPECIALISTS: { who: string; working?: boolean }[] = [
+  { who: "Otto", working: true },
+  { who: "Margo" },
+  { who: "Inky" },
+  { who: "Izzy" },
+  { who: "Dot" },
+];
 
-function AgentsSide() {
+/** Agents mode's sidebar, as the app has it: the fleet's pages, g1t, then the specialists by team. */
+function AgentsSide({ frame }: { frame: Frame }) {
+  const link = (icon: ReactNode, label: string, on = false) => (
+    <SideRow on={on}>
+      <span className="text-faint">{icon}</span>
+      {label}
+    </SideRow>
+  );
   return (
     <>
-      <SideHead action>Agents</SideHead>
-      <SideLabel>Pinned</SideLabel>
-      <SideRow>
-        <Face who="g1t" size={22} />
-        <span className="min-w-0 flex-1">
-          <span className="block leading-tight text-fg">g1t</span>
-          <span className="block text-[11px] leading-tight text-faint">Orchestrator</span>
-        </span>
-        <Pin size={12} className="text-faint" />
-      </SideRow>
-      <SideLabel>Specialists</SideLabel>
-      {SPECIALISTS.map((agent) => (
-        <SideRow key={agent.who} on={agent.who === "Otto"}>
-          <Face who={agent.who} size={22} />
-          <span className="min-w-0 flex-1">
-            <span className="block leading-tight">{agent.who}</span>
-            <span className="block truncate text-[11px] leading-tight text-faint">{AGENTS[agent.who].title}</span>
-          </span>
-          <span className={cn("size-1.5 rounded-full", agent.tone)} />
-        </SideRow>
-      ))}
+      <SideHead action={<Plus size={14} />}>Agents</SideHead>
+      <div className="px-2 pt-2.5">
+        {link(<Activity size={13} />, "Overview")}
+        {link(<Network size={13} />, "Context")}
+        {link(<Brain size={13} />, "Memory")}
+        <SideLabel fold={false}>Orchestrator</SideLabel>
+        <AgentRow who="g1t" line="Orchestrator" />
+        <p className="mt-2.5 px-2 text-[10px] leading-snug text-faint">Specialists are colleagues hired into a role. g1t hands them work.</p>
+        {SPECIALISTS.map((agent) => {
+          const working = agent.who === "Otto" ? !frame.merged : agent.who === "Margo" ? frame.consult && !frame.approved : false;
+          return (
+            <Fragment key={agent.who}>
+              <SideLabel>{AGENTS[agent.who].team} · 1</SideLabel>
+              <AgentRow who={agent.who} line={working ? `Working · ${AGENTS[agent.who].title}` : AGENTS[agent.who].title} working={working} on={agent.who === "Otto"} />
+            </Fragment>
+          );
+        })}
+        <div className="mt-2 flex h-7 items-center gap-2 rounded-md border border-dashed border-line px-2 text-[12px] text-muted">
+          <Plus size={13} />
+          New agent
+        </div>
+      </div>
     </>
+  );
+}
+
+/** One agent in Agents mode's sidebar: its face and status, name, and what it is doing. */
+function AgentRow({ who, line, working = false, on = false }: { who: string; line: string; working?: boolean; on?: boolean }) {
+  return (
+    <div className={cn("flex h-9 items-center gap-2 rounded-md px-2", on && "bg-raised")}>
+      <span className="relative shrink-0">
+        <Face who={who} size={20} />
+        {who !== "g1t" && (
+          <span className="absolute -right-0.5 -bottom-0.5 flex rounded-full ring-[1.5px] ring-[var(--tour-side)]">
+            <AgentDot working={working} />
+          </span>
+        )}
+      </span>
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[12px] font-medium text-fg">{who}</span>
+        <span className="block truncate text-[10px] text-faint">{line}</span>
+      </span>
+    </div>
   );
 }
 
@@ -584,12 +737,12 @@ const FILES: { path: string; from: number }[] = [
   { path: "tests/test_export.py", from: 4 },
 ];
 
-/** Agents consult each other in the open: a collapsed line anyone can expand. */
+/** A colleague brought into the session, in the open: a line anyone can open. */
 function Consult({ frame, compact }: { frame: Frame; compact?: boolean }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2.5 rounded-xl bg-bg px-3.5 py-2.5 text-[12px] ring-1 ring-line transition-[opacity,transform] duration-500",
+        "flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[12px] transition-[opacity,transform] duration-500",
         frame.consult ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
       )}
     >
@@ -598,11 +751,10 @@ function Consult({ frame, compact }: { frame: Frame; compact?: boolean }) {
         <Face who="Margo" size={18} />
       </span>
       <span className="min-w-0 flex-1 truncate text-muted">
-        <span className="text-fg-soft">Otto asked Margo</span> · 2 messages
+        <span className="text-fg-soft">Otto brought in Margo</span> · Helper session
         {!compact && <span className="text-faint">: &ldquo;Is 1,000 a safe batch size for the 200k test?&rdquo;</span>}
       </span>
-      <ChevronDown size={13} className="shrink-0 text-faint" />
-      <Soon />
+      <CornerDownRight size={13} className="shrink-0 text-faint" />
     </div>
   );
 }
@@ -620,40 +772,53 @@ function AgentsMain({ frame }: { frame: Frame }) {
   const cost = STEPS[frame.steps - 1]?.cost ?? 0;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-line px-5 pt-4 pb-3">
-        <Face who="Otto" size={36} />
+      <div className="flex items-center gap-3 px-5 pt-4 pb-3">
+        <span className="relative">
+          <Face who="Otto" size={36} />
+          <span className="absolute -right-0.5 -bottom-0.5 flex rounded-full ring-2 ring-bg">
+            <AgentDot working={!frame.merged} />
+          </span>
+        </span>
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-sm font-semibold text-fg">
             Otto <AgentTag />
           </p>
-          <p className="text-xs text-muted">@otto · Software Engineer, Engineering</p>
+          <p className="text-xs text-muted">
+            <span className="font-mono">@otto</span> · Software Engineer, Engineering
+          </p>
         </div>
-        <span className="ml-auto flex items-center gap-1.5 rounded-full bg-warn/10 px-2.5 py-1 text-[11px] text-warn">
-          <span className="tour-pulse size-1.5 rounded-full bg-warn" />
-          Working
+        <span className="ml-auto flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 text-[11.5px] font-medium text-bg">
+          <MessagesSquare size={12} />
+          Message
         </span>
       </div>
       <div className="flex gap-5 border-b border-line px-5 text-[12px]">
-        {["Desk", "Profile", "Spend", "Activity"].map((tab) => (
-          <span key={tab} className={cn("py-2", tab === "Desk" ? "border-b-2 border-accent text-fg" : "text-faint")}>
+        {["Sessions", "Memory", "Routines", "Spend", "Profile"].map((tab) => (
+          <span key={tab} className={cn("py-2", tab === "Sessions" ? "border-b-2 border-accent text-fg" : "text-faint")}>
             {tab}
           </span>
         ))}
       </div>
       <div className="flex-1 space-y-3 overflow-hidden px-5 py-4">
-        <div className="rounded-xl bg-bg ring-1 ring-line">
+        <div className="rounded-xl border border-line bg-surface">
           <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium text-fg">CSV export times out for big accounts</p>
+              <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-fg">
+                CSV export times out for big accounts
+                <span className="inline-flex h-4 items-center rounded-[5px] bg-raised px-1.5 text-[10px] font-medium text-muted ring-1 ring-line ring-inset">Chat</span>
+                <Badge key={frame.merged ? "done" : "working"} tone={frame.merged ? "success" : "accent"} className="tour-pop">
+                  {frame.merged ? "Done" : "Working"}
+                </Badge>
+              </p>
               <p className="mt-0.5 text-[11px] text-faint">
-                From <span className="text-fg-soft">#web</span>, asked by Priya through <span className="text-fg-soft">@g1t</span>
+                asked by @priya through @g1t · <span className="text-fg-soft">#web</span> · {frame.steps * 3} steps
               </p>
             </div>
             <div className="w-32 text-right">
-              <p className="font-mono text-[12px] text-fg tabular-nums">
-                ${cost.toFixed(2)} <span className="text-faint">of $5</span>
+              <p className="text-[12px] text-fg tabular-nums">
+                ${cost.toFixed(2)} <span className="text-faint">of $5.00</span>
               </p>
-              <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-raised">
+              <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-line">
                 <span
                   className="block h-full origin-left rounded-full bg-accent transition-transform duration-700"
                   style={{ transform: `scaleX(${cost / 5})` }}
@@ -706,10 +871,10 @@ function AgentsMain({ frame }: { frame: Frame }) {
           </div>
         </div>
         <Consult frame={frame} />
-        <div className="flex items-center gap-3 rounded-xl px-4 py-3 text-[12px] text-faint ring-1 ring-line ring-dashed">
-          <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] uppercase">Queued</span>
-          Upgrade the date library across the web app
-          <span className="ml-auto">2nd in line</span>
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-[12px] text-muted">
+          <span className="text-fg-soft">Upgrade the date library across the web app</span>
+          <Badge>Queued</Badge>
+          <span className="ml-auto text-faint">Routine · Mondays</span>
         </div>
       </div>
     </div>
@@ -718,28 +883,53 @@ function AgentsMain({ frame }: { frame: Frame }) {
 
 /* Code ---------------------------------------------------------------- */
 
+/** Code's sidebar in a project, as the app has it (shell.tsx, RepoMenu): its pages in the order people use them. */
 function CodeSide() {
+  const row = (icon: ReactNode, label: string, count?: string, on = false) => (
+    <SideRow on={on}>
+      <span className="text-faint">{icon}</span>
+      <span className="flex-1">{label}</span>
+      {count && <span className="text-[10.5px] text-faint">{count}</span>}
+    </SideRow>
+  );
   return (
     <>
-      <SideHead>acme/web</SideHead>
-      <SideLabel>Project</SideLabel>
-      {[
-        ["Code", ""],
-        ["Issues", "12"],
-        ["Pull requests", "3"],
-        ["Checks", ""],
-        ["Deployments", ""],
-      ].map(([name, n]) => (
-        <SideRow key={name} on={name === "Pull requests"}>
-          <span className="flex-1">{name}</span>
-          {n && <span className="text-[11px] text-faint">{n}</span>}
+      <SideHead>Code</SideHead>
+      <div className="px-2 pt-2.5">
+        <SideSearch keys>Search or jump to…</SideSearch>
+        <div className="mt-2.5 flex h-7 items-center gap-1 px-1 text-[12px] font-medium text-fg">
+          <ChevronLeft size={14} className="text-faint" />
+          All projects
+        </div>
+        <div className="mt-1 flex items-center gap-2 rounded-md px-2 py-1">
+          <span className="flex size-5 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
+            <Box size={11} />
+          </span>
+          <span className="font-mono text-[12px]">
+            <span className="text-faint">acme/</span>
+            <span className="font-semibold text-fg">web</span>
+          </span>
+        </div>
+        <div className="mx-2 my-2 h-px bg-line" />
+        {row(<Code2 size={13} />, "Code")}
+        {row(<CircleDot size={13} />, "Issues", "12")}
+        {row(<GitPullRequest size={13} />, "Pull requests", "3", true)}
+        {row(<Bot size={13} />, "Agents")}
+        {row(<PlayCircle size={13} />, "Workflows")}
+        <div className="mx-2 my-2 h-px bg-line" />
+        {row(<Rocket size={13} />, "Deployments")}
+        <SideRow>
+          <span className="text-faint">
+            <Activity size={13} />
+          </span>
+          <span className="flex-1">Observability</span>
+          <span className="rounded-full px-1.5 text-[9px] text-faint ring-1 ring-line">Soon</span>
         </SideRow>
-      ))}
-      <SideLabel>Linked channels</SideLabel>
-      <SideRow>
-        <Hash size={13} className="text-faint" />
-        web
-      </SideRow>
+        {row(<ShieldCheck size={13} />, "Security")}
+        {row(<BarChart3 size={13} />, "Insights")}
+        <div className="mx-2 my-2 h-px bg-line" />
+        {row(<Settings size={13} />, "Settings")}
+      </div>
     </>
   );
 }
@@ -785,7 +975,7 @@ function CodeMain({ frame }: { frame: Frame }) {
               batches of 1,000. A 200,000-row account takes 3.1 s.
             </p>
           </div>
-          <div className="overflow-hidden rounded-xl bg-bg ring-1 ring-line">
+          <div className="overflow-hidden rounded-xl border border-line bg-surface">
             <p className="flex items-center gap-2 border-b border-line px-3.5 py-2 font-mono text-[11px] text-muted">
               <FileText size={12} />
               services/export/csv.py
@@ -824,7 +1014,7 @@ function CodeMain({ frame }: { frame: Frame }) {
           </div>
         </div>
         <div className="space-y-3">
-          <div className="rounded-xl bg-bg ring-1 ring-line">
+          <div className="rounded-xl border border-line bg-surface">
             <p className="border-b border-line px-3.5 py-2 text-[11px] font-medium text-muted">
               Checks · {frame.checks} of {CHECKS.length} passed
             </p>
@@ -861,7 +1051,7 @@ function CodeMain({ frame }: { frame: Frame }) {
           </div>
           <div
             className={cn(
-              "rounded-xl bg-bg px-3.5 py-3 text-[12px] ring-1 ring-line transition-opacity duration-500",
+              "rounded-xl border border-line bg-surface px-3.5 py-3 text-[12px] transition-opacity duration-500",
               frame.checks >= CHECKS.length ? "opacity-100" : "opacity-0",
             )}
           >
@@ -876,24 +1066,30 @@ function CodeMain({ frame }: { frame: Frame }) {
 
 /* Docs ---------------------------------------------------------------- */
 
+/** Docs is coming: its sidebar is a preview of what it will hold, and says so. */
 function DocsSide() {
   return (
     <>
-      <SideHead action>Docs</SideHead>
-      <SideLabel>Product</SideLabel>
-      {["Getting started", "Billing", "Exporting data", "Integrations"].map((page) => (
-        <SideRow key={page} on={page === "Exporting data"}>
-          <FileText size={13} className="text-faint" />
-          {page}
-        </SideRow>
-      ))}
-      <SideLabel>Engineering</SideLabel>
-      {["Runbooks", "Decisions"].map((page) => (
-        <SideRow key={page}>
-          <FileText size={13} className="text-faint" />
-          {page}
-        </SideRow>
-      ))}
+      <SideHead action={<Plus size={14} />} soon>
+        Docs
+      </SideHead>
+      <div className="px-2 pt-2.5">
+        <SideSearch>Search docs</SideSearch>
+        <SideLabel>Product</SideLabel>
+        {["Getting started", "Billing", "Exporting data", "Integrations"].map((page) => (
+          <SideRow key={page} on={page === "Exporting data"}>
+            <FileText size={12} className="text-faint" />
+            {page}
+          </SideRow>
+        ))}
+        <SideLabel>Engineering</SideLabel>
+        {["Runbooks", "Decisions"].map((page) => (
+          <SideRow key={page}>
+            <FileText size={12} className="text-faint" />
+            {page}
+          </SideRow>
+        ))}
+      </div>
     </>
   );
 }
@@ -1005,6 +1201,17 @@ const SIDES: Record<Scene, (props: { frame: Frame }) => ReactNode> = {
   docs: DocsSide,
 };
 
+/** Where each page is, as the top bar's trail says it; Chat has no top bar on a computer. */
+const CRUMBS: Record<Scene, { label: string; mono?: boolean }[] | null> = {
+  chat: null,
+  agents: [{ label: "acme", mono: true }, { label: "Agents" }],
+  code: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
+  docs: [{ label: "acme", mono: true }, { label: "Docs" }],
+};
+
+/** The sidebar's colour, a shade lighter than the page (shell.tsx, SIDEBAR_BOX). */
+const SIDE_BG = "color-mix(in srgb, var(--color-surface) 70%, var(--color-bg))";
+
 function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
   const outer = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLDivElement | null>(null);
@@ -1030,33 +1237,34 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     <div ref={outer} className="relative w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/50 ring-1 ring-line" style={{ aspectRatio: `${W} / ${H}` }}>
       <div
         ref={canvas}
-        className="absolute top-0 left-0 origin-top-left bg-surface text-left"
-        style={{ width: W, height: H, transform: scale === 1 ? undefined : `scale(${scale})` }}
+        className="absolute top-0 left-0 flex origin-top-left bg-bg text-left"
+        style={{ width: W, height: H, transform: scale === 1 ? undefined : `scale(${scale})`, ["--tour-side" as string]: SIDE_BG } as CSSProperties}
       >
-        <TopBar frame={frame} />
-        <div className="flex" style={{ height: H - 44 }}>
-          <Rail scene={frame.scene} />
-          <div className="relative min-w-0 flex-1">
-            {scenes.map((scene) => {
-              const Side = SIDES[scene];
-              const on = frame.scene === scene;
-              return (
-                <div
-                  key={scene}
-                  aria-hidden={!on}
-                  className={cn(
-                    "absolute inset-0 flex transition-[opacity,transform] duration-500 ease-out",
-                    on ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0",
-                  )}
-                >
-                  <div className="w-52 shrink-0 border-r border-line px-2 py-3">
-                    <Side frame={frame} />
-                  </div>
-                  <div className="min-w-0 flex-1">{mains[scene]}</div>
+        <Rail scene={frame.scene} />
+        <div className="relative min-w-0 flex-1">
+          {scenes.map((scene) => {
+            const Side = SIDES[scene];
+            const on = frame.scene === scene;
+            const crumbs = CRUMBS[scene];
+            return (
+              <div
+                key={scene}
+                aria-hidden={!on}
+                className={cn(
+                  "absolute inset-0 flex transition-[opacity,transform] duration-500 ease-out",
+                  on ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0",
+                )}
+              >
+                <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-line" style={{ background: SIDE_BG }}>
+                  <Side frame={frame} />
                 </div>
-              );
-            })}
-          </div>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  {crumbs && <TopBar crumbs={crumbs} />}
+                  <div className="min-h-0 flex-1">{mains[scene]}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
         {!reduced && <Cursor frame={frame} canvas={canvas} scale={scale} />}
       </div>
@@ -1067,34 +1275,34 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
 /* Phone --------------------------------------------------------------- */
 
 const MODE: Record<Scene, { icon: ReactNode; label: string }> = {
-  chat: { icon: <MessagesSquare size={14} />, label: "# web" },
-  agents: { icon: <Bot size={14} />, label: "Otto's desk" },
+  chat: { icon: <Hash size={14} />, label: "web" },
+  agents: { icon: <Sparkles size={14} />, label: "Otto · Sessions" },
   code: { icon: <GitPullRequest size={14} />, label: "Pull request #431" },
   docs: { icon: <BookOpen size={14} />, label: "Exporting data" },
 };
 
+/** The phone's tab bar, as the app has it (components/mobile.tsx). */
+const TABS: { scene: Scene | null; icon: ReactNode; label: string }[] = [
+  { scene: null, icon: <House size={16} />, label: "Home" },
+  { scene: "code", icon: <Code2 size={16} />, label: "Code" },
+  { scene: "chat", icon: <MessagesSquare size={16} />, label: "Chat" },
+  { scene: "agents", icon: <Sparkles size={16} />, label: "Agents" },
+  { scene: null, icon: <Inbox size={16} />, label: "Inbox" },
+];
+
 function Phone({ frame }: { frame: Frame }) {
-  const note = honesty(frame);
   const scenes: Scene[] = ["chat", "agents", "code", "docs"];
   return (
-    <div className="relative h-[34rem] w-full overflow-hidden rounded-2xl bg-surface text-left shadow-2xl shadow-black/50 ring-1 ring-line">
-      <div className="flex h-12 items-center gap-2 border-b border-line px-3">
-        <Mark className="size-5 text-fg" />
+    <div className="relative flex h-[34rem] w-full flex-col overflow-hidden rounded-2xl bg-bg text-left shadow-2xl shadow-black/50 ring-1 ring-line">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
+        <Avatar name="acme" size={26} square />
         <span key={frame.scene} className="tour-fade flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-fg">
-          <span className="text-accent">{MODE[frame.scene].icon}</span>
+          <span className="text-faint">{MODE[frame.scene].icon}</span>
           <span className="truncate">{MODE[frame.scene].label}</span>
         </span>
-        <span
-          className={cn(
-            "ml-auto flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1",
-            note.today ? "bg-success/10 text-success ring-success/25" : "bg-raised text-muted ring-line-strong",
-          )}
-        >
-          <span className={cn("size-1.5 rounded-full", note.today ? "bg-success" : "bg-faint")} />
-          {note.today ? "Today" : "Soon"}
-        </span>
+        {frame.scene === "docs" && <Soon />}
       </div>
-      <div className="relative h-[calc(100%-3rem)]">
+      <div className="relative min-h-0 flex-1">
         {scenes.map((scene) => {
           const on = frame.scene === scene;
           return (
@@ -1115,6 +1323,20 @@ function Phone({ frame }: { frame: Frame }) {
           );
         })}
       </div>
+      {/* Inside a conversation the tab bar steps aside, as it does on a phone. */}
+      {frame.scene !== "chat" && (
+        <div className="grid h-12 shrink-0 grid-cols-5 border-t border-line bg-[#0b0b0d]">
+          {TABS.map((tab) => {
+            const on = tab.scene === frame.scene;
+            return (
+              <span key={tab.label} className="flex flex-col items-center justify-center gap-0.5">
+                <span className={cn("flex h-6 w-10 items-center justify-center rounded-full", on ? "bg-[#2c2c33] text-fg" : "text-muted")}>{tab.icon}</span>
+                <span className={cn("text-[9.5px] font-medium", on ? "text-fg" : "text-faint")}>{tab.label}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1166,7 +1388,7 @@ function PhoneChat({ frame }: { frame: Frame }) {
         )}
       </div>
       <div className="px-3 pt-1 pb-3">
-        <div className={cn("flex items-center gap-2 rounded-xl bg-bg px-3 py-2.5 text-[13px] ring-1", frame.typed > 0 ? "ring-accent/50" : "ring-line")}>
+        <div className={cn("flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-[13px] ring-1", frame.typed > 0 ? "ring-accent/50" : "ring-line")}>
           <span className="min-w-0 flex-1 truncate">
             {frame.typed > 0 ? (
               <span className="text-fg">
@@ -1197,7 +1419,7 @@ function PhoneAgents({ frame }: { frame: Frame }) {
           <p className="text-[11px] text-muted">Working · ${cost.toFixed(2)} of $5</p>
         </div>
       </div>
-      <div className="rounded-xl bg-bg ring-1 ring-line">
+      <div className="rounded-xl border border-line bg-surface">
         <p className="border-b border-line px-3.5 py-2.5 text-[13px] font-medium text-fg">CSV export times out for big accounts</p>
         <ol className="space-y-2 px-3.5 py-3">
           {STEPS.map((step, index) => {
@@ -1259,7 +1481,7 @@ function PhoneCode({ frame }: { frame: Frame }) {
         <span className="text-fg-soft">@otto</span> wants to merge into <span className="font-mono text-[11px] text-fg-soft">main</span>. Rows now
         stream in batches of 1,000; a 200,000-row account takes 3.1 s.
       </p>
-      <div className="rounded-xl bg-bg ring-1 ring-line">
+      <div className="rounded-xl border border-line bg-surface">
         <ul className="space-y-2 px-3.5 py-3">
           {CHECKS.map((check, index) => {
             const done = index < frame.checks;
@@ -1278,7 +1500,7 @@ function PhoneCode({ frame }: { frame: Frame }) {
           })}
         </ul>
       </div>
-      <pre className={cn("overflow-hidden rounded-xl bg-bg py-1.5 font-mono text-[10.5px] leading-[1.7] ring-1 ring-line transition-opacity duration-500", frame.diff ? "opacity-100" : "opacity-0")}>
+      <pre className={cn("overflow-hidden rounded-xl border border-line bg-surface py-1.5 font-mono text-[10.5px] leading-[1.7] transition-opacity duration-500", frame.diff ? "opacity-100" : "opacity-0")}>
         {DIFF.slice(1).map((line, index) => (
           <div key={index} className={cn("truncate px-3", line.sign === "+" ? "bg-success/10 text-success" : "bg-danger/10 text-danger")}>
             {line.sign} {line.text.trim()}
@@ -1345,7 +1567,10 @@ export function ProductTour({ className }: { className?: string }) {
           <Phone frame={frame} />
         </div>
       </div>
-      <div className="mx-auto mt-5 grid max-w-xl grid-cols-4 gap-2" role="tablist" aria-label="Steps of the tour">
+      <div className="mt-4 flex justify-center" aria-live="polite">
+        <HonestyNote frame={frame} />
+      </div>
+      <div className="mx-auto mt-3 grid max-w-xl grid-cols-4 gap-2" role="tablist" aria-label="Steps of the tour">
         {PILLS.map((pill, index) => {
           const on = clock.pill === index;
           return (
@@ -1382,8 +1607,9 @@ export function ProductTour({ className }: { className?: string }) {
         })}
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
-        A preview of where g1t is going. Chat, agents you DM, pull requests, checks and the merge queue work today.
-        Handoffs and consults between agents, live desks and Docs are coming soon.
+        Chat, agents and their sessions (colleagues brought in included), pull requests, checks and the merge queue work
+        today. g1t splitting one request between colleagues on its own, and Docs, are coming soon. Otto, Margo and the others are
+        agents this workspace hired from role templates; only @g1t comes built in.
       </p>
     </div>
   );

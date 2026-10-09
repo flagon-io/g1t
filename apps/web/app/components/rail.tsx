@@ -2,7 +2,7 @@ import { Activity, BookOpen, Building2, Check, CircleHelp, CircleUserRound, Code
 import { type ReactNode, useState } from "react";
 import { Link, useLocation, useNavigation } from "react-router";
 
-import { type Membership, type User, hasCodeAccess } from "@g1t/contracts";
+import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
 import { Avatar } from "./ui";
 import { Hint } from "./ui/hint";
@@ -141,7 +141,7 @@ function WorkspaceButton({ user, workspace }: { user: User; workspace: Membershi
           <Link to={`/u/${user.username}`}>
             <CircleUserRound />
             <span className="grow">Your profile</span>
-            <span className="font-mono text-xs text-faint">@{user.username}</span>
+            <span className="font-mono text-xs text-faint">@{shownUsername(user)}</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
@@ -277,8 +277,9 @@ export function Rail({
       style={{ width: RAIL_WIDTH, ["--rail-bg" as string]: "#0b0b0d" }}
       className="flex h-full shrink-0 flex-col items-center overflow-y-auto bg-[var(--rail-bg)] pb-3 shadow-[inset_-1px_0_0_var(--color-line)] [scrollbar-width:none]"
     >
-      {/* The top bar's height and rule, so the workspace sits on the same line as the sidebar's heading and the page's top bar. */}
-      <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-line">
+      {/* The top bar's height, rule and colour: the workspace sits in the top bar's line, tied to it as the
+          sidebar's heading is, rather than on the rail below it. */}
+      <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-line bg-bg shadow-[inset_-1px_0_0_var(--color-line)]">
         <WorkspaceButton user={user} workspace={workspace} />
       </div>
       <div className="mt-3 flex w-full flex-col items-center gap-2 px-1.5">

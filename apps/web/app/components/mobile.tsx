@@ -1,6 +1,8 @@
 import {
   Activity,
   BarChart3,
+  BellOff,
+  BellRing,
   BookOpen,
   Building2,
   Check,
@@ -11,10 +13,13 @@ import {
   LifeBuoy,
   LogOut,
   MessagesSquare,
+  Moon,
   Plug,
   Plus,
   Settings,
+  Smile,
   Sparkles,
+  Sun,
   Users,
   UsersRound,
 } from "lucide-react";
@@ -22,9 +27,12 @@ import { Dialog as Primitive } from "radix-ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 
-import { type Membership, type User, hasCodeAccess } from "@g1t/contracts";
+import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
 import { Avatar } from "./ui";
+import { StatusDialog } from "./presence";
+import { setPresence, useOwnPresence } from "../lib/notify-client";
+import { dndOn, liveStatus, pauseUntil, untilLabel } from "../lib/presence";
 import { STATUS_URL } from "../lib/status";
 import { modeOf } from "../lib/workspace-nav";
 
@@ -273,6 +281,44 @@ function displayName(membership: Membership): string {
   return membership.name?.trim() || membership.slug;
 }
 
+/** Your status, away and pausing notifications, as the account menu has them on a computer. */
+function OwnPresenceRows({ onEdit }: { onEdit: () => void }) {
+  const me = useOwnPresence();
+  const now = Date.now();
+  const status = liveStatus(me?.status, now);
+  const paused = dndOn(me, now);
+  const away = me?.away_manual === true;
+  return (
+    <>
+      <SheetRow icon={status?.emoji ? <span className="text-lg leading-none">{status.emoji}</span> : <Smile />} onClick={onEdit}>
+        {status ? status.text || "Status set" : "Set a status"}
+      </SheetRow>
+      <SheetRow icon={away ? <Sun /> : <Moon />} onClick={() => void setPresence({ away: !away }, { away_manual: !away, presence: away ? "active" : "away" })}>
+        {away ? "Set yourself active" : "Set yourself away"}
+      </SheetRow>
+      {paused ? (
+        <SheetRow
+          icon={<BellRing />}
+          end={me?.dnd_until ? <span className="text-xs text-faint">{untilLabel(me.dnd_until, new Date(now))}</span> : null}
+          onClick={() => void setPresence({ dnd_until: null }, { dnd_until: null })}
+        >
+          Resume notifications
+        </SheetRow>
+      ) : (
+        <SheetRow
+          icon={<BellOff />}
+          onClick={() => {
+            const until = pauseUntil("1h", new Date());
+            void setPresence({ dnd_until: until }, { dnd_until: until });
+          }}
+        >
+          Pause notifications for 1 hour
+        </SheetRow>
+      )}
+    </>
+  );
+}
+
 /**
  * The phone's everything-else: the workspace avatar at the top left opens
  * it. Your workspaces, Docs, the workspace's own pages, help, and your
@@ -285,6 +331,7 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
   useEffect(() => setOpen(false), [pathname]);
   const slug = workspace.slug;
   const owner = workspace.role === "owner";
+  const [editing, setEditing] = useState(false);
   return (
     <>
       <button
@@ -352,7 +399,13 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
             Status
           </SheetRow>
         </SheetGroup>
-        <SheetGroup title={`@${user.username}`}>
+        <SheetGroup title={`@${shownUsername(user)}`}>
+          <OwnPresenceRows
+            onEdit={() => {
+              setOpen(false);
+              setEditing(true);
+            }}
+          />
           <SheetRow to={`/u/${user.username}`} icon={<CircleUserRound />}>
             Your profile
           </SheetRow>
@@ -364,6 +417,7 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
           </SheetRow>
         </SheetGroup>
       </BottomSheet>
+      <StatusDialog open={editing} onOpenChange={setEditing} />
     </>
   );
 }

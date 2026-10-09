@@ -27,8 +27,8 @@
 //!
 //! Deleting is soft first, as for a workspace. At once, in one batch: the
 //! row gets `deleted_at`, `deleted_by` and `purge_after`
-//! ([`ACCOUNT_RESTORE_DAYS`] on); its sessions, access tokens (classic,
-//! fine-grained and agents'), OAuth grants and codes, device sign-ins, SSH
+//! ([`ACCOUNT_RESTORE_DAYS`] on); its sessions, access tokens (its own and
+//! agents'), OAuth grants and codes, device sign-ins, SSH
 //! keys, the deploy keys it added, two-factor sign-ins in progress, emailed
 //! links and GitHub sign-ins in progress go; it leaves every workspace,
 //! team and repository, its pending repository invitations are revoked and
@@ -250,11 +250,11 @@ pub fn may_purge(protected: bool, username: &str, confirm: Option<&str>) -> std:
 /// with how many of the account's id (`?1`) and now (`?2`) it takes.
 pub fn revoke_statements() -> Vec<(String, usize)> {
     let mut sql: Vec<(String, usize)> = vec![
-        // A fine-grained token's repositories go with it, before it.
+        // A token's selected repositories go with it, before it.
         ("DELETE FROM token_repositories WHERE token_id IN (SELECT id FROM access_tokens WHERE user_id = ?1)".to_owned(), 1),
     ];
-    // Everything it signs in or acts with: sessions, tokens (classic,
-    // fine-grained, agents'), applications, device sign-ins, SSH keys,
+    // Everything it signs in or acts with: sessions, tokens (its own and
+    // agents'), applications, device sign-ins, SSH keys,
     // two-factor sign-ins in progress, emailed links, GitHub sign-ins in
     // progress. Then its place in workspaces and teams.
     for table in [

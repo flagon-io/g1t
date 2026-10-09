@@ -844,6 +844,7 @@ pub fn as_person(user: &User) -> Option<User> {
     Some(User {
         id: acting.on_behalf_of.id.clone(),
         username: acting.on_behalf_of.username.clone(),
+        display_username: None,
         kind: PrincipalKind::User,
         verified: user.verified,
         workspaces: user.workspaces.clone(),
@@ -960,6 +961,7 @@ mod tests {
         User {
             id: "usr_g1t_agent".to_owned(),
             username: "g1t".to_owned(),
+            display_username: None,
             kind: PrincipalKind::Agent,
             verified: true,
             workspaces: member_of

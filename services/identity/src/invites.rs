@@ -517,8 +517,11 @@ impl From<WaitlistRow> for WaitlistEntry {
 
 /// What a new account is made from.
 pub struct NewAccount<'a> {
-    /// Checked by the caller: valid, and free.
+    /// Checked by the caller: valid, free, and lowercased.
     pub username: &'a str,
+    /// The username as the person wrote it, when its case differs (`Ana`
+    /// for `ana`): kept beside it for showing. None shows `username`.
+    pub display_username: Option<&'a str>,
     /// Lowercased and checked by the caller.
     pub email: &'a str,
     /// Empty for an account with no password (made through GitHub).
@@ -946,6 +949,18 @@ impl Identity {
             self.count_failure(new.client).await?;
             return Ok(Outcome::fail(FailureCode::Forbidden, INVALID));
         }
+        // The case it was chosen in, beside the lowercased name everything finds it by.
+        let user = match new.display_username.filter(|display| display.eq_ignore_ascii_case(new.username) && *display != new.username) {
+            Some(display) => {
+                self.db
+                    .prepare("UPDATE users SET display_username = ? WHERE id = ?")
+                    .bind(&[display.into(), user.id.as_str().into()])?
+                    .run()
+                    .await?;
+                User { display_username: Some(display.to_owned()), ..user }
+            }
+            None => user,
+        };
         // Nobody is left without a workspace: one of its own, unless its
         // invite brings it into one (invitations.rs).
         self.give_own_workspace(&user, invite.as_ref()).await;

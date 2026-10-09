@@ -26,5 +26,6 @@ test("a settings path names its page", () => {
   }
   assert.equal(accountSettingsPage("/settings"), null);
   assert.equal(accountSettingsPage("/settings/nope"), null);
+  assert.equal(accountSettingsPage("/settings/tokens/tok_1"), "tokens", "a token's page is under Access tokens");
   assert.equal(accountSettingsPage("/acme/web/settings/domains"), null);
 });
