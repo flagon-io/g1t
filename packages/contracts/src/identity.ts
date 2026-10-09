@@ -215,7 +215,18 @@ export const INVITE_TTL_DAYS = 30;
  * email address yet; what it gives is joined when the address is confirmed,
  * unless it is revoked first.
  */
-export type InviteStatus = "pending" | "awaiting_confirmation" | "redeemed" | "expired" | "revoked";
+/**
+ * `awaiting_answer`: the account it made is confirmed, and the workspace it
+ * names waits for the person to accept or decline. `declined`: they said no.
+ */
+export type InviteStatus =
+  | "pending"
+  | "awaiting_confirmation"
+  | "awaiting_answer"
+  | "redeemed"
+  | "declined"
+  | "expired"
+  | "revoked";
 
 /** One invite. Mirrors `Invite` in `crates/contracts/src/identity.rs`. */
 export type Invite = {
@@ -243,9 +254,31 @@ export type Invite = {
   expiresAt: string;
   redeemedAt: string | null;
   revokedAt: string | null;
+  /** The account a workspace invitation is for, by username: someone invited by username, or the account the invite made. */
+  invitee?: string | null;
+  /** The role `workspace` is joined with; null when it names none. */
+  role?: Role | null;
   /** The staff member who minted it; only in staff views. */
   staff?: string | null;
 };
+
+/**
+ * A workspace invitation waiting for its person's answer, as they see it.
+ * Mirrors `WorkspaceInvitation` in `crates/contracts/src/identity.rs`.
+ */
+export type WorkspaceInvitation = {
+  id: string;
+  workspace: ProfileWorkspace;
+  /** The role accepting joins with. */
+  role: Role;
+  /** Null when g1t staff sent it. */
+  invitedBy: { username: string; name: string | null; avatar: string | null } | null;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/** Someone to invite, as `findPeople` finds them: never an email address. */
+export type PersonMatch = { username: string; name: string | null; avatar: string | null };
 
 /** How many invites someone may have out. `limit` and `remaining` are null for no limit. */
 export type Allowance = { limit: number | null; used: number; remaining: number | null };
@@ -897,7 +930,10 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
    * using one of theirs or, with `workspace`, one the workspace was granted.
    * People only: never an agent or a workspace's token.
    */
-  createInvite(user: User, options?: { email?: string | null; workspace?: string | null }): Promise<Result<Invite>>;
+  createInvite(
+    user: User,
+    options?: { email?: string | null; workspace?: string | null; join?: string | null },
+  ): Promise<Result<Invite>>;
   /** Its maker, or an owner of its workspace, revokes a pending invite; the invite comes back. */
   revokeInvite(user: User, id: string): Promise<Result<Invite>>;
   /**
@@ -917,8 +953,24 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
    * `workspace/repo`.
    */
   acceptInvite(user: User, code: string): Promise<Result<string>>;
-  /** Owners only. Invites an address into a workspace, always with an invite bound to it. */
-  inviteMember(actor: User, slug: string, email: string): Promise<Result<Invite>>;
+  /**
+   * Owners only. Invites someone into a workspace by address (always with an
+   * invite bound to it) or by `username`: a workspace invitation they accept
+   * or decline. Nobody joins without saying yes. `role` is what they join as.
+   */
+  inviteMember(
+    actor: User,
+    slug: string,
+    who: { email?: string | null; username?: string | null; role?: Role | null },
+  ): Promise<Result<Invite>>;
+  /** The workspace invitations waiting for the person's answer, newest first. */
+  listInvitations(user: User): Promise<WorkspaceInvitation[]>;
+  /** Joins the invitation's workspace with its role; returns the workspace's slug. */
+  acceptInvitation(user: User, id: string): Promise<Result<string>>;
+  /** Declines it; whoever sent it is told in their inbox. */
+  declineInvitation(user: User, id: string): Promise<Result<boolean>>;
+  /** People to invite, by username prefix or name: a username, a name and an avatar each. */
+  findPeople(query: string, limit?: number): Promise<PersonMatch[]>;
   /** Owners only: the workspace's invites, newest first. */
   workspaceInvites(slug: string, viewer: Viewer): Promise<Result<Invite[]>>;
   /** Owners only. */

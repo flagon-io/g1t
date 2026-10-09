@@ -18,6 +18,7 @@ import {
 import type { Route } from "./+types/home";
 import { page } from "../lib/meta";
 import { WORKSPACE_COOKIE, chosenWorkspace } from "../lib/workspace-choice";
+import { NO_WORKSPACE_PATH, hasNoWorkspace } from "../lib/workspace-gate";
 import {
   type ActivityItem,
   type Need,
@@ -210,6 +211,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     // The signed-out home page is about signing up; it lists no repositories.
     return data({ signedIn: false as const });
   }
+  // Mission control is about a workspace: never shown without one (lib/workspace-gate.ts).
+  if (hasNoWorkspace(viewer)) throw redirect(NO_WORKSPACE_PATH);
 
   const now = Date.now();
   const weekAgo = now - 7 * TIME.DAY;

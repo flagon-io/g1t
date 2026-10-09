@@ -210,6 +210,7 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<g1t_contracts::identity::Invite>(op, sent)
         }
         Op::ListWorkspaceInvites => through::<Vec<g1t_contracts::identity::Invite>>(op, sent),
+        Op::ListInvitations => through::<Vec<g1t_contracts::identity::WorkspaceInvitation>>(op, sent),
         Op::ListNotifications => through::<g1t_contracts::inbox::InboxPage>(op, sent),
         Op::GetNotificationThread | Op::MarkThreadRead | Op::MarkThreadDone | Op::SaveThread | Op::SnoozeThread => {
             through::<g1t_contracts::inbox::InboxThread>(op, sent)

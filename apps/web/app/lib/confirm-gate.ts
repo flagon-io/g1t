@@ -10,6 +10,9 @@
 /** Where an account confirms its address: the code, a new one, a new address. */
 export const CONFIRM_PATH = "/confirm-email";
 
+/** Where a person answers the workspace invitations waiting for them. */
+export const INVITATIONS_PATH = "/invitations";
+
 /** Pages a pending account can open as they are. */
 const OPEN = new Set([
   CONFIRM_PATH,
@@ -68,14 +71,19 @@ export function confirmGate(pathname: string, search: string, viewer: Pending): 
 }
 
 /** What the confirmation page says once a code or link has worked. */
-export function confirmedLine(done: { joined?: string | null; inviteLapsed?: string | null }): string {
+export function confirmedLine(done: { joined?: string | null; invitedTo?: string | null; inviteLapsed?: string | null }): string {
   if (done.inviteLapsed) return done.inviteLapsed;
   if (done.joined) return `Your email address is confirmed, and you have joined ${done.joined}.`;
+  if (done.invitedTo) return `Your email address is confirmed. You are invited to join ${done.invitedTo}: accept or decline the invitation next.`;
   return "Your email address is confirmed.";
 }
 
-/** Where to go once confirmed: back where they were going, else the workspace joined, else home. */
-export function afterConfirming(next: string, joined?: string | null): string {
+/**
+ * Where to go once confirmed: the invitation the invite brought, to accept or
+ * decline; else back where they were going, else the workspace joined, else home.
+ */
+export function afterConfirming(next: string, joined?: string | null, invitedTo?: string | null): string {
+  if (invitedTo) return INVITATIONS_PATH;
   if (next && next !== "/") return next;
   return joined ? `/${joined}` : "/";
 }

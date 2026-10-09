@@ -2,7 +2,7 @@ import type { Route } from "./+types/invites";
 import { page } from "../../lib/meta";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 import { InvitesSection } from "../../components/invites-section";
-import { inviteAction, loadInvites } from "../../lib/invites.server";
+import { inviteAction, loadBringInto, loadInvites } from "../../lib/invites.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Invites · Settings · g1t" });
@@ -10,7 +10,8 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  return { invites: await loadInvites(user), origin: new URL(request.url).origin };
+  const [invites, bringInto] = await Promise.all([loadInvites(user), loadBringInto(user, request)]);
+  return { invites, bringInto, origin: new URL(request.url).origin };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -27,6 +28,7 @@ export default function InviteSettings({ loaderData, actionData }: Route.Compone
     <InvitesSection
       overview={loaderData.invites}
       origin={loaderData.origin}
+      bringInto={loaderData.bringInto}
       created={actionData?.inviteCreated}
       error={actionData?.inviteError}
     />

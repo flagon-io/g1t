@@ -105,8 +105,9 @@ export function inviteSignUpCopy(invite: Proven): {
 } {
   const proven = invite.emailProven && invite.address !== null;
   const when = proven ? "as soon as you create it" : "as soon as you confirm your email";
+  // A workspace is never joined without saying yes: the new account accepts its invitation.
   const intro = invite.workspace
-    ? `You join ${invite.workspace.name} ${when}.`
+    ? `You can join ${invite.workspace.name} ${when}: accept the invitation then.`
     : invite.repository
       ? `You get ${invite.repository.name} ${when}.`
       : "It takes a minute.";
@@ -127,10 +128,12 @@ export function inviteSignUpCopy(invite: Proven): {
 }
 
 type Listed = {
-  status: "pending" | "awaiting_confirmation" | "redeemed" | "expired" | "revoked";
+  status: "pending" | "awaiting_confirmation" | "awaiting_answer" | "redeemed" | "declined" | "expired" | "revoked";
   redeemedBy: string | null;
   email: string | null;
   workspace: string | null;
+  /** The account a workspace invitation is for, by username. */
+  invitee?: string | null;
 };
 
 /** How an invite's state reads in a list. */
@@ -144,8 +147,15 @@ export function inviteState(invite: Listed): { label: string; tone: "pending" | 
         label: invite.redeemedBy ? `@${invite.redeemedBy} is confirming their email` : "Confirming their email",
         tone: "pending",
       };
+    case "awaiting_answer": {
+      // The account is made and confirmed; the workspace waits for its yes or no.
+      const who = invite.redeemedBy ?? invite.invitee;
+      return { label: who ? `Waiting for @${who} to accept` : "Waiting for an answer", tone: "pending" };
+    }
     case "redeemed":
       return { label: invite.redeemedBy ? `Joined as @${invite.redeemedBy}` : "Used", tone: "done" };
+    case "declined":
+      return { label: invite.invitee ? `@${invite.invitee} declined` : "Declined", tone: "dead" };
     case "expired":
       return { label: "Expired", tone: "dead" };
     case "revoked":
@@ -155,8 +165,45 @@ export function inviteState(invite: Listed): { label: string; tone: "pending" | 
 
 /** Who an invite is for, in a list. */
 export function inviteFor(invite: Listed): string {
-  const who = invite.email ?? "Anyone with the link";
-  return invite.workspace ? `${who} · joins ${invite.workspace}` : who;
+  const who = invite.email ?? (invite.invitee ? `@${invite.invitee}` : "Anyone with the link");
+  return invite.workspace ? `${who} · invited to ${invite.workspace}` : who;
+}
+
+type Membership = { slug: string; name?: string | null; role: "owner" | "member" };
+
+/** One workspace an own invite can bring its person into. */
+export type BringInto = { slug: string; name: string };
+
+/** The value of "No workspace — they'll get their own" in the form. */
+export const OWN_WORKSPACE = "";
+
+/**
+ * The "Bring them into" choices on Settings → Invites: the workspaces the
+ * person may add members to (ones they own that are not on the free plan,
+ * which adds no one), and which is chosen at first: the workspace they are
+ * in (`current`) when it is one of those, else none (the new account gets
+ * a workspace of its own). `note` says why the current one is not offered.
+ */
+export function bringIntoChoices(
+  memberships: Membership[],
+  free: string[],
+  current: string | null | undefined,
+): { options: BringInto[]; chosen: string; note: string | null } {
+  const isFree = new Set(free.map((slug) => slug.toLowerCase()));
+  const options = memberships
+    .filter((m) => m.role === "owner" && !isFree.has(m.slug.toLowerCase()))
+    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug }));
+  const here = current?.trim().toLowerCase() || null;
+  const chosen = here && options.some((option) => option.slug === here) ? here : OWN_WORKSPACE;
+  let note: string | null = null;
+  const membership = here ? memberships.find((m) => m.slug.toLowerCase() === here) : undefined;
+  if (membership && !chosen) {
+    note =
+      membership.role !== "owner"
+        ? `Only the owners of ${membership.slug} can bring people into it.`
+        : `${membership.slug} is on the free plan, so it cannot add people. Start the plan to bring people into it.`;
+  }
+  return { options, chosen, note };
 }
 
 /** How many invites are left, in words. */

@@ -402,6 +402,9 @@ pub const NEVER: &[&str] = &[
     "list_my_repo_invitations",
     "accept_repo_invitation",
     "decline_repo_invitation",
+    // Nor answers a workspace invitation: only the person it is for does.
+    "accept_invitation",
+    "decline_invitation",
     "set_base_permission",
     "list_outside_collaborators",
     // Deploy keys, which let a machine into a repository.

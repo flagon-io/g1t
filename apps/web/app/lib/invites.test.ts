@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { CONTACT } from "./legal.ts";
 import {
   HAVE_AN_INVITE,
+  OWN_WORKSPACE,
+  bringIntoChoices,
   INVITES_CONTACT,
   cleanCode,
   cleanProof,
@@ -65,14 +68,14 @@ test("an invite email's proof is kept only when it looks like one, and goes alon
 test("signing up from the invite email says the address is confirmed already; otherwise the code step applies", () => {
   const base = { address: "ada@example.com", emailProven: false, workspace: { name: "Flagon, Inc." }, repository: null };
   const proven = inviteSignUpCopy({ ...base, emailProven: true });
-  assert.equal(proven.intro, "You join Flagon, Inc. as soon as you create it.");
+  assert.equal(proven.intro, "You can join Flagon, Inc. as soon as you create it: accept the invitation then.");
   assert.match(proven.confirmed ?? "", /^ada@example\.com is confirmed: you came here from the invite we emailed to it/);
   assert.match(proven.hint, /confirmed already/);
   assert.doesNotMatch(proven.hint, /code/);
 
   // No proof (a code typed in, or a link passed on): nothing new is said.
   const plain = inviteSignUpCopy(base);
-  assert.equal(plain.intro, "You join Flagon, Inc. as soon as you confirm your email.");
+  assert.equal(plain.intro, "You can join Flagon, Inc. as soon as you confirm your email: accept the invitation then.");
   assert.equal(plain.confirmed, null);
   assert.equal(plain.hint, "Your invite was sent here. We email it a code to confirm it before you start.");
 
@@ -107,7 +110,10 @@ test("each invite says where it stands and whom it is for", () => {
   assert.deepEqual(inviteState({ ...base, status: "expired" }), { label: "Expired", tone: "dead" });
   assert.deepEqual(inviteState({ ...base, status: "revoked" }), { label: "Revoked", tone: "dead" });
   assert.equal(inviteFor({ ...base, status: "pending" }), "Anyone with the link");
-  assert.equal(inviteFor({ ...base, status: "pending", email: "ada@example.com", workspace: "acme" }), "ada@example.com · joins acme");
+  assert.equal(inviteFor({ ...base, status: "pending", email: "ada@example.com", workspace: "acme" }), "ada@example.com · invited to acme");
+  assert.equal(inviteFor({ ...base, status: "pending", invitee: "daweazl", workspace: "flagon-io" }), "@daweazl · invited to flagon-io");
+  assert.deepEqual(inviteState({ ...base, status: "awaiting_answer", redeemedBy: "daweazl" }), { label: "Waiting for @daweazl to accept", tone: "pending" });
+  assert.deepEqual(inviteState({ ...base, status: "declined", invitee: "daweazl" }), { label: "@daweazl declined", tone: "dead" });
 });
 
 test("what is left reads plainly", () => {
@@ -179,4 +185,33 @@ test("a shared link limited to domains says which, on the email field", () => {
     sharedDomainsHint(["a.com", "b.com", "c.com"]),
     "This invite is for addresses at a.com, b.com or c.com. Use yours there.",
   );
+});
+
+test("an own invite brings its person into a workspace you own that can add people, the current one first", () => {
+  const memberships = [
+    { slug: "flagon-io", name: "Flagon, Inc.", role: "owner" as const },
+    { slug: "side", name: "side", role: "owner" as const },
+    { slug: "friends", name: "Friends", role: "member" as const },
+  ];
+  // The current workspace is chosen; free ones and ones you only belong to are not offered.
+  const here = bringIntoChoices(memberships, ["side"], "flagon-io");
+  assert.deepEqual(here.options, [{ slug: "flagon-io", name: "Flagon, Inc." }]);
+  assert.equal(here.chosen, "flagon-io");
+  assert.equal(here.note, null);
+  // In a free workspace: not offered, and the form says why; no workspace is chosen.
+  const free = bringIntoChoices(memberships, ["side"], "side");
+  assert.equal(free.chosen, OWN_WORKSPACE);
+  assert.match(free.note ?? "", /side is on the free plan, so it cannot add people/);
+  // In one you are only a member of.
+  assert.match(bringIntoChoices(memberships, [], "friends").note ?? "", /Only the owners of friends/);
+  // No workspace at all: their own.
+  assert.deepEqual(bringIntoChoices([], [], null), { options: [], chosen: OWN_WORKSPACE, note: null });
+});
+
+test("the invites form offers each workspace and no workspace, named for what it does", () => {
+  const section = readFileSync(new URL("../components/invites-section.tsx", import.meta.url), "utf8");
+  assert.match(section, /Bring them into/);
+  assert.match(section, /name="join"/);
+  assert.match(section, /No workspace — they'll get their own/);
+  assert.match(section, /defaultValue=\{bringInto\.chosen\}/);
 });

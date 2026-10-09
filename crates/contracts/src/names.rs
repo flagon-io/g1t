@@ -41,6 +41,8 @@ const ROUTES: &[&str] = &[
     "invite",
     "invites",
     "waitlist",
+    // g1t.sh/invitations: the workspace invitations waiting for an answer.
+    "invitations",
     // g1t.sh/v2/: the container registry; `-` paths hold the others.
     "v2",
     // g1t.sh/inbox, and the name it might also go by.

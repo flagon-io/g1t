@@ -50,6 +50,10 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/user/invites", Op::ListInvites, &[]),
     route("POST", "/user/invites", Op::CreateInvite, &[]),
     route("DELETE", "/user/invites/:id", Op::RevokeInvite, &[]),
+    // Invitations to workspaces waiting for your answer.
+    route("GET", "/user/invitations", Op::ListInvitations, &[]),
+    route("POST", "/user/invitations/:id/accept", Op::AcceptInvitation, &[]),
+    route("POST", "/user/invitations/:id/decline", Op::DeclineInvitation, &[]),
     route("GET", "/workspaces/:workspace/invitations", Op::ListWorkspaceInvites, &[]),
     // A workspace's rules for personal access tokens, and its members' tokens.
     route("GET", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::GetTokenPolicy), &[]),

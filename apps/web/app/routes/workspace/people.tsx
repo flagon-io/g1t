@@ -51,6 +51,8 @@ import {
   unwrap,
 } from "../../lib/session.server";
 import { UserCard } from "../../components/user-card";
+import { PeoplePicker } from "../../components/people-picker";
+import { inviteTarget } from "../../lib/people-search";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `People · ${params.owner} · g1t` });
@@ -126,17 +128,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return result.ok ? { based: result.value } : { error: result.error.message, base: true };
   }
   const member = String(form.get("member") ?? "").trim();
-  // An address is invited by email; a username is added at once.
-  if (form.get("action") !== "remove" && member.includes("@")) {
-    const result = await identity.inviteMember(user, params.owner, member);
-    return result.ok ? { invited: result.value.email, outOfInvites: false } : { error: result.error.message, outOfInvites: result.error.code === "limit" };
+  if (form.get("action") === "remove") {
+    const result = await identity.removeMember(user, params.owner, member);
+    return result.ok ? null : { error: result.error.message, converting: false };
   }
-  const result =
-    form.get("action") === "remove"
-      ? await identity.removeMember(user, params.owner, member)
-      : await identity.addMember(user, params.owner, member);
-  if (!result.ok) return { error: result.error.message, converting: form.get("action") === "convert" };
-  return form.get("action") === "convert" ? { converted: member } : null;
+  // Nobody joins without saying yes: a username or an address gets an
+  // invitation to accept or decline, with the role chosen here.
+  const who = inviteTarget(member);
+  if (!who) return { error: "Enter a g1t username or an email address.", outOfInvites: false };
+  const role = form.get("role") === "owner" ? "owner" : "member";
+  const result = await identity.inviteMember(user, params.owner, { ...who, role });
+  if (!result.ok) {
+    return { error: result.error.message, outOfInvites: result.error.code === "limit", converting: form.get("action") === "convert" };
+  }
+  if (form.get("action") === "convert") return { converted: member };
+  return { invited: "email" in who ? who.email : `@${"username" in who ? who.username : member}`, outOfInvites: false };
 }
 
 /** What the base permission means for members, in a sentence. */
@@ -309,7 +315,10 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
     actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
   // Waiting to be used, or used by someone still confirming their email:
   // either can be revoked.
-  const pending = invites.filter((invite) => invite.status === "pending" || invite.status === "awaiting_confirmation");
+  // Waiting for an answer to a workspace invitation, too.
+  const pending = invites.filter(
+    (invite) => invite.status === "pending" || invite.status === "awaiting_confirmation" || invite.status === "awaiting_answer",
+  );
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
   const membersTab = (
@@ -371,22 +380,33 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
           <input type="hidden" name="action" value="add" />
           <div className="grow">
             <Field
-              label="Add a member"
-              hint="A g1t username joins at once, as a member. An email address gets an invite: without a g1t account, it makes one and joins in one step, using one of your invites."
+              label="Invite someone"
+              hint="Search people on g1t by username or name, or enter an email address. They get an invitation in their inbox and by email, and join once they accept. An address without a g1t account gets an invite to make one, using one of your invites."
             >
-              <Input name="member" required maxLength={254} placeholder="username or name@example.com" />
+              <PeoplePicker name="member" placeholder="username, name or name@example.com" />
             </Field>
           </div>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
+            <select
+              name="role"
+              defaultValue="member"
+              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim sm:w-auto"
+            >
+              <option value="member">Member</option>
+              <option value="owner">Owner</option>
+            </select>
+          </label>
           <div className="sm:pt-[1.625rem]">
-            <SubmitButton match={{ action: "add" }} pending="Adding…">
-              Add
+            <SubmitButton match={{ action: "add" }} pending="Inviting…">
+              Invite
             </SubmitButton>
           </div>
         </Form>
       )}
       {actionData && "invited" in actionData && actionData.invited && (
         <p className="text-sm text-muted" role="status">
-          Invite sent to <span className="text-fg">{actionData.invited}</span>.
+          Invitation sent to <span className="text-fg">{actionData.invited}</span>. They join once they accept.
         </p>
       )}
       {actionData && "transferred" in actionData && (
@@ -396,7 +416,7 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       )}
       {actionData && "converted" in actionData && (
         <p className="text-sm text-muted" role="status">
-          <span className="font-mono text-fg">{actionData.converted}</span> is now a member of {params.owner}.
+          <span className="font-mono text-fg">{actionData.converted}</span> is invited to join {params.owner} as a member, and joins once they accept.
         </p>
       )}
       {actionData &&
@@ -417,12 +437,24 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
 
       {owner && pending.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-sm font-medium">Pending invites</h2>
+          <h2 className="text-sm font-medium">Pending invitations</h2>
           <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
             {pending.map((invite) => (
               <li key={invite.id} className="space-y-2 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="min-w-0 grow truncate text-sm">{invite.email}</span>
+                  <span className="min-w-0 grow truncate text-sm">
+                    {invite.email ??
+                      (invite.invitee ? (
+                        <UserCard username={invite.invitee}>
+                          <Link to={`/u/${invite.invitee}`} className="font-mono hover:text-accent">
+                            @{invite.invitee}
+                          </Link>
+                        </UserCard>
+                      ) : (
+                        "Anyone with the link"
+                      ))}
+                  </span>
+                  {invite.role === "owner" && <Pill>Owner</Pill>}
                   <Pill>{inviteState(invite).label}</Pill>
                   <Form method="post">
                     <input type="hidden" name="action" value="revoke-invite" />
@@ -433,7 +465,8 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
                   </Form>
                 </div>
                 <p className="text-xs text-faint">
-                  By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} />
+                  By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} /> · works until{" "}
+                  {new Date(invite.expiresAt).toISOString().slice(0, 10)}
                 </p>
                 {invite.code && <CopyLine text={inviteLink(invite.code, origin)} />}
               </li>
@@ -598,8 +631,8 @@ function OutsideCollaborators({
                   <Form method="post">
                     <input type="hidden" name="action" value="convert" />
                     <input type="hidden" name="member" value={person.username} />
-                    <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Converting…">
-                      Convert to member
+                    <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Inviting…">
+                      Invite as a member
                     </SubmitButton>
                   </Form>
                 )}

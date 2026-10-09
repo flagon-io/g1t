@@ -36,6 +36,8 @@ export type EmailConfirmed = {
   verified: boolean;
   /** The workspace the account's invite joined it to, by slug. */
   joined?: string | null;
+  /** The workspace the account's invite invites it to, by slug: an invitation now waits for its answer. */
+  invitedTo?: string | null;
   /** Why the invite the account signed up with no longer applies; the address is confirmed all the same. */
   inviteLapsed?: string | null;
 };

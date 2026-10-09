@@ -8,7 +8,8 @@ import {
 
 import { type Result, type Role, type User, type Viewer, hasCodeAccess, httpStatus } from "@g1t/contracts";
 
-import { confirmGate } from "./confirm-gate";
+import { confirmGate, pageOf } from "./confirm-gate";
+import { workspaceGate } from "./workspace-gate";
 import { readCookie } from "./mission";
 import { safeNext } from "./next";
 import { WORKSPACE_COOKIE, chosenWorkspace } from "./workspace-choice";
@@ -29,9 +30,6 @@ function sessionToken(request: Request): string | null {
 function sessionCookie(value: string, maxAge: number): string {
   return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 }
-
-/** Pages a signed-in person can use before they have a workspace. */
-const BEFORE_WORKSPACE = ["/workspaces/new", "/settings", "/verify", "/logout", "/auth/github", "/auth/github/callback"];
 
 /**
  * Root middleware: resolves the signed-in user once per request.
@@ -67,25 +65,12 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({
     const around = codeGate(pathname, search, noCode, chosen?.slug ?? null);
     if (around) throw redirect(around);
   }
-  if (
-    request.method === "GET" &&
-    viewer?.verified &&
-    (viewer.workspaces ?? []).length === 0 &&
-    // Someone a repository is shared with can use it without a workspace.
-    (viewer.grants ?? []).length === 0 &&
-    // Someone held out of their workspaces until they meet its policy is
-    // told so, and sent to turn on two-factor authentication, not to make one.
-    (viewer.held ?? []).length === 0 &&
-    !BEFORE_WORKSPACE.includes(pathname) &&
-    !pathname.startsWith("/settings/") &&
-    // An invite to a workspace is how someone without one gets one, and an
-    // invitation to a repository is answered before anything else.
-    !pathname.startsWith("/invite/") &&
-    !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(pathname) &&
-    !pathname.endsWith(".data")
-  ) {
-    const next = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
-    throw redirect(`/workspaces/new${next}`);
+  // Nobody uses g1t without a workspace: someone with none makes one, or
+  // answers an invitation to one, before anything else (lib/workspace-gate.ts).
+  // Data requests too, so a page is never loaded behind its back.
+  if (request.method === "GET") {
+    const around = workspaceGate(pageOf(pathname), search, viewer);
+    if (around) throw redirect(around);
   }
 };
 
