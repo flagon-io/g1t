@@ -85,8 +85,13 @@ impl Schedule {
 
     /// Whether it fires in the minute starting at `ms` since the epoch, UTC.
     pub fn fires_at(&self, ms: u64) -> bool {
+        self.minutes[(ms / 60_000 % 60) as usize] && self.hour_and_date_at(ms)
+    }
+
+    /// Whether the minute starting at `ms` is in its hours, days and
+    /// months, whatever its minute field says.
+    fn hour_and_date_at(&self, ms: u64) -> bool {
         let minutes_total = ms / 60_000;
-        let minute = (minutes_total % 60) as usize;
         let hour = (minutes_total / 60 % 24) as usize;
         let days_since_epoch = (minutes_total / 60 / 24) as i64;
         // 1970-01-01 was a Thursday.
@@ -98,7 +103,7 @@ impl Schedule {
             (true, true) => day_ok || weekday_ok,
             _ => day_ok && weekday_ok,
         };
-        self.minutes[minute] && self.hours[hour] && self.months[month as usize] && date_ok
+        self.hours[hour] && self.months[month as usize] && date_ok
     }
 
     /// Whether its minutes come closer together than
@@ -113,14 +118,16 @@ impl Schedule {
     /// Whether a workflow on this schedule runs in the minute starting at
     /// `ms`. A schedule no more frequent than every
     /// [`MIN_INTERVAL_MINUTES`] runs when it fires. A more frequent one
-    /// runs on the five-minute marks, at each one it fired at or since the
-    /// last: at most every five minutes.
+    /// runs on the five-minute marks: at a mark that is itself in its
+    /// hours, days and months, when it fired in the five minutes the mark
+    /// ends. At most every five minutes, and never outside its own hours.
     pub fn runs_at(&self, ms: u64) -> bool {
         if !self.too_frequent() {
             return self.fires_at(ms);
         }
         let minute = ms / 60_000;
         minute % MIN_INTERVAL_MINUTES == 0
+            && self.hour_and_date_at(ms)
             && (0..MIN_INTERVAL_MINUTES).any(|back| minute >= back && self.fires_at((minute - back) * 60_000))
     }
 }
@@ -210,13 +217,24 @@ mod tests {
         // Close across the hour counts too.
         assert!(Schedule::parse("2,58 * * * *").unwrap().too_frequent());
         assert!(!Schedule::parse("0 9 * * mon").unwrap().too_frequent());
-        // Every minute of one hour: the marks of that hour, and the one
-        // that closes it.
+        // Every minute of one hour: its own marks, 09:00 to 09:55, and
+        // nothing after.
         let nine = Schedule::parse("* 9 * * *").unwrap();
-        assert!(nine.runs_at(at(MONDAY, 9, 0)));
-        assert!(!nine.runs_at(at(MONDAY, 9, 1)));
-        assert!(nine.runs_at(at(MONDAY, 10, 0)));
-        assert!(!nine.runs_at(at(MONDAY, 10, 5)));
+        let day: Vec<(u64, u64)> =
+            (0..24 * 60).filter(|&m| nine.runs_at(at(MONDAY, m / 60, m % 60))).map(|m| (m / 60, m % 60)).collect();
+        assert_eq!(day, (0..12).map(|i| (9, i * 5)).collect::<Vec<_>>());
+        assert!(!nine.runs_at(at(MONDAY, 10, 0)));
+        // Every minute of Mondays: the last run is 23:55, none on Tuesday.
+        let mondays = Schedule::parse("*/1 * * * 1").unwrap();
+        assert!(mondays.runs_at(at(MONDAY, 0, 0)));
+        assert!(mondays.runs_at(at(MONDAY, 23, 55)));
+        assert!(!mondays.runs_at(at(MONDAY + 1, 0, 0)));
+        assert!(!(0..24 * 60).any(|m| mondays.runs_at(at(MONDAY + 1, m / 60, m % 60))));
+        // Close minutes: one run for each window they fall in, at its mark.
+        let close = Schedule::parse("0,3 * * * *").unwrap();
+        let hour: Vec<u64> = (0..60).filter(|&m| close.runs_at(at(MONDAY, 3, m))).collect();
+        assert_eq!(hour, [0, 5]);
+        assert!(close.runs_at(at(MONDAY, 4, 0)));
     }
 
     #[test]
