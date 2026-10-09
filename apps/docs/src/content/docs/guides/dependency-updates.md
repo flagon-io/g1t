@@ -223,7 +223,39 @@ dependency.
 
 When a newer version comes out for a dependency (or group) that already
 has an open pull request, g1t opens a new pull request and closes the
-older one with the comment "Superseded by #N.".
+older one with the comment "Closed: superseded by #N.". It deletes the
+older pull request's branch.
+
+### Updates you make yourself
+
+You do not have to merge g1t's pull request to update a dependency. On
+every push to the default branch, g1t reads the lockfiles again. When
+every dependency an open version update raises is already at its new
+version or later, or is no longer a dependency, g1t closes the pull
+request with a comment that says so, for example:
+
+> Closed: `lodash` is already at 4.17.21 on `main`, so this update to
+> 4.17.21 is no longer needed.
+
+g1t then deletes the pull request's branch. While one dependency in a
+grouped pull request still needs it, the pull request stays open. This
+applies to updates into the default branch; one with a `target-branch`
+is left for you to close.
+
+### Branches
+
+Each update pull request is made on a branch g1t creates (see
+[branch names](#pull-request-branch-name)). When the pull request merges
+or closes, whether g1t or a person closes it, g1t deletes that branch. If
+someone pushed to the branch after its last commit in the pull request,
+g1t leaves it alone. A branch left from an update pull request that is
+already closed is removed on a later push to the default branch. The
+branch of a pull request closed because code has to change is kept while
+g1t works on the issue for it.
+
+Deleting the branch means a closed update pull request cannot be reopened
+from the page. To make a version update again, comment `@g1t reopen` on
+it: g1t makes it again as a new pull request.
 
 ### Landing them
 

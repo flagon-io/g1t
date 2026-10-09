@@ -299,12 +299,49 @@ Each alert shows its update's status and links the pull request:
 | Open | The pull request is open. |
 | Merged | The pull request merged. |
 | Closed | The pull request was closed without merging. |
-| Superseded | A newer security update for the same package replaced it, or the package is no longer vulnerable. |
+| Superseded | A newer security update for the same package replaced it, or the alerts it fixes were fixed another way or dismissed. |
 | Needs code changes | Raising the version was not enough; an agent is working on it. |
 | Failed | The update could not be made. |
 
+### When an update is no longer needed
+
 A newer security update for the same package closes the older pull request
-as superseded. So does the package no longer being vulnerable.
+with the comment "Closed: superseded by #N, which upgrades `<package>` to
+`<version>`.".
+
+g1t also closes a security update once none of the alerts it fixes is
+open. An alert counts as one the update fixes when it is on the update's
+package, at a version below the one the update raises it to. Each of those
+alerts must be:
+
+- **Fixed on the default branch.** You raised the version another way, for
+  example with an `overrides` entry in `package.json` or by updating the
+  lockfile yourself, and pushed it. The next scan no longer finds the
+  vulnerable version in the lockfiles.
+- **Dismissed.** g1t checks when you dismiss an alert, without waiting for a
+  push.
+
+g1t comments why, closes the pull request and deletes its branch:
+
+> Closed: the alert this fixed is resolved on `main` (`sharp` 0.34.1 is no
+> longer in `package-lock.json`).
+
+> Closed: the alert this fixed was dismissed, so this update is no longer
+> needed.
+
+A grouped security update closes only when the alerts of every package in
+it are fixed or dismissed. If a package is still vulnerable at a higher
+version than the pull request reached, g1t closes the pull request and
+asks for a new one for the higher version in the same scan. A later scan never
+opens the closed pull request again. g1t opens a new one only if the
+package becomes vulnerable again, at a version that update would fix.
+
+When a security update pull request merges or closes, by g1t or by a
+person, g1t deletes its `g1t/security/…` branch, unless someone pushed to
+it after its last commit in the pull request. A branch left from an
+update pull request that was already closed is removed on a later push to
+the default branch. See
+[branches](/guides/dependency-updates/#branches).
 
 How each lockfile is changed:
 

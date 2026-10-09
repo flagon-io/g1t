@@ -795,13 +795,19 @@ pub const G1T_BRANCH_PREFIX: &str = "g1t-";
 
 /// `delete_branch`: removes a branch g1t made for itself once it is done
 /// with it, never one of people's: the name must start with
-/// [`G1T_BRANCH_PREFIX`]. For services, which have no viewer. Returns
-/// `Outcome<bool>`: whether there was such a branch.
+/// [`G1T_BRANCH_PREFIX`], or `head` must name the commit it points to (a
+/// dependency update's branch, which g1t pushed and whose pull request it
+/// closed). Never the default branch. For services, which have no viewer.
+/// Returns `Outcome<bool>`: whether there was such a branch.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteBranchArgs {
     pub repo_id: String,
     pub branch: String,
+    /// The commit the branch must still point to. A branch that moved
+    /// since (someone pushed to it) is left alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
 }
 
 /// `commit_file`: writes one file on a new branch made from the default

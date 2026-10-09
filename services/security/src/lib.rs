@@ -39,6 +39,7 @@ mod overview;
 mod patterns;
 mod planning;
 mod pull_text;
+mod resolved;
 mod ranges;
 mod registries;
 mod schedule;
@@ -323,6 +324,10 @@ impl Security {
             let event = g1t_contracts::security_suite::SecurityEvent { reason: Some(a.reason.as_str().to_owned()), ..deps::vulnerability_event(&repo, vuln) };
             self.alert_event(g1t_contracts::security_suite::AlertType::Vulnerability, "dismissed", &repo, event, Some(a.actor.id.clone())).await;
         }
+        // A security update whose alerts are now all fixed or dismissed closes.
+        if let Err(error) = self.resolve_updates(&repo, None).await {
+            worker::console_error!("security: updates of {} not resolved after a dismissal: {error}", repo.repo_id);
+        }
         Ok(Outcome::Ok(AlertChange { secret: None, vulnerability }))
     }
 
@@ -515,7 +520,7 @@ impl Security {
                 if let Some(branch) = pushed.git_ref.strip_prefix("refs/heads/")
                     && branch.starts_with(UPDATE_BRANCH_PREFIX)
                 {
-                    self.update_pushed(&pushed.repo_id, branch).await?;
+                    self.update_pushed(&pushed.repo_id, branch, &pushed.after).await?;
                     return Ok(());
                 }
                 if !pushed.default_branch {
@@ -540,6 +545,13 @@ impl Security {
                         event.actor.as_deref(),
                     )
                     .await?;
+                }
+                // One of g1t's update pull requests closed or merged, by g1t
+                // or by a person: its branch goes.
+                if event.kind != "checks.completed"
+                    && let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone())
+                {
+                    self.pull_finished(&happened.repo_id, happened.number).await?;
                 }
             }
             "comment.created" => self.update_comment(event).await?,

@@ -215,6 +215,12 @@ impl Security {
         let before: BTreeSet<String> = self.store.open_vulnerabilities(&repo.repo_id).await?.into_iter().map(|row| row.id).collect();
         self.store.replace_vulnerabilities(&repo.repo_id, &found).await?;
         self.store.set_dependencies_scanned(&repo.repo_id, files.commit.as_deref(), &paths, None).await?;
+        // g1t's update pull requests whose alerts are now fixed or dismissed,
+        // or whose versions the lockfiles already have, close first, so that
+        // nothing later in the scan can keep them open.
+        if let Err(error) = self.resolve_updates(repo, Some((&located, &paths))).await {
+            worker::console_error!("security: updates of {} not resolved: {error}", repo.repo_id);
+        }
         if let Err(error) = self.record_graph(repo, &files).await {
             worker::console_error!("security: dependency graph of {} not kept: {error}", repo.repo_id);
         }

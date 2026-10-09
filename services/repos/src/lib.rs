@@ -1212,7 +1212,7 @@ impl<S: GitStore> Repos<S> {
     }
 
     async fn delete_branch(&self, a: DeleteBranchArgs) -> Result<Outcome<bool>> {
-        if !a.branch.starts_with(G1T_BRANCH_PREFIX) {
+        if !deletable_branch(&a.branch, a.head.as_deref()) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Only branches g1t made for itself can be deleted this way.",
@@ -1221,6 +1221,9 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(not_found());
         };
+        if a.branch == repo.default_branch {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "The default branch is never deleted."));
+        }
         let repo = match self.unpaused(repo).await? {
             Ok(repo) => repo,
             Err((code, message)) => return Ok(Outcome::fail(code, message)),
@@ -1236,6 +1239,10 @@ impl<S: GitStore> Repos<S> {
         else {
             return Ok(Outcome::Ok(false));
         };
+        // Moved since the caller looked: someone else's commits are on it.
+        if a.head.as_deref().is_some_and(|head| head != old) {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{} moved, so it was left alone.", a.branch)));
+        }
         let access = git.access(Scope::Write).await?;
         let deleted = land::delete_ref(&access, &a.branch, &old).await?;
         self.refs_moved(&repo.id).await;
@@ -2771,6 +2778,27 @@ fn push_to_create(owner: &User, path: &RepoPath) -> CreateArgs {
         is_private: true,
         import_url: None,
         import_token: None,
+    }
+}
+
+/// Whether `delete_branch` may remove `branch`: one of g1t's own
+/// (`g1t-…`), or one whose tip the caller names, such as a dependency
+/// update's branch after its pull request closed.
+fn deletable_branch(branch: &str, head: Option<&str>) -> bool {
+    !branch.is_empty() && (branch.starts_with(G1T_BRANCH_PREFIX) || head.is_some_and(|head| !head.is_empty()))
+}
+
+#[cfg(test)]
+mod delete_branch_tests {
+    use super::deletable_branch;
+
+    #[test]
+    fn only_g1t_branches_or_a_named_tip_are_deleted() {
+        assert!(deletable_branch("g1t-queue-12", None));
+        assert!(!deletable_branch("g1t/security/sharp-0.35.5", None));
+        assert!(deletable_branch("g1t/security/sharp-0.35.5", Some("abc123")));
+        assert!(!deletable_branch("feature", Some("")));
+        assert!(!deletable_branch("", Some("abc123")));
     }
 }
 
