@@ -777,7 +777,7 @@ export default function MissionControl({
           about: trial.granted
             ? `This workspace has ${dollars(trial.limitMicros - trial.usedMicros)} of its ${dollars(trial.limitMicros)} trial credit left, for g1t's models and sandboxes.`
             : `This workspace gets ${dollars(trial.limitMicros)} of trial credit, for g1t's models and sandboxes, the first time g1t works here.`,
-          to: workspace ? `/${workspace}/-/integrations` : null,
+          to: workspace ? `/${workspace}/-/integrations/models` : null,
           action: "Connect",
         }
       : canRunAgents
@@ -795,7 +795,7 @@ export default function MissionControl({
             about: `${
               trialClosed(trial, workspace ?? "This workspace") ? `${trialClosed(trial, workspace ?? "This workspace")} ` : ""
             }Agents need a model to think with. Connect your Anthropic or OpenAI key, or any compatible endpoint.`,
-            to: workspace ? `/${workspace}/-/integrations` : null,
+            to: workspace ? `/${workspace}/-/integrations/models` : null,
             action: "Connect",
           },
     {
@@ -832,7 +832,7 @@ export default function MissionControl({
               <>
                 Agents need a model first.{" "}
                 {workspace && (
-                  <Link to={`/${workspace}/-/integrations`} className="font-medium text-fg hover:underline">
+                  <Link to={`/${workspace}/-/integrations/models`} className="font-medium text-fg hover:underline">
                     Connect one
                   </Link>
                 )}

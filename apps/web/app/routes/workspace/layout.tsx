@@ -121,7 +121,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   integrations: {
     title: "Integrations",
-    about: "Model providers, alerts and trackers. Secrets are sealed when saved, and agents never see them.",
+    about:
+      "The tools your team works with, connected once for everyone in the workspace and its agents. Secrets are sealed when saved, and agents never see them.",
   },
 };
 

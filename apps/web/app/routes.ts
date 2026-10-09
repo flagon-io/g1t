@@ -41,6 +41,7 @@ export default [
     route("tokens/:id", "routes/settings/token.tsx"),
     route("github", "routes/settings/github.tsx"),
     route("applications", "routes/settings/applications.tsx"),
+    route("integrations", "routes/settings/integrations.tsx"),
     route("two-factor", "routes/settings/two-factor.tsx"),
     route("security-log", "routes/settings/security-log.tsx"),
     route("account", "routes/settings/account.tsx"),
@@ -118,7 +119,10 @@ export default [
     route("-/billing", "routes/workspace/billing.tsx"),
     route("-/billing/entries", "routes/workspace/statement-entries.ts"),
     route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
-    route("-/integrations", "routes/workspace/integrations.tsx"),
+    // The integrations directory, and the setup page for each kind of
+    // provider connection: models, alerts, trackers (lib/integration-sections).
+    route("-/integrations", "routes/workspace/integrations-directory.tsx"),
+    route("-/integrations/:section", "routes/workspace/integrations.tsx"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     // The workspace's own emoji, for chat (components/emoji).
     route("-/emoji", "routes/workspace/emoji.tsx"),

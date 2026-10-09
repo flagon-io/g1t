@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "exports": { ".": "./src/index.ts", "./og": "./src/og.ts", "./status": "./src/status.ts", "./scopes": "./src/scopes.ts", "./rate-limits": "./src/rate-limits.ts" },
+  "exports": { ".": "./src/index.ts", "./og": "./src/og.ts", "./status": "./src/status.ts", "./scopes": "./src/scopes.ts", "./rate-limits": "./src/rate-limits.ts", "./connectors": "./src/connectors.ts" },
   "scripts": { "test": "node --test src/*.test.ts", "typecheck": "tsc -p tsconfig.json" }
 }

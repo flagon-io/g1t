@@ -35,7 +35,7 @@ export function fixUrlFor(code: string, workspace: string): string | null {
     case "issue_cap":
       return `${SITE}/${slug}/-/billing#caps`;
     case "no_model":
-      return `${SITE}/${slug}/-/integrations`;
+      return `${SITE}/${slug}/-/integrations/models`;
     default:
       return null;
   }

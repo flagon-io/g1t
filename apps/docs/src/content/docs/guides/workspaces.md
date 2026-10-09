@@ -561,7 +561,7 @@ the row at the top, **‹ Settings**, slides back:
 | **Guardrails** | Members | What agents may do and spend across the workspace. Owners change them. |
 | [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. |
 | **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
-| [**Integrations**](/guides/integrations/) | Members | Model providers and connected services. Owners connect and remove them. |
+| [**Integrations**](/guides/integrations/) | Members | Every tool the workspace connects to, by category: what is connected, what is available, and what is coming. Owners connect and remove them. |
 | [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. |
 | **Billing and plans** | Members | [The g1t plan](/guides/usage-and-billing/#the-g1t-plan), [limits](/guides/usage-and-billing/#limits) and the statement. Owners start the plan, check a card, prepay and set limits. |
 | **Audit log** | Members | [Every action agents, people and tokens took](/guides/audit-log/). |

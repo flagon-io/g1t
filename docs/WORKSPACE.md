@@ -1227,6 +1227,29 @@ delivers everything through a `NotificationSink` and prefers the bridge
 when it is there: toasts while the window is in front, native
 notifications while it is not, and no Web Push.
 
+## Integrations directory
+
+Built 2026-10-09. One catalog, `packages/contracts/src/connectors.ts`
+(`@g1t/contracts/connectors`), lists every connector: id, name, category,
+one-line description, `scopes` (`workspace`, `personal`, or both, with a
+`personal` override for what differs), `status` (`available` or `soon`),
+`href` per scope for available ones (`:workspace` is filled in), capability
+tags, and the integration `provider` behind it. Adding a connector, or
+moving one from soon to available, is an edit there plus its setup page.
+
+Two pages draw from it with the same component (`components/connectors.tsx`):
+the workspace's `-/integrations` ("for everyone in <workspace>", owners
+manage) and `/settings/integrations` ("just for you, in every workspace").
+The workspace's setup pages for providers moved to
+`-/integrations/{models,alerts,trackers}`. Connected state comes from
+integrations (connections and their `last_error`), the GitHub App's
+installations, workspace webhooks, GitHub sign-in and OAuth grants.
+
+**Ask for this** on a Soon card is a prefilled email to support for now; a
+stored request (workspace, connector, person) can replace it without
+changing the cards. The Calendar connectors will set presence with
+`source: "calendar"` (Presence and status, above).
+
 ## Services
 
 Following the architecture principles: separate services, interfaces in

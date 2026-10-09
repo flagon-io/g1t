@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Smile, Sparkles, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Blocks, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Smile, Sparkles, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -1235,6 +1235,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
       </div>
       <Rule />
       <div className="space-y-px">
+        {link("integrations", <Blocks size={15} />)}
         {link("github", <GithubMark className="size-[15px]" />)}
         {link("applications", <Plug size={15} />)}
       </div>

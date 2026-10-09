@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   Cpu,
@@ -28,6 +29,7 @@ import { page } from "../../lib/meta";
 import { trialClosed } from "../../lib/trial";
 import { GatewayModelsField, MODEL_CATALOG, ModelCatalog, ModelProviderFields, ProviderMark, ProviderTiles, Routing } from "../../components/model-providers";
 import { parseGatewayModels } from "../../lib/gateway";
+import { integrationsSection, sectionKind } from "../../lib/integration-sections";
 import { Avatar, CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Combobox } from "../../components/ui/combobox";
@@ -35,7 +37,8 @@ import { billing, integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Integrations · ${params.owner} · g1t` });
+  const kind = sectionKind(params.section);
+  return page(args, { title: `${kind ? KIND_INFO[kind].title : "Integrations"} · ${params.owner} · g1t` });
 }
 
 const isProvider = (value: string | null): value is Provider => value != null && value in PROVIDERS;
@@ -43,7 +46,9 @@ const isProvider = (value: string | null): value is Provider => value != null &&
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
-  if (!role) throw new Response(null, { status: 404 });
+  // One kind of connection's page: the directory at `-/integrations` finds them.
+  const kind = sectionKind(params.section);
+  if (!role || !kind) throw new Response(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const [connections, listed, account, access, routes] = await Promise.all([
     integrations.list(slug, viewer),
@@ -67,6 +72,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return {
     slug,
     role,
+    kind,
     connections: all,
     deliveries,
     repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
@@ -197,7 +203,7 @@ function dollars(micros: number): string {
 }
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, connections, deliveries, repos: repoNames, adding, free, marginPercent, hostedOpen, hostedPreview, trial, routes } =
+  const { slug, role, kind, connections, deliveries, repos: repoNames, adding, free, marginPercent, hostedOpen, hostedPreview, trial, routes } =
     loaderData;
   const owner = role === "owner";
   const modelConnections = connections.filter((connection) => connection.kind === "models");
@@ -208,13 +214,17 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
 
   return (
     <div>
+      <Link to={`/${slug}/-/integrations`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+        <ArrowLeft size={14} /> All integrations
+      </Link>
       {justConnected && <Connected connected={justConnected} />}
       <div className="mt-4">
         <ErrorText>{error}</ErrorText>
       </div>
 
       {/* Models -------------------------------------------------------------- */}
-      <Section kind="models" first>
+      {kind === "models" && (
+      <Section kind="models">
         {!hostedOpen && modelConnections.length === 0 && (
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-warn/30 bg-warn/5 p-4">
             <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-warn/10 text-warn ring-1 ring-warn/30">
@@ -271,8 +281,10 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           />
         )}
       </Section>
+      )}
 
       {/* Alerts -------------------------------------------------------------- */}
+      {kind === "alerts" && (
       <Section kind="alerts">
         <Connections
           list={connections.filter((c) => c.kind === "alerts")}
@@ -291,8 +303,10 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           />
         )}
       </Section>
+      )}
 
       {/* Trackers ------------------------------------------------------------ */}
+      {kind === "tracker" && (
       <Section kind="tracker">
         <Connections
           list={connections.filter((c) => c.kind === "tracker")}
@@ -311,21 +325,23 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           />
         )}
       </Section>
+      )}
 
       {!owner && <p className="mt-8 text-sm text-muted">An owner of {slug} can add and remove integrations.</p>}
     </div>
   );
 }
 
-function Section({ kind, first, children }: { kind: ProviderKind; first?: boolean; children: ReactNode }) {
+/** One kind of connection's page: its heading, then what is connected and what to connect. */
+function Section({ kind, children }: { kind: ProviderKind; children: ReactNode }) {
   const info = KIND_INFO[kind];
   return (
-    <section className={first ? "" : "mt-12"}>
-      <h3 className="flex items-center gap-2 text-sm font-medium">
+    <section className="mt-4">
+      <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight [&_svg]:size-5">
         <span className="text-muted">{info.icon}</span>
         {info.title}
-      </h3>
-      <p className="mt-1 mb-4 text-sm text-muted">{info.blurb}</p>
+      </h1>
+      <p className="mt-1.5 mb-6 border-b border-line pb-6 text-sm text-muted">{info.blurb}</p>
       {children}
     </section>
   );
@@ -651,7 +667,11 @@ function AddForm({
           </h3>
           <p className="text-xs text-muted">{blurb(provider)}</p>
         </div>
-        <Link to={`/${slug}/-/integrations`} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg" aria-label="Close">
+        <Link
+          to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}`}
+          className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg"
+          aria-label="Close"
+        >
           <X size={16} />
         </Link>
       </div>

@@ -10,6 +10,7 @@ export type AccountSettingsPage =
   | "invites"
   | "keys"
   | "tokens"
+  | "integrations"
   | "github"
   | "applications"
   | "two-factor"
@@ -40,6 +41,12 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
     title: "Access tokens",
     about:
       "Use a token as the password when git asks for one over HTTPS, and to authenticate agents and the API. A token here acts as you.",
+  },
+  integrations: {
+    title: "Integrations",
+    heading: "Your integrations",
+    about:
+      "Your own accounts, connected just for you and working in every workspace you belong to, such as your calendar setting your status. Tools the whole team shares are a workspace's.",
   },
   github: {
     title: "GitHub",

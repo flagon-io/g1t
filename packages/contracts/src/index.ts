@@ -11,6 +11,7 @@ export * from "./checks";
 export * from "./clients";
 export * from "./codeowners";
 export * from "./compute";
+export * from "./connectors";
 export * from "./context";
 export * from "./d1";
 export * from "./docs";

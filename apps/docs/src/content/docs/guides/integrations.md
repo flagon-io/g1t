@@ -1,23 +1,92 @@
 ---
 title: Integrations
-description: Connect Sentry, Datadog, Jira, Linear and anything that sends a webhook, so problems become issues and agents read the tickets the work refers to.
+description: Connect the tools your team and you already use. Workspace integrations work for everyone in a workspace; personal ones work just for you, in every workspace. What is available today, what is coming, and how to ask for one.
 ---
 
-A workspace connects to the systems its work already lives in. There are
-three kinds of connection:
+g1t connects to the tools your work already lives in: where errors are
+reported, where tickets are tracked, which models your agents think with,
+where code came from. Every integration is listed in one directory, by
+category, whether it works today or is still being built.
 
-| Kind | Systems | What it does |
+## Workspace and personal
+
+There are two places to connect things, and they are for different people:
+
+| | Workspace integrations | Your integrations |
 | --- | --- | --- |
-| [Model providers](/guides/models/) | Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek, Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras, and any Anthropic- or OpenAI-compatible endpoint | Your agents' model requests go to your own accounts, routed by kind of work. |
-| [Alerts](#alerts) | Sentry, Datadog, a signed webhook | A problem opens an issue, once however often it fires, and an agent can start on it at once. |
-| [Trackers](#trackers) | Jira, Linear | Agents read the tickets that work mentions, people import tickets as issues, and tickets hear back when the work lands. |
+| Where | The workspace's **Integrations**, at `g1t.sh/<workspace>/-/integrations` | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
+| Who it is for | Everyone in that workspace, people and agents | Just you, in every workspace you belong to |
+| Who connects | Workspace owners. Members see what is connected. | You |
+| Examples | Model providers, Sentry, Jira, Linear, GitHub mirroring, webhooks | Signing in with GitHub, agents you connect through MCP, and soon your calendar |
 
-Open the workspace's **Settings → Integrations**. Every member
-can see the connections; only owners can add, test or remove them.
+Some tools have both sides. GitHub, for instance: a workspace owner
+installs g1t's GitHub App to import and mirror the team's repositories, and
+you link your own GitHub account to sign in with it. Each card says when
+the other side exists.
+
+## The directory
+
+Both pages are the same directory:
+
+- **Categories** down the side (along the top on a phone): Code & CI,
+  Issues & projects, Chat & meetings, Calendar & email, Docs & knowledge,
+  Monitoring & incidents, Cloud & deploy, AI models, Data & analytics,
+  CRM & support, Design, Security & identity, and Files & storage. Each
+  shows how many integrations it has. A link can open on one, with
+  `?category=ai` and so on.
+- **Search** finds an integration by name, by what it does ("in a meeting",
+  "opens issues"), or by a tag, across every category.
+- **Connected** comes first: what is set up here, with a line about each
+  (the account, how many connections) and **Needs attention** when
+  something is wrong, such as a key that stopped working or a GitHub
+  installation that was suspended. Choose one to manage it.
+- **Available** can be connected now. Choose one to open its setup page.
+- **Soon** is being built. Each says what it will do, and **Ask for this**
+  tells g1t you want it (below).
+
+The tags on a card say what an integration lets g1t do: **Agents can
+read** (agents fetch what work refers to), **Opens issues**, **Writes
+back** (the other system hears when work lands), **Mirrors repositories**,
+**Runs models**, **Sets your status**, and so on.
+
+## Available today
+
+| Category | Workspace | Personal |
+| --- | --- | --- |
+| Code & CI | [GitHub](/guides/github/) import and mirroring, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github) |
+| Issues & projects | [Jira and Linear](#trackers) | |
+| Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
+| AI models | [Model providers](/guides/models/): Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek, Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras, and any Anthropic- or OpenAI-compatible endpoint; the [AI Gateway](/guides/ai-gateway/) | [MCP clients](/guides/authentication/#signing-in-with-oauth): your own agent, connected to g1t as you |
+
+Model providers, alerts and trackers each have a setup page under the
+directory: `-/integrations/models`, `-/integrations/alerts` and
+`-/integrations/trackers`. GitHub, webhooks and the AI Gateway keep their
+own pages; the directory links to them.
 
 Secrets are sealed when they are saved and never shown again, to anyone.
-The page shows the last four characters of a key, so you can tell keys
+A setup page shows the last four characters of a key, so you can tell keys
 apart. Agents never see a connection's secrets.
+
+## Coming soon
+
+Every category has integrations on the way, among them Slack, Microsoft
+Teams, Notion, Confluence, PagerDuty, Cloudflare, AWS, Figma, Okta and
+Google Drive for workspaces. For you: **Google Calendar** and **Outlook
+Calendar** will set your [status](/guides/chat/#presence-and-status) to *In a meeting* while
+you are in one, and let agents find a time that suits everyone; **Zoom**
+and **Google Meet** will set it to *On a call*. A status you set by hand
+always wins over one an integration sets.
+
+The directory lists them all. Nothing on a **Soon** card does anything
+yet.
+
+## Ask for an integration
+
+On any **Soon** card, **Ask for this** opens an email to g1t with the
+integration and your workspace (or "for my own account") filled in. Add
+what you would use it for and send it. Searching for something that is
+not listed offers the same, for whatever you searched for. Requests decide
+what is built next.
 
 ## Alerts
 

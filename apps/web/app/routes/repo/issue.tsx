@@ -587,7 +587,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 through checks, review and fixes. Agents run on a paid workspace, or on the free trial.
               </p>
               <Link
-                to={`/${params.owner}/-/integrations`}
+                to={`/${params.owner}/-/integrations/models`}
                 className="mt-2 inline-block text-xs text-accent hover:underline"
               >
                 Connect a model

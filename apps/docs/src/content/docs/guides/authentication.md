@@ -41,6 +41,7 @@ under **Your settings**; the sidebar then lists every page.
 | Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites to g1t](#making-invites), while g1t is invite-only; after that, the invites you made. |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire. |
+| Integrations | [`/settings/integrations`](https://g1t.sh/settings/integrations) | [Your own integrations](/guides/integrations/#workspace-and-personal): what you have connected for yourself, in every workspace, and what is coming. |
 | GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
 | Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
 | Two-factor authentication | [`/settings/two-factor`](https://g1t.sh/settings/two-factor) | [An authenticator app and recovery codes](#two-factor-authentication). |
