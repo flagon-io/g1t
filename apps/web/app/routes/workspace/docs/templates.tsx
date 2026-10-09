@@ -32,11 +32,31 @@ export default function DocsTemplates({ loaderData, params }: Route.ComponentPro
   const writable = (layout?.sidebar?.spaces ?? []).filter((s) => canDo(s.viewer_role, "edit"));
   const [space, setSpace] = useState(writable.find((s) => s.is_default)?.id ?? writable[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
+  // The template a page is being started from, while it is.
+  const [starting, setStarting] = useState<string | null>(null);
   const use = async (template: string) => {
+    if (starting) return;
+    setStarting(template);
+    setError(null);
     const made = await docsRequest<{ path: string }>(slug, "create_page", { page: { space_id: space, template_id: template } });
-    if (made.ok) navigate(made.value.path);
-    else setError(made.error.message);
+    if (made.ok) {
+      await navigate(made.value.path);
+      return;
+    }
+    setStarting(null);
+    setError(made.error.message);
   };
+  const startButton = (id: string) => (
+    <button
+      type="button"
+      disabled={!space || starting != null}
+      aria-busy={starting === id}
+      onClick={() => use(id)}
+      className="text-xs font-medium text-accent hover:underline disabled:text-faint disabled:no-underline"
+    >
+      {starting === id ? "Starting…" : "Use template"}
+    </button>
+  );
   const builtin = loaderData.templates.filter((t) => t.builtin);
   const own = loaderData.templates.filter((t) => !t.builtin);
   return (
@@ -65,11 +85,7 @@ export default function DocsTemplates({ loaderData, params }: Route.ComponentPro
             <TemplateCard
               key={t.id}
               template={t}
-              action={
-                <button type="button" disabled={!space} onClick={() => use(t.id)} className="text-xs font-medium text-accent hover:underline disabled:text-faint">
-                  Use template
-                </button>
-              }
+              action={startButton(t.id)}
             />
           ))}
         </div>
@@ -86,9 +102,7 @@ export default function DocsTemplates({ loaderData, params }: Route.ComponentPro
                 template={t}
                 action={
                   <>
-                    <button type="button" disabled={!space} onClick={() => use(t.id)} className="text-xs font-medium text-accent hover:underline disabled:text-faint">
-                      Use template
-                    </button>
+                    {startButton(t.id)}
                     <button type="button" onClick={() => send("delete_template", { template_id: t.id })} className="ml-auto text-xs text-faint hover:text-danger">
                       Delete
                     </button>

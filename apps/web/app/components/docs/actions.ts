@@ -13,25 +13,39 @@ export function useDocsData(): DocsLayoutData | undefined {
   return useRouteLoaderData("routes/workspace/docs/layout") as DocsLayoutData | undefined;
 }
 
+/** How long a Docs request may take before the page says so instead of waiting on. */
+export const DOCS_TIMEOUT_MS = 20_000;
+
+/** What a request that failed or took too long says. */
+export function docsFailure<T>(error: unknown): Result<T> {
+  const late = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError");
+  const message = late ? "Docs took too long to answer. Try again in a moment." : "Docs didn't answer. Check your connection and try again.";
+  return { ok: false, error: { code: "conflict", message } };
+}
+
 export async function docsRequest<T>(slug: string, intent: string, body: Record<string, unknown> = {}): Promise<Result<T>> {
   try {
     const response = await fetch(`/${slug}/-/docs/api`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ intent, ...body }),
+      signal: AbortSignal.timeout(DOCS_TIMEOUT_MS),
     });
     return (await response.json()) as Result<T>;
-  } catch {
-    return { ok: false, error: { code: "conflict", message: "Docs didn't answer. Check your connection and try again." } };
+  } catch (error) {
+    return docsFailure(error);
   }
 }
 
 export async function docsQuery<T>(slug: string, query: Record<string, string>): Promise<Result<T>> {
   try {
-    const response = await fetch(`/${slug}/-/docs/api?${new URLSearchParams(query)}`, { headers: { accept: "application/json" } });
+    const response = await fetch(`/${slug}/-/docs/api?${new URLSearchParams(query)}`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(DOCS_TIMEOUT_MS),
+    });
     return (await response.json()) as Result<T>;
-  } catch {
-    return { ok: false, error: { code: "conflict", message: "Docs didn't answer. Check your connection and try again." } };
+  } catch (error) {
+    return docsFailure(error);
   }
 }
 
