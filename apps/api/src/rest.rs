@@ -8,6 +8,7 @@ use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
+use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::operations::Op;
@@ -961,6 +962,25 @@ pub const ROUTES: &[Route] = &[
         Op::MergePullRequest,
         &[],
     ),
+    // Artifacts mode's docs, slides, designs and dashboards. Search comes
+    // before an artifact by id, which it would otherwise match.
+    route("GET", "/workspaces/:workspace/artifacts", Op::Folios(FoliosOp::List), &[("tab", "tab"), ("kind", "kind"), ("space", "space"), ("project", "project"), ("q", "q"), ("state", "state"), ("cursor", "cursor"), ("limit", "limit")]),
+    route("POST", "/workspaces/:workspace/artifacts", Op::Folios(FoliosOp::Create), &[]),
+    route("GET", "/workspaces/:workspace/artifacts/search", Op::Folios(FoliosOp::Search), &[("q", "q"), ("kind", "kind"), ("space", "space"), ("project", "project"), ("limit", "limit")]),
+    route("GET", "/workspaces/:workspace/artifacts/:artifact_id", Op::Folios(FoliosOp::Get), &[]),
+    route("PATCH", "/workspaces/:workspace/artifacts/:artifact_id", Op::Folios(FoliosOp::Update), &[]),
+    route("DELETE", "/workspaces/:workspace/artifacts/:artifact_id", Op::Folios(FoliosOp::Trash), &[]),
+    route("POST", "/workspaces/:workspace/artifacts/:artifact_id/restore", Op::Folios(FoliosOp::Restore), &[]),
+    route("POST", "/workspaces/:workspace/artifacts/:artifact_id/purge", Op::Folios(FoliosOp::Purge), &[]),
+    route("GET", "/workspaces/:workspace/artifacts/:artifact_id/content", Op::Folios(FoliosOp::GetContent), &[]),
+    route("PUT", "/workspaces/:workspace/artifacts/:artifact_id/content", Op::Folios(FoliosOp::Edit), &[]),
+    route("GET", "/workspaces/:workspace/artifacts/:artifact_id/access", Op::Folios(FoliosOp::GetAccess), &[]),
+    route("PUT", "/workspaces/:workspace/artifacts/:artifact_id/access", Op::Folios(FoliosOp::SetAccess), &[]),
+    route("GET", "/workspaces/:workspace/artifacts/:artifact_id/versions", Op::Folios(FoliosOp::ListVersions), &[]),
+    route("POST", "/workspaces/:workspace/artifacts/:artifact_id/versions/:version_id/restore", Op::Folios(FoliosOp::RestoreVersion), &[]),
+    route("GET", "/workspaces/:workspace/artifact-templates", Op::Folios(FoliosOp::ListTemplates), &[("kind", "kind")]),
+    route("GET", "/workspaces/:workspace/artifact-spaces", Op::Folios(FoliosOp::ListSpaces), &[]),
+    route("POST", "/workspaces/:workspace/datasets/query", Op::Folios(FoliosOp::QueryDataset), &[]),
 ];
 
 impl Route {
