@@ -17,6 +17,8 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
+import { heldOpen } from "../../lib/notify-store";
+
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const MESSAGE_QUERY_AWARENESS = 3;
@@ -29,6 +31,8 @@ export class DocsProvider {
   status: LiveStatus = "connecting";
   private socket: WebSocket | null = null;
   private attempts = 0;
+  /** When the current connection opened; the backoff starts over only once one holds. */
+  private openedAt: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private keepalive: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -74,7 +78,7 @@ export class DocsProvider {
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     socket.onopen = () => {
-      this.attempts = 0;
+      this.openedAt = Date.now();
       // Our state vector: the room answers with what we lack, and asks for what it lacks.
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, MESSAGE_SYNC);
@@ -121,6 +125,9 @@ export class DocsProvider {
         return;
       }
       this.setStatus("offline");
+      // Only a connection that held starts the backoff over.
+      if (heldOpen(this.openedAt)) this.attempts = 0;
+      this.openedAt = null;
       const delay = Math.min(30_000, 500 * 2 ** this.attempts) + Math.random() * 500;
       this.attempts++;
       this.timer = setTimeout(() => this.connect(), delay);

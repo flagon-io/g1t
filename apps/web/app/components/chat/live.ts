@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatLiveEvent } from "@g1t/contracts";
 
 import { backoff } from "../../lib/chat";
+import { heldOpen } from "../../lib/notify-store";
 
 /** How long a conversation's socket stays open after leaving it, while the next one opens. */
 const HANDOFF_MS = 1500;
@@ -44,10 +45,11 @@ export function useChatLive(
         return;
       }
       socket.current = ws;
+      let openedAt: number | null = null;
       ws.onopen = () => {
         const again = opened;
         opened = true;
-        attempt = 0;
+        openedAt = Date.now();
         setState("open");
         if (again) handlers.current.onReconnect();
       };
@@ -61,6 +63,8 @@ export function useChatLive(
       ws.onclose = () => {
         if (socket.current === ws) socket.current = null;
         if (closed) return;
+        // Only a connection that held starts the backoff over.
+        if (heldOpen(openedAt)) attempt = 0;
         setState(opened ? "reconnecting" : "connecting");
         schedule();
       };

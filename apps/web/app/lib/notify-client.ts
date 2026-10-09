@@ -30,6 +30,7 @@ import {
   dismissToast,
   markReadLocally,
   offerPush,
+  heldOpen,
   reconnectDelay,
   titleWith,
   waitingCards,
@@ -409,8 +410,9 @@ function connect(): void {
     return;
   }
   socket = ws;
+  let openedAt: number | null = null;
   ws.onopen = () => {
-    attempt = 0;
+    openedAt = Date.now();
     set({ connected: true });
     sendState();
   };
@@ -424,6 +426,8 @@ function connect(): void {
   };
   ws.onclose = () => {
     if (socket === ws) socket = null;
+    // Only a connection that held starts the backoff over.
+    if (heldOpen(openedAt)) attempt = 0;
     set({ connected: false });
     schedule();
   };

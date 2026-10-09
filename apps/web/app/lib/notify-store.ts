@@ -259,6 +259,19 @@ export function offerPush(input: {
 }
 
 /** Full jitter: a wait anywhere up to the doubled step, from a second up to half a minute. */
+/**
+ * How long a connection must stay open before its backoff starts over. A
+ * socket the server accepts and drops at once (a Worker being replaced, a
+ * room that can't start) would otherwise reconnect every second from every
+ * open tab, and a busy network runs into the rate limit.
+ */
+export const STABLE_MS = 10_000;
+
+/** Whether a connection that opened at `openedAt` held long enough to start the backoff over. */
+export function heldOpen(openedAt: number | null, now: number = Date.now()): boolean {
+  return openedAt !== null && now - openedAt >= STABLE_MS;
+}
+
 export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
   const ceiling = Math.min(30_000, 1_000 * 2 ** Math.max(0, Math.min(attempt, 10)));
   return Math.round(500 + random() * (ceiling - 500));

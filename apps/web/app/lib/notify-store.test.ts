@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { ChatSidebarEntry, FeedCounts, FeedNotification } from "@g1t/contracts";
 
 import {
+  heldOpen,
   MAX_TOASTS,
   RECENT_KEPT,
   WAITING_MS,
@@ -215,4 +216,10 @@ test("the panel waits on the newest notification per card, for a day, until it i
   assert.deepEqual(waitingCards(recent, new Set(), now, "Acme").map((n) => n.id), ["approval:ses_1:2000000"]);
   // Acting on the newest puts the card away; the older one about it does not come back.
   assert.deepEqual(waitingCards(recent, new Set(["approval:ses_1:2000000"]), now, "acme"), []);
+});
+
+test("the backoff starts over only after a connection held for a while", () => {
+  assert.equal(heldOpen(null, 50_000), false);
+  assert.equal(heldOpen(45_000, 50_000), false, "dropped within seconds: keep backing off");
+  assert.equal(heldOpen(40_000, 50_000), true);
 });
