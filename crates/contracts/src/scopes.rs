@@ -681,6 +681,12 @@ pub struct TokenAccess {
     /// `repo` is the one repository it reaches.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deploy_key: Option<String>,
+    /// Set on a person's token whose owner let it use the website (g1t.sh)
+    /// as them, sent as `Authorization: Bearer`. Not a scope: no preset,
+    /// full access or OAuth grant includes it, and git, the API and MCP
+    /// ignore it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub website: bool,
 }
 
 /// Which repositories a token reaches in the workspace it is made for.
@@ -1750,6 +1756,17 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(older, access);
+        // Using the website is off unless set, and said only when on.
+        assert!(!access.website);
+        assert!(wire_of(&access).get("website").is_none());
+        let website = TokenAccess { website: true, ..access };
+        assert_eq!(wire_of(&website)["website"], json!(true));
+        // Never part of full access.
+        assert!(!TokenAccess::full().website);
+    }
+
+    fn wire_of(access: &TokenAccess) -> serde_json::Value {
+        serde_json::to_value(access).unwrap()
     }
 
     /// The site's copy of the table, `packages/contracts/src/scopes.ts`,
