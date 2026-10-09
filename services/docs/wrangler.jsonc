@@ -16,7 +16,7 @@
 			// Create it once, then put its id here:
 			//   npx wrangler d1 create g1t-docs
 			//   npx wrangler d1 migrations apply g1t-docs --remote
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "8f2193ed-fd2b-4322-b6cb-c79090e7603d",
 			"migrations_dir": "migrations"
 		}
 	],
