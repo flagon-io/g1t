@@ -187,7 +187,7 @@ function CommentButton({ line, onClick }: { line: number; onClick: (event: React
       type="button"
       aria-label={`Comment on line ${line}`}
       onClick={onClick}
-      className="absolute top-0 -right-2.5 z-10 hidden size-5 items-center justify-center rounded bg-accent text-bg group-hover:flex focus-visible:flex"
+      className="absolute top-0 -right-2.5 z-10 hidden size-5 items-center justify-center rounded bg-accent text-bg group-hover:flex focus-visible:flex pointer-coarse:-right-1 pointer-coarse:flex pointer-coarse:size-7"
     >
       <MessageSquarePlus size={12} />
     </button>
@@ -767,7 +767,7 @@ export function DiffView({
   const allCollapsed = files.every((file) => collapsed.has(file.path));
   return (
     <div ref={frame}>
-      <div ref={toolbar} className="sticky top-14 z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
+      <div ref={toolbar} className="sticky top-(--topbar-h) z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
         <span className="text-sm text-muted">
           <span className="font-medium text-fg">{files.length}</span> {files.length === 1 ? "file" : "files"}
         </span>
@@ -830,7 +830,7 @@ export function DiffView({
             side="left"
             // No keyboard popping up over the list on a phone: the filter is a tap away.
             onOpenAutoFocus={(event) => event.preventDefault()}
-            className="inset-x-0 top-auto bottom-0 h-[80dvh] max-w-none rounded-t-2xl border-t border-r-0 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in sm:max-w-none xl:hidden"
+            className="inset-x-0 top-auto bottom-0 h-[80dvh] max-w-none rounded-t-2xl pt-0 border-t border-r-0 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in sm:max-w-none xl:hidden"
           >
             <SheetHeader>
               <SheetTitle>Files changed</SheetTitle>

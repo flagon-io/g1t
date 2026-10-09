@@ -151,7 +151,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
             : code}
         </code>
       </pre>
-      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {language && <span className="font-mono text-[0.6875rem] text-faint">{language}</span>}
         <button
           type="button"

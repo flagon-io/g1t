@@ -115,6 +115,11 @@ export default function DocEditor(props: DocEditorProps) {
 function LiveEditor({ slug, pageId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, provider }: DocEditorProps & { provider: DocsProvider }) {
   const editable = canDo(role, "edit");
   const colour = cursorColour(me.name);
+  // Below 1280px the comments sit under the page: opening them goes there.
+  const comments = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (showComments && window.matchMedia("(max-width: 1279px)").matches) comments.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [showComments]);
 
   const threadStore = useMemo(() => {
     const auth = canDo(role, "comment") ? new DefaultThreadStoreAuth(me.key, editable ? "editor" : "comment") : new ReadOnlyAuth();
@@ -301,8 +306,8 @@ function LiveEditor({ slug, pageId, role, me, mentionables, usercontent, suggest
             {renderSuggestion && <SuggestionRail editor={editor} suggestions={suggestions} render={renderSuggestion} hidden={showComments} />}
           </div>
           {showComments && (
-            <aside aria-label="Comments" className="hidden xl:block">
-              <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto [scrollbar-width:thin]">
+            <aside ref={comments} aria-label="Comments" className="scroll-mt-20 max-xl:border-t max-xl:border-line max-xl:pt-6">
+              <div className="xl:sticky xl:top-20 xl:max-h-[calc(100dvh-6rem)] xl:overflow-y-auto xl:[scrollbar-width:thin]">
                 <ThreadsSidebar filter="all" sort="position" />
               </div>
             </aside>

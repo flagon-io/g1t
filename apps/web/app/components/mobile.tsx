@@ -6,6 +6,7 @@ import {
   BookOpen,
   Building2,
   Check,
+  ChevronRight,
   CircleUserRound,
   Code2,
   House,
@@ -27,14 +28,17 @@ import { Dialog as Primitive } from "radix-ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSubmit } from "react-router";
 
-import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
+import { type Abilities, type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
 import { Avatar } from "./ui";
+import { TabStrip } from "./ui/tab-strip";
 import { StatusDialog } from "./presence";
 import { setPresence, useOwnPresence } from "../lib/notify-client";
 import { dndOn, liveStatus, pauseUntil, untilLabel } from "../lib/presence";
 import { STATUS_URL } from "../lib/status";
 import { modeOf } from "../lib/workspace-nav";
+import { PROJECT_PAGE_LINKS, type ProjectPage, projectPageAt, projectPages } from "../lib/chrome";
+import { ROADMAP, type RoadmapItem } from "../lib/roadmap";
 
 /**
  * The phone's layout (below 768px): a tab bar along the bottom, the
@@ -49,7 +53,8 @@ export function isConversation(pathname: string): boolean {
 
 /**
  * Follows the visual viewport, which shrinks when the keyboard opens: its
- * height and top go on the page as `--vv-height` and `--vv-top`, and
+ * height and top go on the page as `--vv-height` and `--vv-top`, what
+ * the keyboard covers as `--keyboard-inset`, and
  * `data-keyboard="open"` on <html> while the keyboard is up, so a
  * composer can sit just above it and the tab bar can step aside.
  */
@@ -61,6 +66,8 @@ export function useVisualViewport() {
     const update = () => {
       root.style.setProperty("--vv-height", `${viewport.height}px`);
       root.style.setProperty("--vv-top", `${viewport.offsetTop}px`);
+      // How much of the bottom the keyboard covers, for a sheet to sit on it.
+      root.style.setProperty("--keyboard-inset", `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`);
       const keyboard = window.innerHeight - viewport.height > 140;
       if (keyboard) root.dataset.keyboard = "open";
       else delete root.dataset.keyboard;
@@ -118,9 +125,19 @@ type Tab = { key: string; label: string; to: string; icon: ReactNode; badge?: { 
 /**
  * The tab bar along the bottom of a phone: Home, Code (Docs, for a member
  * without Code), Chat, Agents and the Inbox, each with what is unread. It
- * steps aside while the keyboard is up and inside a conversation.
+ * steps aside while the keyboard is up and inside a conversation. The tab
+ * you are in, tapped again, opens its mode's menu.
  */
-export function MobileTabBar({ workspace, unread }: { workspace: Membership; unread: { inbox: number; chat: number; mentions: number } }) {
+export function MobileTabBar({
+  workspace,
+  unread,
+  onReselect,
+}: {
+  workspace: Membership;
+  unread: { inbox: number; chat: number; mentions: number };
+  /** Tapping the tab you are already in: the shell opens that mode's menu (its sidebar). */
+  onReselect?: () => void;
+}) {
   const { pathname } = useLocation();
   const slug = workspace.slug;
   const code = hasCodeAccess(workspace);
@@ -157,6 +174,13 @@ export function MobileTabBar({ workspace, unread }: { workspace: Membership; unr
                 prefetch="intent"
                 aria-current={current ? "page" : undefined}
                 aria-label={count > 0 ? `${tab.label}, ${count} unread` : tab.label}
+                onClick={(event) => {
+                  // The tab you are in, tapped again: its menu, as a phone's own apps do.
+                  // Chat's first page on a phone is its sidebar already.
+                  if (!current || !onReselect || (tab.key === "chat" && pathname.replace(/\/$/, "") === tab.to)) return;
+                  event.preventDefault();
+                  onReselect();
+                }}
                 className="flex h-full flex-col items-center justify-center gap-0.5 transition-colors active:bg-raised/60"
               >
                 <span className={`relative flex h-7 w-12 items-center justify-center rounded-full transition-colors ${current ? "bg-[#2c2c33] text-fg" : "text-muted"}`}>
@@ -321,8 +345,9 @@ function OwnPresenceRows({ onEdit }: { onEdit: () => void }) {
 
 /**
  * The phone's everything-else: the workspace avatar at the top left opens
- * it. Your workspaces, Docs, the workspace's own pages, help, and your
- * account. It replaces the menu sheet below 768px.
+ * it. Docs and the workspace's own pages first, then your workspaces,
+ * help, and your account. The mode you are in has its own menu (its
+ * sidebar), behind the button beside the avatar.
  */
 export function AvatarSheetButton({ user, workspace }: { user: User; workspace: Membership }) {
   const [open, setOpen] = useState(false);
@@ -350,25 +375,13 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
             <p className="truncate font-mono text-xs text-muted">g1t.sh/{slug}</p>
           </div>
         </div>
-        <SheetGroup title="Switch workspace">
-          {(user.workspaces ?? []).map((membership) => (
-            <SheetRow
-              key={membership.slug}
-              to={`/${membership.slug}/-/home`}
-              icon={<Avatar name={membership.slug} image={membership.avatar} size={24} square />}
-              end={membership.slug === slug ? <Check size={18} className="text-accent" /> : null}
-            >
-              {displayName(membership)}
-            </SheetRow>
-          ))}
-          <SheetRow to="/workspaces/new" icon={<Plus />}>
-            New workspace
-          </SheetRow>
-        </SheetGroup>
         <SheetGroup title="Workspace">
-          <SheetRow to={`/${slug}/-/docs`} icon={<BookOpen />}>
-            Docs
-          </SheetRow>
+          {/* Docs has no tab of its own for someone with Code: it leads here. */}
+          {hasCodeAccess(workspace) && (
+            <SheetRow to={`/${slug}/-/docs`} icon={<BookOpen />} end={<ChevronRight size={16} className="text-faint" />}>
+              Docs
+            </SheetRow>
+          )}
           <SheetRow to={`/${slug}/-/workspace`} icon={<Building2 />}>
             Overview
           </SheetRow>
@@ -386,6 +399,21 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
           </SheetRow>
           <SheetRow to={owner ? `/${slug}/-/settings` : `/${slug}/-/repositories`} icon={<Settings />}>
             Settings
+          </SheetRow>
+        </SheetGroup>
+        <SheetGroup title="Switch workspace">
+          {(user.workspaces ?? []).map((membership) => (
+            <SheetRow
+              key={membership.slug}
+              to={`/${membership.slug}/-/home`}
+              icon={<Avatar name={membership.slug} image={membership.avatar} size={24} square />}
+              end={membership.slug === slug ? <Check size={18} className="text-accent" /> : null}
+            >
+              {displayName(membership)}
+            </SheetRow>
+          ))}
+          <SheetRow to="/workspaces/new" icon={<Plus />}>
+            New workspace
           </SheetRow>
         </SheetGroup>
         <SheetGroup title="Help">
@@ -419,5 +447,74 @@ export function AvatarSheetButton({ user, workspace }: { user: User; workspace: 
       </BottomSheet>
       <StatusDialog open={editing} onOpenChange={setEditing} />
     </>
+  );
+}
+
+/** Which project page a roadmap page (`soon/<key>`) sits under, by its section. */
+const SOON_UNDER: Partial<Record<RoadmapItem["section"], ProjectPage>> = {
+  Code: "code",
+  Issues: "issues",
+  Agents: "agents",
+  Deployments: "deployments",
+  Observability: "observability",
+  Security: "security",
+  Insights: "insights",
+};
+const SOON_PAGES: Record<string, ProjectPage> = Object.fromEntries(
+  ROADMAP.flatMap((item) => (SOON_UNDER[item.section] ? [[item.key, SOON_UNDER[item.section]!] as const] : [])),
+);
+
+/**
+ * A project's pages on a phone, under its name: the sidebar's own list
+ * (lib/chrome.ts) as a row of tabs that scrolls sideways, the current one
+ * kept in view, so Issues and Pull requests are one tap away. From 768px
+ * the sidebar has them.
+ */
+export function ProjectStrip({
+  base,
+  member,
+  can,
+  settings,
+  counts,
+}: {
+  /** `/<namespace>/<name>`. */
+  base: string;
+  member: boolean;
+  can?: Partial<Abilities>;
+  /** Whether they see its settings (lib/access.ts `seesSettings`), as the sidebar decides. */
+  settings?: boolean;
+  counts?: { issues: number; pulls: number };
+}) {
+  const { pathname } = useLocation();
+  const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
+  const at = projectPageAt(rest, SOON_PAGES);
+  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
+    ...(settings ?? member ? (["settings"] as const) : []),
+  ];
+  const pill = (current: boolean) =>
+    `flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm transition-colors ${
+      current ? "bg-raised font-medium text-fg ring-1 ring-line-strong" : "text-muted active:bg-raised/60"
+    }`;
+  return (
+    <TabStrip label="Project" className="-mx-4 gap-1 px-4 md:hidden">
+      {pages.map((page) => {
+        const current = at === page;
+        const link = page === "overview" ? { label: "Overview", path: "" } : PROJECT_PAGE_LINKS[page];
+        const count = page === "issues" ? counts?.issues : page === "pulls" ? counts?.pulls : undefined;
+        return (
+          <Link
+            key={page}
+            to={link.path ? `${base}/${link.path}` : base}
+            prefetch="intent"
+            aria-current={current ? "page" : undefined}
+            data-active={current || undefined}
+            className={pill(current)}
+          >
+            {link.label}
+            {count != null && count > 0 && <span className="rounded-full bg-line px-1.5 text-xs tabular-nums text-muted">{count}</span>}
+          </Link>
+        );
+      })}
+    </TabStrip>
   );
 }

@@ -166,10 +166,14 @@ html {
  */
 :root {
   --tabbar-h: 0px;
+  /* The top bar's height (components/shell.tsx), for what sticks just under it. */
+  --topbar-h: 3.5rem;
 }
 @media (max-width: 767px) {
   :root {
     --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
+    /* On a phone it grows by the notch. */
+    --topbar-h: calc(3.5rem + env(safe-area-inset-top));
   }
 }
 

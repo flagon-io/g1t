@@ -397,7 +397,7 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
               {ANNOTATION_ICON[note.level]}
               <span className="min-w-0">
                 {note.title && <span className="font-medium">{note.title}: </span>}
-                <span className="whitespace-pre-wrap">{note.message}</span>
+                <span className="whitespace-pre-wrap wrap-break-word">{note.message}</span>
                 {note.file && (
                   <span className="block font-mono text-xs text-faint">
                     {note.file}
@@ -811,7 +811,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
       {run.error && (
         <div className="rounded-xl border border-danger/30 bg-danger/5 p-4 text-sm">
           <p className="font-medium text-danger">The workflow file could not be used</p>
-          <p className="mt-1 whitespace-pre-wrap text-fg/85">{run.error}</p>
+          <p className="mt-1 whitespace-pre-wrap wrap-break-word text-fg/85">{run.error}</p>
         </div>
       )}
       <Notes notes={notes} />

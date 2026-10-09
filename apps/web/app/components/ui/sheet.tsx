@@ -33,7 +33,8 @@ export function SheetContent({
       <DialogOverlay />
       <Primitive.Content
         className={cn(
-          "fixed z-50 flex h-dvh w-full flex-col border-line-strong bg-surface text-fg shadow-2xl shadow-black/60 outline-none motion-reduce:animate-none",
+          // Clear of the notch and the home indicator on a phone.
+          "fixed z-50 flex h-dvh w-full flex-col border-line-strong bg-surface pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-fg shadow-2xl shadow-black/60 outline-none motion-reduce:animate-none",
           SIDES[side],
           className,
         )}
@@ -43,7 +44,7 @@ export function SheetContent({
         {showClose && (
           <Primitive.Close
             aria-label="Close"
-            className="absolute top-4 right-4 rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
+            className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg max-sm:top-[calc(0.75rem+env(safe-area-inset-top))] max-sm:right-3 max-sm:flex max-sm:size-10 max-sm:items-center max-sm:justify-center"
           >
             <X size={16} />
           </Primitive.Close>

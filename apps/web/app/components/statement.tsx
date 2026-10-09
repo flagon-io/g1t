@@ -125,7 +125,7 @@ export function StatementView({
           </div>
         </dl>
       ) : (
-        <dl className="mt-3 grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-surface text-sm">
+        <dl className="mt-3 grid grid-cols-1 divide-y divide-line sm:grid-cols-3 sm:divide-x sm:divide-y-0 rounded-xl border border-line bg-surface text-sm">
           <div className="px-4 py-3">
             <dt className="text-xs text-faint">Charged</dt>
             <dd className="mt-0.5 font-mono tabular-nums">{charge(totals.chargedMicros)}</dd>

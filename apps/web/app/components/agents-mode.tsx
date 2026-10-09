@@ -724,7 +724,7 @@ export function AgentForm({
         </div>
       </FormSection>
 
-      <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-bg/90 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+      <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-bg/90 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         {Object.keys(e).length > 0 && <p className="mr-auto text-sm text-danger">Check the fields marked above.</p>}
         <button
           type="submit"

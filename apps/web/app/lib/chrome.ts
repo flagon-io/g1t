@@ -107,3 +107,37 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
     (page): page is ProjectPage => page !== false && (!can || !PAGE_NEEDS[page] || Boolean(can[PAGE_NEEDS[page]!])),
   );
 }
+
+/**
+ * A project's pages as the phone's strip of tabs under its name names them
+ * (routes/repo/layout.tsx): the sidebar's words, and the paths under the
+ * project at which each is the current one.
+ */
+export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: string; also: string[]; soon?: boolean }> = {
+  code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare"] },
+  issues: { label: "Issues", path: "issues", also: ["plans", "milestones", "labels"] },
+  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue"] },
+  agents: { label: "Agents", path: "agents", also: ["sessions", "memory"] },
+  actions: { label: "Workflows", path: "actions", also: [] },
+  deployments: { label: "Deployments", path: "deployments", also: [] },
+  observability: { label: "Observability", path: "soon/logs", also: [], soon: true },
+  security: { label: "Security", path: "security", also: [] },
+  insights: { label: "Insights", path: "contributors", also: ["activity", "stargazers"] },
+  settings: { label: "Settings", path: "settings", also: [] },
+};
+
+/**
+ * Which of a project's pages `rest` (the path under the project, no
+ * leading slash) is on: "overview" for the project itself. `soon` says
+ * which page a roadmap page (`soon/<key>`) sits under.
+ */
+export function projectPageAt(rest: string, soon: Record<string, ProjectPage> = {}): ProjectPage | "overview" | null {
+  const path = rest.replace(/^\/+|\/+$/g, "");
+  if (path === "") return "overview";
+  const soonKey = /^soon\/([^/]+)/.exec(path)?.[1];
+  if (soonKey && soon[soonKey]) return soon[soonKey]!;
+  for (const [page, link] of Object.entries(PROJECT_PAGE_LINKS) as [ProjectPage, (typeof PROJECT_PAGE_LINKS)[ProjectPage]][]) {
+    if ([link.path, ...link.also].some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return page;
+  }
+  return null;
+}

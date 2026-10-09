@@ -203,13 +203,13 @@ function Fact({ memory, agent, canChange }: { memory: AgentMemory; agent: Worksp
                 <input type="hidden" name="id" value={memory.id} />
                 <input type="hidden" name="pinned" value={pinned ? "false" : "true"} />
                 <Hint label={pinned ? "Unpin" : "Pin"}>
-                  <button type="submit" aria-label={pinned ? "Unpin" : "Pin"} className="flex size-7 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg">
+                  <button type="submit" aria-label={pinned ? "Unpin" : "Pin"} className="flex size-7 items-center justify-center rounded-md text-faint max-sm:size-10 hover:bg-raised hover:text-fg">
                     {pinned ? <PinOff size={14} /> : <Pin size={14} />}
                   </button>
                 </Hint>
               </pin.Form>
               <Hint label="Edit">
-                <button type="button" aria-label="Edit" onClick={() => setEditing(true)} className="flex size-7 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg">
+                <button type="button" aria-label="Edit" onClick={() => setEditing(true)} className="flex size-7 items-center justify-center rounded-md text-faint max-sm:size-10 hover:bg-raised hover:text-fg">
                   <Pencil size={14} />
                 </button>
               </Hint>
@@ -219,7 +219,7 @@ function Fact({ memory, agent, canChange }: { memory: AgentMemory; agent: Worksp
                 fields={{ intent: "forget", id: memory.id }}
                 fetcherKey={`forget-${memory.id}`}
                 trigger={
-                  <button type="button" aria-label="Forget" className="flex size-7 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-danger">
+                  <button type="button" aria-label="Forget" className="flex size-7 items-center justify-center rounded-md text-faint max-sm:size-10 hover:bg-raised hover:text-danger">
                     <Trash2 size={14} />
                   </button>
                 }

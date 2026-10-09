@@ -279,7 +279,7 @@ function EventItem({ event, agentHandle, agentSeed }: { event: SessionEvent; age
           </Rail>
           <div className="min-w-0 grow rounded-lg border border-accent/30 bg-accent/[0.06] px-3.5 py-2.5">
             <p className="flex items-center gap-2 text-xs font-medium text-accent">Goal{when}</p>
-            <p className="mt-1 text-sm whitespace-pre-wrap text-fg">{event.body}</p>
+            <p className="mt-1 text-sm whitespace-pre-wrap wrap-break-word text-fg">{event.body}</p>
           </div>
         </li>
       );
@@ -294,7 +294,7 @@ function EventItem({ event, agentHandle, agentSeed }: { event: SessionEvent; age
               <span className="font-medium text-fg">{event.by ? `@${event.by}` : "g1t"}</span>
               {when}
             </p>
-            <p className="mt-0.5 text-sm whitespace-pre-wrap text-fg-soft">{event.body}</p>
+            <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word text-fg-soft">{event.body}</p>
           </div>
         </li>
       );
@@ -341,7 +341,7 @@ function EventItem({ event, agentHandle, agentSeed }: { event: SessionEvent; age
             <p className="flex items-center gap-2 text-xs text-info">
               <span className="font-medium">{event.by ? `@${event.by}` : "Someone"}</span> steered it{when}
             </p>
-            <p className="mt-1 text-sm whitespace-pre-wrap text-fg">{event.body}</p>
+            <p className="mt-1 text-sm whitespace-pre-wrap wrap-break-word text-fg">{event.body}</p>
           </div>
         </li>
       );
@@ -353,7 +353,7 @@ function EventItem({ event, agentHandle, agentSeed }: { event: SessionEvent; age
           </Rail>
           <div className="min-w-0 grow">
             <p className="flex items-center gap-2 text-xs text-muted">Posted an update in the conversation{when}</p>
-            <p className="mt-0.5 text-sm whitespace-pre-wrap text-fg-soft">{event.body}</p>
+            <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word text-fg-soft">{event.body}</p>
           </div>
         </li>
       );
@@ -367,7 +367,7 @@ function EventItem({ event, agentHandle, agentSeed }: { event: SessionEvent; age
             <p className="flex items-center gap-2 text-xs text-muted">
               {event.by ? <span className="font-medium text-fg">@{event.by}</span> : null} reported back{when}
             </p>
-            <p className="mt-0.5 text-sm whitespace-pre-wrap text-fg-soft">{event.body}</p>
+            <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word text-fg-soft">{event.body}</p>
           </div>
         </li>
       );

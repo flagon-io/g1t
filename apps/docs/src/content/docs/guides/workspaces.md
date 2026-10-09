@@ -601,6 +601,30 @@ operations, or the `workspace` tool's `list_pinned_projects`,
 `pin_project`, `unpin_project` and `reorder_pinned_projects` actions
 over MCP.
 
+### On your phone
+
+On a screen narrower than a tablet, g1t keeps the same places and moves
+them within reach of your thumb:
+
+| | What it does |
+| --- | --- |
+| **The tabs along the bottom** | **Home**, **Code** (or **Docs**, if you don't use Code in this workspace), **Chat**, **Agents** and **Inbox**, each with what is unread. They step aside while the keyboard is up and inside a conversation. |
+| **The menu button** (☰), beside the workspace's icon at the top left | Opens the sidebar of the mode you are in from the left: the same lists and links as on a computer. Inside a project, that is the project's own list; on a workspace or settings page, the Workspace or account sidebar. Tap outside it, or open a page, and it closes. |
+| **The tab you are already on** | Tap it again to open that mode's sidebar too. |
+| **The workspace's icon** at the top left | Everything else, from the bottom: **Docs** first, then the workspace's **Overview**, **People**, **Teams**, **Usage and billing**, **Integrations** and **Settings**; switching workspaces; help; and your status, profile, settings and signing out. |
+
+Inside a [project](/guides/projects/), its pages (**Overview**, **Code**,
+**Issues**, **Pull requests**, **Agents**, **Workflows**, **Deployments**,
+**Insights** and, for the roles that see them, **Security** and
+**Settings**) run in a row under its name that scrolls sideways, with the
+page you are on kept in view, so issues and pull requests are one tap
+away. Pages with more than one view, such as **Files**, **Commits** and
+**Branches**, show those as a second row of tabs.
+
+Menus stay inside the screen, dialogs rise from the bottom and sit on top
+of the keyboard while you type, and nothing scrolls the page sideways: a
+wide file, diff or table scrolls within its own box.
+
 ## Mission control
 
 Mission control, `g1t.sh` when you are signed in, is your home page. It

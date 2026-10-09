@@ -213,7 +213,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
         <div className="group relative -mx-4 h-44 sm:-mx-6 lg:-mx-8" style={{ background: cover }}>
           {editable && (
             <CoverPicker onChange={(c) => send("update_page", { page_id: page.id, change: { cover: c } })}>
-              <button type="button" className="absolute right-4 bottom-3 rounded-md bg-bg/70 px-2.5 py-1 text-xs text-fg opacity-0 backdrop-blur group-hover:opacity-100 focus-visible:opacity-100">
+              <button type="button" className="absolute right-4 bottom-3 rounded-md bg-bg/70 px-2.5 py-1 text-xs text-fg opacity-0 backdrop-blur group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100">
                 Change cover
               </button>
             </CoverPicker>
@@ -221,7 +221,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
         </div>
       )}
       {/* The bar above the page: where it is, who is here, and what can be done. */}
-      <div className="sticky top-14 z-20 -mx-4 flex h-12 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="sticky top-(--topbar-h) z-20 -mx-4 flex h-12 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="min-w-0 grow">
           <Crumbs items={crumbs} />
         </div>
@@ -245,7 +245,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
           </span>
         )}
         <Hint label={showComments ? "Hide comments" : "Comments"}>
-          <button type="button" onClick={() => setShowComments(!showComments)} aria-pressed={showComments} aria-label="Comments" className={`hidden size-8 items-center justify-center rounded-md xl:flex ${showComments ? "bg-raised text-fg" : "text-faint hover:bg-raised hover:text-fg"}`}>
+          <button type="button" onClick={() => setShowComments(!showComments)} aria-pressed={showComments} aria-label="Comments" className={`flex size-8 items-center justify-center rounded-md max-md:size-10 ${showComments ? "bg-raised text-fg" : "text-faint hover:bg-raised hover:text-fg"}`}>
             <MessageSquare size={16} />
           </button>
         </Hint>

@@ -24,9 +24,14 @@ export function DialogOverlay({ className, ...props }: ComponentProps<typeof Pri
   );
 }
 
-/** The panel, centred; on a phone it fills the width less a gutter. */
+/**
+ * The panel, centred. On a phone (below 640px) it is a sheet from the
+ * bottom instead, the full width, clear of the home indicator and sitting
+ * on the keyboard while it is up (`--keyboard-inset`, components/mobile.tsx).
+ */
 export const DIALOG_PANEL =
-  "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-line-strong bg-surface p-6 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out motion-reduce:animate-none";
+  "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl border border-line-strong bg-surface p-6 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out motion-reduce:animate-none " +
+  "max-sm:top-auto max-sm:bottom-(--keyboard-inset,0px) max-sm:left-0 max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-[calc(var(--vv-height,100dvh)-env(safe-area-inset-top)-0.5rem)] max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-sm:data-[state=open]:animate-[sheet-in-bottom_0.24s_cubic-bezier(0.16,1,0.3,1)] max-sm:data-[state=closed]:animate-fade-out";
 
 export function DialogContent({
   className,
@@ -42,7 +47,7 @@ export function DialogContent({
         {showClose && (
           <Primitive.Close
             aria-label="Close"
-            className="absolute top-4 right-4 rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg"
+            className="absolute top-4 right-4 rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg max-sm:top-2.5 max-sm:right-2.5 max-sm:flex max-sm:size-10 max-sm:items-center max-sm:justify-center"
           >
             <X size={16} />
           </Primitive.Close>

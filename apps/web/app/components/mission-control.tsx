@@ -477,7 +477,7 @@ function WeekChart({ week }: { week: Week }) {
                     <span
                       className={cn(
                         "mb-1 text-[0.625rem] tabular-nums",
-                        today ? "text-fg-soft" : "text-faint opacity-0 group-hover:opacity-100",
+                        today ? "text-fg-soft" : "text-faint opacity-0 group-hover:opacity-100 max-md:hidden",
                       )}
                     >
                       {total}
@@ -489,7 +489,7 @@ function WeekChart({ week }: { week: Week }) {
                     ))}
                     {total === 0 && <span className="block h-[2px] rounded-full bg-line-strong" />}
                   </div>
-                  <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg shadow-black/40 group-hover:block">
+                  <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg shadow-black/40 md:group-hover:block">
                     <p className="font-medium text-fg">{day.label}</p>
                     <p className="mt-0.5 flex items-center gap-1.5 text-muted">
                       <span className="size-1.5 rounded-full bg-accent" /> {day.agents} by agents on their own

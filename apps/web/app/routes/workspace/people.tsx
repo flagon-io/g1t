@@ -208,7 +208,7 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
           <button
             type="button"
             aria-label={`Manage ${member.username}`}
-            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+            className="rounded-md p-1.5 text-faint transition-colors max-sm:p-2.5 hover:bg-raised hover:text-fg"
           >
             <Ellipsis size={16} />
           </button>

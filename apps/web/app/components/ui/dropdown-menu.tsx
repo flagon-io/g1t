@@ -13,14 +13,17 @@ export const DropdownMenuGroup = Primitive.Group;
 export function DropdownMenuContent({
   className,
   sideOffset = 6,
+  collisionPadding = 8,
   ...props
 }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
       <Primitive.Content
         sideOffset={sideOffset}
+        // Never off the edge of a phone: kept 8px inside it, and as tall as there is room for.
+        collisionPadding={collisionPadding}
         className={cn(
-          "z-50 min-w-48 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-line-strong bg-raised p-1 text-sm shadow-xl shadow-black/40",
+          "z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-1rem)] min-w-48 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg border border-line-strong bg-raised p-1 text-sm shadow-xl shadow-black/40",
           "data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out motion-reduce:animate-none",
           className,
         )}
@@ -37,7 +40,8 @@ export function DropdownMenuItem({
   return (
     <Primitive.Item
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-fg/90 outline-none select-none",
+        // Taller rows under a finger, so each is a fair target.
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-fg/90 outline-none select-none pointer-coarse:min-h-10",
         "data-highlighted:bg-line data-highlighted:text-fg data-disabled:opacity-50",
         "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-faint",
         className,
@@ -82,7 +86,8 @@ export function DropdownMenuSubTrigger({
   return (
     <Primitive.SubTrigger
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-fg/90 outline-none select-none",
+        // Taller rows under a finger, so each is a fair target.
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-fg/90 outline-none select-none pointer-coarse:min-h-10",
         "data-highlighted:bg-line data-highlighted:text-fg data-[state=open]:bg-line data-[state=open]:text-fg data-disabled:opacity-50",
         "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-faint",
         className,
@@ -98,14 +103,16 @@ export function DropdownMenuSubTrigger({
 export function DropdownMenuSubContent({
   className,
   sideOffset = 6,
+  collisionPadding = 8,
   ...props
 }: ComponentProps<typeof Primitive.SubContent>) {
   return (
     <Primitive.Portal>
       <Primitive.SubContent
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
         className={cn(
-          "z-50 min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-line-strong bg-raised p-1 text-sm shadow-xl shadow-black/40",
+          "z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-1rem)] min-w-44 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg border border-line-strong bg-raised p-1 text-sm shadow-xl shadow-black/40",
           "data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out motion-reduce:animate-none",
           className,
         )}

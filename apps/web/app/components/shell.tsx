@@ -2071,6 +2071,17 @@ function sidebarFor(mode: ModeKey | null): Panel | null {
 /** The sidebars that sit beside the rail, one per mode that has one. */
 type Panel = "home" | "chat" | "docs" | "agents" | "code" | "workspace" | "account";
 
+/** Each sidebar's name, for the phone's button that opens it. */
+const MODE_MENU: Record<Panel, string> = {
+  home: "Home",
+  chat: "Chat",
+  docs: "Docs",
+  agents: "Agents",
+  code: "Code",
+  workspace: "Workspace",
+  account: "Account",
+};
+
 /**
  * The app: a sidebar with the workspace, its repositories and the sections
  * of the one being looked at; a slim bar with search and the account; and
@@ -2192,22 +2203,25 @@ export function AppShell({
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus();
         }}
-        className={`lg:hidden ${rail ? `flex flex-row ${panel ? "w-[21rem] max-w-[92vw] sm:max-w-[21rem]" : "w-20 sm:max-w-20"}` : "w-72 max-w-[85vw] sm:max-w-72"}`}
+        // A phone has the tab bar for the modes: the sheet is the mode's
+        // sidebar alone, a little wider, its rows tall enough for a thumb.
+        className={`lg:hidden ${rail ? `flex flex-row ${panel ? "w-[21rem] max-w-[92vw] sm:max-w-[21rem] max-md:w-[min(20rem,86vw)]" : "w-20 sm:max-w-20"}` : "w-72 max-w-[85vw] sm:max-w-72"}`}
       >
-        <SheetTitle className="sr-only">Menu</SheetTitle>
-        {rail}
-        {panel && <div className={`min-w-0 grow ${rail ? SIDEBAR_BOX : ""}`}>{sidebarNode(true)}</div>}
+        <SheetTitle className="sr-only">{ws && panel ? `${MODE_MENU[panel]} menu` : "Menu"}</SheetTitle>
+        {rail && <div className={`flex h-full shrink-0 ${panel ? "max-md:hidden" : ""}`}>{rail}</div>}
+        {panel && <div className={`min-w-0 grow ${rail ? SIDEBAR_BOX : ""} max-md:[&_nav_a]:min-h-10`}>{sidebarNode(true)}</div>}
       </SheetContent>
 
       <div className={`flex min-h-dvh min-w-0 flex-col ${pad} ${tabs ? "pb-(--tabbar-h)" : ""}`}>
         <header
-          className={`sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] backdrop-blur sm:px-6 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] ${mode === "chat" ? "lg:hidden" : ""} ${conversation ? "max-md:hidden" : ""}`}
+          className={`sticky top-0 z-30 flex h-14 items-center gap-3 max-md:gap-1.5 border-b border-line bg-bg/85 pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] backdrop-blur sm:px-6 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] ${mode === "chat" ? "lg:hidden" : ""} ${conversation ? "max-md:hidden" : ""}`}
         >
           {/* A phone: the workspace's avatar opens everything else (components/mobile.tsx). */}
           {user && ws && <AvatarSheetButton user={user} workspace={ws} />}
+          {/* The mode's own menu (its sidebar); on a phone, beside the avatar, wherever the mode has one. */}
           <SheetTrigger
-            aria-label="Open menu"
-            className={`rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg lg:hidden ${user && ws ? "max-md:hidden" : ""}`}
+            aria-label={ws && panel ? `Open the ${MODE_MENU[panel]} menu` : "Open menu"}
+            className={`flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg max-md:-ml-1 max-md:size-10 lg:hidden ${user && ws && !panel ? "max-md:hidden" : ""}`}
           >
             <Menu size={18} />
           </SheetTrigger>
@@ -2347,7 +2361,13 @@ export function AppShell({
           <InMain.Provider value={true}>{children}</InMain.Provider>
         </main>
       </div>
-      {user && ws && <MobileTabBar workspace={ws} unread={{ inbox: inboxUnread, chat: chatUnread.unread, mentions: chatUnread.mentions }} />}
+      {user && ws && (
+        <MobileTabBar
+          workspace={ws}
+          unread={{ inbox: inboxUnread, chat: chatUnread.unread, mentions: chatUnread.mentions }}
+          onReselect={panel ? () => setDrawer(true) : undefined}
+        />
+      )}
       <CommandPalette
         open={palette}
         onOpenChange={setPalette}

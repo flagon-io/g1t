@@ -192,7 +192,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
               </Link>
             </Section>
 
-            <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
+            <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
               <SubmitButton pending="Saving…" disabled={archived}>
                 Save settings
               </SubmitButton>

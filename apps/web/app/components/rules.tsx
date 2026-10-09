@@ -1046,7 +1046,7 @@ export function RulesetForm({
         )}
       </Block>
 
-      <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
+      <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
         {editable && (
           <SubmitButton pending="Saving…" match={{ intent: "save" }}>
             {existing ? "Save changes" : "Create ruleset"}
@@ -1254,7 +1254,7 @@ export function InsightsView({ page, showRepository, olderHref }: { page: Evalua
               const top = insights.by_rule[0]!.count || 1;
               return (
                 <li key={row.rule} className="flex items-center gap-3 text-sm">
-                  <span className="w-56 shrink-0 truncate">{ruleInfo(row.rule)?.label ?? row.rule}</span>
+                  <span className="w-32 shrink-0 truncate sm:w-56">{ruleInfo(row.rule)?.label ?? row.rule}</span>
                   <span className="h-2 grow overflow-hidden rounded-full bg-surface">
                     <span className="block h-full rounded-full bg-danger/70" style={{ width: `${Math.max(4, (row.count / top) * 100)}%` }} />
                   </span>
