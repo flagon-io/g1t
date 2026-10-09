@@ -60,9 +60,9 @@ export default function ChatIndex({ loaderData, params }: Route.ComponentProps) 
   return (
     <>
       {/* A phone: the list of conversations, full screen. */}
-      <div className="h-[calc(100dvh-3.5rem-3.5rem-env(safe-area-inset-bottom)-env(safe-area-inset-top))] md:hidden">
+      <div className="h-[calc(100dvh-var(--topbar-h)-var(--tabbar-h))] md:hidden">
         <ChatSidebar slug={params.owner.toLowerCase()} heading={false} />
-        <div className="fixed right-4 bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] z-30">
+        <div className="fixed right-4 bottom-[calc(var(--tabbar-h)+1rem)] z-30">
           <NewMessageButton slug={params.owner.toLowerCase()} variant="fab" />
         </div>
       </div>

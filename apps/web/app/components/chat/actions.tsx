@@ -282,7 +282,7 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
         </button>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md gap-0 p-0" showClose={false}>
+        <DialogContent className="max-w-md gap-0 p-0 max-sm:pb-[env(safe-area-inset-bottom)]" showClose={false}>
           {open && <NewMessage slug={slug} onDone={() => setOpen(false)} />}
         </DialogContent>
       </Dialog>
