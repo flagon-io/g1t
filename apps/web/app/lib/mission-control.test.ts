@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   type Merged,
   placePushes,
+  historyCovers,
   change,
   checksFact,
   confidenceAsk,
@@ -202,6 +203,22 @@ test("who pushed is the account that signed in, not the name on the commits", ()
     { time: "2026-10-05T12:00:00Z", actor: "usr_chase", data: { after: "m1", before: "old" } },
   ];
   assert.deepEqual(placePushes(history, pushes), [{ hash: "m1", at: "2026-10-05T12:00:00Z" }]);
+});
+
+test("a short read of the branch is enough when it reaches the oldest push", () => {
+  const h = (...hashes: string[]) => hashes.map((hash) => ({ hash }));
+  const pushes = [
+    { time: "2026-10-07T12:00:00Z", data: { after: "c1", before: "c2" } },
+    { time: "2026-10-05T12:00:00Z", data: { after: "c2", before: "c3" } },
+  ];
+  // Holds the oldest push's before.
+  assert.ok(historyCovers(h("c1", "c2", "c3"), pushes, 3));
+  // Full, and the oldest push reaches past it: read further.
+  assert.ok(!historyCovers(h("c1", "c2", "x"), pushes, 3));
+  // Shorter than asked: the whole branch.
+  assert.ok(historyCovers(h("c1", "c2"), pushes, 3));
+  // The oldest push made the branch: only the whole branch will do.
+  assert.ok(!historyCovers(h("c1", "c2", "c3"), [{ time: "", data: { after: "c1" } }], 3));
 });
 
 test("a change landed without a person when g1t merged it", () => {
