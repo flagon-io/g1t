@@ -41,11 +41,14 @@ pub enum Verdict {
 pub struct Checks {
     pub verdict: Verdict,
     pub spans: Vec<(&'static str, u64)>,
+    /// What the pack lacked and what was read for it, when it was read
+    /// whole: a thin pack is one whose client ignored `no-thin`.
+    pub bases: Option<secret_scan::Bases>,
 }
 
 impl Checks {
     pub fn clear() -> Checks {
-        Checks { verdict: Verdict::Clear, spans: Vec::new() }
+        Checks { verdict: Verdict::Clear, spans: Vec::new(), bases: None }
     }
 }
 
@@ -94,13 +97,17 @@ impl<S: GitStore> Repos<S> {
                 return Ok(None);
             }
             let mut pack = read_pack(body);
-            if let Ok(pack) = &mut pack {
-                secret_scan::supply_bases(pack, &git).await?;
-            }
-            Ok::<_, worker::Error>(Some(pack))
+            let bases = match &mut pack {
+                Ok(pack) => Some(secret_scan::supply_bases(pack, &git).await?),
+                Err(_) => None,
+            };
+            Ok::<_, worker::Error>(Some((pack, bases)))
         });
         let ((rules, rules_ms), (protection, protection_ms), (read, read_ms)) = join3(rules, protection, read).await;
-        let read = read?;
+        let (read, bases) = match read? {
+            Some((pack, bases)) => (Some(pack), bases),
+            None => (None, None),
+        };
         let pack = read.as_ref().and_then(|read| match read {
             Ok(pack) => Some(pack),
             Err(problem) => {
@@ -136,7 +143,7 @@ impl<S: GitStore> Repos<S> {
         if token.is_some() {
             spans.push(("gate", gate_ms));
         }
-        let checks = |verdict| Ok(Checks { verdict, spans: spans.clone() });
+        let checks = |verdict| Ok(Checks { verdict, spans: spans.clone(), bases });
 
         // The answers, in order. Workflow files first.
         if let Some((reason, lines)) = gate? {
