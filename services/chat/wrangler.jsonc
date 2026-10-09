@@ -13,7 +13,7 @@
 		{
 			"binding": "DB",
 			"database_name": "g1t-chat",
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "e837affd-a435-4408-9345-14d55d520316",
 			"migrations_dir": "migrations"
 		}
 	],
