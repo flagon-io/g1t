@@ -112,7 +112,7 @@ checks this table names every unit.
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
 | `services/chat` | TS | Durable Objects (one room per channel, WebSocket hibernation), KV `AVATARS` (custom emoji images, under `emoji/`) | Runs unchanged; workerd runs its Durable Objects, and the site serves emoji images from the same KV |
-| `services/docs` | TS | Durable Objects (one room per page: the Yjs document, WebSocket hibernation, SQLite storage, alarms), **R2** (`FILES`, files in pages, behind the `FileStore` interface in `src/files.ts`), D1 with FTS5 | Runs unchanged; workerd runs its Durable Objects, and `FILES` is the local R2 bucket Wrangler keeps on disk (an S3 `FileStore` for RustFS is the next step) |
+| `services/docs` | TS | Durable Objects (one room per page: the Yjs document, WebSocket hibernation, SQLite storage, alarms), **R2** (`FILES`, files in pages, behind the `FileStore` interface in `src/files.ts`), D1 with FTS5, a queue (`g1t-events-docs`: merges and pushes, for pages whose cited code changed and projects' docs) | Runs unchanged; workerd runs its Durable Objects, and files in pages go to RustFS (`DOCS_FILES=s3`, the `g1t-docs-files` bucket; see "Files in Docs pages") |
 | `services/notify` | TS | Durable Objects (one feed per person: WebSocket hibernation, SQLite storage); outbound HTTPS to browsers' push services | Runs unchanged; browser push needs a VAPID key pair (`node scripts/ops/vapid-keys.mjs`), else notifications are live in open tabs only |
 | `services/agents` | TS | Durable Objects (one desk per agent, alarms) | Runs unchanged; replies reach a model through the `MODELS` binding (the model proxy), which is off, so an agent answers with a short apology |
 | `services/search` | Rust | Queues (events and its own jobs); FTS5 | Runs unchanged |
@@ -315,6 +315,30 @@ changes for them.
   - Off: the service already degrades to keyword search when `AI` or
     `VECTORS` is missing (`index.ts:919`), so phase 3 can first run context
     with neither bound.
+
+### Files in Docs pages
+
+Images and files people put in Docs pages are kept behind the `FileStore`
+interface (`services/docs/src/files.ts`). Hosted g1t uses R2 (`FILES`). A
+self-hosted g1t keeps them in any S3-compatible store (RustFS in the compose
+file, MinIO, Ceph, Garage, AWS S3) with `s3FileStore`: requests are signed
+with AWS Signature Version 4 by hand over WebCrypto (`src/sigv4.ts`, checked
+against AWS's published test vectors), with no SDK. It is chosen by settings
+on the docs service:
+
+| Setting | What it is |
+| --- | --- |
+| `DOCS_FILES` | `s3` to use an S3-compatible store; anything else (or unset) uses the `FILES` R2 binding. |
+| `DOCS_S3_ENDPOINT` | The store's address, e.g. `http://rustfs:9000` or `https://s3.eu-west-1.amazonaws.com`. |
+| `DOCS_S3_BUCKET` | The bucket; `g1t-docs-files` in the compose file, which `storage-setup` makes. |
+| `DOCS_S3_REGION` | The region it signs for; `us-east-1` by default (RustFS and MinIO accept it). |
+| `DOCS_S3_ACCESS_KEY_ID`, `DOCS_S3_SECRET_ACCESS_KEY` | The keys. Keep them as secrets (`wrangler secret put`, or the compose file's environment). |
+| `DOCS_S3_VIRTUAL_HOSTED` | `true` for `https://<bucket>.<host>/<key>` addresses; path style (`<endpoint>/<bucket>/<key>`) otherwise, which every compatible store takes. |
+
+`deploy/self-host/configs.mjs` sets them from the compose file's `S3_*`
+settings and `DOCS_S3_BUCKET`. With `DOCS_FILES=s3` and a setting missing,
+the first upload says which. Files are served the same way either way: the
+site's usercontent origin asks the docs service for `/files/<key>`.
 
 ### Models
 

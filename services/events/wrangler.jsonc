@@ -36,6 +36,10 @@
 			{ "binding": "SUBSCRIBER_CONTEXT", "queue": "g1t-events-context" },
 			{ "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" },
 			{ "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" },
+			// Pages that cite code a merge changed, and projects' docs folders
+			// (services/docs/src/staleness.ts). Create it once:
+			//   npx wrangler queues create g1t-events-docs
+			{ "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" },
 			// Agents' routines that run on events (services/agents/src/triggers.ts).
 			{ "binding": "SUBSCRIBER_AGENTS", "queue": "g1t-events-agents" }
 		],

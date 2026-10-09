@@ -1,6 +1,6 @@
 import { data } from "react-router";
 
-import type { DocEditTarget, DocMove, DocPageChange, DocRole, DocSpaceChange, NewDocPage, NewDocSpace, Result } from "@g1t/contracts";
+import type { DocEditTarget, DocMove, DocPageChange, DocRole, DocSpaceChange, NewDocPage, NewDocSpace, Result, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/api";
 import { workspacePeople } from "../../../lib/chat.server";
@@ -30,6 +30,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     if (q.get("space")) return docs.space(slug, q.get("space")!, viewer);
     if (q.get("embed")) return embed(slug, q.get("embed")!, viewer, url.origin);
     if (q.has("templates")) return docs.templates(slug, viewer);
+    if (q.has("stale")) return docs.stalePages(slug, viewer, { repo: q.get("stale") || null });
+    // Repositories to cite, describe or show the docs of: the workspace's that the viewer can read.
+    if (q.has("repos")) return repositories(slug, viewer);
+    // A citation's commit: the default branch's head, once the path is there.
+    if (q.get("cite")) return cite(viewer, q.get("cite")!, q.get("path") ?? "");
     // How member keys show (`user:<id>`, `agent:<id>`): comment authors, people on a page.
     if (q.get("who")) return who(slug, viewer, q.get("who")!.split(",").slice(0, 100));
     // A member's key (`user:<id>`) by username, for adding them to a space.
@@ -61,6 +66,8 @@ type Sent = {
   name?: string;
   description?: string | null;
   target?: DocEditTarget;
+  repo?: string;
+  id?: string;
 };
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -104,6 +111,12 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return docs.updateSpace(slug, sent.space_id ?? "", viewer, sent.space_change ?? {});
       case "set_member":
         return docs.setSpaceMember(slug, sent.space_id ?? "", viewer, sent.member ?? "", sent.role ?? null);
+      case "mark_current":
+        return docs.markCurrent(slug, page, viewer);
+      case "add_repo_space":
+        return docs.addRepoSpace(slug, viewer, sent.repo ?? "");
+      case "remove_repo_space":
+        return docs.removeRepoSpace(slug, viewer, sent.id ?? "");
       default:
         return { ok: false, error: { code: "invalid", message: "Unknown request." } };
     }
@@ -169,6 +182,46 @@ async function embed(slug: string, address: string, viewer: Parameters<typeof do
   const found = await repos.get(repo, viewer);
   if (!found.ok) return missing;
   return { ok: true, value: { kind: "project", title: `${repo.namespace}/${repo.name}`, subtitle: (found.value as { description?: string | null }).description ?? "Project", state: null, href: `/${repo.namespace}/${repo.name}` } };
+}
+
+/** The workspace's repositories the viewer can read, newest first: `owner/name` and its default branch. */
+async function repositories(slug: string, viewer: User): Promise<Result<{ repo: string; default_branch: string; private: boolean }[]>> {
+  const found = await repos.list(viewer, { namespace: slug });
+  return {
+    ok: true,
+    value: found
+      .filter((r) => !r.forkOf)
+      .slice(0, 300)
+      .map((r) => ({ repo: `${r.namespace}/${r.name}`.toLowerCase(), default_branch: r.defaultBranch, private: r.isPrivate })),
+  };
+}
+
+/**
+ * A citation for `path` in `repo`, as the viewer can read it: pinned to
+ * the default branch's head commit, once the file or folder is there (a
+ * glob is taken as written).
+ */
+async function cite(viewer: User, repo: string, rawPath: string): Promise<Result<{ repo: string; path: string; ref: string | null; kind: "file" | "folder" | "glob" }>> {
+  const [namespace, name, ...rest] = repo.trim().toLowerCase().split("/");
+  const missing = { ok: false as const, error: { code: "not_found" as const, message: "No such repository, or you can't read it." } };
+  if (!namespace || !name || rest.length) return missing;
+  const path = rawPath
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((p) => p && p !== ".")
+    .join("/");
+  if (!path || path.split("/").includes("..")) return { ok: false, error: { code: "invalid", message: "Name a file, a folder or a pattern in the repository." } };
+  const where = { namespace, name };
+  const root = await repos.tree(where, viewer, null, "");
+  if (!root.ok) return missing;
+  const head = root.value.head?.hash ?? null;
+  if (/[*?]/.test(path)) return { ok: true, value: { repo: `${namespace}/${name}`, path, ref: head, kind: "glob" } };
+  if (!head) return { ok: false, error: { code: "not_found", message: "That repository has no commits yet." } };
+  const [blob, tree] = await Promise.all([repos.blob(where, viewer, head, path).catch(() => null), repos.tree(where, viewer, head, path).catch(() => null)]);
+  if (blob?.ok) return { ok: true, value: { repo: `${namespace}/${name}`, path, ref: head, kind: "file" } };
+  if (tree?.ok) return { ok: true, value: { repo: `${namespace}/${name}`, path, ref: head, kind: "folder" } };
+  return { ok: false, error: { code: "not_found", message: `There is no ${path} on ${root.value.repo.defaultBranch}.` } };
 }
 
 /** Names and faces for member keys, as the workspace knows them. */

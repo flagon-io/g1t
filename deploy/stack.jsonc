@@ -138,7 +138,8 @@
 			"secrets": [],
 			"setup": [
 				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/docs/wrangler.jsonc",
-				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files"
+				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files",
+				"The queue the events service sends it merges and pushes on (pages whose cited code changed, projects' docs): npx wrangler queues create g1t-events-docs"
 			],
 			"self_host": "run"
 		},

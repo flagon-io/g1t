@@ -24,8 +24,18 @@ import {
   openD1,
   parsePrincipalKey,
   principalKey,
+  reposClient,
   workspaceAgentsClient,
   type DocAgentAbilities,
+  type DocCitation,
+  type DocDescribes,
+  type DocRepoPage,
+  type DocRepoSpace,
+  type DocStaleChange,
+  type DocStalePage,
+  type DocStaleness,
+  type G1tEvent,
+  type Repo,
   type DocAgentEditResult,
   type DocAgentMode,
   type DocAgentPage,
@@ -69,24 +79,33 @@ import {
 
 import { RANK, agentAbilities, atLeast, isRole, leavesNoManager, memberKey, readableByAll, readableByWorkspace, roleOf, type Person, type SpaceRules } from "./access.ts";
 import { diffLines } from "./diff.ts";
-import { r2FileStore, safeName, servedType } from "./files.ts";
+import { cleanDescribes } from "./citations.ts";
+import { publishDocEvent } from "./events.ts";
+import { fileStore, safeName, servedType, type FileStoreEnv } from "./files.ts";
 import { excerpt, searchText } from "./markdown.ts";
 import { ROOM_MEMBER_HEADER, type Origin, type PageRoom, type RoomMember } from "./room.ts";
+import { indexRepoSpace, reindexRepo, type RepoSpaceRow } from "./repo-spaces.ts";
 import { ftsQuery, inProject, projectRef, searchSpaces } from "./search.ts";
 import { freeSlug, pageSlug, validSpaceSlug } from "./slugs.ts";
 import { BUILTIN_TEMPLATES, builtinTemplate } from "./templates.ts";
 import type { ThreadResult } from "./threads.ts";
+import { onEvent } from "./staleness.ts";
 import { descendants, exportPaths, lastPosition, placeBefore, wouldCycle, ancestors } from "./tree.ts";
 
 export { PageRoom } from "./room.ts";
 
-type Env = {
+type Env = FileStoreEnv & {
   DB: D1Database;
   IDENTITY: ServiceBinding;
   AGENTS: ServiceBinding;
   NOTIFY?: ServiceBinding;
+  /** Repositories: who may read one, what a change touched, a project's docs (src/staleness.ts, src/repo-spaces.ts). */
+  REPOS?: ServiceBinding;
+  /** Pull requests: what a merged one changed. */
+  WORK?: ServiceBinding;
+  /** The bus: `doc.page.*` events (src/events.ts). */
+  EVENTS?: ServiceBinding;
   PAGES: DurableObjectNamespace<PageRoom>;
-  FILES: R2Bucket;
 };
 
 type SpaceRow = {
@@ -137,6 +156,20 @@ type SuggestionRow = {
   created_at: string;
   decided_by: string | null;
   decided_at: string | null;
+  marks_current?: number;
+};
+
+type ChangeRow = {
+  page_id: string;
+  repo: string;
+  repo_id: string;
+  commit_sha: string;
+  pull_number: number | null;
+  pull_title: string | null;
+  paths: string;
+  detected_at: string;
+  cleared_at: string | null;
+  cleared_by: string | null;
 };
 
 type VersionRow = { id: string; page_id: string; created_at: string; kind: DocVersion["kind"]; authors: string; note: string | null; markdown: string; state: ArrayBuffer | null };
@@ -426,13 +459,14 @@ class Docs {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
     const marks = ids.map(() => "?").join(",");
-    const [owners, projects, kids] = await Promise.all([
+    const [owners, projects, kids, stale] = await Promise.all([
       this.db.prepare(`SELECT page_id, principal FROM page_owners WHERE page_id IN (${marks})`).bind(...ids).all<{ page_id: string; principal: string }>(),
       this.db.prepare(`SELECT page_id, repo FROM page_projects WHERE page_id IN (${marks})`).bind(...ids).all<{ page_id: string; repo: string }>(),
       this.db
         .prepare(`SELECT DISTINCT parent_id FROM pages WHERE parent_id IN (${marks}) AND archived_at IS NULL`)
         .bind(...ids)
         .all<{ parent_id: string }>(),
+      this.staleIds(ids),
     ]);
     const keys = [...rows.flatMap((r) => [r.created_by, r.updated_by ?? r.created_by]), ...owners.results.map((o) => o.principal)];
     const people = await this.profiles(workspace, keys);
@@ -453,8 +487,24 @@ class Docs {
         projects: projects.results.filter((p) => p.page_id === row.id).map((p) => p.repo),
         owners: owners.results.filter((o) => o.page_id === row.id).map((o) => people.get(o.principal)!),
         excerpt: excerpt(row.markdown ?? ""),
+        stale: stale.has(row.id),
       };
     });
+  }
+
+  /** Of these pages, those possibly out of date. */
+  private async staleIds(ids: string[]): Promise<Set<string>> {
+    if (!ids.length) return new Set();
+    const found = new Set<string>();
+    for (let i = 0; i < ids.length; i += 90) {
+      const part = ids.slice(i, i + 90);
+      const rows = await this.db
+        .prepare(`SELECT DISTINCT page_id FROM page_changes WHERE cleared_at IS NULL AND page_id IN (${part.map(() => "?").join(",")})`)
+        .bind(...part)
+        .all<{ page_id: string }>();
+      for (const r of rows.results) found.add(r.page_id);
+    }
+    return found;
   }
 
   /** A page and its space, with the viewer's role; not found when they can't read it. */
@@ -497,9 +547,13 @@ class Docs {
     await this.ensureDefault(workspace, viewer);
     const spaces = (await this.spacesFor(workspace, viewer)).filter((s) => s.role);
     const ids = spaces.map((s) => s.row.id);
-    if (!ids.length) return ok({ spaces: [], favorites: [], recent: [], can_create_space: true, trash_count: 0 });
+    const repos = await this.repoSpacesFor(workspace, viewer).catch((error: unknown) => {
+      console.error("docs could not list projects' docs", String(error));
+      return [] as DocRepoSpace[];
+    });
+    if (!ids.length) return ok({ spaces: [], favorites: [], recent: [], can_create_space: true, trash_count: 0, stale_count: 0, repos });
     const marks = ids.map(() => "?").join(",");
-    const [pages, favorites, recent, trash] = await Promise.all([
+    const [pages, favorites, recent, trash, stale] = await Promise.all([
       this.db
         .prepare(`SELECT id, space_id, parent_id, position, title, icon FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL ORDER BY position`)
         .bind(...ids)
@@ -516,21 +570,152 @@ class Docs {
         .prepare(`SELECT COUNT(*) AS n FROM pages WHERE space_id IN (${marks}) AND archived_at IS NOT NULL`)
         .bind(...ids)
         .first<{ n: number }>(),
+      this.db
+        .prepare(`SELECT DISTINCT c.page_id FROM page_changes c JOIN pages p ON p.id = c.page_id WHERE c.cleared_at IS NULL AND p.space_id IN (${marks}) AND p.archived_at IS NULL`)
+        .bind(...ids)
+        .all<{ page_id: string }>(),
     ]);
     const bySpace = new Map(spaces.map((s) => [s.row.id, s.row]));
     const ref = (r: Pick<PageRow, "id" | "space_id" | "title" | "icon">) => this.ref(workspace.slug, bySpace.get(r.space_id)!, r);
+    const staleSet = new Set(stale.results.map((r) => r.page_id));
     return ok({
       spaces: spaces.map((s) => {
         const mine = pages.results.filter((p) => p.space_id === s.row.id);
         return {
           ...this.toSpace(s, mine.length),
-          pages: mine.map((p): DocTreeNode => ({ id: p.id, parent_id: p.parent_id, position: p.position, title: p.title, icon: p.icon, slug: pageSlug(p.title, p.id) })),
+          pages: mine.map((p): DocTreeNode => ({ id: p.id, parent_id: p.parent_id, position: p.position, title: p.title, icon: p.icon, slug: pageSlug(p.title, p.id), stale: staleSet.has(p.id) })),
         };
       }),
       favorites: favorites.results.map(ref),
       recent: recent.results.map(ref),
       can_create_space: true,
       trash_count: trash?.n ?? 0,
+      stale_count: staleSet.size,
+      repos,
+    });
+  }
+
+  // ── A project's docs ────────────────────────────────────────────────────
+
+  /** The repository docs shown in the workspace that the viewer can read, with the repositories as they are now. */
+  private async readableRepoSpaces(workspace: Workspace, viewer: User): Promise<{ row: RepoSpaceRow; repo: Repo }[]> {
+    const rows = (await this.db.prepare("SELECT * FROM repo_spaces WHERE workspace_id = ? ORDER BY repo").bind(workspace.id).all<RepoSpaceRow>()).results;
+    if (!rows.length || !this.env.REPOS) return [];
+    const readable = await reposClient(this.env.REPOS).readable(
+      rows.map((r) => r.repo_id),
+      viewer,
+    );
+    const byId = new Map(readable.map((r) => [r.id, r]));
+    return rows.filter((r) => byId.has(r.repo_id)).map((row) => ({ row, repo: byId.get(row.repo_id)! }));
+  }
+
+  private async toRepoSpaces(workspace: Workspace, viewer: User, found: { row: RepoSpaceRow; repo: Repo }[]): Promise<DocRepoSpace[]> {
+    if (!found.length) return [];
+    const ids = found.map((f) => f.row.id);
+    const [files, people] = await Promise.all([
+      this.db
+        .prepare(`SELECT space_id, path, title FROM repo_files WHERE space_id IN (${ids.map(() => "?").join(",")})`)
+        .bind(...ids)
+        .all<{ space_id: string; path: string; title: string }>(),
+      this.profiles(
+        workspace,
+        found.map((f) => f.row.added_by),
+      ),
+    ]);
+    const me = this.userKey(viewer);
+    const owner = this.viewerOwner(viewer, workspace.slug);
+    const readme = (path: string) => (/^readme\./i.test(path) ? 0 : 1);
+    return found.map(({ row, repo }) => ({
+      id: row.id,
+      repo: `${repo.namespace}/${repo.name}`,
+      default_branch: repo.defaultBranch,
+      commit: row.commit_sha,
+      indexed_at: row.indexed_at,
+      added_by: people.get(row.added_by)!,
+      files: files.results
+        .filter((f) => f.space_id === row.id)
+        .sort((a, b) => readme(a.path) - readme(b.path) || a.path.localeCompare(b.path))
+        .map((f) => ({ path: f.path, title: f.title })),
+      can_remove: row.added_by === me || owner,
+    }));
+  }
+
+  private async repoSpacesFor(workspace: Workspace, viewer: User): Promise<DocRepoSpace[]> {
+    return this.toRepoSpaces(workspace, viewer, await this.readableRepoSpaces(workspace, viewer));
+  }
+
+  async addRepoSpace(a: { workspace: string; viewer: Viewer; repo: string }): Promise<Result<DocRepoSpace>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const viewer = a.viewer!;
+    if (!this.env.REPOS) return fail("conflict", "Projects' docs aren't available here.");
+    const ref = projectRef(String(a.repo ?? ""));
+    if (!ref) return fail("invalid", "Choose a repository: owner/name.");
+    const [namespace, name] = ref.split("/") as [string, string];
+    const repo = await reposClient(this.env.REPOS).get({ namespace, name }, viewer);
+    if (!repo.ok) return fail("not_found", "No such repository, or you can't read it.");
+    const id = newId("rds");
+    const row: RepoSpaceRow = {
+      id,
+      workspace_id: workspace.id,
+      repo_id: repo.value.id,
+      repo: `${repo.value.namespace}/${repo.value.name}`.toLowerCase(),
+      default_branch: repo.value.defaultBranch,
+      commit_sha: null,
+      indexed_at: null,
+      added_by: this.userKey(viewer),
+      added_at: now(),
+    };
+    const inserted = await this.db
+      .prepare("INSERT INTO repo_spaces (id, workspace_id, repo_id, repo, default_branch, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (workspace_id, repo_id) DO NOTHING RETURNING id")
+      .bind(row.id, row.workspace_id, row.repo_id, row.repo, row.default_branch, row.added_by, row.added_at)
+      .first<{ id: string }>();
+    if (!inserted) return fail("conflict", `${ref}'s docs are already in Docs.`);
+    try {
+      await indexRepoSpace({ DB: this.db, REPOS: this.env.REPOS }, row);
+    } catch (error) {
+      console.error("docs could not read a project's docs", row.repo, String(error));
+    }
+    const fresh = (await this.db.prepare("SELECT * FROM repo_spaces WHERE id = ?").bind(id).first<RepoSpaceRow>()) ?? row;
+    const [space] = await this.toRepoSpaces(workspace, viewer, [{ row: fresh, repo: repo.value }]);
+    return ok(space!);
+  }
+
+  async removeRepoSpace(a: { workspace: string; viewer: Viewer; id: string }): Promise<Result<boolean>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const row = await this.db.prepare("SELECT * FROM repo_spaces WHERE id = ? AND workspace_id = ?").bind(String(a.id ?? ""), found.value.id).first<RepoSpaceRow>();
+    if (!row) return fail("not_found", "No such project's docs.");
+    if (row.added_by !== this.userKey(a.viewer!) && !this.viewerOwner(a.viewer!, a.workspace)) return fail("forbidden", "Only whoever added a project's docs, or an owner, can remove them.");
+    await this.db.batch([this.db.prepare("DELETE FROM repo_files_fts WHERE space_id = ?").bind(row.id), this.db.prepare("DELETE FROM repo_spaces WHERE id = ?").bind(row.id)]);
+    return ok(true);
+  }
+
+  async repoPage(a: { workspace: string; viewer: Viewer; repo: string; path: string }): Promise<Result<DocRepoPage>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const ref = projectRef(String(a.repo ?? ""));
+    if (!ref) return fail("not_found", "No such file.");
+    const spaces = await this.readableRepoSpaces(workspace, a.viewer!);
+    const match = spaces.find((s) => `${s.repo.namespace}/${s.repo.name}`.toLowerCase() === ref || s.row.repo === ref);
+    if (!match) return fail("not_found", "No such file.");
+    const path = String(a.path ?? "").replace(/^\/+/, "");
+    const file = await this.db.prepare("SELECT path, title, markdown FROM repo_files WHERE space_id = ? AND path = ?").bind(match.row.id, path).first<{ path: string; title: string; markdown: string }>();
+    if (!file) return fail("not_found", "No such file.");
+    const [space] = await this.toRepoSpaces(workspace, a.viewer!, [match]);
+    const repoPath = `${match.repo.namespace}/${match.repo.name}`;
+    const encoded = file.path.split("/").map(encodeURIComponent).join("/");
+    return ok({
+      space: space!,
+      file: {
+        path: file.path,
+        title: file.title,
+        markdown: file.markdown,
+        href: `/${workspace.slug}/-/docs/repo/${repoPath}/${encoded}`,
+        code_href: `/${repoPath}/blob/${encodeURIComponent(match.repo.defaultBranch)}/${encoded}`,
+      },
     });
   }
 
@@ -544,9 +729,9 @@ class Docs {
     const project = a.project ? projectRef(a.project) : null;
     const ids = spaces.map((s) => s.row.id);
     const allProjects = new Set(spaces.flatMap((s) => s.projects));
-    if (!ids.length) return ok({ recent: [], mine: [], spaces: [], projects: [...allProjects].sort(), project });
+    if (!ids.length) return ok({ recent: [], mine: [], stale: [], spaces: [], projects: [...allProjects].sort(), project });
     const marks = ids.map(() => "?").join(",");
-    const [recentRows, mineRows, pageProjects, counts] = await Promise.all([
+    const [recentRows, mineRows, pageProjects, counts, staleRows] = await Promise.all([
       this.db
         .prepare(`SELECT id, workspace_id, space_id, parent_id, position, title, icon, cover, substr(markdown, 1, 600) AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 60`)
         .bind(...ids)
@@ -565,17 +750,23 @@ class Docs {
         .prepare(`SELECT space_id, COUNT(*) AS n FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL GROUP BY space_id`)
         .bind(...ids)
         .all<{ space_id: string; n: number }>(),
+      this.staleRows(ids, null, 24),
     ]);
     for (const p of pageProjects.results) allProjects.add(p.repo);
     const projectsOf = (pageId: string) => pageProjects.results.filter((p) => p.page_id === pageId).map((p) => p.repo);
     const spaceProjects = new Map(spaces.map((s) => [s.row.id, s.projects]));
     const keep = (r: PageRow) => inProject(project, projectsOf(r.id), spaceProjects.get(r.space_id) ?? []);
     const bySpace = new Map(spaces.map((s) => [s.row.id, s.row]));
-    const [recent, mine] = await Promise.all([this.toPages(workspace, bySpace, recentRows.results.filter(keep).slice(0, 12)), this.toPages(workspace, bySpace, mineRows.results.filter(keep).slice(0, 8))]);
+    const [recent, mine, stale] = await Promise.all([
+      this.toPages(workspace, bySpace, recentRows.results.filter(keep).slice(0, 12)),
+      this.toPages(workspace, bySpace, mineRows.results.filter(keep).slice(0, 8)),
+      this.toPages(workspace, bySpace, staleRows.filter(keep).slice(0, 8)),
+    ]);
     const count = new Map(counts.results.map((c) => [c.space_id, c.n]));
     return ok({
       recent,
       mine,
+      stale,
       spaces: spaces.filter((s) => !project || s.projects.includes(project) || recentRows.results.some((r) => r.space_id === s.row.id && keep(r))).map((s) => this.toSpace(s, count.get(s.row.id) ?? 0)),
       projects: [...allProjects].sort(),
       project,
@@ -769,7 +960,7 @@ class Docs {
     const viewer = a.viewer!;
     const bySpace = new Map(spaces.map((s) => [s.row.id, s.row]));
     const readable = new Set(spaces.filter((s) => s.role).map((s) => s.row.id));
-    const [tree, backlinks, children, favorite, viewed, suggestions] = await Promise.all([
+    const [tree, backlinks, children, favorite, viewed, suggestions, cited, staleness] = await Promise.all([
       this.db.prepare("SELECT id, space_id, parent_id, position, title, icon FROM pages WHERE space_id = ?").bind(page.space_id).all<PageRow>(),
       this.db
         .prepare("SELECT p.id, p.space_id, p.title, p.icon FROM page_links l JOIN pages p ON p.id = l.from_page WHERE l.to_page = ? AND p.archived_at IS NULL LIMIT 50")
@@ -779,6 +970,8 @@ class Docs {
       this.db.prepare("SELECT 1 AS yes FROM favorites WHERE user_id = ? AND page_id = ?").bind(viewer.id, page.id).first<{ yes: number }>(),
       this.db.prepare("SELECT viewed_at FROM page_views WHERE user_id = ? AND page_id = ?").bind(viewer.id, page.id).first<{ viewed_at: string }>(),
       this.openSuggestions(workspace, page.id),
+      this.citationsOf([page.id]),
+      this.stalenessFor(page.id, viewer),
     ]);
     this.defer(
       this.db
@@ -798,7 +991,175 @@ class Docs {
       favorite: !!favorite,
       last_viewed_at: viewed?.viewed_at ?? null,
       suggestions,
+      citations: cited.get(page.id) ?? [],
+      describes: (cited.get(page.id) ?? []).filter((c) => c.source === "header").map((c) => ({ repo: c.repo, path: c.path })),
+      staleness,
     });
+  }
+
+  // ── Citations and staleness ─────────────────────────────────────────────
+
+  /** Each page's citations, by page. */
+  private async citationsOf(pageIds: string[]): Promise<Map<string, DocCitation[]>> {
+    const out = new Map<string, DocCitation[]>();
+    if (!pageIds.length) return out;
+    const rows = await this.db
+      .prepare(`SELECT page_id, repo, path, kind, label, ref, source FROM citations WHERE page_id IN (${pageIds.map(() => "?").join(",")}) ORDER BY source DESC, repo, path`)
+      .bind(...pageIds)
+      .all<Omit<DocCitation, "label"> & { page_id: string; label: string }>();
+    for (const r of rows.results) {
+      const list = out.get(r.page_id) ?? [];
+      list.push({ repo: r.repo, path: r.path, kind: r.kind, label: r.label || null, ref: r.ref, source: r.source });
+      out.set(r.page_id, list);
+    }
+    return out;
+  }
+
+  /** Of these repositories (`owner/name`), those the viewer can read. */
+  private async readableRepos(viewer: User, repos: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!this.env.REPOS) return out;
+    const client = reposClient(this.env.REPOS);
+    await Promise.all(
+      [...new Set(repos)].slice(0, 25).map(async (repo) => {
+        const [namespace, name] = repo.split("/") as [string, string];
+        const found = await client.get({ namespace, name }, viewer).catch(() => null);
+        if (found?.ok) out.add(repo);
+      }),
+    );
+    return out;
+  }
+
+  /** Open changes on these pages, newest first. */
+  private async openChanges(pageIds: string[]): Promise<ChangeRow[]> {
+    if (!pageIds.length) return [];
+    const out: ChangeRow[] = [];
+    for (let i = 0; i < pageIds.length; i += 90) {
+      const part = pageIds.slice(i, i + 90);
+      const rows = await this.db
+        .prepare(`SELECT * FROM page_changes WHERE cleared_at IS NULL AND page_id IN (${part.map(() => "?").join(",")}) ORDER BY detected_at DESC`)
+        .bind(...part)
+        .all<ChangeRow>();
+      out.push(...rows.results);
+    }
+    return out.sort((a, b) => b.detected_at.localeCompare(a.detected_at));
+  }
+
+  /** A change as a reader sees it: named only when they can read its repository. */
+  private toChange(row: ChangeRow, readable: Set<string>): DocStaleChange {
+    if (!readable.has(row.repo)) return { visible: false, repo: null, commit: null, pull: null, paths: [], at: row.detected_at };
+    let paths: string[] = [];
+    try {
+      paths = JSON.parse(row.paths) as string[];
+    } catch {
+      paths = [];
+    }
+    return {
+      visible: true,
+      repo: row.repo,
+      commit: row.commit_sha,
+      pull: row.pull_number ? { number: row.pull_number, title: row.pull_title } : null,
+      paths,
+      at: row.detected_at,
+    };
+  }
+
+  /** Why a page is possibly out of date, as this viewer may see it; null when it isn't. */
+  private async stalenessFor(pageId: string, viewer: User): Promise<DocStaleness | null> {
+    const rows = await this.openChanges([pageId]);
+    if (!rows.length) return null;
+    const readable = await this.readableRepos(
+      viewer,
+      rows.map((r) => r.repo),
+    );
+    const changes = rows.slice(0, 20).map((r) => this.toChange(r, readable));
+    return { since: rows[rows.length - 1]!.detected_at, changes };
+  }
+
+  /** Live pages in these spaces that are possibly out of date, most recently flagged first; `repo` narrows to changes there. */
+  private async staleRows(spaceIds: string[], repo: string | null, limit: number): Promise<PageRow[]> {
+    if (!spaceIds.length) return [];
+    const marks = spaceIds.map(() => "?").join(",");
+    return (
+      await this.db
+        .prepare(
+          `SELECT p.id, p.workspace_id, p.space_id, p.parent_id, p.position, p.title, p.icon, p.cover, substr(p.markdown, 1, 600) AS markdown, p.created_by, p.created_at, p.updated_by, p.updated_at, p.archived_at, p.archived_by
+           FROM pages p JOIN (SELECT page_id, MAX(detected_at) AS flagged FROM page_changes WHERE cleared_at IS NULL ${repo ? "AND repo = ?" : ""} GROUP BY page_id) c ON c.page_id = p.id
+           WHERE p.space_id IN (${marks}) AND p.archived_at IS NULL ORDER BY c.flagged DESC LIMIT ?`,
+        )
+        .bind(...(repo ? [repo] : []), ...spaceIds, limit)
+        .all<PageRow>()
+    ).results;
+  }
+
+  async stalePages(a: { workspace: string; viewer: Viewer; repo?: string | null }): Promise<Result<DocPage[]>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const spaces = (await this.spacesFor(workspace, a.viewer!)).filter((s) => s.role);
+    const rows = await this.staleRows(
+      spaces.map((s) => s.row.id),
+      a.repo ? projectRef(a.repo) : null,
+      200,
+    );
+    return ok(await this.toPages(workspace, new Map(spaces.map((s) => [s.row.id, s.row])), rows));
+  }
+
+  /** Clears every open change on a page. */
+  private async clearStale(pageId: string, by: string): Promise<boolean> {
+    const done = await this.db.prepare("UPDATE page_changes SET cleared_at = ?, cleared_by = ? WHERE page_id = ? AND cleared_at IS NULL").bind(now(), by, pageId).run();
+    const cleared = (done.meta?.changes ?? 0) > 0;
+    if (cleared) this.tell(pageId, { type: "page.staleness" });
+    return cleared;
+  }
+
+  async markCurrent(a: { workspace: string; page_id: string; viewer: Viewer }): Promise<Result<boolean>> {
+    const found = await this.pageFor(a.workspace, a.page_id, a.viewer, "edit");
+    if (!found.ok) return found;
+    await this.clearStale(found.value.page.id, this.userKey(a.viewer!));
+    return ok(true);
+  }
+
+  async stalePagesForAgent(a: { workspace: string; agent_id: string; viewer: Viewer; repo?: string | null; since?: string | null; audience: DocAudience | null }): Promise<Result<DocStalePage[]>> {
+    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience);
+    if (!found.ok) return found;
+    const { workspace, spaces } = found.value;
+    const repo = a.repo ? projectRef(a.repo) : null;
+    if (a.repo && !repo) return fail("invalid", "Name the repository as owner/name.");
+    const since = a.since && !Number.isNaN(Date.parse(a.since)) ? new Date(a.since).toISOString() : null;
+    const rows = await this.staleRows(
+      spaces.map((s) => s.row.id),
+      repo,
+      200,
+    );
+    const [changes, cited, pages] = await Promise.all([
+      this.openChanges(rows.map((r) => r.id)),
+      this.citationsOf(rows.map((r) => r.id)),
+      this.toPages(workspace, new Map(spaces.map((s) => [s.row.id, s.row])), rows),
+    ]);
+    // The agent learns only of code its person can read.
+    const readable = await this.readableRepos(a.viewer!, [...changes.map((c) => c.repo), ...[...cited.values()].flat().map((c) => c.repo)]);
+    const bySpace = new Map(spaces.map((s) => [s.row.id, s]));
+    const out: DocStalePage[] = [];
+    for (const row of rows) {
+      const mine = changes.filter((c) => c.page_id === row.id && readable.has(c.repo) && (!repo || c.repo === repo));
+      if (!mine.length) continue;
+      const newest = mine[0]!.detected_at;
+      if (since && newest < since) continue;
+      const space = bySpace.get(row.space_id)!;
+      const page = pages.find((p) => p.id === row.id)!;
+      out.push({
+        page: { ...this.ref(workspace.slug, space.row, row), updated_at: row.updated_at },
+        space: { id: space.row.id, slug: space.row.slug, name: space.row.name, agent_mode: space.row.agent_mode },
+        can: space.can,
+        owners: page.owners,
+        citations: (cited.get(row.id) ?? []).filter((c) => readable.has(c.repo)),
+        changes: mine.slice(0, 20).map((c) => this.toChange(c, readable)),
+        since: mine[mine.length - 1]!.detected_at,
+      });
+      if (out.length >= 50) break;
+    }
+    return ok(out);
   }
 
   /** Where a new page in `space` from `input` starts: its Markdown and title. */
@@ -869,7 +1230,13 @@ class Docs {
         .bind(newId("ver"), id, at, JSON.stringify([author]), input.markdown),
     ]);
     await this.room(id).ensure({ page_id: id, workspace_slug: workspace.slug, markdown: input.markdown, state: input.state ?? null });
+    this.defer(publishDocEvent(this.env.EVENTS, "doc.page.created", this.eventData(workspace, space, row), author));
     return row;
+  }
+
+  /** What every `doc.page.*` event says of a page. */
+  private eventData(workspace: Workspace, space: Pick<SpaceRow, "id" | "slug">, row: Pick<PageRow, "id" | "title" | "icon">) {
+    return { workspace: workspace.slug, workspaceId: workspace.id, pageId: row.id, spaceId: space.id, title: row.title, path: this.ref(workspace.slug, space, row).path };
   }
 
   async createPage(a: { workspace: string; viewer: Viewer; input: NewDocPage }): Promise<Result<DocPage>> {
@@ -926,6 +1293,12 @@ class Docs {
     if (c.projects !== undefined) {
       statements.push(this.db.prepare("DELETE FROM page_projects WHERE page_id = ?").bind(page.id));
       for (const repo of cleanProjects(c.projects)) statements.push(this.db.prepare("INSERT INTO page_projects (page_id, repo) VALUES (?, ?)").bind(page.id, repo));
+    }
+    if (c.describes !== undefined) {
+      statements.push(this.db.prepare("DELETE FROM citations WHERE page_id = ? AND source = 'header'").bind(page.id));
+      for (const d of cleanDescribes(c.describes)) {
+        statements.push(this.db.prepare("INSERT OR IGNORE INTO citations (page_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, 'path', '', NULL, 'header')").bind(page.id, d.repo, d.path));
+      }
     }
     if (c.owners !== undefined) {
       const owners = [...new Set((Array.isArray(c.owners) ? c.owners : []).map(String).filter((k) => memberKey(k)?.kind === "user" || memberKey(k)?.kind === "agent"))].slice(0, 20);
@@ -999,6 +1372,7 @@ class Docs {
     const at = now();
     await this.db.batch(ids.map((id) => this.db.prepare("UPDATE pages SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL").bind(at, this.userKey(a.viewer!), id)));
     for (const id of ids) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
+    this.defer(publishDocEvent(this.env.EVENTS, "doc.page.archived", this.eventData(workspace, space.row, page), this.userKey(a.viewer!)));
     const after = await this.db.prepare("SELECT * FROM pages WHERE id = ?").bind(page.id).first<PageRow>();
     const [detail] = await this.toPages(workspace, new Map([[space.row.id, space.row]]), [after!]);
     return ok(detail!);
@@ -1126,8 +1500,60 @@ class Docs {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const workspace = found.value;
+    const query = a.query ?? { query: "" };
     const spaces = (await this.spacesFor(workspace, a.viewer!)).filter((s) => s.role);
-    return ok(await this.searchIn(workspace, spaces, a.query ?? { query: "" }));
+    const [pages, files] = await Promise.all([
+      this.searchIn(workspace, spaces, query),
+      // A project's docs, when the search isn't narrowed to one of the workspace's spaces.
+      query.space_id
+        ? Promise.resolve([] as DocSearchHit[])
+        : this.searchRepoFiles(workspace, a.viewer!, query).catch((error: unknown) => {
+            console.error("docs could not search projects' docs", String(error));
+            return [] as DocSearchHit[];
+          }),
+    ]);
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 50);
+    // Pages first, then files, as many as asked for.
+    return ok([...pages, ...files].slice(0, limit));
+  }
+
+  /** Full text over the projects' docs the viewer can read. */
+  private async searchRepoFiles(workspace: Workspace, viewer: User, query: DocSearchQuery): Promise<DocSearchHit[]> {
+    const q = ftsQuery(query.query);
+    if (!q) return [];
+    let spaces = await this.readableRepoSpaces(workspace, viewer);
+    const project = query.project ? projectRef(query.project) : null;
+    if (project) spaces = spaces.filter((s) => `${s.repo.namespace}/${s.repo.name}`.toLowerCase() === project);
+    if (!spaces.length) return [];
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 50);
+    const rows = (
+      await this.db
+        .prepare(
+          `SELECT space_id, path, title, snippet(repo_files_fts, 3, '[[', ']]', '…', 16) AS snippet FROM repo_files_fts
+           WHERE repo_files_fts MATCH ? AND space_id IN (${spaces.map(() => "?").join(",")}) ORDER BY bm25(repo_files_fts, 0, 0, 8.0, 1.0) LIMIT ?`,
+        )
+        .bind(q, ...spaces.map((s) => s.row.id), limit)
+        .all<{ space_id: string; path: string; title: string; snippet: string }>()
+    ).results;
+    const byId = new Map(spaces.map((s) => [s.row.id, s]));
+    return rows.map((r) => {
+      const s = byId.get(r.space_id)!;
+      const repo = `${s.repo.namespace}/${s.repo.name}`;
+      return {
+        id: `repo:${r.space_id}:${r.path}`,
+        space_id: r.space_id,
+        space_slug: "repo",
+        title: r.title,
+        icon: null,
+        slug: r.path,
+        path: `/${workspace.slug}/-/docs/repo/${repo}/${r.path.split("/").map(encodeURIComponent).join("/")}`,
+        space_name: repo,
+        snippet: r.snippet,
+        updated_at: s.row.indexed_at ?? s.row.added_at,
+        projects: [repo.toLowerCase()],
+        repo_file: { repo, path: r.path },
+      };
+    });
   }
 
   // ── History ─────────────────────────────────────────────────────────────
@@ -1340,6 +1766,7 @@ class Docs {
         authors: [row.author, me],
       });
       if (!result.applied) status = "stale";
+      else if (row.marks_current) await this.clearStale(page.id, row.author);
     }
     await this.db.prepare("UPDATE suggestions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?").bind(status, me, now(), row.id).run();
     const [after] = await this.toSuggestions(workspace, [{ ...row, status, decided_by: me, decided_at: now() }]);
@@ -1526,7 +1953,7 @@ class Docs {
     space: SpaceRow,
     agent: WorkspaceAgent,
     viewer: User,
-    edit: { target: DocEditTarget; markdown: string; note: string | null },
+    edit: { target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean },
   ): Promise<Result<DocSuggestion>> {
     const room = this.room(page.id);
     await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
@@ -1546,10 +1973,11 @@ class Docs {
       created_at: now(),
       decided_by: null,
       decided_at: null,
+      marks_current: edit.marks_current ? 1 : 0,
     };
     await this.db
-      .prepare("INSERT INTO suggestions (id, page_id, author, asked_by, target, before_markdown, after_markdown, note, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)")
-      .bind(row.id, row.page_id, row.author, row.asked_by, row.target, row.before_markdown, row.after_markdown, row.note, row.created_at)
+      .prepare("INSERT INTO suggestions (id, page_id, author, asked_by, target, before_markdown, after_markdown, note, status, created_at, marks_current) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)")
+      .bind(row.id, row.page_id, row.author, row.asked_by, row.target, row.before_markdown, row.after_markdown, row.note, row.created_at, row.marks_current)
       .run();
     const [suggestion] = await this.toSuggestions(workspace, [row], [current.block_ids]);
     this.tell(page.id, { type: "suggestion.created", suggestion: suggestion! });
@@ -1589,14 +2017,14 @@ class Docs {
     );
   }
 
-  private cleanEdit(edit: unknown): Result<{ target: DocEditTarget; markdown: string; note: string | null }> {
-    const e = (edit ?? {}) as { target?: unknown; markdown?: unknown; note?: unknown };
+  private cleanEdit(edit: unknown): Result<{ target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean }> {
+    const e = (edit ?? {}) as { target?: unknown; markdown?: unknown; note?: unknown; marks_current?: unknown };
     const target = cleanTarget(e.target);
     if (!target) return fail("invalid", "Say what to change: append, document, a section by its heading, or blocks by id.");
     const markdown = String(e.markdown ?? "");
     if (markdown.length > MAX_MARKDOWN) return fail("invalid", "That edit is too long.");
     if (target.kind === "append" && !markdown.trim()) return fail("invalid", "Nothing to add.");
-    return ok({ target, markdown, note: e.note ? String(e.note).trim().slice(0, MAX_NOTE) || null : null });
+    return ok({ target, markdown, note: e.note ? String(e.note).trim().slice(0, MAX_NOTE) || null : null, marks_current: e.marks_current === true });
   }
 
   async suggestEdit(a: { workspace: string; agent_id: string; viewer: Viewer; page_id: string; edit: unknown }): Promise<Result<DocSuggestion>> {
@@ -1630,6 +2058,7 @@ class Docs {
       authors: [principalKey({ kind: "agent", id: agent.id })],
     });
     if (!result.applied) return fail("not_found", "That part of the page isn't there. Read the page again and target what is there now.");
+    if (edit.value.marks_current) await this.clearStale(page.id, principalKey({ kind: "agent", id: agent.id }));
     this.defer(room.announce(principalKey({ kind: "agent", id: agent.id }), agent.display_name).catch(() => undefined));
     return ok({ mode: "applied", version_id: result.version_id, page: ref });
   }
@@ -1722,7 +2151,7 @@ class Docs {
     const random = crypto.getRandomValues(new Uint8Array(32));
     const key = [...random].map((b) => b.toString(16).padStart(2, "0")).join("");
     const id = newId("fil");
-    await r2FileStore(this.env.FILES).put(`docs/${key}`, request.body ?? new Uint8Array(), contentType);
+    await fileStore(this.env).put(`docs/${key}`, request.body ?? new Uint8Array(), contentType);
     await this.db
       .prepare("INSERT INTO files (id, workspace_id, page_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, found.value.workspace.id, found.value.page.id, key, name, contentType, bytes, this.userKey(viewer!), now())
@@ -1739,7 +2168,7 @@ class Docs {
   async file(key: string): Promise<Response> {
     const row = await this.db.prepare("SELECT name, content_type FROM files WHERE key = ?").bind(key).first<{ name: string; content_type: string }>();
     if (!row) return new Response("Not found\n", { status: 404 });
-    const stored = await r2FileStore(this.env.FILES).get(`docs/${key}`);
+    const stored = await fileStore(this.env).get(`docs/${key}`);
     if (!stored) return new Response("Not found\n", { status: 404 });
     const inline = row.content_type !== "application/octet-stream";
     return new Response(stored.body, {
@@ -1831,6 +2260,18 @@ async function answer(service: Docs, method: string, args: any): Promise<Respons
       return Response.json(await service.createPageAsAgent(args));
     case "threads_for_agent":
       return Response.json(await service.threadsForAgent(args));
+    case "stale_pages_for_agent":
+      return Response.json(await service.stalePagesForAgent(args));
+    case "mark_current":
+      return Response.json(await service.markCurrent(args));
+    case "stale_pages":
+      return Response.json(await service.stalePages(args));
+    case "add_repo_space":
+      return Response.json(await service.addRepoSpace(args));
+    case "remove_repo_space":
+      return Response.json(await service.removeRepoSpace(args));
+    case "repo_page":
+      return Response.json(await service.repoPage(args));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
@@ -1857,4 +2298,25 @@ export default {
       return opened.finish(Response.json(fail("conflict", "Docs couldn't do that just now. Try again.")));
     }
   },
-} satisfies ExportedHandler<Env>;
+
+  /**
+   * Events from the events service (SUBSCRIBER_DOCS): pages whose cited
+   * code changed become possibly out of date, and projects' docs are read
+   * again after a push (src/staleness.ts). One failing event is retried on
+   * its own.
+   */
+  async queue(batch: MessageBatch<G1tEvent>, env: Env): Promise<void> {
+    const reindex = async (repoId: string) => {
+      if (env.REPOS) await reindexRepo({ DB: env.DB, REPOS: env.REPOS }, repoId);
+    };
+    for (const message of batch.messages) {
+      try {
+        await onEvent(env, message.body, reindex);
+        message.ack();
+      } catch (error) {
+        console.error("docs could not handle", message.body?.type, String(error));
+        message.retry();
+      }
+    }
+  },
+} satisfies ExportedHandler<Env, G1tEvent>;

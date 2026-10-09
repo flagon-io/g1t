@@ -14,10 +14,14 @@
  * `callout` (`kind`: info | warning | success | danger), `mermaid`
  * (`code`), `math` (`expression`), `embed` (`kind`, `title`, `url`), and
  * inline `mention` (`kind`: user | agent | page; `id`: a person's
- * username, an agent's id or a page's id; `name`; `href` for a page) and
- * `date` (`date`).
+ * username, an agent's id or a page's id; `name`; `href` for a page),
+ * `date` (`date`) and `citation` (`repo`, `path`, `kind`, `label`, `ref`:
+ * code the page cites, src/citations.ts).
  */
+import type { DocCitation } from "@g1t/contracts";
 import * as Y from "yjs";
+
+import { citationMarkdown, cleanCitation } from "./citations.ts";
 
 export type Outline = { id: string; type: string; level: number | null; markdown: string };
 
@@ -74,6 +78,10 @@ function inlineNode(node: Y.XmlElement): string {
     return `@${a.name ?? ""}`;
   }
   if (node.nodeName === "date") return a.date ?? "";
+  if (node.nodeName === "citation") {
+    const c = cleanCitation(a as Partial<DocCitation>, "body");
+    return c ? citationMarkdown(c) : "";
+  }
   // An unknown inline node: its text, if any.
   return node.toArray().map((c) => (c instanceof Y.XmlText ? c.toString() : "")).join("");
 }
@@ -315,4 +323,18 @@ export function mentionedIds(fragment: Y.XmlFragment): { users: string[]; agents
   };
   walk(fragment);
   return { users: [...users], agents: [...agents] };
+}
+
+/** The citation chips in a document, as their attributes say (src/citations.ts cleans them). */
+export function citationNodes(fragment: Y.XmlFragment): Partial<DocCitation>[] {
+  const out: Partial<DocCitation>[] = [];
+  const walk = (node: Y.XmlElement | Y.XmlFragment) => {
+    for (const child of node.toArray()) {
+      if (!(child instanceof Y.XmlElement)) continue;
+      if (child.nodeName === "citation") out.push(child.getAttributes() as Partial<DocCitation>);
+      else walk(child);
+    }
+  };
+  walk(fragment);
+  return out;
 }

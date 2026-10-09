@@ -1,6 +1,6 @@
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
-export type IdPrefix = "usr" | "ses" | "tok" | "key" | "rep" | "int" | "att" | "evt" | "dpl" | "prj" | "dom" | "dep" | "dst" | "chn" | "msg" | "agt" | "arp" | "asn" | "mem" | "rtn" | "drf" | "spc" | "pag" | "ver" | "thr" | "cmt" | "sug" | "tpl" | "fil";
+export type IdPrefix = "usr" | "ses" | "tok" | "key" | "rep" | "int" | "att" | "evt" | "dpl" | "prj" | "dom" | "dep" | "dst" | "chn" | "msg" | "agt" | "arp" | "asn" | "mem" | "rtn" | "drf" | "spc" | "pag" | "ver" | "thr" | "cmt" | "sug" | "tpl" | "fil" | "rds";
 
 let lastMs = 0;
 let lastCounter = 0;

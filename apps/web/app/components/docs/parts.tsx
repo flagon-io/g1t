@@ -43,7 +43,10 @@ export function PageCard({ page, space }: { page: DocPage; space?: Pick<DocSpace
         <span className="flex size-9 items-center justify-center rounded-lg border border-line bg-bg text-lg">
           <PageIcon icon={page.icon} size={18} />
         </span>
-        <span className="mt-2 line-clamp-1 text-sm font-medium text-fg group-hover:text-accent">{page.title || "Untitled"}</span>
+        <span className="mt-2 flex items-center gap-2">
+          <span className="line-clamp-1 min-w-0 text-sm font-medium text-fg group-hover:text-accent">{page.title || "Untitled"}</span>
+          {page.stale && <span className="shrink-0 rounded-full bg-warn/12 px-1.5 py-px text-[0.625rem] font-medium text-warn">Possibly stale</span>}
+        </span>
         <span className="mt-1 line-clamp-2 min-h-[2.5em] text-xs leading-relaxed text-muted">{page.excerpt || "Nothing written yet."}</span>
         <span className="mt-3 flex items-center gap-1.5 text-[0.6875rem] text-faint">
           {page.updated_by && <Face who={page.updated_by} size={14} />}

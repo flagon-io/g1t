@@ -15,11 +15,12 @@ import { syntaxHighlighter } from "@blocknote/code-block";
 import { BlockNoteViewEditor, SuggestionMenuController, ThreadsSidebar, getDefaultReactSlashMenuItems, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import type { DocFile, DocRole, DocSuggestion, DocsLiveEvent, Result } from "@g1t/contracts";
-import { AlertTriangle, AtSign, Calendar, CheckCircle2, FileText, GitPullRequest, Info, Link2, Sigma, Workflow } from "lucide-react";
+import { AlertTriangle, AtSign, Calendar, CheckCircle2, FileCode2, FileText, GitPullRequest, Info, Link2, Sigma, Workflow } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { canDo, cursorColour } from "../../lib/docs";
 import { schema, type DocEditorInstance } from "./blocks";
+import { CiteDialog } from "./code";
 import { EditorSkeleton } from "./editor-skeleton";
 import type { PageThread } from "./page-parts";
 import { DocsProvider, type LiveStatus } from "./provider";
@@ -47,6 +48,8 @@ export type DocEditorProps = {
   renderSuggestion?: (suggestion: DocSuggestion) => ReactNode;
   /** Comments on the whole page (not on a passage), live from the document. */
   onPageThreads?: (threads: PageThread[]) => void;
+  /** The projects the page and its space are about: Cite code offers them first. */
+  projects?: string[];
 };
 
 /** Nobody can do anything with threads: a reader's view. */
@@ -112,8 +115,9 @@ export default function DocEditor(props: DocEditorProps) {
   return <LiveEditor {...props} provider={provider} />;
 }
 
-function LiveEditor({ slug, pageId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, provider }: DocEditorProps & { provider: DocsProvider }) {
+function LiveEditor({ slug, pageId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, projects, provider }: DocEditorProps & { provider: DocsProvider }) {
   const editable = canDo(role, "edit");
+  const [citing, setCiting] = useState(false);
   const colour = cursorColour(me.name);
   // Below 1280px the comments sit under the page: opening them goes there.
   const comments = useRef<HTMLElement>(null);
@@ -253,6 +257,14 @@ function LiveEditor({ slug, pageId, role, me, mentionables, usercontent, suggest
         onItemClick: () => editor.insertInlineContent("[[" as never),
       },
       {
+        title: "Cite code",
+        subtext: "A file, folder, symbol, endpoint or variable this page describes",
+        aliases: ["cite", "code", "citation", "path", "file", "symbol", "endpoint", "env", "variable"],
+        group: "g1t",
+        icon: <FileCode2 size={18} />,
+        onItemClick: () => setCiting(true),
+      },
+      {
         title: "Date",
         subtext: "Today's date, which you can change",
         aliases: ["date", "today", "when"],
@@ -317,6 +329,18 @@ function LiveEditor({ slug, pageId, role, me, mentionables, usercontent, suggest
         <SuggestionMenuController triggerCharacter="@" getItems={async (query) => mentionItems(query)} />
         <SuggestionMenuController triggerCharacter="[[" getItems={pageItems} />
       </BlockNoteView>
+      {editable && (
+        <CiteDialog
+          slug={slug}
+          open={citing}
+          onOpenChange={setCiting}
+          projects={projects}
+          onCite={(c) => {
+            editor.focus();
+            editor.insertInlineContent([{ type: "citation", props: c }, " "] as never);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -70,6 +70,8 @@ services:
       # Packs kept for fresh clones, so the next clone of the same commit
       # does not rebuild one; storage-setup expires them after 7 days.
       PACK_S3_BUCKET: ${PACK_S3_BUCKET:-g1t-git-packs}
+      # Images and files people put in Docs pages.
+      DOCS_S3_BUCKET: ${DOCS_S3_BUCKET:-g1t-docs-files}
     volumes:
       - g1t-data:/data
       - g1t-secrets:/secrets:ro
@@ -132,8 +134,8 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Makes the buckets once, then exits: packages' files, backups, and
-  # clone packs, with a lifecycle rule on the packs' bucket that deletes
+  # Makes the buckets once, then exits: packages' files, backups, clone
+  # packs and Docs pages' files, with a lifecycle rule on the packs' bucket that deletes
   # packs 7 days old and uploads left unfinished after a day.
   storage-setup:
     image: ${AWS_CLI_IMAGE:-amazon/aws-cli:2.37.10}
@@ -145,7 +147,7 @@ services:
       - -c
       - >-
         set -e;
-        for bucket in "$$S3_BUCKET" "$$BACKUP_S3_BUCKET" "$$PACK_S3_BUCKET"; do
+        for bucket in "$$S3_BUCKET" "$$BACKUP_S3_BUCKET" "$$PACK_S3_BUCKET" "$$DOCS_S3_BUCKET"; do
           aws s3api head-bucket --bucket "$$bucket" >/dev/null 2>&1 || aws s3api create-bucket --bucket "$$bucket" >/dev/null;
         done;
         aws s3api put-bucket-lifecycle-configuration --bucket "$$PACK_S3_BUCKET" --lifecycle-configuration
@@ -159,6 +161,7 @@ services:
       S3_BUCKET: ${S3_BUCKET:-g1t-packages}
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-g1t-backups}
       PACK_S3_BUCKET: ${PACK_S3_BUCKET:-g1t-git-packs}
+      DOCS_S3_BUCKET: ${DOCS_S3_BUCKET:-g1t-docs-files}
 
   mailpit:
     image: axllent/mailpit:latest

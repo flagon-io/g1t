@@ -191,6 +191,22 @@ function docsPorts(binding: ServiceBinding, workspace: string, agentId: string):
       const blocks = p.blocks.map((b) => `${b.id} ${b.type}${b.level ? ` ${b.level}` : ""}`).join(", ");
       return `# ${where(p.page)}\nSpace: ${p.space.name}; ${can}. Updated ${p.page.updated_at.slice(0, 16)}.\nTop-level blocks: ${blocks}\n\n${p.markdown}`;
     },
+    async stale(viewer, audience, repo) {
+      const found = await docs.stalePagesForAgent(workspace, agentId, viewer, { repo }, audience);
+      if (!found.ok) return null;
+      if (!found.value.length) return "No pages are marked possibly out of date.";
+      return found.value
+        .map((s) => {
+          const changes = s.changes
+            .filter((c) => c.visible)
+            .slice(0, 3)
+            .map((c) => `${c.repo}${c.pull ? `#${c.pull.number}${c.pull.title ? ` (${c.pull.title})` : ""}` : `@${String(c.commit ?? "").slice(0, 8)}`} changed ${c.paths.slice(0, 5).join(", ")}`)
+            .join("; ");
+          const can = s.can.edit ? "you can edit" : s.can.suggest ? "you can suggest" : "read only";
+          return `- ${where(s.page)} (${can}), since ${s.since.slice(0, 10)}: ${changes}`;
+        })
+        .join("\n");
+    },
     async edit(viewer, pageId, edit, suggestOnly) {
       const done = suggestOnly
         ? await docs.suggestEdit(workspace, agentId, viewer, pageId, edit).then((r) => (r.ok ? { ok: true as const, value: { mode: "suggested" as const, suggestion: r.value, page: null } } : r))

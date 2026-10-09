@@ -2,7 +2,9 @@
  * g1t's own blocks in the page editor, beside BlockNote's: callouts,
  * Mermaid diagrams, math, and cards for g1t things (an issue, a pull
  * request, a channel, a project, another page); and inline mentions of
- * people, agents and pages, and dates. The docs service reads the same
+ * people, agents and pages, dates, and citations of code (a file, folder
+ * or pattern in a repository, and the symbol, endpoint or environment
+ * variable there the page describes). The docs service reads the same
  * names and attributes when it writes Markdown (services/docs
  * src/markdown.ts), so keep the two in step. Browser-only: loaded with
  * the editor.
@@ -10,8 +12,10 @@
 import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { createReactBlockSpec, createReactInlineContentSpec } from "@blocknote/react";
 import { codeBlockOptions } from "@blocknote/code-block";
-import { AlertTriangle, CheckCircle2, CircleDot, FileText, GitPullRequest, Hash, Info, OctagonAlert, Package } from "lucide-react";
+import { AlertTriangle, Braces, CheckCircle2, CircleDot, FileCode2, FileText, GitPullRequest, Hash, Info, KeyRound, OctagonAlert, Package, Route } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
+
+import { citationHref } from "../../lib/docs";
 
 /** What an embed shows, from the site (`-/docs/api?embed=`). */
 export type EmbedCard = { kind: "issue" | "pull" | "channel" | "project" | "page" | "link"; title: string; subtitle: string | null; state: string | null; href: string };
@@ -281,6 +285,43 @@ export const DateChip = createReactInlineContentSpec(
   },
 );
 
+const CITATION_ICONS: Record<string, ReactNode> = {
+  path: <FileCode2 size={12} aria-hidden="true" />,
+  symbol: <Braces size={12} aria-hidden="true" />,
+  endpoint: <Route size={12} aria-hidden="true" />,
+  env: <KeyRound size={12} aria-hidden="true" />,
+};
+
+/**
+ * Code the page cites, inline: what it names (the path, or the symbol,
+ * endpoint or variable there), linking to it in Code at the commit it was
+ * cited at. When a merge changes it, the page is marked possibly out of
+ * date (services/docs src/staleness.ts).
+ */
+export const Citation = createReactInlineContentSpec(
+  {
+    type: "citation",
+    propSchema: { repo: { default: "" }, path: { default: "" }, kind: { default: "path" }, label: { default: "" }, ref: { default: "" } },
+    content: "none",
+  },
+  {
+    render: ({ inlineContent }) => {
+      const p = inlineContent.props;
+      const shown = p.kind !== "path" && p.label ? p.label : p.path;
+      return (
+        <a
+          href={citationHref({ repo: p.repo, path: p.path, ref: p.ref || null })}
+          aria-label={`${shown} in ${p.repo}${p.kind !== "path" ? `, ${p.path}` : ""}`}
+          className="inline-flex items-center gap-1 rounded border border-line bg-raised px-1 py-px align-baseline font-mono text-[0.85em] text-fg no-underline hover:border-line-strong"
+        >
+          <span className="text-faint">{CITATION_ICONS[p.kind] ?? CITATION_ICONS.path}</span>
+          {shown}
+        </a>
+      );
+    },
+  },
+);
+
 export const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
@@ -290,7 +331,7 @@ export const schema = BlockNoteSchema.create({
     math: MathBlock(),
     embed: Embed(),
   },
-  inlineContentSpecs: { ...defaultInlineContentSpecs, mention: Mention, date: DateChip },
+  inlineContentSpecs: { ...defaultInlineContentSpecs, mention: Mention, date: DateChip, citation: Citation },
 });
 
 export type DocSchema = typeof schema;

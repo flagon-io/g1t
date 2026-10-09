@@ -23,6 +23,8 @@
 	// Files people put in pages (images, attachments), served from the
 	// usercontent origin at /docs-files/<key> (apps/web/workers/usercontent.ts).
 	// Create it once: npx wrangler r2 bucket create g1t-docs-files
+	// Self-hosted, any S3-compatible store instead: DOCS_FILES=s3 and the
+	// DOCS_S3_* settings (src/files.ts, docs/SELF_HOSTING.md).
 	"r2_buckets": [{ "binding": "FILES", "bucket_name": "g1t-docs-files" }],
 	"services": [
 		// Workspaces by slug, people's names and avatars, and teams.
@@ -30,8 +32,22 @@
 		// The workspace's agents: who they are, for agents' calls and mentions.
 		{ "binding": "AGENTS", "service": "g1t-agents" },
 		// Mentions and suggestions reach people's inboxes (services/notify).
-		{ "binding": "NOTIFY", "service": "g1t-notify" }
+		{ "binding": "NOTIFY", "service": "g1t-notify" },
+		// Who may read a repository, what a change touched, and a project's
+		// docs folder (src/staleness.ts, src/repo-spaces.ts).
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		// What a merged pull request changed.
+		{ "binding": "WORK", "service": "g1t-work" },
+		// doc.page.* events on the bus (src/events.ts).
+		{ "binding": "EVENTS", "service": "g1t-events" }
 	],
+	// Merges and pushes to default branches: pages whose cited code
+	// changed, and projects' docs read again (src/staleness.ts). The events
+	// service sends it what g1t_contracts::subscribers routes to
+	// SUBSCRIBER_DOCS. Create it once: npx wrangler queues create g1t-events-docs
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+	},
 	// One room per page: it holds the page's Yjs document and open sockets,
 	// hibernating while nobody types (src/room.ts).
 	"durable_objects": {

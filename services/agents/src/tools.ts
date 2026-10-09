@@ -54,7 +54,9 @@ export interface DocsPorts {
   spaces(viewer: User, audience: DocAudience): Promise<string | null>;
   search(viewer: User, audience: DocAudience, query: string, project: string | null): Promise<string | null>;
   read(viewer: User, audience: DocAudience, pageId: string): Promise<string | null>;
-  edit(viewer: User, pageId: string, edit: { target: DocEditTarget; markdown: string; note: string | null }, suggestOnly: boolean): Promise<{ ok: boolean; message: string }>;
+  /** Pages possibly out of date since code they cite changed, with the change. */
+  stale(viewer: User, audience: DocAudience, repo: string | null): Promise<string | null>;
+  edit(viewer: User, pageId: string, edit: { target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean }, suggestOnly: boolean): Promise<{ ok: boolean; message: string }>;
   create(viewer: User, input: { space_id: string | null; parent_id: string | null; title: string; markdown: string; source: { title: string; href: string } | null }): Promise<{ ok: boolean; message: string }>;
 }
 
@@ -291,6 +293,12 @@ const DOCS_TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: { page: { type: "string" } }, required: ["page"] },
   },
   {
+    name: "stale_pages",
+    description:
+      "Docs pages possibly out of date because code they cite changed, each with the change (pull request or commit) and the paths. Optionally only for one repository (`workspace/name`). Start here when keeping the docs current.",
+    input_schema: { type: "object", properties: { repo: { type: "string" } } },
+  },
+  {
     name: "list_doc_spaces",
     description: "The Docs spaces you can read here, with what you may do in each (read, suggest, edit).",
     input_schema: { type: "object", properties: {} },
@@ -312,6 +320,7 @@ const DOCS_WRITE_TOOLS: ToolDef[] = [
         to_block: { type: "string" },
         markdown: { type: "string" },
         note: { type: "string", description: "Why, in a line, for the history or the suggestion." },
+        marks_current: { type: "boolean", description: "This edit brings a page marked possibly out of date up to date: it clears the mark when it applies or is accepted." },
         suggest_only: { type: "boolean", description: "Suggest even where you could edit." },
       },
       required: ["page", "target", "markdown"],
@@ -508,6 +517,8 @@ export class ToolBox {
         const project = text("project", 200).toLowerCase() || null;
         return read(`search_docs "${query}"`, await docs.search(asker, audience, query, project));
       }
+      case "stale_pages":
+        return read("stale_pages", await docs.stale(asker, audience, text("repo", 200).toLowerCase() || null));
       case "read_page": {
         const page = pageId(text("page", 300));
         if (!page) return { text: "Give the page's id or link.", outcome: "refused" };
@@ -529,7 +540,7 @@ export class ToolBox {
                   ? { kind: "blocks", from_block: text("from_block", 100), to_block: text("to_block", 100) }
                   : null;
         if (!target) return { text: "Say what to change: append, a section by its heading, blocks by their ids, or the whole document.", outcome: "refused" };
-        const done = await docs.edit(asker, page, { target, markdown, note: text("note", 300) || null }, input.suggest_only === true);
+        const done = await docs.edit(asker, page, { target, markdown, note: text("note", 300) || null, marks_current: input.marks_current === true }, input.suggest_only === true);
         return { text: done.message, outcome: done.ok ? "allowed" : "refused" };
       }
       case "create_page": {

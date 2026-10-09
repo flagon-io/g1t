@@ -35,7 +35,7 @@ const RULES: Rule[] = [
     match: /\b(docs|documentation|pages|runbooks?)\b.*\b(change|changes|merge|merges|wrong|current|up to date|stale)\b/i,
     routine: (duty) => ({
       name: "Keep the docs current",
-      instructions: `When a pull request is merged, keep the docs true (${trimmed(duty)}). Find the pages it makes wrong or incomplete: pages marked possibly out of date by this change first, then search_docs for what it changed. Update each with edit_page (it becomes a suggestion where you can't edit), citing the pull request. Post a short list of what you changed here; say so if nothing needed changing.`,
+      instructions: `When a pull request is merged, keep the docs true (${trimmed(duty)}). Find the pages it makes wrong or incomplete: stale_pages for this repository first (pages citing code it changed), then search_docs for what it changed. Update each with edit_page (it becomes a suggestion where you can't edit), citing the pull request, with marks_current when it brings a stale page up to date. Post a short list of what you changed here; say so if nothing needed changing.`,
       schedule: null,
       events: ["pull_merged"],
       repos: [],

@@ -30,7 +30,8 @@ import * as Y from "yjs";
 import { atLeast } from "./access.ts";
 import { seed } from "./blocks.ts";
 import { anchorThread, applyEdit, findTarget, rangeIds, rangeMarkdown, restoreFrom, unanchorThread } from "./edits.ts";
-import { documentMarkdown, mentionedIds, outline, type Outline } from "./markdown.ts";
+import { bodyCitations } from "./citations.ts";
+import { citationNodes, documentMarkdown, mentionedIds, outline, type Outline } from "./markdown.ts";
 import { save } from "./persist.ts";
 import { applyThreadAction, listThreads, setQuote, type ThreadResult } from "./threads.ts";
 
@@ -51,7 +52,7 @@ export type Origin = { key: string; kind: DocVersionKind; note: string | null; a
 
 type Attachment = RoomMember & { clients: number[] };
 
-type Env = { DB: D1Database; NOTIFY?: ServiceBinding };
+type Env = { DB: D1Database; NOTIFY?: ServiceBinding; EVENTS?: ServiceBinding };
 
 const FRAGMENT = "document-store";
 const MESSAGE_SYNC = 0;
@@ -172,9 +173,11 @@ export class PageRoom extends DurableObject<Env> {
     const fragment = this.fragment();
     const editors = this.meta<string[]>("editors", []);
     const pending = this.meta<string[]>("pending_authors", []);
+    const markdown = documentMarkdown(fragment);
     const result = await save(this.env, {
       page_id: pageId,
-      markdown: documentMarkdown(fragment),
+      markdown,
+      citations: bodyCitations(citationNodes(fragment), markdown),
       editors,
       mentioned: mentionedIds(fragment).users,
       editor_names: this.meta<string[]>("editor_names", []),

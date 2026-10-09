@@ -35,7 +35,7 @@ export function linkedPageIds(markdown: string): string[] {
 }
 
 /** Space slugs the site's routes use under `-/docs/`. */
-export const RESERVED_SPACE_SLUGS = new Set(["new", "search", "trash", "templates", "live", "api", "threads", "upload", "export", "settings", "recent", "favorites"]);
+export const RESERVED_SPACE_SLUGS = new Set(["new", "search", "trash", "templates", "live", "api", "threads", "upload", "export", "settings", "recent", "favorites", "stale", "repo"]);
 
 /** A space slug that is free: `base`, else `base-2`, `base-3`, ... */
 export function freeSlug(base: string, taken: ReadonlySet<string>): string {

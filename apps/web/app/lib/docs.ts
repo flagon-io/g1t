@@ -135,3 +135,51 @@ export function readingTime(markdown: string): { words: number; minutes: number 
 export function markdownFileName(title: string): string {
   return `${title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "Untitled"}.md`;
 }
+
+/**
+ * Where a citation links: the file or folder in Code at the commit it was
+ * cited at, or the default branch (`HEAD`). A glob links to the folder it
+ * starts from. Mirrors `citationHref` in services/docs src/citations.ts.
+ */
+export function citationHref(c: { repo: string; path: string; ref: string | null }): string {
+  const parts = c.path.split("/").filter(Boolean);
+  const globAt = parts.findIndex((p) => /[*?]/.test(p));
+  const glob = globAt >= 0;
+  const shown = (glob ? parts.slice(0, globAt) : parts).map(encodeURIComponent).join("/");
+  const kind = glob || !/\.[A-Za-z0-9]{1,10}$/.test(c.path) ? "tree" : "blob";
+  return `/${c.repo}/${kind}/${encodeURIComponent(c.ref || "HEAD")}${shown ? `/${shown}` : ""}`;
+}
+
+/** A project's docs file's address in Docs. */
+export function repoFilePath(workspace: string, repo: string, path: string): string {
+  return `/${workspace}/-/docs/repo/${repo}/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+/** A folder of a project's docs, as the sidebar shows it: files, then folders, each by name. */
+export type RepoFolder = { name: string; path: string; files: { path: string; title: string }[]; folders: RepoFolder[] };
+
+/** A project's docs files as folders: README and `docs/` at the top, `docs/a/b.md` under `a`. */
+export function repoFolders(files: { path: string; title: string }[]): RepoFolder {
+  const root: RepoFolder = { name: "", path: "", files: [], folders: [] };
+  for (const file of files) {
+    // `docs/` is the space itself: its files sit at the top beside the README.
+    const parts = file.path.replace(/^docs\//i, "").split("/");
+    parts.pop();
+    let at = root;
+    for (const part of parts) {
+      let next = at.folders.find((f) => f.name === part);
+      if (!next) {
+        next = { name: part, path: at.path ? `${at.path}/${part}` : part, files: [], folders: [] };
+        at.folders.push(next);
+      }
+      at = next;
+    }
+    at.files.push(file);
+  }
+  const sort = (f: RepoFolder) => {
+    f.folders.sort((a, b) => a.name.localeCompare(b.name));
+    f.folders.forEach(sort);
+  };
+  sort(root);
+  return root;
+}

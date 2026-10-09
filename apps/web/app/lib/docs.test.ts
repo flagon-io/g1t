@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildTree, canDo, coverStyle, cursorColour, flatten, pageIdOf, pagePath, pathTo, readingTime, snippetParts } from "./docs.ts";
+import { buildTree, canDo, citationHref, coverStyle, cursorColour, flatten, pageIdOf, pagePath, pathTo, readingTime, repoFilePath, repoFolders, snippetParts } from "./docs.ts";
 
 const id = "pag_01jb2k7x9hfq0b3zj0f5s2m8ra";
 
@@ -50,4 +50,25 @@ test("covers, colours, roles, reading time", () => {
   assert.equal(canDo("edit", "comment"), true);
   assert.equal(canDo("comment", "edit"), false);
   assert.deepEqual(readingTime("one two three"), { words: 3, minutes: 1 });
+});
+
+test("a citation links to its code, a glob to the folder it starts from", () => {
+  assert.equal(citationHref({ repo: "acme/web", path: "src/export.ts", ref: "abc1234" }), "/acme/web/blob/abc1234/src/export.ts");
+  assert.equal(citationHref({ repo: "acme/web", path: "src/jobs", ref: null }), "/acme/web/tree/HEAD/src/jobs");
+  assert.equal(citationHref({ repo: "acme/web", path: "src/**/*.sql", ref: "abc" }), "/acme/web/tree/abc/src");
+});
+
+test("a project's docs become folders under the space", () => {
+  const root = repoFolders([
+    { path: "README.md", title: "Acme" },
+    { path: "docs/setup.md", title: "Setup" },
+    { path: "docs/guides/deploy.md", title: "Deploy" },
+  ]);
+  assert.deepEqual(
+    root.files.map((f) => f.path),
+    ["README.md", "docs/setup.md"],
+  );
+  assert.equal(root.folders[0]!.name, "guides");
+  assert.deepEqual(root.folders[0]!.files.map((f) => f.title), ["Deploy"]);
+  assert.equal(repoFilePath("acme", "acme/web", "docs/a b.md"), "/acme/-/docs/repo/acme/web/docs/a%20b.md");
 });

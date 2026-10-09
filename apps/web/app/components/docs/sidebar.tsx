@@ -1,19 +1,21 @@
 /**
  * Docs mode's sidebar (beside the rail, docs/WORKSPACE.md "Shell"):
- * search, Home, Templates and Trash; Favorites and Recent; then each
- * space with its page tree, which opens to the page being read. Pages are
+ * search, Home, Possibly stale, Templates and Trash; Favorites and
+ * Recent; each space with its page tree, which opens to the page being
+ * read; then projects' docs folders, read-only. Pages are
  * dragged to reorder them or to put one inside another; the ⋯ menu moves
  * them too, for keyboards and phones.
  */
-import type { DocsSidebarSpace } from "@g1t/contracts";
-import { BookOpen, ChevronRight, Clock, FileText, Home, LayoutTemplate, Lock, Plus, Search, Settings, Star, Trash2, Users } from "lucide-react";
+import type { DocRepoSpace, DocsSidebarSpace } from "@g1t/contracts";
+import { AlertTriangle, BookOpen, ChevronRight, Clock, FileText, Folder, FolderGit2, Home, LayoutTemplate, Lock, Plus, Search, Settings, Star, Trash2, Users } from "lucide-react";
 import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { NavLink, useLocation, useNavigate, useParams } from "react-router";
+import { NavLink, useLocation, useNavigate, useParams, useRevalidator } from "react-router";
 
-import { buildTree, canDo, pageIdOf, pagePath, pathTo, type TreeItem } from "../../lib/docs";
+import { buildTree, canDo, pageIdOf, pagePath, pathTo, repoFilePath, repoFolders, type RepoFolder, type TreeItem } from "../../lib/docs";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
 import { docsRequest, useDocsAction, useDocsData } from "./actions";
+import { RepoDocsDialog } from "./code";
 
 const ROW = "group flex h-8 items-center gap-1.5 rounded-md pr-1 text-[0.8125rem] transition-colors";
 
@@ -75,9 +77,11 @@ function TreeRow({
   setDrag,
   onDrop,
   onAdd,
+  stale,
 }: {
   slug: string;
   space: DocsSidebarSpace;
+  stale: Set<string>;
   item: TreeItem;
   current: string | null;
   open: Set<string>;
@@ -135,6 +139,11 @@ function TreeRow({
             <PageIcon icon={item.icon} size={14} />
           </span>
           <span className="min-w-0 truncate">{item.title || "Untitled"}</span>
+          {stale.has(item.id) && (
+            <Hint label="Possibly out of date: code it cites changed">
+              <span className="ml-auto size-1.5 shrink-0 rounded-full bg-warn" aria-label="Possibly out of date" />
+            </Hint>
+          )}
         </NavLink>
         {editable && (
           <Hint label="Add a page inside">
@@ -142,7 +151,7 @@ function TreeRow({
               type="button"
               onClick={() => onAdd(item.id)}
               aria-label={`Add a page inside ${item.title || "Untitled"}`}
-              className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100"
+              className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100"
             >
               <Plus size={13} />
             </button>
@@ -152,7 +161,7 @@ function TreeRow({
       {expanded && item.children.length > 0 && (
         <ul>
           {item.children.map((child) => (
-            <TreeRow key={child.id} slug={slug} space={space} item={child} current={current} open={open} toggle={toggle} drag={drag} setDrag={setDrag} onDrop={onDrop} onAdd={onAdd} />
+            <TreeRow key={child.id} slug={slug} space={space} stale={stale} item={child} current={current} open={open} toggle={toggle} drag={drag} setDrag={setDrag} onDrop={onDrop} onAdd={onAdd} />
           ))}
         </ul>
       )}
@@ -164,6 +173,7 @@ function SpaceTree({ slug, space, current, drag, setDrag }: { slug: string; spac
   const navigate = useNavigate();
   const { send } = useDocsAction(slug);
   const tree = useMemo(() => buildTree(space.pages), [space.pages]);
+  const stale = useMemo(() => new Set(space.pages.filter((p) => p.stale).map((p) => p.id)), [space.pages]);
   const [open, setOpen] = useState<Set<string>>(() => new Set(pathTo(space.pages, current)));
   const [collapsed, setCollapsed] = useState(false);
   // Opening a page opens the way to it.
@@ -221,14 +231,14 @@ function SpaceTree({ slug, space, current, drag, setDrag }: { slug: string; spac
         </NavLink>
         {canDo(space.viewer_role, "manage") && (
           <Hint label="Space settings">
-            <NavLink to={`/${slug}/-/docs/${space.slug}/settings`} aria-label={`${space.name} settings`} className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100">
+            <NavLink to={`/${slug}/-/docs/${space.slug}/settings`} aria-label={`${space.name} settings`} className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100">
               <Settings size={13} />
             </NavLink>
           </Hint>
         )}
         {editable && (
           <Hint label={`New page in ${space.name}`}>
-            <button type="button" onClick={() => add(null)} aria-label={`New page in ${space.name}`} className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100">
+            <button type="button" onClick={() => add(null)} aria-label={`New page in ${space.name}`} className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100">
               <Plus size={13} />
             </button>
           </Hint>
@@ -237,9 +247,86 @@ function SpaceTree({ slug, space, current, drag, setDrag }: { slug: string; spac
       {!collapsed && (
         <ul>
           {tree.map((item) => (
-            <TreeRow key={item.id} slug={slug} space={space} item={item} current={current} open={open} toggle={toggle} drag={drag} setDrag={setDrag} onDrop={drop} onAdd={add} />
+            <TreeRow key={item.id} slug={slug} space={space} stale={stale} item={item} current={current} open={open} toggle={toggle} drag={drag} setDrag={setDrag} onDrop={drop} onAdd={add} />
           ))}
           {tree.length === 0 && <li className="py-1 pr-2 pl-9 text-xs text-faint">No pages yet.</li>}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function RepoFolderRows({ slug, repo, folder, depth, current }: { slug: string; repo: string; folder: RepoFolder; depth: number; current: string }) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set(folder.folders.filter((f) => current.includes(`/${f.path}/`)).map((f) => f.path)));
+  return (
+    <>
+      {folder.files.map((f) => {
+        const to = repoFilePath(slug, repo, f.path);
+        return (
+          <li key={f.path}>
+            <NavLink to={to} prefetch="intent" className={({ isActive }) => `${ROW} ${isActive ? "bg-raised font-medium text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`} style={{ paddingLeft: 26 + depth * 14 }}>
+              <FileText size={14} className="shrink-0 text-faint" aria-hidden="true" />
+              <span className="min-w-0 truncate">{f.title}</span>
+            </NavLink>
+          </li>
+        );
+      })}
+      {folder.folders.map((sub) => {
+        const expanded = open.has(sub.path);
+        return (
+          <li key={sub.path}>
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={() =>
+                setOpen((was) => {
+                  const next = new Set(was);
+                  if (next.has(sub.path)) next.delete(sub.path);
+                  else next.add(sub.path);
+                  return next;
+                })
+              }
+              className={`${ROW} w-full text-muted hover:bg-raised/60 hover:text-fg`}
+              style={{ paddingLeft: 4 + (depth + 1) * 14 }}
+            >
+              <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${expanded ? "rotate-90" : ""}`} />
+              <Folder size={14} className="shrink-0 text-faint" aria-hidden="true" />
+              <span className="min-w-0 truncate">{sub.name}</span>
+            </button>
+            {expanded && (
+              <ul>
+                <RepoFolderRows slug={slug} repo={repo} folder={sub} depth={depth + 1} current={current} />
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </>
+  );
+}
+
+/** A project's docs folder: read-only, its files as folders, from the repository's default branch. */
+function RepoTree({ slug, space }: { slug: string; space: DocRepoSpace }) {
+  const { pathname } = useLocation();
+  const base = `/${slug}/-/docs/repo/${space.repo}/`;
+  const here = decodeURIComponent(pathname).startsWith(base);
+  const [collapsed, setCollapsed] = useState(!here);
+  const root = useMemo(() => repoFolders(space.files), [space.files]);
+  return (
+    <li className="mt-1">
+      <div className={`${ROW} text-fg-soft`}>
+        <button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.repo}'s docs` : `Hide ${space.repo}'s docs`} className="flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-line hover:text-fg">
+          <ChevronRight size={13} className={`transition-transform ${collapsed ? "" : "rotate-90"}`} />
+        </button>
+        <span className="flex w-4 shrink-0 justify-center">
+          <FolderGit2 size={14} className="text-faint" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 grow truncate font-medium">{space.repo}</span>
+      </div>
+      {!collapsed && (
+        <ul>
+          <RepoFolderRows slug={slug} repo={space.repo} folder={root} depth={0} current={decodeURIComponent(pathname)} />
+          {space.files.length === 0 && <li className="py-1 pr-2 pl-9 text-xs text-faint">{space.indexed_at ? "No docs folder or README." : "Reading its docs…"}</li>}
         </ul>
       )}
     </li>
@@ -254,6 +341,8 @@ export function DocsSidebar({ slug, onClose }: { slug: string; onClose?: () => v
   const current = pageIdOf(params.page);
   const [drag, setDrag] = useState<Drag>(null);
   const [query, setQuery] = useState("");
+  const [addingRepo, setAddingRepo] = useState(false);
+  const { revalidate } = useRevalidator();
   const sidebar = data?.sidebar;
   const general = sidebar?.spaces.find((s) => s.is_default) ?? sidebar?.spaces.find((s) => canDo(s.viewer_role, "edit"));
   const newPage = async () => {
@@ -297,6 +386,11 @@ export function DocsSidebar({ slug, onClose }: { slug: string; onClose?: () => v
           <SideLink to={`/${slug}/-/docs`} end icon={<Home size={15} />}>
             Home
           </SideLink>
+          {!!sidebar?.stale_count && (
+            <SideLink to={`/${slug}/-/docs/stale`} icon={<AlertTriangle size={15} className="text-warn" />} trailing={<span className="text-[0.6875rem] text-warn tabular-nums">{sidebar.stale_count}</span>}>
+              Possibly stale
+            </SideLink>
+          )}
           <SideLink to={`/${slug}/-/docs/templates`} icon={<LayoutTemplate size={15} />}>
             Templates
           </SideLink>
@@ -361,6 +455,31 @@ export function DocsSidebar({ slug, onClose }: { slug: string; onClose?: () => v
               </ul>
             </Section>
             {pathname === `/${slug}/-/docs` && sidebar.spaces.length === 0 && <p className="mt-3 px-2 text-xs text-faint">No spaces you can read yet.</p>}
+            <Section
+              title="Projects' docs"
+              open={(sidebar.repos ?? []).length > 0}
+              action={
+                <Hint label="Show a project's docs">
+                  <button type="button" onClick={() => setAddingRepo(true)} aria-label="Show a project's docs" className="flex size-6 items-center justify-center rounded text-faint hover:bg-raised hover:text-fg">
+                    <Plus size={13} />
+                  </button>
+                </Hint>
+              }
+            >
+              <ul>
+                {(sidebar.repos ?? []).map((space) => (
+                  <RepoTree key={space.id} slug={slug} space={space} />
+                ))}
+                {(sidebar.repos ?? []).length === 0 && (
+                  <li>
+                    <button type="button" onClick={() => setAddingRepo(true)} className="px-2 py-1 text-left text-xs text-faint hover:text-fg">
+                      Show a repository&apos;s docs folder here, read-only.
+                    </button>
+                  </li>
+                )}
+              </ul>
+            </Section>
+            <RepoDocsDialog slug={slug} open={addingRepo} onOpenChange={setAddingRepo} shown={(sidebar.repos ?? []).map((r) => r.repo.toLowerCase())} onAdded={() => void revalidate()} />
           </>
         )}
       </nav>

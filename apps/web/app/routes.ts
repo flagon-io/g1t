@@ -175,6 +175,9 @@ export default [
       route("templates", "routes/workspace/docs/templates.tsx"),
       route("trash", "routes/workspace/docs/trash.tsx"),
       route("new", "routes/workspace/docs/new-space.tsx"),
+      // Pages possibly out of date, and a project's docs folder, read-only.
+      route("stale", "routes/workspace/docs/stale.tsx"),
+      route("repo/:repoOwner/:repoName/*", "routes/workspace/docs/repo-file.tsx"),
       route(":space", "routes/workspace/docs/space.tsx"),
       route(":space/settings", "routes/workspace/docs/space-settings.tsx"),
       route(":space/:page", "routes/workspace/docs/page.tsx"),

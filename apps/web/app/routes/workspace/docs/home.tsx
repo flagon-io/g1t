@@ -1,10 +1,11 @@
 import type { DocTemplate, DocsHome } from "@g1t/contracts";
-import { BookOpen, FilePlus2, Plus, Search } from "lucide-react";
+import { AlertTriangle, BookOpen, FilePlus2, FolderGit2, Plus, Search } from "lucide-react";
 import { useState } from "react";
-import { Form, Link, data, useNavigate, useSubmit } from "react-router";
+import { Form, Link, data, useNavigate, useRevalidator, useSubmit } from "react-router";
 
 import type { Route } from "./+types/home";
 import { docsRequest, useDocsData } from "../../../components/docs/actions";
+import { RepoDocsDialog } from "../../../components/docs/code";
 import { PageCard, SectionTitle, SpaceCard, TemplateCard } from "../../../components/docs/parts";
 import { DocsSidebar } from "../../../components/docs/sidebar";
 import { ButtonLink, EmptyState, ErrorText } from "../../../components/ui";
@@ -45,6 +46,8 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
   const navigate = useNavigate();
   const submit = useSubmit();
   const [error, setError] = useState<string | null>(null);
+  const [addingRepo, setAddingRepo] = useState(false);
+  const { revalidate } = useRevalidator();
   const general = layout?.sidebar?.spaces.find((s) => s.is_default) ?? layout?.sidebar?.spaces.find((s) => canDo(s.viewer_role, "edit"));
   const spacesById = new Map((home?.spaces ?? []).map((s) => [s.id, s]));
   const create = async (template?: string) => {
@@ -79,6 +82,9 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
           <p className="mt-1 max-w-xl text-sm text-muted">Specs, runbooks, decisions and onboarding, written together with your agents. Everything here is searchable, and agents read it before they work.</p>
         </div>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setAddingRepo(true)} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line px-3 text-sm text-fg/80 transition-colors hover:border-line-strong hover:bg-surface hover:text-fg">
+            <FolderGit2 size={15} /> Show a project&apos;s docs
+          </button>
           <ButtonLink to={`/${slug}/-/docs/new`} variant="quiet">
             <Plus size={15} /> New space
           </ButtonLink>
@@ -114,6 +120,27 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
           </Form>
         )}
       </div>
+
+      {home.stale.length > 0 && (
+        <section className="mt-8">
+          <SectionTitle
+            action={
+              <Link to={`/${slug}/-/docs/stale`} className="text-xs text-muted hover:text-fg">
+                All of them
+              </Link>
+            }
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <AlertTriangle size={13} className="text-warn" /> Possibly out of date
+            </span>
+          </SectionTitle>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {home.stale.map((p) => (
+              <PageCard key={p.id} page={p} space={spacesById.get(p.space_id)} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-8">
         <SectionTitle>{home.project ? `Recently edited · ${home.project}` : "Recently edited"}</SectionTitle>
@@ -163,6 +190,8 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
           ))}
         </div>
       </section>
+
+      <RepoDocsDialog slug={slug} open={addingRepo} onOpenChange={setAddingRepo} shown={(layout?.sidebar?.repos ?? []).map((r) => r.repo.toLowerCase())} onAdded={() => void revalidate()} />
 
       {general && featured.length > 0 && (
         <section className="mt-10 mb-6">

@@ -25,6 +25,7 @@ import type { Route } from "./+types/page";
 import { docsRequest, useDocsAction, useDocsData } from "../../../components/docs/actions";
 import type { DocEditorProps, Presence } from "../../../components/docs/editor";
 import { EditorSkeleton } from "../../../components/docs/editor-skeleton";
+import { Describes, StaleBanner } from "../../../components/docs/code";
 import { CoverPicker, Discussion, HistoryDialog, IconPicker, MoveDialog, SuggestionCard, TemplateDialog, type PageThread } from "../../../components/docs/page-parts";
 import { Crumbs, Face, Faces } from "../../../components/docs/parts";
 import type { LiveStatus } from "../../../components/docs/provider";
@@ -136,7 +137,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
         else navigate(`/${slug}/-/docs`);
       } else if (event.type === "suggestion.created") setSuggestions((was) => [...was.filter((s) => s.id !== event.suggestion.id), event.suggestion]);
       else if (event.type === "suggestion.updated") setSuggestions((was) => (event.suggestion.status === "open" ? was.map((s) => (s.id === event.suggestion.id ? event.suggestion : s)) : was.filter((s) => s.id !== event.suggestion.id)));
-      else if (event.type === "version.created") void revalidator.revalidate();
+      else if (event.type === "version.created" || event.type === "page.staleness") void revalidator.revalidate();
     },
     [navigate, slug, revalidator],
   );
@@ -418,6 +419,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
                 Owners <Faces people={live.owners} size={18} />
               </span>
             )}
+            <Describes slug={slug} describes={detail.describes} editable={editable} onSave={(describes) => send("update_page", { page_id: page.id, change: { describes } })} />
             {[...new Set([...live.projects, ...space.projects])].map((p) => (
               <Link key={p} to={`/${p}`} className="rounded-full border border-line px-2 py-0.5 font-mono text-[0.6875rem] text-muted hover:border-line-strong hover:text-fg">
                 {p}
@@ -433,6 +435,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
               <ErrorText>{error}</ErrorText>
             </div>
           )}
+          {detail.staleness && <StaleBanner staleness={detail.staleness} canMark={editable} onMark={() => send("mark_current", { page_id: page.id })} />}
 
           {/* Agents' suggestions, all together on a narrower screen (beside their blocks on a wide one). */}
           {suggestions.length > 0 && (
@@ -483,6 +486,7 @@ export default function DocPageView({ loaderData, params }: Route.ComponentProps
                 onEvent={onEvent}
                 onPageThreads={setThreads}
                 renderSuggestion={(s) => <SuggestionCard suggestion={s} canDecide={editable} onDecide={decide} />}
+                projects={[...new Set([...live.projects, ...space.projects, ...detail.describes.map((d) => d.repo)])]}
               />
             </Suspense>
           ) : (

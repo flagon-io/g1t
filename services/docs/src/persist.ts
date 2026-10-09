@@ -4,8 +4,9 @@
  * newly mentioned in the page. Run by the room (src/room.ts), which owns
  * the live document; nothing here reads the document itself.
  */
-import { newId, notifyClient, type DocVersionKind, type FeedNotification, type ServiceBinding } from "@g1t/contracts";
+import { newId, notifyClient, type DocCitation, type DocVersionKind, type FeedNotification, type ServiceBinding } from "@g1t/contracts";
 
+import { publishDocEvent } from "./events.ts";
 import { excerpt, searchText } from "./markdown.ts";
 import { linkedPageIds, pageSlug } from "./slugs.ts";
 
@@ -14,11 +15,13 @@ export const VERSION_EVERY_MS = 10 * 60 * 1000;
 /** The largest Yjs state a version keeps; past it, only its Markdown. */
 const MAX_VERSION_STATE = 1_500_000;
 
-export type SaveEnv = { DB: D1Database; NOTIFY?: ServiceBinding };
+export type SaveEnv = { DB: D1Database; NOTIFY?: ServiceBinding; EVENTS?: ServiceBinding };
 
 export type Save = {
   page_id: string;
   markdown: string;
+  /** Code the document cites (src/citations.ts `bodyCitations`). */
+  citations: DocCitation[];
   /** The editors since the last save, member keys, last one last. */
   editors: string[];
   /** People mentioned in the document now (usernames, lowercased). */
@@ -63,6 +66,13 @@ export async function save(env: SaveEnv, input: Save, now = new Date()): Promise
     for (const to of linkedPageIds(input.markdown).filter((id) => id !== page.id).slice(0, 200)) {
       statements.push(env.DB.prepare("INSERT OR IGNORE INTO page_links (from_page, to_page) VALUES (?, ?)").bind(page.id, to));
     }
+    // What it cites, from its text; the header's own stay.
+    statements.push(env.DB.prepare("DELETE FROM citations WHERE page_id = ? AND source = 'body'").bind(page.id));
+    for (const c of input.citations) {
+      statements.push(
+        env.DB.prepare("INSERT OR IGNORE INTO citations (page_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, ?, ?, ?, 'body')").bind(page.id, c.repo, c.path, c.kind, c.label ?? "", c.ref),
+      );
+    }
   }
   // A version: asked for (an agent's edit, a suggestion, a restore), or
   // the first save after enough time since the last one.
@@ -98,6 +108,26 @@ export async function save(env: SaveEnv, input: Save, now = new Date()): Promise
     statements.push(env.DB.prepare("UPDATE pages SET mentioned = ? WHERE id = ?").bind(JSON.stringify([...new Set([...told.filter((id) => input.mentioned.includes(id)), ...fresh])]), page.id));
   }
   if (statements.length) await env.DB.batch(statements);
+  // A version is what the rest of g1t hears of: at most every ten minutes of editing, and each agent edit, suggestion and restore.
+  const kind = input.version?.kind ?? "edit";
+  if (versionId && kind !== "created" && input.workspace_slug && !page.archived_at) {
+    await publishDocEvent(
+      env.EVENTS,
+      "doc.page.updated",
+      {
+        workspace: input.workspace_slug,
+        workspaceId: page.workspace_id,
+        pageId: page.id,
+        spaceId: page.space_id,
+        title: page.title,
+        path: `/${input.workspace_slug}/-/docs/${page.slug}/${pageSlug(page.title, page.id)}`,
+        versionId,
+        kind,
+        authors: [...new Set(input.version?.authors.length ? input.version.authors : input.pending_authors)],
+      },
+      last,
+    );
+  }
   if (fresh.length && env.NOTIFY && !page.archived_at) {
     const slug = input.workspace_slug;
     if (slug) {

@@ -4,7 +4,8 @@ import { test } from "node:test";
 import * as Y from "yjs";
 
 import { parseInline, parseMarkdown, seed } from "./blocks.ts";
-import { documentMarkdown, excerpt, mentionedIds, outline, searchText, topContainers } from "./markdown.ts";
+import { bodyCitations } from "./citations.ts";
+import { citationNodes, documentMarkdown, excerpt, mentionedIds, outline, searchText, topContainers } from "./markdown.ts";
 
 function docFrom(markdown: string) {
   const doc = new Y.Doc();
@@ -125,4 +126,27 @@ test("mentions are found by id; search text drops markup", () => {
   assert.equal(documentMarkdown(fragment), "hello@ana\n");
   assert.equal(searchText("## Steps\n\n- [x] **Ship** [it](https://x)"), "Steps\n Ship it");
   assert.equal(excerpt("# T\n\n" + "word ".repeat(100), 20).length, 20);
+});
+
+test("a citation chip is a link to the code, and is found as a citation", () => {
+  const doc = new Y.Doc();
+  const fragment = doc.getXmlFragment("document-store");
+  seed(doc, fragment, "Exports run in ");
+  doc.transact(() => {
+    const paragraph = topContainers(fragment)[0]!.get(0) as Y.XmlElement;
+    const chip = new Y.XmlElement("citation");
+    chip.setAttribute("repo", "acme/web");
+    chip.setAttribute("path", "src/export.ts");
+    chip.setAttribute("kind", "symbol");
+    chip.setAttribute("label", "exportCsv");
+    chip.setAttribute("ref", "abc1234");
+    paragraph.insert(paragraph.length, [chip]);
+  });
+  const markdown = documentMarkdown(fragment);
+  assert.equal(markdown, "Exports run in [`exportCsv`](/acme/web/blob/abc1234/src/export.ts)\n");
+  const found = bodyCitations(citationNodes(fragment), markdown);
+  assert.deepEqual(
+    found.map((c) => [c.repo, c.path, c.kind, c.label]),
+    [["acme/web", "src/export.ts", "symbol", "exportCsv"]],
+  );
 });

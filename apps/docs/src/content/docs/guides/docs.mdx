@@ -1,6 +1,6 @@
 ---
 title: Docs
-description: Write a workspace's specs, runbooks, decisions and onboarding together, live, with your agents. Spaces and pages, a block editor with diagrams and math, comments, suggestions from agents you accept or reject, full history, templates, search by project, and Markdown export.
+description: Write a workspace's specs, runbooks, decisions and onboarding together, live, with your agents. Spaces and pages, a block editor with diagrams and math, comments, suggestions from agents you accept or reject, pages that cite code and say when it changed, projects' docs folders, full history, templates, search by project, and Markdown export.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -24,6 +24,7 @@ the rail on the left, or go to `g1t.sh/<workspace>/-/docs`.
 | **Pages** | A tree inside each space. A page can hold other pages. Every page has an icon, an optional cover, owners, linked projects, history, comments and backlinks. |
 | **The editor** | Blocks you add with `/`: text, headings, lists, to-dos, toggles, callouts, code, tables, images and files, Mermaid diagrams, math, and live cards for issues, pull requests, channels, projects and other pages. |
 | **Agents** | Read the pages the person they work for can read. Suggest changes you accept or reject inline, or edit directly where a space allows it. Every change is attributed in the history. |
+| **Code** | A page cites the code it describes. When a merged pull request changes that code, the page says it may be out of date, and its owners are told. A project's `docs/` folder can sit beside your spaces, read-only. |
 
 Docs is its own mode, not a tab in a project. To see the pages about one
 project, filter Docs by that project.
@@ -123,6 +124,7 @@ Type `/` anywhere for the block menu, and keep typing to filter it.
 | Math | `/math` or `/latex`. Click the formula to change it. | `$$ … $$` |
 | Embed from g1t | `/embed`, then paste the address of an issue, pull request, channel, project or page. The card shows its live title and state (open, merged, closed). | a link |
 | Date | `/date` | the date |
+| Cite code | `/cite`: choose a repository and a path, and what there the page describes (the file or folder, a symbol, an endpoint, an environment variable). See [Pages that cite code](#pages-that-cite-code). | a link to the file |
 
 Inline:
 
@@ -230,6 +232,56 @@ channel works: Inky reads the page, and suggests or makes the change for
 you, depending on the space.
 </Aside>
 
+## Pages that cite code
+
+A page about code says which code. When that code changes, the page tells
+you it may be out of date, instead of quietly going wrong.
+
+**Cite code in the text.** Type `/cite`, choose a repository and a path, and
+say what the page describes there:
+
+| What it describes | For example |
+| --- | --- |
+| A file or folder | `src/export.ts`, `src/export` (everything in it) |
+| A symbol | `exportCsv` in `src/export.ts` |
+| An endpoint | `POST /v1/exports` in `api/routes.rs` |
+| An environment variable | `EXPORT_BUCKET` in `wrangler.jsonc` |
+
+The path can be a pattern: `*` matches within a folder, `**` across folders
+(`src/**/*.sql`), `?` one character. The citation is a chip in the text that
+opens the code at the commit it was cited at. A link to a file in a repository
+(`/acme/web/blob/main/src/export.ts`), pasted or written by an agent, counts
+as a citation too.
+
+**Say what the whole page describes.** Under the title, **Describes** lists
+repositories and paths the page is about. Press **+** to add one, or remove
+one from the same place. Anyone who can edit the page can change it.
+
+**When the code changes.** When a pull request that changes a cited path is
+merged, or a commit is pushed straight to the default branch, the page is
+marked **possibly out of date**:
+
+- A banner on the page says which change and which paths: "Possibly out of
+  date since acme/web#431 changed src/export.ts". **Review changes** opens
+  the pull request's changes.
+- The page's owners are told in their notifications.
+- The page shows **Possibly stale** on its card, a dot in the sidebar's tree,
+  and in **Possibly stale** in the sidebar, which lists every such page you
+  can read. Docs' home shows the latest under **Possibly out of date**.
+
+Read what changed, update the page if it needs it, then press **Mark as
+current**. That needs edit access, and clears it for everyone.
+
+Only the change's repository decides who sees it: someone who can't read
+that repository sees "a change you can't see" instead of its name, and is
+told without it.
+
+**Agents keep pages current.** An agent asked to bring a page up to date
+reads what changed, then edits the page or suggests the change as usual,
+saying the edit brings it up to date: once it is applied (or you accept the
+suggestion), the page is current again. An agent only learns of changes in
+repositories the person it works for can read.
+
 ## History
 
 **⋯ → History** lists every version of the page: when, who (people and agents),
@@ -280,6 +332,33 @@ the spaces to one project.
 Agents search the same way, and only find what the people they answer can
 read.
 
+## Projects' docs
+
+A repository's own docs (its `docs/` folder and its README) stay in the
+repository and change through pull requests. Docs can show them beside your
+spaces, so one sidebar and one search cover both.
+
+<Steps>
+
+1. On Docs' home, press **Show a project's docs**, or **+** next to
+   **Projects' docs** in the sidebar.
+2. Choose a repository you can read. Its README and every Markdown file under
+   `docs/` on the default branch appear in the sidebar, in their folders.
+
+</Steps>
+
+- The files are read-only here, rendered as Code renders them, with links and
+  pictures pointing into the repository. **Edit in Code** opens the file;
+  change it there or in a pull request.
+- They follow the default branch: every push reads the changed files again.
+- Search finds them with your pages, marked with the repository's name.
+- Each person sees only the repositories they can read, whoever added them.
+- Whoever added a project's docs, or a workspace owner, can stop showing them
+  from the bin icon on any of its pages.
+
+A project's docs show its first 300 Markdown files; a file over 512 KB is
+listed but not shown.
+
 ## Export
 
 - **⋯ → Export Markdown** downloads a page as a `.md` file.
@@ -292,15 +371,10 @@ the files read well anywhere Markdown does.
 
 ## Coming soon <Soon />
 
-- **Pages that know what they describe.** A page that cites code (a path, an
-  endpoint, a setting) is marked possibly stale when a merged pull request
-  changes it, and its owners are told. When an agent owns the page, it drafts
-  the update.
 - **"Write this up" from a thread** in one click, linked both ways.
-- **A documenter agent** that keeps a space current after merges and writes
-  the weekly summary.
-- **A project's `docs/` folder as a read-only space**, in the same tree and
-  search as your own spaces. Editing one of its pages opens a pull request.
+- **A documenter agent** that keeps a space current after merges (updating
+  the pages marked possibly out of date) and writes the weekly summary.
+- **Editing a project's docs from Docs**, opening a pull request for you.
 
 ## Pricing
 

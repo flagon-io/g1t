@@ -521,14 +521,51 @@ Built (`services/docs`, contract `packages/contracts/src/docs.ts`):
   which checks the role; a passage's comment is a mark on its text.
 - **Files** go to R2 (`g1t-docs-files`) behind a small store interface and
   are served from the usercontent origin at `/docs-files/<key>`, 256
-  random bits per file.
+  random bits per file. Self-hosted, the same interface keeps them in any
+  S3-compatible store (`DOCS_FILES=s3`, SigV4 by hand: `src/sigv4.ts`).
+- **Citations and staleness** (`src/citations.ts`, `src/staleness.ts`,
+  tables `citations` and `page_changes`). A page cites code from its text
+  (the editor's `citation` chips: a repository, a path or glob, what kind
+  of thing (path, symbol, endpoint, env var) and the commit it was cited
+  at; and any link to `/<owner>/<repo>/blob|tree/<ref>/<path>`), rebuilt
+  on each save, and from its header's "Describes" list. The docs service
+  consumes `g1t-events-docs` (`SUBSCRIBER_DOCS`: `git.push`,
+  `pull.merged`). For a repository some live page cites, it asks what
+  changed as g1t itself (a merged pull request's files from work; a push
+  to the default branch by comparing `before..after` in repos), matches the
+  cited paths, and records one row per page and commit (the push and the
+  pull request of one merge land on the same row; the pull request names
+  it). A new row notifies the page's owners (naming the change only to
+  those who can read the repository), tells open editors to reload, and
+  publishes `doc.page.stale`. The page shows a banner with the newest
+  change the reader can read ("a change you can't see" otherwise); Mark as
+  current (edit role) clears every open row; the sidebar, home and cards
+  show it. Agents get `stalePagesForAgent` (changes only in repositories
+  their person can read) and mark a page current with an edit or
+  suggestion carrying `marks_current`.
+- **Projects' docs** (`src/repo-spaces.ts`, tables `repo_spaces`,
+  `repo_files`, `repo_files_fts`). A member adds a repository they can
+  read; its README and `docs/**/*.md` on the default branch are read with
+  `listFiles` and `rawBlobs` (only blobs whose hash changed), kept as
+  Markdown with FTS, and read again on every push to the default branch.
+  Each reader sees the ones `ReposApi.readable` says they can read. Shown
+  read-only at `/<workspace>/-/docs/repo/<owner>/<name>/<path>`; "Edit in
+  Code" opens the file (Code has no file editor yet; when it has one, or a
+  "propose a change" flow, the button opens that instead).
+- **Events.** `doc.page.created`, `doc.page.updated` (when history
+  records a version: at most every ten minutes of editing, and every agent
+  edit, accepted suggestion and restore, with its authors),
+  `doc.page.archived` and `doc.page.stale`, published with no `repoId` so a
+  page never reaches a repository's timeline or hooks (types in
+  `packages/contracts/src/events.ts` and `g1t_contracts::events`). Not
+  offered to webhooks yet.
 
 Decided: **not git, for now.** Spaces were planned as git repositories.
 D1 + Durable Objects ships live collaboration, comments, suggestions and
 search without a git write per keystroke burst, and Markdown export (a
 page, or a space as a zip in its tree's folders) keeps the content
-portable. Repository-backed spaces (a project's `docs/` as a read-only
-space, edits as pull requests) remain the next step for repository docs.
+portable. A project's `docs/` is shown as a read-only space (below);
+editing it from Docs as a pull request is the next step.
 For self-hosting, the Durable Object, R2 and D1 sit behind the room,
 `FileStore` and SQL; nothing above them depends on Cloudflare.
 
@@ -543,8 +580,25 @@ as the source: <thread link>`. The normal agent flow does the rest
 doing; the thread link it cites is `<conversation path>?thread=<id>`, which
 **Copy link to thread** also gives.
 
-Not built yet: citations and staleness, the documenter agent, repository docs as spaces, `doc.page.*` events and
-indexing pages in `services/context`.
+Not built yet: the documenter agent (it reads `stalePagesForAgent` and
+updates with `marks_current`; the routine and its `doc.page.stale` trigger
+are the agents service's), editing a project's docs from Docs as a pull
+request, and indexing pages in `services/context`.
+
+**Pages in `services/context`: what it needs.** The context hub indexes
+items per project, and decides who sees one by the project's privacy
+(`private` and membership). A Docs page's access is per space (private and
+team spaces, listed members), which that model can't express, so indexing
+pages there as they are would show private spaces' pages to every member.
+Doing it right needs: an ingest RPC on context for documents with an
+access key (`docs:<space id>`), a check at query time that asks the docs
+service which spaces the reader (and audience) can read
+(`spacesForAgent` already answers that), and a `doc.page.updated`
+consumer that re-embeds the page's Markdown (`SUBSCRIBER_CONTEXT` would
+route `doc.page.*`). Until then agents reach pages through the docs tools
+(`searchForAgent`, `pageMarkdown`), which apply exactly those rules.
+Projects' docs folders are already in context: it reads each project's
+`docs/` on every push.
 
 ## Chat
 
@@ -1136,7 +1190,7 @@ Following the architecture principles: separate services, interfaces in
 | `services/notify` (new, TS) | One feed per person: live notifications and unread counts over each tab's socket, browser push (VAPID), preferences, presence, status and Do Not Disturb; one presence room per workspace. Durable Object SQLite storage, no D1. |
 | `services/chat` (new, TS) | Channels, members, messages, threads, reactions, read state; one Durable Object per channel for live delivery with WebSocket hibernation. |
 | `services/agents` (new, TS) | Agent definitions and versions, the desk Durable Object per agent, the coordinator Durable Object per workspace (claims), replies (the no-sandbox model loop over g1t MCP). |
-| `services/docs` (new, TS) | Spaces, pages, the page Durable Object (Yjs), history, suggestions, comments, templates, search (FTS5), files (R2); citations and staleness to come. |
+| `services/docs` (new, TS) | Spaces, pages, the page Durable Object (Yjs), history, suggestions, comments, templates, search (FTS5), files (R2, or S3 self-hosted), citations and staleness (queue `g1t-events-docs`), projects' docs folders, `doc.page.*` events. |
 | `services/work` | Tasks and task links beside `agent_runs` (which gains `task_id`); `agent_messages` widened to task addresses. |
 | `services/runner` | Resumable sessions: transcript save and restore in R2, `--resume`, the steer hook reading task threads, claims checked at start and widened from diffs. |
 | `services/context` | Indexes doc pages and channel decisions; serves them to replies and sessions. |

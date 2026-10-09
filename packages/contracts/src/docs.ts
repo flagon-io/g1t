@@ -139,6 +139,121 @@ export type DocPage = DocPageRef & {
   owners: MemberProfile[];
   /** The first lines of its text, for cards. */
   excerpt: string;
+  /** Whether code it cites changed since someone last marked it current: possibly out of date. */
+  stale: boolean;
+};
+
+// ── Citations and staleness ───────────────────────────────────────────────
+//
+// A page can cite code: a path (a file, a folder, or a glob like
+// `src/export/**`) in a repository, optionally naming what at that path it
+// describes (a symbol, an endpoint, an environment variable). Citations
+// come from the page's text (the editor's citation chips, and links to
+// files in a repository: `/<owner>/<repo>/blob/<ref>/<path>`) and from
+// the page's header ("Describes"). When a merged pull request or a push
+// to a repository's default branch changes a cited path, the page is
+// marked possibly out of date with that change, until someone with edit
+// access marks it current again (or an agent updates it).
+
+/** What a citation names at its path. */
+export type DocCitationKind = "path" | "symbol" | "endpoint" | "env";
+export const DOC_CITATION_KINDS: readonly DocCitationKind[] = ["path", "symbol", "endpoint", "env"];
+
+export const DOC_CITATION_KIND_LABELS: Record<DocCitationKind, string> = {
+  path: "A file or folder",
+  symbol: "A symbol",
+  endpoint: "An endpoint",
+  env: "An environment variable",
+};
+
+export type DocCitation = {
+  /** `owner/name`, lowercased. */
+  repo: string;
+  /** A file, a folder (everything under it), or a glob (`*`, `**`, `?`). */
+  path: string;
+  kind: DocCitationKind;
+  /** The symbol, endpoint (`POST /v1/export`) or variable (`EXPORT_BUCKET`), for those kinds. */
+  label: string | null;
+  /** The commit it was cited at, when known. */
+  ref: string | null;
+  /** From the page's text, or from its header's "Describes". */
+  source: "body" | "header";
+};
+
+/** One entry of a page's "Describes": a repository and a path in it. */
+export type DocDescribes = { repo: string; path: string };
+
+/** A change that made a page possibly out of date. */
+export type DocStaleChange = {
+  /**
+   * False when the viewer can't read the repository: then `repo`, `pull`,
+   * `commit` and `paths` are blank, and the page only says that a change
+   * they can't see touched code it cites.
+   */
+  visible: boolean;
+  repo: string | null;
+  commit: string | null;
+  /** The merged pull request, when the change came from one. */
+  pull: { number: number; title: string | null } | null;
+  /** The cited paths it changed (the changed files, at most 20). */
+  paths: string[];
+  /** When it was noticed. RFC 3339. */
+  at: string;
+};
+
+/** Why a page is possibly out of date: every change since it was last marked current, newest first. */
+export type DocStaleness = { since: string; changes: DocStaleChange[] };
+
+/** A page an agent may bring up to date, with what changed. */
+export type DocStalePage = {
+  page: DocPageRef & { updated_at: string };
+  space: { id: string; slug: string; name: string; agent_mode: DocAgentMode };
+  can: DocAgentAbilities;
+  owners: MemberProfile[];
+  citations: DocCitation[];
+  /** Changes in repositories the viewer (and audience) can read; newest first. */
+  changes: DocStaleChange[];
+  since: string;
+};
+
+// ── A project's docs ──────────────────────────────────────────────────────
+//
+// A repository's `docs/` folder (and README.md), shown read-only in Docs
+// next to the workspace's spaces and found by the same search. It is read
+// from the default branch and kept up to date on every push to it. Each
+// reader sees only the repositories they can read. Changes go through the
+// repository: "Edit in Code" opens the file.
+
+export type DocRepoFile = {
+  /** From the repository's root: `docs/guide/setup.md`, `README.md`. */
+  path: string;
+  /** Its first heading, or its file name. */
+  title: string;
+};
+
+export type DocRepoSpace = {
+  id: string;
+  /** `owner/name`, as the repository is named now. */
+  repo: string;
+  default_branch: string;
+  /** The commit it was read at; null until it has been. */
+  commit: string | null;
+  indexed_at: string | null;
+  added_by: MemberProfile;
+  files: DocRepoFile[];
+  /** Whether the viewer may stop showing it (whoever added it, or an owner). */
+  can_remove: boolean;
+};
+
+export type DocRepoPage = {
+  space: DocRepoSpace;
+  file: DocRepoFile & {
+    markdown: string;
+    /** `/<workspace>/-/docs/repo/<owner>/<name>/<path>`. */
+    href: string;
+    /** The file in Code, on the default branch. */
+    code_href: string;
+  };
 };
 
 /** A page as the sidebar's tree lists it: flat, ordered by `position` within each parent. */
@@ -149,6 +264,8 @@ export type DocTreeNode = {
   title: string;
   icon: string | null;
   slug: string;
+  /** Possibly out of date (see `DocPage.stale`). */
+  stale?: boolean;
 };
 
 export type DocsSidebarSpace = DocSpace & { pages: DocTreeNode[] };
@@ -161,6 +278,10 @@ export type DocsSidebar = {
   /** Whether the viewer may make spaces (members of the workspace may). */
   can_create_space: boolean;
   trash_count: number;
+  /** Pages the viewer can read that are possibly out of date. */
+  stale_count: number;
+  /** Projects' docs folders shown in Docs, those whose repository the viewer can read. */
+  repos: DocRepoSpace[];
 };
 
 export type DocsHome = {
@@ -168,6 +289,8 @@ export type DocsHome = {
   recent: DocPage[];
   /** Pages the viewer made or owns. */
   mine: DocPage[];
+  /** Pages possibly out of date, most recently flagged first. */
+  stale: DocPage[];
   spaces: DocSpace[];
   /** Every project some space or page is linked to, for the filter. */
   projects: string[];
@@ -245,6 +368,12 @@ export type DocPageDetail = {
   /** When the viewer last opened it, before now. */
   last_viewed_at: string | null;
   suggestions: DocSuggestion[];
+  /** Code the page cites: from its text and its header. */
+  citations: DocCitation[];
+  /** The header's "Describes" list. */
+  describes: DocDescribes[];
+  /** Why it is possibly out of date; null when it isn't. */
+  staleness: DocStaleness | null;
 };
 
 export type DocSearchHit = DocPageRef & {
@@ -253,6 +382,8 @@ export type DocSearchHit = DocPageRef & {
   snippet: string;
   updated_at: string;
   projects: string[];
+  /** Set for a file from a project's docs folder (then `id` is `repo:<space>:<path>` and `path` its address in Docs). */
+  repo_file?: { repo: string; path: string } | null;
 };
 
 export type DocTemplate = {
@@ -295,6 +426,15 @@ export type DocAudience =
   /** Everyone in the workspace, e.g. a public channel: only workspace-wide spaces. */
   | { kind: "workspace" };
 
+/** An agent's edit to a page. */
+export type DocAgentEdit = {
+  target: DocEditTarget;
+  markdown: string;
+  note?: string | null;
+  /** The edit brings the page up to date with the code it cites: once applied, the page is no longer possibly out of date. */
+  marks_current?: boolean | null;
+};
+
 /** What `apply_edit` did: applied it, or filed a suggestion because it may not edit there. */
 export type DocAgentEditResult =
   | { mode: "applied"; version_id: string | null; page: DocPageRef }
@@ -333,6 +473,8 @@ export type DocPageChange = {
   projects?: string[];
   /** Member keys (`user:<id>`, `agent:<id>`). */
   owners?: string[];
+  /** Replaces the header's "Describes" list (at most 20). */
+  describes?: DocDescribes[];
 };
 
 /** Where a page goes: under `parent_id` (null for the top of the space), before `before_id` (null for the end). */
@@ -383,6 +525,8 @@ export type DocsLiveEvent =
   | { type: "page.archived"; page_id: string }
   | { type: "suggestion.created" | "suggestion.updated"; suggestion: DocSuggestion }
   | { type: "version.created"; version: DocVersion }
+  /** Whether it is possibly out of date changed: ask for the page again (what each reader sees of why depends on what they can read). */
+  | { type: "page.staleness" }
   /** The viewer's role changed, or their access ended (`role` null). */
   | { type: "access"; role: DocRole | null };
 
@@ -454,6 +598,22 @@ export type DocsApi = {
   thread(workspace: string, pageId: string, viewer: User, action: DocThreadAction): Promise<Result<unknown>>;
   threads(workspace: string, pageId: string, viewer: User): Promise<Result<DocThread[]>>;
 
+  /** Clears "possibly out of date": the page says what the code does now. Edit role. */
+  markCurrent(workspace: string, pageId: string, viewer: User): Promise<Result<boolean>>;
+  /** Pages the viewer can read that are possibly out of date, most recently flagged first; `repo` (`owner/name`) narrows to changes there. */
+  stalePages(workspace: string, viewer: User, options?: { repo?: string | null }): Promise<Result<DocPage[]>>;
+
+  /**
+   * Shows a repository's `docs/` folder and README.md in Docs, read from
+   * its default branch. Any member who can read the repository may; the
+   * files are read at once and again on every push to the default branch.
+   */
+  addRepoSpace(workspace: string, viewer: User, repo: string): Promise<Result<DocRepoSpace>>;
+  /** Stops showing it. Whoever added it, or a workspace owner. */
+  removeRepoSpace(workspace: string, viewer: User, id: string): Promise<Result<boolean>>;
+  /** One file of a project's docs, for a viewer who can read the repository; not found otherwise. */
+  repoPage(workspace: string, viewer: User, repo: string, path: string): Promise<Result<DocRepoPage>>;
+
   // ── Agents (services/agents) ─────────────────────────────────────────
   //
   // Each takes the agent and the person it acts for (`viewer`, the asker).
@@ -469,13 +629,13 @@ export type DocsApi = {
   /** Full-text search over pages every reader can read; at most 20, best first. */
   searchForAgent(workspace: string, agentId: string, viewer: User, query: DocSearchQuery, audience?: DocAudience | null): Promise<Result<DocSearchHit[]>>;
   /** Files a tracked suggestion; people with edit access accept or reject it inline. Needs the viewer's comment role. Notifies the page's owners. */
-  suggestEdit(workspace: string, agentId: string, viewer: User, pageId: string, edit: { target: DocEditTarget; markdown: string; note?: string | null }): Promise<Result<DocSuggestion>>;
+  suggestEdit(workspace: string, agentId: string, viewer: User, pageId: string, edit: DocAgentEdit): Promise<Result<DocSuggestion>>;
   /**
    * Applies an edit to the live document when the space lets agents edit
    * and the viewer can edit; otherwise files it as a suggestion (and says
    * so in `mode`). Attributed to the agent in the page's history.
    */
-  applyEdit(workspace: string, agentId: string, viewer: User, pageId: string, edit: { target: DocEditTarget; markdown: string; note?: string | null }): Promise<Result<DocAgentEditResult>>;
+  applyEdit(workspace: string, agentId: string, viewer: User, pageId: string, edit: DocAgentEdit): Promise<Result<DocAgentEditResult>>;
   /**
    * A new page, written by the agent: in `space_id` (the General space
    * when null), under `parent_id`. Needs the viewer's edit role there
@@ -490,6 +650,29 @@ export type DocsApi = {
   ): Promise<Result<DocPageRef>>;
   /** A page's comment threads, for an agent asked about them. */
   threadsForAgent(workspace: string, agentId: string, viewer: User, pageId: string, audience?: DocAudience | null): Promise<Result<DocThread[]>>;
+  /**
+   * Pages possibly out of date that the agent may read for the viewer (and
+   * audience), each with the changes that made it so: for a documenter
+   * routine to bring them up to date. At most 50, most recently flagged
+   * first.
+   *
+   * - `repo` (`owner/name`): only pages made stale by a change there.
+   * - `since` (RFC 3339): only pages flagged at or after it.
+   *
+   * Changes in repositories the viewer can't read are left out, and a page
+   * whose every change is one of those is left out too: an agent never
+   * learns of code its person can't see. To update a page, read it
+   * (`pageMarkdown`), then `applyEdit` or `suggestEdit` with
+   * `marks_current: true`: the page is marked current when the edit is
+   * applied (at once, or when a person accepts the suggestion).
+   */
+  stalePagesForAgent(
+    workspace: string,
+    agentId: string,
+    viewer: User,
+    options?: { repo?: string | null; since?: string | null },
+    audience?: DocAudience | null,
+  ): Promise<Result<DocStalePage[]>>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -535,6 +718,11 @@ export function docsClient(service: ServiceBinding): DocsApi {
     acceptAll: (workspace, pageId, viewer) => call("accept_all", { workspace, page_id: pageId, viewer }),
     thread: (workspace, pageId, viewer, action) => call("thread", { workspace, page_id: pageId, viewer, action }),
     threads: (workspace, pageId, viewer) => call("threads", { workspace, page_id: pageId, viewer }),
+    markCurrent: (workspace, pageId, viewer) => call("mark_current", { workspace, page_id: pageId, viewer }),
+    stalePages: (workspace, viewer, options) => call("stale_pages", { workspace, viewer, repo: options?.repo ?? null }),
+    addRepoSpace: (workspace, viewer, repo) => call("add_repo_space", { workspace, viewer, repo }),
+    removeRepoSpace: (workspace, viewer, id) => call("remove_repo_space", { workspace, viewer, id }),
+    repoPage: (workspace, viewer, repo, path) => call("repo_page", { workspace, viewer, repo, path }),
     spacesForAgent: (workspace, agentId, viewer, audience) => call("spaces_for_agent", { workspace, agent_id: agentId, viewer, audience: audience ?? null }),
     pageMarkdown: (workspace, agentId, viewer, pageId, audience) =>
       call("page_markdown", { workspace, agent_id: agentId, viewer, page_id: pageId, audience: audience ?? null }),
@@ -544,5 +732,7 @@ export function docsClient(service: ServiceBinding): DocsApi {
     createPageAsAgent: (workspace, agentId, viewer, input) => call("create_page_as_agent", { workspace, agent_id: agentId, viewer, input }),
     threadsForAgent: (workspace, agentId, viewer, pageId, audience) =>
       call("threads_for_agent", { workspace, agent_id: agentId, viewer, page_id: pageId, audience: audience ?? null }),
+    stalePagesForAgent: (workspace, agentId, viewer, options, audience) =>
+      call("stale_pages_for_agent", { workspace, agent_id: agentId, viewer, repo: options?.repo ?? null, since: options?.since ?? null, audience: audience ?? null }),
   };
 }
