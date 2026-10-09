@@ -25,7 +25,7 @@ export default function SettingsLayout() {
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
       {about && (
         <header className="mb-8 border-b border-line pb-5">
-          <h1 className="text-lg font-semibold tracking-tight">{about.title}</h1>
+          <h1 className="text-lg font-semibold tracking-tight">{about.heading ?? about.title}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">{about.about}</p>
         </header>
       )}

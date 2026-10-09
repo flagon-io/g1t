@@ -11,7 +11,7 @@ import { Honeypot } from "../components/honeypot";
 import { Avatar, ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { githubSignInEnabled } from "../lib/github.server";
 import { identity } from "../lib/services.server";
-import { cleanCode, cleanProof, inviteSignUpCopy, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
+import { cleanCode, cleanProof, invitePageCopy, inviteSignUpCopy, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
 import { clientKey } from "../lib/registration.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, startSession } from "../lib/session.server";
 import { rememberWorkspace } from "../lib/workspace-choice";
@@ -158,43 +158,23 @@ function Faces({ invite }: { invite: InvitePreview }) {
   );
 }
 
-function senderName(invite: InvitePreview): string {
-  return invite.invitedBy ? (invite.invitedBy.name ?? invite.invitedBy.username) : "The g1t team";
-}
-
-/** "Chase Pierce invited you to join Flagon, Inc. on g1t", with the place in bold. */
+/**
+ * Which invite it is, in the headline (`invitePageCopy`): "@syntaqx
+ * invited you to join Flagon, Inc. on g1t" (a workspace invitation, with
+ * the place in bold), "… to collaborate on acme/web", or "@syntaqx invited
+ * you to g1t" (an account, and no workspace).
+ */
 function Headline({ invite }: { invite: InvitePreview }) {
-  const from = senderName(invite);
-  if (invite.workspace) {
-    return (
-      <>
-        {from} invited you to join <strong className="font-semibold text-fg">{invite.workspace.name}</strong> on g1t
-      </>
-    );
-  }
-  if (invite.repository) {
-    return (
-      <>
-        {from} invited you to collaborate on <strong className="font-mono font-semibold text-fg">{invite.repository.name}</strong>
-      </>
-    );
-  }
-  return <>{from} invited you to g1t</>;
-}
-
-function about(invite: InvitePreview, signedIn: boolean): string {
-  const signingUp = !signedIn && !invite.hasAccount && invite.kind === "account";
-  if (invite.workspace) {
-    return `g1t is one workspace where a team and its agents talk, work and ship. ${
-      signingUp ? "Make your account below and you join" : "Accepting joins you to"
-    } ${invite.workspace.name} as a member.`;
-  }
-  if (invite.repository) {
-    return `g1t is one workspace where a team and its agents talk, work and ship. ${
-      signingUp ? "Make your account below and you get" : "Accepting gives you"
-    } the ${invite.repository.role} role on ${invite.repository.name}.`;
-  }
-  return "g1t is one workspace where a team and its agents talk, work and ship: chat with people and agents, give agents a job and a budget, and land code through checks that hold. This invite gets you in.";
+  const copy = invitePageCopy(invite, false);
+  return (
+    <>
+      {copy.before}
+      {copy.place && (
+        <strong className={`font-semibold text-fg ${invite.repository && !invite.workspace ? "font-mono" : ""}`}>{copy.place}</strong>
+      )}
+      {copy.after}
+    </>
+  );
 }
 
 /** What accepting is called on its button. */
@@ -466,7 +446,7 @@ export default function Invite({ loaderData, actionData }: Route.ComponentProps)
           <h1 className="mt-6 text-2xl font-semibold tracking-tight text-balance text-fg-soft">
             <Headline invite={invite} />
           </h1>
-          <p className="mt-2 text-sm leading-6 text-muted">{about(invite, loaderData.viewer !== null)}</p>
+          <p className="mt-2 text-sm leading-6 text-muted">{invitePageCopy(invite, loaderData.viewer !== null).about}</p>
           <dl className="mt-5 space-y-1 text-sm">
             {invite.invitedBy && (
               <div className="flex gap-2">

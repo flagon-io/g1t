@@ -5,7 +5,7 @@ import { InvitesSection } from "../../components/invites-section";
 import { inviteAction, loadBringInto, loadInvites } from "../../lib/invites.server";
 
 export function meta(args: Route.MetaArgs) {
-  return page(args, { title: "Invites · Settings · g1t" });
+  return page(args, { title: "Invites to g1t · Settings · g1t" });
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {

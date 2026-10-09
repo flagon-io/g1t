@@ -1283,6 +1283,10 @@ pub struct CreateInviteArgs {
     /// member, and no workspace of its own is made for it.
     #[serde(default)]
     pub join: Option<String>,
+    /// The role `join` invites them with; member when absent. Ignored
+    /// without `join`.
+    #[serde(default)]
+    pub join_role: Option<crate::Role>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,

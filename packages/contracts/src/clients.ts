@@ -152,7 +152,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     registration: () => call("registration", {}),
     listInvites: (user) => call("list_invites", { user }),
     createInvite: (user, options = {}) =>
-      call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null, join: options.join ?? null }),
+      call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null, join: options.join ?? null, join_role: options.join ? (options.joinRole ?? null) : null }),
     revokeInvite: (user, id) => call("revoke_invite", { user, id }),
     checkInvite: (code, client, options = {}) =>
       call("check_invite", {

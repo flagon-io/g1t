@@ -520,13 +520,13 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
     let who = from.unwrap_or("The g1t team");
     match (workspace, joins_existing_account) {
         (Some(workspace), true) => (
-            format!("{who} invited you to {workspace} on g1t"),
+            format!("{who} invited you to join {workspace} on g1t"),
             format!("{who} invited you to join the {workspace} workspace on g1t."),
         ),
         (Some(workspace), false) => (
-            format!("{who} invited you to {workspace} on g1t"),
+            format!("{who} invited you to join {workspace} on g1t"),
             format!(
-                "{who} invited you to join the {workspace} workspace on g1t, where people and agents ship software together. Accepting makes your account, and then you can join {workspace}."
+                "{who} invited you to join the {workspace} workspace on g1t, where people and agents ship software together. You do not have a g1t account yet, so this invitation also lets you make one; then you accept or decline joining {workspace}."
             ),
         ),
         (None, _) => (
@@ -534,7 +534,7 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
                 Some(from) => format!("{from} invited you to g1t"),
                 None => "Your invite to g1t".to_owned(),
             },
-            format!("{who} invited you to g1t, where people and agents ship software together. g1t is invite-only for now; this invite lets you make your account."),
+            format!("{who} invited you to g1t, where people and agents ship software together. g1t is invite-only for now; this invite lets you make your account. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
         ),
     }
 }
@@ -575,13 +575,14 @@ mod tests {
         let (subject, intro) = invite_wording(Some("ada"), None, false);
         assert_eq!(subject, "ada invited you to g1t");
         assert!(intro.starts_with("ada invited you to g1t"));
+        assert!(intro.contains("does not add you to anyone's workspace"));
         let (subject, _) = invite_wording(None, None, false);
         assert_eq!(subject, "Your invite to g1t");
         let (subject, intro) = invite_wording(Some("ada"), Some("acme"), true);
-        assert_eq!(subject, "ada invited you to acme on g1t");
+        assert_eq!(subject, "ada invited you to join acme on g1t");
         assert_eq!(intro, "ada invited you to join the acme workspace on g1t.");
         let (_, intro) = invite_wording(Some("ada"), Some("acme"), false);
-        assert!(intro.contains("makes your account, and then you can join acme"));
+        assert!(intro.contains("also lets you make one; then you accept or decline joining acme"));
     }
 
     fn invite<'a>(note: Option<&'a str>, from: Option<&'a str>) -> InviteEmail<'a> {
@@ -600,7 +601,7 @@ mod tests {
     #[test]
     fn an_invite_links_to_its_page_and_carries_a_note() {
         let (subject, letter) = invite_letter(&invite(Some("Welcome aboard <3"), None), SITE);
-        assert_eq!(subject, "The g1t team invited you to Flagon, Inc. on g1t");
+        assert_eq!(subject, "The g1t team invited you to join Flagon, Inc. on g1t");
         assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/invite/g1t-abcd");
         assert_eq!(letter.quotes, vec![("A note from the g1t team".to_owned(), "Welcome aboard <3".to_owned())]);
         let (text, html) = render(&letter, SITE);
