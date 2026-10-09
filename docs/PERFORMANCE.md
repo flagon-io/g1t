@@ -489,6 +489,19 @@ push. A 15-commit push of 437 objects (358 KB) to flagon-io/g1t on
 2026-10-09 answered 503 twice and took 23 s the third time. The next step
 is to stop needing bases: see "Pushes" in docs/ARTIFACTS.md.
 
+Step 1 of that, built and not yet deployed: the receive-pack advertisement
+g1t forwards says `no-thin` (`git_http.rs` `with_no_thin`), so git sends
+every delta's base in the pack and `read` has nothing to fetch: it should
+fall from 267–318 ms to the few milliseconds it takes to parse the pack,
+for every push from a client that honours it (git does; see
+`services/repos/dev/push-check.mjs`), and stop growing with the push. A
+push that changes a large file a little uploads more, so `upload` may grow
+a little for those. A push that arrives thin anyway says `thin;desc=yes` in
+`Server-Timing`, and is logged with its user agent; its bases are read 16
+at a time, at most 200, and not at all once the store says it is busy
+(the 503 above came from all of them at once tripping the store's
+breaker; see docs/ARTIFACTS.md).
+
 ## Client navigation
 
 - `<Link prefetch="intent">` on the sidebar, project tabs, breadcrumbs,

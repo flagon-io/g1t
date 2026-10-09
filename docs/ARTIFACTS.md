@@ -169,7 +169,7 @@ placement off. Store keys are `<workspace>--<repo>`; pull request forks are `pul
 | Commit one file | `commit_file.rs` | mint, `log` | `info/refs` 1, `receive-pack` 1 |
 | Mirror sync or import | `mirror.rs`, `import.rs` | mint | `info/refs` 1–2, `upload-pack` and `receive-pack` 1 each; packs capped at 40 MB |
 | Search indexing | `listing.rs` | trees by level, blobs in groups | 0 |
-| Push protection | `secret_scan.rs` | trees and blobs for bases, up to 24 MB scanned | 0 |
+| Push protection | `secret_scan.rs` | none for bases (`no-thin`); for a client that sends a thin pack anyway, up to 200 bases, 16 at a time; up to 24 MB scanned | 0 |
 | Delete (purge) | `lifecycle.rs` | `delete` per key, including forks | 0 |
 
 Every sandbox job clones in full (`crates/runner/src/{main,checks,review,plan,queue,reply,update,deploy,mergecheck}.rs`:
@@ -238,12 +238,33 @@ answered 503 twice and took 23 s the third time.
 
 **Next step, in this order:**
 
-1. **Ask for packs without outside bases.** Add `no-thin` to the receive-pack advertisement g1t
-   forwards, so git sends every delta's base in the pack (git's `send-pack` turns thin packs off
-   when it sees it). `read` goes to 0 for every client that honours it, and big pushes no longer
-   make hundreds of reads. The cost is a larger upload when a push changes a big file a little;
-   pushes stay capped by `MAX_SCANNED_PUSH`. `supply_bases` stays for clients that send thin packs
-   anyway.
+1. **Ask for packs without outside bases. Built, not yet deployed.** `git_http.rs` `with_no_thin`
+   adds `no-thin` to the receive-pack advertisement g1t forwards (the first ref line's capabilities,
+   or the `capabilities^{}` line of an empty repository; v0 and v1; never upload-pack; an answer it
+   cannot read goes through as it came), so git sends every delta's base in the pack (git's
+   `send-pack` turns thin packs off when it sees it). `read` goes to 0 for every client that
+   honours it, and big pushes no longer make hundreds of reads. The cost is a larger upload when a
+   push changes a big file a little; pushes stay capped by `MAX_SCANNED_PUSH`.
+   `services/repos/dev/push-check.mjs` shows it with git 2.45 against a local store: through g1t,
+   `pack-objects` runs without `--thin`; straight to the store, with it.
+   `supply_bases` stays for clients that send thin packs anyway, now bounded: 200 bases in all
+   (was 500 a round, three rounds), 16 at a time (was all at once), and it stops when the store
+   says it is busy. A push that arrives thin says `thin;desc=yes` in `Server-Timing` and logs the
+   client's user agent with how many bases it lacked, so clients ignoring `no-thin` show up in the
+   tail.
+
+   **Why the 437-object push answered 503**, as the code explains it (that push's logs were not
+   read, so which reads failed, and how, is not known). Its bases were all asked for at once: up to 500 a
+   round, two binding reads each when the pack's trees do not name the base (old versions of
+   changed files never are), each read with a Cache API look before it, for up to three rounds.
+   Hundreds of reads in flight on one handle, and the reads that failed (dropped or rate limited)
+   were each tried three times with backoff and then counted against the namespace's breaker
+   (`store.rs` `invoke`, `resilience.rs`: five failures in a row open it for 10 s, for the whole
+   isolate). `supply_bases` swallowed its own failures, but once the breaker was open every store
+   read after them, the scan's parent trees and blobs and the rules' reads, was turned away as
+   busy, and `lib.rs` answers busy with 503 and `Retry-After`. The retries and backoff are where
+   the 23 s most likely went. Subrequests (10,000 per invocation) and memory (24 MB pack, small
+   bases) would not have been the limit at that size; concurrency against the store would.
 2. **Upload while checking.** Stream the pack to Artifacts while the checks run, holding back the
    last 20 bytes (the checksum) until they pass, so a declined push is never stored. A push then
    takes about the larger of `checks` and `upload`, not their sum. Whether Artifacts waits for a
