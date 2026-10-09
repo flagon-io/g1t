@@ -71,6 +71,7 @@ import {
   projectFeed,
   queuedNumbers,
   rankNeeds,
+  runHealth,
   stuckMinutes,
 } from "../../lib/mission";
 import { agentWasAssigned, checklistPlan, hasInstructions, productionChecklist, releaseChecklist, startChecklist } from "../../lib/checklist";
@@ -160,6 +161,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const libraryRepoP = Promise.all([planP, repoP]).then(([plan, repo]) => (plan === "release" && repo?.ok ? repo.value : null));
   const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
   const workflowsP = planP.then((plan) => (plan && plan !== "production" ? forMembers(() => actions.workflows(path, viewer)) : null));
+  // Recent workflow runs, for Health when no pull request's checks have finished lately.
+  const workflowRunsP = soft(actions.runs(path, viewer, { limit: 30 }));
   // Only the kinds the feed shows: the newest events are mostly session
   // steps and merge checks, which would otherwise crowd out everything.
   const eventsP = repoP.then((repo) =>
@@ -231,6 +234,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     // The latest release, for About.
     soft(repos.tags(path, viewer)),
   ]);
+  const workflowRuns = await workflowRunsP;
   const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
   const openPulls = ok(open) ?? [];
@@ -458,9 +462,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     groups: groupActivity(items).slice(0, 30),
     eventsLoaded: recent != null,
     health: {
-      passRate: passRate(checkEvents.map((c) => c.passed)),
-      firstPass: firstPassRate(checkEvents),
-      checkRuns: checkEvents.length,
+      // A pull request's checks when any finished lately; otherwise the
+      // project's workflow runs, for one that ships straight to its branch.
+      ...(checkEvents.length > 0 || !workflowRuns?.ok
+        ? { passRate: passRate(checkEvents.map((c) => c.passed)), firstPass: firstPassRate(checkEvents), checkRuns: checkEvents.length }
+        : runHealth(workflowRuns.value)),
       ages: openIssues ? ageBuckets(openIssues.map((issue) => issue.createdAt), now) : null,
     },
     knows: knows as Memory[],

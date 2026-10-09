@@ -28,6 +28,7 @@ import {
   nextSeen,
   pipelineStage,
   queuedNumbers,
+  runHealth,
   rankNeeds,
   readCookie,
   sparkPoints,
@@ -179,6 +180,18 @@ test("median, pass rates and spans", () => {
   ]);
   assert.deepEqual(rate, { rate: 0.5, of: 2 });
   assert.deepEqual(firstPassRate([]), { rate: null, of: 0 });
+  // Workflow runs: cancelled, skipped and unfinished ones don't count; a pass on a second attempt isn't a first-try pass.
+  const runs = runHealth([
+    { attempt: 1, status: "completed", conclusion: "success" },
+    { attempt: 2, status: "completed", conclusion: "success" },
+    { attempt: 1, status: "completed", conclusion: "failure" },
+    { attempt: 1, status: "completed", conclusion: "cancelled" },
+    { attempt: 1, status: "in_progress", conclusion: null },
+  ]);
+  assert.equal(runs.checkRuns, 3);
+  assert.equal(runs.passRate, 2 / 3);
+  assert.deepEqual(runs.firstPass, { rate: 1 / 3, of: 3 });
+  assert.deepEqual(runHealth([]), { passRate: null, firstPass: { rate: null, of: 0 }, checkRuns: 0 });
   assert.equal(formatSpan(null), "—");
   assert.equal(formatSpan(30 * MIN), "30m");
   assert.equal(formatSpan(5 * HOUR), "5h");
