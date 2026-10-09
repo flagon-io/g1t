@@ -3,6 +3,8 @@ import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
 
+import { NonceContext } from "./lib/nonce";
+import { makeNonce, pagePolicy } from "./lib/page-headers";
 import { recordHandler } from "./lib/perf.server";
 
 // React Router's own server entry, plus the timing of every loader and
@@ -47,17 +49,26 @@ export default async function handleRequest(
   let shellRendered = false;
   const userAgent = request.headers.get("user-agent");
 
-  const body = await renderToReadableStream(<ServerRouter context={routerContext} url={request.url} />, {
-    signal: AbortSignal.timeout(streamTimeout + 1000),
-    onError(error: unknown) {
-      responseStatusCode = 500;
-      // Errors while streaming after the shell; those in the shell reject
-      // and are logged by React Router.
-      if (shellRendered) {
-        console.error(error);
-      }
+  // The page's inline scripts carry this nonce, and its policy allows only
+  // them (lib/page-headers.ts). Not in development, where Vite adds its own.
+  const nonce = import.meta.env.DEV ? undefined : makeNonce();
+  const body = await renderToReadableStream(
+    <NonceContext value={nonce}>
+      <ServerRouter context={routerContext} url={request.url} nonce={nonce} />
+    </NonceContext>,
+    {
+      nonce,
+      signal: AbortSignal.timeout(streamTimeout + 1000),
+      onError(error: unknown) {
+        responseStatusCode = 500;
+        // Errors while streaming after the shell; those in the shell reject
+        // and are logged by React Router.
+        if (shellRendered) {
+          console.error(error);
+        }
+      },
     },
-  });
+  );
   shellRendered = true;
 
   // Crawlers get the whole page at once, deferred panels included.
@@ -66,6 +77,7 @@ export default async function handleRequest(
   }
 
   responseHeaders.set("Content-Type", "text/html");
+  if (nonce) responseHeaders.set("Content-Security-Policy", pagePolicy(nonce));
   return new Response(body, {
     headers: responseHeaders,
     status: responseStatusCode,

@@ -65,6 +65,7 @@ import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
 import { RELOADED_KEY, reloadFixes } from "./lib/stale-build";
+import { useNonce } from "./lib/nonce";
 
 
 export const links: Route.LinksFunction = () => [
@@ -462,6 +463,7 @@ function Header({ user }: { user: User | null | undefined }) {
 let lastRoot: Awaited<ReturnType<typeof loader>> | undefined;
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const nonce = useNonce();
   // Undefined when the root loader itself failed.
   const loaded = useRouteLoaderData<typeof loader>("root");
   const inBrowser = typeof document !== "undefined";
@@ -517,7 +519,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             connection paints sooner (docs/research/css-shipping.md). */}
         <link rel="stylesheet" href={appCss} precedence="default" />
         <Meta />
-        <Links />
+        <Links nonce={nonce} />
       </head>
       <body className="flex min-h-screen flex-col">
         {/* The first stop for the keyboard: past the menus, to the page. */}
@@ -542,8 +544,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <SiteFooter user={user} />
           </>
         )}
-        <ScrollRestoration />
-        <Scripts />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );

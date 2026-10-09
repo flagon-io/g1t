@@ -3,6 +3,7 @@ import { createRequestHandler } from "react-router";
 import { identityClient, isNamespaceShaped } from "@g1t/contracts";
 
 import { hardenRegistryHeaders } from "../app/lib/content-safety";
+import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
@@ -33,46 +34,52 @@ const MOVED_DOCS: Record<string, string> = {
 
 export default {
   async fetch(request, env, ctx) {
-    const { pathname } = new URL(request.url);
-    // Git over HTTPS shares this hostname but belongs to the repos service.
-    // Its answer goes back to the git client as it is: a repository under a
-    // renamed workspace's old name answers with a 301, which git follows and
-    // must see, so the redirect is never followed here.
-    // The container registry (`docker login g1t.sh`) and the npm registry
-    // (`g1t.sh/-/npm/`) are the packages
-    // service's, handed over the same way.
-    // `go get g1t.sh/<workspace>/<repo>`: where its code is, from the
-    // address alone, so it costs nothing and caches.
-    const go = request.method === "GET" ? goImport(new URL(request.url)) : null;
-    if (go) {
-      return new Response(go, {
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
-      });
-    }
-    const service = servicePath(pathname);
-    if (service === "git") {
-      return proxyGit(env, request);
-    }
-    if (service === "packages") {
-      return proxyPackages(env, request);
-    }
-    const avatar = AVATAR_PATH.exec(pathname);
-    if (avatar) {
-      return serveAvatar(env, ctx, request, avatar[1]);
-    }
-    // The documentation is its own site.
-    if (pathname === "/docs" || pathname.startsWith("/docs/")) {
-      const page = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-      const target = MOVED_DOCS[page] ?? "/";
-      return Response.redirect(DOCS + target, 301);
-    }
-    // Every page and data request says where its time went (Server-Timing)
-    // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
-    const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
-    if (anonymousPage(request, pathname)) return servePublic(env, request, ctx, render);
-    return render();
+    // Every answer: no sniffing, a referrer of the origin alone, and no
+    // framing of pages (app/lib/page-headers.ts).
+    return withSiteHeaders(await site(request, env, ctx));
   },
 } satisfies ExportedHandler<Env>;
+
+async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const { pathname } = new URL(request.url);
+  // Git over HTTPS shares this hostname but belongs to the repos service.
+  // Its answer goes back to the git client as it is: a repository under a
+  // renamed workspace's old name answers with a 301, which git follows and
+  // must see, so the redirect is never followed here.
+  // The container registry (`docker login g1t.sh`) and the npm registry
+  // (`g1t.sh/-/npm/`) are the packages
+  // service's, handed over the same way.
+  // `go get g1t.sh/<workspace>/<repo>`: where its code is, from the
+  // address alone, so it costs nothing and caches.
+  const go = request.method === "GET" ? goImport(new URL(request.url)) : null;
+  if (go) {
+    return new Response(go, {
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
+    });
+  }
+  const service = servicePath(pathname);
+  if (service === "git") {
+    return proxyGit(env, request);
+  }
+  if (service === "packages") {
+    return proxyPackages(env, request);
+  }
+  const avatar = AVATAR_PATH.exec(pathname);
+  if (avatar) {
+    return serveAvatar(env, ctx, request, avatar[1]);
+  }
+  // The documentation is its own site.
+  if (pathname === "/docs" || pathname.startsWith("/docs/")) {
+    const page = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+    const target = MOVED_DOCS[page] ?? "/";
+    return Response.redirect(DOCS + target, 301);
+  }
+  // Every page and data request says where its time went (Server-Timing)
+  // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
+  const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
+  if (anonymousPage(request, pathname)) return servePublic(env, request, ctx, render);
+  return render();
+}
 
 /**
  * Public pages as someone signed out sees them: the same for every such

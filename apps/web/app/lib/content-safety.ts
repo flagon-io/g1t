@@ -55,7 +55,7 @@ export function hardenRegistryHeaders(headers: Headers): void {
  * fallback with anything unsafe replaced, and the exact name as
  * RFC 6266's `filename*`.
  */
-export function attachment(filename: string): string {
+export function contentDisposition(filename: string): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\%;]/g, "_") || "download";
   const exact = encodeURIComponent(filename.replace(/[\x00-\x1f\x7f]/g, "_")).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
   return `attachment; filename="${fallback}"; filename*=UTF-8''${exact}`;

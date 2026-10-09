@@ -45,6 +45,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       "content-type": shot.contentType,
       "cache-control": current ? LONG : BRIEF,
       "x-content-type-options": "nosniff",
+      // A picture of someone's app: shown, never run.
+      "content-security-policy": "default-src 'none'; sandbox",
       "last-modified": new Date(shot.capturedAt).toUTCString(),
     },
   });
