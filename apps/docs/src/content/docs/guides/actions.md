@@ -576,7 +576,7 @@ downloads from another run of the same repository, such as the one a
 `pattern`, uploads them as one artifact (`name`, `merged-artifacts` unless
 you say), and deletes them with `delete-merged: true`.
 
-A run's page lists its artifacts with their size and when they expire.
+A run's summary lists its artifacts with their size and when they expire.
 Anyone who can see the run downloads them there; someone with the Write
 role can delete one before it expires.
 
@@ -877,17 +877,56 @@ Open a repository's **Actions** page, in its sidebar. Pick a workflow to
 see its runs, run it by hand if it has `workflow_dispatch`, or turn it off
 without touching its file.
 
-A run's page shows its jobs, each job's steps, and their logs as they are
-written. Groups fold, errors and warnings are marked, and secrets are
-replaced with `***`.
+A run's page opens on its **Summary**. Its sidebar lists **All jobs**;
+pick one to see its steps and their logs as they are written. Groups
+fold, errors and warnings are marked, and secrets are replaced with
+`***`. The page keeps itself up to date while the run goes on.
 
 The start of each job's log lists what its [token](#the-jobs-token) may do.
 
+### The run's summary
+
+The summary holds, top to bottom:
+
+| Part | What it shows |
+| --- | --- |
+| The run | What triggered it and when, who, the commit and its branch (or pull request), how the run stands, how long it took in all, and how many artifacts it kept. |
+| The jobs graph | The workflow file and its event (`deploy.yml · on: push`), then every job and how they depend on each other. See [the jobs graph](#the-jobs-graph). |
+| Annotations | Every job's errors, warnings and notices, counted by kind, each with the job it came from. Folds away. |
+| Job summaries | What each job's steps wrote to `$GITHUB_STEP_SUMMARY`, under `<job> summary`. See [job summaries](#job-summaries). |
+| Artifacts | What the run kept, to download. The count in the run's card jumps here. |
+
+Under **Run details** in the sidebar, **Workflow file** opens the
+workflow as it was at the run's commit.
+
+### The jobs graph
+
+Jobs are laid out left to right by their `needs:`: a job that needs
+nothing starts a row on the left, and each job sits one column to the
+right of the furthest job it needs. Within a column, jobs are ordered so
+that as few connectors as possible cross.
+
+| Node | How it shows |
+| --- | --- |
+| A job | Its status, its name and how long it took. Click it to open its steps and logs. |
+| A job that deploys | Its environment's address (`environment.url`), as a link, under its name. |
+| A matrix | One node with how many jobs it made (`test · 6 jobs`) and how they stand together. Click it to list each combination; click one to open it. |
+| A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way. The jobs that need the calling job connect to the box. |
+
+Connectors run from a job to each job that needs it. They are red from a
+job that failed, and move while the job they lead to is running (they
+stay still if your system asks for reduced motion).
+
+A wide graph scrolls sideways inside its card, on a phone as on a desktop.
+
+The sidebar groups jobs the same way: a matrix's jobs, and a called
+workflow's jobs, fold under their name.
+
 ### Job summaries
 
-Markdown a step appends to the file in `$GITHUB_STEP_SUMMARY` shows at
-the top of the run's page, a card per job, in the order its steps wrote
-it:
+Markdown a step appends to the file in `$GITHUB_STEP_SUMMARY` shows on
+the run's summary, below the graph, a card per job, in the order its
+steps wrote it. The card's title opens the job:
 
 ```yaml
 - name: Report the tests

@@ -77,6 +77,8 @@ fn attempt_job_view(row: AttemptJobRow) -> Job {
         self_hosted: row.labels.is_some(),
         runner: row.runner_name,
         cancelling: false,
+        environment_url: None,
+        uses: None,
     }
 }
 
@@ -100,7 +102,10 @@ struct AttemptJobs {
 fn job_view(row: JobRow) -> Job {
     let needs = row.needs();
     let cancelling = row.cancel_requested_at.is_some() && row.status != "completed";
+    let uses = row.call().filter(|call| call["role"] == "caller").and_then(|call| call["path"].as_str().map(str::to_owned));
     Job {
+        uses,
+        environment_url: None,
         cancelling,
         id: row.id,
         run_id: row.run_id,
@@ -254,7 +259,16 @@ impl Actions {
     async fn attempt_jobs(&self, run: &RunRow, attempt: Option<u64>) -> Result<Option<AttemptJobs>> {
         match attempt.filter(|n| *n != run.attempt) {
             None => {
-                let jobs: Vec<Job> = self.job_rows(&run.id).await?.into_iter().map(job_view).collect();
+                // A job that deploys: where to, as its `environment.url` reads.
+                let jobs: Vec<Job> = self
+                    .job_rows(&run.id)
+                    .await?
+                    .into_iter()
+                    .map(|row| {
+                        let environment_url = row.environment.as_ref().and_then(|_| crate::plan::deploys_to(run, &row)).and_then(|env| env.url);
+                        Job { environment_url, ..job_view(row) }
+                    })
+                    .collect();
                 let log_ids = jobs.iter().map(|job| job.id.clone()).collect();
                 Ok(Some(AttemptJobs { jobs, log_ids }))
             }

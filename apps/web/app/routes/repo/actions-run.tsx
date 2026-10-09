@@ -6,12 +6,14 @@ import {
   ChevronRight,
   Cloud,
   Download,
+  FileCode,
   FileText,
   GitBranch,
   GitCommitHorizontal,
   History,
   Hourglass,
   Info,
+  LayoutList,
   Package,
   Play,
   RotateCw,
@@ -21,6 +23,7 @@ import {
   Square,
   Trash2,
   Users,
+  Workflow,
   X,
   XCircle,
 } from "lucide-react";
@@ -33,6 +36,7 @@ import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
 import { Duration, LogText, Notes, StatusIcon, shortRef, standingWord, useJobLog } from "../../components/actions";
 import { Markdown } from "../../components/markdown";
+import { RunGraph } from "../../components/run-graph";
 import { DetailsDisclosure } from "../../components/details-disclosure";
 import { Button, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
@@ -46,6 +50,7 @@ import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
+import { type GraphJob, type Unit, groupJobs, jobsOf, unitStanding } from "../../lib/run-graph";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const run = loaderData?.detail.run;
@@ -264,16 +269,26 @@ function AttemptPicker({ attempts, shown }: { attempts: RunAttempt[]; shown: num
 }
 
 /** What the jobs' steps wrote to $GITHUB_STEP_SUMMARY, a card per job. */
-function Summaries({ summaries, repo }: { summaries: JobSummary[]; repo: { namespace: string; name: string } }) {
+function Summaries({
+  summaries,
+  repo,
+  jobHref,
+}: {
+  summaries: JobSummary[];
+  repo: { namespace: string; name: string };
+  jobHref: (job: { id: string }) => string;
+}) {
   if (summaries.length === 0) return null;
   return (
     <section aria-label="Job summaries" className="space-y-4">
       {summaries.map((summary) => (
         <article key={summary.jobId} className="overflow-hidden rounded-xl border border-line bg-surface">
-          <header className="flex items-center gap-2 border-b border-line px-4 py-2.5 text-sm">
-            <FileText size={14} className="text-muted" />
-            <span className="font-medium">{summary.name}</span>
-            <span className="text-faint">summary</span>
+          <header className="flex min-w-0 items-center gap-2 border-b border-line px-4 py-2.5 text-sm">
+            <FileText size={14} className="shrink-0 text-muted" />
+            <Link to={jobHref({ id: summary.jobId })} preventScrollReset className="min-w-0 truncate font-medium hover:underline">
+              {summary.name}
+            </Link>
+            <span className="shrink-0 text-faint">summary</span>
           </header>
           <div className="space-y-4 px-5 py-4">
             {summary.steps.map((step) => (
@@ -665,6 +680,332 @@ function DeploymentsPanel({ deployments, busy }: { deployments: PendingDeploymen
   );
 }
 
+type RunData = Route.ComponentProps["loaderData"];
+
+/** Where the run came from, how it stands, how long it took and what it kept. */
+function RunCard({
+  detail,
+  artifacts,
+  standing,
+  cancelling,
+  base,
+}: {
+  detail: RunData["detail"];
+  artifacts: RunData["artifacts"];
+  standing: string;
+  cancelling: boolean;
+  base: string;
+}) {
+  const { run } = detail;
+  const label = "text-xs text-muted";
+  return (
+    <section
+      aria-label="Run"
+      className="grid gap-x-6 gap-y-4 rounded-xl border border-line bg-surface p-4 text-sm sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]"
+    >
+      <div className="min-w-0 space-y-1.5">
+        <p className={label}>
+          Triggered via {run.event} <TimeAgo at={run.createdAt} />
+        </p>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {run.actor && <span className="font-medium">{run.actor}</span>}
+          <Link to={`${base}/commit/${run.sha}`} className="inline-flex items-center gap-1 font-mono text-xs text-muted hover:text-fg">
+            <GitCommitHorizontal size={12} />
+            {run.sha.slice(0, 7)}
+          </Link>
+          {run.pull != null && /^refs\/pull\//.test(run.ref) ? (
+            <Link to={`${base}/pull/${run.pull}`} className="rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-xs text-accent hover:underline">
+              #{run.pull}
+            </Link>
+          ) : (
+            <span className="inline-flex min-w-0 items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 font-mono text-xs text-accent">
+              <GitBranch size={11} className="shrink-0" />
+              <span className="truncate">{shortRef(run.ref)}</span>
+            </span>
+          )}
+        </p>
+        {detail.approval?.state === "approved" && detail.approval.approvedBy && (
+          <p className="text-xs text-muted">Approved by {detail.approval.approvedBy}</p>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-4 sm:contents">
+        <div className="min-w-0 space-y-1.5">
+          <p className={label}>Status</p>
+          <p className="flex items-center gap-1.5 font-medium">
+            <StatusIcon status={run.status} conclusion={run.conclusion} size={14} />
+            <span className="truncate">{standing}</span>
+          </p>
+          {cancelling && <p className="text-xs text-warn">Its jobs are running their cleanup steps</p>}
+        </div>
+        <div className="min-w-0 space-y-1.5">
+          <p className={label}>Total duration</p>
+          <p className="font-medium">{run.startedAt ? <Duration start={run.startedAt} end={run.finishedAt} /> : "—"}</p>
+          {run.attempt > 1 && <p className="text-xs text-muted">Attempt #{run.attempt}</p>}
+        </div>
+        <div className="min-w-0 space-y-1.5">
+          <p className={label}>Artifacts</p>
+          <p className="font-medium">
+            {artifacts.length > 0 ? (
+              <a href="#artifacts" className="text-accent hover:underline">
+                {artifacts.length}
+              </a>
+            ) : (
+              "—"
+            )}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const LEVELS: { level: Annotation["level"]; one: string; many: string }[] = [
+  { level: "error", one: "error", many: "errors" },
+  { level: "warning", one: "warning", many: "warnings" },
+  { level: "notice", one: "notice", many: "notices" },
+];
+
+/** Every job's errors, warnings and notices, folded under how many of each. */
+function AnnotationsPanel({ jobs, jobHref }: { jobs: Job[]; jobHref: (job: { id: string }) => string }) {
+  const notes = jobs.flatMap((job) => job.annotations.map((note) => ({ job, note })));
+  if (notes.length === 0) return null;
+  const counts = LEVELS.flatMap(({ level, one, many }) => {
+    const count = notes.filter(({ note }) => note.level === level).length;
+    return count > 0 ? [`${count} ${count === 1 ? one : many}`] : [];
+  });
+  return (
+    <details open className="group overflow-hidden rounded-xl border border-line bg-surface">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm hover:bg-raised/40">
+        <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
+        <span className="font-medium">Annotations</span>
+        <span className="min-w-0 truncate text-muted">{counts.join(", ")}</span>
+      </summary>
+      <ul className="divide-y divide-line border-t border-line text-sm">
+        {notes.map(({ job, note }, index) => (
+          <li key={index} className="flex gap-2 px-4 py-3">
+            {ANNOTATION_ICON[note.level]}
+            <span className="min-w-0">
+              <Link to={jobHref(job)} preventScrollReset className="block text-xs font-medium text-muted hover:text-fg hover:underline">
+                {job.name}
+              </Link>
+              {note.title && <span className="font-medium">{note.title}: </span>}
+              <span className="whitespace-pre-wrap wrap-break-word">{note.message}</span>
+              {note.file && (
+                <span className="block font-mono text-xs text-faint">
+                  {note.file}
+                  {note.line != null && `:${note.line}`}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/** What the run kept, to download (and, with Write, to delete now). */
+function ArtifactsList({
+  artifacts,
+  member,
+  busy,
+  base,
+  runId,
+}: {
+  artifacts: RunData["artifacts"];
+  member: boolean;
+  busy: boolean;
+  base: string;
+  runId: string;
+}) {
+  if (artifacts.length === 0) return null;
+  return (
+    <section id="artifacts" className="scroll-mt-20 rounded-xl border border-line bg-surface p-4">
+      <h3 className="flex items-center gap-2 text-sm font-medium">
+        <Package size={14} className="text-muted" />
+        Artifacts
+        <span className="font-normal text-faint">
+          · {artifacts.length} · {formatBytes(artifacts.reduce((sum, a) => sum + a.size, 0))}
+        </span>
+      </h3>
+      <ul className="mt-3 divide-y divide-line text-sm">
+        {artifacts.map((artifact) => (
+          <li key={artifact.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+            <span className="min-w-0 grow basis-full truncate font-mono text-[0.8125rem] sm:basis-40">{artifact.name}</span>
+            <span className="flex shrink-0 items-center gap-3 text-xs text-faint">
+              <span>{formatBytes(artifact.size)}</span>
+              {artifact.expiresAt && <span>{expiresIn(artifact.expiresAt)}</span>}
+            </span>
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              <a
+                href={`${base}/actions/runs/${runId}/artifacts/${encodeURIComponent(artifact.name)}`}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
+              >
+                <Download size={12} />
+                Download
+              </a>
+              {member && artifact.id != null && (
+                <Form method="post" preventScrollReset>
+                  <input type="hidden" name="artifact" value={artifact.id} />
+                  <Hint label={`Delete ${artifact.name} now`}>
+                    <SubmitButton
+                      name="intent"
+                      value="delete-artifact"
+                      icon
+                      disabled={busy}
+                      aria-label={`Delete ${artifact.name}`}
+                      className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-danger disabled:opacity-50"
+                    >
+                      <Trash2 size={12} />
+                    </SubmitButton>
+                  </Hint>
+                </Form>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The run at a glance: the card, its jobs as a graph, their annotations, summaries and artifacts. */
+function RunSummary({
+  detail,
+  artifacts,
+  summaries,
+  standing,
+  cancelling,
+  member,
+  busy,
+  base,
+  jobHref,
+}: {
+  detail: RunData["detail"];
+  artifacts: RunData["artifacts"];
+  summaries: JobSummary[];
+  standing: string;
+  cancelling: boolean;
+  member: boolean;
+  busy: boolean;
+  base: string;
+  jobHref: (job: { id: string }) => string;
+}) {
+  const { run, jobs } = detail;
+  const [namespace = "", name = ""] = base.slice(1).split("/");
+  return (
+    <section aria-label="Summary" className="min-w-0 space-y-4">
+      <RunCard detail={detail} artifacts={artifacts} standing={standing} cancelling={cancelling} base={base} />
+      <RunGraph jobs={jobs} title={run.path.split("/").pop() || run.name} trigger={run.event} href={jobHref} />
+      <AnnotationsPanel jobs={jobs} jobHref={jobHref} />
+      <Summaries summaries={summaries} repo={{ namespace, name }} jobHref={jobHref} />
+      <ArtifactsList artifacts={artifacts} member={member} busy={busy} base={base} runId={run.id} />
+    </section>
+  );
+}
+
+const NAV_ROW = "flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 sm:min-h-0";
+
+function navRow(active: boolean): string {
+  return `${NAV_ROW} ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`;
+}
+
+/** A job's row in the jobs list. */
+function NavJob({ job, label, selected, jobHref }: { job: GraphJob; label: string; selected: Job | null; jobHref: (job: { id: string }) => string }) {
+  const active = job.id === selected?.id;
+  return (
+    <Link to={jobHref(job)} preventScrollReset aria-current={active ? "page" : undefined} className={navRow(active)}>
+      <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={14} />
+      <span className="min-w-0 truncate">{label}</span>
+      <Duration className="ml-auto shrink-0 font-mono text-xs text-faint" start={job.startedAt} end={job.finishedAt} />
+    </Link>
+  );
+}
+
+/** One unit of the jobs list: a job, or a matrix or called workflow folded under its name. */
+function NavUnit({ unit, selected, jobHref }: { unit: Unit; selected: Job | null; jobHref: (job: { id: string }) => string }) {
+  if (unit.kind === "job") return <NavJob job={unit.job} label={unit.label} selected={selected} jobHref={jobHref} />;
+  const inside = jobsOf(unit).some((job) => job.id === selected?.id);
+  const standing = unitStanding(unit);
+  return (
+    <details open={unit.kind === "call" || inside} className="group/unit">
+      <summary className={`${NAV_ROW} cursor-pointer list-none text-muted hover:bg-raised/60 hover:text-fg`}>
+        <ChevronRight size={13} className="shrink-0 text-faint transition-transform group-open/unit:rotate-90" />
+        <StatusIcon
+          status={standing.status === "calling" ? "in_progress" : standing.status}
+          conclusion={standing.conclusion}
+          of="job"
+          size={14}
+        />
+        <span className="min-w-0 truncate">{unit.label}</span>
+        {unit.kind === "matrix" && <span className="ml-auto shrink-0 text-xs text-faint">{unit.jobs.length}</span>}
+      </summary>
+      <div className="ml-3 space-y-0.5 border-l border-line pl-1.5">
+        {unit.kind === "matrix" ? (
+          unit.jobs.map((job) => (
+            <NavJob key={job.id} job={job} label={job.name.split(" / ").pop() ?? job.name} selected={selected} jobHref={jobHref} />
+          ))
+        ) : (
+          <>
+            {unit.callers.map((job) => (
+              <Link
+                key={job.id}
+                to={jobHref(job)}
+                preventScrollReset
+                aria-current={job.id === selected?.id ? "page" : undefined}
+                className={navRow(job.id === selected?.id)}
+              >
+                <Workflow size={14} className="shrink-0 text-faint" />
+                <span className="min-w-0 truncate">{unit.uses ? `Calls ${unit.uses.split("/").pop()}` : job.name}</span>
+              </Link>
+            ))}
+            {unit.units.map((inner) => (
+              <NavUnit key={inner.key} unit={inner} selected={selected} jobHref={jobHref} />
+            ))}
+          </>
+        )}
+      </div>
+    </details>
+  );
+}
+
+/** The run's pages: its summary, its jobs grouped as the graph groups them, and where it came from. */
+function RunNav({
+  run,
+  jobs,
+  selected,
+  base,
+  jobHref,
+  summaryHref,
+}: {
+  run: RunData["detail"]["run"];
+  jobs: Job[];
+  selected: Job | null;
+  base: string;
+  jobHref: (job: { id: string }) => string;
+  summaryHref: string;
+}) {
+  const units = groupJobs(jobs);
+  const heading = "px-2.5 pt-4 pb-1 text-xs font-medium text-faint";
+  return (
+    <nav aria-label="Run" className="space-y-0.5 text-sm">
+      <Link to={summaryHref} preventScrollReset aria-current={selected ? undefined : "page"} className={navRow(!selected)}>
+        <LayoutList size={14} className="shrink-0" />
+        Summary
+      </Link>
+      <p className={heading}>All jobs</p>
+      {units.map((unit) => (
+        <NavUnit key={unit.key} unit={unit} selected={selected} jobHref={jobHref} />
+      ))}
+      <p className={heading}>Run details</p>
+      <Link to={`${base}/blob/${run.sha}/${run.path}`} className={navRow(false)}>
+        <FileCode size={14} className="shrink-0" />
+        Workflow file
+      </Link>
+    </nav>
+  );
+}
+
 export default function ActionsRun({ loaderData, actionData, params }: Route.ComponentProps) {
   const { detail, artifacts, member, summaries } = loaderData;
   const { run, jobs, notes } = detail;
@@ -684,12 +1025,11 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   // Waiting on a person needs no quick refresh; a running job does.
   useRefreshWhile(live, run.status === "action_required" || run.status === "waiting" ? 8000 : 2500);
 
-  // The job asked for, else one that failed, is running, or the first.
-  const selected =
-    jobs.find((job) => job.id === search.get("job")) ??
-    jobs.find((job) => job.conclusion === "failure" && job.steps.length > 0) ??
-    jobs.find((job) => job.status === "in_progress") ??
-    jobs[0];
+  // The job asked for; none is the run's summary.
+  const selected = jobs.find((job) => job.id === search.get("job")) ?? null;
+  const jobHref = (job: { id: string }) => (latest ? `?job=${job.id}` : `?attempt=${run.attempt}&job=${job.id}`);
+  const summaryHref = latest ? "?" : `?attempt=${run.attempt}`;
+  const standing = runWord(run.status, deployments) ?? (cancelling ? "Cancelling" : standingWord(run));
   const anyFailed = jobs.some((job) => job.conclusion === "failure" || job.conclusion === "cancelled");
 
   return (
@@ -765,33 +1105,35 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
             )}
           </div>
         </div>
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-          <span>{runWord(run.status, deployments) ?? (cancelling ? "Cancelling" : standingWord(run))}</span>
-          {/* A pull request's ref is its number, which the link beside it already shows. */}
-          {!(run.pull != null && /^refs\/pull\//.test(run.ref)) && (
-            <span className="inline-flex items-center gap-1 font-mono text-xs">
-              <GitBranch size={12} />
-              {shortRef(run.ref)}
-            </span>
-          )}
-          <Link to={`${base}/commit/${run.sha}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
-            <GitCommitHorizontal size={12} />
-            {run.sha.slice(0, 7)}
-          </Link>
-          {run.pull != null && (
-            <Link to={`${base}/pull/${run.pull}`} className="hover:text-fg">
-              #{run.pull}
+        {selected && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+            <span>{standing}</span>
+            {/* A pull request's ref is its number, which the link beside it already shows. */}
+            {!(run.pull != null && /^refs\/pull\//.test(run.ref)) && (
+              <span className="inline-flex items-center gap-1 font-mono text-xs">
+                <GitBranch size={12} />
+                {shortRef(run.ref)}
+              </span>
+            )}
+            <Link to={`${base}/commit/${run.sha}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
+              <GitCommitHorizontal size={12} />
+              {run.sha.slice(0, 7)}
             </Link>
-          )}
-          <span>
-            {run.event}
-            {run.actor && ` by ${run.actor}`} · <TimeAgo at={run.createdAt} />
-          </span>
-          {run.startedAt && <Duration className="font-mono text-xs" start={run.startedAt} end={run.finishedAt} />}
-          {run.attempt > 1 && attempts.length <= 1 && <span>Attempt {run.attempt}</span>}
-          {cancelling && <span className="text-warn">Its jobs are running their cleanup steps</span>}
-          {detail.approval?.state === "approved" && detail.approval.approvedBy && <span>Approved by {detail.approval.approvedBy}</span>}
-        </p>
+            {run.pull != null && (
+              <Link to={`${base}/pull/${run.pull}`} className="hover:text-fg">
+                #{run.pull}
+              </Link>
+            )}
+            <span>
+              {run.event}
+              {run.actor && ` by ${run.actor}`} · <TimeAgo at={run.createdAt} />
+            </span>
+            {run.startedAt && <Duration className="font-mono text-xs" start={run.startedAt} end={run.finishedAt} />}
+            {run.attempt > 1 && attempts.length <= 1 && <span>Attempt {run.attempt}</span>}
+            {cancelling && <span className="text-warn">Its jobs are running their cleanup steps</span>}
+            {detail.approval?.state === "approved" && detail.approval.approvedBy && <span>Approved by {detail.approval.approvedBy}</span>}
+          </p>
+        )}
       </header>
 
       <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
@@ -815,82 +1157,26 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
         </div>
       )}
       <Notes notes={notes} />
-      <Summaries summaries={summaries} repo={{ namespace: params.owner, name: params.repo }} />
-      {artifacts.length > 0 && (
-        <section className="rounded-xl border border-line bg-surface p-4">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
-            <Package size={14} className="text-muted" />
-            Artifacts
-            <span className="font-normal text-faint">
-              · {artifacts.length} · {formatBytes(artifacts.reduce((sum, a) => sum + a.size, 0))}
-            </span>
-          </h3>
-          <ul className="mt-3 divide-y divide-line text-sm">
-            {artifacts.map((artifact) => (
-              <li key={artifact.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                <span className="min-w-0 grow basis-full truncate font-mono text-[0.8125rem] sm:basis-40">{artifact.name}</span>
-                <span className="flex shrink-0 items-center gap-3 text-xs text-faint">
-                  <span>{formatBytes(artifact.size)}</span>
-                  {artifact.expiresAt && <span>{expiresIn(artifact.expiresAt)}</span>}
-                </span>
-                <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                  <a
-                    href={`${base}/actions/runs/${run.id}/artifacts/${encodeURIComponent(artifact.name)}`}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted ring-1 ring-line hover:text-fg"
-                  >
-                    <Download size={12} />
-                    Download
-                  </a>
-                  {member && artifact.id != null && (
-                    <Form method="post" preventScrollReset>
-                      <input type="hidden" name="artifact" value={artifact.id} />
-                      <Hint label={`Delete ${artifact.name} now`}>
-                        <SubmitButton
-                          name="intent"
-                          value="delete-artifact"
-                          icon
-                          disabled={busy}
-                          aria-label={`Delete ${artifact.name}`}
-                          className="inline-flex items-center rounded-md p-1.5 text-muted ring-1 ring-line hover:text-danger disabled:opacity-50"
-                        >
-                          <Trash2 size={12} />
-                        </SubmitButton>
-                      </Hint>
-                    </Form>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
-      {jobs.length > 0 && (
+      {jobs.length === 0 ? (
+        <RunSummary
+          detail={detail}
+          artifacts={artifacts}
+          summaries={summaries}
+          standing={standing}
+          cancelling={cancelling}
+          member={member}
+          busy={busy}
+          base={base}
+          jobHref={jobHref}
+        />
+      ) : (
         <div className="grid gap-6 lg:grid-cols-[15rem_1fr]">
-          <DetailsDisclosure
-            label="Jobs"
-            summary={selected ? `${jobs.length} · ${selected.name}` : String(jobs.length)}
-            bodyClassName="space-y-0.5"
-          >
-          <nav aria-label="Jobs" className="space-y-0.5 text-sm">
-            {jobs.map((job) => (
-              <Link
-                key={job.id}
-                to={latest ? `?job=${job.id}` : `?attempt=${run.attempt}&job=${job.id}`}
-                preventScrollReset
-                className={`flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 sm:min-h-0 ${
-                  job.id === selected?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
-                }`}
-              >
-                <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={14} />
-                <span className="min-w-0 truncate">{job.name}</span>
-                <Duration className="ml-auto shrink-0 font-mono text-xs text-faint" start={job.startedAt} end={job.finishedAt} />
-              </Link>
-            ))}
-          </nav>
+          <DetailsDisclosure label="Jobs" summary={selected ? `${jobs.length} · ${selected.name}` : `${jobs.length} · Summary`} bodyClassName="space-y-0.5">
+            <RunNav run={run} jobs={jobs} selected={selected} base={base} jobHref={jobHref} summaryHref={summaryHref} />
           </DetailsDisclosure>
           {/* Run again, a job keeps its id but its log starts afresh. */}
-          {selected && (
+          {selected ? (
             <JobView
               key={`${selected.id}:${run.attempt}`}
               job={selected}
@@ -920,6 +1206,18 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                   </RerunDialog>
                 ) : null
               }
+            />
+          ) : (
+            <RunSummary
+              detail={detail}
+              artifacts={artifacts}
+              summaries={summaries}
+              standing={standing}
+              cancelling={cancelling}
+              member={member}
+              busy={busy}
+              base={base}
+              jobHref={jobHref}
             />
           )}
         </div>
