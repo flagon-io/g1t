@@ -104,6 +104,44 @@ impl Kept {
     }
 }
 
+/// Work a request starts that need not hold up its answer, such as keeping
+/// an object in the Cache API: begun at once, and handed to the request's
+/// `waitUntil` once it has answered ([`Deferred::hand_over`]), so it is
+/// neither awaited on the way nor cut short after. Each request has its own.
+#[derive(Default)]
+pub struct Deferred {
+    started: RefCell<Vec<worker::js_sys::Promise>>,
+}
+
+impl Deferred {
+    /// Starts `work` now.
+    pub fn spawn(&self, work: impl std::future::Future<Output = ()> + 'static) {
+        let promise = worker::wasm_bindgen_futures::future_to_promise(async move {
+            work.await;
+            Ok(JsValue::UNDEFINED)
+        });
+        self.started.borrow_mut().push(promise);
+    }
+
+    /// Hands what was started to `ctx`, to finish after the answer.
+    pub fn hand_over(&self, ctx: &worker::Context) {
+        let started = std::mem::take(&mut *self.started.borrow_mut());
+        if started.is_empty() {
+            return;
+        }
+        ctx.wait_until(async move {
+            futures_util::future::join_all(started.into_iter().map(worker::wasm_bindgen_futures::JsFuture::from)).await;
+        });
+    }
+
+    /// Waits for what was started: for work already running after an
+    /// answer, in a `waitUntil` of its own.
+    pub async fn settle(&self) {
+        let started = std::mem::take(&mut *self.started.borrow_mut());
+        futures_util::future::join_all(started.into_iter().map(worker::wasm_bindgen_futures::JsFuture::from)).await;
+    }
+}
+
 /// A place repositories live. `key` is the store's own name for a repo.
 #[allow(async_fn_in_trait)]
 pub trait GitStore {
@@ -271,10 +309,13 @@ pub struct ArtifactsStore {
     namespaces: Rc<Vec<Namespace>>,
     /// Where isolates share the credentials they make; see shared.rs.
     shared: Option<Rc<crate::shared::Shared>>,
+    /// The request's work that need not hold up its answer: objects kept
+    /// for next time.
+    deferred: Rc<Deferred>,
 }
 
 impl ArtifactsStore {
-    pub fn new(env: &Env, shared: Option<Rc<crate::shared::Shared>>) -> Result<Self> {
+    pub fn new(env: &Env, shared: Option<Rc<crate::shared::Shared>>, deferred: Rc<Deferred>) -> Result<Self> {
         let config = env.var("ARTIFACTS_NAMESPACES").ok().map(|value| value.to_string());
         let text = |name: &str| env.var(name).ok().map(|value| value.to_string());
         let secret = env.secret("GIT_FALLBACK_SECRET").ok().map(|value| value.to_string());
@@ -318,7 +359,7 @@ impl ArtifactsStore {
                 });
             }
         }
-        Ok(Self { namespaces: Rc::new(namespaces), shared })
+        Ok(Self { namespaces: Rc::new(namespaces), shared, deferred })
     }
 
     fn binding(&self, namespace: &str) -> Result<&Target> {
@@ -675,6 +716,7 @@ impl GitStore for ArtifactsStore {
             namespace,
             shared: self.shared.clone(),
             refs_version: None,
+            deferred: self.deferred.clone(),
         })
     }
 
@@ -715,6 +757,7 @@ pub struct ArtifactsRepo {
     shared: Option<Rc<crate::shared::Shared>>,
     /// See [`GitRepo::at_refs_version`].
     refs_version: Option<u64>,
+    deferred: Rc<Deferred>,
 }
 
 /// Where cached git objects live. Trees and blobs are named by their
@@ -943,15 +986,22 @@ impl ArtifactsRepo {
         self.cached_at(&format!("{kind}/{hash}"), true).await
     }
 
-    async fn keep_at(&self, path: &str, bytes: Vec<u8>, max_age: &str) {
+    /// Keeps an answer at `path`: in the isolate at once, and in the Cache
+    /// API by a write that starts now and finishes in the request's
+    /// `waitUntil`. A read never waits on the write, which only saves a
+    /// later read.
+    fn keep_at(&self, path: &str, bytes: Vec<u8>, max_age: &'static str) {
+        let url = self.cache_url(path);
         if max_age == OBJECT_MAX_AGE {
-            MEMORY.with(|memory| memory.borrow_mut().put(self.cache_url(path), &bytes));
+            MEMORY.with(|memory| memory.borrow_mut().put(url.clone(), &bytes));
         }
-        let Ok(mut response) = worker::Response::from_bytes(bytes) else {
-            return;
-        };
-        let _ = response.headers_mut().set("cache-control", max_age);
-        let _ = worker::Cache::default().put(self.cache_url(path), response).await;
+        self.deferred.spawn(async move {
+            let Ok(mut response) = worker::Response::from_bytes(bytes) else {
+                return;
+            };
+            let _ = response.headers_mut().set("cache-control", max_age);
+            let _ = worker::Cache::default().put(url, response).await;
+        });
     }
 
     /// Whether `read_file`'s key was found not to be a file a little while
@@ -967,8 +1017,8 @@ impl ArtifactsRepo {
     }
 
     /// Keeps an object for next time. A failure only costs a later read.
-    async fn keep(&self, kind: &str, hash: &str, bytes: Vec<u8>) {
-        self.keep_at(&format!("{kind}/{hash}"), bytes, OBJECT_MAX_AGE).await;
+    fn keep(&self, kind: &str, hash: &str, bytes: Vec<u8>) {
+        self.keep_at(&format!("{kind}/{hash}"), bytes, OBJECT_MAX_AGE);
     }
 
     async fn get_key(&self, key: &CacheKey) -> Option<Vec<u8>> {
@@ -978,10 +1028,10 @@ impl ArtifactsRepo {
         }
     }
 
-    async fn put_key(&self, key: &CacheKey, bytes: Vec<u8>) {
+    fn put_key(&self, key: &CacheKey, bytes: Vec<u8>) {
         match key {
-            CacheKey::Forever(path) => self.keep_at(path, bytes, OBJECT_MAX_AGE).await,
-            CacheKey::Versioned(path) => self.keep_at(path, bytes, VERSIONED_MAX_AGE).await,
+            CacheKey::Forever(path) => self.keep_at(path, bytes, OBJECT_MAX_AGE),
+            CacheKey::Versioned(path) => self.keep_at(path, bytes, VERSIONED_MAX_AGE),
         }
     }
 
@@ -1113,7 +1163,7 @@ impl GitRepo for ArtifactsRepo {
         }
         let branches = crate::refs::branches(&self.access(Scope::Read).await?).await?;
         if let (Some(key), Ok(bytes)) = (&key, serde_json::to_vec(&branches)) {
-            self.put_key(key, bytes).await;
+            self.put_key(key, bytes);
         }
         Ok(branches)
     }
@@ -1138,13 +1188,13 @@ impl GitRepo for ArtifactsRepo {
             && let Ok(bytes) = serde_json::to_vec(&commits)
         {
             if let Some(key) = &key {
-                self.put_key(key, bytes.clone()).await;
+                self.put_key(key, bytes.clone());
             }
             // The same history, by the commit the name led to.
             if !is_commit_hash(git_ref)
                 && let Some(CacheKey::Forever(path)) = log_key(&commits[0].hash, limit, None)
             {
-                self.keep_at(&path, bytes, OBJECT_MAX_AGE).await;
+                self.keep_at(&path, bytes, OBJECT_MAX_AGE);
             }
         }
         Ok(commits)
@@ -1162,7 +1212,7 @@ impl GitRepo for ArtifactsRepo {
         if let Some(parents) = &parents
             && let Ok(bytes) = serde_json::to_vec(parents)
         {
-            self.keep("commit", commit_hash, bytes).await;
+            self.keep("commit", commit_hash, bytes);
         }
         Ok(parents)
     }
@@ -1187,7 +1237,7 @@ impl GitRepo for ArtifactsRepo {
         if let Some(entries) = &entries
             && let Ok(bytes) = serde_json::to_vec(entries)
         {
-            self.keep("tree", tree_hash, bytes).await;
+            self.keep("tree", tree_hash, bytes);
         }
         Ok(entries)
     }
@@ -1201,7 +1251,7 @@ impl GitRepo for ArtifactsRepo {
             meters::record_bytes("binding.read_blob", &self.key, 0, bytes.len() as u64);
         }
         if let Some(bytes) = bytes.as_ref().filter(|bytes| bytes.len() <= MAX_CACHED_BLOB) {
-            self.keep("blob", blob_hash, bytes.clone()).await;
+            self.keep("blob", blob_hash, bytes.clone());
         }
         Ok(bytes)
     }
@@ -1225,7 +1275,7 @@ impl GitRepo for ArtifactsRepo {
         };
         if let Some(size) = size {
             meters::record_bytes("binding.read_blob", &self.key, 0, size);
-            self.keep_at(&path, size.to_string().into_bytes(), OBJECT_MAX_AGE).await;
+            self.keep_at(&path, size.to_string().into_bytes(), OBJECT_MAX_AGE);
         }
         Ok(size)
     }
@@ -1260,10 +1310,10 @@ impl GitRepo for ArtifactsRepo {
         if let Some(bytes) = &bytes {
             meters::record_bytes("binding.read_file", &self.key, 0, bytes.len() as u64);
         } else if remember_absent && let Some(key) = &key {
-            self.keep_at(&absent_path(key), vec![1], ABSENT_MAX_AGE).await;
+            self.keep_at(&absent_path(key), vec![1], ABSENT_MAX_AGE);
         }
         if let (Some(key), Some(bytes)) = (&key, bytes.as_ref().filter(|bytes| bytes.len() <= MAX_CACHED_BLOB)) {
-            self.put_key(key, bytes.clone()).await;
+            self.put_key(key, bytes.clone());
         }
         Ok(bytes)
     }

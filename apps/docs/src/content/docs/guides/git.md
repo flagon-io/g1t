@@ -289,11 +289,16 @@ GIT_TRACE_CURL=1 git ls-remote https://g1t.sh/<owner>/<repo>.git 2>&1 | grep -i 
 | `mint` | Only when no credential was kept: the git store making one for the request |
 | `store` | The git store's answer to a clone or fetch |
 | `recv` | Only for a push: receiving it from git |
-| `rules` | Only for a push: checking it against the rules of the branches and tags it changes, and for workflow files a token may not change |
-| `scan` | Only for a push: checking it for secrets and private email addresses |
+| `checks` | Only for a push: checking it against the rules of the branches and tags it changes, for workflow files a token may not change, and for secrets and private email addresses, all at once |
 | `upload` | Only for a push: handing it to the git store and its answer |
 | `refs` | Only for a push: recording that the repository's refs changed |
 | `total` | Everything g1t did |
+
+A push's checks run side by side, so each also has its own entry, after
+the steps and not counted in the total: `read` (reading the push's objects
+and fetching what they build on from the repository), `rules`, `scan`
+(secrets and email addresses) and, for an access token, `gate` (workflow
+files).
 | `repos` | The same, measured where your request arrived |
 
 Two entries say how a step went rather than how long it took:

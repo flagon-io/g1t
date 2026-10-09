@@ -7,6 +7,7 @@
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use futures_util::future::{join_all, try_join_all};
 use g1t_contracts::rules::{CommitFacts, FileChange, Signature};
 use g1t_scan::pack::{ObjectKind, Pack};
 use worker::Result;
@@ -89,20 +90,21 @@ pub fn added(pack: &Pack, tip: &str, limit: usize) -> Option<Vec<String>> {
 
 /// The files that differ between two trees, deletions included, with the
 /// size of each new blob the pack holds. Whether the list is complete.
+/// Each level of the trees is read at once.
 async fn changed<R: GitRepo>(objects: &Objects<'_, R>, old_root: Option<String>, new_root: Option<String>) -> Result<(Vec<FileChange>, bool)> {
     let mut files = Vec::new();
     let mut level: Vec<(String, Option<String>, Option<String>)> = vec![(String::new(), old_root, new_root)];
     while !level.is_empty() {
+        let read = try_join_all(level.iter().map(|(_, old, new)| async move {
+            let tree = async |id: &Option<String>| match id {
+                Some(id) => objects.tree(id).await,
+                None => Ok(Vec::new()),
+            };
+            futures_util::future::try_join(tree(old), tree(new)).await
+        }))
+        .await?;
         let mut next = Vec::new();
-        for (prefix, old, new) in level {
-            let old_items = match &old {
-                Some(id) => objects.tree(id).await?,
-                None => Vec::new(),
-            };
-            let new_items = match &new {
-                Some(id) => objects.tree(id).await?,
-                None => Vec::new(),
-            };
+        for ((prefix, _, _), (old_items, new_items)) in level.into_iter().zip(read) {
             for item in &new_items {
                 let before = old_items.iter().find(|entry| entry.name == item.name);
                 if before.is_some_and(|before| before.id == item.id && before.mode == item.mode) {
@@ -172,7 +174,8 @@ pub async fn facts<R: GitRepo>(objects: &Objects<'_, R>, id: &str, signature: Op
 }
 
 /// Whether `old` is in the history of `new`: a fast-forward. Walks the
-/// pack's commits, then the repository's history from where it leaves it.
+/// pack's commits, then the repository's history from where it leaves it,
+/// reading the histories from each place it leaves at once.
 pub async fn contains<R: GitRepo>(pack: &Pack, repo: &R, new: &str, old: &str, depth: u32) -> Result<bool> {
     if new == old {
         return Ok(true);
@@ -192,22 +195,35 @@ pub async fn contains<R: GitRepo>(pack: &Pack, repo: &R, new: &str, old: &str, d
             _ => boundary.push(id),
         }
     }
-    for start in boundary.iter().take(20) {
-        let history = repo.log(start, depth).await?;
-        if history.iter().any(|commit| commit.hash == old) {
-            return Ok(true);
-        }
-        // Merges: the history is first-parent only, so look along the
-        // second parents it names too, a step at a time.
-        for commit in history.iter().filter(|commit| commit.parents.len() > 1).take(10) {
-            for parent in commit.parents.iter().skip(1) {
-                if parent == old || repo.log(parent, depth).await?.iter().any(|commit| commit.hash == old) {
-                    return Ok(true);
-                }
-            }
-        }
+    let histories = join_all(boundary.iter().take(20).map(|start| repo.log(start, depth))).await;
+    if found_in(&histories, old) {
+        return Ok(true);
+    }
+    // Merges: the history is first-parent only, so look along the second
+    // parents it names too.
+    let seconds: Vec<&String> = histories
+        .iter()
+        .flatten()
+        .flat_map(|history| history.iter().filter(|commit| commit.parents.len() > 1).take(10))
+        .flat_map(|commit| commit.parents.iter().skip(1))
+        .collect();
+    if seconds.iter().any(|parent| *parent == old) {
+        return Ok(true);
+    }
+    let further = join_all(seconds.iter().map(|parent| repo.log(parent, depth))).await;
+    if found_in(&further, old) {
+        return Ok(true);
+    }
+    // Not found: a history that could not be read may have held it.
+    for history in histories.into_iter().chain(further) {
+        history?;
     }
     Ok(false)
+}
+
+/// Whether any history read holds `old`.
+fn found_in(histories: &[Result<Vec<g1t_contracts::repos::Commit>>], old: &str) -> bool {
+    histories.iter().flatten().any(|history| history.iter().any(|commit| commit.hash == old))
 }
 
 /// The signature fingerprints and committer addresses of commits, for
@@ -232,7 +248,8 @@ pub fn signing_facts(pack: &Pack, ids: &[String]) -> (Vec<String>, Vec<String>) 
 }
 
 /// Every commit of `ids` read, with its signature decided against who
-/// owns the keys and addresses (`owners`, when signatures matter).
+/// owns the keys and addresses (`owners`, when signatures matter). The
+/// commits are read at once.
 pub async fn read_all<R: GitRepo>(
     pack: &Pack,
     repo: &R,
@@ -240,18 +257,17 @@ pub async fn read_all<R: GitRepo>(
     owners: Option<&Owners>,
 ) -> Result<Vec<CommitFacts>> {
     let objects = Objects { pack, repo, reads: Cell::new(0) };
-    let mut out = Vec::new();
-    for id in ids {
+    let objects = &objects;
+    let read = try_join_all(ids.iter().map(|id| async move {
         let signature = owners.and_then(|(keys, emails)| {
             let (_, data) = pack.get(id)?;
             let committer = read_commit(data).committer_email;
             Some(crate::signatures::decide(data, committer.as_deref(), keys, emails))
         });
-        if let Some(facts) = facts(&objects, id, signature).await? {
-            out.push(facts);
-        }
-    }
-    Ok(out)
+        facts(objects, id, signature).await
+    }))
+    .await?;
+    Ok(read.into_iter().flatten().collect())
 }
 
 #[cfg(test)]
@@ -287,5 +303,85 @@ mod tests {
         assert_eq!(added(&pack, &second_id, 10), Some(vec![second_id.clone(), first_id.clone()]));
         assert_eq!(added(&pack, &second_id, 1), None, "past the limit");
         assert_eq!(added(&pack, &"0".repeat(40), 10), Some(Vec::new()), "a tip the pack does not hold adds nothing");
+    }
+
+    /// Histories by where they start; a start missing from it fails.
+    struct Histories(HashMap<String, Vec<g1t_contracts::repos::Commit>>);
+
+    impl GitRepo for Histories {
+        async fn access(&self, _scope: crate::store::Scope) -> Result<g1t_contracts::repos::GitAccess> {
+            unimplemented!()
+        }
+        async fn branches(&self) -> Result<Vec<g1t_contracts::repos::Branch>> {
+            Ok(Vec::new())
+        }
+        async fn log(&self, git_ref: &str, _limit: u32) -> Result<Vec<g1t_contracts::repos::Commit>> {
+            self.0.get(git_ref).cloned().ok_or_else(|| worker::Error::RustError(format!("no history from {git_ref}")))
+        }
+        async fn parents(&self, _commit_hash: &str) -> Result<Option<Vec<String>>> {
+            Ok(None)
+        }
+        async fn read_tree(&self, _tree_hash: &str) -> Result<Option<Vec<g1t_contracts::repos::TreeEntry>>> {
+            Ok(None)
+        }
+        async fn read_blob(&self, _blob_hash: &str) -> Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+        async fn read_file(&self, _git_ref: &str, _path: &str) -> Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+        async fn fork(&self, _target_key: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn run<F: std::future::Future>(future: F) -> F::Output {
+        let waker = std::task::Waker::noop();
+        match std::pin::pin!(future).as_mut().poll(&mut std::task::Context::from_waker(waker)) {
+            std::task::Poll::Ready(output) => output,
+            std::task::Poll::Pending => panic!("the fake store never waits"),
+        }
+    }
+
+    fn at(hash: &str, parents: &[&str]) -> g1t_contracts::repos::Commit {
+        g1t_contracts::repos::Commit {
+            hash: hash.to_owned(),
+            tree_hash: String::new(),
+            message: String::new(),
+            author: g1t_contracts::repos::Signature { name: "A".into(), email: "a@x".into() },
+            parents: parents.iter().map(|parent| (*parent).to_owned()).collect(),
+            authored_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_fast_forward_is_found_along_the_history_and_its_merges() {
+        use g1t_scan::pack::write_pack;
+        // The push brings one commit on top of `base`; `base` merged `side`,
+        // whose history holds `old`.
+        let (base, side, old) = ("b".repeat(40), "5".repeat(40), "0".repeat(40));
+        let tip = format!("tree t
+parent {base}
+author A <a@x> 1 +0000
+committer A <a@x> 1 +0000
+
+tip
+").into_bytes();
+        let tip_id = g1t_scan::pack::object_id(ObjectKind::Commit, &tip);
+        let pack = Pack::parse(&write_pack(&[(ObjectKind::Commit, tip)])).unwrap();
+        let mut histories = HashMap::new();
+        histories.insert(base.clone(), vec![at(&base, &["1".repeat(40).as_str(), side.as_str()])]);
+        histories.insert(side.clone(), vec![at(&side, &[]), at(&old, &[])]);
+        let repo = Histories(histories);
+        assert!(run(contains(&pack, &repo, &tip_id, &old, 100)).unwrap());
+        assert!(run(contains(&pack, &repo, &tip_id, &side, 100)).unwrap(), "a second parent itself");
+        assert!(!run(contains(&pack, &repo, &tip_id, &"9".repeat(40), 100)).unwrap());
+        // A history that cannot be read does not hide one found elsewhere,
+        // and is an error only when nothing was found.
+        let mut histories = repo.0;
+        histories.remove(&side);
+        let repo = Histories(histories);
+        assert!(run(contains(&pack, &repo, &tip_id, &side, 100)).unwrap());
+        assert!(run(contains(&pack, &repo, &tip_id, &old, 100)).is_err());
     }
 }

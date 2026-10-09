@@ -19,7 +19,7 @@ use g1t_contracts::rules::{
 use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_rules::push::{RefChange, judge};
 use g1t_rules::{ActorFacts, Judged, Who, content, outcome, report};
-use g1t_scan::pack::{Pack, pack_start};
+use g1t_scan::pack::Pack;
 use worker::{Response, Result};
 
 use crate::registry::store_key;
@@ -29,6 +29,28 @@ use crate::{MAX_ANCESTRY, Repos};
 
 /// Where people read the rules of a branch.
 const SITE: &str = "https://g1t.sh";
+
+/// What the rules ask of a push, before its pack is read.
+pub(crate) enum PushRules {
+    /// Nothing to judge: a pull request's working copy, a push that changes
+    /// no branch or tag, or one no ruleset holds for.
+    Nothing,
+    /// Answered without the pack: by the old protection, where rulesets
+    /// cannot be read, or declined because they could not be read just now.
+    Answered(Result<Option<Response>>),
+    /// The rulesets to judge it by, and the branches and tags it changes.
+    Judge { rules: RefRules, updates: Vec<(String, Option<String>, Option<String>)> },
+    /// Judged, once its pack was read (push_checks.rs).
+    Judged(PushJudged),
+}
+
+/// How the rules judged a push, and the response declining it, if they did.
+pub(crate) struct PushJudged {
+    facts: ActorFacts,
+    judged: Vec<Judged>,
+    sha: Option<String>,
+    pub(crate) refusal: Option<Response>,
+}
 
 /// What the rules said about a change.
 pub(crate) enum Ruled {
@@ -163,114 +185,137 @@ impl<S: GitStore> Repos<S> {
         Ok(Ruled::Refused { message })
     }
 
-    /// Rules for a push: the response declining it, or `None` to let it
-    /// on. `body` is as much of the push as was read; `whole` says whether
-    /// that is all of it, so that its commits can be read.
-    pub(crate) async fn check_push(&self, repo: &Repo, pusher: Option<&User>, body: &[u8], whole: bool) -> Result<Option<Response>> {
-        // Workflow files need their own scope from a token, on a pull
-        // request's working copy too (workflow_gate.rs).
-        if let Some(response) = self.workflow_gate(repo, pusher, body, whole).await? {
-            return Ok(Some(response));
-        }
+    /// What the rules ask of a push, found before its pack is read: the
+    /// rulesets that hold for the branches and tags it changes.
+    pub(crate) async fn push_rules(&self, repo: &Repo, pusher: Option<&User>, body: &[u8]) -> PushRules {
         if repo.fork_of.is_some() {
-            return Ok(None);
+            return PushRules::Nothing;
         }
         let updates = crate::git_http::ref_updates(body);
         if updates.is_empty() {
-            return Ok(None);
+            return PushRules::Nothing;
         }
         let refs: Vec<String> = updates.iter().map(|(name, _, _)| name.clone()).collect();
-        let rules = match self.ref_rules(repo, pusher, refs).await {
-            Ok(Some(rules)) => rules,
+        match self.ref_rules(repo, pusher, refs).await {
+            Ok(Some(rules)) if rules.rulesets.is_empty() => PushRules::Nothing,
+            Ok(Some(rules)) => PushRules::Judge { rules, updates },
             // Without the work service, the old protection holds.
             Ok(None) => {
                 let protected = repo.protected.then(|| repo.default_branch.clone());
-                return protected
-                    .and_then(|branch| crate::git_http::refusal(body, &branch))
-                    .map(crate::git_http::report_response)
-                    .transpose();
+                PushRules::Answered(
+                    protected
+                        .and_then(|branch| crate::git_http::refusal(body, &branch))
+                        .map(crate::git_http::report_response)
+                        .transpose(),
+                )
             }
             Err(error) => {
                 worker::console_error!("ref_rules failed during a push: {error}");
-                return Ok(Some(crate::git_http::declined(
-                    body,
-                    "rules could not be checked",
-                    &["The rules for this repository could not be checked just now. Push again in a moment.".to_owned()],
-                )?));
+                PushRules::Answered(
+                    crate::git_http::declined(
+                        body,
+                        "rules could not be checked",
+                        &["The rules for this repository could not be checked just now. Push again in a moment.".to_owned()],
+                    )
+                    .map(Some),
+                )
             }
-        };
-        if rules.rulesets.is_empty() {
-            return Ok(None);
         }
+    }
+
+    /// Judges a push by `rules` (see [`Repos::push_rules`]). `pack` is the
+    /// push's, with its bases supplied, when it was read whole; its
+    /// commits are read only when a rule needs them.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn judge_push<R: GitRepo>(
+        &self,
+        repo: &Repo,
+        pusher: Option<&User>,
+        body: &[u8],
+        rules: &RefRules,
+        updates: Vec<(String, Option<String>, Option<String>)>,
+        pack: Option<&Pack>,
+        git: &R,
+    ) -> Result<PushJudged> {
         let facts = who(pusher, repo);
         let content = needs_commits(&rules.rulesets, facts.kind);
         let ancestry = needs_ancestry(&rules.rulesets);
-        let git = self.store.open(&store_key(repo)).await?;
-        // The pack, read when a rule needs what it holds.
-        let pack = if whole && (content || ancestry) {
-            match pack_start(body).map(|start| Pack::parse(&body[start..])) {
-                Some(Ok(mut pack)) => {
-                    crate::secret_scan::supply_bases(&mut pack, &git).await?;
-                    Some(pack)
-                }
-                Some(Err(problem)) => {
-                    worker::console_error!("a push's pack could not be read for rules: {problem}");
-                    None
-                }
-                // Nothing but deletions, or pointing refs at commits the
-                // repository has: an empty pack.
-                None => Pack::parse(crate::land::EMPTY_PACK).ok(),
-            }
-        } else {
-            None
-        };
+        // The pack, used when a rule needs what it holds.
+        let pack = pack.filter(|_| content || ancestry);
         let signatures = rules
             .rulesets
             .iter()
             .any(|ruleset| ruleset.rules.iter().any(|entry| matches!(entry.rule, Rule::RequiredSignatures(_))));
-        let mut changes = Vec::new();
-        for (git_ref, old, new) in updates {
+        // Each ref's facts are read at once.
+        let changes = futures_util::future::try_join_all(updates.into_iter().map(|(git_ref, old, new)| async move {
             let mut change = RefChange { git_ref, old: old.clone(), new: new.clone(), fast_forward: None, commits: Vec::new(), complete: false };
-            if let (Some(pack), Some(new)) = (&pack, &new) {
-                if let Some(old) = &old
-                    && ancestry
-                {
-                    change.fast_forward = Some(rule_facts::contains(pack, &git, new, old, MAX_ANCESTRY).await?);
-                }
-                if content {
-                    match rule_facts::added(pack, new, MAX_COMMITS) {
-                        Some(ids) => {
-                            let owners = if signatures {
-                                let (fingerprints, emails) = rule_facts::signing_facts(pack, &ids);
-                                Some(self.signing_owners(&fingerprints, &emails).await)
-                            } else {
-                                None
-                            };
-                            change.commits = rule_facts::read_all(pack, &git, &ids, owners.as_ref()).await?;
-                            change.complete = change.commits.iter().all(|commit| commit.files_complete);
-                        }
-                        None => change.complete = false,
+            if let (Some(pack), Some(new)) = (pack, &new) {
+                let fast_forward = async {
+                    match &old {
+                        Some(old) if ancestry => Ok::<_, worker::Error>(Some(rule_facts::contains(pack, git, new, old, MAX_ANCESTRY).await?)),
+                        _ => Ok(None),
                     }
-                } else {
-                    change.complete = true;
-                }
+                };
+                let commits = async {
+                    if !content {
+                        return Ok::<_, worker::Error>((Vec::new(), true));
+                    }
+                    let Some(ids) = rule_facts::added(pack, new, MAX_COMMITS) else {
+                        return Ok((Vec::new(), false));
+                    };
+                    let owners = if signatures {
+                        let (fingerprints, emails) = rule_facts::signing_facts(pack, &ids);
+                        Some(self.signing_owners(&fingerprints, &emails).await)
+                    } else {
+                        None
+                    };
+                    let commits = rule_facts::read_all(pack, git, &ids, owners.as_ref()).await?;
+                    let complete = commits.iter().all(|commit| commit.files_complete);
+                    Ok((commits, complete))
+                };
+                let (fast_forward, commits) = futures_util::future::try_join(fast_forward, commits).await?;
+                change.fast_forward = fast_forward;
+                (change.commits, change.complete) = commits;
             } else if new.is_none() || !content {
                 change.complete = true;
             }
-            changes.push(change);
-        }
+            Ok::<_, worker::Error>(change)
+        }))
+        .await?;
         let judged: Vec<Judged> = changes
             .iter()
             .flat_map(|change| judge(&rules.rulesets, &rules.default_branch, facts.kind, change))
             .collect();
         let sha = changes.iter().find_map(|change| change.new.clone());
-        self.record_judged(repo, &judged, Action::Push, &facts, sha.as_deref()).await;
-        if !outcome::refused(&judged) {
-            return Ok(None);
+        let refusal = if outcome::refused(&judged) {
+            let refused_ref = judged.iter().find(|one| one.blocks()).map(|one| one.git_ref.clone()).unwrap_or_default();
+            let lines = report::remote_lines(&refused_ref, &judged, &rules_url(repo, &refused_ref));
+            Some(crate::git_http::declined(body, &report::ng_reason(&judged), &lines)?)
+        } else {
+            None
+        };
+        Ok(PushJudged { facts, judged, sha, refusal })
+    }
+
+    /// Records how the rules judged a push: before the answer when they
+    /// refused it, after it otherwise, since a push let through does not
+    /// wait on the record.
+    pub(crate) async fn record_push_judged(&self, repo: &Repo, judged: &PushJudged) {
+        if judged.refusal.is_some() {
+            self.record_judged(repo, &judged.judged, Action::Push, &judged.facts, judged.sha.as_deref()).await;
+            return;
         }
-        let refused_ref = judged.iter().find(|one| one.blocks()).map(|one| one.git_ref.clone()).unwrap_or_default();
-        let lines = report::remote_lines(&refused_ref, &judged, &rules_url(repo, &refused_ref));
-        Ok(Some(crate::git_http::declined(body, &report::ng_reason(&judged), &lines)?))
+        let Some(work) = self.work.clone() else { return };
+        if judged.judged.is_empty() {
+            return;
+        }
+        let evaluations = g1t_rules::evaluations(&judged.judged, &repo.id, &repo.namespace, Action::Push, &judged.facts, None, judged.sha.as_deref());
+        self.deferred.spawn(async move {
+            let recorded: Result<u32> = g1t_kit::call(&work, "record_evaluations", &RecordEvaluationsArgs { evaluations }).await;
+            if let Err(error) = recorded {
+                worker::console_error!("rule evaluations not recorded: {error}");
+            }
+        });
     }
 
     /// Services only: the commits a pull request would land, read as rules
