@@ -39,7 +39,7 @@ import {
   versionFrom,
 } from "./cloudflare.mjs";
 import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
-import { decide, planJson, pool } from "./plan.mjs";
+import { decide, git, planJson, pool } from "./plan.mjs";
 import {
   ROOT,
   buildGroups,
@@ -53,6 +53,7 @@ import {
   problems,
   resolveStack,
   resolvedStack,
+  testOnlySource,
   touches,
   touchesBase,
   touchesImage,
@@ -326,6 +327,95 @@ test("a shared package's change reaches what imports it", () => {
   assert.deepEqual(ids(stack.units, ["packages/theme/tokens.css"]), ["status", "web", "sudo", "docs"]);
   assert.ok(ids(stack.units, ["packages/contracts/src/index.ts"]).includes("og"));
   assert.ok(!ids(stack.units, ["packages/contracts/src/index.ts"]).includes("events"));
+});
+
+test("a crate's tests, benches and examples deploy nothing", () => {
+  // 0cdd221 changed only this file, and the plan sent three Rust Workers.
+  assert.deepEqual(ids(stack.units, ["crates/actions/tests/repository_workflows.rs"]), []);
+  assert.ok(!touchesImage(unit("runner"), ["crates/actions/tests/repository_workflows.rs"]));
+  assert.deepEqual(ids(stack.units, ["crates/kit/benches/wire.rs", "crates/scan/examples/scan.rs", "services/repos/tests/git.rs"]), []);
+  // Their sources still do, and a folder merely named like one.
+  assert.deepEqual(ids(stack.units, ["crates/actions/src/expr.rs"]), ["actions", "security", "runner"]);
+  assert.ok(touchesImage(unit("runner"), ["crates/actions/src/expr.rs"]));
+  assert.deepEqual(ids(stack.units, ["services/repos/src/tests/helpers.rs"]), ["repos"]);
+  assert.deepEqual(ids(stack.units, ["crates/kit/testsuite/a.rs"]), ids(stack.units, ["crates/kit/src/lib.rs"]));
+  // A unit that is not a crate keeps its whole folder.
+  assert.deepEqual(unit("web").crateDirs, []);
+  assert.deepEqual(unit("events").crateDirs, ["crates/contracts", "crates/kit", "services/events"]);
+  assert.ok(unit("runner").crateDirs.includes("crates/runner"));
+});
+
+/** Rust sources by path, as `testOnlySource` reads them. */
+const sources = (files) => ({
+  read: (path) => files[path] ?? "",
+  list: (dir) => Object.keys(files).filter((path) => path.slice(0, path.lastIndexOf("/")) === dir),
+});
+
+test("a Rust file compiled only for tests is found from what declares it", () => {
+  const crate = ["crates/x"];
+  const tree = sources({
+    "crates/x/src/lib.rs": "pub mod api;\nmod store;\n#[cfg(test)]\nmod tests;\n#[cfg(test)] pub(crate) mod fixtures;\n#[cfg(any(test, feature = \"x\"))]\nmod both;\n",
+    "crates/x/src/api.rs": "mod wire;\n#[cfg(test)]\n#[path = \"api_tests.rs\"]\nmod tests;\n",
+    "crates/x/src/api/wire.rs": "",
+    "crates/x/src/api_tests.rs": "use super::*;",
+    "crates/x/src/store/mod.rs": "#[cfg(test)]\nmod memory;\n",
+    "crates/x/src/store/memory.rs": "mod deep;",
+    "crates/x/src/store/memory/deep.rs": "",
+    "crates/x/src/tests.rs": "",
+    "crates/x/src/fixtures/mod.rs": "",
+    "crates/x/src/both.rs": "",
+    "crates/x/src/bin/tool.rs": "",
+  });
+  const only = (file) => testOnlySource(file, crate, tree);
+  for (const file of ["crates/x/src/tests.rs", "crates/x/src/fixtures/mod.rs", "crates/x/src/api_tests.rs", "crates/x/src/store/memory.rs", "crates/x/src/store/memory/deep.rs"]) {
+    assert.ok(only(file), file);
+  }
+  // Built: roots, ordinary modules, a cfg that is not only test, a file
+  // nothing declares (new, or deleted), and files outside src or the crate.
+  for (const file of [
+    "crates/x/src/lib.rs",
+    "crates/x/src/api.rs",
+    "crates/x/src/api/wire.rs",
+    "crates/x/src/store/mod.rs",
+    "crates/x/src/both.rs",
+    "crates/x/src/bin/tool.rs",
+    "crates/x/src/new.rs",
+    "crates/x/build.rs",
+    "crates/y/src/tests.rs",
+    "crates/x/src/notes.md",
+  ]) {
+    assert.ok(!only(file), file);
+  }
+});
+
+test("this repository's test-only sources are read from git", () => {
+  const head = git.head();
+  const atHead = { read: (path) => git.show(head, path), list: (dir) => git.list(head, dir) };
+  const only = (u, file) => testOnlySource(file, unit(u).crateDirs, atHead);
+  assert.ok(only("api", "apps/api/src/responses.rs"));
+  assert.ok(only("billing", "services/billing/src/catalogue_tests.rs"));
+  assert.ok(only("billing", "services/billing/src/gateway_tests.rs"));
+  assert.ok(!only("billing", "services/billing/src/catalogue.rs"));
+  assert.ok(!only("api", "apps/api/src/toolkit.rs"));
+});
+
+test("decide: a change only to tests deploys nothing", () => {
+  const units = ["actions", "billing", "runner"].map(unit);
+  const live = { actions: { sha: OLD }, billing: { sha: OLD }, runner: { sha: OLD } };
+  const files = {
+    [`${HEAD}:services/billing/src/gateway.rs`]: "#[cfg(test)]\n#[path = \"gateway_tests.rs\"]\nmod tests;\n",
+    [`${HEAD}:services/billing/src/lib.rs`]: "mod gateway;\n",
+  };
+  const gitApi = {
+    ...fakeGit(["crates/actions/tests/repository_workflows.rs", "services/billing/src/gateway_tests.rs"]),
+    show: (sha, path) => files[`${sha}:${path}`] ?? "",
+    list: (sha, dir) => Object.keys(files).map((k) => k.slice(sha.length + 1)).filter((p) => p.startsWith(`${dir}/`)).concat(dir === "services/billing/src" ? ["services/billing/src/gateway_tests.rs"] : []),
+  };
+  const decisions = decide(units, { live, head: HEAD, gitApi });
+  assert.deepEqual(decisions.map((d) => [d.unit.id, d.deploy, d.image]), [["actions", false, false], ["billing", false, false], ["runner", false, false]]);
+  // With a source that ships beside them, only that is listed.
+  const mixed = decide([unit("billing")], { live, head: HEAD, gitApi: { ...gitApi, changed: () => ["services/billing/src/gateway_tests.rs", "services/billing/src/gateway.rs"] } });
+  assert.deepEqual([mixed[0].deploy, mixed[0].files], [true, ["services/billing/src/gateway.rs"]]);
 });
 
 test("own folders, declared inputs and root files", () => {

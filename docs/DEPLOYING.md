@@ -158,6 +158,11 @@ and any other failure is a reason in the plan, never a crash.
 1. Plans: for each unit, the live commit; `git diff` from it to `HEAD`;
    whether the changed files touch the unit (its folder, the crates and
    packages it is built from, its inputs, lockfile changes that reach it).
+   A Rust crate's `tests/`, `benches/` and `examples/` are not what it is
+   built from, and neither is a source file compiled only for tests: one
+   whose every `mod` declaration is under `#[cfg(test)]` (with or without
+   `#[path]`), or inside a module that is. A change to a crate's tests
+   alone deploys nothing (`scripts/deploy/stack.mjs`, `testOnlySource`).
 2. Refuses if uncommitted changes touch what would deploy (`--allow-dirty`).
 3. Applies every pending migration (`wrangler d1 migrations apply --remote`),
    in parallel. Any failure stops the deploy before code.
