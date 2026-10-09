@@ -198,7 +198,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
   }, [language, code]);
   return (
     <div className="group/code relative my-1">
-      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 font-mono text-[0.8125rem] leading-relaxed text-fg-soft [scrollbar-width:thin]">
+      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 pointer-coarse:pr-10 font-mono text-[0.8125rem] leading-relaxed text-fg-soft [scrollbar-width:thin]">
         <code>
           {rows
             ? rows.map((row, index) => (
@@ -214,7 +214,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
         </code>
       </pre>
       <div className="absolute top-1.5 right-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
-        {language && <span className="font-mono text-[0.6875rem] text-faint">{language}</span>}
+        {language && <span className="font-mono text-[0.6875rem] text-faint pointer-coarse:hidden">{language}</span>}
         <Hint label={copied ? "Copied" : "Copy code"}>
           <button
             type="button"
