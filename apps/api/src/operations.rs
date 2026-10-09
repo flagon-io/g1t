@@ -4282,6 +4282,7 @@ impl Op {
                         is_private: input["private"].as_bool() == Some(true),
                         import_url: optional_text(input, "import_url"),
                         import_token: None,
+                        mirror: None,
                     },
                 )
                 .await

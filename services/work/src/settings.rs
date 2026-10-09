@@ -114,7 +114,7 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        if let Outcome::Fail(failure) = crate::retired::writable(&repo) {
+        if let Outcome::Fail(failure) = crate::retired::not_archived(&repo) {
             return Ok(Outcome::Fail(failure));
         }
         if !a.actor.verified {

@@ -23,7 +23,6 @@ use serde_json::Value;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::retired::writable;
 use crate::{Work, allowed};
 
 /// Unwraps an `Outcome`, returning its failure from the enclosing method.
@@ -245,7 +244,7 @@ impl Work {
     async fn reportable(&self, path: &RepoPath, actor: &User) -> Result<Outcome<Repo>> {
         let repo = check!(self.repo(path, &Some(actor.clone())).await?);
         check!(allowed(Some(actor), &repo, Capability::Push));
-        check!(writable(&repo));
+        check!(crate::retired::not_archived(&repo));
         Ok(Outcome::Ok(repo))
     }
 

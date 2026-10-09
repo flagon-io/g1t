@@ -23,7 +23,9 @@ export type FailureCode =
   /** This month's open-source pool, or the repository's share of it, is spent. */
   | "oss_pool_empty"
   /** A sensitive change needs a recent sign-in or the password again. */
-  | "reauth_required";
+  | "reauth_required"
+  /** Another host g1t depends on for this did not answer. */
+  | "unavailable";
 
 export type Failure = { code: FailureCode; message: string };
 
@@ -50,6 +52,7 @@ const HTTP_STATUS: Record<FailureCode, number> = {
   paused: 409,
   oss_pool_empty: 402,
   reauth_required: 403,
+  unavailable: 503,
 };
 
 export function httpStatus(failure: Failure): number {

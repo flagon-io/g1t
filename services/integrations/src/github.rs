@@ -15,9 +15,12 @@
 //! length or format is assumed.
 //!
 //! A repository comes across one of three ways (`GithubMode`): imported
-//! once; mirrored, so each push on GitHub is fetched into g1t; or pushed,
-//! so each push on g1t is sent to GitHub. Either way g1t holds a full copy,
-//! and the project built from it is hosted on g1t like any other.
+//! once; mirrored, so g1t keeps a standby copy that follows GitHub; or
+//! pushed, so GitHub follows g1t. Either way g1t holds a full copy, and the
+//! project built from it is hosted on g1t like any other. Mirrored and
+//! pushed repositories are links in `remotes` (see `remotes.rs`), which
+//! does everything after the import: following pushes, takeovers,
+//! hand-backs, moving in.
 //!
 //! The webhook, `https://api.g1t.sh/hooks/github`, is checked against
 //! GITHUB_APP_WEBHOOK_SECRET in constant time, de-duplicated by
@@ -27,10 +30,10 @@
 use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::access::{self, Capability};
-use g1t_contracts::events::Event;
 use g1t_contracts::github::*;
 use g1t_contracts::integrations::Received;
-use g1t_contracts::repos::{CreateArgs, MirrorArgs, MirrorDirection, Mirrored, Repo, RepoPath};
+use g1t_contracts::mirrors::{MirrorActArgs, MirrorState, RepoMirror};
+use g1t_contracts::repos::{CreateArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{Issue, IssueActionArgs, IssueReason, OpenIssueArgs};
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, is_valid_repo_name};
@@ -288,6 +291,11 @@ impl GithubApp {
         })
     }
 
+    /// GitHub's REST API, with an installation or user token.
+    pub(crate) async fn api(&self, method: Method, path: &str, token: &str, body: Option<Value>) -> Result<Answer> {
+        self.github(method, path, token, body).await
+    }
+
     async fn github(&self, method: Method, path: &str, token: &str, body: Option<Value>) -> Result<Answer> {
         let authorization = format!("Bearer {token}");
         let url = if path.starts_with("https://") { path.to_owned() } else { format!("{API}{path}") };
@@ -310,7 +318,7 @@ impl GithubApp {
     }
 
     /// An installation access token, from the cache or fresh from GitHub.
-    async fn installation_token(&self, installation_id: u64) -> Result<std::result::Result<String, String>> {
+    pub(crate) async fn installation_token(&self, installation_id: u64) -> Result<std::result::Result<String, String>> {
         #[derive(Deserialize)]
         struct Cached {
             token: String,
@@ -495,7 +503,7 @@ impl GithubApp {
 
     /// Forgets an installation in a workspace; its mirrors stop. The app
     /// stays installed on GitHub until it is uninstalled there.
-    pub async fn remove_installation(&self, a: GithubInstallationArgs) -> Result<Outcome<bool>> {
+    pub async fn remove_installation(&self, a: GithubInstallationArgs, mirrors: Option<&crate::remotes::Mirrors>) -> Result<Outcome<bool>> {
         let workspace = a.workspace.to_lowercase();
         if let Some(refused) = Self::owner_only(&a.actor, &workspace) {
             return Ok(refused);
@@ -510,6 +518,18 @@ impl GithubApp {
             .bind(&[workspace.as_str().into(), number(a.installation_id)])?
             .run()
             .await?;
+        if let Some(mirrors) = mirrors {
+            let rows = self
+                .db
+                .prepare("SELECT id FROM remotes WHERE provider = 'github' AND workspace = ? AND connection_id = ?")
+                .bind(&[workspace.as_str().into(), a.installation_id.to_string().into()])?
+                .all()
+                .await?
+                .results::<Value>()?;
+            for id in rows.iter().filter_map(|row| row["id"].as_str()) {
+                mirrors.link_gone(id, "lost its GitHub account in this workspace").await?;
+            }
+        }
         Ok(Outcome::Ok(true))
     }
 
@@ -635,6 +655,16 @@ impl GithubApp {
                 is_private: a.private.unwrap_or_else(|| github["private"].as_bool().unwrap_or(true)),
                 import_url: Some(clone_url.to_owned()),
                 import_token: Some(token),
+                // A mirror is read-only from the start.
+                mirror: (a.mode == GithubMode::Mirror).then(|| RepoMirror {
+                    state: MirrorState::Standby,
+                    remote: format!("github.com/{full_name}"),
+                    url: format!("https://github.com/{full_name}"),
+                    since: rfc3339(now_ms()),
+                    warm: false,
+                    github_workflows: true,
+                    hold_deploys: true,
+                }),
             },
         )
         .await?;
@@ -663,6 +693,34 @@ impl GithubApp {
             ])?
             .run()
             .await?;
+        if a.mode != GithubMode::Import {
+            let (role, state) = if a.mode == GithubMode::Mirror { ("leader", "standby") } else { ("follower", "following") };
+            self.db
+                .prepare(
+                    "INSERT INTO remotes
+                       (id, repo_id, workspace, repo, provider, role, name, url, clone_url, external_id, connection_id,
+                        state, state_since, state_by, settings, recorded, synced_at, created_by, created_at)
+                     VALUES (?1, ?2, ?3, ?4, 'github', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, '{}', 1, ?12, ?14, ?12)",
+                )
+                .bind(&[
+                    g1t_contracts::new_id("rmt", now_ms()).into(),
+                    repo.id.as_str().into(),
+                    workspace.as_str().into(),
+                    path.as_str().into(),
+                    role.into(),
+                    format!("github.com/{full_name}").into(),
+                    format!("https://github.com/{full_name}").into(),
+                    format!("https://github.com/{full_name}.git").into(),
+                    a.github_repo_id.to_string().into(),
+                    a.installation_id.to_string().into(),
+                    state.into(),
+                    now.as_str().into(),
+                    a.actor.username.as_str().into(),
+                    a.actor.id.as_str().into(),
+                ])?
+                .run()
+                .await?;
+        }
         let job = a.issues.then(|| IssueJob {
             actor: a.actor.clone(),
             repo: RepoPath {
@@ -777,16 +835,47 @@ impl GithubApp {
     }
 
     pub async fn link_for(&self, a: GithubLinkArgs) -> Result<Option<GithubRepoLink>> {
-        Ok(self.link(&a.repo_id).await?.map(Into::into))
+        let Some(row) = self.link(&a.repo_id).await? else { return Ok(None) };
+        // What the repository is now is the remote's to say.
+        let role = self
+            .db
+            .prepare("SELECT role FROM remotes WHERE repo_id = ? AND provider = 'github' AND external_id = ?")
+            .bind(&[a.repo_id.as_str().into(), row.github_repo_id.to_string().into()])?
+            .first::<String>(Some("role"))
+            .await?;
+        let mut link: GithubRepoLink = row.into();
+        link.mode = match role.as_deref() {
+            Some("leader") => GithubMode::Mirror,
+            Some("follower") => GithubMode::Push,
+            _ => GithubMode::Import,
+        };
+        Ok(Some(link))
     }
 
-    /// Stops a mirror: the g1t repository keeps what it has and is its own.
-    pub async fn unlink_repo(&self, a: GithubUnlinkRepoArgs) -> Result<Outcome<bool>> {
+    /// Stops a link to GitHub: the g1t repository keeps what it has and is
+    /// its own. Refused during a takeover (see `remotes.rs`).
+    pub async fn unlink_repo(&self, a: GithubUnlinkRepoArgs, env: &Env) -> Result<Outcome<bool>> {
         let Some(row) = self.link(&a.repo_id).await? else {
             return Ok(Outcome::Ok(false));
         };
         if let Some(refused) = refused(&a.actor, &row, Capability::ManageIntegrations) {
             return Ok(refused);
+        }
+        let ids = self
+            .db
+            .prepare("SELECT id FROM remotes WHERE repo_id = ? AND provider = 'github'")
+            .bind(&[a.repo_id.as_str().into()])?
+            .all()
+            .await?
+            .results::<Value>()?;
+        let mirrors = crate::remotes::Mirrors::new(env)?;
+        for id in ids.iter().filter_map(|row| row["id"].as_str()) {
+            let removed = mirrors
+                .remove(g1t_contracts::mirrors::MirrorRemoveArgs { actor: a.actor.clone(), remote_id: id.to_owned() })
+                .await?;
+            if let Outcome::Fail(failure) = removed {
+                return Ok(Outcome::Fail(failure));
+            }
         }
         self.db
             .prepare("UPDATE github_repos SET mode = 'import' WHERE repo_id = ?")
@@ -796,55 +885,20 @@ impl GithubApp {
         Ok(Outcome::Ok(true))
     }
 
-    /// Copies refs now, in the link's direction.
-    async fn sync(&self, row: &LinkRow) -> Result<std::result::Result<Mirrored, String>> {
-        let direction = match GithubMode::parse(&row.mode) {
-            GithubMode::Mirror => MirrorDirection::Pull,
-            GithubMode::Push => MirrorDirection::Push,
-            GithubMode::Import => return Ok(Err("This repository was imported once; it is not mirrored.".to_owned())),
-        };
-        let token = match self.installation_token(row.installation_id).await? {
-            Ok(token) => token,
-            Err(reason) => {
-                self.note(&row.repo_id, Some(&reason)).await?;
-                return Ok(Err(reason));
-            }
-        };
-        let done: Outcome<Mirrored> = g1t_kit::call(
-            &self.repos,
-            "mirror",
-            &MirrorArgs {
-                repo_id: row.repo_id.clone(),
-                url: format!("https://github.com/{}.git", row.full_name),
-                token,
-                direction,
-            },
-        )
-        .await?;
-        Ok(match done {
-            Outcome::Ok(mirrored) => {
-                self.note(&row.repo_id, None).await?;
-                Ok(mirrored)
-            }
-            Outcome::Fail(failure) => {
-                self.note(&row.repo_id, Some(&failure.message)).await?;
-                Err(failure.message)
-            }
-        })
-    }
-
-    pub async fn sync_now(&self, a: GithubUnlinkRepoArgs) -> Result<Outcome<GithubRepoLink>> {
-        let Some(row) = self.link(&a.repo_id).await? else {
+    pub async fn sync_now(&self, a: GithubUnlinkRepoArgs, env: &Env) -> Result<Outcome<GithubRepoLink>> {
+        if self.link(&a.repo_id).await?.is_none() {
             return Ok(fail(FailureCode::NotFound, "This repository is not linked to GitHub."));
-        };
-        // Syncing brings commits in, as pushing does.
-        if let Some(refused) = refused(&a.actor, &row, Capability::Push) {
-            return Ok(refused);
         }
-        if let Err(reason) = self.sync(&row).await? {
-            return Ok(fail(FailureCode::Conflict, reason));
+        let synced = crate::remotes::Mirrors::new(env)?
+            .sync_now(MirrorActArgs { actor: a.actor.clone(), repo_id: a.repo_id.clone() })
+            .await?;
+        if let Outcome::Fail(failure) = synced {
+            return Ok(Outcome::Fail(failure));
         }
-        Ok(self.link(&a.repo_id).await?.map_or_else(|| fail(FailureCode::NotFound, "Gone."), |row| Outcome::Ok(row.into())))
+        Ok(self
+            .link_for(GithubLinkArgs { repo_id: a.repo_id.clone() })
+            .await?
+            .map_or_else(|| fail(FailureCode::NotFound, "Gone."), Outcome::Ok))
     }
 
     // --- The webhook -----------------------------------------------------------
@@ -882,14 +936,14 @@ impl GithubApp {
         Ok((answer(202, "Received."), Some((event, payload))))
     }
 
-    pub async fn process(&self, event: &str, payload: &Value) -> Result<()> {
+    pub async fn process(&self, event: &str, payload: &Value, mirrors: Option<&crate::remotes::Mirrors>) -> Result<()> {
         let action = payload["action"].as_str().unwrap_or_default();
         let installation = payload["installation"]["id"].as_u64();
         match (event, action) {
             ("installation", "deleted") | ("installation", "suspend") | ("installation", "unsuspend") => {
                 let Some(id) = installation else { return Ok(()) };
                 match action {
-                    "deleted" => self.installation_gone(id, "The GitHub App was uninstalled from this account.").await?,
+                    "deleted" => self.installation_gone(id, "The GitHub App was uninstalled from this account.", mirrors).await?,
                     "suspend" => {
                         self.db
                             .prepare("UPDATE github_installations SET suspended_at = ? WHERE id = ?")
@@ -923,18 +977,8 @@ impl GithubApp {
                 }
             }
             ("push", _) => {
-                let Some(repo) = payload["repository"]["id"].as_u64() else { return Ok(()) };
-                let rows = self
-                    .db
-                    .prepare("SELECT * FROM github_repos WHERE github_repo_id = ? AND mode = 'mirror'")
-                    .bind(&[number(repo)])?
-                    .all()
-                    .await?
-                    .results::<LinkRow>()?;
-                for row in rows {
-                    if let Err(reason) = self.sync(&row).await? {
-                        worker::console_log!("github mirror of {} not synced: {reason}", row.repo);
-                    }
+                if let Some(mirrors) = mirrors {
+                    mirrors.on_github_push(payload).await?;
                 }
             }
             ("repository", "renamed") | ("repository", "transferred") => {
@@ -946,10 +990,24 @@ impl GithubApp {
                     .bind(&[full_name.into(), number(repo)])?
                     .run()
                     .await?;
+                self.db
+                    .prepare(
+                        "UPDATE remotes SET name = ?1, url = ?2, clone_url = ?3, recorded = 0
+                         WHERE provider = 'github' AND external_id = ?4",
+                    )
+                    .bind(&[
+                        format!("github.com/{full_name}").into(),
+                        format!("https://github.com/{full_name}").into(),
+                        format!("https://github.com/{full_name}.git").into(),
+                        repo.to_string().into(),
+                    ])?
+                    .run()
+                    .await?;
             }
             ("repository", "deleted") => {
                 if let Some(repo) = payload["repository"]["id"].as_u64() {
                     self.mark_github_repo(repo, "The repository was deleted on GitHub. The copy on g1t is kept.").await?;
+                    self.links_gone("external_id", &repo.to_string(), "was deleted on GitHub", mirrors).await?;
                     self.db
                         .prepare("UPDATE github_repos SET mode = 'import' WHERE github_repo_id = ?")
                         .bind(&[number(repo)])?
@@ -971,7 +1029,7 @@ impl GithubApp {
                     .results::<Value>()?;
                 for row in ids {
                     if let Some(id) = row["id"].as_u64() {
-                        self.installation_gone(id, "g1t's GitHub App was deleted.").await?;
+                        self.installation_gone(id, "g1t's GitHub App was deleted.", mirrors).await?;
                     }
                 }
             }
@@ -986,7 +1044,27 @@ impl GithubApp {
         Ok(())
     }
 
-    async fn installation_gone(&self, id: u64, why: &str) -> Result<()> {
+    /// The remotes GitHub no longer lets g1t reach: a mirror standing by
+    /// becomes an ordinary repository with what it has (it can no longer
+    /// follow), a follower stops; a takeover keeps going and is told why.
+    async fn links_gone(&self, column: &str, value: &str, why: &str, mirrors: Option<&crate::remotes::Mirrors>) -> Result<()> {
+        let Some(mirrors) = mirrors else { return Ok(()) };
+        let column = if column == "connection_id" { "connection_id" } else { "external_id" };
+        let rows = self
+            .db
+            .prepare(format!("SELECT id FROM remotes WHERE provider = 'github' AND {column} = ?"))
+            .bind(&[value.into()])?
+            .all()
+            .await?
+            .results::<Value>()?;
+        for id in rows.iter().filter_map(|row| row["id"].as_str()) {
+            mirrors.link_gone(id, why).await?;
+        }
+        Ok(())
+    }
+
+    async fn installation_gone(&self, id: u64, why: &str, mirrors: Option<&crate::remotes::Mirrors>) -> Result<()> {
+        self.links_gone("connection_id", &id.to_string(), "lost its GitHub App installation", mirrors).await?;
         self.db.prepare("DELETE FROM github_installations WHERE id = ?").bind(&[number(id)])?.run().await?;
         self.db.prepare("DELETE FROM github_tokens WHERE installation_id = ?").bind(&[number(id)])?.run().await?;
         self.db
@@ -1005,22 +1083,6 @@ impl GithubApp {
             .await?;
         Ok(())
     }
-
-    /// A push on g1t: a repository GitHub follows is pushed out.
-    pub async fn on_event(&self, event: &Event) -> Result<()> {
-        if event.kind != "git.push" {
-            return Ok(());
-        }
-        let Some(repo_id) = event.repo_id.as_deref() else {
-            return Ok(());
-        };
-        if let Some(row) = self.link(repo_id).await?.filter(|row| row.mode == "push")
-            && let Err(reason) = self.sync(&row).await?
-        {
-            worker::console_log!("github push mirror of {} failed: {reason}", row.repo);
-        }
-        Ok(())
-    }
 }
 
 /// Answers the GitHub methods; `None` for any other.
@@ -1036,7 +1098,10 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
     match method {
         "github_status" => reply(&app.status(args(body)?).await?),
         "github_add_installation" => reply(&app.add_installation(args(body)?).await?),
-        "github_remove_installation" => reply(&app.remove_installation(args(body)?).await?),
+        "github_remove_installation" => {
+            let mirrors = crate::remotes::Mirrors::new(env).ok();
+            reply(&app.remove_installation(args(body)?, mirrors.as_ref()).await?)
+        }
         "github_repositories" => reply(&app.repositories(args(body)?).await?),
         "github_import" => {
             let (outcome, job) = app.import(args(body)?).await?;
@@ -1052,8 +1117,8 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
             reply(&outcome)
         }
         "github_link" => reply(&app.link_for(args(body)?).await?),
-        "github_unlink_repo" => reply(&app.unlink_repo(args(body)?).await?),
-        "github_sync" => reply(&app.sync_now(args(body)?).await?),
+        "github_unlink_repo" => reply(&app.unlink_repo(args(body)?, env).await?),
+        "github_sync" => reply(&app.sync_now(args(body)?, env).await?),
         "github_receive" => {
             let received: GithubReceiveArgs = args(body)?;
             let (answer, work) = app.receive(&received).await?;
@@ -1061,7 +1126,8 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
                 let env = env.clone();
                 ctx.wait_until(async move {
                     let Ok(app) = GithubApp::new(&env) else { return };
-                    if let Err(error) = app.process(&event, &payload).await {
+                    let mirrors = crate::remotes::Mirrors::new(&env).ok();
+                    if let Err(error) = app.process(&event, &payload, mirrors.as_ref()).await {
                         worker::console_error!("github: acting on a {event} delivery failed: {error}");
                     }
                 });
@@ -1070,14 +1136,6 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
         }
         _ => Response::error("Unknown method", 404),
     }
-}
-
-/// For the queue: pushes on g1t that GitHub follows.
-pub async fn on_event(env: &Env, event: &Event) -> Result<()> {
-    if event.kind != "git.push" || !AppConfig::from_env(env).configured() {
-        return Ok(());
-    }
-    GithubApp::new(env)?.on_event(event).await
 }
 
 #[cfg(test)]

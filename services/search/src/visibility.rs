@@ -200,6 +200,7 @@ mod tests {
             topics: Vec::new(),
             website: None,
             archived_at: None,
+            mirror: None,
         }
     }
 
