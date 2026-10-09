@@ -176,7 +176,7 @@ function ReviewRow({ row }: { row: NeedRow }) {
       <GitPullRequest size={16} className="mt-0.5 shrink-0 text-warn" />
       <span className="min-w-0 grow">
         <span className="block truncate text-sm font-medium text-fg">{row.title}</span>
-        <span className="block truncate text-xs text-muted">
+        <span className="line-clamp-2 text-xs text-muted">
           {row.repo ? `${row.repo.name}${row.ref ? ` ${row.ref}` : ""} · ` : ""}
           {row.ask}
         </span>
