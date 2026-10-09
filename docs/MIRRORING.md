@@ -87,7 +87,7 @@ difference between the two is a bug.
   - `mirror_apply`, which moves named refs with a compare-and-swap;
   - `read_only_refusal` at every write path: the git front door, the
     commit API, merges, catch-up, releases and pull-request copies.
-- **integrations** (`src/remotes.rs`, migration 0006 `remotes`,
+- **integrations** (`src/remotes.rs`, migration 0007 `remotes`,
   `remote_refs`, `remote_hosts`; cron every minute; `EVENTS` binding):
   - the links;
   - the provider adapters: `github` through the App, `g1t` and `git` with

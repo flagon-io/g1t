@@ -7,7 +7,7 @@ import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
-import { spendBanner } from "./lib/costs";
+import { pauseBanner, spendBanner } from "./lib/costs";
 import { admin, identity, statusAdmin } from "./lib/services.server";
 import { settle } from "./lib/settle";
 import { requireStaff, zoneContext } from "./lib/staff";
@@ -27,11 +27,12 @@ export const meta: Route.MetaFunction = () => [
 export async function loader({ context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
   // The sidebar's counts: a service that does not answer shows none.
-  const [waitlist, incidents, alerts, caps] = await Promise.all([
+  const [waitlist, incidents, alerts, caps, guard] = await Promise.all([
     settle(identity.waitlistPending()),
     settle(statusAdmin.openCount()),
     settle(admin.costAlerts()),
     settle(admin.spendCaps()),
+    settle(admin.platformGuard()),
   ]);
   const counts: NavCounts = { waitlist: waitlist.ok ? waitlist.value : 0, incidents: incidents.ok ? incidents.value : 0 };
   // Every page says times in this zone (components/ui.tsx `When`).
@@ -44,7 +45,10 @@ export async function loader({ context }: Route.LoaderArgs) {
   // g1t's own spend (billing's budget): the daily breaker open, or a comped
   // account's monthly budget used up. Red until it clears or staff act.
   const spend = caps.ok ? spendBanner(caps.value) : null;
-  return { email, counts, zone, zoneChosen: chosen, margin, spend };
+  // A platform pause (billing's platform.rs): red on every page while any
+  // level is paused, by staff or by the usage watcher.
+  const paused = guard.ok ? pauseBanner(guard.value) : null;
+  return { email, counts, zone, zoneChosen: chosen, margin, spend, paused };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -76,6 +80,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="font-medium">Spend cap:</span> {root.spend}{" "}
               <a href="/costs#spend" className="underline underline-offset-2">
                 g1t's own spend
+              </a>
+            </div>
+          )}
+          {root?.paused && (
+            <div role="alert" className="border-b border-danger/40 bg-danger/12 px-4 py-2 text-sm text-danger">
+              <span className="font-medium">Platform pause:</span> {root.paused}{" "}
+              <a href="/costs#platform" className="underline underline-offset-2">
+                Platform pause
               </a>
             </div>
           )}

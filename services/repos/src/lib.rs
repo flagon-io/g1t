@@ -24,6 +24,7 @@ mod languages;
 mod last_commits;
 mod license;
 mod lifecycle;
+mod limits;
 mod listing;
 mod meters;
 mod mirror;
@@ -61,7 +62,7 @@ use std::rc::Rc;
 
 use serde::Serialize;
 use worker::{
-    Context, Env, Fetcher, MessageBatch, Method, Request, Response, Result, ScheduleContext, ScheduledEvent,
+    Context, Env, Fetcher, MessageBatch, MessageExt, Method, Request, Response, Result, ScheduleContext, ScheduledEvent,
     event,
 };
 
@@ -77,6 +78,10 @@ const MAX_ANCESTRY: u32 = 1000;
 const MAX_TAGS_READ: usize = 100;
 /// Branch heads measured in one `branch_drift` call.
 const MAX_DRIFT_HEADS: usize = 100;
+/// How long a `last_commits` walk asked without a budget runs before it
+/// stops and keeps its progress for the next call. The site asks from a
+/// waitUntil, which may run 30 s past its response.
+const LAST_COMMITS_WALK_MS: u64 = 20_000;
 
 /// One path segment, percent-encoded for a cache key.
 fn urlencoding_segment(segment: &str) -> String {
@@ -908,9 +913,12 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
     }
 
-    /// Which commit last changed each entry of a directory. Kept in this
-    /// colo's cache by repository, head commit and path: a commit's history
-    /// never changes, so an answer is good for as long as it is kept.
+    /// Which commit last changed each entry of a directory. A finished
+    /// answer is kept in this colo's cache by repository, head commit and
+    /// path: a commit's history never changes, so it is good for as long as
+    /// it is kept. Every walk also keeps its progress by ref and path
+    /// (last_commits.rs), so the next call goes on from it: from where it
+    /// stopped, or for a new head, only back to the old one.
     async fn last_commits(&self, a: g1t_contracts::repos::LastCommitsArgs) -> Result<Outcome<g1t_contracts::repos::LastCommits>> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
@@ -920,8 +928,9 @@ impl<S: GitStore> Repos<S> {
         let Some(head) = git.log(&git_ref, 1).await?.into_iter().next() else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such branch, tag or commit."));
         };
+        // v2: v1 kept walks cut short at 300 commits as if finished.
         let key = format!(
-            "https://last-commits.g1t.internal/{}/{}/{}",
+            "https://last-commits.g1t.internal/v2/{}/{}/{}",
             repo.id,
             head.hash,
             a.tree_path.split('/').map(urlencoding_segment).collect::<Vec<_>>().join("/")
@@ -932,14 +941,21 @@ impl<S: GitStore> Repos<S> {
                 return Ok(Outcome::Ok(found));
             }
         }
-        // Asked with a budget: past it, what was found so far, not kept.
+        let memo = last_commits::Memo::new(&repo.id, &git_ref, &a.tree_path);
+        let shared = self.shared.as_deref();
+        let progress = memo.get(shared).await;
+        // Asked with a budget, the walk stops past it; without one, past
+        // LAST_COMMITS_WALK_MS, well before the caller's waitUntil ends.
         let started = worker::Date::now().as_millis();
-        let budget = a.budget_ms;
-        let out_of_time = move || budget.is_some_and(|budget| worker::Date::now().as_millis().saturating_sub(started) > budget);
-        let (entries, complete) = last_commits::last_commits(&git, &head.hash, &a.tree_path, &out_of_time).await?;
-        let stopped = out_of_time();
-        let found = g1t_contracts::repos::LastCommits { entries, complete };
-        if stopped && !found.complete {
+        let budget = a.budget_ms.unwrap_or(LAST_COMMITS_WALK_MS);
+        let out_of_time = move || worker::Date::now().as_millis().saturating_sub(started) > budget;
+        let walk = last_commits::last_commits(&git, &head.hash, &a.tree_path, progress, &out_of_time, last_commits::MAX_READS).await?;
+        if walk.reads > 0 {
+            memo.keep(shared, &walk.progress).await;
+        }
+        let settled = walk.progress.settled();
+        let found = g1t_contracts::repos::LastCommits { complete: walk.progress.complete(), entries: walk.progress.found };
+        if !settled {
             return Ok(Outcome::Ok(found));
         }
         if let Ok(mut response) = worker::Response::from_json(&found) {
@@ -1217,7 +1233,7 @@ impl<S: GitStore> Repos<S> {
     }
 
     async fn delete_branch(&self, a: DeleteBranchArgs) -> Result<Outcome<bool>> {
-        if !a.branch.starts_with(G1T_BRANCH_PREFIX) {
+        if !deletable_branch(&a.branch, a.head.as_deref()) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Only branches g1t made for itself can be deleted this way.",
@@ -1226,6 +1242,9 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
             return Ok(not_found());
         };
+        if a.branch == repo.default_branch {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "The default branch is never deleted."));
+        }
         let repo = match self.unpaused(repo).await? {
             Ok(repo) => repo,
             Err((code, message)) => return Ok(Outcome::fail(code, message)),
@@ -1241,6 +1260,10 @@ impl<S: GitStore> Repos<S> {
         else {
             return Ok(Outcome::Ok(false));
         };
+        // Moved since the caller looked: someone else's commits are on it.
+        if a.head.as_deref().is_some_and(|head| head != old) {
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("{} moved, so it was left alone.", a.branch)));
+        }
         let access = git.access(Scope::Write).await?;
         let deleted = land::delete_ref(&access, &a.branch, &old).await?;
         self.refs_moved(&repo.id).await;
@@ -1922,6 +1945,16 @@ impl<S: GitStore> Repos<S> {
         if kept_key.is_some() {
             timing.note("refs", "miss");
         }
+        // An anonymous fetch the store is about to answer: an operation for
+        // the repository's workspace, so limited per repository (limits.rs).
+        if limits::counts_as_anonymous_fetch(call, viewer.is_none())
+            && g1t_kit::limits::check(env, limits::ANONYMOUS_FETCH, repo.id.clone()).await.limited()
+        {
+            let response = limits::too_many_anonymous_fetches(&format!("{}/{}", repo.namespace, repo.name))?;
+            after.ended(429, Some("Too many anonymous fetches.".to_owned()));
+            after.spawn(env, ctx);
+            return Ok(response);
+        }
         // The store's credential: one made a moment ago, here or in another
         // isolate (see store.rs), or a new one.
         let access = match kept_access {
@@ -2049,7 +2082,9 @@ impl<S: GitStore> Repos<S> {
             // A fresh clone the bucket did not have: counted, and its pack
             // kept as it streams to git, when it is a whole one.
             meters::record(pack_cache::MISS, &key, forwarded.sent, 0);
-            if status == 200 {
+            // Past the repository's limit on writes to the bucket, the pack
+            // goes to git without being kept (limits.rs).
+            if status == 200 && !g1t_kit::limits::check(env, limits::PACK_FILL, repo.id.clone()).await.limited() {
                 let store_key = key.clone();
                 let measured = Box::new(move |bytes: u64| meters::record_bytes(pack_cache::MISS, &store_key, 0, bytes));
                 let (teed, filling) = pack_cache::tee(response, packs.clone(), pack_key, measured)?;
@@ -2182,7 +2217,16 @@ impl<S: GitStore> Repos<S> {
         // not fit a repo per pull request, so the front end reports pushes
         // itself: one event for each branch that moved.
         let stored = self.store.open(&store_key(&repo)).await?;
-        for pushed in &pushed {
+        let announced = announced_refs(&pushed, &repo.default_branch);
+        if announced.len() < pushed.len() {
+            worker::console_log!(
+                "push to {}: {} of {} refs announced",
+                repo.name,
+                announced.len(),
+                pushed.len()
+            );
+        }
+        for pushed in announced {
             // The store can refuse one ref and accept another, so each
             // branch is checked against where it actually is. A tag the
             // store cannot read back is taken as pushed.
@@ -2212,6 +2256,30 @@ impl<S: GitStore> Repos<S> {
         }
         Ok(())
     }
+}
+
+/// The most tags one push announces: a push of more (`git push --tags`
+/// into a new repository, say) announces none of them, so it starts no
+/// workflows, mirror syncs or package reads, one per tag.
+const MAX_PUSH_TAG_EVENTS: usize = 3;
+/// The most branches one push announces. A push of more announces only
+/// the default branch, if it moved, which the rest of g1t reads from.
+const MAX_PUSH_BRANCH_EVENTS: usize = 1000;
+
+/// The refs of a push that are announced with a `git.push` event each.
+/// Every ref is stored whatever this says; only the events are capped.
+fn announced_refs<'a>(pushed: &'a [git_http::Pushed], default_branch: &str) -> Vec<&'a git_http::Pushed> {
+    let (branches, tags): (Vec<&git_http::Pushed>, Vec<&git_http::Pushed>) =
+        pushed.iter().partition(|pushed| pushed.branch().is_some());
+    let mut announced = if branches.len() > MAX_PUSH_BRANCH_EVENTS {
+        branches.into_iter().filter(|pushed| pushed.branch() == Some(default_branch)).collect()
+    } else {
+        branches
+    };
+    if tags.len() <= MAX_PUSH_TAG_EVENTS {
+        announced.extend(tags);
+    }
+    announced
 }
 
 /// A push the store accepted, to be recorded once git has its answer.
@@ -2668,75 +2736,97 @@ async fn queue(batch: MessageBatch<Event>, env: Env, ctx: Context) -> Result<()>
     handled
 }
 
+/// Each event is acknowledged or retried on its own, so one that fails is
+/// tried again without the others before and after it running twice.
 async fn handle_events(batch: &MessageBatch<Event>, env: &Env, registry: &Registry, identity: &Fetcher) -> Result<()> {
     for message in batch.messages()? {
-        let event = message.body();
-        // A pull request merged, closed or reopened: its working copy is
-        // kept or let go (forks.rs).
-        if let Some(change) = forks::pull_change(&event.kind) {
-            let Some(pull_id) = forks::pull_id_of(&event.data) else {
-                worker::console_error!("{} {} names no pull request", event.kind, event.id);
-                continue;
-            };
-            let repos = service(env)?;
-            match change {
-                forks::PullChange::Settled => repos.pull_settled(&pull_id).await?,
-                forks::PullChange::Reopened => repos.pull_reopened(&pull_id).await?,
+        match handle_event(message.body(), env, registry, identity).await {
+            Ok(()) => message.ack(),
+            Err(error) => {
+                worker::console_error!("repos: event {} failed: {error}", message.body().id);
+                message.retry();
             }
-            continue;
         }
-        // A workspace deleted, restored or purged: its repositories go with
-        // it, come back with it, or are purged with it (lifecycle.rs).
-        if event.kind == "workspace.deleting" {
-            match serde_json::from_value::<WorkspaceDeleting>(event.data.clone()) {
-                Ok(deleting) => service(env)?.delete_with_workspace(&deleting, &protected_workspaces(env)).await?,
-                Err(_) => worker::console_error!("workspace.deleting {} could not be read", event.id),
-            }
-            continue;
-        }
-        if event.kind == "workspace.restored" {
-            match serde_json::from_value::<WorkspaceRestored>(event.data.clone()) {
-                Ok(restored) => service(env)?.restore_with_workspace(&restored).await?,
-                Err(_) => worker::console_error!("workspace.restored {} could not be read", event.id),
-            }
-            continue;
-        }
-        if event.kind == "workspace.deleted" {
-            match serde_json::from_value::<WorkspaceDeleted>(event.data.clone()) {
-                Ok(deleted) => service(env)?.purge_workspace(&deleted, &protected_workspaces(env)).await?,
-                Err(_) => worker::console_error!("workspace.deleted {} could not be read", event.id),
-            }
-            continue;
-        }
-        if event.kind != "workspace.renamed" {
-            continue;
-        }
-        let Ok(renamed) = serde_json::from_value::<WorkspaceRenamed>(event.data.clone()) else {
-            worker::console_error!("workspace.renamed {} could not be read", event.id);
-            continue;
+    }
+    Ok(())
+}
+
+async fn handle_event(event: &Event, env: &Env, registry: &Registry, identity: &Fetcher) -> Result<()> {
+    // A pull request merged, closed or reopened: its working copy is
+    // kept or let go (forks.rs).
+    if let Some(change) = forks::pull_change(&event.kind) {
+        let Some(pull_id) = forks::pull_id_of(&event.data) else {
+            worker::console_error!("{} {} names no pull request", event.kind, event.id);
+            return Ok(());
         };
-        let names: HashMap<String, String> = g1t_kit::call(
-            identity,
-            "usernames",
-            &g1t_contracts::identity::UsernamesArgs {
-                ids: vec![renamed.workspace_id.clone()],
-            },
-        )
-        .await?;
-        let current = names
-            .get(&renamed.workspace_id)
-            .cloned()
-            .unwrap_or_else(|| renamed.to.clone());
-        let left = registry
-            .rename_namespace(&renamed.stale_slugs(&current), &current)
-            .await?;
-        if left > 0 {
-            worker::console_error!(
-                "{left} repositories stayed under {} or {}: {current} already has repositories of the same names",
-                renamed.from,
-                renamed.to
-            );
+        let repos = service(env)?;
+        match change {
+            forks::PullChange::Settled => repos.pull_settled(&pull_id).await?,
+            forks::PullChange::Reopened => repos.pull_reopened(&pull_id).await?,
         }
+        return Ok(());
+    }
+    // A workspace deleted, restored or purged: its repositories go with
+    // it, come back with it, or are purged with it (lifecycle.rs).
+    if event.kind == "workspace.deleting" {
+        match serde_json::from_value::<WorkspaceDeleting>(event.data.clone()) {
+            Ok(deleting) => service(env)?.delete_with_workspace(&deleting, &protected_workspaces(env)).await?,
+            Err(_) => worker::console_error!("workspace.deleting {} could not be read", event.id),
+        }
+        return Ok(());
+    }
+    if event.kind == "workspace.restored" {
+        match serde_json::from_value::<WorkspaceRestored>(event.data.clone()) {
+            Ok(restored) => service(env)?.restore_with_workspace(&restored).await?,
+            Err(_) => worker::console_error!("workspace.restored {} could not be read", event.id),
+        }
+        return Ok(());
+    }
+    if event.kind == "workspace.deleted" {
+        match serde_json::from_value::<WorkspaceDeleted>(event.data.clone()) {
+            Ok(deleted) => service(env)?.purge_workspace(&deleted, &protected_workspaces(env)).await?,
+            Err(_) => worker::console_error!("workspace.deleted {} could not be read", event.id),
+        }
+        return Ok(());
+    }
+    // An account deleted or restored: kept contributors that name it
+    // (or ghost, for a restore) are worked out again, so it shows as
+    // ghost for its 30 days, and as itself again if restored.
+    if let Some(needle) = stats::shown_differently(&event.kind, &event.data) {
+        let db = env.d1("DB")?;
+        if let Err(error) = stats::rework_naming(&db, &needle).await {
+            worker::console_error!("{} {}: contributors not marked to be counted again: {error}", event.kind, event.id);
+        }
+        return Ok(());
+    }
+    if event.kind != "workspace.renamed" {
+        return Ok(());
+    }
+    let Ok(renamed) = serde_json::from_value::<WorkspaceRenamed>(event.data.clone()) else {
+        worker::console_error!("workspace.renamed {} could not be read", event.id);
+        return Ok(());
+    };
+    let names: HashMap<String, String> = g1t_kit::call(
+        identity,
+        "usernames",
+        &g1t_contracts::identity::UsernamesArgs {
+            ids: vec![renamed.workspace_id.clone()],
+        },
+    )
+    .await?;
+    let current = names
+        .get(&renamed.workspace_id)
+        .cloned()
+        .unwrap_or_else(|| renamed.to.clone());
+    let left = registry
+        .rename_namespace(&renamed.stale_slugs(&current), &current)
+        .await?;
+    if left > 0 {
+        worker::console_error!(
+            "{left} repositories stayed under {} or {}: {current} already has repositories of the same names",
+            renamed.from,
+            renamed.to
+        );
     }
     Ok(())
 }
@@ -2794,6 +2884,60 @@ fn push_to_create(owner: &User, path: &RepoPath) -> CreateArgs {
         import_url: None,
         import_token: None,
         mirror: None,
+    }
+}
+
+/// Whether `delete_branch` may remove `branch`: one of g1t's own
+/// (`g1t-…`), or one whose tip the caller names, such as a dependency
+/// update's branch after its pull request closed.
+fn deletable_branch(branch: &str, head: Option<&str>) -> bool {
+    !branch.is_empty() && (branch.starts_with(G1T_BRANCH_PREFIX) || head.is_some_and(|head| !head.is_empty()))
+}
+
+#[cfg(test)]
+mod delete_branch_tests {
+    use super::deletable_branch;
+
+    #[test]
+    fn only_g1t_branches_or_a_named_tip_are_deleted() {
+        assert!(deletable_branch("g1t-queue-12", None));
+        assert!(!deletable_branch("g1t/security/sharp-0.35.5", None));
+        assert!(deletable_branch("g1t/security/sharp-0.35.5", Some("abc123")));
+        assert!(!deletable_branch("feature", Some("")));
+        assert!(!deletable_branch("", Some("abc123")));
+    }
+}
+
+#[cfg(test)]
+mod announced_refs_tests {
+    use super::*;
+
+    fn pushed(git_ref: String) -> git_http::Pushed {
+        git_http::Pushed { git_ref, before: None, after: "abc".into() }
+    }
+
+    fn refs(announced: Vec<&git_http::Pushed>) -> Vec<&str> {
+        announced.into_iter().map(|pushed| pushed.git_ref.as_str()).collect()
+    }
+
+    #[test]
+    fn a_few_tags_are_announced_and_many_are_not() {
+        let few: Vec<_> = (1..=3).map(|n| pushed(format!("refs/tags/v{n}"))).chain([pushed("refs/heads/main".into())]).collect();
+        assert_eq!(refs(announced_refs(&few, "main")), ["refs/heads/main", "refs/tags/v1", "refs/tags/v2", "refs/tags/v3"]);
+        let many: Vec<_> = (1..=10_000).map(|n| pushed(format!("refs/tags/v{n}"))).chain([pushed("refs/heads/main".into())]).collect();
+        assert_eq!(refs(announced_refs(&many, "main")), ["refs/heads/main"]);
+    }
+
+    #[test]
+    fn past_the_branch_cap_only_the_default_branch_is_announced() {
+        let at_cap: Vec<_> = (0..MAX_PUSH_BRANCH_EVENTS).map(|n| pushed(format!("refs/heads/b{n}"))).collect();
+        assert_eq!(announced_refs(&at_cap, "main").len(), MAX_PUSH_BRANCH_EVENTS);
+        let over: Vec<_> = (0..=MAX_PUSH_BRANCH_EVENTS)
+            .map(|n| pushed(format!("refs/heads/b{n}")))
+            .chain([pushed("refs/heads/main".into())])
+            .collect();
+        assert_eq!(refs(announced_refs(&over, "main")), ["refs/heads/main"]);
+        assert!(announced_refs(&over, "trunk").is_empty());
     }
 }
 

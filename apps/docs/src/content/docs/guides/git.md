@@ -142,8 +142,9 @@ Pick the two branches at the top; **Open a pull request** starts one from
 the compared branch.
 
 On **Files**, each file and folder shows the commit that last changed it and
-when, from up to 300 commits of the branch's history; one changed before
-that shows none. The branch menu at the top switches branch and keeps the
+when, from the branch's whole history. On a long history the first view
+can show some of them blank while g1t finishes reading it; a later view
+fills them in, and after a push only the new commits are read. The branch menu at the top switches branch and keeps the
 folder or file you are on.
 
 ## Pull request forks
@@ -183,6 +184,21 @@ git push origin main
 
 Each push sends only what the one before did not.
 
+### Pushes of many branches or tags
+
+Every branch and tag in a push is stored. Each one is also announced as a
+`git.push` event, which starts workflows, mirrors the repository and
+calls webhooks, except in a push of many:
+
+| A push of | What is announced |
+| --- | --- |
+| Up to 3 tags | Each tag |
+| More than 3 tags (`git push --tags`, say) | None of the tags |
+| Up to 1,000 branches | Each branch |
+| More than 1,000 branches | Only the default branch, if it moved |
+
+To have tags start workflows, push them 3 or fewer at a time.
+
 ### When the store is busy
 
 If Cloudflare Artifacts is rate limiting g1t or not answering, g1t tries
@@ -202,6 +218,16 @@ a month included. Past that, a workspace on the g1t plan pays $0.18 per
 git requests past 60 in an hour are answered `429` with when to try again,
 until the month turns. Counting starts on 2026-10-14. See
 [git operations](/guides/usage-and-billing/#git-operations).
+
+### Request limits
+
+Git requests without credentials are limited to 120 a minute from each IP
+address, about 40 clones; with credentials, 1,200 a minute for each set of
+credentials. Anonymous clones of one repository that g1t has not cached
+are limited to 120 a minute, whoever makes them. Past a limit, git is
+answered `429` with a message saying to wait a minute. Clone with
+[credentials](#authentication) to count against your own limit. See
+[rate limits](/reference/rate-limits/).
 
 What these limits mean in practice, and what to do instead, is on
 [What g1t can't do yet](/about/limitations/#git).

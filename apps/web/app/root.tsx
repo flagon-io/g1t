@@ -53,6 +53,7 @@ import { SpikeBanner } from "./components/spike-banner";
 import { PolicyNotice } from "./components/policy-notice";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
+import { PageMain } from "./components/landmark";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./components/command-palette";
@@ -578,10 +579,10 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }, [reload, href]);
   if (reload) {
     return (
-      <main className="mx-auto max-w-xl px-4 py-32 text-center text-sm text-muted" aria-busy="true">
+      <PageMain className="mx-auto max-w-xl px-4 py-32 text-center text-sm text-muted" aria-busy="true">
         <title>Loading · g1t</title>
         Loading the latest version of g1t…
-      </main>
+      </PageMain>
     );
   }
 
@@ -608,7 +609,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-32 text-center">
+    <PageMain className="mx-auto max-w-xl px-4 py-32 text-center">
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mt-3 text-muted">{details}</p>
       <div className="mt-8">
@@ -621,6 +622,6 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
           <code>{stack}</code>
         </pre>
       )}
-    </main>
+    </PageMain>
   );
 }

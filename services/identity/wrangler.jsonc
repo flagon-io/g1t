@@ -70,5 +70,6 @@
 		"INVITE_STAFF_WORKSPACES": "flagon-io",
 		"WAITLIST_NOTIFY_EMAIL": "hey@flagon.io"
 	},
-	"observability": { "enabled": true }
+	// Every log kept: sign-ins and tokens, where every failure matters.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

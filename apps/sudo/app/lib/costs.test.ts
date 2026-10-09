@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { CostDay, SpendCaps } from "@g1t/contracts";
+import type { CostDay, PlatformGuard, SpendCaps } from "@g1t/contracts";
 
 import {
+  count,
   daySeries,
   daysBetween,
   marginOnPrice,
@@ -12,12 +13,15 @@ import {
   parseBucket,
   parseCostSettings,
   parseMapping,
+  parsePauseLevel,
+  pauseBanner,
   parseRange,
   percentLabel,
   proposalOutcome,
   spendBanner,
   spendRows,
   subscriptionsOver,
+  thresholdShare,
   unitDollars,
   versionCells,
   whoPaid,
@@ -199,4 +203,37 @@ test("a rise replaced before its date says so, rather than missing its date", ()
   assert.equal(proposalOutcome({ status: "applied", decidedBy: "guardrail", effectiveAt: "2026-10-22T04:18:12.571Z" }), "applied by guardrail");
   assert.equal(proposalOutcome({ status: "superseded", decidedBy: null, effectiveAt: null }), "replaced by a later measurement");
   assert.equal(proposalOutcome({ status: "open", decidedBy: null, effectiveAt: null }), null);
+});
+
+test("the pause banner names every paused level, and who paused it when it was not a person", () => {
+  const level = (name: "compute" | "schedules" | "indexing" | "renders", paused: boolean, auto = false) => ({
+    level: name,
+    paused,
+    note: null,
+    set_by: null,
+    set_at: null,
+    auto,
+  });
+  const guard = (levels: ReturnType<typeof level>[]): PlatformGuard => ({
+    levels,
+    hour: null,
+    last_hour: [],
+    month: "2026-10",
+    month_to_date: [],
+    breaches: [],
+    can_read: true,
+    auto_pause: ["schedules", "indexing"],
+  });
+  assert.equal(pauseBanner(guard([level("compute", false), level("renders", false)])), null);
+  assert.equal(pauseBanner(guard([level("schedules", true, true)])), "Paused across g1t: schedules (by the usage watcher).");
+  assert.equal(
+    pauseBanner(guard([level("compute", true), level("schedules", true), level("indexing", true, true)])),
+    "Paused across g1t: compute, schedules and indexing (by the usage watcher).",
+  );
+  assert.equal(parsePauseLevel("renders"), "renders");
+  assert.equal(parsePauseLevel("everything"), null);
+  assert.equal(count(240_000), "240k");
+  assert.equal(count(2_000_000_000), "2.0B");
+  assert.equal(thresholdShare(240_000, 200_000), 120);
+  assert.equal(thresholdShare(5, 0), null);
 });

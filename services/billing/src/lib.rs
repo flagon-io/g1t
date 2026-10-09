@@ -26,6 +26,7 @@ mod closing;
 mod compute;
 mod costs;
 mod margin;
+mod platform;
 mod pricing;
 mod report;
 mod details;
@@ -1154,13 +1155,10 @@ impl Billing {
     }
 }
 
-#[event(scheduled)]
-async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    let Ok(billing) = Billing::from_env(&env) else {
-        return;
-    };
-    let keeper = keeper::Keeper::from_env(&env);
-    if let Err(error) = billing.settle_runs(&keeper).await {
+/// The fifteen-minute steps, each on its own: one failing never skips the
+/// rest.
+async fn tick(billing: &Billing, env: &Env, keeper: &keeper::Keeper) {
+    if let Err(error) = billing.settle_runs(keeper).await {
         worker::console_error!("settling runs failed: {error}");
     }
     if let Err(error) = billing.settle_own_runs().await {
@@ -1171,9 +1169,22 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         Ok(done) => worker::console_log!("stripe replay: {done}"),
         Err(error) => worker::console_error!("replaying Stripe events failed: {error}"),
     }
-    if let Err(error) = billing.autopay().await {
-        worker::console_error!("paying at the limit failed: {error}");
-    }
+    // This month's users, read once for autopay and the warnings.
+    let users = if billing.stripe.is_some() {
+        match billing.month_users().await {
+            Ok(users) => Some(users),
+            Err(error) => {
+                worker::console_error!("reading this month's users failed: {error}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    if let Some(users) = &users
+        && let Err(error) = billing.autopay(users).await {
+            worker::console_error!("paying at the limit failed: {error}");
+        }
     // AI credit below a workspace's auto-reload threshold, reloaded (ai.rs).
     match billing.reload_ai_credit().await {
         Ok(0) => {}
@@ -1191,17 +1202,47 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.invoice_enterprises().await {
         worker::console_error!("invoicing enterprises failed: {error}");
     }
+    if let Some(users) = &users
+        && let Ok(identity) = env.service("IDENTITY")
+        && let Err(error) = billing.warn_limits(&identity, users).await {
+            worker::console_error!("warning owners failed: {error}");
+        }
+}
+
+/// Every fifteen minutes: runs settled, Stripe replayed, cards charged at
+/// the limit, months closed, owners warned. Once a day, at
+/// [`keeper::DAILY`], in an invocation of its own: the slower checks
+/// against Stripe and Cloudflare, and measuring.
+///
+/// Each step logs its own failure and the next still runs. The spend
+/// breaker and budget alerts go first: a step that runs out of CPU ends
+/// the invocation, and must never take the alerts with it.
+#[event(scheduled)]
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let Ok(billing) = Billing::from_env(&env) else {
+        return;
+    };
     // Comped budgets' alerts, and a tripped breaker staff were not told of.
     if let Err(error) = billing.watch_spend().await {
         worker::console_error!("watching g1t's own spend failed: {error}");
     }
-    if let Ok(identity) = env.service("IDENTITY")
-        && let Err(error) = billing.warn_limits(&identity).await {
-            worker::console_error!("warning owners failed: {error}");
+    let keeper = keeper::Keeper::from_env(&env);
+    // Once an hour, at the quarter past: what Cloudflare counted for the
+    // whole platform in the hour before, against its thresholds
+    // (platform.rs).
+    if event.cron() == keeper::QUARTER_HOURLY && platform::hourly_due(now_ms()) {
+        match billing.watch_platform(&keeper).await {
+            Ok((read, breached)) => worker::console_log!("platform watch: {read} metrics, {breached} breaches"),
+            Err(error) => worker::console_error!("watching platform usage failed: {error}"),
         }
+    }
+    let daily = event.cron() == keeper::DAILY;
+    if !daily {
+        tick(&billing, &env, &keeper).await;
+    }
     // Once a day: Stripe's endpoint kept listening to billing's events and
     // enabled, and saved cards and plans not read in a while read again.
-    if event.cron() == keeper::DAILY {
+    if daily {
         match billing.keep_endpoint("billing").await {
             Ok(done) => worker::console_log!("stripe endpoint: {done}"),
             Err(error) => worker::console_error!("keeping Stripe's endpoint failed: {error}"),
@@ -1213,13 +1254,13 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     // Once a day, and at once if the costs were never checked: check every
     // cost against what Cloudflare billed.
-    if (event.cron() == keeper::DAILY || billing.never_checked().await.unwrap_or(false))
+    if (daily || billing.never_checked().await.unwrap_or(false))
         && let Err(error) = billing.reconcile(&keeper).await {
             worker::console_error!("checking costs against Cloudflare failed: {error}");
         }
     // Once a day: credit from g1t past its expiry stops counting
     // (grants.rs), before the day is reconciled.
-    if event.cron() == keeper::DAILY {
+    if daily {
         match billing.expire_credits().await {
             Ok(closed) => worker::console_log!("credits expired: {closed}"),
             Err(error) => worker::console_error!("expiring credits failed: {error}"),
@@ -1228,7 +1269,7 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     // Once a day: what Cloudflare charged, reconciled against what g1t
     // counted and charged; prices whose day has come; margin alerts
     // (margin.rs). After the keeper, so its proposals are in.
-    if event.cron() == keeper::DAILY {
+    if daily {
         match billing.costs_daily(&env, &keeper).await {
             Ok(run) => worker::console_log!("costs: {} lines, {} days, {} proposals, {} alerts", run.lines, run.days, run.proposals, run.alerts),
             Err(error) => worker::console_error!("reconciling costs failed: {error}"),
@@ -1237,7 +1278,7 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     // Once a day: what each workspace's private repositories hold, its git
     // operations, Deployments plans from before the g1t plan set to end,
     // and old reservations cleared.
-    if event.cron() == keeper::DAILY {
+    if daily {
         if let Err(error) = billing.measure_packages().await {
             worker::console_error!("measuring package storage failed: {error}");
         }
@@ -1401,6 +1442,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_cost_alerts" => reply(&billing.admin_cost_alerts(args(body)?).await?),
         "admin_spend_caps" => reply(&billing.spend_caps().await?),
         "admin_lift_breaker" => reply(&billing.admin_lift_breaker(args(body)?).await?),
+        // Platform pauses (src/platform.rs): read by every service that
+        // honours one, kept 30 seconds in each isolate.
+        "platform_pause" => reply(&billing.pause_now().await),
+        "admin_platform_guard" => reply(&billing.platform_guard(&keeper::Keeper::from_env(&env)).await?),
+        "admin_set_pause" => reply(&billing.admin_set_pause(args(body)?, &keeper::Keeper::from_env(&env)).await?),
         "admin_decide_proposal" => reply(&billing.admin_decide_proposal(args(body)?).await?),
         "admin_set_cost_settings" => reply(&billing.admin_set_cost_settings(args(body)?).await?),
         "admin_set_cost_mapping" => reply(&billing.admin_set_cost_mapping(args(body)?).await?),
@@ -1511,6 +1557,9 @@ mod tests {
         include_str!("../migrations/0046_reset_costs.sql"),
         include_str!("../migrations/0047_gateway_formats.sql"),
         include_str!("../migrations/0048_model_catalogue.sql"),
+        include_str!("../migrations/0049_superseded_proposals.sql"),
+        include_str!("../migrations/0050_ledger_usage_by_time.sql"),
+        include_str!("../migrations/0051_platform_guardrails.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

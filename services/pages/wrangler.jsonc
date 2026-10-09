@@ -24,5 +24,6 @@
 	"dispatch_namespaces": [{ "binding": "APPS", "namespace": "g1t-deployments" }],
 	// Custom domains: hostname to app, written by the deployments service.
 	"kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every visit to a deployed site is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

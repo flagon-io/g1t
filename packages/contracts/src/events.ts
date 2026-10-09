@@ -178,13 +178,17 @@ export type EventPayloads = {
    * One branch moved by a push. `ref` is the full ref, `after` the commit it
    * points to now, and `defaultBranch` whether it is the default branch.
    */
-  /** `before` is where the ref pointed before; absent for a new branch or tag. */
+  /**
+   * `before` is where the ref pointed before; absent for a new branch or
+   * tag. `causedByJob` is set when a workflow job's token pushed: the run's id.
+   */
   "git.push": {
     repoId: string;
     ref: string;
     before?: string;
     after: string;
     defaultBranch: boolean;
+    causedByJob?: string;
     /** Set when it was copied in from the remote a mirror follows, not made on g1t. */
     mirrored?: boolean;
     /** The repository's mirror state when it landed; absent for one that leads. */
@@ -494,6 +498,12 @@ export type EventQuery = {
   types?: EventType[];
   /** Return events older than this event id. */
   before?: string;
+  /** Only events by this account id. */
+  actor?: string;
+  /** Only events about these issues or pull requests (`number`, or the `issue` a comment or review is on). */
+  numbers?: number[];
+  /** Only events at or after this RFC 3339 time. */
+  since?: string;
   limit?: number;
 };
 

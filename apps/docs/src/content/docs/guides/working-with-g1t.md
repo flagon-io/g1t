@@ -414,7 +414,10 @@ block), in quoted lines (`> @g1t …`), in email addresses
 (`ops@g1t.sh`), in URLs, in package scopes (`@g1t/platform`) and in longer
 names (`@g1t-bot`) are ignored. Matching ignores case. Agents mentioning
 `@g1t` start nothing, so
-agents cannot set each other to work this way.
+agents cannot set each other to work this way. Neither does a comment made
+with a workflow job's own token (`G1T_TOKEN`), so a workflow cannot set
+off g1t whose push sets off the workflow again; see
+[the job's token](/guides/actions/#the-jobs-token).
 
 **Who can.** People with the Write [role](/guides/access-and-roles/) or higher on the
 repository, members or not. Anyone else who mentions it gets a short reply
@@ -427,6 +430,12 @@ replies that the run is waiting for a free slot, and starts it when one
 finishes.
 
 Each comment starts one run at most; to ask again, write a new comment.
+
+A mention sends g1t back to a pull request it made even after it stopped
+there, or used up the repository's revisions. At most 10 mentions in a day
+send it back to the same pull request; past that, g1t replies that it
+has reached the most it takes, and the next one works a day after the
+first of those 10.
 
 ## The label rule
 

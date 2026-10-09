@@ -432,45 +432,89 @@ export const needPathKey = pathKey;
 
 // --- Landed -----------------------------------------------------------------
 
-/** A merged pull request, as the week counts it. */
 /**
- * The commits a push to the default branch brought, from the history at its
- * `after` (newest first) back to its `before`: people's own, not merges (a
- * pull request landing) and not agents'. A push whose `before` is not in
- * what was read gives what was read.
+ * The accounts g1t itself acts as on the event log: its agent, and the
+ * policy that merges and pushes for it. An event's `actor` is an account
+ * id, so this is what tells g1t apart, whatever name a commit carries.
  */
-export function pushedCommits<C extends { hash: string; parents: string[]; author: { name: string } }>(
-  history: C[],
-  before: string | undefined,
-): C[] {
-  const end = before ? history.findIndex((commit) => commit.hash === before) : -1;
-  const brought = end === -1 ? history : history.slice(0, end);
-  return brought.filter((commit) => commit.parents.length <= 1 && !isAgent(commit.author.name));
+export const G1T_ACCOUNT_IDS: ReadonlySet<string> = new Set(["usr_g1t_agent", "g1t_policy"]);
+
+/** A `git.push` from the log, as far as placing its commits needs it. */
+export type PushRecord = {
+  time: string;
+  /** The account that pushed; null when the log does not say. */
+  actor?: string | null;
+  data: { after: string; before?: string; causedByJob?: string };
+};
+
+/**
+ * Whether a person pushed: not g1t or one of its agents (by the account
+ * that signed in to push), and not a workflow job's own token.
+ */
+export function pushedByPerson(push: Pick<PushRecord, "actor" | "data">): boolean {
+  if (push.data.causedByJob) return false;
+  return !(push.actor && G1T_ACCOUNT_IDS.has(push.actor));
 }
 
 /**
- * Each commit of `history` (newest first) a push in `pushes` (newest
- * first) brought, at that push's time. A commit pushed twice (after a
- * force push, say) counts once, at its first landing; a push whose `after`
- * is no longer in the history (rewritten) brings nothing.
+ * The commits a person's push to the default branch brought, from the
+ * history at its `after` (newest first) back to its `before`: their own,
+ * not merges (a pull request landing) and not g1t's (`byG1t`: a commit
+ * g1t wrote, told by its author address, which a person may fast-forward
+ * onto the branch). A push whose `before` is not in what was read gives
+ * what was read. Who pushed is the caller's to decide (`pushedByPerson`);
+ * a commit's author name says nothing about it.
  */
-export function placePushes<C extends { hash: string; parents: string[]; author: { name: string } }>(
+export function pushedCommits<C extends { hash: string; parents: string[] }>(
   history: C[],
-  pushes: { time: string; data: { after: string; before?: string } }[],
+  before: string | undefined,
+  byG1t: (commit: C) => boolean = () => false,
+): C[] {
+  const end = before ? history.findIndex((commit) => commit.hash === before) : -1;
+  const brought = end === -1 ? history : history.slice(0, end);
+  return brought.filter((commit) => commit.parents.length <= 1 && !byG1t(commit));
+}
+
+/**
+ * Each commit of `history` (newest first) a person's push in `pushes`
+ * (newest first) brought, at that push's time. A commit pushed twice
+ * (after a force push, say) counts once, at its first landing; a push
+ * whose `after` is no longer in the history (rewritten) brings nothing,
+ * and g1t's own pushes bring nothing here: pull requests count those.
+ */
+export function placePushes<C extends { hash: string; parents: string[] }>(
+  history: C[],
+  pushes: PushRecord[],
+  byG1t: (commit: C) => boolean = () => false,
 ): { hash: string; at: string }[] {
   const index = new Map(history.map((commit, i) => [commit.hash, i]));
-  const seen = new Map<string, string>();
+  // Each commit's first landing: the time, or null when g1t landed it.
+  const seen = new Map<string, string | null>();
   for (const push of [...pushes].reverse()) {
     const start = index.get(push.data.after);
     if (start === undefined) continue;
     const end = push.data.before ? index.get(push.data.before) : undefined;
-    for (const commit of pushedCommits(history.slice(start, end ?? history.length), undefined)) {
-      if (!seen.has(commit.hash)) seen.set(commit.hash, push.time);
+    const range = history.slice(start, end ?? history.length);
+    const at = pushedByPerson(push) ? push.time : null;
+    for (const commit of pushedCommits(range, undefined, byG1t)) {
+      if (!seen.has(commit.hash)) seen.set(commit.hash, at);
     }
   }
-  return [...seen].map(([hash, at]) => ({ hash, at }));
+  return [...seen].flatMap(([hash, at]) => (at ? [{ hash, at }] : []));
 }
 
+/**
+ * Whether a read of the default branch reaches back far enough to place
+ * every push, newest first: it holds the oldest push's `before`, or it is
+ * the whole branch. A shorter read than `asked` is the whole branch.
+ */
+export function historyCovers(history: { hash: string }[], pushes: PushRecord[], asked: number): boolean {
+  if (history.length < asked) return true;
+  const oldest = pushes.at(-1)?.data.before;
+  return oldest != null && history.some((commit) => commit.hash === oldest);
+}
+
+/** A merged pull request, as the week counts it. */
 export type Merged = {
   repo: RepoPath;
   number: number;

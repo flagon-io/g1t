@@ -566,7 +566,10 @@ of their 39 changes this week without you, and people landed 8 changes of
 their own*. An agent's change landed without you when g1t merged it, by
 auto-merge or from the [merge queue](/guides/merge-queue/), with no person
 pressing merge. People's changes are their merged pull requests and the
-commits they pushed straight to the default branch. **Review N that need you** jumps to the
+commits they pushed straight to the default branch. A push is a person's
+by the account that signed in to make it, not by the name on its commits:
+pushes by g1t or a workflow job's token, and commits g1t wrote, are not
+counted as people's. **Review N that need you** jumps to the
 list, and **New issue** opens a new issue in the project you pick.
 
 | Across the top | What it counts |
@@ -669,6 +672,13 @@ link to your profile says. The website must be an `https://` address;
 `example.com` is saved as `https://example.com`. Your email address is
 never shown.
 
+**Time zone.** Pick the time zone you are in, by city or region (such as
+`America/Denver`), and the [card over your name](#the-card-over-a-name)
+shows your local time, so people can tell whether it is a good moment to
+ask you something. If your browser's time zone differs from the one
+saved, the field offers **Use my browser's time zone**. Choose **Not
+shown** to clear it.
+
 **Who sees what.** A profile is public, but the work and workspaces on it
 are filtered for whoever is looking:
 
@@ -692,6 +702,7 @@ glance:
 | --- | --- |
 | Picture, name, username and pronouns | Always |
 | Bio and location | They filled them in |
+| Their local time, such as **3:42 PM local time** | They set a [time zone](#profiles) |
 | **Member of** | The same workspaces their profile shows you, at most three named |
 | **Committed to this repository in the past day**, **week** or **month** | You opened it inside a repository you can read, and their latest commit on its default branch is that recent |
 
@@ -729,7 +740,7 @@ your address, commit with your noreply address:
 | One of your confirmed addresses, or your noreply address | You |
 | An address added to an account but not confirmed | The name in the commit |
 | An address no account has | The name in the commit, with a plain picture, no link and no card |
-| A deleted account's noreply address | `ghost` |
+| A deleted account's noreply address, or any of its confirmed addresses during the 30 days it can be restored | `ghost` |
 | g1t's own (`g1t@users.noreply.g1t.sh`) | `g1t` |
 
 `Co-authored-by` trailers are matched the same way, and their pictures sit

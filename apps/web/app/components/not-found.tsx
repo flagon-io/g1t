@@ -5,6 +5,7 @@ import type { Membership, User } from "@g1t/contracts";
 import { withNext } from "../lib/next";
 import { useSignUpCopy } from "../lib/registration";
 import { missingKind, notFoundCopy } from "../lib/not-found";
+import { PageMain } from "./landmark";
 import { Pixel404 } from "./logo";
 import { ButtonLink, SubmitButton } from "./ui";
 
@@ -29,7 +30,7 @@ export function NotFound({ data }: { data?: unknown }) {
   const here = pathname + search;
   const signUp = useSignUpCopy();
   return (
-    <main className="mx-auto flex max-w-lg flex-col items-center px-4 py-20 text-center sm:py-28">
+    <PageMain className="mx-auto flex max-w-lg flex-col items-center px-4 py-20 text-center sm:py-28">
       <Pixel404 className="text-[3.5rem] sm:text-[4.5rem]" />
       <h1 className="mt-10 text-balance text-2xl font-semibold tracking-tight">{copy.title}</h1>
       <p className="mt-2 text-balance text-muted">{copy.body}</p>
@@ -82,6 +83,6 @@ export function NotFound({ data }: { data?: unknown }) {
           </SubmitButton>
         </Form>
       )}
-    </main>
+    </PageMain>
   );
 }

@@ -42,6 +42,7 @@
 		// The Access application needs a Service Auth policy including it.
 		"STAFF_SERVICE_TOKENS": "434297ede60761875e84742d0486cf27.access=claude"
 	},
-	"observability": { "enabled": true },
+	// Every log kept: staff only, few requests.
+	"observability": { "enabled": true, "head_sampling_rate": 1 },
 	"upload_source_maps": true
 }

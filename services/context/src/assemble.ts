@@ -9,6 +9,7 @@
 import type { EntityKind, RelationKind } from "@g1t/contracts";
 
 import type { FileFacts, Hint } from "./extract";
+import { harvestable } from "./harvest.ts";
 
 export type ProjectInput = {
   id: string;
@@ -198,7 +199,12 @@ export function assemble(project: ProjectInput, files: FileRecord[], around: Sur
     if (integration.repo?.toLowerCase() === repoPath) relate(me, "uses", { kind: "integration", key: integration.id });
   }
 
-  const hints = files.flatMap((file) => file.facts.hints.map((hint) => ({ ...hint, path: file.path })));
+  // A doc is a source of memory only when it says how to work here (see
+  // ./harvest), or project.yml says it is.
+  const memory = files.find((file) => file.facts.memory)?.facts.memory ?? null;
+  const hints = files
+    .filter((file) => !file.facts.doc || harvestable(file.path, file.facts.doc.role, memory))
+    .flatMap((file) => file.facts.hints.map((hint) => ({ ...hint, path: file.path })));
   return { entities, relations, hints, tests };
 }
 

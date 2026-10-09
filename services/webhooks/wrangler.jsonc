@@ -23,11 +23,13 @@
 	],
 	// Every event on the bus, to deliver to the webhooks that want it.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-webhooks", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-webhooks", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
-	// Retries that are due, and deliveries old enough to forget.
-	"triggers": { "crons": ["* * * * *"] },
+	// Every minute: retries. At 37 past each hour: deliveries older than a
+	// fortnight forgotten (PURGE_CRON in src/lib.rs).
+	"triggers": { "crons": ["* * * * *", "37 * * * *"] },
 	// Secret: WEBHOOKS_KEY, 64 hex characters. Webhooks' signing secrets are
 	// sealed with it; without it none can be made.
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every event is a delivery to look up.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

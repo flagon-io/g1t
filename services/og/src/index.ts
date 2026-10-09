@@ -17,7 +17,8 @@
  * `capture.ts`).
  */
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { type ServiceBinding, identityClient, projectsClient, reposClient, workClient } from "@g1t/contracts";
+import { type ServiceBinding, identityClient, platformPaused, projectsClient, reposClient, workClient } from "@g1t/contracts";
+import { type RateLimitBinding, clientAddress, isLimited } from "@g1t/contracts/rate-limits";
 import type { Font } from "satori/standalone";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 import yogaWasm from "satori/yoga.wasm";
@@ -31,10 +32,11 @@ import sans700 from "./fonts/hanken-grotesk-700.ttf";
 import mono400 from "./fonts/ibm-plex-mono-400.ttf";
 import mono500 from "./fonts/ibm-plex-mono-500.ttf";
 import { cardPng } from "./render.ts";
-import { cacheKey } from "./cache.ts";
+import { cacheKey, drawnKey } from "./cache.ts";
 import { type Shot, screenshotOf, sweep, take } from "./capture.ts";
+import { pausedCard } from "./paused.ts";
 import { parseShot } from "./screenshot.ts";
-import { BRAND, type Card, docsCard, resolve } from "./resolve.ts";
+import { BRAND, type Card, cardPath, docsCard, resolve } from "./resolve.ts";
 
 interface Env {
   /** Uploaded avatars by hash, with `{ contentType }`; written by identity. */
@@ -43,10 +45,14 @@ interface Env {
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
   PROJECTS: ServiceBinding;
+  /** Whether rendering is paused across g1t (billing's `platform_pause`). */
+  BILLING?: ServiceBinding;
   /** Browser Rendering, for production screenshots. */
   BROWSER: Fetcher;
   /** Production screenshots, by app hostname. */
   SCREENSHOTS: R2Bucket;
+  /** Cards drawn per address (RATE_LIMITS in packages/contracts). Absent: no limit. */
+  OG_RENDER_LIMIT?: RateLimitBinding;
 }
 
 /**
@@ -121,16 +127,36 @@ export default {
     const cache = (caches as unknown as { default: Cache }).default;
     const hit = await cache.match(key);
     if (hit) return hit;
+    // Rendering paused across g1t: no card is drawn (paused.ts).
+    if (await platformPaused(env.BILLING, "renders")) return pausedCard(await cache.match(cacheKey(new URL("/", url))));
 
-    const card = await cardFor(url, env);
-    const failed = card.kind === "brand" && card.failed === true;
     // Every page without a card of its own shares the one brand card, so
     // made-up paths cannot make the service draw it again and again.
     const brandKey = cacheKey(new URL("/", url));
-    if (card.kind === "brand" && key !== brandKey) {
+    // A miss looks the page up and draws its card: limited per address.
+    // Past the limit, the brand card, kept only briefly so the page's own
+    // card is asked for again later.
+    if (key !== brandKey && (await isLimited(env.OG_RENDER_LIMIT, `ip:${clientAddress(request)}`))) {
+      const brand = await cache.match(brandKey);
+      if (brand) return withCacheControl(brand, true);
+      const drawn = await brandCard(ctx, cache, brandKey);
+      return drawn.ok ? withCacheControl(drawn, true) : drawn;
+    }
+
+    const found = await lookUpCard(url, env);
+    const failed = found.kind === "brand" && found.failed === true;
+    if (found.kind === "brand" && key !== brandKey) {
       const brand = await cache.match(brandKey);
       if (brand) return withCacheControl(brand, failed);
     }
+    // The same card under another address (another `v`): drawn once.
+    const drawn = found.kind === "brand" ? null : await drawnKey(url.origin, found);
+    const same = drawn ? await cache.match(drawn) : undefined;
+    if (same) {
+      ctx.waitUntil(cache.put(key, same.clone()));
+      return same;
+    }
+    const card = await withIcon(found, env);
 
     let png: Uint8Array;
     let fellBack = false;
@@ -167,6 +193,7 @@ export default {
       ctx.waitUntil(cache.put(brandKey, response.clone()));
     } else {
       ctx.waitUntil(cache.put(key, response.clone()));
+      if (drawn) ctx.waitUntil(cache.put(drawn, response.clone()));
     }
     return withCacheControl(response, failed);
   },
@@ -180,6 +207,25 @@ function withCacheControl(response: Response, failed: boolean): Response {
   return brief;
 }
 
+/** The brand card when the cache has lost it: drawn once and kept again. */
+async function brandCard(ctx: ExecutionContext, cache: Cache, brandKey: string): Promise<Response> {
+  try {
+    const response = new Response(await cardPng(BRAND, ASSETS), {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": CACHE_CONTROL,
+        "access-control-allow-origin": "*",
+        "x-content-type-options": "nosniff",
+      },
+    });
+    ctx.waitUntil(cache.put(brandKey, response.clone()));
+    return response;
+  } catch (error) {
+    console.error("og: the brand card could not be drawn", error);
+    return new Response("The card could not be drawn", { status: 503, headers: { "cache-control": NO_STORE } });
+  }
+}
+
 /** What satori can draw: PNG and JPEG. A WebP or GIF icon is left off the card. */
 const DRAWABLE = new Set(["image/png", "image/jpeg"]);
 
@@ -187,8 +233,10 @@ const DRAWABLE = new Set(["image/png", "image/jpeg"]);
 async function iconFor(env: Env, avatar: string | null | undefined): Promise<string | undefined> {
   if (!avatar || !/^[0-9a-f]{64}$/.test(avatar)) return undefined;
   try {
+    // An avatar's key is its hash: what is under it never changes.
     const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(avatar, {
       type: "arrayBuffer",
+      cacheTtl: 86_400,
     });
     const type = metadata?.contentType;
     if (!value || !type || !DRAWABLE.has(type)) return undefined;
@@ -201,8 +249,7 @@ async function iconFor(env: Env, avatar: string | null | undefined): Promise<str
   }
 }
 
-async function cardFor(url: URL, env: Env): Promise<Card> {
-  const card = await lookUpCard(url, env);
+async function withIcon(card: Card, env: Env): Promise<Card> {
   if (card.kind === "workspace" || card.kind === "person") return { ...card, icon: await iconFor(env, card.avatar) };
   return card;
 }
@@ -210,7 +257,8 @@ async function cardFor(url: URL, env: Env): Promise<Card> {
 async function lookUpCard(url: URL, env: Env): Promise<Card> {
   if (url.pathname === "/docs") return docsCard(url.searchParams);
   if (url.pathname === "/") return BRAND;
-  return resolve(url.searchParams.get("path") ?? "/", {
+  // The page whose card it is, as the cache key has it (cache.ts).
+  return resolve(cardPath(url.searchParams.get("path") ?? "/"), {
     identity: identityClient(env.IDENTITY),
     repos: reposClient(env.REPOS),
     work: workClient(env.WORK),

@@ -53,7 +53,10 @@ test("Cargo.toml gives a crate or a workspace", () => {
   assert.deepEqual(crate.packages[0].dependencies, ["serde", "worker.workspace", "pretty"]);
   const workspace = extract("Cargo.toml", `[workspace]\nmembers = [\n  "crates/a",\n  "services/b",\n]\n`, ctx);
   assert.deepEqual(workspace.packages[0].members, ["crates/a", "services/b"]);
-  assert.match(workspace.hints[0].text, /Cargo workspace \(crates\/a, services\/b\)/);
+  // Where crates live, not each one, so adding a crate says nothing new.
+  assert.match(workspace.hints[0].text, /Cargo workspace \(crates\/\*, services\/\*\)/);
+  const grown = extract("Cargo.toml", `[workspace]\nmembers = ["crates/a", "crates/c", "services/b"]\n`, ctx);
+  assert.equal(grown.hints[0].text, workspace.hints[0].text);
 });
 
 test("go.mod and pyproject.toml", () => {
@@ -88,9 +91,9 @@ test("AGENTS.md conventions are kept; a README's setup commands wait for review"
   assert.equal(agents.doc?.role, "agents");
   const kinds = agents.hints.map((hint) => [hint.kind, hint.text, hint.confidence]);
   assert.deepEqual(kinds, [
+    ["fact", "In web, for working here: `npm run db:reset`.", 0.9],
     ["convention", "Components live in src/components/ui; import from there.", 0.9],
     ["gotcha", "Never edit generated.rs by hand.", 0.9],
-    ["fact", "In web, for working here: `npm run db:reset`.", 0.9],
   ]);
   const readme = extract("README.md", "# Web\n\nThe storefront.\n\n## Testing\n\n```\n$ TZ=UTC npm test\nnpm test\n```\n\n## Features\n\n- Lots of features that are really great\n", ctx);
   assert.equal(readme.doc?.title, "Web");

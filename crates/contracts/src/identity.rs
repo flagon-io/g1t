@@ -975,6 +975,7 @@ pub const MAX_PROFILE_BIO: usize = 160;
 pub const MAX_PROFILE_LOCATION: usize = 80;
 pub const MAX_PROFILE_WEBSITE: usize = 200;
 pub const MAX_PROFILE_PRONOUNS: usize = 40;
+pub const MAX_PROFILE_TIMEZONE: usize = 64;
 
 /// What anyone may see about a person.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -989,6 +990,9 @@ pub struct Profile {
     /// An `https://` address.
     pub website: Option<String>,
     pub pronouns: Option<String>,
+    /// The time zone they are in, an IANA name such as `America/Denver`.
+    #[serde(default)]
+    pub timezone: Option<String>,
     /// The uploaded avatar's hash, served at `/avatars/<avatar>`.
     pub avatar: Option<String>,
     /// When the account was made. RFC 3339.
@@ -1014,6 +1018,9 @@ pub struct UpdateProfileArgs {
     pub website: String,
     #[serde(default)]
     pub pronouns: String,
+    /// An IANA time zone name, such as `America/Denver`.
+    #[serde(default)]
+    pub timezone: String,
 }
 
 /// `profile_workspaces`: the workspaces shown on a person's profile, as

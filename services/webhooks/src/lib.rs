@@ -40,6 +40,13 @@ const DELIVERIES_SHOWN: u32 = 50;
 const KEPT_DAYS: u64 = 14;
 /// How many due retries one sweep makes.
 const SWEEP: u32 = 50;
+/// The hourly cron that forgets old deliveries (wrangler.jsonc); every
+/// other minute only retries.
+const PURGE_CRON: &str = "37 * * * *";
+/// How many old deliveries one statement deletes, and how many statements
+/// one purge makes: a busy hour's worth, in bites D1 answers quickly.
+const PURGE_BATCH: u32 = 1_000;
+const PURGE_BATCHES: u32 = 50;
 
 #[derive(Deserialize)]
 struct HookRow {
@@ -661,7 +668,7 @@ impl Webhooks {
         Ok(())
     }
 
-    /// Tries again what is due, and forgets what is old.
+    /// Tries again what is due.
     async fn sweep(&self) -> Result<()> {
         let now = now_ms();
         let due = self
@@ -690,12 +697,29 @@ impl Webhooks {
                 }
             }
         }
-        self.db
-            .prepare("DELETE FROM deliveries WHERE created_at < ?")
-            .bind(&[rfc3339(now.saturating_sub(KEPT_DAYS * 24 * 60 * 60 * 1000)).into()])?
-            .run()
-            .await?;
         Ok(())
+    }
+
+    /// Forgets deliveries older than [`KEPT_DAYS`], oldest first, a batch
+    /// at a time (`deliveries_by_time`, migration 0002). What one purge
+    /// leaves, the next hour's takes. Returns how many it deleted.
+    async fn purge(&self) -> Result<u32> {
+        let before = rfc3339(now_ms().saturating_sub(KEPT_DAYS * 24 * 60 * 60 * 1000));
+        let mut deleted = 0;
+        for _ in 0..PURGE_BATCHES {
+            let result = self
+                .db
+                .prepare(PURGE_SQL)
+                .bind(&[before.as_str().into(), PURGE_BATCH.into()])?
+                .run()
+                .await?;
+            let changed = result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32;
+            deleted += changed;
+            if changed < PURGE_BATCH {
+                break;
+            }
+        }
+        Ok(deleted)
     }
 }
 
@@ -810,16 +834,48 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     Ok(())
 }
 
-/// Every minute: retries that are due, and deliveries old enough to forget.
+/// One batch of old deliveries, by time.
+const PURGE_SQL: &str = "DELETE FROM deliveries WHERE rowid IN (SELECT rowid FROM deliveries WHERE created_at < ? ORDER BY created_at LIMIT ?)";
+
+/// Every minute: retries that are due. Once an hour, at [`PURGE_CRON`]:
+/// deliveries old enough to forget.
 #[event(scheduled)]
-async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    match Webhooks::new(&env) {
-        Ok(service) => {
-            if let Err(error) = service.sweep().await {
-                worker::console_error!("webhooks: the sweep failed: {error}");
-            }
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let service = match Webhooks::new(&env) {
+        Ok(service) => service,
+        Err(error) => {
+            worker::console_error!("webhooks: could not start: {error}");
+            return;
         }
-        Err(error) => worker::console_error!("webhooks: could not start: {error}"),
+    };
+    if event.cron() == PURGE_CRON {
+        match service.purge().await {
+            Ok(0) => {}
+            Ok(deleted) => worker::console_log!("webhooks: forgot {deleted} old deliveries"),
+            Err(error) => worker::console_error!("webhooks: the purge failed: {error}"),
+        }
+        return;
+    }
+    if let Err(error) = service.sweep().await {
+        worker::console_error!("webhooks: the sweep failed: {error}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_purge_has_a_cron_of_its_own() {
+        let wrangler = include_str!("../wrangler.jsonc");
+        assert!(wrangler.contains(&format!("\"{PURGE_CRON}\"")), "{PURGE_CRON} is not among the crons");
+        assert_ne!(PURGE_CRON, "* * * * *");
+    }
+
+    #[test]
+    fn the_purge_deletes_in_batches_by_time() {
+        assert!(PURGE_SQL.contains("WHERE created_at < ? ORDER BY created_at LIMIT ?"));
+        assert!(PURGE_BATCH * PURGE_BATCHES >= 10_000);
     }
 }
 

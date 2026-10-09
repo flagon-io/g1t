@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   type Merged,
   placePushes,
+  historyCovers,
   change,
   checksFact,
   confidenceAsk,
@@ -21,6 +22,7 @@ import {
   sortRows,
   stallReason,
   summaryLine,
+  pushedByPerson,
   pushedCommits,
   waitingRows,
   weekOf,
@@ -175,12 +177,48 @@ const merged = (daysAgo: number, mergedBy: string | null, number = 1, authoredBy
   files: [],
 });
 
-test("a push to the default branch counts a person's own commits, not merges or agents'", () => {
-  const c = (hash: string, author: string, parents = 1) => ({ hash, author: { name: author }, parents: Array(parents).fill("p") });
-  const history = [c("e", "Chase"), c("d", "g1t"), c("m", "g1t", 2), c("b", "Chase"), c("a", "Chase")];
-  assert.deepEqual(pushedCommits(history, "a").map((x) => x.hash), ["e", "b"]);
+test("a push to the default branch counts a person's own commits, not merges or g1t's", () => {
+  const c = (hash: string, email: string, parents = 1) => ({ hash, author: { name: "g1t", email }, parents: Array(parents).fill("p") });
+  // Every commit is named "g1t": the name decides nothing, the address does.
+  const history = [c("e", "chase@example.com"), c("d", "agent@g1t.sh"), c("m", "chase@example.com", 2), c("b", "chase@example.com"), c("a", "chase@example.com")];
+  const byG1t = (commit: { author: { email: string } }) => commit.author.email === "agent@g1t.sh";
+  assert.deepEqual(pushedCommits(history, "a", byG1t).map((x) => x.hash), ["e", "b"]);
   // Where it pointed before was not read: everything read counts.
-  assert.deepEqual(pushedCommits(history, "zz").map((x) => x.hash), ["e", "b", "a"]);
+  assert.deepEqual(pushedCommits(history, "zz", byG1t).map((x) => x.hash), ["e", "b", "a"]);
+});
+
+test("who pushed is the account that signed in, not the name on the commits", () => {
+  assert.ok(pushedByPerson({ actor: "usr_chase", data: {} }));
+  assert.ok(pushedByPerson({ actor: null, data: {} }));
+  assert.ok(!pushedByPerson({ actor: "usr_g1t_agent", data: {} }));
+  assert.ok(!pushedByPerson({ actor: "g1t_policy", data: {} }));
+  // A workflow job's own token is not a person either.
+  assert.ok(!pushedByPerson({ actor: "usr_chase", data: { causedByJob: "run_1" } }));
+
+  const c = (hash: string, name: string) => ({ hash, parents: ["p"], author: { name, email: `${hash}@example.com` } });
+  // A person whose git name is "g1t" pushed m1; g1t pushed w1 under a person's name.
+  const history = [c("w1", "Chase Pierce"), c("m1", "g1t"), c("old", "Chase Pierce")];
+  const pushes = [
+    { time: "2026-10-07T12:00:00Z", actor: "usr_g1t_agent", data: { after: "w1", before: "m1" } },
+    { time: "2026-10-05T12:00:00Z", actor: "usr_chase", data: { after: "m1", before: "old" } },
+  ];
+  assert.deepEqual(placePushes(history, pushes), [{ hash: "m1", at: "2026-10-05T12:00:00Z" }]);
+});
+
+test("a short read of the branch is enough when it reaches the oldest push", () => {
+  const h = (...hashes: string[]) => hashes.map((hash) => ({ hash }));
+  const pushes = [
+    { time: "2026-10-07T12:00:00Z", data: { after: "c1", before: "c2" } },
+    { time: "2026-10-05T12:00:00Z", data: { after: "c2", before: "c3" } },
+  ];
+  // Holds the oldest push's before.
+  assert.ok(historyCovers(h("c1", "c2", "c3"), pushes, 3));
+  // Full, and the oldest push reaches past it: read further.
+  assert.ok(!historyCovers(h("c1", "c2", "x"), pushes, 3));
+  // Shorter than asked: the whole branch.
+  assert.ok(historyCovers(h("c1", "c2"), pushes, 3));
+  // The oldest push made the branch: only the whole branch will do.
+  assert.ok(!historyCovers(h("c1", "c2", "c3"), [{ time: "", data: { after: "c1" } }], 3));
 });
 
 test("a change landed without a person when g1t merged it", () => {
@@ -373,15 +411,16 @@ test("a job waiting for a self-hosted runner says so, not that an agent went qui
 });
 
 test("each push to the default branch places the commits it brought, at its time, from one read of the history", () => {
-  const c = (hash: string, parents = ["p"], author = "Chase Pierce") => ({ hash, parents, author: { name: author } });
+  const c = (hash: string, parents = ["p"], email = "chase@example.com") => ({ hash, parents, author: { name: "Chase Pierce", email } });
   // Newest first: a Wednesday push of two, a Monday push of one, a merge, and g1t's own commit.
-  const history = [c("w2"), c("w1"), c("m1"), c("merge", ["a", "b"]), c("bot", ["p"], "g1t"), c("old")];
+  const history = [c("w2"), c("w1"), c("m1"), c("merge", ["a", "b"]), c("bot", ["p"], "g1t@users.noreply.g1t.sh"), c("old")];
   const pushes = [
-    { time: "2026-10-07T12:00:00Z", data: { after: "w2", before: "m1" } },
-    { time: "2026-10-05T12:00:00Z", data: { after: "m1", before: "old" } },
-    { time: "2026-10-01T12:00:00Z", data: { after: "gone", before: "older" } },
+    { time: "2026-10-07T12:00:00Z", actor: "usr_chase", data: { after: "w2", before: "m1" } },
+    { time: "2026-10-05T12:00:00Z", actor: "usr_chase", data: { after: "m1", before: "old" } },
+    { time: "2026-10-01T12:00:00Z", actor: "usr_chase", data: { after: "gone", before: "older" } },
   ];
-  assert.deepEqual(placePushes(history, pushes), [
+  const byG1t = (commit: { author: { email: string } }) => commit.author.email.endsWith("@users.noreply.g1t.sh");
+  assert.deepEqual(placePushes(history, pushes, byG1t), [
     { hash: "m1", at: "2026-10-05T12:00:00Z" },
     { hash: "w2", at: "2026-10-07T12:00:00Z" },
     { hash: "w1", at: "2026-10-07T12:00:00Z" },

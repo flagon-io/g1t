@@ -40,8 +40,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Hint } from "../../components/ui/hint";
 import { useWorkflowReason } from "../../components/mirror";
 import { searchLog } from "../../lib/log-lines";
-import { listArtifacts } from "../../lib/artifacts.server";
-import { expiresIn, formatBytes } from "../../lib/artifacts";
+import { listArtifacts, withLegacyArtifacts } from "../../lib/artifacts.server";
+import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "../../lib/artifacts";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
@@ -58,7 +58,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // An earlier attempt, when one is asked for.
   const asked = Number(new URL(request.url).searchParams.get("attempt") ?? "");
   const attempt = Number.isInteger(asked) && asked > 0 ? asked : undefined;
-  const [detail, artifacts, summaries] = await Promise.all([
+  const [detail, kept, summaries] = await Promise.all([
     actions.run(repo, viewer, params.id, attempt).then(unwrap),
     listArtifacts(repo, viewer, params.id).catch(() => []),
     actions
@@ -66,6 +66,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       .then((found) => (found.ok ? found.value : []))
       .catch((): JobSummary[] => []),
   ]);
+  // Artifacts an older runner kept in KV: asked for only once the service
+  // has shown the viewer the run, and never while it is still going.
+  const artifacts = legacyArtifactsWorthAsking(detail.run) ? await withLegacyArtifacts(kept, params.id) : kept;
   // Cancelling and re-running need Write.
   return {
     detail,

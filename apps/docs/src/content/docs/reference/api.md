@@ -142,6 +142,7 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 | 404 | `not_found` | It does not exist, or you cannot see it. A path that is not an endpoint answers this too. |
 | 409 | `conflict` | The request conflicts with the current state. |
 | 422 | `invalid` | The input is not valid. |
+| 429 | `rate_limited` | Too many requests in the last minute. Wait the seconds `Retry-After` says. See [rate limits](#rate-limits). |
 
 Branch on `code`, not on `message`: messages are written for people and
 may change.
@@ -162,6 +163,19 @@ that scope in `needed_scope`:
 Give the token that scope in
 [Settings → Access tokens](https://g1t.sh/settings/tokens), or use another
 token. A `403` for any other reason has no `needed_scope`.
+
+## Rate limits
+
+Each token may make 1,000 requests a minute. Requests without a token are
+limited to 60 a minute for each IP address. Past either, the API answers
+`429` with `rate_limited` and a `Retry-After` header saying how many
+seconds to wait:
+
+```json
+{ "error": { "code": "rate_limited", "message": "Too many requests with this token. Wait a minute and try again: https://docs.g1t.sh/reference/rate-limits/" } }
+```
+
+Every limit, and how to stay under them, is on [rate limits](/reference/rate-limits/).
 
 ## Lists
 

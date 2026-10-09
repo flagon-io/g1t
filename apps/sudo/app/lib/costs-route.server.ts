@@ -4,7 +4,7 @@
  */
 import { data, redirect } from "react-router";
 
-import { parseCostSettings, parseMapping, parseRange } from "./costs";
+import { parseCostSettings, parseMapping, parsePauseLevel, parseRange } from "./costs";
 import { admin } from "./services.server";
 import { settle } from "./settle";
 import { requireStaff } from "./staff";
@@ -17,6 +17,8 @@ export const DONE: Record<string, string> = {
   mapping: "Mapping saved. It applies from the next run; read the bill now to see it.",
   removed: "Mapping removed.",
   lifted: "Breaker lifted for the rest of today (UTC). Hosted-model runs start again; it is recorded in the audit log.",
+  paused: "Paused across g1t. Every service sees it within 30 seconds; it is recorded in the audit log.",
+  resumed: "Resumed across g1t. Every service sees it within 30 seconds; it is recorded in the audit log.",
 };
 
 export type CostsActionResult = { error: string; section: string; values?: Record<string, string> };
@@ -25,13 +27,16 @@ export async function costsLoader(request: Request, context: unknown) {
   requireStaff(context as Parameters<typeof requireStaff>[0]);
   const url = new URL(request.url);
   const range = parseRange(url.searchParams.get("days"));
-  const report = await settle(admin.costs(range));
+  const [report, guard] = await Promise.all([settle(admin.costs(range)), settle(admin.platformGuard())]);
   const done = url.searchParams.get("done");
   return {
     range,
     bucket: url.searchParams.get("product"),
     report: report.ok ? report.value : null,
     error: report.ok ? null : report.error,
+    // The platform pause and usage watch (billing's platform.rs).
+    guard: guard.ok ? guard.value : null,
+    guardError: guard.ok ? null : guard.error,
     done: done ? (DONE[done] ?? null) : null,
   };
 }
@@ -61,6 +66,16 @@ export async function costsAction(request: Request, context: unknown) {
     if (!result.ok) return fail("lift", `Billing did not answer: ${result.error}`);
     if (!result.value.ok) return fail("lift", result.value.error.message);
     throw back("lifted", "#spend");
+  }
+  if (intent === "pause" || intent === "resume") {
+    const level = parsePauseLevel(form.get("level"));
+    if (!level) return fail("platform", "Pick compute, schedules, indexing or renders.");
+    const note = String(form.get("note") ?? "").trim().slice(0, 500);
+    if (note.length < 5) return fail(`pause-${level}`, "Say why, for whoever looks next.");
+    const result = await settle(admin.setPause(level, intent === "pause", note, staff.email));
+    if (!result.ok) return fail(`pause-${level}`, `Billing did not answer: ${result.error}`);
+    if (!result.value.ok) return fail(`pause-${level}`, result.value.error.message);
+    throw back(intent === "pause" ? "paused" : "resumed", "#platform");
   }
   if (intent === "decide") {
     const id = String(form.get("id") ?? "");

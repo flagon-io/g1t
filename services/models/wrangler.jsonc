@@ -16,6 +16,12 @@
 		// Who an AI Gateway request's access token belongs to, and its scopes.
 		{ "binding": "IDENTITY", "service": "g1t-identity" }
 	],
+	// Each run's model spend, one object per model session, so its cost cap
+	// holds across every isolate its requests reach (src/run-spend.ts).
+	"durable_objects": {
+		"bindings": [{ "name": "RUN_SPEND", "class_name": "RunSpend" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["RunSpend"] }],
 	"vars": {
 		// g1t's own route, for runs g1t pays for: a Cloudflare AI Gateway,
 		// which holds g1t's key.
@@ -30,5 +36,6 @@
 	// not hold g1t's key; WORKERS_AI_TOKEN, a Cloudflare API token with
 	// Workers AI Read on this account, for the AI Gateway's open models
 	// (without it AI_GATEWAY_TOKEN is tried, and needs that permission too).
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every model call is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

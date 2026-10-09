@@ -14,6 +14,7 @@ mod blobs;
 mod checks;
 mod deployments;
 mod deploy_keys;
+mod limits;
 mod logs;
 mod mirrors;
 mod mcp;
@@ -622,9 +623,13 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         return Ok(response);
     }
 
+    // Per token, or per address without one (limits.rs).
+    if let Some(limited) = limits::limited(&request, env, method, &path, on_mcp).await? {
+        return Ok(limited);
+    }
     let viewer = match authenticate(&request, &services).await? {
         Ok(viewer) => viewer,
-        Err(refused) => return Ok(refused),
+        Err(refused) => return Ok(limits::wrong_token(&request, env, on_mcp).await?.unwrap_or(refused)),
     };
     // A person who has not confirmed their email address: who they are,
     // their addresses, and confirming one, nothing else (REST or MCP).
@@ -947,6 +952,6 @@ async fn fetch(request: Request, env: Env, _ctx: Context) -> Result<Response> {
         "authorization, content-type",
     )?;
     headers.set("access-control-allow-methods", "GET, POST, PATCH, OPTIONS")?;
-    headers.set("access-control-expose-headers", "www-authenticate")?;
+    headers.set("access-control-expose-headers", "www-authenticate, retry-after")?;
     Ok(response)
 }

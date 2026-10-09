@@ -80,7 +80,7 @@ import { NEEDS, repoRef, trustedOutright, type Method } from "./access";
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
 import { CustomHostnames } from "./custom-hostnames";
 import { Domains, NOT_ENABLED_NOTICE, toDomain } from "./domains";
-import { monthCost } from "./metering";
+import { monthCost, movesMeter } from "./metering";
 import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarget } from "./moves";
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
@@ -2043,14 +2043,24 @@ class Deployments {
    * previews, the apps of workspaces whose plan ended, and scripts no app
    * holds come down; and a month that is over is charged past its
    * allowance.
+   *
+   * Each step stands alone: one that fails is logged and the rest still
+   * run. Taking idle previews down and charging months, which only read
+   * g1t's own tables, go before the steps that wait on Cloudflare's API,
+   * so a slow or failing API never holds them up.
    */
   async sweep(): Promise<void> {
-    const cutoff = new Date(Date.now() - BUILD_TIMEOUT_MS).toISOString();
-    const stuck = await this.db
-      .prepare("SELECT id FROM deployments WHERE status IN ('queued', 'building') AND created_at < ?")
-      .bind(cutoff)
-      .all<{ id: string }>();
-    for (const { id } of stuck.results) await this.finishFailed(id, "The build did not finish in 45 minutes.", null, null);
+    const step = (name: string, work: () => Promise<unknown>) => work().catch((error) => console.error(`sweep: ${name} failed`, error));
+    await step("failing stuck builds", async () => {
+      const cutoff = new Date(Date.now() - BUILD_TIMEOUT_MS).toISOString();
+      const stuck = await this.db
+        .prepare("SELECT id FROM deployments WHERE status IN ('queued', 'building') AND created_at < ?")
+        .bind(cutoff)
+        .all<{ id: string }>();
+      for (const { id } of stuck.results) await this.finishFailed(id, "The build did not finish in 45 minutes.", null, null);
+    });
+    await step("taking down idle previews", () => this.takeDownIdle());
+    await step("charging months", () => this.chargeMonths());
 
     let apps = (await this.db.prepare("SELECT * FROM apps").all<AppRow>()).results;
     // Each app is its project's workspace's, as deployments has it now: an
@@ -2070,12 +2080,14 @@ class Deployments {
     const billing = billingClient(this.env.BILLING);
     await this.holdToLimits(live, settings).catch((error) => console.error("could not apply limits", error));
     for (const workspace of workspaces) {
-      const plan = await billing.hasFeature(workspace, "deployments");
-      if (!plan.ok && plan.error.code === "payment_required") {
-        for (const app of live.filter((a) => ownerOf(a, owners) === workspace)) await this.removeApp(app.script);
-        // Custom domains cost g1t by the month: they go with the plan.
-        await this.domains.removeWhere("workspace", workspace).catch((error) => console.error("could not remove domains", error));
-      }
+      await step(`ending ${workspace}'s apps`, async () => {
+        const plan = await billing.hasFeature(workspace, "deployments");
+        if (!plan.ok && plan.error.code === "payment_required") {
+          for (const app of live.filter((a) => ownerOf(a, owners) === workspace)) await this.removeApp(app.script);
+          // Custom domains cost g1t by the month: they go with the plan.
+          await this.domains.removeWhere("workspace", workspace).catch((error) => console.error("could not remove domains", error));
+        }
+      });
     }
 
     // Apps whose project moved and are not up under the new name yet: a
@@ -2095,8 +2107,6 @@ class Deployments {
 
     await this.removeOrphans(apps).catch((error) => console.error("could not remove orphans", error));
     await this.count(apps).catch((error) => console.error("could not count usage", error));
-    await this.takeDownIdle();
-    await this.chargeMonths();
   }
 
   /**
@@ -2191,7 +2201,17 @@ class Deployments {
       perWorkspace.set(app.workspace, sum);
     }
     const at = now();
+    // Written only when the count moves the meter: most sweeps it does not.
+    const stored = new Map(
+      (
+        await this.db
+          .prepare("SELECT namespace, requests, cpu_ms FROM meters WHERE month = ?")
+          .bind(month())
+          .all<{ namespace: string; requests: number; cpu_ms: number }>()
+      ).results.map((row) => [row.namespace, row]),
+    );
     for (const [workspace, used] of perWorkspace) {
+      if (!movesMeter(stored.get(workspace), used)) continue;
       await this.db
         .prepare(
           `INSERT INTO meters (namespace, month, requests, cpu_ms, counted_at) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -2207,8 +2227,12 @@ class Deployments {
       new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       at,
     );
+    // At an hour's resolution: previews idle for days are what it finds.
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const lastRequest = new Map(apps.map((app) => [app.script, app.last_request_at]));
     for (const [script, used] of recent) {
-      if (used.requests > 0) {
+      const last = lastRequest.get(script);
+      if (used.requests > 0 && (!last || last < hourAgo)) {
         await this.db.prepare("UPDATE apps SET last_request_at = ? WHERE script = ?").bind(at, script).run();
       }
     }

@@ -769,6 +769,16 @@ impl Store {
             .results::<VulnRow>()
     }
 
+    /// Every vulnerability alert of a repository: open, fixed and dismissed.
+    pub async fn all_vulnerabilities(&self, repo_id: &str) -> Result<Vec<VulnRow>> {
+        self.db
+            .prepare(format!("SELECT {VULN_COLUMNS} FROM vulnerabilities v {VULN_JOINS} WHERE v.repo_id = ?"))
+            .bind(&[repo_id.into()])?
+            .all()
+            .await?
+            .results::<VulnRow>()
+    }
+
     /// Replaces what is known about a repository's dependencies with what a
     /// scan found: new findings open, findings no longer true fixed, and
     /// findings that came back open again, or dismissed again when someone

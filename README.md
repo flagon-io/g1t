@@ -126,46 +126,47 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 
 ## Layout
 
-| Path | What it is |
-| --- | --- |
-| `apps/web` | The site: server-rendered React on a Worker. Holds no data. |
-| `apps/docs` | The documentation site, with the API explorer. |
-| `apps/api` | REST API and MCP server. Rust. |
-| `services/identity` | Accounts, workspaces, sessions, keys and tokens. Rust. |
-| `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. Rust. |
-| `services/work` | Issues, pull requests, reviews, check runs and sessions. Rust. |
-| `services/events` | The event bus and its log. Rust. |
-| `services/search` | Site-wide search and Explore. Rust. |
-| `services/billing` | Usage, the price book, limits, invoices and payments. Rust. |
-| `services/actions` | GitHub Actions workflows, runs, caches and self-hosted runners. Rust. |
-| `services/security` | Push protection findings, history scanning and dependency upkeep. Rust. |
-| `services/integrations` | Model providers, alerts, trackers and the GitHub App. Rust. |
-| `services/webhooks` | Webhook deliveries. Rust. |
-| `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. TypeScript. |
-| `services/projects` | Projects and the dependencies between them. TypeScript. |
-| `services/deployments` | Builds, previews and production on `g1t.page`. TypeScript. |
-| `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. TypeScript. |
-| `services/models` | The model proxy at `models.g1t.sh`. TypeScript. |
-| `services/context` | The context hub: catalog, search and scorecards. TypeScript. |
-| `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. TypeScript. |
-| `apps/status` | `status.g1t.sh`. TypeScript. |
-| `apps/sudo` | g1t's own staff console. |
-| `crates/runner` | The program inside a sandbox: runs an agent, a workflow job or a merge queue build, and reports back. Rust. |
-| `crates/contracts` | Types and service interfaces for the Rust services. |
-| `crates/kit` | Plumbing shared by Rust services on Workers. |
-| `crates/actions` | Reads workflows and evaluates their expressions. Rust. |
-| `crates/scan` | Secret and lockfile scanning, shared by services. Rust. |
-| `crates/secrets` | Secrets at rest and signatures. Rust. |
-| `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. |
-| `packages/contracts` | The same interfaces for TypeScript callers. |
-| `packages/theme` | Design tokens and the logo, shared by the site and the docs. |
-| `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. |
+| Path | What it is | Language |
+| --- | --- | --- |
+| `apps/web` | The site: server-rendered React on a Worker. Holds no data. | TypeScript |
+| `apps/docs` | The documentation site, with the API explorer. | TypeScript |
+| `apps/api` | REST API and MCP server. | Rust |
+| `services/identity` | Accounts, workspaces, sessions, keys and tokens. | Rust |
+| `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. | Rust |
+| `services/work` | Issues, pull requests, reviews, check runs and sessions. | Rust |
+| `services/events` | The event bus and its log. | Rust |
+| `services/search` | Site-wide search and Explore. | Rust |
+| `services/billing` | Usage, the price book, limits, invoices and payments. | Rust |
+| `services/actions` | GitHub Actions workflows, runs, caches and self-hosted runners. | Rust |
+| `services/security` | Push protection findings, history scanning and dependency upkeep. | Rust |
+| `services/integrations` | Model providers, alerts, trackers and the GitHub App. | Rust |
+| `services/webhooks` | Webhook deliveries. | Rust |
+| `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. | TypeScript |
+| `services/projects` | Projects and the dependencies between them. | TypeScript |
+| `services/deployments` | Builds, previews and production on `g1t.page`. | TypeScript |
+| `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. | TypeScript |
+| `services/models` | The model proxy at `models.g1t.sh`. | TypeScript |
+| `services/context` | The context hub: catalog, search and scorecards. | TypeScript |
+| `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. | TypeScript |
+| `apps/status` | The status page at `status.g1t.sh`. | TypeScript |
+| `apps/sudo` | g1t's own staff console. | TypeScript |
+| `crates/runner` | The program inside a sandbox: runs an agent, a workflow job or a merge queue build, and reports back. | Rust |
+| `crates/contracts` | Types and service interfaces for the Rust services. | Rust |
+| `crates/kit` | Plumbing shared by Rust services on Workers. | Rust |
+| `crates/actions` | Reads workflows and evaluates their expressions. | Rust |
+| `crates/scan` | Secret and lockfile scanning, shared by services. | Rust |
+| `crates/secrets` | Secrets at rest and signatures. | Rust |
+| `crates/sshd` | Git over SSH, bridged to Artifacts. Not deployed yet. | Rust |
+| `packages/contracts` | The same interfaces for TypeScript callers. | TypeScript |
+| `packages/theme` | Design tokens and the logo, shared by the site and the docs. | CSS |
+| `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. | JSON, Docker Compose |
 
 Each service is its own Worker, and each one that keeps data has its own
 database. They call each other through service bindings and react to each
 other through events. The core services (accounts, repositories, work,
 events, billing, Actions, security and the API) are written in Rust; the
-rest are the web apps and the Workers marked TypeScript above.
+web apps and the rest of the Workers in TypeScript. The Language column
+says which, part by part.
 
 ## Run your own
 

@@ -1138,9 +1138,37 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
     }
 }
 
+/// Whether `event` should push its repository out to its followers, given
+/// the repositories `pushed` out already for this batch: a sync sends every
+/// ref, so a push of many refs, or many pushes in one batch, is one sync.
+pub fn first_push_in_batch(pushed: &mut std::collections::HashSet<String>, event: &g1t_contracts::events::Event) -> bool {
+    match event.repo_id.as_deref() {
+        Some(repo_id) if event.kind == "git.push" => pushed.insert(repo_id.to_owned()),
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_batch_pushes_each_repository_out_once() {
+        let event = |kind: &str, repo: &str| g1t_contracts::events::Event {
+            id: "evt_1".into(),
+            kind: kind.into(),
+            source: "repos".into(),
+            time: "2026-10-08T00:00:00Z".into(),
+            repo_id: Some(repo.into()),
+            actor: None,
+            data: serde_json::json!({}),
+        };
+        let mut pushed = std::collections::HashSet::new();
+        assert!(first_push_in_batch(&mut pushed, &event("git.push", "rep_1")));
+        assert!(!first_push_in_batch(&mut pushed, &event("git.push", "rep_1")));
+        assert!(first_push_in_batch(&mut pushed, &event("git.push", "rep_2")));
+        assert!(first_push_in_batch(&mut pushed, &event("issue.opened", "rep_1")));
+    }
 
     #[test]
     fn times_are_read_as_github_writes_them() {

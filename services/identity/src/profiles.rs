@@ -21,6 +21,7 @@ struct ProfileRow {
     location: Option<String>,
     website: Option<String>,
     pronouns: Option<String>,
+    timezone: Option<String>,
     avatar: Option<String>,
     created_at: String,
 }
@@ -34,6 +35,7 @@ impl From<ProfileRow> for Profile {
             location: row.location,
             website: row.website,
             pronouns: row.pronouns,
+            timezone: row.timezone,
             avatar: row.avatar,
             created_at: row.created_at,
         }
@@ -41,7 +43,7 @@ impl From<ProfileRow> for Profile {
 }
 
 const PROFILE_COLUMNS: &str =
-    "username, display_name, bio, location, website, pronouns, avatar, created_at";
+    "username, display_name, bio, location, website, pronouns, timezone, avatar, created_at";
 
 /// A field as it is kept: whitespace runs made single spaces, control
 /// characters dropped, trimmed. Empty is none. Too long is refused.
@@ -113,6 +115,24 @@ pub fn website(value: &str) -> std::result::Result<Option<String>, &'static str>
     Ok(Some(address))
 }
 
+/// An IANA time zone name as it is kept, such as `America/Denver` or
+/// `UTC`: empty is none. Only the name's shape is checked here; the web
+/// app offers the zones its runtime knows, and one it does not know is
+/// shown without a local time.
+fn timezone(value: &str) -> std::result::Result<Option<String>, &'static str> {
+    const REFUSED: &str = "That is not a time zone. Pick one from the list, such as America/Denver.";
+    let name = value.trim();
+    if name.is_empty() {
+        return Ok(None);
+    }
+    let well_formed = name.len() <= MAX_PROFILE_TIMEZONE
+        && name.split('/').all(|part| {
+            part.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+'))
+        });
+    if well_formed { Ok(Some(name.to_owned())) } else { Err(REFUSED) }
+}
+
 /// The fields of an update, checked, or the first thing wrong.
 pub struct Checked {
     pub name: Option<String>,
@@ -120,6 +140,7 @@ pub struct Checked {
     pub location: Option<String>,
     pub website: Option<String>,
     pub pronouns: Option<String>,
+    pub timezone: Option<String>,
 }
 
 pub fn check(a: &UpdateProfileArgs) -> std::result::Result<Checked, String> {
@@ -129,6 +150,7 @@ pub fn check(a: &UpdateProfileArgs) -> std::result::Result<Checked, String> {
         location: tidy(&a.location, MAX_PROFILE_LOCATION, "location")?,
         website: website(&a.website).map_err(str::to_owned)?,
         pronouns: tidy(&a.pronouns, MAX_PROFILE_PRONOUNS, "pronouns")?,
+        timezone: timezone(&a.timezone).map_err(str::to_owned)?,
     })
 }
 
@@ -162,7 +184,7 @@ impl Identity {
         let row = self
             .db
             .prepare(format!(
-                "UPDATE users SET display_name = ?, bio = ?, location = ?, website = ?, pronouns = ?
+                "UPDATE users SET display_name = ?, bio = ?, location = ?, website = ?, pronouns = ?, timezone = ?
                  WHERE id = ? RETURNING {PROFILE_COLUMNS}"
             ))
             .bind(&[
@@ -171,6 +193,7 @@ impl Identity {
                 optional(&fields.location),
                 optional(&fields.website),
                 optional(&fields.pronouns),
+                optional(&fields.timezone),
                 a.actor.id.as_str().into(),
             ])?
             .first::<ProfileRow>(None)
@@ -286,5 +309,18 @@ mod tests {
         assert_eq!(fields.website.as_deref(), Some("https://syntaqx.com"));
         assert_eq!(fields.pronouns.as_deref(), Some("he/him"));
         assert_eq!(fields.location, None);
+        assert_eq!(fields.timezone, None);
+    }
+
+    #[test]
+    fn a_time_zone_is_an_iana_name_or_nothing() {
+        for name in ["America/Denver", "UTC", "America/Argentina/Buenos_Aires", "Etc/GMT+7", "America/Port-au-Prince"] {
+            assert_eq!(timezone(name).unwrap().as_deref(), Some(name));
+        }
+        assert_eq!(timezone("  Europe/Berlin ").unwrap().as_deref(), Some("Europe/Berlin"));
+        assert_eq!(timezone("").unwrap(), None);
+        for bad in ["America/", "/UTC", "Europe/Ber lin", "<script>", "../etc", &"A".repeat(65)] {
+            assert!(timezone(bad).is_err(), "{bad}");
+        }
     }
 }

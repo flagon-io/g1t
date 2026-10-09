@@ -69,5 +69,13 @@
 		"STATUS_FROM": "g1t status <noreply@g1t.sh>",
 		"OG_IMAGE": "https://og.g1t.sh/image?path=%2Fstatus&v=2"
 	},
-	"observability": { "enabled": true }
+	// Asking for a subscription sends an email: limited per client address
+	// and per email address (src/index.ts). Ids and limits: RATE_LIMITS in
+	// packages/contracts.
+	"ratelimits": [
+		{ "name": "STATUS_SUBSCRIBE_LIMIT", "namespace_id": "4601", "simple": { "limit": 3, "period": 60 } },
+		{ "name": "STATUS_EMAIL_LIMIT", "namespace_id": "4602", "simple": { "limit": 2, "period": 60 } }
+	],
+	// Every log kept: few requests, and the checks' failures are what it is for.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

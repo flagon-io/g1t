@@ -37,6 +37,7 @@ import {
   agentEstimateMicros,
   eventsClient,
   isWaiting,
+  platformPaused,
   issueCapReached,
   refusalMessage,
   sandboxEstimateMicros,
@@ -90,8 +91,8 @@ import { delegateInput, noModelMessage, notStarted, queued, started } from "./de
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
-import { holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
-import { buildMentionPrompt, describeThread, handleMention, planMention } from "./mentions";
+import { capModelTokens, holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
+import { buildMentionPrompt, describeThread, handleMention, jobTokenRefusal, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
 import {
@@ -450,6 +451,8 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     const tracked = track ? await this.openRun(track, envVars, guard) : null;
     // Its credentials are tied to the run, and revoked when it stops.
     await holdCredentials(this.env.IDENTITY, this.ctx.storage, envVars, tracked?.runId ?? null);
+    // Its model token is held to its cost cap by the model proxy too.
+    await capModelTokens(this.env.INTEGRATIONS, this.ctx.storage, guard?.policy.budgetUsd ?? limits?.budgetUsd);
     try {
       const vars = tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars;
       // The workspace's own runner, not a container: the same environment,
@@ -1960,7 +1963,14 @@ export default class RunnerService
   async scheduled(): Promise<void> {
     await this.drainWaits();
     await this.advanceAll();
-    await this.startReady();
+    // Schedules paused across g1t (billing's platform_pause, kept 30
+    // seconds): the sweep starts no queued agents. Events still start
+    // them, through the compute gate, which holds while compute is paused.
+    if (await platformPaused(this.env.BILLING, "schedules")) {
+      console.log("sweep: schedules are paused across g1t, so no queued agents start");
+    } else {
+      await this.startReady();
+    }
     await this.startBackups().catch((error: unknown) => console.log("backups not started", String(error)));
   }
 
@@ -2438,6 +2448,9 @@ export default class RunnerService
    * the actor is a member or a collaborator.
    */
   private async refusal(actor: User, repo: RepoPath): Promise<Result<never> | null> {
+    // Agent compute is never started by a workflow job's token.
+    const byJob = jobTokenRefusal(actor);
+    if (byJob) return fail("forbidden", byJob);
     const closed = await this.closedRepo(actor, repo);
     if (closed) return closed;
     if (!(await this.workspaceAllowed(repo.namespace))) {
@@ -2840,6 +2853,8 @@ export default class RunnerService
 
   async delegate(actor: User, repo: RepoPath, input: DelegateInput): Promise<Result<Delegated>> {
     // Who may put agents to work here is settled before anything is opened.
+    const byJob = jobTokenRefusal(actor);
+    if (byJob) return fail("forbidden", byJob);
     const closed = await this.closedRepo(actor, repo);
     if (closed) return closed;
     if (!actor || !(await this.repoAllows(actor, repo, "run"))) return fail("forbidden", needs("run"));

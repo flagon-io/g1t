@@ -1348,6 +1348,17 @@ impl Actions {
             .await
             .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")));
             if let Outcome::Fail(refused) = started {
+                // Billing would not pay for a scheduled run's job: the
+                // schedule waits rather than making runs only to refuse them.
+                if refused.code == FailureCode::PaymentRequired
+                    && let Some(run) = run.as_ref().filter(|run| run.event == "schedule")
+                {
+                    self.db
+                        .prepare("UPDATE workflows SET schedule_refused_until = ? WHERE id = ?")
+                        .bind(&[rfc3339(now_ms() + crate::SCHEDULE_REFUSED_MS).into(), run.workflow_id.as_str().into()])?
+                        .run()
+                        .await?;
+                }
                 Box::pin(self.finish_job(&job.id, "failure", Some(&refused.message), None)).await?;
             } else {
                 self.job_started(&job.id).await?;
@@ -2280,7 +2291,12 @@ impl Actions {
 
     pub async fn on_minute(&self, now_ms: u64) -> Result<()> {
         let minute = now_ms / 60_000 * 60_000;
-        if let Err(error) = self.run_schedules(minute).await {
+        // Staff (or billing's usage watcher) paused scheduled runs across
+        // g1t: this minute's schedules are skipped, not queued for later.
+        // Kept 30 seconds in the isolate (g1t_kit::pause).
+        if g1t_kit::pause::paused(&self.billing, g1t_contracts::billing::PauseLevel::Schedules).await {
+            worker::console_log!("actions: schedules are paused across g1t; skipped this minute's");
+        } else if let Err(error) = self.run_schedules(minute).await {
             worker::console_error!("actions: schedules failed: {error}");
         }
         // Jobs whose sandbox went quiet or ran past their time.

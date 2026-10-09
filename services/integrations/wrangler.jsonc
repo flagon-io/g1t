@@ -31,7 +31,7 @@
 	// Mirrors' hosts are checked every minute (src/remotes.rs).
 	"triggers": { "crons": ["* * * * *"] },
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"vars": {
 		"API_URL": "https://api.g1t.sh",
@@ -46,5 +46,6 @@
 	},
 	// Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
 	// sealed with it; without it nothing can be connected.
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every page and event asks it.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

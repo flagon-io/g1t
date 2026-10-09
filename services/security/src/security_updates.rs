@@ -11,7 +11,9 @@
 //!    never pushed, the pull request is closed and an issue is opened for
 //!    g1t to work on, started by g1t. That is the only time an agent is
 //!    used.
-//! 4. A package no longer vulnerable closes its update as superseded.
+//! 4. Once none of the alerts it fixes is open (fixed on the default
+//!    branch, or dismissed), its pull request is closed with a comment
+//!    saying why and its branch deleted (`resolved`).
 //!
 //! Each step is written to the alerts' activity log.
 
@@ -209,11 +211,11 @@ pub fn group_text(group: &str, members: &[GroupMember], vulns: &[&VulnRow], file
 }
 
 impl Security {
-    fn path_of(repo: &RepoRow) -> RepoPath {
+    pub(crate) fn path_of(repo: &RepoRow) -> RepoPath {
         RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() }
     }
 
-    async fn get_pull(&self, repo: &RepoRow, number: u32) -> Result<Option<Pull>> {
+    pub(crate) async fn get_pull(&self, repo: &RepoRow, number: u32) -> Result<Option<Pull>> {
         let found: Outcome<PullDetail> = g1t_kit::call(
             &self.work,
             "get_pull",
@@ -223,11 +225,12 @@ impl Security {
         Ok(found.into_result().ok().map(|detail| detail.pull))
     }
 
-    /// Closes one of g1t's pull requests, saying why first.
-    pub(crate) async fn close_with(&self, repo: &RepoRow, number: u32, why: String) -> Result<()> {
+    /// Closes one of g1t's pull requests, saying why first. Returns
+    /// whether it closed.
+    pub(crate) async fn close_with(&self, repo: &RepoRow, number: u32, why: String) -> Result<bool> {
         let system = User::system(&repo.namespace);
         self.comment(&system, &Self::path_of(repo), number, why).await?;
-        let _: Outcome<Value> = g1t_kit::call(
+        let closed: Outcome<Value> = g1t_kit::call(
             &self.work,
             "close_pull",
             &PullActionArgs {
@@ -241,7 +244,10 @@ impl Security {
             },
         )
         .await?;
-        Ok(())
+        if let Outcome::Fail(refused) = &closed {
+            worker::console_error!("security: #{number} of {} not closed: {}", repo.repo_id, refused.message);
+        }
+        Ok(matches!(closed, Outcome::Ok(_)))
     }
 
     /// Records `action` on every open alert of an update's package.
@@ -255,8 +261,8 @@ impl Security {
     }
 
     /// After a dependency scan: asks for an update for each vulnerable
-    /// package with a fix (when `enabled`), and supersedes those whose
-    /// package is no longer vulnerable.
+    /// package with a fix (when `enabled`). Those no longer needed were
+    /// closed already (`resolved`).
     ///
     /// The dependency update file, when there is one, applies as it does to
     /// version updates: `ignore` and `allow` by name, people's `@g1t ignore`
@@ -268,14 +274,6 @@ impl Security {
         let mut by_package: BTreeMap<(String, String), Vec<&VulnRow>> = BTreeMap::new();
         for vuln in &open {
             by_package.entry((vuln.ecosystem.clone(), vuln.package.clone())).or_default().push(vuln);
-        }
-        // In flight for a package that is no longer vulnerable: no longer needed.
-        for row in self.store.updates(&repo.repo_id).await? {
-            if !row.state().in_progress() || by_package.contains_key(&(row.ecosystem.clone(), row.package.clone())) {
-                continue;
-            }
-            self.supersede(repo, &row, format!("`{}` is no longer vulnerable here, so this is no longer needed.", row.package))
-                .await?;
         }
         if !enabled {
             return Ok(());
@@ -477,10 +475,14 @@ impl Security {
 
     /// A security update's branch was pushed: its pull request opens, and
     /// an older one for the same package is closed as superseded.
-    pub async fn update_pushed(&self, repo_id: &str, branch: &str) -> Result<()> {
+    pub async fn update_pushed(&self, repo_id: &str, branch: &str, after: &str) -> Result<()> {
         let Some(row) = self.store.update_by_branch(repo_id, branch).await? else {
             return Ok(());
         };
+        if row.state() == UpdateState::Superseded && row.pull().is_none() {
+            // No longer needed by the time its sandbox pushed: the branch goes.
+            return self.drop_pushed(repo_id, branch, after).await;
+        }
         if row.state() != UpdateState::Requested {
             return Ok(());
         }
@@ -523,9 +525,15 @@ impl Security {
                 return self.note(&row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&error)).await;
             }
         };
-        if let Some(older) = row.pull().filter(|older| *older != pull.number) {
-            self.close_with(&repo, older, format!("Superseded by #{}, which upgrades `{}` to {}.", pull.number, row.package, row.target))
-                .await?;
+        if let Some(older) = row.pull().filter(|older| *older != pull.number)
+            && let Some(found) = self.get_pull(&repo, older).await?
+            && matches!(found.status, PullStatus::Open | PullStatus::Draft)
+            && self
+                .close_with(&repo, older, format!("Closed: superseded by #{}, which upgrades `{}` to {}.", pull.number, row.package, row.target))
+                .await?
+            && found.branch.as_deref() != Some(branch)
+        {
+            self.delete_pull_branch(&repo, &Pull { status: PullStatus::Closed, ..found }).await;
         }
         self.store.set_update(&row, UpdateState::Open, Some(pull.number), None, None).await?;
         // Labelled as the entry for its directory says, or `dependencies`

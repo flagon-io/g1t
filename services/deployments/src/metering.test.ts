@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { amount, monthCost } from "./metering.ts";
+import { amount, monthCost, movesMeter } from "./metering.ts";
 
 /** Cloudflare's prices, at cost: $0.30 per million requests, $0.02 per million CPU ms, $0.10 a custom domain a month. */
 const COSTS = { millionRequests: 300_000, millionCpuMs: 20_000, domainMonth: 100_000 };
@@ -43,4 +43,13 @@ test("amounts read plainly", () => {
   assert.equal(amount(840_000), "840,000");
   assert.equal(amount(1_240_000), "1.2 million");
   assert.equal(amount(0), "0");
+});
+
+test("a count that does not move the meter is not written", () => {
+  assert.ok(movesMeter(undefined, { requests: 0, cpuMs: 0 }));
+  assert.ok(movesMeter({ requests: 10, cpu_ms: 5 }, { requests: 11, cpuMs: 5 }));
+  assert.ok(movesMeter({ requests: 10, cpu_ms: 5 }, { requests: 10, cpuMs: 6 }));
+  assert.ok(!movesMeter({ requests: 10, cpu_ms: 5 }, { requests: 10, cpuMs: 5 }));
+  // Analytics forgot an app that came down: the meter keeps what it had.
+  assert.ok(!movesMeter({ requests: 10, cpu_ms: 5 }, { requests: 4, cpuMs: 2 }));
 });

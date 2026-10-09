@@ -13,6 +13,7 @@ self-hosting guide is `apps/docs/src/content/docs/guides/self-hosting.md`.
 | The runner's images | `services/runner/base/Dockerfile`, `services/runner/Dockerfile`, `services/runner/base.json`, `scripts/build-runner.mjs`, `scripts/deploy/image.mjs` |
 | The workflows | `.g1t/workflows/deploy.yml`, `.g1t/workflows/runner-base.yml` |
 | The old entry point | `scripts/deploy.sh`, now a wrapper |
+| Spend guardrails (platform pause, hourly usage watch) | [SPEND-GUARDRAILS.md](SPEND-GUARDRAILS.md) |
 
 ## The manifest
 
@@ -429,6 +430,7 @@ not), `all` and `dry_run` (plan only).
 | `plan` | `plan --github-output`: outputs per stage, the plan in the run's summary | `check` |
 | `migrate` | `migrate --only <units with pending migrations>` | `plan`; skipped when none are pending |
 | `core`, `edge`, `front` | `deploy --only <units> --force --no-migrations`, one job per build group | the stages before; skipped when empty |
+| `smoke` | `node scripts/ops/smoke.mjs`: the landing page, sign-in, sign-up and pricing load, and the waitlist form reaches identity (sent an address identity refuses before keeping or counting anything, so the real waitlist is never touched) | every stage; skipped when nothing deployed |
 
 - **One at a time:** `concurrency: deploy-production`, never cancelled in
   progress; a second push waits.
@@ -610,7 +612,8 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
   `resources.kv`, then the ids in the configs.
 - Queues: `npx wrangler queues create <queue>` for each queue in the
   manifest: `g1t-events`, `g1t-events-<service>` for every subscriber,
-  `g1t-search-jobs`, `g1t-context-jobs`.
+  `g1t-search-jobs`, `g1t-context-jobs`, and the dead-letter queue
+  `g1t-events-dlq` (below).
 - R2: `npx wrangler r2 bucket create g1t-screenshots`,
   `npx wrangler r2 bucket create g1t-actions-cache` (with its two
   lifecycle rules, above), and `npx wrangler r2 bucket create g1t-git-packs`,
@@ -629,6 +632,23 @@ dispatch namespaces; each unit's `setup` and `secrets` say the rest.
 Then `node scripts/deploy.mjs deploy --all`. A Worker bound to a service
 that does not exist yet may be refused; deploy that service first with
 `--only`.
+
+## The dead-letter queue
+
+Every queue consumer (`g1t-events`, each `g1t-events-<service>`,
+`g1t-search-jobs`, `g1t-context-jobs`) names `max_retries` and the
+dead-letter queue `g1t-events-dlq`, so a message that keeps failing stops
+after its retries instead of being retried for ever. A consumer bound to a
+queue that does not exist fails to deploy, so create it once per account,
+before the first deploy that names it:
+
+```sh
+npx wrangler queues create g1t-events-dlq
+```
+
+Nothing consumes it: read what landed there with `npx wrangler queues
+info g1t-events-dlq`, fix the cause, and replay by hand if needed. The
+manifest lists each unit's dead-letter queues under `queues.dead_letter`.
 
 ## OIDC tokens for workflow jobs
 

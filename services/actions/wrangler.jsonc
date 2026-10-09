@@ -37,9 +37,10 @@
 	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
 	// Every event on the bus: what starts workflows, and pushes that change them.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3 }]
+		"consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	// Schedules, jobs waiting for room, and jobs whose runner went quiet.
 	"triggers": { "crons": ["* * * * *"] },
-	"observability": { "enabled": true }
+	// Every log kept: few requests, and a failed job must be traceable.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

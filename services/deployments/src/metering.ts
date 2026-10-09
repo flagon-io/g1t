@@ -62,3 +62,12 @@ export function monthCost(meter: MonthMeter, costs: UnitCosts): MonthCost {
     description: parts.join(", "),
   };
 }
+
+/**
+ * Whether a count from analytics moves a workspace's meter for the month.
+ * The meter keeps the most it has seen (analytics forgets apps that came
+ * down), so a count at or below it changes nothing and is not written.
+ */
+export function movesMeter(stored: { requests: number; cpu_ms: number } | undefined, used: { requests: number; cpuMs: number }): boolean {
+  return !stored || used.requests > stored.requests || used.cpuMs > stored.cpu_ms;
+}

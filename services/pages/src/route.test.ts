@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseEntry, redirectTo, route } from "./route.ts";
+import { APP_LIMITS, overLimits, parseEntry, redirectTo, route } from "./route.ts";
 import worker from "./index.ts";
 
 test("hosts on g1t.page are the home page, the fallback origin, or an app", () => {
@@ -123,4 +123,26 @@ test("an app address with no redirect, or a failing lookup, is served as it is",
     },
   };
   assert.equal(await (await call("https://shop-acme.g1t.page/", e)).text(), "shop");
+});
+
+test("every app runs within the limits, and one that goes over them says so", async () => {
+  const asked: unknown[] = [];
+  const e = {
+    APPS: {
+      get(_name: string, _args: unknown, options: unknown) {
+        asked.push(options);
+        return {
+          async fetch() {
+            throw new Error("Worker exceeded CPU time limit.");
+          },
+        };
+      },
+    },
+  } as any;
+  const response = await call("https://web-acme.g1t.page/", e);
+  assert.deepEqual(asked, [{ limits: APP_LIMITS }]);
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /went over its limits/);
+  assert.ok(overLimits(new Error("Too many subrequests.")));
+  assert.ok(!overLimits(new Error("TypeError: x is undefined")));
 });

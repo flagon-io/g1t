@@ -70,7 +70,8 @@
 	// Workspaces renamed or deleted, repositories that change visibility,
 	// are renamed, move or are purged.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-packages", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-packages", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every registry pull is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

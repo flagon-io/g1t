@@ -56,7 +56,7 @@ import { MirrorOverviewNote, useRepoMirror } from "../../components/mirror";
 import { distinctFacts } from "../../lib/memory-facts";
 import { githubApp } from "../../lib/github.server";
 import { Avatar, ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
-import { ChangeSize } from "../../components/work";
+import { ChangeSize, PersonLink } from "../../components/work";
 import {
   type ActivityItem,
   type Need,
@@ -1174,13 +1174,27 @@ function Overview({
                         <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
                           <span className="font-mono text-faint">#{pull.number}</span>
                           <span>·</span>
+                          {/* The avatar is whoever the line names first: the
+                              agent that made it, or the person who wrote it
+                              with their own tools. */}
                           <span className="inline-flex items-center gap-1">
-                            <Avatar name={pull.agent} size={13} />
-                            {pull.requestedBy
-                              ? `made by ${pull.author.username} for ${pull.requestedBy.username}`
-                              : byAgent
-                                ? `made by ${pull.agent}`
-                                : `by ${pull.author.username}`}
+                            {pull.requestedBy ? (
+                              <>
+                                <Avatar name={pull.author.username} size={13} />
+                                made by <PersonLink name={pull.author.username} className="hover:text-fg" /> for{" "}
+                                <PersonLink name={pull.requestedBy.username} className="hover:text-fg" />
+                              </>
+                            ) : byAgent ? (
+                              <>
+                                <Avatar name={pull.agent} size={13} />
+                                made by {pull.agent}
+                              </>
+                            ) : (
+                              <>
+                                <Avatar name={pull.author.username} size={13} />
+                                by <PersonLink name={pull.author.username} className="hover:text-fg" />
+                              </>
+                            )}
                           </span>
                           {pull.issue != null && (
                             <>
@@ -1190,7 +1204,11 @@ function Overview({
                               </Link>
                             </>
                           )}
-                          {pull.mergedBy && <span>· landed by {pull.mergedBy}</span>}
+                          {pull.mergedBy && (
+                            <span>
+                              · landed by <PersonLink name={pull.mergedBy} className="hover:text-fg" />
+                            </span>
+                          )}
                           <span>
                             · <TimeAgo at={pull.mergedAt ?? pull.updatedAt} />
                           </span>

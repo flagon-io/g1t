@@ -24,7 +24,8 @@
 		{ "binding": "ACTIONS", "service": "g1t-actions" }
 	],
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every issue and pull request page asks it.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

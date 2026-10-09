@@ -379,6 +379,11 @@ impl Work {
         if let Some(refused) = may_plan(&a.actor, &repo) {
             return Ok(refused);
         }
+        if a.assign
+            && let Some(refused) = crate::mentions::refuse_job_token(&a.actor)
+        {
+            return Ok(refused);
+        }
         let Some(row) = self
             .plan_row(&a.id)
             .await?
@@ -520,6 +525,9 @@ impl Work {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         if a.queued {
+            if let Some(refused) = crate::mentions::refuse_job_token(&a.actor) {
+                return Ok(refused);
+            }
             let repo = match self.repo(&a.repo, &Some(a.actor.clone())).await? {
                 Outcome::Ok(repo) => repo,
                 Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),

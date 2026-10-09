@@ -1,4 +1,4 @@
-import type { RunnerApi, ServiceBinding } from "@g1t/contracts";
+import type { RateLimitBinding, RunnerApi, ServiceBinding } from "@g1t/contracts";
 
 declare global {
   namespace Cloudflare {
@@ -44,6 +44,13 @@ declare global {
       MCP_URL?: string;
       /** The social-card image service; an empty string for none. Unset on g1t.sh. */
       OG_URL?: string;
+      /** The front door's rate limits (app/lib/front-door-limits.ts). Absent when self-hosted. */
+      WEB_ANONYMOUS_LIMIT?: RateLimitBinding;
+      WEB_HEAVY_LIMIT?: RateLimitBinding;
+      WEB_SESSION_LIMIT?: RateLimitBinding;
+      WEB_ADDRESS_LIMIT?: RateLimitBinding;
+      GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
+      GIT_SIGNED_LIMIT?: RateLimitBinding;
     }
   }
   interface Env extends Cloudflare.Env {}

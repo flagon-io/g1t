@@ -37,6 +37,7 @@ import {
   stuckMinutes,
   waitedFor,
 } from "../lib/mission";
+import { G1T_COMMIT_EMAILS, normalizeEmail } from "../lib/commit-people";
 import {
   type Fact,
   type Merged,
@@ -56,6 +57,7 @@ import {
   usd,
   waitingRows,
   weekOf,
+  historyCovers,
   who,
   whyFor,
   withConfidence,
@@ -160,7 +162,14 @@ export async function action({ request, context }: Route.ActionArgs) {
  */
 const PUSH_PAGE = 200;
 const PUSH_PAGES = 5;
-/** Commits of the default branch read once, to place each push's commits. */
+/** The first page is smaller: most projects push far less in two weeks. */
+const FIRST_PUSH_PAGE = 50;
+/**
+ * Commits of the default branch read to place each push's commits: a
+ * short read first, which covers most projects' fortnight, and the longer
+ * one only when it does not reach the oldest push.
+ */
+const HISTORY_FIRST = 200;
 const HISTORY_READ = 1000;
 
 /**
@@ -173,21 +182,25 @@ async function directCommits(repo: Repo, viewer: Viewer): Promise<{ hash: string
   const pushes: G1tEvent<"git.push">[] = [];
   let before: string | undefined;
   for (let page = 0; page < PUSH_PAGES; page++) {
-    const batch = await eventLog.list({ repoId: repo.id, types: ["git.push"], limit: PUSH_PAGE, ...(before ? { before } : {}) });
+    const limit = page === 0 ? FIRST_PUSH_PAGE : PUSH_PAGE;
+    const batch = await eventLog.list({ repoId: repo.id, types: ["git.push"], limit, ...(before ? { before } : {}) });
     for (const event of batch) {
       if (event.type === "git.push" && event.data.defaultBranch && Date.parse(event.time) >= since) pushes.push(event as G1tEvent<"git.push">);
     }
     const oldest = batch.at(-1);
-    if (batch.length < PUSH_PAGE || !oldest || Date.parse(oldest.time) < since) break;
+    if (batch.length < limit || !oldest || Date.parse(oldest.time) < since) break;
     before = oldest.id;
   }
   if (pushes.length === 0) return [];
-  // One read of the branch from the newest push back; each push brought
+  // A read of the branch from the newest push back; each push brought
   // what lies between its `after` and its `before` in that history.
   const path = { namespace: repo.namespace, name: repo.name };
-  const history = await reposApi.log(path, viewer, pushes[0].data.after, HISTORY_READ).catch(() => null);
+  const read = (limit: number) => reposApi.log(path, viewer, pushes[0].data.after, limit).catch(() => null);
+  let history = await read(HISTORY_FIRST);
+  if (history?.ok && !historyCovers(history.value, pushes, HISTORY_FIRST)) history = await read(HISTORY_READ);
   if (!history?.ok) return [];
-  return placePushes(history.value, pushes);
+  // g1t's own commits are told by their author address, never by name.
+  return placePushes(history.value, pushes, (commit) => G1T_COMMIT_EMAILS.has(normalizeEmail(commit.author.email)));
 }
 
 

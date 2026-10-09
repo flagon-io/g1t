@@ -471,7 +471,11 @@ function manifest(stack, opts) {
   }
   const out = stack.units.map(({ config, ...unit }) => ({
     ...unit,
-    queues: { produces: (config?.queues?.producers ?? []).map((q) => q.queue), consumes: (config?.queues?.consumers ?? []).map((q) => q.queue) },
+    queues: {
+      produces: (config?.queues?.producers ?? []).map((q) => q.queue),
+      consumes: (config?.queues?.consumers ?? []).map((q) => q.queue),
+      dead_letter: [...new Set((config?.queues?.consumers ?? []).map((q) => q.dead_letter_queue).filter(Boolean))],
+    },
     kv: (config?.kv_namespaces ?? []).map((kv) => stack.resources.kv?.[kv.id] ?? kv.id),
     r2: (config?.r2_buckets ?? []).map((b) => b.bucket_name),
     vectorize: (config?.vectorize ?? []).map((v) => v.index_name),

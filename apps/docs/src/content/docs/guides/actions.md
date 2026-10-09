@@ -98,6 +98,29 @@ anything in it that runs differently.
 Why each of these is missing, and what to use instead, is on
 [What g1t can't do yet](/about/limitations/#actions-and-runners).
 
+## Schedules
+
+A workflow with `on: schedule` runs on the default branch's latest commit,
+at each time its cron lines name, in UTC:
+
+```yaml
+on:
+  schedule:
+    - cron: "0 9 * * mon"   # Mondays at 09:00 UTC
+    - cron: "*/30 * * * *"  # every 30 minutes
+```
+
+Each line has five fields: minute, hour, day of month, month and day of
+the week. A field takes `*`, a number, a range `1-5`, a list `1,15` and a
+step `*/10`; days take `mon` to `sun`, and months `jan` to `dec`.
+
+| Rule | What happens |
+| --- | --- |
+| Every 5 minutes at most | A schedule more frequent than every 5 minutes, such as `* * * * *` or `*/2 * * * *`, runs every 5 minutes instead, on the five-minute marks (:00, :05, :10 and so on), at each mark that ends five minutes in which it would have run. A mark outside the hours, days or months the schedule names never runs: `* 9 * * *` runs from 09:00 to 09:55. |
+| No push for 60 days | Schedules pause in a repository that has had no push for 60 days. The next push to any branch resumes them. Other events and `workflow_dispatch` still start the workflow. |
+| Actions not paid for | When a scheduled run's job could not start because the workspace's plan, spend limit or the open-source pool does not cover it, that run fails and says why, and the workflow's schedule waits an hour before it tries again. |
+| Archived repository | Schedules wait until the repository is unarchived. |
+
 ## Actions and workflows from other repositories
 
 A step's `uses: owner/repo@ref` (or `owner/repo/path@ref`) and a job's
@@ -1083,6 +1106,13 @@ Each job gets a token of its own, `${{ secrets.G1T_TOKEN }}`
   or a comment made with it runs nothing, so a workflow cannot set itself
   off. `workflow_dispatch` and [`repository_dispatch`](#repository-dispatch)
   are the exceptions, for a workflow that means to start another.
+- It **never puts g1t to work**. A comment it posts that mentions
+  `@g1t` starts nothing, and it cannot assign an issue or a plan to g1t,
+  queue one for it, hand it work or ask it for a review. Otherwise a
+  workflow that asks g1t to fix a failing check would run again on g1t's
+  push, and ask again, without end. A step that should put g1t to work
+  uses a token of a person's own, stored as a
+  [secret](/guides/secrets-and-variables/).
 
 `permissions:` goes at the top of the workflow, for every job, or on a job,
 which then ignores the workflow's. Once either is written, every permission

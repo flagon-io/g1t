@@ -568,6 +568,16 @@ pub struct ListArgs {
     /// Only events older than this event id.
     #[serde(default)]
     pub before: Option<String>,
+    /// Only events by this account id.
+    #[serde(default)]
+    pub actor: Option<String>,
+    /// Only events about these issues or pull requests: their `number`, or
+    /// the `issue` a comment, review or link is on. All when empty.
+    #[serde(default)]
+    pub numbers: Vec<u32>,
+    /// Only events at or after this RFC 3339 time.
+    #[serde(default)]
+    pub since: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
 }

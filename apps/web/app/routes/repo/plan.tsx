@@ -23,6 +23,8 @@ import {
 } from "../../lib/session.server";
 import { useRefreshWhile } from "../../lib/refresh";
 
+/** The most of an outcome's activity the page shows. */
+const ACTIVITY_LIMIT = 40;
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Plan · ${params.owner}/${params.repo} · g1t` });
@@ -49,21 +51,27 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // What happened across the outcome's issues and pull requests.
   let activity: G1tEvent[] = [];
   if (found.status === "applied" && found.progress.length > 0) {
-    const numbers = new Set([
-      ...found.progress.map((item) => item.number),
-      ...found.progress.flatMap((item) => (item.pull != null ? [item.pull] : [])),
-    ]);
+    const numbers = [
+      ...new Set([
+        ...found.progress.map((item) => item.number),
+        ...found.progress.flatMap((item) => (item.pull != null ? [item.pull] : [])),
+      ]),
+    ];
     const since = found.finishedAt ?? found.createdAt;
-    const recent = await events.list({ repoId: found.repoId, limit: 200 }).catch(() => []);
-    activity = recent
-      .filter((event) => event.time >= since)
-      .filter((event) => {
-        const data = event.data as { number?: number; issue?: number };
-        // Issues an agent filed while working on this outcome belong to it too.
-        if (event.type === "issue.opened" && event.actor === "usr_g1t_agent") return true;
-        return (data.number != null && numbers.has(data.number)) || (data.issue != null && numbers.has(data.issue));
-      })
-      .slice(0, 40);
+    // The log is read for this outcome alone, so a busy repository's other
+    // work never crowds it out: events on its issues and pull requests, and
+    // issues an agent filed while working on it, which belong to it too.
+    const [own, filed] = await Promise.all([
+      events.list({ repoId: found.repoId, numbers, since, limit: ACTIVITY_LIMIT }).catch(() => []),
+      events
+        .list({ repoId: found.repoId, types: ["issue.opened"], actor: "usr_g1t_agent", since, limit: ACTIVITY_LIMIT })
+        .catch(() => []),
+    ]);
+    const seen = new Set<string>();
+    activity = [...own, ...filed]
+      .filter((event) => (seen.has(event.id) ? false : (seen.add(event.id), true)))
+      .sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
+      .slice(0, ACTIVITY_LIMIT);
     // Events name accounts by id; show names.
     const named = await identity
       .usernames([...new Set(activity.flatMap((event) => (event.actor ? [event.actor] : [])))])

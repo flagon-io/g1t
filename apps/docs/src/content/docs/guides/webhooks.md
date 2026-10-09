@@ -48,7 +48,9 @@ Each delivery is a `POST` with a JSON body:
 
 `data` holds what the event is about: ids and numbers to fetch the rest with
 the [API](/reference/api/). `actor` is null for something g1t did by
-itself.
+itself. An event whose `data` would be larger than about 96 KB has its
+long text, such as a comment's or release's body, shortened, and
+`data.truncated` is `true`: fetch the whole text from the API.
 
 With these headers:
 
@@ -64,7 +66,7 @@ With these headers:
 
 | Event | When |
 | --- | --- |
-| `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`. |
+| `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`. A push of more than 3 tags, or more than 1,000 branches, sends fewer; see [pushes of many branches or tags](/guides/git/#pushes-of-many-branches-or-tags). |
 | `repo.created`, `repo.forked` | A repository was made, or forked for a pull request. |
 | `repo.updated` | Its description, website, topics, protection or visibility changed. |
 | `repo.visibility_changed` | It was made public or private. |

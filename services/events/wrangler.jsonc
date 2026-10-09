@@ -22,7 +22,7 @@
 			{ "binding": "BUS", "queue": "g1t-events" },
 			// One queue per subscribing service, so each consumes, retries
 			// and scales on its own. Bindings named SUBSCRIBER_* receive
-			// every event.
+			// the event types g1t_contracts::subscribers routes to them.
 			{ "binding": "SUBSCRIBER_WORK", "queue": "g1t-events-work" },
 			{ "binding": "SUBSCRIBER_RUNNER", "queue": "g1t-events-runner" },
 			{ "binding": "SUBSCRIBER_INTEGRATIONS", "queue": "g1t-events-integrations" },
@@ -37,7 +37,7 @@
 			{ "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" },
 			{ "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" }
 		],
-		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	// Each workspace's audit log keeps as many days as billing says (7 free,
 	// 90 on the plan, or what staff set), asked for over this binding.
@@ -56,5 +56,6 @@
 	// older than AUDIT_MIN_DAYS, the shortest any plan keeps, are asked about.
 	"triggers": { "crons": ["41 3 * * *"] },
 	"vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every change in g1t is an event.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

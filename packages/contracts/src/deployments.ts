@@ -121,7 +121,7 @@ export type DeployUsage = {
   buildSeconds: number;
   /** Charged so far this month for builds, in millionths of a dollar. */
   buildMicros: number;
-  /** RFC 3339: when requests and CPU time were last counted. */
+  /** RFC 3339: when requests and CPU time last went up. */
   countedAt: string | null;
 };
 

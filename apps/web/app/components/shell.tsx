@@ -4,6 +4,7 @@ import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderDa
 
 import { type Abilities, type InboxCounts, type Membership, type Spike, type User, mayCreateTeams } from "@g1t/contracts";
 
+import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
 import { AgentButton, InboxBell } from "./inbox";
 import { PinButton } from "./pin-button";
@@ -1920,7 +1921,7 @@ export function AppShell({
         </header>
         {banner}
         <main id="content" tabIndex={-1} {...leaving} className={`min-w-0 grow outline-none ${leaving.className}`}>
-          {children}
+          <InMain.Provider value={true}>{children}</InMain.Provider>
         </main>
       </div>
       <CommandPalette

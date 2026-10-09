@@ -61,6 +61,8 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
 }
 
 pub mod d1;
+pub mod limits;
+pub mod pause;
 pub mod wire;
 
 /// Helpers for bindings that workers-rs has no typed wrapper for, such as
