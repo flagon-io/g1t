@@ -13,10 +13,24 @@ import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
 import { usercontentPath } from "../app/lib/usercontent";
 import { serveUsercontent } from "./usercontent";
 
-const requestHandler = createRequestHandler(
-  () => import("virtual:react-router/server-build"),
-  import.meta.env.MODE,
-);
+const loadBuild = () => import("virtual:react-router/server-build");
+
+/**
+ * Given a function for the build, React Router derives everything from it
+ * again on every request: each route wrapped for the timings in
+ * entry.server.tsx, then the route table flattened and ranked, about a
+ * millisecond and a half of CPU a page. The build never changes while an
+ * isolate lives, so outside development it is loaded once and the handler
+ * made once. Development keeps the function, so a changed file is picked up.
+ * Only the made handler is kept, never a promise of one, so no request
+ * waits on another's (a build that fails to load is loaded again next time).
+ */
+let handler: ReturnType<typeof createRequestHandler> | undefined;
+async function requestHandler(request: Request): Promise<Response> {
+  if (import.meta.env.DEV) return createRequestHandler(loadBuild, import.meta.env.MODE)(request);
+  handler ??= createRequestHandler(await loadBuild(), import.meta.env.MODE);
+  return handler(request);
+}
 
 const DOCS = "https://docs.g1t.sh";
 

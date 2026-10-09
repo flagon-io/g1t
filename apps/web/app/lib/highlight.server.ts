@@ -44,7 +44,7 @@ function defer(work: Promise<unknown>) {
 
 /**
  * About 8 MB of highlighted lines per isolate (two bytes a character); one
- * file up to a quarter of that, which a 1,500-line file fits. A pull
+ * file up to a quarter of that, which a 1,800-line file fits. A pull
  * request's first screens are at most 40,000 characters of text, about
  * ten times that highlighted.
  */
