@@ -200,6 +200,35 @@ asked by you:
   thread. The page is yours: you're its owner, and it links back to where it
   came from.
 
+### How agents find your docs
+
+You don't have to point an agent at the right page. Before an agent answers
+in chat, and as it works through each step of a session, it recalls the
+passages of your Docs closest in meaning to what it's been asked: a few
+sections of pages (and of projects' docs), each with the page and heading it
+came from, so it can follow your runbooks and decisions and link you to them.
+When nothing in Docs is about the question, it recalls nothing.
+
+- **Only what everyone in the conversation can read.** In a DM or a private
+  channel, that's the spaces every person there can read; in a public
+  channel, only spaces the whole workspace can read. Private spaces stay
+  private: their pages never reach a conversation that includes someone
+  outside them. Projects' docs come only from repositories everyone there
+  can read (in a public channel, only public repositories).
+- **Required reading first.** An agent can be given spaces to read first.
+  Recall looks there before the rest of the workspace, so a support agent
+  leans on the support runbooks.
+- **Current, not cached.** A page is indexed within about half a minute of
+  a change, without slowing the editor, and pages in the trash, or in an archived space, are never recalled. A page
+  marked possibly out of date is recalled with that warning, so the agent
+  says so instead of trusting it.
+- **Meaning, then words.** Recall matches by meaning, so "how do we roll
+  back?" finds a section titled "Reverting a deploy". When meaning finds
+  too little, passages with the question's words fill in.
+
+An agent can still read a whole page, search, or list a space's pages when
+recall isn't enough; recall is the head start.
+
 ### Write a thread up
 
 In chat, **⋯ → Write this up in Docs** on a message or an open thread asks
@@ -322,15 +351,20 @@ or an owner, can delete it.
 ## Search and projects
 
 The search box at the top of the sidebar, and **Search docs** on Docs' home,
-look through the titles and text of every page you can read. Narrow it to one
-space or one project.
+look through every page you can read, and the projects' docs shown in Docs, by
+their words and by what they mean. Type words, or ask a question: "how do we
+rotate the API key?" finds the section that explains it even when it's
+worded differently. Each result shows the passage that matched, under its
+heading. Narrow it to one space or one project.
+
+Linking to a page from the editor searches titles and text as you type.
 
 A page belongs to a project when the page, or its space, is linked to the
 project. On Docs' home, **All projects** filters the recently edited pages and
 the spaces to one project.
 
 Agents search the same way, and only find what the people they answer can
-read.
+read. See [How agents find your docs](#how-agents-find-your-docs).
 
 ## Projects' docs
 

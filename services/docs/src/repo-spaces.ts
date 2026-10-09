@@ -44,7 +44,11 @@ function decodeBase64(data: string): string {
  * repos without a viewer (`listFiles`, `rawBlobs`), so callers check the
  * repository can be read first, as adding one does.
  */
-export async function indexRepoSpace(env: { DB: D1Database; REPOS: ServiceBinding }, space: RepoSpaceRow, now = new Date()): Promise<{ files: number; read: number }> {
+export async function indexRepoSpace(
+  env: { DB: D1Database; REPOS: ServiceBinding },
+  space: RepoSpaceRow,
+  now = new Date(),
+): Promise<{ files: number; read: number; changed: string[]; gone: string[] }> {
   const db = env.DB;
   const repos = reposClient(env.REPOS);
   const listing = await repos.listFiles(space.repo_id, null, 10_000);
@@ -78,15 +82,24 @@ export async function indexRepoSpace(env: { DB: D1Database; REPOS: ServiceBindin
   }
   statements.push(db.prepare("UPDATE repo_spaces SET commit_sha = ?, indexed_at = ? WHERE id = ?").bind(listing.commit, now.toISOString(), space.id));
   for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50));
-  return { files: wanted.length, read: changed.length };
+  return { files: wanted.length, read: changed.length, changed: changed.map((f) => f.path), gone };
 }
 
-/** Every space showing a repository's docs, read again after a push. Never throws for one space's sake. */
-export async function reindexRepo(env: { DB: D1Database; REPOS: ServiceBinding }, repoId: string): Promise<void> {
+/**
+ * Every space showing a repository's docs, read again after a push; then
+ * `indexed` with what changed in each (the semantic index, src/indexer.ts).
+ * Never throws for one space's sake.
+ */
+export async function reindexRepo(
+  env: { DB: D1Database; REPOS: ServiceBinding },
+  repoId: string,
+  indexed: (spaceId: string, changed: string[], gone: string[]) => Promise<void> = async () => {},
+): Promise<void> {
   const spaces = (await env.DB.prepare("SELECT * FROM repo_spaces WHERE repo_id = ?").bind(repoId).all<RepoSpaceRow>()).results;
   for (const space of spaces) {
     try {
-      await indexRepoSpace(env, space);
+      const read = await indexRepoSpace(env, space);
+      await indexed(space.id, read.changed, read.gone);
     } catch (error) {
       console.error("docs could not read a project's docs", space.repo, String(error));
     }

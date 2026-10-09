@@ -26,6 +26,16 @@
 	// Self-hosted, any S3-compatible store instead: DOCS_FILES=s3 and the
 	// DOCS_S3_* settings (src/files.ts, docs/SELF_HOSTING.md).
 	"r2_buckets": [{ "binding": "FILES", "bucket_name": "g1t-docs-files" }],
+	// The semantic index agents recall from (src/indexer.ts, src/vectors.ts):
+	// Workers AI embeds passages (@cf/baai/bge-base-en-v1.5, 768 dimensions)
+	// into Vectorize, with metadata indexes on workspace_id and space_id so a
+	// query only reads spaces its reader may. Create it once:
+	//   npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine
+	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=workspace_id --type=string
+	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=space_id --type=string
+	// Without them Docs still keeps passages in D1 and recall matches words.
+	"ai": { "binding": "AI" },
+	"vectorize": [{ "binding": "VECTORS", "index_name": "g1t-docs" }],
 	"services": [
 		// Workspaces by slug, people's names and avatars, and teams.
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
@@ -46,6 +56,10 @@
 	// service sends it what g1t_contracts::subscribers routes to
 	// SUBSCRIBER_DOCS. Create it once: npx wrangler queues create g1t-events-docs
 	"queues": {
+		// Its own backfill jobs ride the same queue (`docs.index`,
+		// src/indexer.ts): a workspace's pages and projects' docs indexed in
+		// batches, and waiting out the hourly embedding cap.
+		"producers": [{ "binding": "JOBS", "queue": "g1t-events-docs" }],
 		"consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	// One room per page: it holds the page's Yjs document and open sockets,

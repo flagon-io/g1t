@@ -384,6 +384,10 @@ export type DocSearchHit = DocPageRef & {
   projects: string[];
   /** Set for a file from a project's docs folder (then `id` is `repo:<space>:<path>` and `path` its address in Docs). */
   repo_file?: { repo: string; path: string } | null;
+  /** The heading of the passage that matched, when search found one (`mode: "hybrid"`). */
+  heading?: string | null;
+  /** How it was found: by its words, by meaning (the semantic index), or both. */
+  matched?: "words" | "meaning" | "both" | null;
 };
 
 export type DocTemplate = {
@@ -486,6 +490,12 @@ export type DocSearchQuery = {
   /** `owner/name`: pages linked to it, or in a space linked to it. */
   project?: string | null;
   limit?: number | null;
+  /**
+   * `words` (the default): titles and text by their words, as you type.
+   * `hybrid`: words and meaning (the semantic index) together, each hit
+   * with the passage and heading that matched; the Docs search page.
+   */
+  mode?: "words" | "hybrid" | null;
 };
 
 /**
@@ -631,6 +641,12 @@ export type DocsApi = {
   removeRepoSpace(workspace: string, viewer: User, id: string): Promise<Result<boolean>>;
   /** One file of a project's docs, for a viewer who can read the repository; not found otherwise. */
   repoPage(workspace: string, viewer: User, repo: string, path: string): Promise<Result<DocRepoPage>>;
+  /**
+   * Indexes the workspace's pages and projects' docs for agents' recall
+   * again, in batches in the background. Workspace owners. True when a run
+   * started (false: one is already going).
+   */
+  reindexDocs(workspace: string, viewer: User): Promise<Result<boolean>>;
 
   // ── Agents (services/agents) ─────────────────────────────────────────
   //
@@ -757,6 +773,7 @@ export function docsClient(service: ServiceBinding): DocsApi {
     addRepoSpace: (workspace, viewer, repo) => call("add_repo_space", { workspace, viewer, repo }),
     removeRepoSpace: (workspace, viewer, id) => call("remove_repo_space", { workspace, viewer, id }),
     repoPage: (workspace, viewer, repo, path) => call("repo_page", { workspace, viewer, repo, path }),
+    reindexDocs: (workspace, viewer) => call("reindex_docs", { workspace, viewer }),
     spacesForAgent: (workspace, agentId, viewer, audience) => call("spaces_for_agent", { workspace, agent_id: agentId, viewer, audience: audience ?? null }),
     pageMarkdown: (workspace, agentId, viewer, pageId, audience) =>
       call("page_markdown", { workspace, agent_id: agentId, viewer, page_id: pageId, audience: audience ?? null }),

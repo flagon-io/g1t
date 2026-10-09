@@ -315,6 +315,18 @@ changes for them.
   - Off: the service already degrades to keyword search when `AI` or
     `VECTORS` is missing (`index.ts:919`), so phase 3 can first run context
     with neither bound.
+- **Docs' semantic index** (`services/docs`, what agents recall from)
+  talks only to an `Embedder` and a `VectorStore`
+  (`services/docs/src/vectors.ts`). Only Cloudflare's are built today:
+  Workers AI (`AI`, `@cf/baai/bge-base-en-v1.5`) and Vectorize (`VECTORS`,
+  the `g1t-docs` index, filtered by `workspace_id` and `space_id`).
+  Another model or vector database fits behind the same two interfaces
+  (sqlite-vec with an OpenAI-compatible embeddings endpoint, as for the
+  context hub, is the likely default), but none is written yet. Without
+  them Docs still keeps every passage in D1 with full text, so agents'
+  recall and the Docs search page match words instead of meaning. The
+  backfill and catch-up jobs ride the docs service's events queue
+  (`JOBS`); without a queue one batch runs at a time as recall asks.
 
 ### Files in Docs pages
 

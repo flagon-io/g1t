@@ -42,15 +42,15 @@ export type Save = {
 
 type PageRow = { id: string; workspace_id: string; space_id: string; title: string; mentioned: string; markdown: string; slug: string; archived_at: string | null };
 
-/** Saves; returns whether a version was recorded, and its id. */
-export async function save(env: SaveEnv, input: Save, now = new Date()): Promise<{ version_id: string | null }> {
+/** Saves; returns whether a version was recorded, and its id, and whether the Markdown changed (so the room indexes it again, src/indexer.ts). */
+export async function save(env: SaveEnv, input: Save, now = new Date()): Promise<{ version_id: string | null; changed: boolean }> {
   const at = now.toISOString();
   const page = await env.DB.prepare(
     "SELECT p.id, p.workspace_id, p.space_id, p.title, p.mentioned, p.markdown, p.archived_at, s.slug AS slug FROM pages p JOIN spaces s ON s.id = p.space_id WHERE p.id = ?",
   )
     .bind(input.page_id)
     .first<PageRow>();
-  if (!page) return { version_id: null };
+  if (!page) return { version_id: null, changed: false };
   const changed = page.markdown !== input.markdown;
   const last = input.editors[input.editors.length - 1] ?? null;
   const statements: D1PreparedStatement[] = [];
@@ -146,5 +146,5 @@ export async function save(env: SaveEnv, input: Save, now = new Date()): Promise
       await Promise.all(fresh.map((name) => notify.notify({ username: name }, notification(name)).catch(() => undefined)));
     }
   }
-  return { version_id: versionId };
+  return { version_id: versionId, changed };
 }

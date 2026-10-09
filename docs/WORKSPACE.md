@@ -461,9 +461,11 @@ Every page has history, comments, backlinks and owners.
 
 This is where Docs earns its place:
 
-- **Agents read it.** Pages are indexed by `services/context`, so the
-  knowledge reaches every reply, session and plan. A space can be pinned to
-  an agent as required reading.
+- **Agents read it.** Pages and projects' docs are split into passages
+  and indexed by meaning in Docs' own semantic index, and agents recall
+  the most relevant passages on every reply and session step, only from
+  spaces everyone in the conversation can read. A space can be pinned to
+  an agent as required reading, which recall looks in first.
 - **Agents write it.** An agent edits pages directly where the space lets
   agents edit and the person it acts for can edit. Otherwise the edit
   becomes a **suggestion**: tracked changes a person accepts or rejects
@@ -583,22 +585,68 @@ doing; the thread link it cites is `<conversation path>?thread=<id>`, which
 Not built yet: the documenter agent (it reads `stalePagesForAgent` and
 updates with `marks_current`; the routine and its `doc.page.stale` trigger
 are the agents service's), editing a project's docs from Docs as a pull
-request, and indexing pages in `services/context`.
+request.
 
-**Pages in `services/context`: what it needs.** The context hub indexes
-items per project, and decides who sees one by the project's privacy
-(`private` and membership). A Docs page's access is per space (private and
-team spaces, listed members), which that model can't express, so indexing
-pages there as they are would show private spaces' pages to every member.
-Doing it right needs: an ingest RPC on context for documents with an
-access key (`docs:<space id>`), a check at query time that asks the docs
-service which spaces the reader (and audience) can read
-(`spacesForAgent` already answers that), and a `doc.page.updated`
-consumer that re-embeds the page's Markdown (`SUBSCRIBER_CONTEXT` would
-route `doc.page.*`). Until then agents reach pages through the docs tools
-(`searchForAgent`, `pageMarkdown`), which apply exactly those rules.
-Projects' docs folders are already in context: it reads each project's
-`docs/` on every push.
+**The semantic index: how agents find what Docs say.** Docs keeps its
+own index rather than putting pages in `services/context`, because a
+page's access is per space (private and team spaces, listed members),
+which the context hub's per-project privacy can't express. Built
+(`services/docs` src/chunks.ts, src/indexer.ts, src/recall.ts,
+src/vectors.ts):
+
+- **Passages.** A page's derived Markdown, and each projects' docs file,
+  is split by heading into passages of about 300 to 1,500 characters
+  (long sections split on paragraph boundaries, a code block kept whole,
+  tiny sections joined to the next), each with its heading path
+  ("Runbook › Rollback"). They live in D1 (`doc_chunks`, with FTS5 over
+  heading and text in `doc_chunks_fts`), and as vectors in Vectorize
+  (`g1t-docs`, 768 dimensions, cosine), embedded by Workers AI
+  (`@cf/baai/bge-base-en-v1.5`) with the title and heading in front.
+  Vector ids are `<page or file id>:<seq>`; metadata is `workspace_id`
+  and `space_id` (both indexed), `kind`, and `page_id`, or `repo_file_id`
+  and `repo_id`. A projects' docs file's space is its repo space, and its
+  id `rf_<hash of space and path>`.
+- **Indexing never slows editing.** The page's room indexes it half a
+  minute after its Markdown first changes, on its own alarm. Only
+  passages whose text changed are embedded; one that only moved keeps its
+  vector. Creating, renaming, moving and restoring a page index it; the
+  trash, deleting, removing a project's docs and a purged repository take
+  passages out. A project's docs files are indexed after each read (on
+  adding them, and after each push to the default branch).
+- **A cap, and catching up.** At most 200 passages are embedded per
+  workspace per hour (`doc_embed_usage`, which also counts characters as
+  an estimate of tokens); past it the rest are kept for words and a
+  catch-up run embeds them the next hour. Any failure leaves passages for
+  the next save or run; saving never waits on, or fails for, the index.
+- **Backfill.** A run (`doc_index_runs`) indexes a workspace's existing
+  pages and files 20 at a time, as `docs.index` jobs on the docs
+  service's own events queue. It starts by itself the first time an agent
+  recalls from a workspace that has pages but was never indexed, and an
+  owner can start it again (`reindexDocs`).
+- **Recall** (`recallForAgent`, RPC `recall_for_agent`). The spaces an
+  agent may read for the viewer and audience come from the same check as
+  every other agent read (`agentSpaces`, behind `spacesForAgent` and
+  `searchForAgent`); projects' docs only from repositories the viewer can
+  read and, for a DM or private channel, every person in it (a public
+  channel, or more than 20 people: public repositories only). The query is
+  embedded once (kept a minute per isolate) and the index asked for the
+  24 nearest passages within those spaces (by a `$in` filter on
+  `space_id`, or for more than 40 spaces by workspace, 50 of them,
+  filtered after). Passages below a cosine similarity of 0.6 are dropped;
+  at most two per page; required spaces (`spaces`) are asked separately
+  and come first; when meaning finds fewer than `limit` (5 by default, 10
+  at most), passages matching any of the query's words fill in (score
+  0.5). Each passage comes with its page or file, heading, and whether the
+  page is possibly out of date. Archived pages and spaces are never
+  returned: what comes back is checked against D1 as it is now.
+- **People's search** asks the same index: the Docs search page is hybrid
+  (`mode: "hybrid"`), word hits and meaning hits fused by reciprocal rank,
+  each with the passage and heading that matched. Search as you type (page
+  links) stays words only.
+- **Adapters.** Docs talks to an `Embedder` and a `VectorStore`
+  (src/vectors.ts), so a self-hosted g1t could use another model or vector
+  database. Only Cloudflare's are built. Without them, passages are still
+  kept and recall matches words.
 
 ## Chat
 

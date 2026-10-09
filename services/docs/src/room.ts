@@ -12,7 +12,10 @@
  * Storage (the object's own SQLite): the document as a snapshot plus the
  * updates since, compacted every so often. A few seconds after a burst of
  * edits (an alarm), the room saves the Markdown rendition, the search
- * index, backlinks and history to D1 (src/persist.ts).
+ * index, backlinks and history to D1 (src/persist.ts). Half a minute after
+ * the Markdown first changes, it brings the page's passages in the
+ * semantic index up to date (src/indexer.ts), on the same alarm, so typing
+ * never waits on embedding.
  *
  * The room authorizes nothing about who may open the page: the Worker
  * checks the viewer's role before forwarding a socket (src/index.ts,
@@ -32,6 +35,7 @@ import { seed } from "./blocks.ts";
 import { anchorThread, applyEdit, findTarget, rangeIds, rangeMarkdown, restoreFrom, unanchorThread } from "./edits.ts";
 import { bodyCitations } from "./citations.ts";
 import { citationNodes, documentMarkdown, mentionedIds, outline, type Outline } from "./markdown.ts";
+import { indexPage, type DocsJob } from "./indexer.ts";
 import { save } from "./persist.ts";
 import { applyThreadAction, listThreads, setQuote, type ThreadResult } from "./threads.ts";
 
@@ -52,7 +56,7 @@ export type Origin = { key: string; kind: DocVersionKind; note: string | null; a
 
 type Attachment = RoomMember & { clients: number[] };
 
-type Env = { DB: D1Database; NOTIFY?: ServiceBinding; EVENTS?: ServiceBinding };
+type Env = { DB: D1Database; NOTIFY?: ServiceBinding; EVENTS?: ServiceBinding; AI?: Ai; VECTORS?: Vectorize; JOBS?: Queue<DocsJob> };
 
 const FRAGMENT = "document-store";
 const MESSAGE_SYNC = 0;
@@ -60,6 +64,8 @@ const MESSAGE_AWARENESS = 1;
 const MESSAGE_QUERY_AWARENESS = 3;
 /** Save this long after the last change. */
 const SAVE_AFTER_MS = 4_000;
+/** Index the page's passages this long after its Markdown first changed: at most twice a minute while someone types. */
+const INDEX_AFTER_MS = 30_000;
 /** Compact the stored updates into one snapshot past this many. */
 const COMPACT_AT = 300;
 
@@ -150,8 +156,13 @@ export class PageRoom extends DurableObject<Env> {
   }
 
   private scheduleSave(): void {
+    this.alarmBy(Date.now() + SAVE_AFTER_MS);
+  }
+
+  /** Makes sure the alarm rings by `when`: the save's, or the index's, whichever is first. */
+  private alarmBy(when: number): void {
     void this.ctx.storage.getAlarm().then((at) => {
-      if (at == null) return this.ctx.storage.setAlarm(Date.now() + SAVE_AFTER_MS);
+      if (at == null || at > when) return this.ctx.storage.setAlarm(when);
     });
   }
 
@@ -189,6 +200,11 @@ export class PageRoom extends DurableObject<Env> {
     });
     this.setMeta("editors", []);
     this.setMeta("editor_names", []);
+    if (result.changed && this.meta<number | null>("index_at", null) == null) {
+      const when = Date.now() + INDEX_AFTER_MS;
+      this.setMeta("index_at", when);
+      this.alarmBy(when);
+    }
     if (result.version_id) {
       this.setMeta("last_version_at", Date.now());
       this.setMeta("pending_authors", []);
@@ -198,6 +214,13 @@ export class PageRoom extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     await this.persist();
+    const due = this.meta<number | null>("index_at", null);
+    if (due == null) return;
+    if (Date.now() < due) return this.alarmBy(due);
+    this.setMeta("index_at", null);
+    const pageId = this.meta<string | null>("page_id", null);
+    // Never throws; a failure is retried on the next change.
+    if (pageId) await indexPage(this.env, pageId);
   }
 
   // ── Calls from the Worker ──────────────────────────────────────────────

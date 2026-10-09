@@ -24,12 +24,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const space = url.searchParams.get("space") || null;
   const project = url.searchParams.get("project") || null;
   const found = q.trim()
-    ? await docs.search(params.owner.toLowerCase(), viewer, { query: q, space_id: space, project, limit: 50 }).catch(() => null)
+    ? await docs.search(params.owner.toLowerCase(), viewer, { query: q, space_id: space, project, limit: 50, mode: "hybrid" }).catch(() => null)
     : null;
   return { q, space, project, hits: found?.ok ? found.value : q.trim() ? null : ([] as DocSearchHit[]) };
 }
 
-/** Full text over every page the viewer can read; by space and by project. */
+/**
+ * Every page the viewer can read, and the projects' docs shown in Docs,
+ * by words and by meaning at once; by space and by project. Each hit shows
+ * the passage that matched, under its heading.
+ */
 export default function DocsSearch({ loaderData, params }: Route.ComponentProps) {
   const slug = params.owner.toLowerCase();
   const { q, space, project, hits } = loaderData;
@@ -44,7 +48,7 @@ export default function DocsSearch({ loaderData, params }: Route.ComponentProps)
       <Form method="get" id="docs-search" className="mt-4 flex flex-wrap gap-2">
         <label className="flex h-10 min-w-0 grow items-center gap-2 rounded-md border border-line bg-surface px-3 focus-within:border-accent/60">
           <Search size={16} className="text-faint" aria-hidden="true" />
-          <input name="q" defaultValue={q} autoFocus placeholder="Words in a title or a page" aria-label="Search" className="min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint" />
+          <input name="q" defaultValue={q} autoFocus placeholder="Words, or a question" aria-label="Search" className="min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint" />
         </label>
         <SelectField
           name="space"
@@ -62,7 +66,10 @@ export default function DocsSearch({ loaderData, params }: Route.ComponentProps)
         {hits === null ? (
           <EmptyState title="Search didn't answer">Try again in a moment.</EmptyState>
         ) : !q.trim() ? (
-          <p className="text-sm text-muted">Search titles and text across every space you can read, and the projects&apos; docs shown in Docs. Agents search the same way, and only see what the people they answer can see.</p>
+          <p className="text-sm text-muted">
+            Search every space you can read, and the projects&apos; docs shown in Docs, by their words and by what they mean: ask a question and the passage that answers it comes up even when it words it differently. Agents recall from
+            Docs the same way, and only from what everyone they answer can read.
+          </p>
         ) : hits.length === 0 ? (
           <EmptyState title="Nothing found">No page you can read matches &ldquo;{q}&rdquo;.</EmptyState>
         ) : (
@@ -77,6 +84,7 @@ export default function DocsSearch({ loaderData, params }: Route.ComponentProps)
                       {hit.space_name} · <TimeAgo at={hit.updated_at} />
                     </span>
                   </span>
+                  {hit.heading && <span className="mt-0.5 block truncate text-xs font-medium text-muted">{hit.heading}</span>}
                   <span className="mt-1 line-clamp-2 block text-xs leading-relaxed text-muted">
                     {snippetParts(hit.snippet).map((part, i) =>
                       part.match ? (

@@ -47,6 +47,7 @@ import {
   type DocPageChange,
   type DocPageDetail,
   type DocPageRef,
+  type DocPassage,
   type DocRole,
   type DocSearchHit,
   type DocSearchQuery,
@@ -82,10 +83,13 @@ import { diffLines } from "./diff.ts";
 import { cleanDescribes } from "./citations.ts";
 import { publishDocEvent } from "./events.ts";
 import { fileStore, safeName, servedType, type FileStoreEnv } from "./files.ts";
+import { repoFileId } from "./chunks.ts";
+import { adapters, ensureIndexed, forgetDocs, indexPage, indexRepoFiles, runBackfill, startBackfill, type DocsJob } from "./indexer.ts";
 import { excerpt, searchText } from "./markdown.ts";
+import { QueryCache, fuseRanks, pickPassages, queryKey, recallLimit, requiredSpaces, vectorQueryPlan, MEANING_FLOOR, WORDS_SCORE, type Candidate } from "./recall.ts";
 import { ROOM_MEMBER_HEADER, type Origin, type PageRoom, type RoomMember } from "./room.ts";
 import { indexRepoSpace, reindexRepo, type RepoSpaceRow } from "./repo-spaces.ts";
-import { ftsQuery, inProject, projectRef, searchSpaces } from "./search.ts";
+import { ftsAnyQuery, ftsQuery, inProject, projectRef, searchSpaces } from "./search.ts";
 import { freeSlug, pageSlug, validSpaceSlug } from "./slugs.ts";
 import { BUILTIN_TEMPLATES, builtinTemplate } from "./templates.ts";
 import type { ThreadResult } from "./threads.ts";
@@ -106,7 +110,16 @@ type Env = FileStoreEnv & {
   /** The bus: `doc.page.*` events (src/events.ts). */
   EVENTS?: ServiceBinding;
   PAGES: DurableObjectNamespace<PageRoom>;
+  /** Workers AI: embeds passages and queries for the semantic index (src/vectors.ts). Without it, words only. */
+  AI?: Ai;
+  /** The semantic index, Vectorize `g1t-docs` (src/vectors.ts, src/indexer.ts). */
+  VECTORS?: Vectorize;
+  /** The docs service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts). */
+  JOBS?: Queue<DocsJob>;
 };
+
+/** Queries' embeddings, a minute per isolate (src/recall.ts). */
+const queryVectors = new QueryCache();
 
 type SpaceRow = {
   id: string;
@@ -173,6 +186,21 @@ type ChangeRow = {
 };
 
 type VersionRow = { id: string; page_id: string; created_at: string; kind: DocVersion["kind"]; authors: string; note: string | null; markdown: string; state: ArrayBuffer | null };
+
+/** A passage as recall and search read it back (`passages`): its page's or file's title, and the page's space now. */
+type PassageRow = {
+  id: string;
+  page_id: string | null;
+  repo_file_id: string | null;
+  path: string | null;
+  heading: string | null;
+  text: string;
+  updated_at: string;
+  space_id: string;
+  title: string | null;
+  icon: string | null;
+  page_updated_at: string | null;
+};
 
 /** A space, with who is in it and the viewer's role. */
 type Space = { row: SpaceRow; members: { principal: string; role: DocRole }[]; projects: string[]; role: DocRole | null };
@@ -673,7 +701,8 @@ class Docs {
       .first<{ id: string }>();
     if (!inserted) return fail("conflict", `${ref}'s docs are already in Docs.`);
     try {
-      await indexRepoSpace({ DB: this.db, REPOS: this.env.REPOS }, row);
+      const read = await indexRepoSpace({ DB: this.db, REPOS: this.env.REPOS }, row);
+      this.defer(indexRepoFiles(this.env, row.id, read.changed, read.gone));
     } catch (error) {
       console.error("docs could not read a project's docs", row.repo, String(error));
     }
@@ -689,6 +718,7 @@ class Docs {
     if (!row) return fail("not_found", "No such project's docs.");
     if (row.added_by !== this.userKey(a.viewer!) && !this.viewerOwner(a.viewer!, a.workspace)) return fail("forbidden", "Only whoever added a project's docs, or an owner, can remove them.");
     await this.db.batch([this.db.prepare("DELETE FROM repo_files_fts WHERE space_id = ?").bind(row.id), this.db.prepare("DELETE FROM repo_spaces WHERE id = ?").bind(row.id)]);
+    this.defer(forgetDocs(this.env, { space_id: row.id }));
     return ok(true);
   }
 
@@ -1231,6 +1261,8 @@ class Docs {
     ]);
     await this.room(id).ensure({ page_id: id, workspace_slug: workspace.slug, markdown: input.markdown, state: input.state ?? null });
     this.defer(publishDocEvent(this.env.EVENTS, "doc.page.created", this.eventData(workspace, space, row), author));
+    // Its passages, for agents' recall (src/indexer.ts); later edits are indexed by its room.
+    if (input.markdown.trim()) this.defer(indexPage(this.env, id));
     return row;
   }
 
@@ -1309,6 +1341,8 @@ class Docs {
     const after = await this.db.prepare("SELECT * FROM pages WHERE id = ?").bind(page.id).first<PageRow>();
     const [detail] = await this.toPages(workspace, new Map([[space.row.id, space.row]]), [after!]);
     this.tell(page.id, { type: "page.updated", page: detail! });
+    // The title is part of what each passage is embedded with.
+    if (c.title !== undefined && cleanTitle(c.title) !== page.title) this.defer(indexPage(this.env, page.id));
     return ok(detail!);
   }
 
@@ -1330,12 +1364,16 @@ class Docs {
     const placed = placeBefore(targetRows.results, page.id, parent, move.before_id ?? null);
     const statements: D1PreparedStatement[] = [this.db.prepare("UPDATE pages SET parent_id = ?, position = ? WHERE id = ?").bind(parent, placed.position, page.id)];
     for (const [id, position] of placed.renumber) statements.push(this.db.prepare("UPDATE pages SET position = ? WHERE id = ?").bind(position, id));
+    let moved: string[] = [];
     if (target.row.id !== page.space_id) {
       // The page and everything under it move to the other space.
       const all = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ?").bind(page.space_id).all<PageRow>()).results;
-      for (const id of descendants(all, page.id)) statements.push(this.db.prepare("UPDATE pages SET space_id = ? WHERE id = ?").bind(target.row.id, id));
+      moved = descendants(all, page.id);
+      for (const id of moved) statements.push(this.db.prepare("UPDATE pages SET space_id = ? WHERE id = ?").bind(target.row.id, id));
     }
     await this.db.batch(statements);
+    // Their passages are filed under the new space (no new embeddings: they only moved).
+    if (moved.length) this.defer(this.reindexPages(moved));
     const after = await this.db.prepare("SELECT * FROM pages WHERE id = ?").bind(page.id).first<PageRow>();
     const [detail] = await this.toPages(workspace, new Map(spaces.map((s) => [s.row.id, s.row])), [after!]);
     this.tell(page.id, { type: "page.updated", page: detail! });
@@ -1372,6 +1410,8 @@ class Docs {
     const at = now();
     await this.db.batch(ids.map((id) => this.db.prepare("UPDATE pages SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL").bind(at, this.userKey(a.viewer!), id)));
     for (const id of ids) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
+    // Out of agents' recall while in the trash; restoring indexes them again.
+    this.defer(forgetDocs(this.env, { page_ids: ids }));
     this.defer(publishDocEvent(this.env.EVENTS, "doc.page.archived", this.eventData(workspace, space.row, page), this.userKey(a.viewer!)));
     const after = await this.db.prepare("SELECT * FROM pages WHERE id = ?").bind(page.id).first<PageRow>();
     const [detail] = await this.toPages(workspace, new Map([[space.row.id, space.row]]), [after!]);
@@ -1391,6 +1431,7 @@ class Docs {
     const statements = ids.map((id) => this.db.prepare("UPDATE pages SET archived_at = NULL, archived_by = NULL WHERE id = ?").bind(id));
     if (parentGone) statements.push(this.db.prepare("UPDATE pages SET parent_id = NULL WHERE id = ?").bind(page.id));
     await this.db.batch(statements);
+    this.defer(this.reindexPages(ids));
     const after = await this.db.prepare("SELECT * FROM pages WHERE id = ?").bind(page.id).first<PageRow>();
     const [detail] = await this.toPages(workspace, new Map([[space.row.id, space.row]]), [after!]);
     return ok(detail!);
@@ -1404,6 +1445,7 @@ class Docs {
     const all = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ?").bind(page.space_id).all<PageRow>()).results;
     const ids = descendants(all, page.id);
     await this.db.batch(ids.flatMap((id) => [this.db.prepare("DELETE FROM pages_fts WHERE page_id = ?").bind(id), this.db.prepare("DELETE FROM pages WHERE id = ?").bind(id)]));
+    this.defer(forgetDocs(this.env, { page_ids: ids }));
     return ok(true);
   }
 
@@ -1502,28 +1544,179 @@ class Docs {
     const workspace = found.value;
     const query = a.query ?? { query: "" };
     const spaces = (await this.spacesFor(workspace, a.viewer!)).filter((s) => s.role);
-    const [pages, files] = await Promise.all([
+    const hybrid = query.mode === "hybrid" && !!ftsQuery(query.query);
+    // A project's docs, when the search isn't narrowed to one of the workspace's spaces.
+    const repoSpaces = query.space_id || !ftsQuery(query.query)
+      ? []
+      : await this.repoSpacesMatching(workspace, a.viewer!, query).catch((error: unknown) => {
+          console.error("docs could not list projects' docs for search", String(error));
+          return [] as { row: RepoSpaceRow; repo: Repo }[];
+        });
+    const [pages, files, meaning] = await Promise.all([
       this.searchIn(workspace, spaces, query),
-      // A project's docs, when the search isn't narrowed to one of the workspace's spaces.
-      query.space_id
-        ? Promise.resolve([] as DocSearchHit[])
-        : this.searchRepoFiles(workspace, a.viewer!, query).catch((error: unknown) => {
-            console.error("docs could not search projects' docs", String(error));
-            return [] as DocSearchHit[];
-          }),
+      this.searchRepoFiles(workspace, repoSpaces, query).catch((error: unknown) => {
+        console.error("docs could not search projects' docs", String(error));
+        return [] as DocSearchHit[];
+      }),
+      hybrid
+        ? this.meaningHits(workspace, spaces, repoSpaces, query).catch((error: unknown) => {
+            console.error("docs could not search by meaning", String(error));
+            return null;
+          })
+        : Promise.resolve(null),
     ]);
     const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 50);
-    // Pages first, then files, as many as asked for.
-    return ok([...pages, ...files].slice(0, limit));
+    // Words only: pages first, then files, as many as asked for.
+    if (!hybrid) return ok([...pages, ...files].slice(0, limit));
+    return ok(await this.fuseHits(workspace, spaces, repoSpaces, [...pages, ...files], meaning ?? [], query, limit));
   }
 
-  /** Full text over the projects' docs the viewer can read. */
-  private async searchRepoFiles(workspace: Workspace, viewer: User, query: DocSearchQuery): Promise<DocSearchHit[]> {
+  /** The projects' docs the viewer can read, narrowed to the search's project. */
+  private async repoSpacesMatching(workspace: Workspace, viewer: User, query: DocSearchQuery): Promise<{ row: RepoSpaceRow; repo: Repo }[]> {
+    const spaces = await this.readableRepoSpaces(workspace, viewer);
+    const project = query.project ? projectRef(query.project) : null;
+    return project ? spaces.filter((s) => `${s.repo.namespace}/${s.repo.name}`.toLowerCase() === project) : spaces;
+  }
+
+  /** A search hit's key: a page's id, or `repo:<space>:<path>` for a project's docs file. */
+  private hitKey(row: Pick<PassageRow, "page_id" | "space_id" | "path">): string {
+    return row.page_id ?? `repo:${row.space_id}:${row.path}`;
+  }
+
+  /** By meaning: each page's or file's closest passage above the floor, closest first. */
+  private async meaningHits(workspace: Workspace, spaces: Space[], repoSpaces: { row: RepoSpaceRow }[], query: DocSearchQuery): Promise<{ key: string; row: PassageRow; score: number }[]> {
+    const allowed = [...searchSpaces(spaces.map((s) => s.row.id), query.space_id ?? null), ...repoSpaces.map((r) => r.row.id)];
+    if (!allowed.length) return [];
+    const vector = await this.queryVector(query.query);
+    if (!vector) return [];
+    const matches = (await this.meaningMatches(workspace.id, allowed, vector)).filter((m) => m.score >= MEANING_FLOOR);
+    const rows = await this.passages(workspace.id, matches.map((m) => m.id));
+    const may = new Set(allowed);
+    const best = new Map<string, { key: string; row: PassageRow; score: number }>();
+    for (const m of matches) {
+      const row = rows.get(m.id);
+      if (!row || !may.has(row.space_id)) continue;
+      const key = this.hitKey(row);
+      if ((best.get(key)?.score ?? -1) < m.score) best.set(key, { key, row, score: m.score });
+    }
+    return [...best.values()].sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Hybrid search's answer: word hits and meaning hits fused by rank, each
+   * with the passage that matched and its heading. Word hits get theirs
+   * from the passages' full text; meaning-only hits show their passage.
+   */
+  private async fuseHits(
+    workspace: Workspace,
+    spaces: Space[],
+    repoSpaces: { row: RepoSpaceRow; repo: Repo }[],
+    words: DocSearchHit[],
+    meaning: { key: string; row: PassageRow; score: number }[],
+    query: DocSearchQuery,
+    limit: number,
+  ): Promise<DocSearchHit[]> {
+    const order = fuseRanks(
+      words.map((h) => h.id),
+      meaning.map((m) => m.key),
+    );
+    const byWords = new Map(words.map((h) => [h.id, h]));
+    const byMeaning = new Map(meaning.map((m) => [m.key, m]));
+    // The passage each word hit matched in, for its heading and a closer snippet.
+    const docIds = new Map(words.map((h) => [h.repo_file ? repoFileId(h.space_id, h.repo_file.path) : h.id, h.id]));
+    const passageOf = new Map<string, { heading: string; snippet: string }>();
+    const q = ftsQuery(query.query);
+    if (q && docIds.size) {
+      // The best-ranked 90, within D1's bound parameters.
+      const ids = [...docIds.keys()].slice(0, 90);
+      const found = await this.db
+        .prepare(
+          `SELECT doc_id, heading, snippet(doc_chunks_fts, 4, '[[', ']]', '…', 16) AS snippet FROM doc_chunks_fts
+           WHERE doc_chunks_fts MATCH ? AND doc_id IN (${ids.map(() => "?").join(",")}) ORDER BY bm25(doc_chunks_fts, 0, 0, 0, 4.0, 1.0) LIMIT 200`,
+        )
+        .bind(q, ...ids)
+        .all<{ doc_id: string; heading: string; snippet: string }>()
+        .catch(() => ({ results: [] as { doc_id: string; heading: string; snippet: string }[] }));
+      for (const r of found.results) {
+        const key = docIds.get(r.doc_id);
+        if (key && !passageOf.has(key)) passageOf.set(key, { heading: r.heading, snippet: r.snippet });
+      }
+    }
+    // Meaning-only pages: their projects, for the project filter and the hit.
+    const onlyMeaning = meaning.filter((m) => !byWords.has(m.key) && m.row.page_id);
+    const pageIds = onlyMeaning.map((m) => m.row.page_id!);
+    const projects = pageIds.length
+      ? (
+          await this.db
+            .prepare(`SELECT page_id, repo FROM page_projects WHERE page_id IN (${pageIds.map(() => "?").join(",")})`)
+            .bind(...pageIds)
+            .all<{ page_id: string; repo: string }>()
+        ).results
+      : [];
+    const project = query.project ? projectRef(query.project) : null;
+    const bySpace = new Map(spaces.map((s) => [s.row.id, s]));
+    const byRepo = new Map(repoSpaces.map((r) => [r.row.id, r]));
+    const out: DocSearchHit[] = [];
+    for (const key of order) {
+      if (out.length >= limit) break;
+      const w = byWords.get(key);
+      const m = byMeaning.get(key);
+      if (w) {
+        const passage = passageOf.get(key);
+        out.push({
+          ...w,
+          snippet: passage?.snippet || w.snippet,
+          heading: (passage ? passage.heading || null : null) ?? m?.row.heading ?? null,
+          matched: m ? "both" : "words",
+        });
+        continue;
+      }
+      if (!m) continue;
+      const row = m.row;
+      const snippet = excerpt(row.text, 200);
+      if (row.page_id) {
+        const space = bySpace.get(row.space_id);
+        if (!space) continue;
+        const own = projects.filter((p) => p.page_id === row.page_id).map((p) => p.repo);
+        if (!inProject(project, own, space.projects)) continue;
+        out.push({
+          ...this.ref(workspace.slug, space.row, { id: row.page_id, title: row.title ?? "", icon: row.icon }),
+          space_name: space.row.name,
+          snippet,
+          updated_at: row.page_updated_at ?? row.updated_at,
+          projects: [...new Set([...own, ...space.projects])],
+          heading: row.heading,
+          matched: "meaning",
+        });
+      } else {
+        const r = byRepo.get(row.space_id);
+        if (!r || !row.path) continue;
+        const repo = `${r.repo.namespace}/${r.repo.name}`;
+        out.push({
+          id: key,
+          space_id: row.space_id,
+          space_slug: "repo",
+          title: row.title ?? row.path,
+          icon: null,
+          slug: row.path,
+          path: `/${workspace.slug}/-/docs/repo/${repo}/${row.path.split("/").map(encodeURIComponent).join("/")}`,
+          space_name: repo,
+          snippet,
+          updated_at: r.row.indexed_at ?? r.row.added_at,
+          projects: [repo.toLowerCase()],
+          repo_file: { repo, path: row.path },
+          heading: row.heading,
+          matched: "meaning",
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Full text over these projects' docs (the viewer's to read). */
+  private async searchRepoFiles(workspace: Workspace, spaces: { row: RepoSpaceRow; repo: Repo }[], query: DocSearchQuery): Promise<DocSearchHit[]> {
     const q = ftsQuery(query.query);
     if (!q) return [];
-    let spaces = await this.readableRepoSpaces(workspace, viewer);
-    const project = query.project ? projectRef(query.project) : null;
-    if (project) spaces = spaces.filter((s) => `${s.repo.namespace}/${s.repo.name}`.toLowerCase() === project);
     if (!spaces.length) return [];
     const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 50);
     const rows = (
@@ -1947,6 +2140,226 @@ class Docs {
     return ok(await this.searchIn(found.value.workspace, found.value.spaces, { ...(a.query ?? { query: "" }), limit: Math.min(Number(a.query?.limit) || 10, 20) }));
   }
 
+  // ── Recall: the semantic index ──────────────────────────────────────────
+
+  /** Pages indexed again one after another (moved, restored). */
+  private async reindexPages(ids: string[]): Promise<void> {
+    for (const id of ids.slice(0, 500)) await indexPage(this.env, id);
+  }
+
+  /** A query's embedding, kept a minute; null without an embedder or when it fails (then words only). */
+  private async queryVector(query: string): Promise<number[] | null> {
+    const { embedder } = adapters(this.env);
+    const key = queryKey(query);
+    if (!embedder || !key) return null;
+    const cached = queryVectors.get(key);
+    if (cached) return cached;
+    try {
+      const [vector] = await embedder.embed([key]);
+      if (vector) queryVectors.set(key, vector);
+      return vector ?? null;
+    } catch (error) {
+      console.error("docs could not embed a query; matching words instead", String(error));
+      return null;
+    }
+  }
+
+  /** The passages nearest a vector, only from `allowed` spaces (by the index's filter, or after). */
+  private async meaningMatches(workspaceId: string, allowed: string[], vector: number[]): Promise<{ id: string; score: number }[]> {
+    const { store } = adapters(this.env);
+    const plan = vectorQueryPlan(workspaceId, allowed);
+    if (!store || !plan) return [];
+    try {
+      return await store.query(vector, { topK: plan.topK, filter: plan.filter });
+    } catch (error) {
+      console.error("docs semantic query failed; matching words instead", String(error));
+      return [];
+    }
+  }
+
+  /** Passages by their words (any of them), best first, from `allowed` spaces. */
+  private async wordMatches(workspaceId: string, allowed: string[], fts: string, limit: number): Promise<string[]> {
+    if (!allowed.length) return [];
+    const named = allowed.length <= 80;
+    const rows = await this.db
+      .prepare(
+        `SELECT doc_chunks_fts.chunk_id AS id FROM doc_chunks_fts JOIN doc_chunks c ON c.id = doc_chunks_fts.chunk_id
+         WHERE doc_chunks_fts MATCH ? AND c.workspace_id = ? ${named ? `AND doc_chunks_fts.space_id IN (${allowed.map(() => "?").join(",")})` : ""}
+         ORDER BY bm25(doc_chunks_fts, 0, 0, 0, 4.0, 1.0) LIMIT ?`,
+      )
+      .bind(fts, workspaceId, ...(named ? allowed : []), limit)
+      .all<{ id: string }>()
+      .catch((error: unknown) => {
+        console.error("docs word recall failed", String(error));
+        return { results: [] as { id: string }[] };
+      });
+    return rows.results.map((r) => r.id);
+  }
+
+  /**
+   * Passages by id as they read now, with their page or file: only those
+   * whose page is still out of the trash and whose file is still there.
+   * A page's passages count as in the page's space now, whatever the index says.
+   */
+  private async passages(workspaceId: string, ids: string[]): Promise<Map<string, PassageRow>> {
+    const out = new Map<string, PassageRow>();
+    const unique = [...new Set(ids)];
+    for (let i = 0; i < unique.length; i += 90) {
+      const part = unique.slice(i, i + 90);
+      const rows = await this.db
+        .prepare(
+          `SELECT c.id, c.page_id, c.repo_file_id, c.path, c.heading, c.text, c.updated_at,
+                  CASE WHEN c.page_id IS NOT NULL THEN p.space_id ELSE c.space_id END AS space_id,
+                  COALESCE(p.title, f.title) AS title, p.icon AS icon, p.updated_at AS page_updated_at
+           FROM doc_chunks c
+           LEFT JOIN pages p ON p.id = c.page_id
+           LEFT JOIN repo_files f ON f.space_id = c.space_id AND f.path = c.path
+           WHERE c.workspace_id = ? AND c.id IN (${part.map(() => "?").join(",")})
+             AND ((c.page_id IS NOT NULL AND p.id IS NOT NULL AND p.archived_at IS NULL) OR (c.repo_file_id IS NOT NULL AND f.path IS NOT NULL))`,
+        )
+        .bind(workspaceId, ...part)
+        .all<PassageRow>();
+      for (const r of rows.results) out.set(r.id, r);
+    }
+    return out;
+  }
+
+  /**
+   * Projects' docs an agent may recall from: those the viewer can read
+   * and, with an audience, everyone in it. A workspace-wide audience, or
+   * one too large to ask about person by person, gets public repositories
+   * only. Never wider than the viewer.
+   */
+  private async repoSpacesForAudience(workspace: Workspace, viewer: User, audience: DocAudience | null): Promise<{ row: RepoSpaceRow; repo: Repo }[]> {
+    const mine = await this.readableRepoSpaces(workspace, viewer);
+    if (!mine.length || !audience) return mine;
+    const publicOnly = () => mine.filter((s) => !s.repo.isPrivate);
+    if (audience.kind === "workspace") return publicOnly();
+    if (audience.kind !== "people" || !Array.isArray(audience.user_ids)) return mine;
+    const others = [...new Set(audience.user_ids.map(String))].filter((id) => id !== viewer.id);
+    if (!others.length) return mine;
+    if (others.length > 20 || !this.env.REPOS) return publicOnly();
+    await this.nameUsers(others);
+    const members = await this.members(workspace);
+    let keep = new Set(mine.map((s) => s.row.repo_id));
+    for (const id of others) {
+      const username = this.usernames.get(id)?.toLowerCase();
+      if (!username) {
+        const open = new Set(publicOnly().map((s) => s.row.repo_id));
+        keep = new Set([...keep].filter((r) => open.has(r)));
+        continue;
+      }
+      const member = members.get(username);
+      // As repos sees them: their membership here and no direct grants, so never wider than they are.
+      const person: User = { id, username, verified: true, workspaces: member ? [{ slug: workspace.slug, role: member.role }] : [] };
+      const readable = await reposClient(this.env.REPOS)
+        .readable([...keep], person)
+        .catch(() => [] as Repo[]);
+      keep = new Set(readable.map((r) => r.id));
+      if (!keep.size) break;
+    }
+    return mine.filter((s) => keep.has(s.row.repo_id));
+  }
+
+  /**
+   * What the workspace's Docs say about a query, for an agent about to
+   * answer (DocsApi.recallForAgent): the closest passages by meaning above
+   * MEANING_FLOOR, required spaces first, at most two per page, filled with
+   * passages matching its words when meaning finds too few. Only from what
+   * the viewer and audience can all read, by the same rules as every other
+   * agent read (`agentSpaces`).
+   */
+  async recallForAgent(a: {
+    workspace: string;
+    agent_id: string;
+    viewer: Viewer;
+    query: string;
+    limit?: number | null;
+    spaces?: string[] | null;
+    audience: DocAudience | null;
+  }): Promise<Result<DocPassage[]>> {
+    const found = await this.agentSpaces(a.workspace, a.agent_id, a.viewer, a.audience ?? null);
+    if (!found.ok) return found;
+    const { workspace, spaces } = found.value;
+    this.defer(ensureIndexed(this.env, workspace.id).catch((error: unknown) => console.error("docs could not start indexing", workspace.id, String(error))));
+    const query = String(a.query ?? "").trim().slice(0, 2000);
+    if (!query) return ok([]);
+    const limit = recallLimit(a.limit);
+    const repoSpaces = await this.repoSpacesForAudience(workspace, a.viewer!, a.audience ?? null).catch((error: unknown) => {
+      console.error("docs could not check projects' docs for recall", String(error));
+      return [] as { row: RepoSpaceRow; repo: Repo }[];
+    });
+    const allowed = [...spaces.map((s) => s.row.id), ...repoSpaces.map((r) => r.row.id)];
+    if (!allowed.length) return ok([]);
+    const required = requiredSpaces(allowed, a.spaces);
+    const fts = ftsAnyQuery(query);
+    const vector = await this.queryVector(query);
+    const [meaning, requiredMeaning, words] = await Promise.all([
+      vector ? this.meaningMatches(workspace.id, allowed, vector) : Promise.resolve([]),
+      // Required reading asked on its own too, so the rest of the workspace can't crowd it out.
+      vector && required.length && required.length < allowed.length ? this.meaningMatches(workspace.id, required, vector) : Promise.resolve([]),
+      fts ? this.wordMatches(workspace.id, allowed, fts, 30) : Promise.resolve([] as string[]),
+    ]);
+    const scores = new Map<string, number>();
+    for (const m of [...meaning, ...requiredMeaning]) scores.set(m.id, Math.max(scores.get(m.id) ?? 0, m.score));
+    const rows = await this.passages(workspace.id, [...scores.keys(), ...words]);
+    const candidates: (Candidate & { row: PassageRow })[] = [];
+    for (const [id, score] of scores) {
+      const row = rows.get(id);
+      if (row) candidates.push({ id, doc_id: row.page_id ?? row.repo_file_id!, space_id: row.space_id, score, by: "meaning", row });
+    }
+    for (const id of words) {
+      const row = rows.get(id);
+      if (row) candidates.push({ id, doc_id: row.page_id ?? row.repo_file_id!, space_id: row.space_id, score: WORDS_SCORE, by: "words", row });
+    }
+    const picked = pickPassages(candidates, { allowed: new Set(allowed), required, limit });
+    const stale = await this.staleIds([...new Set(picked.map((c) => c.row.page_id).filter((id): id is string => !!id))]);
+    const bySpace = new Map(spaces.map((s) => [s.row.id, s.row]));
+    const byRepo = new Map(repoSpaces.map((r) => [r.row.id, r]));
+    const out: DocPassage[] = [];
+    for (const c of picked) {
+      const row = c.row;
+      const score = Math.round(c.score * 1000) / 1000;
+      if (row.page_id) {
+        const space = bySpace.get(row.space_id);
+        if (!space) continue;
+        out.push({
+          page: this.ref(workspace.slug, space, { id: row.page_id, title: row.title ?? "", icon: row.icon }),
+          repo_file: null,
+          space_name: space.name,
+          heading: row.heading,
+          text: row.text,
+          score,
+          updated_at: row.page_updated_at ?? row.updated_at,
+          stale: stale.has(row.page_id),
+        });
+      } else {
+        const repo = byRepo.get(row.space_id);
+        if (!repo || !row.path) continue;
+        const name = `${repo.repo.namespace}/${repo.repo.name}`;
+        out.push({
+          page: null,
+          repo_file: { repo: name, path: row.path, href: `/${workspace.slug}/-/docs/repo/${name}/${row.path.split("/").map(encodeURIComponent).join("/")}` },
+          space_name: name,
+          heading: row.heading,
+          text: row.text,
+          score,
+          updated_at: repo.row.indexed_at ?? row.updated_at,
+          stale: false,
+        });
+      }
+    }
+    return ok(out);
+  }
+
+  /** Indexes the workspace's pages and projects' docs again, on the queue. Owners only. */
+  async reindexDocs(a: { workspace: string; viewer: Viewer }): Promise<Result<boolean>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    if (!this.viewerOwner(a.viewer!, a.workspace)) return fail("forbidden", "Only an owner can index the workspace's docs again.");
+    return ok(await startBackfill(this.env, found.value.id, { force: true }));
+  }
+
   private async fileSuggestion(
     workspace: Workspace,
     page: PageRow,
@@ -2272,6 +2685,10 @@ async function answer(service: Docs, method: string, args: any): Promise<Respons
       return Response.json(await service.removeRepoSpace(args));
     case "repo_page":
       return Response.json(await service.repoPage(args));
+    case "recall_for_agent":
+      return Response.json(await service.recallForAgent(args));
+    case "reindex_docs":
+      return Response.json(await service.reindexDocs(args));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
@@ -2302,16 +2719,28 @@ export default {
   /**
    * Events from the events service (SUBSCRIBER_DOCS): pages whose cited
    * code changed become possibly out of date, and projects' docs are read
-   * again after a push (src/staleness.ts). One failing event is retried on
-   * its own.
+   * again after a push (src/staleness.ts) and their passages indexed
+   * (src/indexer.ts). The same queue carries this service's own backfill
+   * jobs (`docs.index`). One failing message is retried on its own.
    */
-  async queue(batch: MessageBatch<G1tEvent>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<G1tEvent | DocsJob>, env: Env): Promise<void> {
     const reindex = async (repoId: string) => {
-      if (env.REPOS) await reindexRepo({ DB: env.DB, REPOS: env.REPOS }, repoId);
+      if (env.REPOS) await reindexRepo({ DB: env.DB, REPOS: env.REPOS }, repoId, (spaceId, changed, gone) => indexRepoFiles(env, spaceId, changed, gone));
     };
     for (const message of batch.messages) {
       try {
-        await onEvent(env, message.body, reindex);
+        const body = message.body;
+        if (body.type === "docs.index") {
+          await runBackfill(env, (body as DocsJob).workspace_id);
+          message.ack();
+          continue;
+        }
+        if (body.type === "repo.purged") {
+          // Its docs leave Docs (src/staleness.ts); their passages leave the index first.
+          const gone = await env.DB.prepare("SELECT id FROM repo_spaces WHERE repo_id = ?").bind((body as G1tEvent<"repo.purged">).data.repoId).all<{ id: string }>();
+          for (const space of gone.results) await forgetDocs(env, { space_id: space.id });
+        }
+        await onEvent(env, body as G1tEvent, reindex);
         message.ack();
       } catch (error) {
         console.error("docs could not handle", message.body?.type, String(error));
@@ -2319,4 +2748,4 @@ export default {
       }
     }
   },
-} satisfies ExportedHandler<Env, G1tEvent>;
+} satisfies ExportedHandler<Env, G1tEvent | DocsJob>;

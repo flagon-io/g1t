@@ -39,3 +39,27 @@ export function projectRef(value: string): string | null {
   const s = String(value ?? "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
   return /^[a-z0-9][a-z0-9._-]{0,99}\/[a-z0-9._-]{1,100}$/.test(s) ? s : null;
 }
+
+/** Words too common to say what a question is about. */
+const STOP_WORDS = new Set(
+  "a an and are as at be but by can could did do does for from had has have how i if in into is it its me my of on or our should so that the their them then there these they this to us was we were what when where which who why will with would you your about after before any been being both each few more most other over same some such than through too under until very".split(" "),
+);
+
+/**
+ * A question as a loose FTS5 query: its meaningful words (quoted, longer
+ * than two letters, at most ten), any of them; bm25 ranks passages with
+ * more of them first. For recall's word fallback, where a whole sentence
+ * rarely matches every word. Null when no word is left.
+ */
+export function ftsAnyQuery(text: string): string | null {
+  const words = [
+    ...new Set(
+      String(text ?? "")
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}_]+/u)
+        .filter((w) => w.length > 2 && !STOP_WORDS.has(w)),
+    ),
+  ].slice(0, 10);
+  if (!words.length) return null;
+  return words.map((w) => `"${w.replace(/"/g, "")}"`).join(" OR ");
+}
