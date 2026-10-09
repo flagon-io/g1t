@@ -83,7 +83,14 @@ is applied where the sandbox's traffic leaves it, not inside it.
 
 Each refused host appears once as a step of the run, such as
 `Blocked: example.com (not an allowed domain)`, on the run's page under
-**Agents**. If a run needs a host, allow it and start the work again.
+**Agents**. It is a note, not the run's state: the run carries on, and its
+card keeps showing what it is doing. If a run needs a host, allow it and
+start the work again.
+
+Tools that send usage reports home are told not to in a sandbox with only
+allowed hosts (`DO_NOT_TRACK=1`, and each common tool's own switch, such
+as `WRANGLER_SEND_METRICS=false`), so those reports are not refused and
+noted on every run.
 
 Setting **Only allowed hosts** to Open gives that project's sandboxes the
 whole internet, as before guardrails.
