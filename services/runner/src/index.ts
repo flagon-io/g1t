@@ -37,6 +37,7 @@ import {
   agentEstimateMicros,
   eventsClient,
   isWaiting,
+  platformPaused,
   issueCapReached,
   refusalMessage,
   sandboxEstimateMicros,
@@ -1962,7 +1963,14 @@ export default class RunnerService
   async scheduled(): Promise<void> {
     await this.drainWaits();
     await this.advanceAll();
-    await this.startReady();
+    // Schedules paused across g1t (billing's platform_pause, kept 30
+    // seconds): the sweep starts no queued agents. Events still start
+    // them, through the compute gate, which holds while compute is paused.
+    if (await platformPaused(this.env.BILLING, "schedules")) {
+      console.log("sweep: schedules are paused across g1t, so no queued agents start");
+    } else {
+      await this.startReady();
+    }
     await this.startBackups().catch((error: unknown) => console.log("backups not started", String(error)));
   }
 

@@ -26,6 +26,7 @@ mod closing;
 mod compute;
 mod costs;
 mod margin;
+mod platform;
 mod pricing;
 mod report;
 mod details;
@@ -1195,6 +1196,15 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = billing.watch_spend().await {
         worker::console_error!("watching g1t's own spend failed: {error}");
     }
+    // Once an hour, at the quarter past: what Cloudflare counted for the
+    // whole platform in the hour before, against its thresholds
+    // (platform.rs).
+    if event.cron() == keeper::QUARTER_HOURLY && platform::hourly_due(now_ms()) {
+        match billing.watch_platform(&keeper).await {
+            Ok((read, breached)) => worker::console_log!("platform watch: {read} metrics, {breached} breaches"),
+            Err(error) => worker::console_error!("watching platform usage failed: {error}"),
+        }
+    }
     if let Ok(identity) = env.service("IDENTITY")
         && let Err(error) = billing.warn_limits(&identity).await {
             worker::console_error!("warning owners failed: {error}");
@@ -1401,6 +1411,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_cost_alerts" => reply(&billing.admin_cost_alerts(args(body)?).await?),
         "admin_spend_caps" => reply(&billing.spend_caps().await?),
         "admin_lift_breaker" => reply(&billing.admin_lift_breaker(args(body)?).await?),
+        // Platform pauses (src/platform.rs): read by every service that
+        // honours one, kept 30 seconds in each isolate.
+        "platform_pause" => reply(&billing.pause_now().await),
+        "admin_platform_guard" => reply(&billing.platform_guard(&keeper::Keeper::from_env(&env)).await?),
+        "admin_set_pause" => reply(&billing.admin_set_pause(args(body)?, &keeper::Keeper::from_env(&env)).await?),
         "admin_decide_proposal" => reply(&billing.admin_decide_proposal(args(body)?).await?),
         "admin_set_cost_settings" => reply(&billing.admin_set_cost_settings(args(body)?).await?),
         "admin_set_cost_mapping" => reply(&billing.admin_set_cost_mapping(args(body)?).await?),
@@ -1511,6 +1526,8 @@ mod tests {
         include_str!("../migrations/0046_reset_costs.sql"),
         include_str!("../migrations/0047_gateway_formats.sql"),
         include_str!("../migrations/0048_model_catalogue.sql"),
+        include_str!("../migrations/0049_superseded_proposals.sql"),
+        include_str!("../migrations/0050_platform_guardrails.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

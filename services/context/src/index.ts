@@ -48,6 +48,7 @@ import {
   billingClient,
   embeddingEstimateMicros,
   localRefusal,
+  platformPaused,
   currentMovedPath,
   currentWorkspaceSlug,
   repoMove,
@@ -125,6 +126,9 @@ const SNIPPET_CHARS = 280;
 const SHARED: Set<EntityKind> = new Set(["owner", "language", "integration"]);
 
 /** One compute gate per isolate, so entitlements are kept between calls. */
+/** What a backfill says while indexing is paused across g1t (billing's `platform_pause`). */
+const INDEXING_PAUSED = "g1t has paused indexing across the platform for now. Rebuild the context again later.";
+
 let computeGate: ComputeGate | null = null;
 function gateFor(billing: ServiceBinding): ComputeGate {
   computeGate ??= new ComputeGate(billing);
@@ -943,6 +947,7 @@ class Context {
   async backfill(a: { actor: User; workspace: string }): Promise<Result<Backfill>> {
     const workspace = a.workspace.toLowerCase();
     if (!isMember(a.actor, workspace)) return fail("forbidden", "Only members can rebuild a workspace's context.");
+    if (await platformPaused(this.env.BILLING, "indexing")) return fail("paused", INDEXING_PAUSED);
     const running = await this.backfillRow(workspace);
     if (running?.status === "running" && Date.now() - Date.parse(running.startedAt) < BACKFILL_STALE_MS) return ok(running);
     const actor = (await this.workspaceActor(workspace)) ?? a.actor;
@@ -968,6 +973,22 @@ class Context {
   async runJob(job: Job): Promise<void> {
     const actor = await this.workspaceActor(job.workspace);
     if (!actor) return;
+    // Indexing paused across g1t: the job is counted done with the pause
+    // as its note, so the backfill finishes and can be run again later.
+    if (await platformPaused(this.env.BILLING, "indexing")) {
+      if (job.type === "backfill_project") {
+        await this.db
+          .prepare(
+            `UPDATE backfills SET done = done + 1, error = ?,
+               status = CASE WHEN done + 1 >= projects THEN 'done' ELSE status END,
+               finished_at = CASE WHEN done + 1 >= projects THEN ? ELSE finished_at END
+             WHERE workspace = ?`,
+          )
+          .bind(INDEXING_PAUSED, now(), job.workspace)
+          .run();
+      }
+      return;
+    }
     if (job.type === "backfill_memory") {
       const memories = await memoryReviewClient(this.env.WORK).searchMemories(job.workspace, null, { limit: 100 });
       const indexed = await this.indexMemories(job.workspace, memories);

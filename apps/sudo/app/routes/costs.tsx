@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { CostsReport } from "@g1t/contracts";
+import type { CostsReport, PlatformGuard, PlatformMetric } from "@g1t/contracts";
 
 import type { Route } from "./+types/costs";
 import { DaysChart } from "~/components/costs";
 import { CostsHeader, chip, costsHref } from "~/components/costs-header";
 import { Badge, Button, Field, Input, Notice, Section, Stat, When } from "~/components/ui";
-import { capPercent, daySeries, marginOnPrice, marginTone, parseBucket, percentLabel, spendRows, subscriptionsOver, whoPaid } from "~/lib/costs";
+import { PAUSE_LEVELS, capPercent, count, daySeries, marginOnPrice, marginTone, parseBucket, percentLabel, spendRows, subscriptionsOver, thresholdShare, whoPaid } from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { usd } from "~/lib/money";
 
@@ -34,6 +34,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
         <div className="mt-5">
           <Notice tone="warn">Billing did not answer for costs: {error}</Notice>
         </div>
+        <PlatformSection guard={loaderData.guard} unavailable={loaderData.guardError} failed={failed} />
       </main>
     );
   }
@@ -49,6 +50,8 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
       <Statement report={report} floor={floor} range={range} proposals={open.length} />
 
       <SpendSection caps={report.caps} range={range} error={failed?.section === "lift" ? failed.error : null} />
+
+      <PlatformSection guard={loaderData.guard} unavailable={loaderData.guardError} failed={failed} />
 
       <Section
         className="mt-6"
@@ -504,3 +507,155 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
   );
 }
 
+
+/**
+ * The platform pause and the hourly usage watch (billing's platform.rs,
+ * docs/SPEND-GUARDRAILS.md): four levels staff can pause across g1t, what
+ * Cloudflare counted in the last hour against each threshold, and the
+ * last day's breaches.
+ */
+function PlatformSection({
+  guard,
+  unavailable,
+  failed,
+}: {
+  guard: PlatformGuard | null;
+  unavailable: string | null;
+  failed: CostsActionResult | null;
+}) {
+  return (
+    <Section
+      className="mt-6"
+      id="platform"
+      title="Platform pause"
+      description="What Cloudflare counted for all of g1t, read at a quarter past each hour: Workers, D1, Queues, Durable Objects, KV and Artifacts, each against an hourly threshold (PLATFORM_HOURLY_* in billing's wrangler.jsonc). A breach emails staff once per metric every 6 hours. Five times a threshold pauses what that metric feeds, of the levels AUTO_PAUSE names. Any level can be paused here by hand; every service sees a change within 30 seconds."
+    >
+      {!guard ? (
+        <Notice tone="warn">Billing did not answer for the platform pause: {unavailable}</Notice>
+      ) : (
+        <>
+          {!guard.can_read && (
+            <div className="mb-4">
+              <Notice tone="warn">Billing has no Cloudflare token with Account Analytics Read, so the hourly watch reads nothing. The pause still works.</Notice>
+            </div>
+          )}
+          {failed?.section === "platform" && (
+            <div className="mb-4">
+              <Notice tone="error">{failed.error}</Notice>
+            </div>
+          )}
+          <div className="grid gap-3 lg:grid-cols-2">
+            {PAUSE_LEVELS.map(({ level, title, stops }) => {
+              const state = guard.levels.find((l) => l.level === level);
+              const paused = state?.paused ?? false;
+              const error = failed?.section === `pause-${level}` ? failed.error : null;
+              return (
+                <div key={level} className={`rounded-lg border p-4 ${paused ? "border-danger/50 bg-danger/8" : "border-line"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{title}</span>
+                    {paused ? <Badge tone="danger">Paused</Badge> : <Badge tone="mint">Running</Badge>}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">{stops}</p>
+                  {state?.set_at && (
+                    <p className="mt-2 text-xs text-faint">
+                      {paused ? "Paused" : "Resumed"} <When at={state.set_at} time /> by {state.auto ? "the usage watcher" : state.set_by}
+                      {state.note ? `: “${state.note}”` : ""}
+                    </p>
+                  )}
+                  <form method="post" action="#platform" className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <input type="hidden" name="intent" value={paused ? "resume" : "pause"} />
+                    <input type="hidden" name="level" value={level} />
+                    <Field label={paused ? "Why resume it" : "Why pause it"} hint="Recorded in the audit log.">
+                      <Input name="note" required minLength={5} maxLength={500} placeholder={paused ? "e.g. Fixed the loop in search" : "e.g. KV lists runaway"} />
+                    </Field>
+                    <Button type="submit" variant={paused ? "primary" : "danger"}>
+                      {paused ? "Resume" : "Pause"}
+                    </Button>
+                  </form>
+                  {error && (
+                    <div className="mt-2">
+                      <Notice tone="error">{error}</Notice>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            A severe breach may pause: {guard.auto_pause.length ? guard.auto_pause.join(", ") : "nothing (AUTO_PAUSE is empty)"}.
+          </p>
+
+          <h3 className="mt-6 text-sm font-medium">Breaches in the last 24 hours</h3>
+          {guard.breaches.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">None.</p>
+          ) : (
+            <ul className="mt-2 space-y-2 text-sm">
+              {guard.breaches.map((b) => (
+                <li key={b.id} className="rounded-md border border-line px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={b.severe ? "danger" : "warn"}>{b.severe ? "Severe" : b.rule === "spike" ? "Spike" : "Over threshold"}</Badge>
+                    <span className="text-xs text-faint">
+                      <When at={b.opened_at} time />
+                      {b.emailed_at ? ", emailed" : ""}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-fg-soft">{b.detail}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <UsageTable title={guard.hour ? `The hour from ${guard.hour}` : "The last hour"} metrics={guard.last_hour} hourly />
+          <UsageTable title={`${guard.month}, so far`} metrics={guard.month_to_date} hourly={false} />
+          <p className="mt-3 text-xs text-muted">
+            Ids are Cloudflare&apos;s. <code>node scripts/ops/platform-usage.mjs</code> names them and shows the last 24 hours per script, queue, database and
+            namespace.
+          </p>
+        </>
+      )}
+    </Section>
+  );
+}
+
+function UsageTable({ title, metrics, hourly }: { title: string; metrics: PlatformMetric[]; hourly: boolean }) {
+  return (
+    <>
+      <h3 className="mt-6 text-sm font-medium">{title}</h3>
+      {metrics.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">Nothing read yet.</p>
+      ) : (
+        <div className="-mx-4 mt-2 overflow-x-auto sm:-mx-5">
+          <table className="w-full min-w-[36rem] text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-muted">
+                <th className="px-4 py-2 font-medium sm:px-5">Metric</th>
+                <th className="px-4 py-2 text-right font-medium">Count</th>
+                {hourly && <th className="px-4 py-2 text-right font-medium">Of threshold</th>}
+                <th className="px-4 py-2 font-medium sm:pr-5">Most from</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.map((m) => {
+                const share = thresholdShare(m.value, m.threshold);
+                return (
+                  <tr key={m.metric} className="border-b border-line last:border-0">
+                    <td className="px-4 py-2.5 sm:px-5">{m.title}</td>
+                    <td className="tabular px-4 py-2.5 text-right">{count(m.value)}</td>
+                    {hourly && (
+                      <td className={`tabular px-4 py-2.5 text-right ${share != null && share > 100 ? "text-danger" : "text-muted"}`}>
+                        {share == null ? "—" : `${share}% of ${count(m.threshold)}`}
+                      </td>
+                    )}
+                    <td className="max-w-[16rem] truncate px-4 py-2.5 text-xs text-faint sm:pr-5">
+                      {m.top_name ? `${m.top_name} (${count(m.top_value ?? 0)})` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}

@@ -17,7 +17,7 @@
  * `capture.ts`).
  */
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { type ServiceBinding, identityClient, projectsClient, reposClient, workClient } from "@g1t/contracts";
+import { type ServiceBinding, identityClient, platformPaused, projectsClient, reposClient, workClient } from "@g1t/contracts";
 import type { Font } from "satori/standalone";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 import yogaWasm from "satori/yoga.wasm";
@@ -33,6 +33,7 @@ import mono500 from "./fonts/ibm-plex-mono-500.ttf";
 import { cardPng } from "./render.ts";
 import { cacheKey } from "./cache.ts";
 import { type Shot, screenshotOf, sweep, take } from "./capture.ts";
+import { pausedCard } from "./paused.ts";
 import { parseShot } from "./screenshot.ts";
 import { BRAND, type Card, docsCard, resolve } from "./resolve.ts";
 
@@ -43,6 +44,8 @@ interface Env {
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
   PROJECTS: ServiceBinding;
+  /** Whether rendering is paused across g1t (billing's `platform_pause`). */
+  BILLING?: ServiceBinding;
   /** Browser Rendering, for production screenshots. */
   BROWSER: Fetcher;
   /** Production screenshots, by app hostname. */
@@ -121,6 +124,8 @@ export default {
     const cache = (caches as unknown as { default: Cache }).default;
     const hit = await cache.match(key);
     if (hit) return hit;
+    // Rendering paused across g1t: no card is drawn (paused.ts).
+    if (await platformPaused(env.BILLING, "renders")) return pausedCard(await cache.match(cacheKey(new URL("/", url))));
 
     const card = await cardFor(url, env);
     const failed = card.kind === "brand" && card.failed === true;

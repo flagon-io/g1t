@@ -3644,6 +3644,157 @@ pub struct AdminLiftBreakerArgs {
     pub by: String,
 }
 
+// ---- Platform pauses and the usage watcher (docs/SPEND-GUARDRAILS.md) ----
+
+/// A g1t-wide pause, set by staff in sudo or by billing's hourly usage
+/// watcher on a severe breach. Each level is independent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PauseLevel {
+    /// Agents, sandboxes, Actions hosted jobs, deploy builds: every
+    /// reservation through billing's `reserve` but embeddings.
+    Compute,
+    /// Actions' cron-triggered runs, and the runner's sweep that starts
+    /// queued agents.
+    Schedules,
+    /// Context embeddings and backfills, and search's backfills.
+    Indexing,
+    /// Social card rendering, which falls back to a static image.
+    Renders,
+}
+
+impl PauseLevel {
+    pub const ALL: [PauseLevel; 4] = [PauseLevel::Compute, PauseLevel::Schedules, PauseLevel::Indexing, PauseLevel::Renders];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PauseLevel::Compute => "compute",
+            PauseLevel::Schedules => "schedules",
+            PauseLevel::Indexing => "indexing",
+            PauseLevel::Renders => "renders",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<PauseLevel> {
+        PauseLevel::ALL.into_iter().find(|level| level.as_str() == text.trim())
+    }
+}
+
+/// `platform_pause`: which levels are paused now. Takes nothing. Callers
+/// keep the answer about 30 seconds; one that cannot read it runs (fails
+/// open).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlatformPause {
+    #[serde(default)]
+    pub compute: bool,
+    #[serde(default)]
+    pub schedules: bool,
+    #[serde(default)]
+    pub indexing: bool,
+    #[serde(default)]
+    pub renders: bool,
+}
+
+impl PlatformPause {
+    pub fn is(&self, level: PauseLevel) -> bool {
+        match level {
+            PauseLevel::Compute => self.compute,
+            PauseLevel::Schedules => self.schedules,
+            PauseLevel::Indexing => self.indexing,
+            PauseLevel::Renders => self.renders,
+        }
+    }
+
+    pub fn set(&mut self, level: PauseLevel, paused: bool) {
+        match level {
+            PauseLevel::Compute => self.compute = paused,
+            PauseLevel::Schedules => self.schedules = paused,
+            PauseLevel::Indexing => self.indexing = paused,
+            PauseLevel::Renders => self.renders = paused,
+        }
+    }
+
+    pub fn any(&self) -> bool {
+        PauseLevel::ALL.into_iter().any(|level| self.is(level))
+    }
+}
+
+/// One level as sudo shows it: who paused it, when and why.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PauseState {
+    pub level: String,
+    pub paused: bool,
+    pub note: Option<String>,
+    pub set_by: Option<String>,
+    pub set_at: Option<String>,
+    /// Set by the usage watcher, not a person.
+    pub auto: bool,
+}
+
+/// One metric's usage over an hour or the month so far.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PlatformMetric {
+    pub metric: String,
+    pub title: String,
+    pub value: f64,
+    /// Its hourly threshold (`PLATFORM_HOURLY_*`); zero: none.
+    pub threshold: f64,
+    /// The script, queue, database or namespace that counted most.
+    pub top_name: Option<String>,
+    pub top_value: Option<f64>,
+}
+
+/// A breach the watcher found.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PlatformBreach {
+    pub id: String,
+    pub metric: String,
+    pub hour: String,
+    /// `threshold` or `spike`.
+    pub rule: String,
+    pub value: f64,
+    pub threshold: f64,
+    pub severe: bool,
+    pub top_name: Option<String>,
+    pub detail: String,
+    /// Levels it paused.
+    pub paused: Vec<String>,
+    pub opened_at: String,
+    pub emailed_at: Option<String>,
+}
+
+/// `admin_platform_guard`: the pauses, the last hour read, the month so
+/// far and the last day's breaches, for sudo's Costs page and its banner.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PlatformGuard {
+    pub levels: Vec<PauseState>,
+    /// The last hour the watcher read (`YYYY-MM-DDTHH:00:00Z`), if any.
+    pub hour: Option<String>,
+    pub last_hour: Vec<PlatformMetric>,
+    pub month: String,
+    pub month_to_date: Vec<PlatformMetric>,
+    /// The last 24 hours' breaches, newest first.
+    pub breaches: Vec<PlatformBreach>,
+    /// Whether the watcher can read Cloudflare's analytics at all.
+    pub can_read: bool,
+    /// `AUTO_PAUSE`: the levels a severe breach may pause.
+    pub auto_pause: Vec<String>,
+}
+
+/// `admin_platform_guard`. Returns `PlatformGuard`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AdminPlatformGuardArgs {}
+
+/// `admin_set_pause`: pauses or resumes one level, with why. Recorded in
+/// the audit log. Returns `Outcome<PlatformGuard>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetPauseArgs {
+    pub level: String,
+    pub paused: bool,
+    pub note: String,
+    pub by: String,
+}
+
 /// `admin_cost_alerts`: the open margin alerts, for sudo's banner.
 /// Returns `Vec<MarginAlert>`.
 #[derive(Debug, Default, Serialize, Deserialize)]

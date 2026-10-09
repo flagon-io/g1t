@@ -852,6 +852,22 @@ instead, and the pull request says **Needs you** with the reason. A
 workflow job is recorded as failed with "Not started:" and the reason.
 Runs already under way finish, so usage can go slightly past a limit.
 
+### When g1t pauses work for everyone
+
+If usage across all of g1t climbs far past normal, g1t can pause some
+kinds of work for every workspace while it looks into it. Each pause is
+separate, and runs already under way finish:
+
+| Paused | What you see |
+| --- | --- |
+| Compute | New agent runs, checks, workflow jobs and deploy builds are refused with `paused` and a message that g1t has paused them across the platform. Try again later. |
+| Schedules | Workflows on `schedule:` skip the minutes while it lasts; they are not run late. Issues waiting for an agent stay in the queue. |
+| Indexing | **Rebuild** in the [context hub](/guides/context-hub/) is refused, and new semantic search embeddings wait. Text search still answers, and search keeps up with new pushes. |
+| Renders | A link to g1t shows g1t's logo instead of the page's own card. |
+
+Nothing in your workspace changes, and nothing is charged while work
+waits.
+
 ## Security on every plan
 
 Every workspace, free or on the plan, has the [audit log](/guides/audit-log/),

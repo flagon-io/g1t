@@ -532,6 +532,11 @@ impl Billing {
         let now = now_ms();
         let expires_at = rfc3339(now + RESERVATION_HOURS * 60 * 60 * 1000);
         let repo = format!("{}/{}", a.repo.namespace, a.repo.name).to_lowercase();
+        // A platform pause holds for everyone, a g1t that does not charge
+        // included (platform.rs): kept 30 seconds in the isolate.
+        if let Some(why) = self.platform_refuses(a.kind).await {
+            return Ok(Outcome::fail(FailureCode::Paused, why));
+        }
         // A g1t that does not charge holds nothing.
         if self.stripe.is_none() {
             return Ok(Outcome::Ok(Reservation { id: new_id("rsv", now), paid_by: PaidBy::OnDemand, held_micros: 0, expires_at }));

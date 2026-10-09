@@ -2280,7 +2280,12 @@ impl Actions {
 
     pub async fn on_minute(&self, now_ms: u64) -> Result<()> {
         let minute = now_ms / 60_000 * 60_000;
-        if let Err(error) = self.run_schedules(minute).await {
+        // Staff (or billing's usage watcher) paused scheduled runs across
+        // g1t: this minute's schedules are skipped, not queued for later.
+        // Kept 30 seconds in the isolate (g1t_kit::pause).
+        if g1t_kit::pause::paused(&self.billing, g1t_contracts::billing::PauseLevel::Schedules).await {
+            worker::console_log!("actions: schedules are paused across g1t; skipped this minute's");
+        } else if let Err(error) = self.run_schedules(minute).await {
             worker::console_error!("actions: schedules failed: {error}");
         }
         // Jobs whose sandbox went quiet or ran past their time.

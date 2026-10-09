@@ -34,6 +34,8 @@ use crate::{Billing, RunRow};
 
 /// The cron that also checks costs against Cloudflare's bill.
 pub(crate) const DAILY: &str = "17 4 * * *";
+/// The quarter-hourly tick: settling, and once an hour the platform watch.
+pub(crate) const QUARTER_HOURLY: &str = "*/15 * * * *";
 
 /// A run is settled once its logs have had time to land.
 const SETTLE_AFTER_MS: u64 = 5 * 60 * 1000;
