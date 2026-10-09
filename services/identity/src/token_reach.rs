@@ -1264,13 +1264,15 @@ mod tests {
     }
 
     /// Migration 0041 writes full access out as every permission: the
-    /// same lists the code makes.
+    /// same lists the code made then, before Artifacts was offered, so
+    /// tokens from before keep exactly what they had.
     #[test]
     fn the_migration_sets_full_access_out_as_every_permission() {
-        use g1t_contracts::scopes::{ResourceGroup, everything};
+        use g1t_contracts::scopes::{Resource, ResourceGroup, everything};
         let sql = include_str!("../migrations/0041_one_kind_of_token.sql");
-        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&everything()))));
-        let workspace: Vec<Scope> = everything().into_iter().filter(|scope| scope.resource().group() != ResourceGroup::Account).collect();
+        let then: Vec<Scope> = everything().into_iter().filter(|scope| scope.resource() != Resource::Artifacts).collect();
+        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&then))));
+        let workspace: Vec<Scope> = then.into_iter().filter(|scope| scope.resource().group() != ResourceGroup::Account).collect();
         assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&workspace))));
         let write: Vec<Scope> = workspace
             .iter()
