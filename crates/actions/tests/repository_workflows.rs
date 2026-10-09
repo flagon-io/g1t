@@ -236,6 +236,66 @@ fn deploy_builds_rust_on_the_larger_machine_with_its_target_cached() {
     assert!(source.contains("target/x86_64-unknown-linux-musl/release"));
 }
 
+/// Whether a step runs, for a job going `status`, with `matrix`.
+fn step_runs(step: &workflow::Step, matrix: Value, status: Status) -> bool {
+    let mut contexts = Map::new();
+    contexts.insert("matrix".into(), matrix);
+    let scope = Scope { contexts: &contexts, status, hash_files: None };
+    expr::condition(step.condition.as_deref().unwrap_or_default(), &scope).unwrap()
+}
+
+#[test]
+fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
+    let step = |job: &workflow::Job, run: &str| -> (usize, workflow::Step) {
+        let at = job.steps.iter().position(|s| s.run.as_deref() == Some(run)).unwrap_or_else(|| panic!("{}: no step runs {run}", job.id));
+        (at, job.steps[at].clone())
+    };
+    let deploy = read("deploy.yml");
+    for stage in ["core", "edge", "front"] {
+        let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
+        let (install_at, install) = step(job, "bash scripts/sccache.sh install");
+        let (stats_at, stats) = step(job, "bash scripts/sccache.sh stats");
+        // Before anything runs Cargo (worker-build's install, the build),
+        // and the statistics last.
+        let install_step = job.steps.iter().position(|s| s.name.as_deref() == Some("Install")).unwrap();
+        assert!(install_at < install_step, "{stage}");
+        assert_eq!(stats_at, job.steps.len() - 1, "{stage}");
+        for (rust, image, uses) in [(true, false, true), (false, true, true), (false, false, false)] {
+            let matrix = json!({ "group": "g", "units": "u", "rust": rust, "image": image });
+            assert_eq!(step_runs(&install, matrix.clone(), Status::Success), uses, "{stage} rust={rust} image={image}");
+            assert_eq!(step_runs(&stats, matrix.clone(), Status::Success), uses, "{stage}");
+            // A failed build still says what was cached.
+            assert_eq!(step_runs(&stats, matrix, Status::Failure), uses, "{stage}");
+        }
+    }
+    let ci = read("ci.yml");
+    let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
+    let (install_at, _) = step(rust, "bash scripts/sccache.sh install");
+    let (tests_at, _) = step(rust, "cargo test --workspace --locked --quiet");
+    let (stats_at, stats) = step(rust, "bash scripts/sccache.sh stats");
+    assert!(install_at < tests_at && tests_at < stats_at);
+    assert!(step_runs(&stats, json!({}), Status::Failure));
+    // main's runs keep the caches pull requests restore from: only Rust.
+    assert!(ci.trigger("push").unwrap().branches.allows("main"));
+    assert!(ci.trigger("pull_request").is_some());
+    for (id, on_push) in [("rust", true), ("typescript", false), ("build", false)] {
+        let job = ci.jobs.iter().find(|j| j.id == id).unwrap();
+        for (event, expected) in [("push", on_push), ("pull_request", true)] {
+            let mut contexts = Map::new();
+            contexts.insert("github".into(), json!({ "event_name": event, "ref": "refs/heads/main" }));
+            let scope = Scope { contexts: &contexts, status: Status::Success, hash_files: None };
+            assert_eq!(expr::condition(job.condition.as_deref().unwrap_or_default(), &scope).unwrap(), expected, "{id} on {event}");
+        }
+    }
+    // The download is pinned by version and checksum.
+    let script = std::fs::read_to_string(workflows_dir().join("../../scripts/sccache.sh")).unwrap();
+    assert!(script.contains("VERSION=0.18.0"));
+    assert!(script.lines().any(|line| line.strip_prefix("SHA256=").is_some_and(|sum| sum.len() == 64)));
+    assert!(script.contains("sha256sum -c"));
+    assert!(script.contains("RUSTC_WRAPPER="));
+    assert!(script.contains("GITHUB_STEP_SUMMARY"));
+}
+
 #[test]
 fn the_runner_base_rebuilds_weekly_on_a_machine_with_docker() {
     let base = read("runner-base.yml");

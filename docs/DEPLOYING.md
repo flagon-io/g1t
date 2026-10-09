@@ -438,8 +438,52 @@ Where the time went, and what changed:
   | The runner binary, cold (builder container) | | 99 s |
   | A Rust CI job's build (events, search, repos; 4 vCPUs) | | 51 s cold, 13 s with the Cargo target restored (107 MB zstd entry) |
 
+- **sccache** (`scripts/sccache.sh`, pinned by version and sha256): a
+  checkout gives every source a new mtime, so Cargo calls rustc again for
+  every workspace crate a unit uses, however much of `target/` was
+  restored. With `RUSTC_WRAPPER=sccache` and its GitHub Actions backend,
+  each call that makes a library is looked up by its inputs in the
+  repository's Actions cache (the same cache as `actions/cache`, scoped to
+  `main`), and an unchanged crate comes back from it. Measured on the
+  development machine on 2026-10-08, `repos` and `events` for wasm32,
+  release, `-j 4`, the dependencies already built, every workspace source
+  touched as a checkout does (sccache's local disk cache; the Actions
+  cache adds a download per hit):
+
+  | | Time |
+  | --- | --- |
+  | Without sccache (before) | 44.3 s, 44.6 s |
+  | sccache, empty cache (its first run, filling it) | 48.8 s |
+  | sccache, filled (6 hits: `contracts`, `kit`, `rules`, `scan`, `secrets`, `blobstore`) | 24.2 s |
+
+  CI's build the same way (`cargo test --workspace --no-run`, debug,
+  `-j 4`, `CARGO_INCREMENTAL=0`): 70.2 s and 74.6 s without sccache, 66.5 s
+  filling it, 40.6 s filled (7 library hits; 23 test harnesses and
+  cdylibs compiled).
+
+  What is left is each Worker's own crate: a `cdylib` is linked, and
+  sccache does not cache what rustc links (binaries, cdylibs, proc
+  macros, build scripts, test harnesses). That compile is real work
+  anyway: a unit deploys because it, or a crate it uses, changed. The
+  same holds for CI's `cargo test`: the workspace's libraries come back
+  from the cache, the test harnesses are compiled. Every Rust job of
+  Deploy and CI's Rust job end with sccache's hits and misses in the
+  run's summary. If the cache cannot be reached, or the download fails
+  its checksum, the job warns and builds as before. On g1t, sccache
+  speaks the toolkit cache's older protocol (`GITHUB_SERVER_URL` is not
+  github.com): a lookup, a reservation, one `PATCH` of the whole entry
+  (`Content-Range: bytes 0-N/*`) and a commit per miss; a lookup and a
+  blob `GET` per hit. Its storage check saves `sccache/.sccache_check`
+  once, and takes the `409` on later runs as "already there".
+- **Not restoring mtimes:** setting each file's mtime from git (so Cargo
+  would trust the restored `target/`) was considered and left out. A
+  restored `target/` may come from another commit (the cache's
+  `restore-keys` take the nearest earlier entry, of any group), and a
+  file changed by an older commit than that build would look unchanged:
+  a stale crate deployed. sccache looks at what is compiled, not when.
 - **Only what changed** is the largest saving: a change to one service
-  deploys one service.
+  deploys one service, and a change only to a crate's tests deploys
+  nothing.
 
 ## The workflow
 
@@ -468,10 +512,10 @@ not), `all` and `dry_run` (plan only).
   be rebuilt alone (`image: true` in the matrix, also on `g1t-4core`, where
   it builds and pushes the image with the job's own Docker Engine). `fail-fast: false`, so one failed job does not cut
   another off mid-upload; the next stage then does not start.
-- **Tests:** there is no CI workflow on g1t yet; `main` is kept passing by
-  the merge queue's checks. `check` runs the deploy tool's own tests. When a
-  CI workflow is added, make `migrate` and the stages wait for it (`workflow_run`, or a job in
-  this file).
+- **Tests:** `.g1t/workflows/ci.yml` tests every pull request into `main`
+  (and, on pushes to `main`, runs only its Rust job, to keep the caches
+  pull requests restore from current). `check` runs the deploy tool's own
+  tests. Deploy does not wait for CI.
 - **Machines:** Rust jobs and the runner's image run on `g1t-4core` (4 vCPUs,
   12 GiB, 20 GB), the others on the standard machine
   (`runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}`).
@@ -482,11 +526,13 @@ not), `all` and `dry_run` (plan only).
   downloaded tools, `~/.cargo/registry/cache`, and the Cargo target's
   release dependencies (`target/release` and
   `target/wasm32-unknown-unknown/release`, without `incremental` or
-  `.wasm`), keyed by the build group, `Cargo.lock` and `base.json`. The
-  workspace's own crates are compiled again on every run (a checkout's
-  sources are newer than any cache); the crates.io dependencies are not.
-  npm's cache is not kept: every job runs `npm ci` of only what its units
-  need (`deploy.mjs install`: Wrangler alone for Rust jobs).
+  `.wasm`), keyed by the build group, `Cargo.lock` and `base.json`. Cargo
+  calls rustc again for the workspace's own crates on every run (a
+  checkout's sources are newer than any cache); **sccache** answers those
+  calls from the repository's Actions cache when a crate's inputs did not
+  change (see [Build speed](#build-speed)). npm's cache is not kept: every
+  job runs `npm ci` of only what its units need (`deploy.mjs install`:
+  Wrangler alone for Rust jobs).
 - **Conditions:** each stage runs with `!failure() && !cancelled()`, which
   on g1t (as on GitHub) is true when no job before it failed, however far
   back: a `migrate` job skipped for having nothing to apply does not stop
@@ -516,7 +562,11 @@ then a no-op, and worker-build is restored from the cache, installed on a
 miss. The image job adds `x86_64-unknown-linux-musl` (about 30 MB from
 `static.rust-lang.org`) and keeps its Cargo target in the cache. worker-build
 fetches wasm-bindgen and wasm-opt from GitHub releases and esbuild from
-npm. All of those hosts are on the list every workflow job may reach.
+npm. Each Rust job downloads sccache (about 10 MB) from its GitHub release
+too (`scripts/sccache.sh`, which checks its sha256); it is not in the base
+image, and putting it there means a pinned download in the base's
+Dockerfile and a base rebuild (`build-base`). All of those hosts are on
+the list every workflow job may reach.
 
 ### Network
 
