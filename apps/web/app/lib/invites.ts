@@ -65,6 +65,67 @@ export function cleanCode(raw: string | null | undefined): string {
   return text.replace(/\s+/g, "").slice(0, 80);
 }
 
+/**
+ * The `proof` an invite email's link carries, tidied: hex, or null for
+ * anything else. Identity decides whether it is the invite's own; this only
+ * keeps junk out of what is passed on and put back into a form.
+ */
+export function cleanProof(raw: string | null | undefined): string | null {
+  const text = (raw ?? "").trim().toLowerCase();
+  return /^[0-9a-f]{16,128}$/.test(text) ? text : null;
+}
+
+/** An invite's page, keeping the email's proof when there is one. */
+export function invitePath(code: string, proof?: string | null): string {
+  const path = `/invite/${encodeURIComponent(code)}`;
+  return proof ? `${path}?proof=${encodeURIComponent(proof)}` : path;
+}
+
+type Proven = {
+  /** The bound address in full, or null for an invite to anyone with the code. */
+  address: string | null;
+  emailProven: boolean;
+  workspace: { name: string } | null;
+  repository: { name: string } | null;
+};
+
+/**
+ * What signing up on an invite's page says about the email address. Opened
+ * from the invite's own email (`emailProven`), the address is confirmed
+ * already, so there is no code to enter; otherwise the address is confirmed
+ * after sign-up, as it always is.
+ */
+export function inviteSignUpCopy(invite: Proven): {
+  /** Under "Create your account". */
+  intro: string;
+  /** Under the email field. */
+  hint: string;
+  /** Said plainly above the form when the address is confirmed already; null otherwise. */
+  confirmed: string | null;
+} {
+  const proven = invite.emailProven && invite.address !== null;
+  const when = proven ? "as soon as you create it" : "as soon as you confirm your email";
+  const intro = invite.workspace
+    ? `You join ${invite.workspace.name} ${when}.`
+    : invite.repository
+      ? `You get ${invite.repository.name} ${when}.`
+      : "It takes a minute.";
+  if (proven) {
+    return {
+      intro,
+      hint: "Your invite was sent here, and you opened it from that email, so this address is confirmed already.",
+      confirmed: `${invite.address} is confirmed: you came here from the invite we emailed to it, so there is no code to enter after you sign up.`,
+    };
+  }
+  return {
+    intro,
+    hint: invite.address
+      ? "Your invite was sent here. We email it a code to confirm it before you start."
+      : "We email it a code to confirm it before you start.",
+    confirmed: null,
+  };
+}
+
 type Listed = {
   status: "pending" | "awaiting_confirmation" | "redeemed" | "expired" | "revoked";
   redeemedBy: string | null;

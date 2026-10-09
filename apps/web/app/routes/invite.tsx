@@ -1,4 +1,4 @@
-import { CircleAlert, Lock, Ticket } from "lucide-react";
+import { CircleAlert, Lock, MailCheck, Ticket } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
 
 import type { InvitePreview, User } from "@g1t/contracts";
@@ -11,7 +11,7 @@ import { Honeypot } from "../components/honeypot";
 import { Avatar, ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { githubSignInEnabled } from "../lib/github.server";
 import { identity } from "../lib/services.server";
-import { cleanCode, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
+import { cleanCode, cleanProof, inviteSignUpCopy, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
 import { clientKey } from "../lib/registration.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, startSession } from "../lib/session.server";
 import { rememberWorkspace } from "../lib/workspace-choice";
@@ -29,12 +29,19 @@ export function meta(args: Route.MetaArgs) {
  * an address that has an account), and the workspace or repository it
  * gives. Signing in or up elsewhere (GitHub, /login) comes back here with
  * `?accept=1`, which finishes the job.
+ *
+ * The link in the invite's own email also carries `?proof=`, which only
+ * that email has: signing up from it makes the account with the address
+ * confirmed already. The code alone (typed in, or a link passed on) does
+ * not, and the address is confirmed after sign-up as usual.
  */
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const code = cleanCode(params.code);
   const viewer = getViewer(context);
-  const accepting = new URL(request.url).searchParams.get("accept") === "1";
-  const checked = await identity.checkInvite(code, clientKey(request), { viewer, anyStatus: true });
+  const search = new URL(request.url).searchParams;
+  const accepting = search.get("accept") === "1";
+  const emailProof = cleanProof(search.get("proof"));
+  const checked = await identity.checkInvite(code, clientKey(request), { viewer, anyStatus: true, emailProof });
   const invite = checked.ok ? checked.value : null;
   // A shared link for a group signs up on /register, which names the group.
   if (invite?.sharedLabel) throw redirect(`/register?invite=${encodeURIComponent(code)}`);
@@ -61,6 +68,8 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
       alreadyIn: viewer && invite ? alreadyIn(viewer, invite) : false,
       github: false,
       suggestion: suggestUsername(invite?.address),
+      // Only a proof identity accepted goes back into the form.
+      proof: invite?.emailProven ? emailProof : null,
       started: Date.now(),
       acceptError: null as string | null,
     };
@@ -95,7 +104,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const code = cleanCode(params.code);
   const form = await request.formData();
   const client = clientKey(request);
-  const checked = await identity.checkInvite(code, client, { viewer: getViewer(context) });
+  const emailProof = cleanProof(String(form.get("proof") ?? ""));
+  const checked = await identity.checkInvite(code, client, { viewer: getViewer(context), emailProof });
   if (!checked.ok) return data({ error: checked.error.message }, { status: 422 });
   const invite = checked.value;
 
@@ -110,6 +120,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       String(form.get("password") ?? ""),
       code,
       client,
+      // Identity checks it again, against this invite and this address.
+      emailProof,
     );
     if (!result.ok) return data({ error: result.error.message }, { status: 422 });
     throw landIn(request, invite, [startSession(result.value.sessionToken)], true);
@@ -202,18 +214,19 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
   const here = `/invite/${loaded.code}`;
   const back = `${here}?accept=1`;
   const github = `/auth/github?${new URLSearchParams({ invite: loaded.code, next: back })}`;
+  const copy = inviteSignUpCopy(invite);
   return (
     <section aria-labelledby="sign-up" className="rounded-xl border border-line bg-surface/60 p-5 sm:p-6">
       <h2 id="sign-up" className="text-base font-semibold">
         Create your account
       </h2>
-      <p className="mt-1 text-sm text-muted">
-        {invite.workspace
-          ? `You join ${invite.workspace.name} as soon as you confirm your email.`
-          : invite.repository
-            ? `You get ${invite.repository.name} as soon as you confirm your email.`
-            : "It takes a minute."}
-      </p>
+      <p className="mt-1 text-sm text-muted">{copy.intro}</p>
+      {copy.confirmed && (
+        <p className="mt-4 flex items-start gap-2 rounded-md border border-success/40 bg-success/5 p-3 text-sm" role="status">
+          <MailCheck size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-success" />
+          <span>{copy.confirmed}</span>
+        </p>
+      )}
       {loaded.github && (
         <div className="mt-5">
           <ContinueWithGithub href={github} />
@@ -223,15 +236,20 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
       <Form method="post" className={`relative space-y-4 ${loaded.github ? "" : "mt-5"}`}>
         <input type="hidden" name="intent" value="register" />
         <Honeypot started={loaded.started} />
+        {loaded.proof && <input type="hidden" name="proof" value={loaded.proof} />}
         {invite.address ? (
-          <Field label="Email" hint="Your invite was sent here. We email it a code to confirm it before you start.">
+          <Field label="Email" hint={copy.hint}>
             <span className="relative block">
               <Input name="email" type="email" value={invite.address} readOnly aria-readonly="true" autoComplete="email" />
-              <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
+              {copy.confirmed ? (
+                <MailCheck size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-success" />
+              ) : (
+                <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
+              )}
             </span>
           </Field>
         ) : (
-          <Field label="Email" hint="We email it a code to confirm it before you start.">
+          <Field label="Email" hint={copy.hint}>
             <Input name="email" type="email" autoComplete="email" required maxLength={254} />
           </Field>
         )}

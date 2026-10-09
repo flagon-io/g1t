@@ -288,9 +288,24 @@ pub struct InviteEmail<'a> {
     pub workspace: Option<&'a str>,
     pub joins_existing_account: bool,
     pub code: &'a str,
+    /// The proof that whoever follows the link reads this inbox
+    /// (invites.rs, `email_proof`): the account made from it starts with
+    /// the address confirmed. None for an invite to an existing account,
+    /// or without IDENTITY_KEY.
+    pub proof: Option<&'a str>,
     pub days: u64,
     /// A line from whoever sent it, such as staff approving a request.
     pub note: Option<&'a str>,
+}
+
+/// An invite's page, as its email links to it: with the email's proof
+/// when it has one, so following it confirms the address (invites.rs).
+/// The code alone is what the inviter can see and share.
+pub fn invite_link(site: &str, code: &str, proof: Option<&str>) -> String {
+    match proof {
+        Some(proof) => format!("{site}/invite/{code}?proof={proof}"),
+        None => format!("{site}/invite/{code}"),
+    }
 }
 
 /// The subject and letter of an invite email.
@@ -314,7 +329,7 @@ pub fn invite_letter(invite: &InviteEmail, site: &str) -> (String, Letter) {
         paragraphs: vec![intro],
         quotes,
         code: None,
-        action: Some((action, format!("{site}/invite/{}", invite.code))),
+        action: Some((action, invite_link(site, invite.code, invite.proof))),
         footer: format!(
             "This invite works for {} days, only for this address. If you were not expecting it, you can ignore this message.",
             invite.days
@@ -413,8 +428,9 @@ pub async fn send_waitlist_summary(env: &Env, to: &str, new: &[Requested], waiti
 }
 
 /// An invitation to collaborate on one repository. `code` is set when the
-/// address has no account yet: the link then makes one and accepts; without
-/// it, the link opens the invitation to accept or decline.
+/// address has no account yet: the link then makes one and accepts, with
+/// `proof` (see [`invite_link`]); without it, the link opens the
+/// invitation to accept or decline.
 pub async fn send_repo_invite(
     env: &Env,
     to: &str,
@@ -422,11 +438,12 @@ pub async fn send_repo_invite(
     repo: &str,
     role: &str,
     code: Option<&str>,
+    proof: Option<&str>,
     days: u64,
 ) -> Result<()> {
     let (subject, intro) = repo_invite_wording(from, repo, role, code.is_some());
     let link = match code {
-        Some(code) => format!("{}/invite/{code}", site(env)),
+        Some(code) => invite_link(&site(env), code, proof),
         None => format!("{}/{repo}/invitations", site(env)),
     };
     send_link(
@@ -574,6 +591,7 @@ mod tests {
             workspace: Some("Flagon, Inc."),
             joins_existing_account: false,
             code: "g1t-abcd",
+            proof: None,
             days: 30,
             note,
         }
@@ -593,6 +611,15 @@ mod tests {
         assert!(invite_letter(&invite(None, Some("Chase Pierce")), SITE).1.quotes.is_empty());
         assert!(invite_letter(&invite(Some("  "), Some("Chase Pierce")), SITE).1.quotes.is_empty());
         assert_eq!(invite_letter(&invite(Some("hi"), Some("Chase Pierce")), SITE).1.quotes[0].0, "A note from Chase Pierce");
+    }
+
+    #[test]
+    fn an_invite_link_carries_the_emails_proof_when_it_has_one() {
+        let proven = InviteEmail { proof: Some("4f9c2a"), ..invite(None, None) };
+        let (_, letter) = invite_letter(&proven, SITE);
+        assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/invite/g1t-abcd?proof=4f9c2a");
+        // An invite sent before proofs, or for an existing account: the code alone.
+        assert_eq!(invite_link(SITE, "g1t-abcd", None), "https://g1t.sh/invite/g1t-abcd");
     }
 
     #[test]
@@ -688,6 +715,7 @@ mod tests {
             workspace: Some("Flagon, Inc."),
             joins_existing_account: false,
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+            proof: None,
             days: 30,
             note: None,
         }, SITE);
@@ -698,6 +726,7 @@ mod tests {
             workspace: None,
             joins_existing_account: false,
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+            proof: None,
             days: 30,
             note: Some("Thanks for waiting. We would love to see the compiler."),
         }, SITE);
