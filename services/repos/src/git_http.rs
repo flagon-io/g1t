@@ -745,6 +745,52 @@ pub fn with_head(body: &[u8], branch: &str) -> Option<Vec<u8>> {
     changed.then(|| encode(&packets))
 }
 
+/// The capability that asks git to send a push's pack whole: every delta's
+/// base inside it, none left for the receiving end to find (a "thin" pack).
+const NO_THIN: &[u8] = b"no-thin";
+
+/// The receive-pack ref advertisement (`info/refs?service=git-receive-pack`,
+/// protocol v0 or v1) with `no-thin` among its capabilities, so that git
+/// sends a pack whose deltas have their bases in it (git's `send-pack`
+/// turns thin packs off when the server says `no-thin`). Push protection
+/// and the rules then read every object from the pack, and none from the
+/// store (secret_scan.rs `supply_bases`). The capabilities follow the NUL
+/// on the first ref line, or on the `capabilities^{}` line of an empty
+/// repository. `None` when there is nothing to change or it cannot be
+/// changed safely: `no-thin` is there already, or the answer is not a whole
+/// pkt-line advertisement in that shape. Never for upload-pack.
+pub fn with_no_thin(body: &[u8]) -> Option<Vec<u8>> {
+    let mut packets = packets(body)?;
+    // Past the `# service=` line and its flush, and v1's `version 1`: the
+    // first ref line, which carries the capabilities.
+    let line = packets.iter_mut().find_map(|packet| match packet {
+        Packet::Data(data) if !data.starts_with(b"# service=") && !data.starts_with(b"version ") => Some(data),
+        _ => None,
+    })?;
+    let nul = line.iter().position(|byte| *byte == 0)?;
+    // `<oid> <ref>` before the NUL: 40 (SHA-1) or 64 (SHA-256) hex digits.
+    let (oid, name) = std::str::from_utf8(&line[..nul]).ok()?.split_once(' ')?;
+    if !matches!(oid.len(), 40 | 64) || !oid.bytes().all(|byte| byte.is_ascii_hexdigit()) || name.is_empty() {
+        return None;
+    }
+    let end = if line.ends_with(b"\n") { line.len() - 1 } else { line.len() };
+    let capabilities = &line[nul + 1..end];
+    if capabilities.split(|byte| *byte == b' ').any(|capability| capability == NO_THIN) {
+        return None;
+    }
+    let mut added = Vec::with_capacity(NO_THIN.len() + 1);
+    if !capabilities.is_empty() && !capabilities.ends_with(b" ") {
+        added.push(b' ');
+    }
+    added.extend_from_slice(NO_THIN);
+    // A pkt-line holds at most 65516 bytes of data.
+    if line.len() + added.len() > 65516 {
+        return None;
+    }
+    line.splice(end..end, added);
+    Some(encode(&packets))
+}
+
 /// Whether a request to the git store is one whose answer names `HEAD`:
 /// the ref advertisement for a fetch, or a protocol v2 `ls-refs`.
 fn names_head(git: &GitRequest, body: Option<&[u8]>) -> bool {
@@ -960,6 +1006,18 @@ pub async fn forward(
         let body = with_head(&body, branch).unwrap_or(body);
         response = Response::from_bytes(body)?.with_headers(headers);
     }
+    // A push's ref advertisement asks for a pack without outside bases.
+    if method == Method::Get
+        && git.service == GitService::ReceivePack
+        && git.endpoint == "info/refs"
+        && response.status_code() == 200
+    {
+        let headers = response.headers().clone();
+        headers.delete("content-length")?;
+        let body = response.bytes().await?;
+        let body = with_no_thin(&body).unwrap_or(body);
+        response = Response::from_bytes(body)?.with_headers(headers);
+    }
     if git.endpoint == "git-upload-pack"
         && response.status_code() == 200
         && body.as_deref().is_some_and(negotiating)
@@ -1016,6 +1074,21 @@ async fn push(
     let checked = checks(&head, ended, ended && violation.is_none()).await?;
     for (part, ms) in checked.spans {
         timing.part(part, ms);
+    }
+    // Whether the pack came thin: g1t asks for whole ones (`no-thin`, see
+    // [`with_no_thin`]), so a thin one is a client that ignored it, and its
+    // bases were read from the store (`read`).
+    if let Some(bases) = checked.bases {
+        timing.note("thin", if bases.thin() { "yes" } else { "no" });
+        if bases.thin() {
+            let agent = request.headers().get("user-agent").ok().flatten().unwrap_or_default();
+            worker::console_warn!(
+                "a thin push from {agent}: {} bases outside the pack, {} asked of the store, {} left unresolved",
+                bases.missing,
+                bases.asked,
+                bases.left
+            );
+        }
     }
     timing.mark("checks");
     let blocked = match checked.verdict {
@@ -1127,7 +1200,7 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace};
+    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace, with_no_thin};
 
     #[test]
     fn server_timing_names_each_step_and_the_total() {
@@ -1182,6 +1255,83 @@ mod tests {
         // Already right, or a branch it does not have: left alone.
         assert!(with_head(&body, "main").is_none());
         assert!(with_head(&body, "gone").is_none());
+    }
+
+    #[test]
+    fn a_push_advertisement_asks_for_a_pack_without_outside_bases() {
+        let main = "1111111111111111111111111111111111111111";
+        let topic = "2222222222222222222222222222222222222222";
+        let body = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{main} refs/heads/main\0report-status delete-refs side-band-64k quiet ofs-delta agent=git/2.45\n")),
+            pkt(&format!("{topic} refs/heads/topic\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let changed = with_no_thin(&body).unwrap();
+        let expected = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{main} refs/heads/main\0report-status delete-refs side-band-64k quiet ofs-delta agent=git/2.45 no-thin\n")),
+            pkt(&format!("{topic} refs/heads/topic\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        assert_eq!(String::from_utf8(changed.clone()).unwrap(), String::from_utf8(expected).unwrap());
+        // The length of the line that grew is its new one: the whole parses.
+        assert!(super::packets(&changed).is_some());
+        // Said once: an answer that has it already is left alone.
+        assert!(with_no_thin(&changed).is_none());
+
+        // Protocol v1 begins with `version 1`.
+        let v1 = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt("version 1\n"),
+            pkt(&format!("{main} refs/heads/main\0report-status ofs-delta\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let changed = String::from_utf8(with_no_thin(&v1).unwrap()).unwrap();
+        assert!(changed.contains(&String::from_utf8(pkt(&format!("{main} refs/heads/main\0report-status ofs-delta no-thin\n"))).unwrap()));
+        assert!(changed.contains("000eversion 1\n"));
+    }
+
+    #[test]
+    fn an_empty_repository_advertisement_asks_for_a_whole_pack_too() {
+        let zero = "0000000000000000000000000000000000000000";
+        let body = [
+            pkt("# service=git-receive-pack\n"),
+            b"0000".to_vec(),
+            pkt(&format!("{zero} capabilities^{{}}\0report-status delete-refs ofs-delta\n")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let changed = String::from_utf8(with_no_thin(&body).unwrap()).unwrap();
+        assert!(changed.contains(&String::from_utf8(pkt(&format!("{zero} capabilities^{{}}\0report-status delete-refs ofs-delta no-thin\n"))).unwrap()));
+        // No capabilities at all, and no newline: still one list.
+        let bare = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{zero} capabilities^{{}}\0")), b"0000".to_vec()].concat();
+        let changed = String::from_utf8(with_no_thin(&bare).unwrap()).unwrap();
+        assert!(changed.contains(&String::from_utf8(pkt(&format!("{zero} capabilities^{{}}\0no-thin"))).unwrap()));
+    }
+
+    #[test]
+    fn an_advertisement_that_cannot_be_read_goes_through_untouched() {
+        let main = "1111111111111111111111111111111111111111";
+        // Not pkt-lines; a length past the end; an error page.
+        assert!(with_no_thin(b"not a git answer").is_none());
+        assert!(with_no_thin(b"00ff1111").is_none());
+        assert!(with_no_thin(b"<html>503 Service Unavailable</html>").is_none());
+        assert!(with_no_thin(b"").is_none());
+        // A first ref line without capabilities, or without an object id.
+        let without = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{main} refs/heads/main\n")), b"0000".to_vec()].concat();
+        assert!(with_no_thin(&without).is_none());
+        let unnamed = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt("nothing here\0report-status\n"), b"0000".to_vec()].concat();
+        assert!(with_no_thin(&unnamed).is_none());
+        // `no-thin` inside another capability's value is not `no-thin`.
+        let lookalike = [pkt("# service=git-receive-pack\n"), b"0000".to_vec(), pkt(&format!("{main} refs/heads/main\0agent=no-thin-ish\n")), b"0000".to_vec()].concat();
+        assert!(String::from_utf8(with_no_thin(&lookalike).unwrap()).unwrap().contains("agent=no-thin-ish no-thin\n"));
     }
 
     #[test]
