@@ -68,9 +68,12 @@ Three things happened there:
 - Bruno answered **in his own voice**: short and to the point, because his
   personality is *Terse operator*. See
   [job and personality](/guides/agents/#job-and-personality).
-- Bruno **mentioned a colleague**. `@margo` is woken the same way, as one
-  more hop in a chain that Priya started. Chains stop after six hops and
-  hand back to a person, so two agents can't talk to each other forever.
+- Bruno **handed off to a colleague** once Priya said yes. Margo is in
+  `#web`, so his brief is posted right there and wakes her, as one more hop
+  in a chain that Priya started. An agent's `@mention` on its own wakes
+  nobody: only a [hand-off](/guides/agents/#hand-off) does. Chains stop
+  after six hops and hand back to a person, so two agents can't talk to
+  each other forever.
 
 Everyone is shown by name. A person is their display name, or their
 username as they wrote it when they have none. An agent is its name with a
@@ -192,6 +195,12 @@ sidebar and pick who to message.
 - **In a DM, every agent in it answers every message from a person.** You
   don't need to mention it. That is the quickest way to talk to an agent:
   open a DM with it and say what you need.
+- **In a group message with several agents,** mention the ones you want
+  an answer from. A message that mentions none of them goes to all of them.
+- **An agent can open a group message for you** when it hands work to a
+  colleague who isn't where you asked: you, it and the colleague. A card
+  where you asked links to it. See
+  [hand off](/guides/agents/#hand-off).
 
 ## Threads
 
@@ -235,6 +244,10 @@ so they stand out.
 | `@g1t` | Nothing in Chat yet. `@g1t` is g1t's own agent and works on issues and pull requests; see [g1t's agent](/guides/working-with-g1t/). |
 
 An address such as `me@example.com` is never read as a mention.
+
+An agent's messages wake no other agent, mentions or not. When an agent
+mentions someone who isn't in the conversation, the mention shows as a
+plain name, with no link and no notification, since it reaches no one.
 
 ## Format a message
 

@@ -11,6 +11,7 @@ import type { AgentStatus, ModelTier, NewWorkspaceAgent } from "@g1t/contracts";
 
 import { BUILTIN_AGENT_HANDLE, ORCHESTRATOR_TEMPLATE } from "../../../packages/contracts/src/workspace-agents.ts";
 import { type Checked, type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_CAPACITY, DEFAULT_ROUTING } from "./definition.ts";
+import { MAX_HAND_OFFS } from "./tools.ts";
 
 export const BUILTIN_ROLE = "Your orchestrator: delegates to the team's agents, or does the work itself";
 
@@ -115,8 +116,8 @@ export function rosterLines(specialists: Specialist[]): string {
     .join("\n");
 }
 
-/** The most specialists one of @g1t's messages may hand work to. */
-export const MAX_DELEGATES = 2;
+/** The most colleagues one reply may hand work to (the hand_off tool's rail). */
+export const MAX_DELEGATES = MAX_HAND_OFFS;
 
 /** @g1t's job: fixed, whatever the workspace adds. */
 export function orchestratorInstructions(specialists: Specialist[], extra: string): string {
@@ -131,16 +132,18 @@ export function orchestratorInstructions(specialists: Specialist[], extra: strin
     "### How you decide",
     "",
     "1. **Answer directly** when it is a question, a summary or a quick judgment you can give from this conversation.",
-    "2. **Delegate** when a specialist's role fits the work. @mention them in this thread with a crisp brief: what is wanted, why, what done looks like, and any constraint (who asked, deadlines, what not to touch). One short message; no preamble.",
+    "2. **Delegate** when a specialist's role fits the work: call hand_off with their handle and a crisp brief, written to them: what is wanted, why, what done looks like, and any constraint (deadlines, what not to touch). If they are in this conversation the brief is posted here; otherwise a group message opens with the person who asked, you and them, and a card here links to it. Then tell the person in a sentence who has it and where.",
     "3. **Do it yourself, or suggest a specialist,** when nobody fits. Say so plainly, offer to take it on yourself, and if this kind of work will recur, suggest setting one up (for example: \"Want me to set up a release manager for this?\").",
     "",
     "### Rules for delegating",
     "",
-    `- Mention at most ${MAX_DELEGATES} specialists in one message. Split bigger work into steps and hand off the next step when the first is done.`,
-    "- Never delegate in a loop: don't hand work back to a specialist who handed it to you, don't hand the same work to the same specialist twice in a thread, and never mention yourself.",
+    "- Only hand_off delegates. An @mention in your message wakes no agent and reaches nobody outside this conversation, so writing \"@mike, could you…\" hands nothing over.",
+    "- Describing the team is not delegating: name specialists without @ (\"Mike, our technical recruiter\") unless they are in this conversation.",
+    `- Hand off to at most ${MAX_DELEGATES} specialists for one message. Split bigger work into steps and hand off the next step when the first is done.`,
+    "- Never delegate in a loop: don't hand work back to a specialist who handed it to you, and don't hand the same work to the same specialist twice.",
     "- Don't delegate to a specialist who is out of budget or paused; say they are unavailable and why.",
-    "- Delegating is only an @mention in the thread: the person can see every hand-off, and the asker's access still limits what any agent does for them.",
-    "- When a specialist answers in a thread you delegated into, you only speak again if someone mentions you.",
+    "- The person sees every hand-off, and their access still limits what any agent does for them.",
+    "- Once you've handed something off, let the specialist answer; speak again when someone asks you.",
     "- When asked what everyone is working on, answer from the team list above.",
     available.length ? "" : "\nNo specialist is available right now, so do the work yourself or suggest creating one.",
   ].join("\n");
@@ -158,25 +161,6 @@ export const LONG_THREAD = 6;
  */
 export function orchestratorTier(messages: number, specialists: number): ModelTier {
   return messages > LONG_THREAD && specialists > 0 ? "large" : "small";
-}
-
-/**
- * The rail behind "at most two specialists per message": past the first
- * `max` specialists a reply @mentions, the `@` is dropped, so the chat
- * service wakes nobody else. Names stay readable.
- */
-export function capMentions(text: string, specialists: string[], max = MAX_DELEGATES): string {
-  const known = new Set(specialists.map((handle) => handle.toLowerCase()));
-  const kept = new Set<string>();
-  return text.replace(/(^|[^a-z0-9_.@-])@([a-z0-9](?:[a-z0-9_-]{0,38}[a-z0-9_])?)/gi, (whole, before: string, handle: string) => {
-    const key = handle.toLowerCase();
-    if (!known.has(key)) return whole;
-    if (kept.has(key) || kept.size < max) {
-      kept.add(key);
-      return whole;
-    }
-    return `${before}${handle}`;
-  });
 }
 
 /** The friendly notice when @g1t has no model to run on. */

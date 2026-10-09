@@ -6,7 +6,7 @@
  * another chat app the workspace connected later (docs/WORKSPACE.md,
  * "Working from another chat app"). Only g1t's adapter exists.
  */
-import type { AgentDelivery, ChatMessage, MessageCard, ServiceBinding } from "@g1t/contracts";
+import type { AgentDelivery, ChatMessage, ConversationForAgent, MessageCard, ServiceBinding } from "@g1t/contracts";
 
 // By path, not the package: it imports only types, so the adapter is tested under Node.
 import { CHAT_MAX_HOPS, chatClient } from "../../../packages/contracts/src/chat.ts";
@@ -20,6 +20,34 @@ export type SurfaceMessage = {
   card: string | null;
   created_at: string;
 };
+
+/** One member of a conversation, as an agent is told about it. */
+export type ConversationMember = {
+  kind: "user" | "agent";
+  id: string;
+  /** What `@` mentions: a person's username, an agent's handle. */
+  name: string;
+  display_name: string;
+  /** An agent's title, or its role when it has none; null for a person. */
+  title: string | null;
+};
+
+/**
+ * Where an agent is answering and who is in it (docs/WORKSPACE.md, "Where
+ * you are"): only these members read what it says there.
+ */
+export type Conversation = {
+  kind: "dm" | "group_dm" | "private_channel" | "public_channel";
+  /** A channel's name; null for a direct message. */
+  name: string | null;
+  /** Every agent, then people up to a cap. */
+  members: ConversationMember[];
+  people: number;
+  agents: number;
+};
+
+/** What handing work to a colleague did. */
+export type HandedOff = { ok: true; where: "here" | "group_dm"; opened: boolean } | { ok: false; message: string };
 
 export interface Surface {
   /** The latest `limit` messages of the conversation (the thread, or the DM or channel), oldest first. */
@@ -42,6 +70,35 @@ export interface Surface {
    * Never throws.
    */
   settle(outcome: "done" | "withdrawn"): Promise<void>;
+  /** The conversation and who is in it; null when it can't be read. Never throws. */
+  conversation(): Promise<Conversation | null>;
+  /**
+   * Hands work to a colleague agent for the person who asked: posted here
+   * when the colleague is in this channel or group DM, otherwise in the
+   * group DM of that person, this agent and the colleague, with a card
+   * here saying where it went. Wakes the colleague and nobody else.
+   */
+  handOff(colleagueId: string, brief: string): Promise<HandedOff>;
+}
+
+/** A conversation as the chat service describes it, as the reply loop reads it. */
+export function conversationFrom(value: ConversationForAgent): Conversation {
+  const { channel } = value;
+  const kind =
+    channel.kind === "dm" ? (value.people + value.agents > 2 ? "group_dm" : "dm") : channel.private ? "private_channel" : "public_channel";
+  return {
+    kind,
+    name: channel.kind === "dm" ? null : channel.name,
+    members: value.members.map((m) => ({
+      kind: m.kind,
+      id: m.id,
+      name: m.name,
+      display_name: m.display_name,
+      title: m.kind === "agent" ? m.title || m.role || null : null,
+    })),
+    people: value.people,
+    agents: value.agents,
+  };
 }
 
 export const SEEN = "👀";
@@ -77,9 +134,10 @@ export function fromChat(message: ChatMessage): SurfaceMessage {
 
 /**
  * g1t's own chat, over the chat service. Replies stay in the thread they
- * were asked in, and carry the delivery's hops, `asked_by` and `asker` on,
- * so an agent the reply @mentions is woken one hop further along the same
- * person's request, with that person's access.
+ * were asked in, and carry the delivery's hops, `asked_by` and `asker` on.
+ * A reply wakes nobody, @mentions or not; a hand-off wakes its colleague
+ * one hop further along the same person's request, with that person's
+ * access.
  */
 export function g1tSurface(chat: ServiceBinding, delivery: AgentDelivery): Surface {
   const client = chatClient(chat);
@@ -135,6 +193,27 @@ export function g1tSurface(chat: ServiceBinding, delivery: AgentDelivery): Surfa
       });
       if (!posted.ok) throw new Error(`posting the reply failed: ${posted.error.message}`);
       return posted.value.id;
+    },
+    async conversation() {
+      try {
+        const found = await client.conversationForAgent(workspace, channel, agent, delivery.asked_by);
+        return found.ok ? conversationFrom(found.value) : null;
+      } catch {
+        return null;
+      }
+    },
+    async handOff(colleagueId, brief) {
+      const done = await client.handOffAsAgent(workspace, channel, agent, {
+        colleague_id: colleagueId,
+        brief,
+        thread_root: delivery.thread_root,
+        hops: Math.min(delivery.hops, CHAT_MAX_HOPS),
+        asked_by: delivery.asked_by,
+        // The colleague works for the same person, with their access.
+        asker: delivery.asker ?? null,
+        chain: delivery.chain ?? [],
+      });
+      return done.ok ? { ok: true, where: done.value.where, opened: done.value.opened } : { ok: false, message: done.error.message };
     },
   };
 }

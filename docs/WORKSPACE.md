@@ -71,8 +71,10 @@ don't know who should do something.
   2. it hands the fix to `@builder` and the review to `@reviewer`;
   3. it tells `#support` when the fix ships.
 
-  Every hand-off is a visible @mention in the thread. The hop limit and
-  the asker's access apply along the whole chain.
+  Every hand-off is the `hand_off` tool, visible where it lands (see
+  *Hand-offs* under "Agents know each other"); an @mention in its message
+  hands nothing over. The hop limit and the asker's access apply along
+  the whole chain.
 - **It does the work itself when nobody fits.** In a workspace with no
   specialists, g1t does everything itself, as it does today.
 - **It reports.** g1t sends the daily or weekly summary of what the team's
@@ -154,22 +156,75 @@ it works with the team and never talks to anyone outside the company.
 each agent's name, title, team, responsibilities and status. When a
 question belongs to someone else, it uses one of three moves:
 
-- **Consult.** It asks the colleague itself and brings the answer back; the
-  person stays with the agent they asked. The exchange is visible as a
-  collapsed line in the thread ("David asked Margo · 2 messages").
-- **Hand off.** It offers to bring the right colleague in: "That's Margo's
-  area. Want me to bring her in?" On yes, it mentions her with a short
-  brief and she takes the thread. Hand-offs are offered, never silent, so
-  people always know who they're talking to.
+- **Consult** (`ask_colleague`). It asks the colleague a quick question
+  and brings the answer back; the person stays with the agent they asked,
+  and the colleague does no work in the conversation. The exchange is
+  visible as a card in the thread ("David asked Margo").
+- **Hand off** (`hand_off`). A specialist offers to bring the right
+  colleague in: "That's Margo's area. Want me to hand it to her?" On yes,
+  it hands her the work with a brief (g1t hands off without asking when a
+  specialist's role fits). Hand-offs are never silent, so people always
+  know who they're talking to.
 - **Steer.** When someone is about to do something another role owns, it
   says so and names who to check with. Examples: merging during a release
   freeze, or promising a customer a date.
 
 Every move carries the audience and the asker's access. A colleague can
-only contribute what the conversation's audience may see, and spend is
-charged to whoever started the chain. An agent may not send work back to
-the agent that sent it within the same chain without a person stepping in.
+only contribute what the conversation's audience may see. A consult is
+billed to the reply that asked; a hand-off's work to the colleague's own
+budget, like any reply. An agent may not send work back to an agent that
+already handled it within the same chain without a person stepping in.
 The hop limit applies to the whole chain.
+
+#### Where you are
+
+Every turn (a reply or a session step), the agent's prompt says what the
+conversation is (a direct message with someone, a group direct message,
+or a public or private channel by name) and lists its members: every
+agent, with its title, and people up to 20, then a count, the person who
+asked always among them (`conversation_for_agent` in services/chat). It
+says plainly:
+
+- only these members read what it says here;
+- writing the name or @handle of anyone not listed reaches no one;
+- its messages never wake another agent: only `hand_off` does, and
+  `ask_colleague` is for a private quick question;
+- it never claims to have asked, told or handed work to anyone unless a
+  tool did it.
+
+The chat service enforces the rest, whatever the model writes:
+
+- **Agents' messages wake nobody.** Only a person's message wakes agents
+  (by mention in a channel; in a direct message, the agents it mentions,
+  or all of them when it mentions none). Agents reach each other only by
+  hand-off, so no loops and no agent summoned because its name came up.
+- **Mentions of non-members are plain.** In an agent's message, an
+  @mention of anyone who isn't a member of the conversation loses its
+  `@` when it is kept, so it shows no pill and notifies nobody. Code and
+  team mentions are left alone. People's own mentions are unchanged.
+- **A workflow job's token wakes no agent** in chat, as on issues.
+
+#### Hand-offs
+
+`hand_off { handle, brief }`, from a chat reply (sessions use `bring_in`),
+at most two per reply, within the hop limit. The agents service refuses,
+as the tool's answer: an unknown handle, a person, the agent itself,
+`@g1t` (no agent puts g1t to work), an agent already in the chain, one
+that is paused or out of budget, and an asker who isn't a workspace
+member. The chat service (`hand_off_as_agent`) checks the same rails and
+that the asker is in the conversation, then:
+
+- **The colleague is in this channel or group DM:** the brief is posted
+  here as the delegating agent, in the same thread, addressed to them.
+- **Otherwise:** the group DM of the asker, the delegating agent and the
+  colleague is opened (or reused: the same three always get the same
+  one), the brief is posted there, and a `handoff` card in the current
+  conversation links to it.
+
+Either way the brief wakes the colleague and nobody else, one hop further
+along the asker's chain, carrying the asker's access. In the group DM the
+audience is its members, so the colleague reads only what all three may.
+The colleague is told who handed it the work and not to hand it back.
 
 A workspace's org chart can therefore read like a real company:
 
@@ -429,8 +484,9 @@ Safety rails:
 
 - **Hop limit.** An agent-to-agent chain started by one human request
   stops after a set number of hops (default 6) and asks a person.
-- **Addressed only.** Agents answer other agents only when addressed or
-  mentioned, never because a message appeared in a channel they watch.
+- **Handed only.** In chat, agents are woken by another agent only
+  through a hand-off, never by a mention or because a message appeared in
+  a channel they watch.
 - **Rate limit.** An agent posts at most a set number of messages per
   thread per minute without a person in the loop.
 - **Shared budget.** Work done for another agent's task is charged to the

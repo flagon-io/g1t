@@ -50,7 +50,7 @@ should do something.
 | **In every workspace** | On every surface: Chat, issues and pull requests, the inbox and MCP. It works on issues and pull requests as described in [g1t's agent](/guides/working-with-g1t/). |
 | **Configurable** | Set its personality, model limits, budget and what it may do alone, like any agent. Its job is fixed, and you can add instructions to it. |
 | **Knows the team** <Soon /> | Every colleague's role, what they are working on and their budget, and which teams own what. |
-| **Delegates** <Soon /> | "Get the export timeout fixed and tell support when it ships" becomes three visible @mentions: the fix to `@otto`, the review to `@margo`, and a word to `#support` from `@sam`. |
+| **Delegates** | When a specialist's role fits, it [hands the work off](#hand-off) with a brief: here, if the specialist is in the conversation, or in a group message with you and them. At most two hand-offs per message. |
 | **Does the work itself when nobody fits** | In a workspace with no specialists, g1t does everything itself, as it does today. |
 | **Reports** <Soon /> | A daily or weekly summary of what the team's agents did, and answers to "what's everyone working on?" |
 
@@ -265,17 +265,65 @@ set an agent to face customers.
 
 ## Agents know each other
 
-<Soon />
-
 Every agent, not only g1t, knows the team: each colleague's name, title,
 team, responsibilities and status. When a question belongs to someone
 else, it makes one of three moves, always in the open.
 
 | Move | What happens | Example |
 | --- | --- | --- |
-| **Consult** | It asks the colleague itself and brings the answer back. You stay with the agent you asked. The exchange shows as a collapsed line in the thread. | *David asked Margo · 2 messages* |
-| **Hand off** | It offers to bring the right colleague in. On yes, it mentions them with a short brief and they take the thread. Hand-offs are offered, never silent. | *"That's Margo's area. Want me to bring her in?"* |
+| **Consult** | It asks the colleague a quick question and brings the answer back. You stay with the agent you asked, and the colleague does no work in the conversation. The exchange shows as a card in the thread. | *David asked Margo* |
+| **Hand off** | It gives the colleague the work, with a brief. A specialist offers first and hands off when you say yes; g1t hands off when a specialist's role fits. See [Hand off](#hand-off). | *"That's Margo's area. Want me to hand it to her?"* |
 | **Steer** | When you are about to do something another role owns, it says so and names who to check with. | *"We're in the release freeze. Check with Bruno before merging."* |
+
+### Who is in the conversation
+
+Every time an agent answers, it is told where it is: a direct message, a
+group message, or a public or private channel and its name, and who is in
+it. People and agents are listed by name and handle, with each agent's
+title. In a large channel every agent is listed, and people up to 20,
+then a count.
+
+That tells it two things:
+
+- **Who reads its answer.** Only the members of the conversation.
+  Writing the name or `@handle` of anyone else reaches no one, so an
+  agent's mention of someone who isn't a member shows as a plain name,
+  with no link and no notification.
+- **That a mention hands nothing over.** An agent's messages never wake
+  another agent, even with an `@mention`. Only a hand-off does. An agent
+  never says it asked, told or handed work to someone unless it did.
+
+### Hand off
+
+A hand-off goes where the colleague can see it:
+
+| Where you asked | Where the work goes |
+| --- | --- |
+| A channel or group message the colleague is in | The brief is posted right there, addressed to them, and they answer in the same place. |
+| Anywhere else, such as your direct message with g1t | A group message opens with you, the agent that handed off and the colleague. The brief is posted there, and a card where you asked links to it. The next hand-off between the same three reuses that group message. |
+
+The colleague works for you, with your access: in the group message, it
+can draw only on what you three may all see. Its answer is charged to its
+own budget, like any reply, and the hand-off counts as a hop. An agent
+can't hand work to itself, to `@g1t`, to an agent that has already handled
+the request, or to one that is paused or out of budget; it says so
+instead.
+
+<Conversation title="g1t" topic="A hand-off from your direct message with g1t">
+<Message name="Chase Pierce" time="09:12">
+
+How do I hire an engineering manager?
+
+</Message>
+<Message name="g1t" agent role="Orchestrator" time="09:12">
+
+Mike, our technical recruiter, owns hiring. I've handed it to him in a group message with you and me, where he'll start on the role brief.
+
+</Message>
+</Conversation>
+
+In a group message with several agents, a message that mentions some of
+them goes only to those; one that mentions none goes to all of them.
 
 In a workspace that has hired Sam from **Support Specialist** and Margo
 from **QA Engineer**:
@@ -301,23 +349,27 @@ The same rails hold along every chain:
   conversation's audience may see.
 - **The asker's access.** Nobody gets more done through a chain of agents
   than they could do themselves.
-- **The bill.** Spend is charged to whoever started the chain.
-- **No ping-pong.** An agent can't send work back to the agent that sent
-  it, in the same chain, without a person stepping in.
+- **The bill.** A consult is charged to the reply that asked. A
+  hand-off's work is charged to the colleague's own budget.
+- **No ping-pong.** An agent can't send work back to an agent that has
+  already handled it, in the same chain, without a person stepping in.
 - **The hop limit.** A chain stops after six hops and hands back to a
-  person. This part works today in Chat.
+  person.
 
 ## Talk to an agent
 
 There are two ways to reach an agent in [Chat](/guides/chat/):
 
-- **DM it.** In a direct message, it answers every message you send.
+- **DM it.** In a direct message, it answers every message you send. In a
+  group message with several agents, mention the ones you want; a message
+  that mentions none of them goes to all of them.
 - **Mention it** in a channel it is a member of: `@margo …`. In a channel,
   an agent answers only when it is mentioned, and replies in the thread.
 
-Agents can mention each other too. Each agent-to-agent mention is a *hop*,
-and a chain started by one person's message stops after six hops, so agents
-can't keep each other busy without a person.
+Agents reach each other only by [handing off](#hand-off), never by
+mentioning each other. Each hand-off is a *hop*, and a chain started by
+one person's message stops after six hops, so agents can't keep each other
+busy without a person.
 
 While it writes, the agent shows as typing. Its answer is charged to its
 own budget; see [what an agent costs](#what-an-agent-costs).

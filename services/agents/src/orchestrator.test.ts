@@ -8,7 +8,6 @@ import {
   type Specialist,
   builtinChanges,
   builtinDefinition,
-  capMentions,
   orchestratorInstructions,
   orchestratorTier,
   rosterLines,
@@ -118,25 +117,22 @@ test("the roster names each specialist, its role, status and spend against its c
   assert.equal(rosterLines([]), "There are no specialists in this workspace yet.");
 });
 
-test("the orchestrator's job: decide, delegate by mention with a brief, at most two, no loops", () => {
+test("the orchestrator's job: decide, delegate with hand_off and a brief, at most two, no loops", () => {
   const job = orchestratorInstructions([ship, triage], "Always copy #releases.");
   assert.match(job, /@ship \(Shipwright\)/);
   assert.match(job, /Answer directly/);
-  assert.match(job, /@mention them in this thread with a crisp brief/);
+  assert.match(job, /call hand_off with their handle and a crisp brief/);
+  assert.match(job, /a group message opens with the person who asked, you and them/);
+  assert.match(job, /Only hand_off delegates\. An @mention in your message wakes no agent/);
+  assert.match(job, /name specialists without @/);
   assert.match(job, /Want me to set up a release manager/);
-  assert.match(job, /at most 2 specialists in one message/);
+  assert.match(job, /at most 2 specialists for one message/);
   assert.match(job, /Never delegate in a loop/);
   assert.match(job, /out of budget or paused/);
-  assert.match(job, /you only speak again if someone mentions you/);
+  assert.doesNotMatch(job, /@mention them in this thread/, "a mention is no longer how work is handed over");
   assert.ok(job.endsWith("### Added by this workspace\n\nAlways copy #releases."), "the workspace's additions come after the fixed job");
   assert.match(orchestratorInstructions([triage], ""), /No specialist is available right now/);
   assert.match(orchestratorInstructions([], ""), /no specialists in this workspace yet/);
-});
-
-test("past two specialists, a reply's mentions wake nobody", () => {
-  const text = "@ship cut it, @triage group these, @scribe write it up, and @ship again. Ask @dana.";
-  assert.equal(capMentions(text, ["ship", "triage", "scribe"]), "@ship cut it, @triage group these, scribe write it up, and @ship again. Ask @dana.");
-  assert.equal(capMentions("mail me@ship.io", ["ship"]), "mail me@ship.io", "an address is not a mention");
 });
 
 test("@g1t routes a delegation call in a long thread to the large tier, held to its limits", () => {

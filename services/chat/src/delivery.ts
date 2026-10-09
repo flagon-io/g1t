@@ -3,14 +3,14 @@
  * hops along it is. Pure, so it is tested apart from the service.
  *
  * The rules (docs/WORKSPACE.md, "Talking to each other"):
- * - A person's message wakes every agent in a direct message with them,
- *   and in a channel only the agent members it @mentions. That starts a
- *   chain at hop 0.
- * - An agent's message wakes other agents only when it @mentions them
- *   (addressed only, never because they were in the room), one hop further
- *   along the chain it was answering.
+ * - A person's message in a channel wakes the agent members it @mentions.
+ *   In a direct message it wakes the agents in it that it @mentions, or
+ *   all of them when it mentions none. That starts a chain at hop 0.
+ * - An agent's message wakes nobody, @mentions or not. An agent gets a
+ *   colleague working only by handing off (`handOffPlace`), which wakes
+ *   that one colleague, one hop further along the chain it was answering.
+ *   No loops, and no agent summoned because its name came up.
  * - A chain stops after `MAX_HOPS` hops, and asks a person instead.
- * - An agent is never handed its own message.
  */
 
 /** The most agent-to-agent hops one person's request may start. Same as CHAT_MAX_HOPS in @g1t/contracts. */
@@ -33,6 +33,12 @@ export type Chain<A> = {
   asker: A | null;
   /** The agents that handled the request so far, by id, oldest first: for an agent's message, ending with its author. */
   chain: string[];
+  /**
+   * Set for a message written with a workflow job's token (`G1T_TOKEN`):
+   * it wakes no agent, or a workflow that posts on a failing check could
+   * start one whose push runs the workflow again, without end.
+   */
+  quiet?: boolean;
 };
 
 /** The most agent ids a chain carries: the hop limit's worth, and some. */
@@ -46,14 +52,6 @@ const MAX_CHAIN = 16;
 export function chainFor(given: unknown, author: string): string[] {
   const before = Array.isArray(given) ? given.filter((id): id is string => typeof id === "string" && !!id).slice(-MAX_CHAIN) : [];
   return [...before, author];
-}
-
-/**
- * The agent that sent the author its work: the one before the author in
- * the chain. The author's message never goes back to it (no ping-pong).
- */
-export function sender(chain: string[]): string | null {
-  return chain.length >= 2 ? chain[chain.length - 2] : null;
 }
 
 /** What the agents service is handed for one wake (AgentDelivery), on g1t's own chat. */
@@ -86,20 +84,40 @@ export function deliveries(input: {
   agents: AgentMember[];
   /** Handles the message @mentions, lowercased. */
   mentioned: string[];
-  /** For an agent's message: the agent that sent it the work, never handed it back. */
-  notTo?: string | null;
 }): Wake[] {
+  // Only a person's message wakes anyone; agents reach each other by hand-off.
+  if (!input.author.startsWith("user:")) return [];
   const mentioned = new Set(input.mentioned.map((h) => h.toLowerCase()));
-  const named = (agent: AgentMember) => mentioned.has(agent.handle.toLowerCase());
-  if (input.author.startsWith("user:")) {
-    const woken = input.channelKind === "dm" ? input.agents : input.agents.filter(named);
-    return woken.map((agent) => ({ agent_id: agent.id, hops: 0 }));
-  }
-  const hops = Math.max(0, Math.floor(input.hops || 0)) + 1;
-  if (hops > MAX_HOPS) return [];
-  return input.agents
-    .filter((agent) => named(agent) && `agent:${agent.id}` !== input.author && agent.id !== input.notTo)
-    .map((agent) => ({ agent_id: agent.id, hops }));
+  const named = input.agents.filter((agent) => mentioned.has(agent.handle.toLowerCase()));
+  const woken = input.channelKind === "dm" && !named.length ? input.agents : named;
+  return woken.map((agent) => ({ agent_id: agent.id, hops: 0 }));
+}
+
+/**
+ * Where a hand-off's brief goes: here, when the colleague is already a
+ * member of this channel or group direct message (everyone here sees the
+ * work move); otherwise a group direct message of the person who asked,
+ * the agent and the colleague, so the colleague reads only what it was
+ * handed and works for that person, with their access.
+ */
+export function handOffPlace(input: { channelKind: "channel" | "dm"; members: number; colleagueHere: boolean }): "here" | "group_dm" {
+  const shared = input.channelKind === "channel" || input.members > 2;
+  return input.colleagueHere && shared ? "here" : "group_dm";
+}
+
+/**
+ * Why an agent may not hand work to `colleague`, or null when it may. The
+ * colleague is already of the workspace and not archived; this decides the
+ * rest of the rails: not itself, never @g1t (no agent puts g1t to work),
+ * never an agent already on this request (no ping-pong), and within the
+ * hop limit.
+ */
+export function handOffRefusal(input: { agent: string; colleague: { id: string; builtin?: boolean }; chain: string[]; hops: number }): string | null {
+  if (input.colleague.id === input.agent) return "An agent can't hand work to itself.";
+  if (input.colleague.builtin) return "An agent can't hand work to @g1t. The person can ask @g1t themselves.";
+  if (input.chain.includes(input.colleague.id)) return "That agent has already handled this request: no handing work back.";
+  if (Math.max(0, Math.floor(input.hops || 0)) + 1 > MAX_HOPS) return "This request has been passed along too many times. Ask a person to step in.";
+  return null;
 }
 
 /** The built-in orchestrator's handle. Same as BUILTIN_AGENT_HANDLE in @g1t/contracts. */
