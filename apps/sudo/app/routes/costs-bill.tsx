@@ -5,7 +5,7 @@ import type { CostsReport, PriceProposal } from "@g1t/contracts";
 import type { Route } from "./+types/costs-bill";
 import { CostsHeader } from "~/components/costs-header";
 import { Badge, Button, EmptyState, Field, Input, Notice, Section, When } from "~/components/ui";
-import { countLabel, driftLabel, percentLabel, proposalOutcome, unitDollars, versionCells } from "~/lib/costs";
+import { basisLabel, billReadNote, countLabel, cycleHeadline, driftLabel, percentLabel, proposalOutcome, unitDollars, unpricedMeters, versionCells } from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { dollarsField, usd } from "~/lib/money";
 
@@ -37,8 +37,10 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <CostsHeader page="bill" range={range} report={report} done={done} runError={failed?.section === "run" ? failed.error : null} description={description} />
 
+      <CycleSection report={report} />
+
       <Section
-        className="mt-5"
+        className="mt-6"
         id="drift"
         title="Drift"
         description="Over the last 7 days: counts g1t and Cloudflare disagree on past a mapping's threshold, a bill far from the price book's cost of the same usage, and leaks (cost nothing charges for, or a Cloudflare meter no one mapped)."
@@ -332,6 +334,85 @@ function ProposalRow({ proposal: p, error }: { proposal: PriceProposal; error: s
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Cloudflare's current billing cycle, the way its Billable usage page shows
+ * it: each meter's use, what the cycle includes, what is past it and what
+ * that costs, with the total so far and the projection.
+ */
+function CycleSection({ report }: { report: CostsReport }) {
+  const cycle = report.cycle;
+  const read = report.billRead ? billReadNote(report.billRead) : null;
+  const unpriced = cycle ? unpricedMeters(cycle.meters) : [];
+  const headline = cycle ? cycleHeadline(cycle) : null;
+  return (
+    <Section
+      className="mt-5"
+      id="cycle"
+      title="This billing cycle"
+      description="Cloudflare's usage bill for the cycle so far, meter by meter. Each meter's included amount is the account's, once a cycle; the cost is Cloudflare's own where its lines carry one, else the list price past the included amount (per-million meters in whole millions), on the days the cycle's total passed it. Subscriptions are apart."
+    >
+      {!cycle || !headline ? (
+        <EmptyState title="No cycle read yet">The bill is read once a day at 04:17 UTC, or now with “Run the analysis now”.</EmptyState>
+      ) : (
+        <>
+          <p className="text-sm">
+            <span className="font-medium text-fg">{headline.title}</span>
+            <span className="block text-muted">{headline.detail}.</span>
+          </p>
+          {unpriced.length > 0 && (
+            <div className="mt-3">
+              <Notice tone="warn">
+                Used with no list price, so counted at $0 until Cloudflare puts a cost on it or a price is added (src/cycle.rs):{" "}
+                {unpriced.map((m) => `${m.product} / ${m.meter}`).join(", ")}.
+              </Notice>
+            </div>
+          )}
+          <div className="-mx-4 mt-3 overflow-x-auto sm:-mx-5">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-xs text-muted">
+                  <th className="px-4 py-2 font-medium sm:px-5">Meter</th>
+                  <th className="px-4 py-2 text-right font-medium">Used</th>
+                  <th className="px-4 py-2 text-right font-medium">Included</th>
+                  <th className="px-4 py-2 text-right font-medium">Billable</th>
+                  <th className="px-4 py-2 text-right font-medium sm:pr-5">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cycle.meters.map((m) => (
+                  <tr key={`${m.product}-${m.meter}`} className="border-b border-line align-top last:border-0">
+                    <td className="px-4 py-2.5 sm:px-5">
+                      {m.rawName}
+                      <span className="block text-xs text-faint">{basisLabel(m.basis)}</span>
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right">
+                      {countLabel(m.quantity)} <span className="text-xs text-faint">{m.unit}</span>
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right text-muted">{m.included == null ? "—" : countLabel(m.included)}</td>
+                    <td className="tabular px-4 py-2.5 text-right">{countLabel(m.billableQuantity)}</td>
+                    <td className="tabular px-4 py-2.5 text-right sm:pr-5">{usd(m.costMicros)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className="px-4 py-2.5 font-medium sm:px-5" colSpan={4}>
+                    Usage so far
+                  </td>
+                  <td className="tabular px-4 py-2.5 text-right font-medium sm:pr-5">{usd(cycle.usageMicros, { cents: true })}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {read && (
+        <p className={`mt-3 text-xs ${read.warn ? "text-warn" : "text-faint"}`}>
+          Last read <When at={report.billRead?.readAt ?? null} time />: {read.text}
+        </p>
+      )}
+    </Section>
   );
 }
 

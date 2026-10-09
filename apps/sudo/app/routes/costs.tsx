@@ -7,7 +7,7 @@ import type { Route } from "./+types/costs";
 import { DaysChart } from "~/components/costs";
 import { CostsHeader, chip, costsHref } from "~/components/costs-header";
 import { Badge, Button, Field, Input, Notice, Section, Stat, When } from "~/components/ui";
-import { PAUSE_LEVELS, capPercent, count, daySeries, marginOnPrice, marginTone, parseBucket, percentLabel, spendRows, subscriptionsOver, thresholdShare, whoPaid } from "~/lib/costs";
+import { PAUSE_LEVELS, capPercent, count, daySeries, givenParts as givenBy, marginOnPrice, marginTone, parseBucket, percentLabel, spendRows, subscriptionsOver, thresholdShare, whoPaid } from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { usd } from "~/lib/money";
 
@@ -173,6 +173,12 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
             </table>
           </div>
         )}
+        {(report.unattributedMicros ?? 0) > 0 && (
+          <p className="mt-3 text-xs text-muted">
+            And {usd(report.unattributedMicros ?? 0, { cents: true })} of running g1t on days no workspace used anything: no one&apos;s, so not above. The
+            workspaces&apos; costs and this add up to the cost in the statement.
+          </p>
+        )}
       </Section>
 
     </main>
@@ -216,22 +222,14 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
   const usagePercent = soldSomething && o.usageMarginPercent !== undefined ? o.usageMarginPercent : null;
   const running = o.runningCostMicros ?? 0;
   const unmapped = o.unmappedCostMicros ?? 0;
-  // Cloudflare's subscriptions are not on the usage bill: a month's, over the range.
-  const subscriptions = subscriptionsOver(report.caps.fixedMonthlyMicros, range);
+  // Cloudflare's subscriptions are not on the usage bill: each day's share of its billing cycle.
+  const subscriptions = subscriptionsOver(report.caps.fixedMonthlyMicros, range, o);
   const paid = whoPaid(o, subscriptions);
   const moneyIn = o.usageMicros + o.plansMicros;
   const spent = paid.totalMicros;
   const net = moneyIn - spent;
-  const givenParts = [
-    ["100% discounts", o.givenCompedMicros ?? 0],
-    ["free use", o.givenFreeMicros ?? 0],
-    ["trial", o.givenTrialMicros ?? 0],
-    ["open-source pool", o.givenPoolMicros ?? 0],
-    ["partial discounts", o.givenDiscountMicros ?? 0],
-    ["promotional credit", o.givenCreditPromotionalMicros ?? 0],
-    ["goodwill credit", o.givenCreditGoodwillMicros ?? 0],
-    ["testing resets", o.givenResetMicros ?? 0],
-  ].filter(([, micros]) => (micros as number) > 0) as [string, number][];
+  const givenParts = givenBy(o);
+  const gateway = o.gatewayCostMicros ?? 0;
   const rows: { title: string; note: string; in: number | null; cost: number; result: number | null; tone?: "danger" | "warn" | "muted" }[] = [
     {
       title: "Usage sold",
@@ -259,7 +257,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
       title: "Cloudflare subscriptions",
       note:
         report.caps.fixedSource === "cloudflare"
-          ? `Fixed, as Cloudflare lists them${(report.caps.fixedItems ?? []).length > 0 ? ` (${(report.caps.fixedItems ?? []).map((i) => i.name).join(", ")})` : ""}; not on the usage bill`
+          ? `Fixed, as Cloudflare lists them${(report.caps.fixedItems ?? []).length > 0 ? ` (${(report.caps.fixedItems ?? []).map((i) => i.name).join(", ")})` : ""}; not on the usage bill. Each day is its billing cycle's share of ${usd(report.caps.fixedMonthlyMicros, { cents: true })} a month`
           : "Fixed, an estimate (CLOUDFLARE_FIXED_MONTHLY_MICROS) until Cloudflare's list is read; not on the usage bill",
       in: null,
       cost: subscriptions,
@@ -300,7 +298,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <Stat
           label="Who g1t paid"
           value={usd(paid.totalMicros, { cents: true })}
-          hint={`Cloudflare's usage ${usd(paid.cloudflareMicros, { cents: true })} and subscriptions ${usd(paid.subscriptionsMicros, { cents: true })}, model providers ${usd(paid.modelsMicros, { cents: true })}; the cost in All in`}
+          hint={`Cloudflare's usage ${usd(paid.cloudflareMicros, { cents: true })} and subscriptions ${usd(paid.subscriptionsMicros, { cents: true })}, model providers ${usd(paid.modelsMicros, { cents: true })}${gateway > 0 && Math.abs(gateway - paid.modelsMicros) >= 10_000 ? ` (AI Gateway priced them at ${usd(gateway, { cents: true })}; see Drift)` : ""}; the cost in All in`}
         />
         <Stat
           label="Proposals waiting"
@@ -493,7 +491,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
       <p className="mt-3 text-xs text-muted">
         Why this differs from the statement above: this is {caps.month} so far, the statement the last {range} days. The statement takes Cloudflare&apos;s bill as the
         cost of what Cloudflare runs, so sandboxes and builds inside Cloudflare&apos;s included usage cost nothing there, and here what the price book says they
-        cost. Here are Cloudflare&apos;s subscriptions for the whole month, there for the range.
+        cost. Cloudflare&apos;s subscriptions are counted the same way in both: each day its billing cycle&apos;s share of the month&apos;s price.
         {(caps.resetMicros ?? 0) > 0 && (
           <>
             {" "}

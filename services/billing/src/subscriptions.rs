@@ -6,6 +6,11 @@
 //! (`CLOUDFLARE_BILLING_TOKEN`, Account: Billing Read) and kept in
 //! `cf_subscriptions`; until a read has worked, `CLOUDFLARE_FIXED_MONTHLY_MICROS`
 //! stands in as an estimate.
+//!
+//! The same read says when the billing cycle starts (`current_period_start`):
+//! the day of the month every cycle starts on (`cycle`), which is when the
+//! usage bill's included amounts start again. Until it is read,
+//! `CLOUDFLARE_BILLING_DAY` says.
 
 use g1t_contracts::billing::FixedCost;
 use g1t_contracts::time::rfc3339;
@@ -49,6 +54,18 @@ pub(crate) fn monthly(body: &Value) -> Vec<FixedCost> {
     out
 }
 
+/// When the current billing cycle started, from the first paid monthly
+/// subscription that says (`current_period_start`), as YYYY-MM-DD.
+pub(crate) fn period_start(body: &Value) -> Option<String> {
+    body["result"]
+        .as_array()?
+        .iter()
+        .filter(|s| PAID.contains(&s["state"].as_str().unwrap_or("Paid")))
+        .filter(|s| s["frequency"].as_str().unwrap_or("monthly") == "monthly")
+        .find_map(|s| s["current_period_start"].as_str().filter(|d| crate::cycle::anchor_of(d).is_some()))
+        .map(|d| d[..10].to_owned())
+}
+
 /// What the fixed cost is, and where the figure came from.
 pub(crate) struct Fixed {
     pub monthly_micros: i64,
@@ -65,15 +82,40 @@ impl Billing {
         let body = keeper.subscriptions_body().await?;
         let items = monthly(&body);
         let total: i64 = items.iter().map(|i| i.monthly_micros).sum();
+        let cycle_start = period_start(&body);
         self.db
             .prepare(
-                "INSERT INTO cf_subscriptions (id, monthly_micros, detail, read_at) VALUES ('current', ?1, ?2, ?3)
-                 ON CONFLICT (id) DO UPDATE SET monthly_micros = excluded.monthly_micros, detail = excluded.detail, read_at = excluded.read_at",
+                "INSERT INTO cf_subscriptions (id, monthly_micros, detail, read_at, cycle_start) VALUES ('current', ?1, ?2, ?3, ?4)
+                 ON CONFLICT (id) DO UPDATE SET monthly_micros = excluded.monthly_micros, detail = excluded.detail, read_at = excluded.read_at,
+                   cycle_start = COALESCE(excluded.cycle_start, cf_subscriptions.cycle_start)",
             )
-            .bind(&[(total as f64).into(), serde_json::to_string(&items)?.into(), rfc3339(now_ms()).into()])?
+            .bind(&[
+                (total as f64).into(),
+                serde_json::to_string(&items)?.into(),
+                rfc3339(now_ms()).into(),
+                cycle_start.map_or(worker::wasm_bindgen::JsValue::NULL, |d| d.into()),
+            ])?
             .run()
             .await?;
         Ok(items.len())
+    }
+
+    /// The day of the month Cloudflare's billing cycle starts on: from the
+    /// subscriptions as last read, else `CLOUDFLARE_BILLING_DAY`, else the 1st.
+    pub(crate) async fn cycle_anchor(&self) -> Result<u32> {
+        #[derive(Deserialize)]
+        struct Row {
+            cycle_start: Option<String>,
+        }
+        let read = self
+            .db
+            .prepare("SELECT cycle_start FROM cf_subscriptions WHERE id = 'current'")
+            .first::<Row>(None)
+            .await?
+            .and_then(|r| r.cycle_start)
+            .and_then(|d| crate::cycle::anchor_of(&d));
+        let configured = self.env.var("CLOUDFLARE_BILLING_DAY").ok().and_then(|v| v.to_string().trim().parse::<u32>().ok()).filter(|d| (1..=31).contains(d));
+        Ok(read.or(configured).unwrap_or(crate::cycle::DEFAULT_ANCHOR))
     }
 
     /// Cloudflare's subscriptions as last read, else the estimate.
@@ -122,6 +164,17 @@ mod tests {
                 FixedCost { name: "Zone Pro".into(), monthly_micros: 20_000_000 },
             ]
         );
+    }
+
+    #[test]
+    fn the_cycle_starts_when_the_monthly_subscription_renews() {
+        let body = json!({ "result": [
+            { "state": "Cancelled", "price": 5.0, "frequency": "monthly", "current_period_start": "2026-09-01T00:00:00Z" },
+            { "state": "Paid", "price": 240.0, "frequency": "yearly", "current_period_start": "2026-03-15T00:00:00Z" },
+            { "state": "Paid", "price": 5.0, "frequency": "monthly", "current_period_start": "2026-09-28T07:12:00Z" },
+        ] });
+        assert_eq!(period_start(&body).as_deref(), Some("2026-09-28"));
+        assert_eq!(period_start(&json!({ "result": [{ "state": "Paid", "price": 5.0 }] })), None);
     }
 
     #[test]

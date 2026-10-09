@@ -2,7 +2,7 @@
  * Costs & margin: the arithmetic behind the page, apart from the SVG and
  * the Workers runtime so it can be tested under Node. Money is in micros.
  */
-import type { CostDay, CostMappingInput, CostSettings, PauseLevel, PlatformGuard, SpendCaps } from "@g1t/contracts";
+import type { BillRead, CloudflareCycle, CostDay, CostMappingInput, CostSettings, CycleMeter, OverallMargin, PauseLevel, PlatformGuard, SpendCaps } from "@g1t/contracts";
 
 import { parseDollars, usd } from "./money.ts";
 
@@ -66,9 +66,59 @@ export function whoPaid(
   return { totalMicros: overall.costMicros + subscriptionsMicros, cloudflareMicros, subscriptionsMicros, modelsMicros };
 }
 
-/** Cloudflare's subscriptions over a range of days: a month's, pro rata. */
-export function subscriptionsOver(monthlyMicros: number, days: number): number {
+/**
+ * Cloudflare's subscriptions over the range: billing's figure (each day its
+ * billing cycle's share, the same accrual as the month view), or from a
+ * billing that does not send one, a month's over 30 days.
+ */
+export function subscriptionsOver(monthlyMicros: number, days: number, overall?: Pick<OverallMargin, "subscriptionsMicros">): number {
+  if (typeof overall?.subscriptionsMicros === "number") return overall.subscriptionsMicros;
   return Math.round((monthlyMicros * days) / 30);
+}
+
+/** What was given away, by why, for the statement: only the ones with any. */
+export function givenParts(o: OverallMargin): [string, number][] {
+  return (
+    [
+      ["100% discounts", o.givenCompedMicros ?? 0],
+      ["free use", o.givenFreeMicros ?? 0],
+      ["trial", o.givenTrialMicros ?? 0],
+      ["open-source pool", o.givenPoolMicros ?? 0],
+      ["partial discounts", o.givenDiscountMicros ?? 0],
+      ["promotional credit", o.givenCreditPromotionalMicros ?? 0],
+      ["goodwill credit", o.givenCreditGoodwillMicros ?? 0],
+      ["testing resets", o.givenResetMicros ?? 0],
+      ["charged without real money", o.givenUnpaidMicros ?? 0],
+    ] as [string, number][]
+  ).filter(([, micros]) => micros > 0);
+}
+
+/** How a cycle meter's cost was arrived at, in words. */
+export function basisLabel(basis: string): string {
+  if (basis === "cloudflare") return "Cloudflare's cost";
+  if (basis === "list") return "List price past the included amount";
+  return "No list price: counted at $0";
+}
+
+/** A cycle's headline: cost so far, the projection and the average day, as Cloudflare's Billable usage page puts them. */
+export function cycleHeadline(cycle: CloudflareCycle): { title: string; detail: string } {
+  return {
+    title: `${cycle.start} to ${cycle.end}, day ${cycle.daysElapsed} of ${cycle.days}`,
+    detail: `${usd(cycle.usageMicros, { cents: true })} so far, ${usd(cycle.averageDailyMicros, { cents: true })} a day; projected ${usd(cycle.projectedMicros, { cents: true })} for the cycle, and ${usd(cycle.subscriptionsMicros, { cents: true })} of subscriptions`,
+  };
+}
+
+/** Meters with no list price that were used: costed at $0 until one is added. */
+export function unpricedMeters(meters: CycleMeter[]): CycleMeter[] {
+  return meters.filter((m) => m.basis === "none" && m.quantity > 0);
+}
+
+/** What the last read of the bill got, in a sentence, and whether it looks incomplete. */
+export function billReadNote(read: BillRead): { text: string; warn: boolean } {
+  const parts = [`${read.rows.toLocaleString("en-US")} rows in ${read.pages} ${read.pages === 1 ? "page" : "pages"} for ${read.since} to ${read.until}`];
+  if (read.pricingOnlyRows > 0) parts.push(`${read.pricingOnlyRows} with only a pricing quantity, which can be in blocks`);
+  parts.push(read.costedRows > 0 ? `${read.costedRows} with Cloudflare's own cost` : "none with a cost of Cloudflare's, so the list prices apply");
+  return { text: `${parts.join("; ")}.`, warn: read.rows === 0 || read.pricingOnlyRows > 0 };
 }
 
 /**
@@ -252,11 +302,17 @@ export function spendRows(caps: SpendCaps): { rows: { key: string; title: string
   };
   const rows = caps.monthBuckets.map((b) => ({ key: b.bucket, title: b.title, micros: b.micros, note: notes[b.bucket] ?? "" }));
   rows.push({ key: "free", title: "Free tier", micros: caps.freeTierMicros, note: "Free workspaces' share of git, storage and platform, as last reconciled" });
+  const monthly = usd(caps.fixedMonthlyMicros, { cents: true });
+  const accrued = typeof caps.fixedMonthMicros === "number";
   rows.push({
     key: "fixed",
     title: "Cloudflare subscriptions",
-    micros: caps.fixedMonthlyMicros,
-    note: caps.fixedSource === "cloudflare" ? "The whole month, as Cloudflare lists them" : "The whole month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)",
+    micros: accrued ? (caps.fixedMonthMicros as number) : caps.fixedMonthlyMicros,
+    note: accrued
+      ? `This month's days so far, each its billing cycle's share of ${monthly} a month${caps.fixedSource === "cloudflare" ? ", as Cloudflare lists them" : ", estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)"}`
+      : caps.fixedSource === "cloudflare"
+        ? "The whole month, as Cloudflare lists them"
+        : "The whole month, estimated (CLOUDFLARE_FIXED_MONTHLY_MICROS)",
   });
   return { rows, totalMicros: rows.reduce((sum, row) => sum + row.micros, 0) };
 }

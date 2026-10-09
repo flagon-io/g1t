@@ -519,6 +519,9 @@ impl Billing {
         let reset_micros = reset.iter().filter_map(|r| r.micros).sum();
         let reset_workspaces = reset.into_iter().map(|r| r.account.strip_prefix("ws_").unwrap_or(&r.account).to_owned()).collect();
         let fixed = self.fixed_monthly(self.caps.fixed_monthly).await?;
+        // This month's days so far, each its billing cycle's share: the
+        // same accrual as the statement's range (`cycle::accrued`).
+        let fixed_month_micros = crate::cycle::accrued(fixed.monthly_micros, &month_start, &day, self.cycle_anchor().await?);
         Ok(SpendCaps {
             reset_micros,
             reset_workspaces,
@@ -538,6 +541,7 @@ impl Billing {
             fixed_source: fixed.source.into(),
             fixed_read_at: fixed.read_at,
             fixed_items: fixed.items,
+            fixed_month_micros,
             revenue_micros,
         })
     }
