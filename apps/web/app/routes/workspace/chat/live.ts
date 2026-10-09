@@ -3,7 +3,8 @@ import { env } from "cloudflare:workers";
 import { CHAT_VIEWER_HEADER } from "@g1t/contracts";
 
 import type { Route } from "./+types/live";
-import { getViewer, roleIn } from "../../../lib/session.server";
+import { roleIn } from "../../../lib/session.server";
+import { socketViewer } from "../../../lib/socket-ticket.server";
 
 /**
  * A conversation's live socket: `wss://<site>/<workspace>/-/chat/live?channel=<id>`.
@@ -13,7 +14,8 @@ import { getViewer, roleIn } from "../../../lib/session.server";
  * channel, hibernating while nothing happens).
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const viewer = getViewer(context);
+  // A session, or a page opened with a token by its socket ticket.
+  const viewer = await socketViewer(context, request);
   if (!viewer) return new Response("Sign in to use chat.", { status: 401 });
   if (!roleIn(viewer, params.owner)) return new Response("Not found", { status: 404 });
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {

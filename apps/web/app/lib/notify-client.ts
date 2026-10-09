@@ -19,6 +19,7 @@ import { useSyncExternalStore } from "react";
 
 import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry } from "@g1t/contracts";
 
+import { openLive } from "./live-socket";
 import { isIdle, mergePeople } from "./presence";
 
 import {
@@ -397,14 +398,33 @@ function onEvent(event: FeedEvent): void {
   }
 }
 
+/** Between asking for a socket ticket and opening the socket (lib/live-socket.ts). */
+let opening = false;
+
 function connect(): void {
-  if (!running) return;
+  if (!running || opening) return;
   timer = null;
-  const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  const query = workspace ? `?workspace=${encodeURIComponent(workspace)}` : "";
+  opening = true;
+  openLive(
+    "/-/live",
+    // Read when the socket opens: the workspace may change meanwhile.
+    () => ({ workspace }),
+    (address) => {
+      opening = false;
+      open(address);
+    },
+    () => {
+      if (running) return false;
+      opening = false;
+      return true;
+    },
+  );
+}
+
+function open(address: string): void {
   let ws: WebSocket;
   try {
-    ws = new WebSocket(`${scheme}//${location.host}/-/live${query}`);
+    ws = new WebSocket(address);
   } catch {
     schedule();
     return;
@@ -442,7 +462,7 @@ function schedule(): void {
 /** Back now: the tab is shown, or the network returned. */
 function now(): void {
   sendState();
-  if (!running || socket || document.visibilityState !== "visible") return;
+  if (!running || opening || socket || document.visibilityState !== "visible") return;
   if (timer) clearTimeout(timer);
   timer = null;
   attempt = 0;

@@ -4,7 +4,8 @@ import { NOTIFY_SEED_HEADER, NOTIFY_VIEWER_HEADER, type FeedSeed, type User } fr
 
 import type { Route } from "./+types/live";
 import { chat, inbox } from "../../lib/services.server";
-import { getViewer, roleIn } from "../../lib/session.server";
+import { roleIn } from "../../lib/session.server";
+import { socketViewer } from "../../lib/socket-ticket.server";
 
 /** The longest the counts read for a new socket hold it up. */
 const SEED_WAIT_MS = 800;
@@ -43,7 +44,8 @@ async function seedFor(viewer: User, workspace: string | null): Promise<FeedSeed
  * hibernating while nothing happens).
  */
 export async function loader({ context, request }: Route.LoaderArgs) {
-  const viewer = getViewer(context);
+  // A session, or a page opened with a token by its socket ticket.
+  const viewer = await socketViewer(context, request);
   if (!viewer) return new Response("Sign in first.", { status: 401 });
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("This address takes a WebSocket.", { status: 426, headers: { upgrade: "websocket" } });

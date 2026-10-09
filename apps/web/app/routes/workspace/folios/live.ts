@@ -3,7 +3,8 @@ import { env } from "cloudflare:workers";
 import { DOCS_VIEWER_HEADER } from "@g1t/contracts";
 
 import type { Route } from "./+types/live";
-import { getViewer, roleIn } from "../../../lib/session.server";
+import { roleIn } from "../../../lib/session.server";
+import { socketViewer } from "../../../lib/socket-ticket.server";
 
 /**
  * An artifact's live socket: `wss://<site>/<workspace>/-/artifacts/live?folio=<id>`.
@@ -13,7 +14,8 @@ import { getViewer, roleIn } from "../../../lib/session.server";
  * Object per folio, any kind), which enforces that role.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const viewer = getViewer(context);
+  // A session, or a page opened with a token by its socket ticket.
+  const viewer = await socketViewer(context, request);
   if (!viewer) return new Response("Sign in to use Artifacts.", { status: 401 });
   if (!roleIn(viewer, params.owner)) return new Response("Not found", { status: 404 });
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {

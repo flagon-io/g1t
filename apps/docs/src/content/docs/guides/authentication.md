@@ -724,6 +724,17 @@ an expiration.
   expired, or does not have **Use the website as you** loads pages as
   someone signed out, with a `WWW-Authenticate` header saying the token was
   refused; the data requests and form posts pages make answer `401`.
+- **Live features work too.** Chat, presence, notifications and editing an
+  artifact with others run over WebSockets, which cannot carry the header.
+  So a page opened with a token asks `GET /-/live/ticket` (with the
+  header) for a socket ticket just before it opens each socket, and adds
+  it to the socket's address. A ticket lasts 60 seconds, opens only the
+  socket it was made for, and is never accepted by a page, a data request
+  or the API. When the socket opens, the token is checked again, so a
+  token deleted, expired, revoked or without **Use the website as you**
+  opens nothing. Your automation does nothing for this: route the header
+  to g1t.sh as above, and the page asks for its tickets itself. A session
+  in a browser never uses tickets.
 - **Form posts need nothing more.** Browsers never send the header by
   themselves, so a post with it needs no other proof it came from g1t.sh.
   A post from another site is still refused.

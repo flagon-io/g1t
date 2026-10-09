@@ -18,6 +18,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
+import { openLive } from "../../lib/live-socket";
 import { heldOpen } from "../../lib/notify-store";
 
 const MESSAGE_SYNC = 0;
@@ -37,6 +38,8 @@ export class FolioProvider {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private keepalive: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  /** Between asking for a socket ticket and opening the socket. */
+  private opening = false;
   private readonly statusListeners = new Set<(status: LiveStatus) => void>();
   private readonly eventListeners = new Set<(event: FoliosLiveEvent) => void>();
 
@@ -73,9 +76,28 @@ export class FolioProvider {
   }
 
   private connect() {
-    if (this.stopped) return;
+    if (this.stopped || this.opening) return;
     this.setStatus(this.attempts ? "offline" : "connecting");
-    const socket = new WebSocket(this.url);
+    // A page opened with an access token adds a socket ticket first (lib/live-socket.ts).
+    const target = new URL(this.url);
+    this.opening = true;
+    openLive(
+      target.pathname,
+      () => Object.fromEntries(target.searchParams),
+      (address) => {
+        this.opening = false;
+        this.open(address);
+      },
+      () => {
+        if (!this.stopped) return false;
+        this.opening = false;
+        return true;
+      },
+    );
+  }
+
+  private open(address: string) {
+    const socket = new WebSocket(address);
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     socket.onopen = () => {
@@ -174,7 +196,7 @@ export class FolioProvider {
   };
 
   private onOnline = () => {
-    if (this.socket || this.stopped) return;
+    if (this.socket || this.opening || this.stopped) return;
     if (this.timer) clearTimeout(this.timer);
     this.attempts = 0;
     this.connect();
