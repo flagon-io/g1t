@@ -203,6 +203,14 @@ pub(crate) fn list_price(product: &str, meter: &str) -> Option<&'static ListPric
     LIST_PRICES.iter().filter(|p| p.product == product && meter.starts_with(p.meter)).max_by_key(|p| p.meter.len())
 }
 
+/// What `quantity` of a meter comes to at its list price before any
+/// included amount, and not in whole blocks: the price book costs every
+/// unit, so this, not what Cloudflare billed past the included amounts, is
+/// what it is checked against. None for a meter with no list price.
+pub(crate) fn list_cost(product: &str, meter: &str, quantity: f64) -> Option<f64> {
+    list_price(product, meter).map(|p| quantity.max(0.0) * p.usd / p.per)
+}
+
 /// Puts a cost on every billable-usage line, cycle by cycle (`anchor`):
 /// Cloudflare's own where it put one on any of the meter's lines in the
 /// cycle, else the list price past the included amount, landing on the
@@ -397,6 +405,17 @@ mod tests {
         assert!(list_price("email", "email_service_emails_sent").is_none());
         // The keeper prices sandboxes at the same published rates.
         assert_eq!(list_price("containers", "container_memory_per_gib_second").unwrap().usd, 0.000_002_5);
+    }
+
+    #[test]
+    fn a_list_cost_is_every_unit_at_the_list_price() {
+        // 126.87k GiB-seconds is $0.32 at list, though only the 36.87k past
+        // the included 90k were billed ($0.09).
+        let memory = list_cost("containers", "container_memory_per_gib_second", 126_870.0).unwrap();
+        assert!((memory - 0.317_175).abs() < 1e-9);
+        // Per-million meters are not rounded up to a whole million.
+        assert!((list_cost("workers", "workers_cpu_ms", 11_160_000.0).unwrap() - 0.2232).abs() < 1e-9);
+        assert!(list_cost("email", "email_service_emails_sent", 7.0).is_none());
     }
 
     #[test]

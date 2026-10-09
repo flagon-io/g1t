@@ -326,13 +326,17 @@ pub(crate) fn run_cost(seconds: i64, cpu_seconds: f64, base_per_second: f64, per
     seconds.max(0) as f64 * base_per_second + cpu_seconds.max(0.0) * per_vcpu_second
 }
 
-/// A unit's marginal rate from the bill: the median, over the days that
-/// were charged, of cost over quantity. None while nothing was charged.
+/// A unit's rate from the bill: the median, over the days with a list
+/// cost, of list cost over quantity. Never what was billed: that is net of
+/// the included amounts (nothing while a cycle is inside them, part of a
+/// day's usage on the day it passes one), so over all of the quantity it
+/// reads as a lower price when nothing changed. None without a list cost;
+/// the published rates stand in.
 pub(crate) fn billed_rate(rows: &[&UsageRow]) -> Option<f64> {
     let mut rates: Vec<f64> = rows
         .iter()
-        .filter(|r| r.cost > 0.0 && r.quantity > 0.0)
-        .map(|r| r.cost / r.quantity)
+        .filter(|r| r.list_cost > 0.0 && r.quantity > 0.0)
+        .map(|r| r.list_cost / r.quantity)
         .collect();
     if rates.is_empty() {
         return None;
@@ -350,6 +354,8 @@ pub(crate) struct UsageRow {
     unit: String,
     quantity: f64,
     cost: f64,
+    /// The quantity at list price, before the included amounts.
+    list_cost: f64,
 }
 
 impl UsageRow {
@@ -376,6 +382,7 @@ impl UsageRow {
             cost: Some(number(&["ContractedCost", "BilledCost", "contracted_cost"]))
                 .filter(|cost| *cost > 0.0)
                 .unwrap_or_else(|| number(&["ListCost", "list_cost"])),
+            list_cost: number(&["ListCost", "list_cost"]),
         })
     }
 }
@@ -879,8 +886,8 @@ impl Billing {
                 .collect()
         };
 
-        // Containers: each resource at what the bill shows it costs, or
-        // the published rate while the included amount still covers it,
+        // Containers: each resource at the list cost the bill shows for it
+        // (before the included amounts), or the published rate without one,
         // over how much CPU g1t's sandboxes really use per second.
         let memory = billed_rate(&named(&["container memory"]));
         let disk = billed_rate(&named(&["container disk"]));
@@ -894,7 +901,7 @@ impl Billing {
             durable_object.unwrap_or(LIST_DO_GB_SECOND),
         );
         // The parts, for runs that report their own CPU.
-        let parts_reason = "Cloudflare's Containers and Durable Objects rates, as billed or published";
+        let parts_reason = "Cloudflare's Containers and Durable Objects rates, as listed on the bill or published";
         self.measure("sandbox_base_second", sandbox_base_micros(rates.0, rates.1, rates.3), parts_reason).await?;
         self.measure("sandbox_cpu_second", rates.2 * MICROS_PER_DOLLAR as f64, parts_reason).await?;
         if let Some(per_second) = sandbox_second_micros(usage, rates.0, rates.1, rates.2, rates.3) {
@@ -911,7 +918,7 @@ impl Billing {
                 if billed.is_empty() {
                     "rates are Cloudflare's published ones".to_owned()
                 } else {
-                    format!("{} at what Cloudflare billed", billed.join(", "))
+                    format!("{} at the list cost on Cloudflare's bill", billed.join(", "))
                 },
             );
             for meter in ["sandbox_second", "build_second"] {
@@ -928,7 +935,7 @@ impl Billing {
         ];
         for (meter, words, unit) in app_meters {
             if let Some(rate) = billed_rate(&named(words)) {
-                let reason = format!("Cloudflare billed Workers {unit} at ${:.2} per million", rate * 1e6);
+                let reason = format!("Cloudflare's bill lists Workers {unit} at ${:.2} per million", rate * 1e6);
                 self.measure(meter, rate * 1e6 * MICROS_PER_DOLLAR as f64, &reason).await?;
             }
         }
@@ -1071,17 +1078,36 @@ mod tests {
 
     #[test]
     fn a_billed_rate_is_the_median_of_the_charged_days() {
-        let row = |quantity: f64, cost: f64| UsageRow {
+        let row = |quantity: f64, list_cost: f64| UsageRow {
             period_start: String::new(),
             period_end: String::new(),
             service: "Containers / Container Memory".into(),
             unit: "Count".into(),
             quantity,
-            cost,
+            cost: list_cost,
+            list_cost,
         };
         let rows = [row(100.0, 0.0), row(100.0, 0.0002), row(100.0, 0.00025), row(100.0, 0.00025)];
         assert_eq!(billed_rate(&rows.iter().collect::<Vec<_>>()), Some(0.000_002_5));
         assert_eq!(billed_rate(&[&row(5.0, 0.0)]), None);
+    }
+
+    #[test]
+    fn a_rate_is_the_list_price_not_what_was_billed_past_the_included_amount() {
+        // 126,870 GiB-seconds, of which the 36,870 past the included 90,000
+        // were billed: $0.09 billed, $0.32 at list. The rate is the list's.
+        let row = UsageRow {
+            period_start: String::new(),
+            period_end: String::new(),
+            service: "Containers / Container Memory".into(),
+            unit: "GiB-seconds".into(),
+            quantity: 126_870.0,
+            cost: 0.092_175,
+            list_cost: 0.317_175,
+        };
+        assert!((billed_rate(&[&row]).unwrap() - 0.000_002_5).abs() < 1e-15);
+        // Billed with no list cost says nothing about the price.
+        assert_eq!(billed_rate(&[&UsageRow { list_cost: 0.0, ..row }]), None);
     }
 
     #[test]
@@ -1092,12 +1118,14 @@ mod tests {
             "PricingUnit": "GiB-seconds",
             "PricingQuantity": "1200.5",
             "ContractedCost": 0.003,
+            "ListCost": 0.0030,
             "ChargePeriodStart": "2026-10-01",
         }))
         .unwrap();
         assert_eq!(row.service, "Containers / Memory");
         assert_eq!(row.quantity, 1200.5);
         assert_eq!(row.cost, 0.003);
+        assert_eq!(row.list_cost, 0.003);
         assert!(UsageRow::from_value(&json!({ "nothing": 1 })).is_none());
     }
 }
