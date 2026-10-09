@@ -12,6 +12,7 @@ import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
 import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
 import { usercontentPath } from "../app/lib/usercontent";
+import { TOKEN_CHALLENGE } from "../app/lib/website-token";
 import { serveUsercontent } from "./usercontent";
 
 const loadBuild = () => import("virtual:react-router/server-build");
@@ -103,7 +104,11 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
   // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
   const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
   if (anonymousPage(request, pathname)) return servePublic(env, request, ctx, render);
-  return render();
+  const answer = await render();
+  // A token the site refused (app/lib/website-token.ts) is told so as the
+  // API tells it: React Router drops the headers of what middleware throws.
+  if (answer.status === 401 && request.headers.has("authorization")) answer.headers.set("www-authenticate", TOKEN_CHALLENGE);
+  return answer;
 }
 
 /**

@@ -51,10 +51,9 @@ function sessionCookie(value: string, maxAge: number): string {
  */
 export const viewerMiddleware: MiddlewareFunction<Response> = async ({ request, context }, next) => {
   const verdict = await tokenVerdict(request, (token) => identity.userForAccessToken(token));
-  if (verdict.kind === "refused") {
-    const headers: HeadersInit = verdict.status === 401 ? { "www-authenticate": TOKEN_CHALLENGE } : {};
-    throw data(verdict.body, { status: verdict.status, headers });
-  }
+  // Thrown, so pages and client navigations show it as any error; the
+  // Worker adds the 401's challenge header (workers/app.ts).
+  if (verdict.kind === "refused") throw data(verdict.body, { status: verdict.status });
   if (verdict.kind === "signed-out") {
     // The page as anyone signed out sees it, saying the token was not taken.
     const response = await next();
