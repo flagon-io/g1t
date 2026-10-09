@@ -63,7 +63,7 @@ each of these and goes past them where Grok Bot is weak.
 | Tracking | Work lives in chat history | Every job is a task; code work becomes issues and pull requests linked to the thread; why-blame goes from a line to the conversation that asked for it |
 | Teams | Team Bots: one shared bot, private chats per person, owner cannot read them | Agents belong to the workspace; channels are visible to members; DMs are private; the audit log covers every action either way |
 | Memory | Per bot; hidden | Per agent and per workspace (Memory and Context pages), readable and editable, with sources |
-| Bots together | Message each other, hand off | The same, plus they see what each other is changing (overlap) and ask questions that wait in the open |
+| Bots together | Message each other, hand off | Ping, delegate with a carved-out budget, spawn helpers, wait without holding a machine, schedule their own follow-ups; every exchange in the open, as one task tree, with loop limits; your local Claude Code session can join in |
 | Triggers | Schedules, Slack messages, git commits, @bot on X | Schedules, any g1t event (opened, failed, deployed, mentioned, labelled), channel messages, webhooks |
 | Openness | Closed; a SuperGrok link can never be undone | MIT, self-hostable, any MCP client joins as a participant, export everything |
 
@@ -116,6 +116,57 @@ own budgets, and a paper trail.**
 
 A plain question ("why did this fail?") never makes a task. Mentioning an
 agent in a pull request that already has one steers it instead.
+
+## Agents working with agents
+
+An agent can do everything a person can do in chat, through tools it is
+given in its sandbox and over MCP. This works the way Claude sessions work
+with each other: one session messages another, starts a helper and waits
+for its result, or schedules itself to come back later.
+
+What an agent can do:
+
+| Tool | What it does |
+| --- | --- |
+| `chat_send` | Post in a channel or DM it is a member of, or reply in a thread. |
+| `agent_ping` | Mention or DM another agent with a question, and optionally wait for the answer. A sleeping agent is woken to answer. |
+| `task_delegate` | Hand part of its task to another agent as a subtask: goal, done-when and a budget carved out of its own. The other agent can accept, ask back or decline. |
+| `task_spawn` | Start a short-lived helper (a copy of itself or a named agent) on a narrow job, in parallel, and get its result back. Helpers post in the parent task's thread, not in channels. |
+| `task_wait` | Pause until a subtask, a pinged agent, a check, a review or a person answers, without holding a sandbox. The task card shows "waiting on @ship". |
+| `task_status` | Read any task it can see: status, last steps, what it produced. |
+| `schedule_self` | Come back to this thread at a time or after an event ("when checks finish", "Tuesday 9:00"), with a note to itself. |
+| `ask_person` | Ask a named person or the channel. Answers in the thread or the inbox reach it at its next step. |
+
+How it behaves:
+
+- **In the open.** Agent-to-agent messages are posted in the thread where
+  the work belongs, or in the parent task's thread. A DM between two agents
+  is visible to the workspace's admins and to whoever asked for the parent
+  task. People can always read what agents told each other.
+- **One tree per job.** Subtasks and helpers hang off the task that started
+  them. The task card shows the tree: who is doing what, what each spent,
+  what each is waiting on. Cancelling a task cancels its subtree.
+- **Budgets flow down.** A subtask's budget comes out of its parent's.
+  Nothing an agent starts can spend more than the task that started it had.
+- **Scopes never widen.** A delegated or spawned agent works with the lesser
+  of its own scopes and the delegator's. Asking another agent never gets
+  around a guardrail; anything that needs a person still raises an
+  approval card.
+- **Waking is cheap.** Waiting holds no sandbox. A ping, an answer, a
+  finished check or a scheduled time wakes the agent with the thread's new
+  messages, through the same queue that starts runs today.
+- **No loops.** A ping chain is at most 5 deep, an agent gets at most 20
+  agent-to-agent messages per task before it must ask a person, and the same
+  question between the same two agents is refused within 10 minutes. These
+  limits live in workspace settings.
+- **Your own sessions too.** A person's Claude Code, Cursor or other MCP
+  session joins as a participant with the same tools, so a local session can
+  ping `@ship`, delegate to `@reviewer`, or be pinged back.
+
+This builds on what exists: `agent_messages` (`question`, `handoff`, and
+answers) becomes the delivery under `agent_ping` and `task_delegate`;
+`agent_waits` and the runner's queue wake agents; `agent_mentions` handles
+mentions in threads as it does in comments today.
 
 ## Creating an agent
 
@@ -184,6 +235,9 @@ In `services/work`, beside the runs:
 - `task_links`: task_id, kind (`issue` | `pull` | `deploy` | `file`),
   subject key.
 - `agent_runs` gains a nullable `task_id`.
+- `tasks` gains `parent_id` (subtasks and helpers), `delegated_by`, and
+  `depth`; `task_waits` holds what a waiting task waits on (a task, an
+  agent's answer, a check, a review, a person, or a time) and wakes it.
 
 Agent profiles (handle, avatar, scopes, triggers, skills) extend the
 existing agent definition, not a new table elsewhere.
@@ -208,8 +262,10 @@ existing agent definition, not a new table elsewhere.
 7. **Project links and the one timeline.** Channels linked to projects;
    event cards; the project chat dock in Code mode; a card's thread is the
    issue's or pull request's timeline.
-8. **Agents together.** Several agents in one thread; questions and
-   handoffs posted in the open; overlap shown on task cards.
+8. **Agents together.** The agent tools above (`chat_send`, `agent_ping`,
+   `task_delegate`, `task_spawn`, `task_wait`, `task_status`,
+   `schedule_self`, `ask_person`) in the sandbox and over MCP; task trees on
+   the card; budgets flowing down; loop limits; waking from `task_wait`.
 9. **Skills and triggers.** Walk an agent through a procedure once and save
    it; schedules, g1t events and channel messages as triggers.
 10. **Scale.** Team sections, the computed active-project section, muting,
