@@ -333,8 +333,9 @@ workspace's **People**, `g1t.sh/<workspace>/-/people` (in the sidebar):
 
 The email names you and the workspace and links to the invite's page.
 Someone new signs up right there, with the invited address filled in, and
-joins once they confirm it with the code g1t emails them; someone with an
-account signs in. Either way they land in the workspace as a member, with
+joins at once when they opened the page from that email (it proves the
+address is theirs), or otherwise once they confirm it with the code g1t
+emails them; someone with an account signs in. Either way they land in the workspace as a member, with
 a one-time welcome. Until a new account confirms its address, its invite
 shows as **confirming their email** under the members, and you can still
 revoke it. See

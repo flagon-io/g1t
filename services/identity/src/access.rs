@@ -759,6 +759,7 @@ impl Identity {
                 &full_name(&repo),
                 a.role.label(),
                 None,
+                None,
                 INVITATION_DAYS,
             )
             .await
@@ -804,6 +805,8 @@ impl Identity {
         let id = self
             .insert_invitation(repo, workspace_id, None, Some(email), Some(&invite.id), role, &actor.id, days)
             .await?;
+        // The email's link proves the address, as any invite email's does.
+        let proof = self.email_proof_for(&invite.id, email);
         if let Some(code) = &invite.code
             && let Err(error) = crate::email::send_repo_invite(
                 &self.env,
@@ -812,6 +815,7 @@ impl Identity {
                 &full_name(repo),
                 role.label(),
                 Some(code),
+                proof.as_deref(),
                 days,
             )
             .await

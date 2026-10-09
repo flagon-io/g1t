@@ -247,7 +247,7 @@ impl Identity {
         if let (Some(email), true, Some(code)) = (&person.email, person.verified != 0, &invite.code) {
             let from = self.display_name(actor).await;
             let workspace = self.workspace_name(workspace_id, slug).await;
-            self.send_invite_email(email, Some(&from), Some(&workspace), true, code, None).await;
+            self.send_invite_email(email, Some(&from), Some(&workspace), true, code, &invite.id, None).await;
         }
         if let Some(row) = self.invite_by_id(&invite.id).await? {
             self.invitation_sent(&row, &person.username).await;

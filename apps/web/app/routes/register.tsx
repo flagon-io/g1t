@@ -11,7 +11,7 @@ import { Honeypot } from "../components/honeypot";
 import { githubSignInEnabled } from "../lib/github.server";
 import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
-import { cleanCode, looksAutomated, sharedDomainsHint, sharedInviteLine } from "../lib/invites";
+import { cleanCode, cleanProof, invitePath, looksAutomated, sharedDomainsHint, sharedInviteLine } from "../lib/invites";
 import { clientKey, registrationMode } from "../lib/registration.server";
 import {
   assertSameOrigin,
@@ -36,7 +36,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // where it leads; it signs up, joins and lands in one go. A shared link
   // for a group signs up here: it joins nothing, and the form says which
   // group it is for.
-  if (invite && code && !invite.sharedLabel) throw redirect(`/invite/${encodeURIComponent(code)}`);
+  // The invite email's proof goes with it, so the address it proves stays
+  // confirmed there.
+  if (invite && code && !invite.sharedLabel) {
+    throw redirect(invitePath(code, cleanProof(new URL(request.url).searchParams.get("proof"))));
+  }
   // Signing up with GitHub carries the invite code and `next` through it.
   const params = new URLSearchParams();
   if (code) params.set("invite", code);

@@ -41,8 +41,15 @@ async function rpc<T>(
 export function identityClient(service: ServiceBinding): IdentityApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    register: (username, email, password, inviteCode, client) =>
-      call("register", { username, email, password, invite_code: inviteCode ?? null, client: client ?? null }),
+    register: (username, email, password, inviteCode, client, emailProof) =>
+      call("register", {
+        username,
+        email,
+        password,
+        invite_code: inviteCode ?? null,
+        email_proof: emailProof ?? null,
+        client: client ?? null,
+      }),
     signIn: (username, password, client) => call("sign_in", { username, password, client: client ?? null }),
     twoFactorSignIn: (challenge, code, client) => call("two_factor_sign_in", { challenge, code, client: client ?? null }),
     signOut: (sessionToken) => call("sign_out", { sessionToken }),
@@ -153,6 +160,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         client: client ?? null,
         viewer: options.viewer ?? null,
         any_status: options.anyStatus ?? false,
+        email_proof: options.emailProof ?? null,
       }),
     acceptInvite: (user, code) => call("accept_invite", { user, code }),
     inviteMember: (actor, slug, email) => call("invite_member", { actor, slug, email }),
