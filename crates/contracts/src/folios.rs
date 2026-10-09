@@ -663,9 +663,9 @@ pub struct QueryDatasetArgs {
 
 // --- Events -------------------------------------------------------------------
 
-/// The `folio.*` types the docs service will publish (Phase 1), with no
-/// `repoId` on the event: a folio may be private, so it never reaches a
-/// repository's timeline or webhooks. Nothing subscribes to them yet.
+/// The `folio.*` types the docs service publishes, with no `repoId` on
+/// the event: a folio may be private, so it never reaches a repository's
+/// timeline or webhooks. Nothing subscribes to them yet.
 pub const FOLIO_EVENTS: [&str; 6] = ["folio.created", "folio.updated", "folio.trashed", "folio.restored", "folio.shared", "folio.stale"];
 
 /// What every `folio.*` event carries (`FolioEventData` in events.ts).

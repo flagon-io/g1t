@@ -112,7 +112,7 @@ checks this table names every unit.
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
 | `services/chat` | TS | Durable Objects (one room per channel, WebSocket hibernation), KV `AVATARS` (custom emoji images, under `emoji/`) | Runs unchanged; workerd runs its Durable Objects, and the site serves emoji images from the same KV |
-| `services/docs` | TS | Durable Objects (one room per page: the Yjs document, WebSocket hibernation, SQLite storage, alarms), **R2** (`FILES`, files in pages, behind the `FileStore` interface in `src/files.ts`), D1 with FTS5, a queue (`g1t-events-docs`: merges and pushes, for pages whose cited code changed and projects' docs) | Runs unchanged; workerd runs its Durable Objects, and files in pages go to RustFS (`DOCS_FILES=s3`, the `g1t-docs-files` bucket; see "Files in Docs pages") |
+| `services/docs` | TS | Hosts Docs' pages and artifacts (folios, docs/ARTIFACTS_MODE.md). Durable Objects (one room per page, `PageRoom`, and one per artifact, `FolioRoom`: the Yjs document, WebSocket hibernation, SQLite storage, alarms), **R2** (`FILES`, files in pages and artifacts, behind the `FileStore` interface in `src/files.ts`), D1 with FTS5, a queue (`g1t-events-docs`: merges and pushes, for pages and artifacts whose cited code changed and projects' docs; also its own `docs.index` and `folios.reacl` jobs), a daily cron (artifacts in the trash for 30 days are deleted) | Runs unchanged; workerd runs its Durable Objects, files go to RustFS (`DOCS_FILES=s3`, the `g1t-docs-files` bucket; see "Files in Docs pages"), and `scheduler.mjs` runs its cron |
 | `services/notify` | TS | Durable Objects (one feed per person: WebSocket hibernation, SQLite storage); outbound HTTPS to browsers' push services | Runs unchanged; browser push needs a VAPID key pair (`node scripts/ops/vapid-keys.mjs`), else notifications are live in open tabs only |
 | `services/agents` | TS | Durable Objects (one desk per agent, alarms) | Runs unchanged; replies reach a model through the `MODELS` binding (the model proxy), which is off, so an agent answers with a short apology |
 | `services/search` | Rust | Queues (events and its own jobs); FTS5 | Runs unchanged |
@@ -327,6 +327,14 @@ changes for them.
   recall and the Docs search page match words instead of meaning. The
   backfill and catch-up jobs ride the docs service's events queue
   (`JOBS`); without a queue one batch runs at a time as recall asks.
+- **Artifacts' semantic index** (folios, the same service) uses the same
+  two interfaces with an index of its own: Vectorize `g1t-folios`
+  (binding `FOLIO_VECTORS`, filtered by `workspace_id`, `scope` and
+  `kind`). Self-hosted it is absent like the others, and artifacts keep
+  every passage in D1 (`folio_chunks`, with full text): search and
+  agents' recall match words, and the service says so once in its log.
+  Every passage is checked against the artifact's access before anyone
+  sees it, so the index is never what keeps something private.
 
 ### Files in Docs pages
 

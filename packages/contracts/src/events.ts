@@ -491,8 +491,7 @@ export type EventPayloads = {
   /**
    * Artifacts (folios, services/docs): a folio was made. Like `doc.page.*`,
    * published with no `repoId`, never offered to webhooks, and readers check
-   * access with the docs service before showing anything of it. Not
-   * published yet: Phase 1 of docs/ARTIFACTS_MODE.md starts them.
+   * access with the docs service before showing anything of it.
    */
   "folio.created": FolioEventData;
   /** A folio's content changed: a version (`versionKind`) with everyone whose changes are in it. */

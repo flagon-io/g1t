@@ -127,8 +127,9 @@
 			],
 			"self_host": "run"
 		},
-		// Docs mode's service. Its Worker is g1t-docs-service: g1t-docs is
-		// the documentation site (apps/docs).
+		// Docs mode's service, which also hosts artifacts (folios,
+		// docs/ARTIFACTS_MODE.md). Its Worker is g1t-docs-service: g1t-docs
+		// is the documentation site (apps/docs).
 		"docs-service": {
 			"path": "services/docs",
 			"kind": "ts-worker",
@@ -140,7 +141,8 @@
 				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/docs/wrangler.jsonc",
 				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files",
 				"The queue the events service sends it merges and pushes on (pages whose cited code changed, projects' docs): npx wrangler queues create g1t-events-docs. The service also sends its own backfill jobs to it (JOBS)",
-				"The Vectorize index agents recall Docs from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)"
+				"The Vectorize index agents recall Docs from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)",
+				"The Vectorize index for artifacts (folios), before the first deploy with FOLIO_VECTORS: npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id, scope and kind (npx wrangler vectorize create-metadata-index g1t-folios --property-name=<name> --type=string). Without it, artifacts are searched and recalled by words"
 			],
 			"self_host": "run"
 		},

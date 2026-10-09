@@ -818,3 +818,61 @@ Phase 0 shipped the contracts with no runtime change. Where this plan was open, 
   - Contracts files import only types from each other, because Node runs the tests on the files as they are. So `dashboardOpError` takes the query validator (`datasetQueryError`) as an argument.
 - **Ids.** `fol_` for folios and `prp_` for proposals. Versions, templates and files keep `ver_`, `tpl_` and `fil_`.
 - **Slides themes** are a slug plus an optional `#rrggbb` accent. Phase 4 names the themes.
+
+---
+
+## 11. Decided in Phase 1
+
+Phase 1 shipped the service core and the doc kind in `services/docs` (migration `0004_folios.sql`, `src/folios/**`, `src/kinds/**`, `src/who.ts`). Old Docs keeps running on its own tables. Where the plan was open, the build settled these:
+
+- **Where the code lives.**
+  - `FolioRoom` is a new file, `src/folios/room.ts`, beside an untouched `src/room.ts` (`PageRoom`). Both share `ROOM_MEMBER_HEADER` and `awarenessEntries`.
+  - The doc kind (`src/kinds/doc/`) uses `blocks.ts`, `markdown.ts`, `edits.ts`, `citations.ts` and `threads.ts` where they are, because `PageRoom` still needs them. They move under `src/kinds/doc/` in Phase 7.
+  - `src/who.ts` is a copy of the legacy `Docs` class's workspace, people, teams and space helpers, since `index.ts` only gets appended to in this phase. The legacy copy goes in Phase 7.
+  - `index.ts` sends `/rpc/<method>` to `src/folios/rpc.ts` first. A test checks that table against `FOLIO_RPC_METHODS`. `/live?folio=` and `PUT /files?folio=` are folios'. `GET /files/<key>` looks in `folio_files` first, then `files`.
+- **Access.**
+  - The owner of an ancestor that a folio inherits from counts as a `manage` grant there (`folio_access.via` is that ancestor). So whoever owns a doc keeps full access to what others add under it, unless a restriction cuts it off.
+  - Workspace owners get `manage` only through a space the folio inherits: open and team spaces, as for pages. A restricted folio inside an open space is "Only people invited", for owners too.
+  - General access is set only on an access root: a top-level folio, or a restricted one. On a folio that inherits, the call is refused and says where to change it. Following the parent again (`inherit` back to true) clears the child's own general access.
+  - Link access counts a visit to the folio itself or to its access root. Opening it is the `folio` read or the live socket; only the `folio` read records the visit.
+  - "Private" (the lock) is computed by `isPrivateFolio`: no other owner along the chain, no grant, no general access, no inherited space.
+- **Moving and copying.**
+  - A child always shares its parent's space. Only the owner can move a folio to the top of their Private.
+  - A move is refused when it would put a folio inside itself, under something that isn't a doc, or deeper than 10.
+  - **Duplicate** needs only `view`. The copy lands beside the original when the person can add there, otherwise in their Private. It is theirs, with no grants and no general access, so a copy is never shared more widely than the original.
+- **Subtree work** goes through `rebuildSubtree`, which recomputes `space_id`, `acl_root` and `path` from the top down and then rewrites `folio_access`.
+  - Above `FOLIO_INLINE_REACL` (2,000), a `folios.reacl` job on `JOBS` does the work.
+  - Then open rooms get `setRole` for each connected person. The local smoke test showed the `{ type: "access", role: null }` notice arriving, but `wrangler dev`'s proxy never passed the 4403 close frame to the client. Check that in production.
+  - Passages are re-filed under their new scope, which only rewrites vector metadata.
+- **D1 limits met while building.** D1 refuses LIKE patterns over 50 bytes, so subtrees are found with a `substr(path, 1, n) = path` prefix compare. Lists of ids and keys go in as a single JSON parameter (`json_each`), which stays inside the 100-parameter limit.
+- **Agents** (`src/folios/agents.ts`, tested against the rules in section 4.3):
+  - Finding things (`folios_for_agent`, search, `recall_folios_for_agent`, `stale_folios_for_agent`) is narrowed to folios that the asker and everyone in the audience can read.
+  - `read_folio_for_agent` by id works whenever the asker can read the folio, and returns `audience_can_read: false` when someone in the conversation can't (rule 2).
+  - Create and edit calls take no audience.
+  - `share_folio_as_agent` works only in a people audience (a DM or a private channel), only for people already in it, only `view` or `comment`, and it never lowers an existing grant.
+  - A folio an agent creates belongs to its asker, has `created_by` set to the agent, and gives the agent an `edit` grant. `where: { conversation }` adds `view` grants for the conversation's members. `source` is stored in `folios.source` and is not added to the text (Docs' agents used to prepend a note).
+- **Index.**
+  - Folios go to `g1t-folios` (`FOLIO_VECTORS`). When the binding or `AI` is missing, the service logs it once per isolate and matches words over `folio_chunks_fts`.
+  - Projects' docs stay in `g1t-docs` and `doc_chunks` for now. `recall_folios_for_agent` merges them in, as `FolioPassage.repo_file`. Moving them into `g1t-folios` is left for Phase 7.
+  - The backfill gained a folio stage, with cursors `p:`, then `o:`, then `f:`.
+- **Kinds not built yet.**
+  - Making, reading or exporting slides, designs or dashboards answers `invalid`, saying they "aren't here yet".
+  - `folio_proposals` lists whatever is in the table, which is empty until later phases. `decide_folio_proposal` answers `invalid`.
+  - `query_tile`, `query_dataset` and `query_dataset_for_agent` answer `invalid` until Phase 5b.
+- **Templates.** Built-in ids are now `builtin:doc:<slug>`; the old `builtin:<slug>` still resolves.
+- **History.** A version's Yjs state over 1.5 MB goes to the file store at `docs/versions/<folio>/<version>` (`state_key`). A new room's first content is seeded with no origin, so creating a folio records only its `created` version and is nobody's edit.
+- **Events.**
+  - `folio.created` goes out once per new folio. Grants given at creation don't send `folio.shared`.
+  - `folio.shared` goes out once per grant change. Revokes send nothing.
+  - `folio.updated` goes out once per version, except the `created` one.
+  - Titles are included only when the whole workspace can read the folio.
+  - `subscribers.rs` lists `folio.*` among the types that are published but not offered to webhooks.
+- **Staleness.** `src/staleness.ts` also records folios whose citations a change touched, in `folio_changes`. It tells the owner, notifies open rooms and publishes `folio.stale`.
+- **Trash.** A daily cron (`17 3 * * *`) deletes folios that have been in the trash for over 30 days, 500 per run. A self-hosted install runs it too, via `scheduler.mjs`.
+- **Sidebar.** The General space always shows. Other open spaces show once joined (`space_joins`), and `join_space` takes open spaces only.
+
+Open for Phase 2:
+- **Old pages (D2).** The plan drops them, so check that before the web switches over.
+- **"Editors can share."** `canShare` supports this per-space setting, but nothing sets it yet.
+- **Access requests.** `request_folio_access` sends to the owner and the people with full access, at most 20, with no limit on how often. Decide whether it needs one.
+- **Self-hosted rooms.** `deploy/self-host/configs.mjs` doesn't copy `durable_objects` into the self-hosted configs. That gap predates this phase and affects `PageRoom` too. Check it before relying on rooms self-hosted.

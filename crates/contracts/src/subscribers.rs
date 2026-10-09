@@ -232,7 +232,7 @@ mod tests {
     use super::*;
 
     /// Types published on the bus that hooks are not offered.
-    const UNOFFERED: [&str; 22] = [
+    const UNOFFERED: [&str; 28] = [
         "pull.mergecheck",
         "pull.mergeability",
         "deployment.review_requested",
@@ -256,6 +256,13 @@ mod tests {
         "doc.page.updated",
         "doc.page.archived",
         "doc.page.stale",
+        // Artifacts (folios): no repository either, and a folio may be private.
+        "folio.created",
+        "folio.updated",
+        "folio.trashed",
+        "folio.restored",
+        "folio.shared",
+        "folio.stale",
     ];
 
     fn published(kind: &str) -> bool {
