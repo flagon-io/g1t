@@ -158,10 +158,7 @@ function useTourClock(): Clock {
 
 /** The pill a frame belongs to, from what it shows (the clock's time is not React state). */
 function pillOf(frame: Frame): number {
-  if (frame.scene === "docs") return 3;
-  if (frame.scene === "code" || frame.merged) return 2;
-  if (frame.scene === "agents") return 1;
-  return 0;
+  return Math.max(0, PILLS.findIndex((pill) => pill.scene === frame.scene));
 }
 
 /** What the frame's top bar says about the step: shipped today, or a preview. */
@@ -628,10 +625,17 @@ function AgentsMain({ frame }: { frame: Frame }) {
           </p>
           <p className="text-xs text-muted">@otto · Software Engineer, Engineering</p>
         </div>
-        <span className="ml-auto flex items-center gap-1.5 rounded-full bg-warn/10 px-2.5 py-1 text-[11px] text-warn">
-          <span className="tour-pulse size-1.5 rounded-full bg-warn" />
-          Working
-        </span>
+        {frame.merged ? (
+          <span className="ml-auto flex items-center gap-1.5 rounded-full bg-merged/10 px-2.5 py-1 text-[11px] text-merged">
+            <GitMerge size={11} />
+            Shipped #431
+          </span>
+        ) : (
+          <span className="ml-auto flex items-center gap-1.5 rounded-full bg-warn/10 px-2.5 py-1 text-[11px] text-warn">
+            <span className="tour-pulse size-1.5 rounded-full bg-warn" />
+            Working
+          </span>
+        )}
       </div>
       <div className="flex gap-5 border-b border-line px-5 text-[12px]">
         {["Desk", "Profile", "Spend", "Activity"].map((tab) => (
@@ -1019,7 +1023,7 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const scenes: Scene[] = ["chat", "agents", "code", "docs"];
+  const scenes: Scene[] = ["code", "chat", "agents", "docs"];
   const mains: Record<Scene, ReactNode> = {
     chat: <ChatMain frame={frame} />,
     agents: <AgentsMain frame={frame} />,
@@ -1075,7 +1079,7 @@ const MODE: Record<Scene, { icon: ReactNode; label: string }> = {
 
 function Phone({ frame }: { frame: Frame }) {
   const note = honesty(frame);
-  const scenes: Scene[] = ["chat", "agents", "code", "docs"];
+  const scenes: Scene[] = ["code", "chat", "agents", "docs"];
   return (
     <div className="relative h-[34rem] w-full overflow-hidden rounded-2xl bg-surface text-left shadow-2xl shadow-black/50 ring-1 ring-line">
       <div className="flex h-12 items-center gap-2 border-b border-line px-3">
@@ -1194,7 +1198,7 @@ function PhoneAgents({ frame }: { frame: Frame }) {
           <p className="flex items-center gap-2 text-sm font-semibold text-fg">
             Otto <AgentTag />
           </p>
-          <p className="text-[11px] text-muted">Working · ${cost.toFixed(2)} of $5</p>
+          <p className="text-[11px] text-muted">{frame.merged ? "Shipped #431" : "Working"} · ${cost.toFixed(2)} of $5</p>
         </div>
       </div>
       <div className="rounded-xl bg-bg ring-1 ring-line">
@@ -1382,7 +1386,7 @@ export function ProductTour({ className }: { className?: string }) {
         })}
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
-        A preview of where g1t is going. Chat, agents you DM, pull requests, checks and the merge queue work today.
+        A preview of where g1t is going. Pull requests, checks, the merge queue, chat and agents you DM work today.
         Handoffs and consults between agents, live desks and Docs are coming soon.
       </p>
     </div>

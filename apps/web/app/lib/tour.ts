@@ -4,11 +4,11 @@
  * paused, resumed, jumped to a step, or shown still, and the server and
  * the first client render agree (t = 0).
  *
- * The story: a person asks g1t in #web to fix the CSV export; g1t hands it
- * to @otto and the review to @margo; Otto's desk works it, consulting
- * Margo on the way; the pull request goes green and
- * merges; g1t says it shipped and Izzy tells #support; Inky updates the
- * docs page.
+ * The story opens on the code: Otto's pull request #431 runs its checks,
+ * is approved and is merged by the queue. Then where it came from: the
+ * ask in #web, handed to @otto by g1t, now merged, and Izzy telling
+ * #support. Then Otto's desk, the record of what he did and spent, and
+ * last Inky's docs page picking up the change.
  */
 
 export type Scene = "chat" | "agents" | "code" | "docs";
@@ -74,62 +74,25 @@ export const STEPS: { text: string; cost: number }[] = [
 
 export const CHECKS = ["build", "test", "lint", "preview"];
 
-/** When the person starts typing, and how long each character takes, in ms. */
-const TYPE_START = 1500;
-
-/**
- * A human typing pace: about 45 ms a character, a little longer after a
- * space, and a short hesitation after punctuation. Seeded, so every loop
- * and every render types the same way.
- */
-function typingTimes(text: string): number[] {
-  let seed = 7;
-  const random = () => {
-    seed = (seed * 16807) % 2147483647;
-    return (seed - 1) / 2147483646;
-  };
-  const times: number[] = [];
-  let at = TYPE_START;
-  for (const char of text) {
-    at += 32 + random() * 34;
-    if (char === " ") at += random() * 30;
-    times.push(Math.round(at));
-    if (char === "." || char === "?" || char === ",") at += 220 + random() * 160;
-  }
-  return times;
-}
-
-const TYPED_AT = typingTimes(ASK);
-const TYPED_END = TYPED_AT[TYPED_AT.length - 1];
-
 /** The beats of the story, in ms from the start of the loop. */
 export const BEAT = {
-  composerClick: 1100,
-  typed: TYPED_END,
-  sendClick: TYPED_END + 700,
-  sent: TYPED_END + 800,
-  g1tTyping: TYPED_END + 1300,
-  handoff: TYPED_END + 2500,
-  railAgentsClick: TYPED_END + 4300,
-  agents: TYPED_END + 4450,
-  step0: TYPED_END + 5400,
-  stepGap: 1150,
-  pullClick: TYPED_END + 11900,
-  code: TYPED_END + 12050,
-  check0: TYPED_END + 12900,
+  code: 0,
+  check0: 900,
   checkGap: 650,
-  diff: TYPED_END + 13300,
-  approved: TYPED_END + 15900,
-  merged: TYPED_END + 17000,
-  railChatClick: TYPED_END + 18300,
-  chatAgain: TYPED_END + 18450,
-  cardMerged: TYPED_END + 19100,
-  shipped: TYPED_END + 20400,
-  izzy: TYPED_END + 21600,
-  railDocsClick: TYPED_END + 23000,
-  docs: TYPED_END + 23150,
-  docUpdated: TYPED_END + 24300,
-  end: TYPED_END + 29000,
+  diff: 1300,
+  approved: 3900,
+  merged: 5000,
+  railChatClick: 6300,
+  chat: 6450,
+  cardMerged: 7100,
+  shipped: 8400,
+  izzy: 9600,
+  railAgentsClick: 11000,
+  agents: 11150,
+  railDocsClick: 15000,
+  docs: 15150,
+  docUpdated: 16300,
+  end: 21000,
 } as const;
 
 /** The whole loop, in ms. */
@@ -137,13 +100,13 @@ export const LOOP_MS = BEAT.end;
 
 /** The step pills under the frame: where each starts, for jumping to it. */
 export const PILLS: { scene: Scene; label: string; start: number; soon: boolean }[] = [
-  { scene: "chat", label: "Chat", start: 0, soon: false },
+  { scene: "code", label: "Code", start: 0, soon: false },
+  { scene: "chat", label: "Chat", start: BEAT.chat, soon: false },
   { scene: "agents", label: "Agents", start: BEAT.agents, soon: true },
-  { scene: "code", label: "Code", start: BEAT.code, soon: false },
   { scene: "docs", label: "Docs", start: BEAT.docs, soon: true },
 ];
 
-/** Which pill a time falls under. Back in chat after the merge is still Code's story. */
+/** Which pill a time falls under. */
 export function pillAt(t: number): number {
   let index = 0;
   PILLS.forEach((pill, i) => {
@@ -169,42 +132,33 @@ function count(t: number, first: number, gap: number, max: number): number {
 function cursorAt(t: number): { cursor: CursorTarget; click: boolean } {
   const press = (at: number) => t >= at && t < at + 180;
   const moves: [number, CursorTarget][] = [
-    [300, "composer"],
-    [TYPED_END + 150, "send"],
-    [BEAT.handoff + 700, "rail-agents"],
-    [BEAT.step0 + 4 * BEAT.stepGap + 500, "task-pull"],
     [BEAT.merged + 300, "rail-chat"],
-    [BEAT.izzy + 500, "rail-docs"],
+    [BEAT.izzy + 500, "rail-agents"],
+    [BEAT.agents + 2600, "rail-docs"],
     [BEAT.docs + 500, "idle"],
   ];
   let cursor: CursorTarget = "idle";
   for (const [at, target] of moves) if (t >= at) cursor = target;
-  const click =
-    press(BEAT.composerClick) ||
-    press(BEAT.sendClick) ||
-    press(BEAT.railAgentsClick) ||
-    press(BEAT.pullClick) ||
-    press(BEAT.railChatClick) ||
-    press(BEAT.railDocsClick);
+  const click = press(BEAT.railChatClick) || press(BEAT.railAgentsClick) || press(BEAT.railDocsClick);
   return { cursor, click };
 }
 
-/** The frame at time t (ms into the loop). */
+/**
+ * The frame at time t (ms into the loop). The ask, g1t's handoff and
+ * Otto's work all happened before the pull request the story opens on, so
+ * they are shown done throughout.
+ */
 export function frameAt(time: number): Frame {
   const t = ((time % LOOP_MS) + LOOP_MS) % LOOP_MS;
-  const scene: Scene =
-    t >= BEAT.docs ? "docs" : t >= BEAT.chatAgain ? "chat" : t >= BEAT.code ? "code" : t >= BEAT.agents ? "agents" : "chat";
-  let typed = 0;
-  while (typed < TYPED_AT.length && TYPED_AT[typed] <= t) typed++;
-  const sent = t >= BEAT.sent;
+  const scene: Scene = t >= BEAT.docs ? "docs" : t >= BEAT.agents ? "agents" : t >= BEAT.chat ? "chat" : "code";
   const { cursor, click } = cursorAt(t);
   return {
     scene,
-    typed: sent ? 0 : typed,
-    sent,
-    g1tTyping: t >= BEAT.g1tTyping && t < BEAT.handoff,
-    handoff: t >= BEAT.handoff,
-    steps: count(t, BEAT.step0, BEAT.stepGap, STEPS.length),
+    typed: 0,
+    sent: true,
+    g1tTyping: false,
+    handoff: true,
+    steps: STEPS.length,
     checks: count(t, BEAT.check0, BEAT.checkGap, CHECKS.length),
     diff: t >= BEAT.diff,
     approved: t >= BEAT.approved,
@@ -212,19 +166,19 @@ export function frameAt(time: number): Frame {
     cardMerged: t >= BEAT.cardMerged,
     shipped: t >= BEAT.shipped,
     izzy: t >= BEAT.izzy,
-    consult: t >= BEAT.step0 + 2 * BEAT.stepGap + 500,
+    consult: true,
     docUpdated: t >= BEAT.docUpdated,
     cursor,
     click,
-    cursorShown: t >= 200 && t < BEAT.end - 600,
+    cursorShown: t >= BEAT.merged && t < BEAT.end - 600,
   };
 }
 
 /** A still frame for each pill, for reduced motion: the moment the step makes its point. */
 export const STILLS: Record<Scene, number> = {
-  chat: BEAT.handoff + 400,
-  agents: BEAT.step0 + 4 * BEAT.stepGap + 200,
   code: BEAT.approved + 200,
+  chat: BEAT.izzy + 400,
+  agents: BEAT.agents + 400,
   docs: BEAT.docUpdated + 400,
 };
 
