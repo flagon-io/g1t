@@ -68,7 +68,7 @@ import {
 } from "@g1t/contracts";
 
 import { assemble, authorsOf, integrationEntities, type EntityDraft, type FileRecord, type ProjectInput, type Surroundings } from "./assemble";
-import { extract, interesting, type FileFacts } from "./extract";
+import { EXTRACT_VERSION, extract, interesting, type FileFacts } from "./extract";
 import { composeRunContext, type ContextNote, type ProjectContext } from "./runcontext";
 import { evaluate } from "./scorecards";
 import { allowedKinds, countVisible, indexFilter, memoryReadable, merge, projectReadable, readable, runMemoryReadable, type IndexMeta, type Reader } from "./visibility";
@@ -271,7 +271,7 @@ class WorkspaceCache {
   }
 }
 
-type ScanStats = { entities: number; candidates: number; kept: number; indexed: number };
+type ScanStats = { entities: number; candidates: number; kept: number; indexed: number; pruned?: number };
 
 class Context {
   constructor(private readonly env: Env) {}
@@ -454,7 +454,7 @@ class Context {
   // ---- Building the catalog --------------------------------------------------
 
   /** The files of a project worth reading, with their blobs, found in a few tree reads. */
-  private async candidates(project: Project, actor: User, ref: string): Promise<{ files: { path: string; hash: string }[]; siblings: string[]; head: string | null } | null> {
+  private async candidates(project: Project, actor: User, ref: string): Promise<{ files: { path: string; hash: string }[]; siblings: string[]; head: string | null; partial: boolean } | null> {
     if (project.source.kind !== "hosted") return null;
     const repos = reposClient(this.env.REPOS);
     const { repo, rootDir: root } = project.source;
@@ -472,8 +472,11 @@ class Context {
     };
     blobs(top.value.entries, "");
     const dirs = new Set(top.value.entries.filter((entry) => entry.kind === "tree").map((entry) => entry.name));
+    // A folder that could not be listed leaves the list partial.
+    let partial = false;
     const look = async (dir: string) => {
       const found = await repos.tree(repo, actor, ref, at(dir)).catch(() => null);
+      if (!found?.ok) partial = true;
       return found?.ok ? found.value.entries : [];
     };
     for (const dir of ["docs", "doc", "runbooks"]) if (dirs.has(dir)) blobs(await look(dir), dir);
@@ -483,7 +486,7 @@ class Context {
       blobs(inside, dir);
       if (inside.some((entry) => entry.name === "workflows" && entry.kind === "tree")) blobs(await look(`${dir}/workflows`), `${dir}/workflows`);
     }
-    return { files, siblings, head: top.value.head?.hash ?? null };
+    return { files, siblings, head: top.value.head?.hash ?? null, partial };
   }
 
   /**
@@ -511,20 +514,29 @@ class Context {
     const writes: D1PreparedStatement[] = [];
     let reads = 0;
     let workflowReads = 0;
+    // Whether every file is known as this version of extract reads it: only
+    // then are the doc candidates it no longer suggests let go.
+    let complete = !found.partial;
     const repos = reposClient(this.env.REPOS);
     for (const file of found.files) {
       const before = stored.get(file.path);
+      const kept = before ? (JSON.parse(before.facts) as FileFacts) : null;
       const workflow = file.path.includes("/workflows/");
-      const fresh = before && before.hash === file.hash && !force;
+      // Facts an older extract read are read again, as a changed file is.
+      const fresh = before && before.hash === file.hash && kept?.version === EXTRACT_VERSION && !force;
       const canRead = reads < MAX_READS && (!workflow || workflowReads < MAX_WORKFLOW_READS);
       if (fresh || !canRead) {
-        if (before) files.push({ path: file.path, facts: JSON.parse(before.facts) as FileFacts });
+        if (!fresh) complete = false;
+        if (kept) files.push({ path: file.path, facts: kept });
         continue;
       }
       reads++;
       if (workflow) workflowReads++;
       const blob = await repos.blob(repo, cache.actor, found.head ?? ref, [rootDir, file.path].filter(Boolean).join("/")).catch(() => null);
-      if (!blob?.ok || blob.value.text == null) continue;
+      if (!blob?.ok || blob.value.text == null) {
+        complete = false;
+        continue;
+      }
       const facts = extract(file.path, blob.value.text, { project: project.name, siblings: found.siblings });
       files.push({ path: file.path, facts });
       changed.push(file.path);
@@ -723,6 +735,16 @@ class Context {
         .catch(() => null);
       stats.candidates += captured?.added ?? 0;
       stats.kept += captured?.kept ?? 0;
+    }
+    // Candidates from this project's docs that are still waiting but that
+    // its docs, as read now, no longer suggest: a line since changed, or one
+    // the rules for what is worth remembering leave out. Kept and dismissed
+    // memory is never touched.
+    if (complete) {
+      const pruned = await memoryReviewClient(this.env.WORK)
+        .pruneDocCandidates(workspace, repoId, built.hints.map((hint) => hint.text))
+        .catch(() => null);
+      stats.pruned = pruned?.removed ?? 0;
     }
     return stats;
   }

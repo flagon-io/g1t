@@ -9,6 +9,8 @@
 
 import { parse as parseYaml } from "yaml";
 
+import { aspirational, bulletsOf, classify, bulletSection, MAX_DOC_HINT_CHARS, planLike, planSection, plain, SETUP_HEADING, wholeSentences, type MemoryDocsConfig } from "./harvest.ts";
+
 export type Ecosystem = "npm" | "cargo" | "go" | "pypi";
 
 export type PackageFact = {
@@ -61,6 +63,10 @@ export type FileFacts = {
   /** Usernames this file names as owners. */
   owners: string[];
   hints: Hint[];
+  /** For `.g1t/project.yml`: which docs memory is suggested from. */
+  memory?: MemoryDocsConfig | null;
+  /** The `EXTRACT_VERSION` that read it; facts from an older one are read again. */
+  version?: number;
 };
 
 /** What extraction knows besides the file itself. */
@@ -71,12 +77,14 @@ export type ExtractContext = {
   siblings: string[];
 };
 
+/** Bumped when what is read from a file changes, so stored facts are read again. */
+export const EXTRACT_VERSION = 2;
 export const MAX_DEPENDENCIES = 60;
 export const CHUNK_CHARS = 1500;
 export const MAX_CHUNKS = 12;
 const MAX_ROUTES = 40;
 const MAX_HINTS_PER_FILE = 12;
-const MAX_HINT_CHARS = 300;
+const MAX_HINT_CHARS = MAX_DOC_HINT_CHARS;
 
 const EMPTY: FileFacts = { languages: [], packages: [], apis: [], doc: null, tests: false, owners: [], hints: [] };
 
@@ -279,12 +287,15 @@ function cargo(path: string, text: string, ctx: ExtractContext): FileFacts {
   const name = str(toml.package?.name);
   const members = Array.isArray(toml.workspace?.members) ? (toml.workspace.members as string[]) : [];
   const deps = [...keys(toml.dependencies), ...keys(toml["dev-dependencies"]), ...keys(toml["workspace.dependencies"])];
+  // Where its crates live (apps/*, crates/*), not each one: the list
+  // changes with every crate added, and the fact does not.
+  const places = [...new Set(members.map((member) => (member.includes("/") ? `${member.slice(0, member.indexOf("/"))}/*` : member)))];
   const hints: Hint[] = [
     {
       kind: "fact",
       text: clip(
         members.length
-          ? `${ctx.project} is a Cargo workspace (${members.join(", ")}); \`cargo test\` runs its tests.`
+          ? `${ctx.project} is a Cargo workspace (${places.join(", ")}); \`cargo test\` runs its tests.`
           : `${ctx.project} is written in Rust; \`cargo test\` runs its tests.`,
       ),
       confidence: 0.9,
@@ -431,15 +442,23 @@ export function chunk(text: string, title: string): string[] {
 }
 
 const COMMAND = /^\s*(?:\$\s*)?((?:npm|pnpm|yarn|bun|npx|cargo|go|make|pytest|python3?|poetry|uv|docker|wrangler|just|mix|bundle|rake|gradle|\.\/gradlew|mvn|dotnet)\b[^\n]{0,160})$/;
-const SETUP_HEADING = /\b(develop|development|getting started|setup|set up|install|build|test|testing|contribut|running|run locally|local)\b/i;
-const CONVENTION_HEADING = /\b(convention|guideline|rules|style|standards|gotcha|pitfall|caveat|known issue|do not|don't)\b/i;
-const GOTCHA = /\b(never|don't|do not|must not|careful|beware|gotcha|warning|avoid)\b/i;
 
-/** What a doc says worth remembering: commands in its setup sections, and its conventions. */
+/**
+ * What a doc says worth remembering: the commands in its setup sections,
+ * and the bullets of its conventions and setup sections, each whole (see
+ * `./harvest`). A doc that reads as a plan, a report or feedback says
+ * nothing; nor does a plan section in any doc, or a line that says what
+ * someone wants rather than how things are.
+ */
 function docHints(path: string, text: string, role: DocFact["role"], ctx: ExtractContext): Hint[] {
-  const hints: Hint[] = [];
   const agents = role === "agents";
+  if (!agents && planLike(text)) return [];
+  const hints: Hint[] = [];
+  const where = (heading: string) => `${path}${heading ? ` (${heading})` : ""}`;
+
+  // Commands in code blocks under a setup heading (any, in AGENTS.md).
   let heading = "";
+  let skipping = 0;
   let fenced = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trimEnd();
@@ -447,40 +466,44 @@ function docHints(path: string, text: string, role: DocFact["role"], ctx: Extrac
       fenced = !fenced;
       continue;
     }
-    const h = /^#{1,6}\s+(.*)$/.exec(line);
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h && !fenced) {
-      heading = h[1].trim();
+      const level = h[1].length;
+      if (skipping && level <= skipping) skipping = 0;
+      heading = h[2].trim();
+      if (!skipping && planSection(heading)) skipping = level;
       continue;
     }
-    if (fenced) {
-      const command = COMMAND.exec(line)?.[1];
-      if (command && (agents || SETUP_HEADING.test(heading))) {
-        const what = heading ? heading.replace(/[:.]$/, "").toLowerCase() : "work on it";
-        hints.push({
-          kind: "fact",
-          text: clip(`In ${ctx.project}, for ${what}: \`${command.trim()}\`.`),
-          confidence: agents ? 0.9 : 0.7,
-          evidence: `${path}${heading ? ` (${heading})` : ""}`,
-        });
-      }
-      continue;
-    }
-    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line)?.[1]?.trim();
-    if (!bullet || bullet.length < 20 || bullet.length > MAX_HINT_CHARS) continue;
-    // A bullet that is only a link is a table of contents.
-    if (/^\[[^\]]*\]\([^)]*\)\.?$/.test(bullet)) continue;
-    if (agents || CONVENTION_HEADING.test(heading)) {
-      hints.push({
-        kind: GOTCHA.test(bullet) ? "gotcha" : "convention",
-        text: clip(bullet.replace(/\*\*/g, "")),
-        confidence: agents ? 0.9 : 0.7,
-        evidence: `${path}${heading ? ` (${heading})` : ""}`,
-      });
+    if (!fenced || skipping) continue;
+    const command = COMMAND.exec(line)?.[1];
+    if (command && (agents || SETUP_HEADING.test(heading))) {
+      const what = heading ? plain(heading).replace(/[:.]$/, "").toLowerCase() : "work on it";
+      const said = wholeSentences(`In ${ctx.project}, for ${what}: \`${command.trim()}\`.`, MAX_HINT_CHARS);
+      if (said) hints.push({ kind: "fact", text: said, confidence: agents ? 0.9 : 0.7, evidence: where(heading) });
     }
   }
-  // The same command under two headings is one hint.
+
+  // Bullets, whole, from the sections that say how things are done.
+  for (const bullet of bulletsOf(text)) {
+    if (!bulletSection(bullet.heading, role)) continue;
+    // A bullet that is only a link is a table of contents.
+    if (/^\[[^\]]*\]\([^)]*\)\.?$/.test(bullet.text)) continue;
+    if (aspirational(bullet.text, role)) continue;
+    const words = plain(bullet.text);
+    // Too short to mean anything, or a lead-in to a list of its own.
+    if (words.length < 20 || /:$/.test(words)) continue;
+    const said = wholeSentences(words, MAX_HINT_CHARS);
+    if (!said) continue;
+    hints.push({ ...classify(said, bullet.heading, role), text: said, evidence: where(bullet.heading) });
+  }
+  // The same line under two headings is one hint.
   const seen = new Set<string>();
-  return hints.filter((hint) => !seen.has(hint.text) && seen.add(hint.text)).slice(0, MAX_HINTS_PER_FILE);
+  return hints
+    .filter((hint) => {
+      const key = hint.text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      return !seen.has(key) && seen.add(key);
+    })
+    .slice(0, MAX_HINTS_PER_FILE);
 }
 
 function doc(path: string, text: string, ctx: ExtractContext): FileFacts {
@@ -504,10 +527,18 @@ function doc(path: string, text: string, ctx: ExtractContext): FileFacts {
   };
 }
 
+/** Strings, from a YAML value that is a string or a list of them. */
+function strings(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return list.filter((item): item is string => typeof item === "string" && item.trim() !== "").map((item) => item.trim()).slice(0, 50);
+}
+
 function owners(path: string, text: string): FileFacts {
   const names = new Set<string>();
+  let memory: MemoryDocsConfig | null = null;
   if (path.endsWith("project.yml")) {
-    const parsed = parseYaml(text) as { owners?: unknown } | null;
+    const parsed = parseYaml(text) as { owners?: unknown; memory?: { docs?: unknown; skip?: unknown } } | null;
+    if (parsed?.memory && typeof parsed.memory === "object") memory = { docs: strings(parsed.memory.docs), skip: strings(parsed.memory.skip) };
     const list = Array.isArray(parsed?.owners) ? parsed.owners : typeof parsed?.owners === "string" ? [parsed.owners] : [];
     for (const owner of list) if (typeof owner === "string") names.add(owner.replace(/^@/, "").trim());
   } else {
@@ -516,13 +547,17 @@ function owners(path: string, text: string): FileFacts {
       for (const match of line.matchAll(/@([A-Za-z0-9][A-Za-z0-9_.-]*)(?=\s|$)/g)) names.add(match[1]);
     }
   }
-  return { ...EMPTY, owners: [...names].filter(Boolean).slice(0, 20) };
+  return { ...EMPTY, owners: [...names].filter(Boolean).slice(0, 20), ...(memory ? { memory } : {}) };
 }
 
 const TESTS = /\b(test|tests|pytest|vitest|jest|mocha|cargo test|go test|npm test|playwright|cypress)\b/i;
 
 /** The facts in one file. A file that cannot be parsed says nothing. */
 export function extract(path: string, text: string, ctx: ExtractContext): FileFacts {
+  return { ...read(path, text, ctx), version: EXTRACT_VERSION };
+}
+
+function read(path: string, text: string, ctx: ExtractContext): FileFacts {
   const name = base(path);
   try {
     if (path.startsWith(".g1t/workflows/") || path.startsWith(".github/workflows/")) {
