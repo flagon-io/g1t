@@ -124,10 +124,26 @@ scripts/deploy.sh [units...]                 # the old entry point: all, or thos
 On the Worker itself. Every deploy runs `wrangler deploy --message
 "g1t-deploy <40-char sha> <subject>" --tag g1t-<12-char sha>`, which
 Cloudflare keeps as the version's `workers/message` and `workers/tag`
-annotations. `plan` reads them back with `wrangler deployments status`
-(the live version) and `wrangler versions list` (its annotations): two
-read-only calls per unit, in parallel; a plan of all 22 units takes about
-10 seconds. No KV namespace or other infrastructure is needed.
+annotations. `plan` reads them back with two read-only requests per unit
+to Cloudflare's API, the ones `wrangler deployments status` and `wrangler
+versions list` make: `GET /accounts/{account_id}/workers/scripts/{worker}/deployments`
+(the live version) and `GET .../versions?deployable=true` (its
+annotations). Pending migrations are one more per database: `POST
+/accounts/{account_id}/d1/database/{database_id}/query` with `SELECT name
+FROM "d1_migrations"` (the table Wrangler keeps; a unit's
+`migrations_table` if it names one), compared with the `.sql` files in the
+unit's migrations folder. Every request starts at once, at most 16 in
+flight, each tried once more after a 403, 429, 5xx or network error, so a
+plan of every unit takes a few seconds and needs no Wrangler. No KV
+namespace or other infrastructure is needed.
+
+The API is used when the tool has the token Wrangler would be given (in CI,
+`CLOUDFLARE_API_TOKEN`; on a laptop, `CLOUDFLARE_DEPLOY_TOKEN`) and
+`CLOUDFLARE_ACCOUNT_ID` (or g1t's account by default). Without a token
+(your `wrangler login`) the plan asks Wrangler instead, with the same
+answers, a few units at a time; that takes minutes. Either way a Worker
+that does not exist (404, or Cloudflare's code 10007) is "never deployed",
+and any other failure is a reason in the plan, never a crash.
 
 - A version made by `wrangler secret put` keeps the code of the one before
   it, so the tool looks through those to the deploy before.
@@ -211,7 +227,9 @@ To turn it on (once; until then deploys are not announced):
 On a laptop the tool uses your `wrangler login` (or `CLOUDFLARE_DEPLOY_TOKEN`
 if set), as `scripts/deploy.sh` always did: a `CLOUDFLARE_API_TOKEN` or
 global API key in your shell, or in the repository's `.env`, is ignored.
-With `CI=true` it uses `CLOUDFLARE_API_TOKEN`.
+With `CI=true` it uses `CLOUDFLARE_API_TOKEN`. With a token, `plan` reads
+Cloudflare's API itself; with only `wrangler login`, it asks Wrangler (see
+"Where the deployed commit is kept").
 
 ### The runner's images
 
@@ -427,13 +445,18 @@ not), `all` and `dry_run` (plan only).
 | Job | Does | Needs |
 | --- | --- | --- |
 | `check` | `manifest --check` and `npm run test:deploy` | — |
-| `plan` | `plan --github-output`: outputs per stage, the plan in the run's summary | `check` |
-| `migrate` | `migrate --only <units with pending migrations>` | `plan`; skipped when none are pending |
-| `core`, `edge`, `front` | `deploy --only <units> --force --no-migrations`, one job per build group | the stages before; skipped when empty |
-| `smoke` | `node scripts/ops/smoke.mjs`: the landing page, sign-in, sign-up and pricing load, and the waitlist form reaches identity (sent an address identity refuses before keeping or counting anything, so the real waitlist is never touched) | every stage; skipped when nothing deployed |
+| `plan` | `plan --github-output`: outputs per stage, the plan in the run's summary. Reads Cloudflare's API itself, so it installs nothing. | — (runs beside `check`) |
+| `migrate` | `migrate --only <units with pending migrations>` | `check` and `plan`; skipped when none are pending |
+| `core`, `edge`, `front` | `deploy --only <units> --force --no-migrations`, one job per build group | `check`, `plan` and the stages before; skipped when empty |
+| `smoke` | `node scripts/ops/smoke.mjs`: the landing page, sign-in, sign-up and pricing load, and the waitlist form reaches identity (sent an address identity refuses before keeping or counting anything, so the real waitlist is never touched) | `check`, `plan` and every stage; skipped when nothing deployed |
 
 - **One at a time:** `concurrency: deploy-production`, never cancelled in
   progress; a second push waits.
+- **Check and plan side by side:** neither waits for the other, so the
+  plan's few seconds overlap the check's tests; nothing migrates or deploys
+  until both have succeeded. The plan job keeps `fetch-depth: 0`: it diffs
+  from each Worker's live commit, which may be any commit, and tells a
+  rollback by ancestry, which a shallow clone cannot answer.
 - **Build groups:** a stage's units are split so each job shares a build:
   Rust workers at most four to a job (each a 4-vCPU `g1t-4core` machine), the
   TypeScript Workers together, each site alone, and a unit whose image must
@@ -442,7 +465,7 @@ not), `all` and `dry_run` (plan only).
   another off mid-upload; the next stage then does not start.
 - **Tests:** there is no CI workflow on g1t yet; `main` is kept passing by
   the merge queue's checks. `check` runs the deploy tool's own tests. When a
-  CI workflow is added, make `plan` wait for it (`workflow_run`, or a job in
+  CI workflow is added, make `migrate` and the stages wait for it (`workflow_run`, or a job in
   this file).
 - **Machines:** Rust jobs and the runner's image run on `g1t-4core` (4 vCPUs,
   12 GiB, 20 GB), the others on the standard machine
@@ -462,7 +485,8 @@ not), `all` and `dry_run` (plan only).
 - **Conditions:** each stage runs with `!failure() && !cancelled()`, which
   on g1t (as on GitHub) is true when no job before it failed, however far
   back: a `migrate` job skipped for having nothing to apply does not stop
-  the stages after it, and a failed `check` stops all of them.
+  the stages after it, and a failed `check` or `plan` stops all of them
+  (`migrate`'s own condition needs both to have succeeded).
 - `crates/actions/tests/repository_workflows.rs` reads the workflow with
   g1t's own parser and expressions, and checks the jobs start, wait and
   stop as above (`cargo test -p g1t-actions --test repository_workflows`).
@@ -505,7 +529,7 @@ registry.cloudflare.com | deploy.yml, runner-base.yml | production
 status.g1t.sh | deploy.yml | production
 ```
 
-`api.cloudflare.com` is Wrangler's API; `registry.cloudflare.com` is where
+`api.cloudflare.com` is Cloudflare's API, which Wrangler and the plan call; `registry.cloudflare.com` is where
 the deploy asks whether the runner's image is already built, and where the
 `runner-image` job pulls the base from and pushes the runner's image to
 (as `runner-base.yml` pushes the base); `status.g1t.sh` hears the deploy
@@ -525,8 +549,8 @@ Token → Custom token**, named `g1t deploys (CI)`:
 
 | Scope | Permission | Why |
 | --- | --- | --- |
-| Account | Workers Scripts: Edit | Upload, versions, deployments, crons, bindings, `secret list` (doctor) |
-| Account | D1: Edit | `d1 migrations list` and `apply` |
+| Account | Workers Scripts: Edit | Upload, versions, deployments (the plan reads both), crons, bindings, `secret list` (doctor) |
+| Account | D1: Edit | The plan's query of each database's `d1_migrations`, and `d1 migrations apply` |
 | Account | Queues: Edit | Attaching each unit's queue consumers on deploy |
 | Account | Workers R2 Storage: Read | Wrangler checks `og`'s bucket binding |
 | Account | Account Settings: Read | Wrangler reads the account |

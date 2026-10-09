@@ -29,6 +29,7 @@ import { OUT_DIR } from "./build-runner.mjs";
 import { ensureWorkerBuild } from "./build-rust-worker.mjs";
 import {
   annotation,
+  apiAuth,
   applyMigrations,
   dockerAvailable,
   exec,
@@ -157,7 +158,9 @@ async function survey(units, opts) {
       migrations[unit.id] = await pendingMigrations(unit);
     }),
   ];
-  await pool(tasks, Math.max(8, opts.concurrency * 2), (task) => task());
+  // Through the API every read starts at once (the requests themselves are
+  // held to API_CONCURRENCY); through Wrangler, a few processes at a time.
+  await pool(tasks, apiAuth() ? tasks.length : Math.max(8, opts.concurrency * 2), (task) => task());
   return { live, migrations };
 }
 
