@@ -86,10 +86,15 @@ export const POLICIES: Policy[] = [
 ];
 
 /** When any policy last changed, `YYYY-MM-DD`. */
-export const POLICIES_UPDATED = "2026-10-06";
+export const POLICIES_UPDATED = "2026-10-09";
 
 /** Every change to the policies, newest first. */
 export const POLICY_HISTORY: { date: string; change: string }[] = [
+  {
+    date: "2026-10-09",
+    change:
+      "Privacy Policy: g1t.sh uses HeyCatch for site analytics, with names removed outside the public pages, and one analytics cookie. Subprocessors: HeyCatch added.",
+  },
   {
     date: "2026-10-06",
     change:

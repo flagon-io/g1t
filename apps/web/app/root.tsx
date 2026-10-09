@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -51,6 +51,7 @@ import { AppShell, Progress, type ShellData, useLeaving } from "./components/she
 import { SiteFooter } from "./components/footer";
 import { SpikeBanner } from "./components/spike-banner";
 import { PolicyNotice } from "./components/policy-notice";
+import { identify } from "./lib/analytics.client";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
@@ -627,6 +628,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const userId = useRouteLoaderData<typeof loader>("root")?.user?.id ?? null;
+  // Tell analytics who is signed in, once per change; signing out forgets them.
+  const lastUserId = useRef<string | null>(null);
+  useEffect(() => {
+    identify(userId, lastUserId.current);
+    lastUserId.current = userId;
+  }, [userId]);
   return <Outlet />;
 }
 
