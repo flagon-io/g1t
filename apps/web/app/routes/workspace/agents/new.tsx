@@ -8,7 +8,7 @@ import { AgentForm, TemplateGallery } from "../../../components/agents-mode";
 import { type AgentDraft, BLANK_DRAFT, cleanHandle, readAgentForm } from "../../../lib/agent-form";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
-import { chat, identity, workspaceAgents } from "../../../lib/services.server";
+import { chat, docs, identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -18,12 +18,20 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const [templates, teams] = await Promise.all([
+  const [templates, teams, spaces] = await Promise.all([
     workspaceAgents.templates().catch(() => null),
     identity.listTeams(viewer, params.owner).catch(() => null),
+    readingSpaces(params.owner.toLowerCase(), viewer),
   ]);
-  return { templates, teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [] };
+  return { templates, teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [], spaces };
 }
+
+/** The Docs spaces the viewer can read, for an agent's required reading; none when Docs can't say. */
+async function readingSpaces(slug: string, viewer: Parameters<typeof docs.sidebar>[1]): Promise<{ id: string; name: string; kind: string }[]> {
+  const sidebar = await docs.sidebar(slug, viewer).catch(() => null);
+  return sidebar?.ok ? sidebar.value.spaces.filter((space) => !space.archived_at).map((space) => ({ id: space.id, name: space.name, kind: space.kind })) : [];
+}
+
 
 /**
  * Makes the agent, then opens a direct message with it: talking to it is
@@ -103,7 +111,7 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
       {draft ? (
         <div className="mt-10 border-t border-line pt-10">
           {errors?.form && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.form}</p>}
-          <AgentForm draft={draft} errors={errors} submit="Create agent" intent="create" formKey={chosen ?? "blank"} nameIdeas={ideasOf(template)} teams={loaderData.teams} />
+          <AgentForm draft={draft} errors={errors} submit="Create agent" intent="create" formKey={chosen ?? "blank"} nameIdeas={ideasOf(template)} teams={loaderData.teams} spaces={loaderData.spaces} />
         </div>
       ) : (
         <p className="mt-6 text-sm text-faint">Choose a starting point to see its settings.</p>

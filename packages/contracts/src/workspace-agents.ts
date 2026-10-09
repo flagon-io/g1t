@@ -95,6 +95,12 @@ export type WorkspaceAgent = {
    */
   subagents: SubagentDef[];
   /**
+   * Its required reading: Docs spaces (by id) it checks first, every time
+   * it answers or works. It still reads only what the person it acts for,
+   * and everyone reading its answer, can read.
+   */
+  reading: string[];
+  /**
    * Who it works with: `internal`, the workspace's own people (back
    * office), or `customers` (front office). Only `internal` for now.
    */
@@ -160,6 +166,8 @@ export type NewWorkspaceAgent = {
   department?: string;
   responsibilities?: string[];
   subagents?: SubagentDef[];
+  /** Docs spaces (by id) it reads first; at most 10. */
+  reading?: string[];
   /** Only `internal` for now; `customers` is refused. */
   faces?: AgentFaces;
   instructions: string;

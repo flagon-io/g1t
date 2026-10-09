@@ -35,6 +35,7 @@ export function builtinDefinition(): Definition {
     responsibilities: [],
     subagents: [],
     faces: "internal",
+    reading: [],
   };
 }
 

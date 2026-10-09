@@ -18,7 +18,7 @@
  *
  * Pure apart from its ports, so the rules are tested adversarially.
  */
-import type { DocAudience, DocEditTarget, User } from "@g1t/contracts";
+import type { DocAudience, DocEditTarget, DocPassage, User } from "@g1t/contracts";
 
 import { type Audience, type RepoRef, WITHHELD } from "./audience.ts";
 
@@ -52,6 +52,8 @@ export interface ToolPorts {
 /** Docs, as an agent uses them. Every call names the person it acts for and who reads the answer; the docs service checks both. */
 export interface DocsPorts {
   spaces(viewer: User, audience: DocAudience): Promise<string | null>;
+  /** Passages closest in meaning to `query`; `spaces` (required reading) first. Null when Docs couldn't answer. */
+  recall(viewer: User, audience: DocAudience, query: string, spaces: string[]): Promise<DocPassage[] | null>;
   search(viewer: User, audience: DocAudience, query: string, project: string | null): Promise<string | null>;
   read(viewer: User, audience: DocAudience, pageId: string): Promise<string | null>;
   /** Pages possibly out of date since code they cite changed, with the change. */
@@ -496,6 +498,23 @@ export class ToolBox {
       }
       default:
         return this.act(name, input);
+    }
+  }
+
+  /**
+   * What Docs say about `query`, for this person and this audience, before
+   * the agent answers: no tool call, nothing counted against its tools.
+   * Empty when there is no docs service or nothing relevant.
+   */
+  async recall(query: string | null, spaces: string[]): Promise<DocPassage[]> {
+    const docs = this.ports.docs;
+    const asker = this.audience.asker;
+    if (!docs || !asker || !query) return [];
+    try {
+      return (await docs.recall(asker, this.docAudience(), query, spaces)) ?? [];
+    } catch (error) {
+      console.error("agents: docs recall failed", String(error));
+      return [];
     }
   }
 

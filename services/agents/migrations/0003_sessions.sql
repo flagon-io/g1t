@@ -205,3 +205,7 @@ CREATE TABLE agent_drafts (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX agent_drafts_message ON agent_drafts (message_id);
+
+-- Each agent's required reading: Docs spaces (a JSON list of ids) it
+-- checks first whenever it answers or works.
+ALTER TABLE agents ADD COLUMN reading TEXT NOT NULL DEFAULT '[]';

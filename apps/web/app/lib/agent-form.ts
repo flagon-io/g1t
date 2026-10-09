@@ -71,6 +71,8 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
     .filter(Boolean)
     .slice(0, MAX_RESPONSIBILITIES);
   const subagents = readSubagents(form.get("subagents"));
+  // Docs spaces it reads first; the agents service checks them.
+  const reading = [...new Set(form.getAll("reading").map((value) => String(value).trim()).filter(Boolean))].slice(0, 10);
   const instructions = String(form.get("instructions") ?? "").trim();
   if (!display_name) errors.display_name = "Give it a name.";
   if (!handle) errors.handle = "Give it a handle, like @ship.";
@@ -108,6 +110,7 @@ export function readAgentForm(form: FormData, options: { orchestrator?: boolean 
       department,
       responsibilities,
       subagents: subagents ?? [],
+      reading,
       instructions,
       personality_preset: pick(form.get("personality_preset"), PRESETS.map((p) => [p.value, p.label] as const), "crisp"),
       personality: String(form.get("personality") ?? "").trim(),
@@ -183,6 +186,7 @@ export type AgentDraft = Pick<
   | "department"
   | "responsibilities"
   | "subagents"
+  | "reading"
   | "instructions"
   | "personality_preset"
   | "personality"
@@ -202,6 +206,7 @@ export const BLANK_DRAFT: AgentDraft = {
   department: "",
   responsibilities: [],
   subagents: [],
+  reading: [],
   instructions: "",
   personality_preset: "crisp",
   personality: "",

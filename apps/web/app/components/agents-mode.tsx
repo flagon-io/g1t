@@ -424,9 +424,12 @@ export function AgentForm({
   locked = false,
   seed,
   teams = [],
+  spaces = [],
 }: {
   /** The workspace's teams, to put it on one. */
   teams?: { slug: string; name: string }[];
+  /** The Docs spaces the person editing can read, for its required reading. */
+  spaces?: { id: string; name: string; kind: string }[];
   draft: AgentDraft;
   errors?: Record<string, string>;
   submit: string;
@@ -574,6 +577,32 @@ export function AgentForm({
             className={`${FIELD} resize-y font-mono text-[0.8125rem] leading-relaxed`}
           />
         </div>
+      </FormSection>
+
+      <FormSection
+        title="Required reading"
+        about="Docs it checks first, every time it answers or works. It also recalls whatever else in Docs fits the question, but only from spaces everyone in the conversation can read."
+      >
+        {spaces.length ? (
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {spaces.map((space) => (
+              <label
+                key={space.id}
+                className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm has-[:checked]:border-accent/50 has-[:checked]:bg-accent/5"
+              >
+                <input type="checkbox" name="reading" value={space.id} defaultChecked={(draft.reading ?? []).includes(space.id)} className="size-4 accent-[var(--color-accent)]" />
+                <span className="min-w-0 grow truncate">{space.name}</span>
+                <span className="shrink-0 text-xs text-faint capitalize">{space.kind}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted">No Docs spaces yet. Once your workspace has some, choose what it should know by heart.</p>
+        )}
+        {(draft.reading ?? []).filter((id) => !spaces.some((space) => space.id === id)).map((id) => (
+          // Spaces it reads that you can't see stay as they are.
+          <input key={id} type="hidden" name="reading" value={id} />
+        ))}
       </FormSection>
 
       {!locked && (

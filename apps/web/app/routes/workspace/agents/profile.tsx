@@ -11,18 +11,26 @@ import { versionChanges } from "../../../components/agents/format";
 import { TimeAgo } from "../../../components/ui";
 import { isOrchestrator } from "../../../components/orchestrator";
 import { readAgentForm } from "../../../lib/agent-form";
-import { identity, workspaceAgents } from "../../../lib/services.server";
+import { docs, identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
 
 /** The workspace's teams, to put the agent on one, and its saved versions. */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
-  const [teams, versions] = await Promise.all([
+  const [teams, versions, spaces] = await Promise.all([
     identity.listTeams(viewer, params.owner).catch(() => null),
     readOrNull(workspaceAgents.versions(params.owner.toLowerCase(), params.handle.toLowerCase(), viewer)),
+    readingSpaces(params.owner.toLowerCase(), viewer),
   ]);
-  return { teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [], versions };
+  return { teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [], versions, spaces };
 }
+
+/** The Docs spaces the viewer can read, for an agent's required reading; none when Docs can't say. */
+async function readingSpaces(slug: string, viewer: Parameters<typeof docs.sidebar>[1]): Promise<{ id: string; name: string; kind: string }[]> {
+  const sidebar = await docs.sidebar(slug, viewer).catch(() => null);
+  return sidebar?.ok ? sidebar.value.spaces.filter((space) => !space.archived_at).map((space) => ({ id: space.id, name: space.name, kind: space.kind })) : [];
+}
+
 
 /** Saving makes a new version; every run records which one it ran. */
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -67,7 +75,7 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
         intent="update"
         formKey={`${agent.id}:${agent.version}`}
         locked={isOrchestrator(agent)}
-        teams={loaderData.teams}
+        teams={loaderData.teams} spaces={loaderData.spaces}
         seed={agent.avatar_seed || agent.id}
       />
       {loaderData.versions && loaderData.versions.length > 0 && <Versions versions={loaderData.versions} current={agent.version} />}

@@ -545,6 +545,24 @@ export const DOC_FRAGMENT = "document-store";
 /** The name of the Yjs map that holds a page's comment threads. */
 export const DOC_THREADS = "threads";
 
+/** One passage of Docs, recalled for an agent: a section of a page or of a repository's docs. */
+export type DocPassage = {
+  /** The page; null for a repository's docs file. */
+  page: DocPageRef | null;
+  /** A repository's docs file: `owner/name`, its path, and where it reads in Docs. */
+  repo_file: { repo: string; path: string; href: string } | null;
+  space_name: string;
+  /** The heading the passage sits under, if any. */
+  heading: string | null;
+  /** The passage as Markdown, at most about 1,500 characters. */
+  text: string;
+  /** How close it is, 0 to 1. */
+  score: number;
+  updated_at: string;
+  /** The page is marked possibly out of date. */
+  stale: boolean;
+};
+
 export type DocsApi = {
   // ── The site ─────────────────────────────────────────────────────────
 
@@ -648,6 +666,22 @@ export type DocsApi = {
     viewer: User,
     input: { space_id?: string | null; parent_id?: string | null; title: string; icon?: string | null; markdown: string; source?: { title: string; href: string } | null },
   ): Promise<Result<DocPageRef>>;
+  /**
+   * What the workspace's Docs say about `query`, for an agent about to
+   * answer: the passages closest in meaning (and, where meaning finds too
+   * little, in words), each with the page and heading it came from. Only
+   * from spaces the viewer can read and, with `audience`, everyone it
+   * covers; repository docs only from repositories they can all read.
+   * `spaces` narrows to these space ids first (an agent's required
+   * reading) and fills from the rest. Empty when nothing is close enough.
+   */
+  recallForAgent(
+    workspace: string,
+    agentId: string,
+    viewer: User,
+    input: { query: string; limit?: number | null; spaces?: string[] | null },
+    audience?: DocAudience | null,
+  ): Promise<Result<DocPassage[]>>;
   /** A page's comment threads, for an agent asked about them. */
   threadsForAgent(workspace: string, agentId: string, viewer: User, pageId: string, audience?: DocAudience | null): Promise<Result<DocThread[]>>;
   /**
@@ -730,6 +764,8 @@ export function docsClient(service: ServiceBinding): DocsApi {
     suggestEdit: (workspace, agentId, viewer, pageId, edit) => call("suggest_edit", { workspace, agent_id: agentId, viewer, page_id: pageId, edit }),
     applyEdit: (workspace, agentId, viewer, pageId, edit) => call("apply_edit", { workspace, agent_id: agentId, viewer, page_id: pageId, edit }),
     createPageAsAgent: (workspace, agentId, viewer, input) => call("create_page_as_agent", { workspace, agent_id: agentId, viewer, input }),
+    recallForAgent: (workspace, agentId, viewer, input, audience) =>
+      call("recall_for_agent", { workspace, agent_id: agentId, viewer, ...input, audience: audience ?? null }),
     threadsForAgent: (workspace, agentId, viewer, pageId, audience) =>
       call("threads_for_agent", { workspace, agent_id: agentId, viewer, page_id: pageId, audience: audience ?? null }),
     stalePagesForAgent: (workspace, agentId, viewer, options, audience) =>

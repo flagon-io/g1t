@@ -25,6 +25,7 @@ import { HISTORY_LIMIT, fixedHello, helloAsk, systemPrompt, turns } from "./prom
 import { type Specialist, capMentions, orchestratorInstructions, orchestratorTier, rosterLines } from "./orchestrator.ts";
 import { type MeterEnv, metered } from "./meter.ts";
 import { type RecallPlace, memorySection, recall } from "./memory.ts";
+import { recallQuery, recallSection } from "./recall.ts";
 import { REPLY_TIER, allowedProviders, replyModel } from "./routing.ts";
 import { type SessionEnv, type SessionRow, actionPorts, sessionRow, startSession, steer } from "./sessions.ts";
 import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
@@ -420,9 +421,15 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           console.error("agents: no audience for a reply, so no tools", row.id, String(error));
         }
       }
-      const [facts, recent] = delivery.hello
-        ? [[], null]
-        : await Promise.all([recall(db, row.id, place).catch(() => []), sessionsHere(db, row.id, delivery.channel_id).catch(() => null)]);
+      // What people said last, for recalling what Docs say about it.
+      const said = [...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body);
+      const [facts, recent, passages] = delivery.hello
+        ? [[], null, []]
+        : await Promise.all([
+            recall(db, row.id, place).catch(() => []),
+            sessionsHere(db, row.id, delivery.channel_id).catch(() => null),
+            toolbox ? toolbox.recall(recallQuery(said), definition.reading ?? []) : Promise.resolve([]),
+          ]);
       const system = [
         systemPrompt({
           agent: {
@@ -441,6 +448,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           recentSessions: recent,
         }),
         memorySection(facts),
+        recallSection(passages),
       ]
         .filter(Boolean)
         .join("\n\n");

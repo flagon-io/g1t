@@ -18,6 +18,7 @@ import {
 
 import type { AudiencePorts, RepoRef } from "./audience.ts";
 import type { DocsPorts, FoundMessage, ToolPorts } from "./tools.ts";
+import { RECALL_LIMIT } from "./recall.ts";
 
 export type PortsEnv = {
   DB: D1Database;
@@ -176,6 +177,10 @@ function docsPorts(binding: ServiceBinding, workspace: string, agentId: string):
           return `- ${s.name} (id ${s.id}, ${s.kind}; ${can}${projects})${s.description ? `: ${s.description}` : ""}`;
         })
         .join("\n");
+    },
+    async recall(viewer, audience, query, spaces) {
+      const found = await docs.recallForAgent(workspace, agentId, viewer, { query, limit: RECALL_LIMIT, spaces }, audience);
+      return found.ok ? found.value : null;
     },
     async search(viewer, audience, query, project) {
       const found = await docs.searchForAgent(workspace, agentId, viewer, { query, project, limit: 10 }, audience);

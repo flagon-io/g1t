@@ -52,6 +52,7 @@ import { systemPrompt } from "./prompt.ts";
 import { type Row, definitionOf, periods } from "./store.ts";
 import { type ActionPorts, type ToolCall, ToolBox } from "./tools.ts";
 import { type ModelMessage, SESSION_LIMITS, runTurn } from "./turn.ts";
+import { recallQuery, recallSection } from "./recall.ts";
 import { rosterLines } from "./orchestrator.ts";
 import { dollars } from "./money.ts";
 import { postDraft } from "./cards.ts";
@@ -775,7 +776,12 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       } catch (error) {
         console.error("agents: no audience for a session step, so no tools", current.id, String(error));
       }
-      const facts = await recall(db, agent.id, place).catch(() => []);
+      // What Docs say about the work: its goal, and whatever arrived for this step.
+      const asked = [current.goal, ...inbox.map((item) => item.body)].reverse();
+      const [facts, passages] = await Promise.all([
+        recall(db, agent.id, place).catch(() => []),
+        toolbox ? toolbox.recall(recallQuery(asked, 800), definition.reading ?? []) : Promise.resolve([]),
+      ]);
       const team = await db
         .prepare("SELECT handle, display_name, role, title, team, department, responsibilities FROM agents WHERE workspace_id = ? AND archived_at IS NULL AND id <> ? ORDER BY builtin DESC, handle LIMIT 50")
         .bind(agent.workspace_id, agent.id)
@@ -808,6 +814,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
         }),
         sessionSection(current, current.asked_by_username ? `@${current.asked_by_username}` : "the person who asked"),
         memorySection(facts),
+        recallSection(passages),
       ]
         .filter(Boolean)
         .join("\n\n");

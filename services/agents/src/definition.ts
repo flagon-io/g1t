@@ -55,6 +55,8 @@ export type Definition = {
   responsibilities: string[];
   subagents: SubagentDef[];
   faces: AgentFaces;
+  /** Docs spaces it reads first. */
+  reading: string[];
 };
 
 /** The one-line role a title and team (or department) make: "QA Engineer on the qa team". */
@@ -229,6 +231,7 @@ export function applyChanges(
     responsibilities: [],
     subagents: [],
     faces: "internal",
+    reading: [],
   };
   const next: Definition = { ...from };
   // Whether the role was made from the title and team, so it follows them.
@@ -302,6 +305,13 @@ export function applyChanges(
     const subagents = subagentsOf(changes.subagents);
     if (!subagents.ok) return subagents;
     next.subagents = subagents.value;
+  }
+  if (changes.reading !== undefined) {
+    if (!Array.isArray(changes.reading)) return bad("Required reading is a list of Docs spaces.");
+    const ids = [...new Set(changes.reading.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean))];
+    if (ids.length > 10) return bad("An agent has at most 10 spaces of required reading.");
+    if (ids.some((id) => !/^[A-Za-z0-9_-]{1,80}$/.test(id))) return bad("That isn't a Docs space.");
+    next.reading = ids;
   }
   if (changes.faces !== undefined) {
     if (changes.faces === "customers") return bad("Customer-facing agents aren't available yet.");
