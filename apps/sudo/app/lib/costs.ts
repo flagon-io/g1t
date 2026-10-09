@@ -2,7 +2,7 @@
  * Costs & margin: the arithmetic behind the page, apart from the SVG and
  * the Workers runtime so it can be tested under Node. Money is in micros.
  */
-import type { CostDay, CostMappingInput, CostSettings, SpendCaps } from "@g1t/contracts";
+import type { CostDay, CostMappingInput, CostSettings, PauseLevel, PlatformGuard, SpendCaps } from "@g1t/contracts";
 
 import { parseDollars, usd } from "./money.ts";
 
@@ -265,4 +265,43 @@ export function spendRows(caps: SpendCaps): { rows: { key: string; title: string
 export function capPercent(usedMicros: number, capMicros: number): number {
   if (capMicros <= 0) return 0;
   return Math.max(0, Math.min(100, (usedMicros / capMicros) * 100));
+}
+
+// --- Platform pause and usage watch (billing's platform.rs) -----------------
+
+/** What each level of the platform pause stops, for the page and the banner. */
+export const PAUSE_LEVELS: { level: PauseLevel; title: string; stops: string }[] = [
+  { level: "compute", title: "Compute", stops: "New agent runs, checks, workflow jobs and deploy builds, for every workspace. Runs already going finish." },
+  { level: "schedules", title: "Schedules", stops: "Actions' cron-triggered runs, and the runner's sweep that starts queued agents." },
+  { level: "indexing", title: "Indexing", stops: "Context embeddings and backfills, and search's backfills (they go on from where they were when resumed)." },
+  { level: "renders", title: "Renders", stops: "Social card images: a cache miss gets the brand card or the static logo." },
+];
+
+/** Whether a form's level is one of the four. */
+export function parsePauseLevel(value: unknown): PauseLevel | null {
+  const level = String(value ?? "");
+  return PAUSE_LEVELS.some((l) => l.level === level) ? (level as PauseLevel) : null;
+}
+
+/** The red bar on every sudo page while any level is paused. Null when none is. */
+export function pauseBanner(guard: PlatformGuard): string | null {
+  const paused = guard.levels.filter((l) => l.paused);
+  if (paused.length === 0) return null;
+  const names = paused.map((l) => (l.auto ? `${l.level} (by the usage watcher)` : l.level));
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Paused across g1t: ${list}.`;
+}
+
+/** `1.2M`, `240k`, `2.0B`: a count in a few characters. */
+export function count(value: number): string {
+  const n = Math.abs(value);
+  if (n >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${Math.round(value / 1e3)}k`;
+  return `${Math.round(value)}`;
+}
+
+/** An hour's value as a share of its threshold, rounded; null with no threshold. */
+export function thresholdShare(value: number, threshold: number): number | null {
+  return threshold > 0 ? Math.round((value / threshold) * 100) : null;
 }

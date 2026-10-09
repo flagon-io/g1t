@@ -32,6 +32,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use g1t_contracts::User;
+use g1t_contracts::billing::PauseLevel;
 use g1t_contracts::events::Event;
 use g1t_kit::{args, reply, rpc_method};
 use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event};
@@ -40,6 +41,25 @@ use index::Job;
 
 /// The queue of this service's own jobs.
 const JOBS_QUEUE: &str = "g1t-search-jobs";
+
+/// How often an isolate looks for backfill pages parked while indexing
+/// was paused.
+const RESUME_EVERY_MS: u64 = 5 * 60 * 1000;
+
+thread_local! {
+    static RESUME_CHECKED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether to look for parked pages now; marks it looked for.
+fn resume_due(now: u64) -> bool {
+    RESUME_CHECKED.with(|last| {
+        if now.saturating_sub(last.get()) < RESUME_EVERY_MS {
+            return false;
+        }
+        last.set(now);
+        true
+    })
+}
 
 pub struct Search {
     db: D1Database,
@@ -89,13 +109,31 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<serde_json::Value>, env: Env, _ctx: Context) -> Result<()> {
     let search = Search::new(env)?;
     let jobs = batch.queue() == JOBS_QUEUE;
-    if !jobs && let Err(error) = search.ensure_backfill().await {
-        worker::console_error!("search: could not start the backfill: {error}");
+    // Indexing paused across g1t (billing's `platform_pause`, kept 30
+    // seconds in the isolate): backfills wait, and events still keep the
+    // index current. Without a billing binding nothing is ever paused.
+    let paused = match search.env.service("BILLING") {
+        Ok(billing) => g1t_kit::pause::paused(&billing, PauseLevel::Indexing).await,
+        Err(_) => false,
+    };
+    if !jobs && !paused {
+        if let Err(error) = search.ensure_backfill().await {
+            worker::console_error!("search: could not start the backfill: {error}");
+        }
+        // Pages parked while paused, looked for at most every few minutes.
+        if resume_due(g1t_kit::now_ms()) {
+            match search.resume_parked().await {
+                Ok(0) => {}
+                Ok(found) => worker::console_log!("search: resumed {found} parked backfill pages"),
+                Err(error) => worker::console_error!("search: could not resume parked backfill pages: {error}"),
+            }
+        }
     }
     for message in batch.messages()? {
         let body = message.body().clone();
         let outcome = if jobs {
             match serde_json::from_value::<Job>(body) {
+                Ok(job) if paused && index::parked_key(&job).is_some() => search.park(&job).await,
                 Ok(job) => search.run_job(job).await,
                 Err(error) => {
                     worker::console_error!("search: a job could not be read: {error}");

@@ -203,6 +203,12 @@ export type ModelUpstream = {
   authHeader: string | null;
   /** For an endpoint behind an authenticated Cloudflare AI Gateway: its token. */
   gatewayToken?: string | null;
+  /**
+   * The most the run may spend on models, in millionths of a dollar: the
+   * lower of its project's cost cap and its plan's. The proxy refuses the
+   * run's requests once it has spent this. Null until the sandbox sets it.
+   */
+  capMicros?: number | null;
 };
 
 export type ConnectInput = {
@@ -265,6 +271,12 @@ export interface IntegrationsApi {
    * how many were open.
    */
   closeModelSessions(tokenHashes: string[]): Promise<number>;
+  /**
+   * Sets the most the runs whose model tokens hash to these may spend on
+   * models, in millionths of a dollar, which the model proxy holds them
+   * to. Zero clears it. Returns how many open sessions it set.
+   */
+  capModelSessions(tokenHashes: string[], capMicros: number): Promise<number>;
 }
 
 /** What each provider is for, as people choose between them. */

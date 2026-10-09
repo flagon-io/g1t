@@ -134,11 +134,42 @@
 		// 00:00 UTC; staff are emailed and can lift it in sudo. Workspaces
 		// paying with real money are never paused. 0 turns either cap off.
 		"PLATFORM_DAILY_SPEND_CAP_MICROS": "75000000",
+		// The platform watch (src/platform.rs, docs/SPEND-GUARDRAILS.md): at
+		// a quarter past each hour, what Cloudflare counted in the hour
+		// before, per metric, against these thresholds. Each is a dollar or
+		// a few an hour at list prices, far above a small alpha's hour; 0
+		// turns that metric's threshold off. Over one, staff are emailed
+		// (COSTS_ALERT_EMAIL, once per metric every 6 hours) and sudo shows
+		// it.
+		"PLATFORM_HOURLY_WORKERS_REQUESTS": "20000000",
+		"PLATFORM_HOURLY_WORKERS_CPU_MS": "100000000",
+		"PLATFORM_HOURLY_D1_ROWS_READ": "2000000000",
+		"PLATFORM_HOURLY_D1_ROWS_WRITTEN": "5000000",
+		"PLATFORM_HOURLY_QUEUE_OPERATIONS": "5000000",
+		"PLATFORM_HOURLY_DO_REQUESTS": "20000000",
+		"PLATFORM_HOURLY_DO_ROWS_WRITTEN": "5000000",
+		"PLATFORM_HOURLY_DO_STORAGE_WRITE_UNITS": "5000000",
+		"PLATFORM_HOURLY_DO_ACTIVE_SECONDS": "3000000",
+		"PLATFORM_HOURLY_KV_READS": "10000000",
+		"PLATFORM_HOURLY_KV_WRITES": "200000",
+		"PLATFORM_HOURLY_KV_DELETES": "200000",
+		"PLATFORM_HOURLY_KV_LISTS": "200000",
+		"PLATFORM_HOURLY_ARTIFACTS_EVENTS": "1000000",
+		// A spike: an hour over 10 times the last week's median hour, and at
+		// least 10% of its threshold. Emailed, never paused by itself.
+		"PLATFORM_SPIKE_FACTOR": "10",
+		"PLATFORM_SPIKE_FLOOR_PERCENT": "10",
+		// Severe: 5 times a threshold pauses the levels that metric feeds,
+		// of those AUTO_PAUSE names (compute, schedules, indexing, renders;
+		// comma-separated, empty for none). Staff resume them in sudo.
+		"PLATFORM_SEVERE_FACTOR": "5",
+		"AUTO_PAUSE": "schedules,indexing",
 		// Cloudflare's fixed subscriptions a month, for sudo's figures only:
 		// Workers Paid ($5) and Workers for Platforms ($25).
 		"CLOUDFLARE_FIXED_MONTHLY_MICROS": "30000000"
 	},
-	// Settling runs every 15 minutes; checking costs daily (keeper::DAILY).
+	// Settling runs every 15 minutes, and the tick at a quarter past each
+	// hour also runs the platform watch; checking costs daily (keeper::DAILY).
 	"triggers": { "crons": ["*/15 * * * *", "17 4 * * *"] },
 	// Secrets: STRIPE_SECRET_KEY. Without it nothing is charged and the
 	// runner decides who may start agents some other way.

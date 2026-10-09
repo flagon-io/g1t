@@ -673,6 +673,8 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     costAlerts: () => call("admin_cost_alerts", {}),
     spendCaps: () => call("admin_spend_caps", {}),
     liftBreaker: (note, by) => call("admin_lift_breaker", { note, by }),
+    platformGuard: () => call("admin_platform_guard", {}),
+    setPause: (level, paused, note, by) => call("admin_set_pause", { level, paused, note, by }),
     decideProposal: (id, decision, note, by) => call("admin_decide_proposal", { id, decision, note, by }),
     setCostSettings: (settings, by) => call("admin_set_cost_settings", { settings, by }),
     setCostMapping: (mapping, by) =>
@@ -753,6 +755,7 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     gatewayUpstream: (workspace) => call("gateway_upstream", { workspace }),
     gatewayProviders: (workspace) => call("gateway_providers", { workspace }),
     closeModelSessions: (tokenHashes) => call("close_model_sessions", { token_hashes: tokenHashes }),
+    capModelSessions: (tokenHashes, capMicros) => call("cap_model_sessions", { token_hashes: tokenHashes, cap_micros: capMicros }),
     routes: (workspace, viewer) => call("routes", { workspace, viewer }),
     setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),
   };

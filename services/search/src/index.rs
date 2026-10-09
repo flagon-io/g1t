@@ -53,6 +53,19 @@ const BACKFILL_PAGE: u32 = 100;
 /// Accounts or workspaces per directory job.
 const DIRECTORY_PAGE: u32 = 200;
 
+/// Where `park` keeps a backfill page in `meta`, by its key's prefix.
+const PARKED: &str = "parked_job:";
+
+/// The `meta` key a backfill page is parked under while indexing is
+/// paused: one per kind of walk. None for jobs that are not a backfill's.
+pub fn parked_key(job: &Job) -> Option<String> {
+    match job {
+        Job::Backfill { .. } => Some(format!("{PARKED}backfill")),
+        Job::Directory { kind, .. } => Some(format!("{PARKED}directory:{kind}")),
+        _ => None,
+    }
+}
+
 /// Work queued for later, one job per message.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -734,6 +747,42 @@ impl Search {
         Ok(())
     }
 
+    /// A backfill's next page, set aside while indexing is paused across
+    /// g1t (billing's `platform_pause`), to go on from where it was when it
+    /// is resumed (`resume_parked`). Repositories already queued finish.
+    pub async fn park(&self, job: &Job) -> Result<()> {
+        let Some(key) = parked_key(job) else { return Ok(()) };
+        let value = serde_json::to_string(job)?;
+        store::run_all(
+            &self.db,
+            vec![store::prepare(
+                &self.db,
+                "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = ?2",
+                vec![p(&key), p(&value)],
+            )?],
+        )
+        .await
+    }
+
+    /// Queues the backfill pages `park` set aside. How many it found.
+    pub async fn resume_parked(&self) -> Result<usize> {
+        #[derive(Deserialize)]
+        struct Parked {
+            value: String,
+        }
+        let parked = store::all::<Parked>(
+            &self.db,
+            &Sql { text: format!("DELETE FROM meta WHERE key LIKE '{PARKED}%' RETURNING value"), params: vec![] },
+        )
+        .await?;
+        let jobs: Vec<Job> = parked.iter().filter_map(|row| serde_json::from_str(&row.value).ok()).collect();
+        let found = jobs.len();
+        if found > 0 {
+            self.enqueue(jobs).await?;
+        }
+        Ok(found)
+    }
+
     pub async fn on_event(&self, event: &Event) -> Result<()> {
         let data = &event.data;
         match event.kind.as_str() {
@@ -939,6 +988,14 @@ mod tests {
         assert_eq!(serde_json::from_value::<Job>(value).unwrap(), job);
         let backfill: Job = serde_json::from_str(r#"{"type":"backfill"}"#).unwrap();
         assert_eq!(backfill, Job::Backfill { after: None });
+    }
+
+    #[test]
+    fn only_a_backfills_pages_are_parked_one_per_walk() {
+        assert_eq!(parked_key(&Job::Backfill { after: Some("rep_9".into()) }).as_deref(), Some("parked_job:backfill"));
+        assert_eq!(parked_key(&Job::Directory { kind: "user".into(), after: None }).as_deref(), Some("parked_job:directory:user"));
+        assert_eq!(parked_key(&Job::Repo { repo_id: "rep_1".into() }), None);
+        assert_eq!(parked_key(&Job::Drain { repo_id: "rep_1".into() }), None);
     }
 
     #[test]

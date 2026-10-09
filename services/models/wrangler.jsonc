@@ -16,6 +16,12 @@
 		// Who an AI Gateway request's access token belongs to, and its scopes.
 		{ "binding": "IDENTITY", "service": "g1t-identity" }
 	],
+	// Each run's model spend, one object per model session, so its cost cap
+	// holds across every isolate its requests reach (src/run-spend.ts).
+	"durable_objects": {
+		"bindings": [{ "name": "RUN_SPEND", "class_name": "RunSpend" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["RunSpend"] }],
 	"vars": {
 		// g1t's own route, for runs g1t pays for: a Cloudflare AI Gateway,
 		// which holds g1t's key.

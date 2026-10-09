@@ -22,7 +22,10 @@
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "WORK", "service": "g1t-work" }
+		{ "binding": "WORK", "service": "g1t-work" },
+		// Whether indexing is paused across g1t (billing's platform_pause):
+		// backfills wait while it is. Read at most every 30 seconds.
+		{ "binding": "BILLING", "service": "g1t-billing" }
 	],
 	"queues": {
 		// Its own jobs: a push's files, a repository compared whole, a page

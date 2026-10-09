@@ -15,6 +15,11 @@
  * it passes and reported to billing afterwards, counted per run for usage
  * views.
  *
+ * Each run is held to its cost cap here too, not only by the harness in the
+ * sandbox: every answer's cost is added to the run's count (a Durable
+ * Object per run, `run-spend.ts`), and once the run has spent its cap its
+ * requests are refused with a 402 (`spend.ts`).
+ *
  * The same address is the AI Gateway for a workspace's own code: a request
  * with one of the workspace's access tokens (`g1t_…`) instead of a run's,
  * at `/anthropic` in Anthropic's format or `/openai/v1` in OpenAI's, goes
@@ -37,16 +42,23 @@ import {
 
 import { openaiError } from "./chat";
 import { discover } from "./discover";
+import { anthropicErrorType } from "./gateway";
 import { type AnthropicRequest, StreamTranslator, errorFromChat, estimateTokens, fromChat, toChat } from "./openai";
-import { isAnswer, tokenReport } from "./report";
+import { isAnswer, runMayCall, tokenReport } from "./report";
 import { type HostedRouting, presentedToken, upstreamRequest } from "./route";
+import type { RunSpend } from "./run-spend";
 import { type GatewayDeps, isOpenAiPath, serveGateway } from "./serve";
+import { capOf, capReached, ceilingMicros, chargeFor, pricesFor, tooBusy } from "./spend";
 import { measure } from "./usage";
+
+export { RunSpend } from "./run-spend";
 
 interface Env extends HostedRouting {
   INTEGRATIONS: ServiceBinding;
   BILLING: ServiceBinding;
   IDENTITY: ServiceBinding;
+  /** Each run's model spend, one object per model session. */
+  RUN_SPEND: DurableObjectNamespace<RunSpend>;
 }
 
 /**
@@ -69,36 +81,60 @@ async function lookUp(env: Env, token: string): Promise<ModelUpstream | null> {
 
 /** An error in the shape Anthropic's API uses, which the harness understands. */
 function refuse(status: number, message: string): Response {
-  return Response.json(
-    { type: "error", error: { type: status === 401 ? "authentication_error" : "not_found_error", message } },
-    { status },
-  );
+  return Response.json({ type: "error", error: { type: anthropicErrorType(status), message } }, { status });
 }
 
+/** The run's spend count, by its session's id. */
+function runSpend(env: Env, upstream: ModelUpstream): DurableObjectStub<RunSpend> {
+  return env.RUN_SPEND.get(env.RUN_SPEND.idFromName(upstream.session || `${upstream.workspace}/${upstream.repo}#${upstream.number}`));
+}
+
+/** One answer's place in its run's count, settled once the answer has gone by. */
+type Held = { spend: DurableObjectStub<RunSpend>; ticket: string; requested: Partial<AnthropicRequest> | null; bodyLength: number };
+
 /**
- * Passes an answer through and, once it has all gone by, tells billing what
- * it used. Reporting happens after the answer, and a report that fails is
- * dropped: the answer never waits on it or breaks for it.
+ * Passes an answer through and, once it has all gone by, adds its cost to
+ * the run's count and tells billing what it used. Both happen after the
+ * answer, and a report that fails is dropped: the answer never waits on
+ * it or breaks for it.
  */
-function counted(answer: Response, upstream: ModelUpstream, env: Env, ctx: ExecutionContext): Response {
+function counted(answer: Response, upstream: ModelUpstream, env: Env, ctx: ExecutionContext, held: Held): Response {
   const { response, tokens, model } = measure(answer);
   ctx.waitUntil(
     (async () => {
-      const report = tokenReport(upstream, await model, await tokens);
-      if (report) await billingClient(env.BILLING).recordTokens(report);
+      const used = await tokens;
+      const answeredBy = await model;
+      const settle = (async () => {
+        const prices = pricesFor(upstream.model ?? answeredBy ?? held.requested?.model, upstream.route, await offered(env).catch(() => []));
+        const charge = chargeFor(prices, used, answer.ok, ceilingMicros(prices, held.bodyLength, held.requested?.max_tokens));
+        await held.spend.settle(held.ticket, charge);
+      })().catch((error: unknown) => console.error("models: a run's spend was not counted", upstream.session, String(error)));
+      const report = tokenReport(upstream, answeredBy, used);
+      const reported = report ? billingClient(env.BILLING).recordTokens(report).catch(() => undefined) : Promise.resolve();
+      await Promise.all([settle, reported]);
     })().catch(() => undefined),
   );
   return response;
 }
 
+/** The fields of a request body the proxy reads, or null when it is not a JSON object. */
+function parsedBody(text: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Sends an Anthropic request to a provider that speaks OpenAI's API. */
-async function viaChat(upstream: ModelUpstream, path: string, request: Request): Promise<Response> {
-  const body = (await request.json()) as AnthropicRequest;
+async function viaChat(upstream: ModelUpstream, path: string, body: AnthropicRequest | null): Promise<Response> {
+  if (!path.startsWith("/v1/messages")) return refuse(404, `${path} has no counterpart at this provider.`);
+  if (!body) return refuse(400, "The request body is not a JSON object.");
   const model = upstream.model ?? body.model ?? "";
   if (path.startsWith("/v1/messages/count_tokens")) {
     return Response.json({ input_tokens: estimateTokens(body) });
   }
-  if (!path.startsWith("/v1/messages")) return refuse(404, `${path} has no counterpart at this provider.`);
 
   const headers = new Headers({ "content-type": "application/json" });
   if (upstream.gatewayToken) headers.set("cf-aig-authorization", `Bearer ${upstream.gatewayToken}`);
@@ -237,20 +273,47 @@ export default {
     const upstream = await lookUp(env, token);
     if (!upstream) return refuse(401, "This run's model token has expired, or its model connection was removed.");
 
-    const path = url.pathname.slice("/anthropic".length) + url.search;
-    // Both routes answer in Anthropic's shape, so one reading counts either.
-    const answer = (response: Response) => (isAnswer(url.pathname.slice("/anthropic".length)) ? counted(response, upstream, env, ctx) : response);
-    if (upstream.api === "openai") return answer(await viaChat(upstream, path, request));
+    const route = url.pathname.slice("/anthropic".length);
+    const path = route + url.search;
+    if (!runMayCall(route, request.method)) return refuse(404, `A run's model token reaches only /anthropic/v1/messages and /anthropic/v1/models, not ${route}.`);
+    const hasBody = request.method !== "GET" && request.method !== "HEAD";
+    const text = hasBody ? await request.text() : null;
+    const parsed = text === null ? null : parsedBody(text);
 
-    const { url: target, headers } = upstreamRequest(upstream, env, path, request.headers);
-    // A route that names a model gets it for every request of the run,
-    // including the harness's small background ones.
-    let body: BodyInit | null = request.method === "GET" || request.method === "HEAD" ? null : request.body;
-    if (upstream.model && body && path.startsWith("/v1/messages")) {
-      const parsed = (await request.json()) as Record<string, unknown>;
-      body = JSON.stringify({ ...parsed, model: upstream.model });
-      headers.delete("content-length");
+    // A model's answer costs the run: it must be under its cap to start
+    // one, and the answer's cost is added to its count once it has gone by.
+    let held: Held | null = null;
+    if (isAnswer(route) && hasBody) {
+      const spend = runSpend(env, upstream);
+      const cap = capOf(upstream);
+      let admitted;
+      try {
+        admitted = await spend.admit(cap);
+      } catch (error) {
+        console.error("models: a run's spend could not be checked", upstream.session, String(error));
+        return refuse(503, "g1t could not check this run's spending just now. Try again.");
+      }
+      if (!admitted.ok) return admitted.reason === "cap" ? capReached(cap, admitted.spent) : tooBusy();
+      held = { spend, ticket: admitted.ticket, requested: parsed as Partial<AnthropicRequest> | null, bodyLength: text?.length ?? 0 };
     }
-    return answer(await fetch(target, { method: request.method, headers, body }));
+    // Both routes answer in Anthropic's shape, so one reading counts either.
+    const answer = (response: Response) => (held ? counted(response, upstream, env, ctx, held) : response);
+    try {
+      if (upstream.api === "openai") return answer(await viaChat(upstream, path, parsed as AnthropicRequest | null));
+
+      const { url: target, headers } = upstreamRequest(upstream, env, path, request.headers);
+      // A route that names a model gets it for every request of the run,
+      // including the harness's small background ones.
+      let body: string | null = text;
+      if (upstream.model && parsed && path.startsWith("/v1/messages")) {
+        body = JSON.stringify({ ...parsed, model: upstream.model });
+        headers.delete("content-length");
+      }
+      return answer(await fetch(target, { method: request.method, headers, body }));
+    } catch (error) {
+      // No answer: it cost nothing, and gives its place back.
+      if (held) ctx.waitUntil(held.spend.settle(held.ticket, 0).catch(() => undefined));
+      throw error;
+    }
   },
 } satisfies ExportedHandler<Env>;

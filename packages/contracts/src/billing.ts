@@ -1,4 +1,5 @@
 import type { ComputeKind, Reservation } from "./compute";
+import type { PauseLevel } from "./platform";
 import type { User, Viewer } from "./identity";
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -675,6 +676,10 @@ export interface BillingAdminApi {
   spendCaps(): Promise<SpendCaps>;
   /** Lets hosted-model runs start again for the rest of today (UTC); needs a note. */
   liftBreaker(note: string, by: string): Promise<Result<SpendCaps>>;
+  /** Platform pauses, the last hour of platform usage, the month so far and the last day's breaches (billing's platform.rs). */
+  platformGuard(): Promise<PlatformGuard>;
+  /** Pauses or resumes one level across g1t; needs a note, recorded in the audit log. */
+  setPause(level: PauseLevel, paused: boolean, note: string, by: string): Promise<Result<PlatformGuard>>;
   /** Approve or reject a price proposal; a rejection needs a note. An approved rise waits out the notice period. */
   decideProposal(id: string, decision: "approve" | "reject", note: string, by: string): Promise<Result<PriceProposal>>;
   setCostSettings(settings: CostSettings, by: string): Promise<Result<CostSettings>>;
@@ -1675,6 +1680,67 @@ export type CostsReport = {
   settings: CostSettings;
   /** g1t's own spend against its two caps. */
   caps: SpendCaps;
+};
+
+/** One level of the platform pause, as sudo shows it. Snake case, as billing sends it. */
+export type PauseState = {
+  level: PauseLevel;
+  paused: boolean;
+  note: string | null;
+  set_by: string | null;
+  set_at: string | null;
+  /** Set by billing's usage watcher, not a person. */
+  auto: boolean;
+};
+
+/** One platform metric over an hour or the month so far. */
+export type PlatformMetric = {
+  metric: string;
+  title: string;
+  value: number;
+  /** Its hourly threshold (`PLATFORM_HOURLY_*`); 0: none. */
+  threshold: number;
+  /** The script, queue, database or namespace that counted most. */
+  top_name: string | null;
+  top_value: number | null;
+};
+
+/** A breach billing's usage watcher found. */
+export type PlatformBreach = {
+  id: string;
+  metric: string;
+  hour: string;
+  rule: "threshold" | "spike";
+  value: number;
+  threshold: number;
+  severe: boolean;
+  top_name: string | null;
+  detail: string;
+  /** Levels it paused. */
+  paused: PauseLevel[];
+  opened_at: string;
+  emailed_at: string | null;
+};
+
+/** Billing's `admin_platform_guard`: the platform pause and usage watcher (docs/SPEND-GUARDRAILS.md). */
+export type PlatformGuard = {
+  levels: PauseState[];
+  /** The last hour read, `YYYY-MM-DDTHH:00:00Z`. */
+  hour: string | null;
+  last_hour: PlatformMetric[];
+  month: string;
+  month_to_date: PlatformMetric[];
+  breaches: PlatformBreach[];
+  /** Whether billing can read Cloudflare's analytics. */
+  can_read: boolean;
+  /** `AUTO_PAUSE`: the levels a severe breach may pause. */
+  auto_pause: PauseLevel[];
+  /** What the latest run could not see: each query that failed, with its error. */
+  blind?: { key: string; dataset: string; error: string }[];
+  /** The latest run found every dataset empty: the wrong account, or a token that cannot see it. */
+  empty?: boolean;
+  /** The hour the latest run read. */
+  last_run?: string | null;
 };
 
 /** What g1t pays for itself, at cost, against its caps (billing's `budget`). */

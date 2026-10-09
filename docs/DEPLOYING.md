@@ -13,6 +13,7 @@ self-hosting guide is `apps/docs/src/content/docs/guides/self-hosting.md`.
 | The runner's images | `services/runner/base/Dockerfile`, `services/runner/Dockerfile`, `services/runner/base.json`, `scripts/build-runner.mjs`, `scripts/deploy/image.mjs` |
 | The workflows | `.g1t/workflows/deploy.yml`, `.g1t/workflows/runner-base.yml` |
 | The old entry point | `scripts/deploy.sh`, now a wrapper |
+| Spend guardrails (platform pause, hourly usage watch) | [SPEND-GUARDRAILS.md](SPEND-GUARDRAILS.md) |
 
 ## The manifest
 

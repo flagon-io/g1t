@@ -28,6 +28,18 @@ export function isAnswer(path: string): boolean {
 }
 
 /**
+ * Whether a run's token may make a request: a model's answer, counting a
+ * request's tokens, or listing models. Nothing else, so no other route
+ * (a batch of messages, say) spends past the run's cap uncounted.
+ */
+export function runMayCall(path: string, method: string): boolean {
+  const route = path.split("?")[0];
+  if (isAnswer(route)) return true;
+  if (/^\/v1\/messages\/count_tokens\/?$/.test(route)) return true;
+  return (method === "GET" || method === "HEAD") && /^\/v1\/models(\/[^/]+)?\/?$/.test(route);
+}
+
+/**
  * The report for one answer, or null when it used nothing or its session
  * has no id to count it under. The model is the run's when its route names
  * one, else the one that answered.

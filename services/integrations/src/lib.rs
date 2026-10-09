@@ -159,6 +159,15 @@ struct SessionRow {
     tier: Option<String>,
     #[serde(default)]
     requested_by: Option<String>,
+    #[serde(default)]
+    cap_micros: Option<i64>,
+}
+
+/// A run's model spend cap as a session keeps it: null for none (zero or
+/// less), and never more than $1,000, which no run is allowed. D1 takes
+/// numbers as doubles, which hold any such cap exactly.
+fn session_cap(cap_micros: i64) -> JsValue {
+    if cap_micros > 0 { JsValue::from_f64(cap_micros.min(1_000_000_000) as f64) } else { JsValue::NULL }
 }
 
 #[derive(Deserialize)]
@@ -1324,6 +1333,7 @@ impl Integrations {
             api_key: None,
             auth_header: None,
             gateway_token: None,
+            cap_micros: session.cap_micros.filter(|cap| *cap > 0),
         };
         let Some(connection_id) = session.connection_id else {
             return Ok(Some(base));
@@ -1381,6 +1391,7 @@ impl Integrations {
             api_key: secrets.secret.clone(),
             auth_header: Some(models::auth_header(provider, &config)),
             gateway_token: (provider == Provider::AnthropicEndpoint).then_some(secrets.signing_secret).flatten(),
+            cap_micros: None,
         }))
     }
 
@@ -1412,6 +1423,26 @@ impl Integrations {
         let result = self
             .db
             .prepare(format!("DELETE FROM model_sessions WHERE token_hash IN ({marks}) AND expires_at > ?"))
+            .bind(&values)?
+            .run()
+            .await?;
+        Ok(result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32)
+    }
+
+    /// Sets the most a run may spend on models, which the model proxy holds
+    /// its token to. The sandbox calls it once it knows the run's caps.
+    async fn cap_model_sessions(&self, a: CapModelSessionsArgs) -> Result<u32> {
+        let hashes = closable_hashes(&a.token_hashes);
+        if hashes.is_empty() {
+            return Ok(0);
+        }
+        let marks = vec!["?"; hashes.len()].join(", ");
+        let mut values: Vec<JsValue> = vec![session_cap(a.cap_micros)];
+        values.extend(hashes.iter().map(|hash| JsValue::from(hash.as_str())));
+        values.push(rfc3339(now_ms()).into());
+        let result = self
+            .db
+            .prepare(format!("UPDATE model_sessions SET cap_micros = ? WHERE token_hash IN ({marks}) AND expires_at > ?"))
             .bind(&values)?
             .run()
             .await?;
@@ -1569,6 +1600,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "gateway_upstream" => reply(&service.gateway_upstream(args(body)?).await?),
         "gateway_providers" => reply(&service.gateway_providers(args(body)?).await?),
         "close_model_sessions" => reply(&service.close_model_sessions(args(body)?).await?),
+        "cap_model_sessions" => reply(&service.cap_model_sessions(args(body)?).await?),
         "routes" => reply(&service.routes(args(body)?).await?),
         "set_routes" => reply(&service.set_routes(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
