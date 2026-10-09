@@ -207,7 +207,7 @@ seq INTEGER NOT NULL, heading TEXT, text TEXT NOT NULL, hash TEXT NOT NULL, vect
 CREATE VIRTUAL TABLE folio_chunks_fts USING fts5 (chunk_id UNINDEXED, scope UNINDEXED, folio_id UNINDEXED, heading, text, tokenize = 'unicode61 remove_diacritics 2');
 ```
 
-`repo_spaces`, `repo_files`, `repo_files_fts`, the `doc_chunks` rows for repository files, `doc_embed_usage` and `doc_index_runs` are kept: projects' docs stay a read-only source in Artifacts. In Phase 7, migration `0005_drop_pages.sql` drops `pages`, `page_*`, `favorites`, `suggestions`, `templates`, `files`, `pages_fts`, `citations`, `page_changes` and the page rows of `doc_chunks`. It runs only after no deployed code reads them.
+`repo_spaces`, `repo_files`, `repo_files_fts`, the `doc_chunks` rows for repository files, `doc_embed_usage` and `doc_index_runs` are kept: projects' docs stay a read-only source in Artifacts. In Phase 7, migration `0006_drop_pages.sql` drops `pages`, `page_*`, `favorites`, `suggestions`, `templates`, `files`, `pages_fts`, `citations`, `page_changes` and the page rows of `doc_chunks`. It runs only after no deployed code reads them.
 
 ### 2.3 Access code
 
@@ -735,7 +735,7 @@ Sizes:
 | 5b | **Dashboards** | L | `components/charts/` (extracted from usage.tsx; usage pages switched to it), `kinds/dashboard.ts`, grid editor, query builder, `query_tile` with cache, the `query_data` agent tool, 4 templates, "Beta" badge, apps/docs `guides/artifacts-dashboards.md`. | 2, 5a (each dataset lights up as its service ships) |
 | 6a | **Design: canvas core** | L | `kinds/design.ts`, SVG renderer, tools, select, snap, layers and properties, frames with stack layout, images, awareness cursors, comments pinned, export SVG/PNG, agent `upsert_nodes`. | 2 |
 | 6b | **Design: components and HTML frames** | M | Components and instances, `html` nodes in the usercontent sandbox (with server sanitizer), design templates (4), apps/docs `guides/artifacts-design.md`. | 6a |
-| 7 | **Cleanup** | S | Migration `0005_drop_pages.sql`; DO migration v3 `deleted_classes: ["PageRoom"]`; remove the legacy RPC methods, `DocPage*` contracts, `doc.page.*` from `events.ts`, `events.rs` and `subscribers.rs`, `components/docs/*` and `routes/workspace/docs/*` leftovers; delete Vectorize `g1t-docs`; rewrite docs/WORKSPACE.md "Docs" to point here. Ships only after 2, 3 and the agents switch have been deployed everywhere. | 2, 3 |
+| 7 | **Cleanup** | S | Migration `0006_drop_pages.sql`; DO migration v3 `deleted_classes: ["PageRoom"]`; remove the legacy RPC methods, `DocPage*` contracts, `doc.page.*` from `events.ts`, `events.rs` and `subscribers.rs`, `components/docs/*` and `routes/workspace/docs/*` leftovers; delete Vectorize `g1t-docs`; rewrite docs/WORKSPACE.md "Docs" to point here. Ships only after 2, 3 and the agents switch have been deployed everywhere. | 2, 3 |
 | 8 | **Later** | — | Public links (usercontent origin, workspace setting, `view` only); server PDF and thumbnails through the `Renderer` adapter (og `Screenshots`); imports (Markdown folders, a deck file); `folio.*` events offered to webhooks; a documenter agent routine on `folio.stale`; dashboard alerts. | — |
 
 ### Parallel worktrees and file ownership
@@ -876,6 +876,36 @@ Open for Phase 2:
 - **"Editors can share."** `canShare` supports this per-space setting, but nothing sets it yet.
 - **Access requests.** `request_folio_access` sends to the owner and the people with full access, at most 20, with no limit on how often. Decide whether it needs one.
 - **Self-hosted rooms.** `deploy/self-host/configs.mjs` doesn't copy `durable_objects` into the self-hosted configs. That gap predates this phase and affects `PageRoom` too. Check it before relying on rooms self-hosted.
+
+---
+
+## 12. Decided in Phase 2
+
+Phase 2 shipped the Artifacts mode in `apps/web`, switched `services/agents` to the folio RPCs, and replaced apps/docs `guides/docs.mdx` with `guides/artifacts.mdx`. Where the plan was open, the build settled these:
+
+- **Old pages (D2): dropped.** Nothing copies them. The web no longer reads pages, and agents no longer call the page RPCs; the tables, `PageRoom` and the legacy methods stay until Phase 7. `-/docs` routes are gone with no redirect and answer the normal not-found page. Spaces are shared, so the web still uses the legacy space methods (`space`, `create_space`, `update_space`, `set_space_member`) and projects' docs (`add_repo_space`, `repo_page`), whose file links now point at `-/artifacts/repo/...`.
+- **Migration `0005_space_sharing_and_access_requests.sql`.** It adds `spaces.editors_can_share` (default 0) and `folio_access_requests`. Phase 7's drop migration becomes `0006_drop_pages.sql`.
+- **"Editors can share" (D7).** A switch in a space's settings, off by default. When on, an editor of something in the space can grant and change grants up to `edit`. Granting `manage`, changing a grant that is `manage`, general access, `inherit` and `agent_mode` stay with full access. `DocSpace` and `NewDocSpace` gained `editors_can_share`.
+- **Access requests.** At most one per person per folio per 24 hours (`claimAccessRequest`, one upsert, tested over the migrations); a second ask answers `conflict` with "You already asked for access to this in the last day…". It still goes to at most 20 people.
+- **Two contract additions.**
+  - `folio_page` (`FolioPage`): the folio, its saved text for the read view, the readable docs above it, what's inside and what links to it, and open suggestions, in one call. It records the visit, like `folio`. Added to `FOLIO_RPC_METHODS` in TS and Rust.
+  - `folio(..., { peek: true })`: a read that records no visit and doesn't find trashed folios, for chat's link cards. A card never makes a link folio readable.
+- **Addresses (D4).** `/-/artifacts/<title-slug>-<id>`, renamed slugs redirect to the current one; spaces at `/-/artifacts/spaces/<slug>`, history at `<folio>/history`. A folio someone can't read, or that doesn't exist, shows "You need access" (status 403) with **Ask for access**.
+- **Making one.** `new/:kind` makes a folio only on a POST (forms on the tiles, templates and space pages), so a prefetched or repeated link never does. Kinds not ready answer 404 there. Tiles for Slides, Design and Dashboard are disabled with a `Hint` ("… are coming soon").
+- **Home.** Days are the viewer's: the browser's zone, remembered in the `g1t_tz` cookie so the server renders the same days. Instead of up to three avatars, a row shows a lock (only you), a globe (workspace), a link (link access) or a people count, because `Folio` carries `shared_count`, not who. Someone else's folio in no space shows its owner's name, not "Private". The owner filter takes a username. "Possibly out of date" filters the 100 most recently edited by `stale`; a person-level stale list RPC would be exact.
+- **Editor shell.** `components/folios/kinds.tsx` registers each kind on one line, with a lazy `Body`; only the doc's is set. The BlockNote editor stays browser-only inside the doc body, and Home's chunks carry no editor code. Covers aren't offered, because `Folio` has no `cover`; "Describes" and the staleness detail of Docs' pages aren't either (a doc shows "Possibly out of date" with **It's current**).
+- **Write-up (4.4).** Kind fixed to a doc. Where is "Shared with this conversation" (DMs and private channels, chosen first), "Private (just me)", or a space in the sidebar the person can add to; a public channel starts on General when they can add to it. The ask reads `@g1t write this thread up as an artifact (a doc) <where> titled "<title>". Link this thread as the source: <link>`, where `<where>` is `in the <name> space`, `privately (just for me)` or `shared with this conversation`.
+- **Agents.**
+  - `list_spaces` uses the legacy `spaces_for_agent`.
+  - `read_artifact` holds back content and title when `audience_can_read` is false, and DMs the asker the link.
+  - After such a read, `remember` stores at the asker's `person` scope (4.3 rule 7).
+  - `query_data` is left to Phase 5b.
+- **Command palette.** No "Artifacts" group yet (plan section 5); Home's search covers it.
+
+Open for later phases:
+- **A spaces-for-person RPC.** Browse spaces reads the legacy `sidebar`, and the write-up offers only sidebar spaces. A folio-side `spaces` method that returns every readable space would serve both, and Phase 3's slug lookup.
+- **Who it's shared with.** Avatars on rows need the grants' principals on `Folio` (a few, capped), or a batch access call.
+- **Phone tab.** As with Docs, Artifacts is a tab only for members without Code; others reach it from the workspace sheet.
 
 ---
 
