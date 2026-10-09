@@ -8,5 +8,7 @@
 		"directory": "./dist",
 		"not_found_handling": "404-page"
 	},
-	"routes": [{ "pattern": "docs.g1t.sh", "custom_domain": true }]
+	"routes": [{ "pattern": "docs.g1t.sh", "custom_domain": true }],
+	// Logs of a tenth of requests: files only, nothing to debug in each.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

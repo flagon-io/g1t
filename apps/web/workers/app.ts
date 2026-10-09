@@ -3,6 +3,7 @@ import { createRequestHandler } from "react-router";
 import { identityClient, isNamespaceShaped } from "@g1t/contracts";
 
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
+import { gitLimited, pageLimited } from "../app/lib/front-door-limits";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
 import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
@@ -50,7 +51,10 @@ export default {
     }
     const service = servicePath(pathname);
     if (service === "git") {
-      return proxyGit(env, request);
+      // Per address without credentials, per credential with them
+      // (app/lib/front-door-limits.ts): anonymous clones are not free to
+      // the repository's owner.
+      return (await gitLimited(env, request)) ?? proxyGit(env, request);
     }
     if (service === "packages") {
       return proxyPackages(env, request);
@@ -65,6 +69,10 @@ export default {
       const target = MOVED_DOCS[page] ?? "/";
       return Response.redirect(DOCS + target, 301);
     }
+    // Pages and data requests, limited per address signed out and per
+    // session signed in (app/lib/front-door-limits.ts).
+    const limited = await pageLimited(env, request, pathname);
+    if (limited) return limited;
     // Every page and data request says where its time went (Server-Timing)
     // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
     const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));

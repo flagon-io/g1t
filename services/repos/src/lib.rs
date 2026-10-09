@@ -24,6 +24,7 @@ mod languages;
 mod last_commits;
 mod license;
 mod lifecycle;
+mod limits;
 mod listing;
 mod meters;
 mod mirror;
@@ -1928,6 +1929,16 @@ impl<S: GitStore> Repos<S> {
         if kept_key.is_some() {
             timing.note("refs", "miss");
         }
+        // An anonymous fetch the store is about to answer: an operation for
+        // the repository's workspace, so limited per repository (limits.rs).
+        if limits::counts_as_anonymous_fetch(call, viewer.is_none())
+            && g1t_kit::limits::check(env, limits::ANONYMOUS_FETCH, repo.id.clone()).await.limited()
+        {
+            let response = limits::too_many_anonymous_fetches(&format!("{}/{}", repo.namespace, repo.name))?;
+            after.ended(429, Some("Too many anonymous fetches.".to_owned()));
+            after.spawn(env, ctx);
+            return Ok(response);
+        }
         // The store's credential: one made a moment ago, here or in another
         // isolate (see store.rs), or a new one.
         let access = match kept_access {
@@ -2055,7 +2066,9 @@ impl<S: GitStore> Repos<S> {
             // A fresh clone the bucket did not have: counted, and its pack
             // kept as it streams to git, when it is a whole one.
             meters::record(pack_cache::MISS, &key, forwarded.sent, 0);
-            if status == 200 {
+            // Past the repository's limit on writes to the bucket, the pack
+            // goes to git without being kept (limits.rs).
+            if status == 200 && !g1t_kit::limits::check(env, limits::PACK_FILL, repo.id.clone()).await.limited() {
                 let store_key = key.clone();
                 let measured = Box::new(move |bytes: u64| meters::record_bytes(pack_cache::MISS, &store_key, 0, bytes));
                 let (teed, filling) = pack_cache::tee(response, packs.clone(), pack_key, measured)?;

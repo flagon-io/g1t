@@ -29,5 +29,6 @@
 	"triggers": { "crons": ["* * * * *"] },
 	// Secret: WEBHOOKS_KEY, 64 hex characters. Webhooks' signing secrets are
 	// sealed with it; without it none can be made.
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every event is a delivery to look up.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

@@ -219,6 +219,16 @@ git requests past 60 in an hour are answered `429` with when to try again,
 until the month turns. Counting starts on 2026-10-14. See
 [git operations](/guides/usage-and-billing/#git-operations).
 
+### Request limits
+
+Git requests without credentials are limited to 120 a minute from each IP
+address, about 40 clones; with credentials, 1,200 a minute for each set of
+credentials. Anonymous clones of one repository that g1t has not cached
+are limited to 120 a minute, whoever makes them. Past a limit, git is
+answered `429` with a message saying to wait a minute. Clone with
+[credentials](#authentication) to count against your own limit. See
+[rate limits](/reference/rate-limits/).
+
 What these limits mean in practice, and what to do instead, is on
 [What g1t can't do yet](/about/limitations/#git).
 

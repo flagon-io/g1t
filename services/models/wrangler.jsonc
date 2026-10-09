@@ -30,5 +30,6 @@
 	// not hold g1t's key; WORKERS_AI_TOKEN, a Cloudflare API token with
 	// Workers AI Read on this account, for the AI Gateway's open models
 	// (without it AI_GATEWAY_TOKEN is tried, and needs that permission too).
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every model call is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

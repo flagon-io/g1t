@@ -45,5 +45,6 @@
 	"vars": {
 		"SITE_URL": "https://g1t.sh"
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every push and page asks it.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

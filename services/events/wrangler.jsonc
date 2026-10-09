@@ -56,5 +56,6 @@
 	// older than AUDIT_MIN_DAYS, the shortest any plan keeps, are asked about.
 	"triggers": { "crons": ["41 3 * * *"] },
 	"vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every change in g1t is an event.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

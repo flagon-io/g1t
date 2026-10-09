@@ -203,6 +203,10 @@ operation.
   the REST API returns them.
 - Reading a public repository needs no sign-in through the API. Through MCP,
   every call needs to be signed in.
+- Each token may make 1,000 requests a minute to the MCP server, apart from
+  its REST API calls. Past that, the request is answered `429` with a
+  `Retry-After` header and a `rate_limited` error. See
+  [rate limits](/reference/rate-limits/).
 
 The tables below list each action's required inputs. Optional inputs are
 in the tool's schema, which `tools/list` returns, and on the action's page

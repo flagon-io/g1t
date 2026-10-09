@@ -28,5 +28,6 @@
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every repository page asks it.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

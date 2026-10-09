@@ -18,6 +18,7 @@
  */
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { type ServiceBinding, identityClient, projectsClient, reposClient, workClient } from "@g1t/contracts";
+import { type RateLimitBinding, clientAddress, isLimited } from "@g1t/contracts/rate-limits";
 import type { Font } from "satori/standalone";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 import yogaWasm from "satori/yoga.wasm";
@@ -47,6 +48,8 @@ interface Env {
   BROWSER: Fetcher;
   /** Production screenshots, by app hostname. */
   SCREENSHOTS: R2Bucket;
+  /** Cards drawn per address (RATE_LIMITS in packages/contracts). Absent: no limit. */
+  OG_RENDER_LIMIT?: RateLimitBinding;
 }
 
 /**
@@ -122,11 +125,21 @@ export default {
     const hit = await cache.match(key);
     if (hit) return hit;
 
-    const card = await cardFor(url, env);
-    const failed = card.kind === "brand" && card.failed === true;
     // Every page without a card of its own shares the one brand card, so
     // made-up paths cannot make the service draw it again and again.
     const brandKey = cacheKey(new URL("/", url));
+    // A miss looks the page up and draws its card: limited per address.
+    // Past the limit, the brand card, kept only briefly so the page's own
+    // card is asked for again later.
+    if (key !== brandKey && (await isLimited(env.OG_RENDER_LIMIT, `ip:${clientAddress(request)}`))) {
+      const brand = await cache.match(brandKey);
+      if (brand) return withCacheControl(brand, true);
+      const drawn = await brandCard(ctx, cache, brandKey);
+      return drawn.ok ? withCacheControl(drawn, true) : drawn;
+    }
+
+    const card = await cardFor(url, env);
+    const failed = card.kind === "brand" && card.failed === true;
     if (card.kind === "brand" && key !== brandKey) {
       const brand = await cache.match(brandKey);
       if (brand) return withCacheControl(brand, failed);
@@ -178,6 +191,25 @@ function withCacheControl(response: Response, failed: boolean): Response {
   const brief = new Response(response.body, response);
   brief.headers.set("cache-control", BRIEF_CACHE_CONTROL);
   return brief;
+}
+
+/** The brand card when the cache has lost it: drawn once and kept again. */
+async function brandCard(ctx: ExecutionContext, cache: Cache, brandKey: string): Promise<Response> {
+  try {
+    const response = new Response(await cardPng(BRAND, ASSETS), {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": CACHE_CONTROL,
+        "access-control-allow-origin": "*",
+        "x-content-type-options": "nosniff",
+      },
+    });
+    ctx.waitUntil(cache.put(brandKey, response.clone()));
+    return response;
+  } catch (error) {
+    console.error("og: the brand card could not be drawn", error);
+    return new Response("The card could not be drawn", { status: 503, headers: { "cache-control": NO_STORE } });
+  }
 }
 
 /** What satori can draw: PNG and JPEG. A WebP or GIF icon is left off the card. */

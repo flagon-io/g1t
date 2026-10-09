@@ -159,6 +159,7 @@ export default defineConfig({
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
+						{ label: 'Rate limits', slug: 'reference/rate-limits' },
 						{ label: 'Try it in the explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },
 						{ label: 'llms.txt', link: 'https://g1t.sh/llms.txt' },

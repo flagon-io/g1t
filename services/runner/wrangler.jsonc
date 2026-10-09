@@ -119,5 +119,6 @@
 		"BACKUPS_PER_SWEEP": "4",
 		"BACKUPS_RUNNING": "6"
 	},
-	"observability": { "enabled": true }
+	// Every log kept: few requests, and a failed run must be traceable.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

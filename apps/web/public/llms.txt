@@ -684,7 +684,9 @@ https://docs.g1t.sh/guides/search/
   `{"error": {"code": "…", "message": "…"}}` with codes `unauthenticated`
   (401), `payment_required` (402, when the plan or a limit refuses compute),
   `forbidden` (403, with `needed_scope` when the token lacks a
-  scope), `not_found` (404), `conflict` (409), `invalid` (422). Each
+  scope), `not_found` (404), `conflict` (409), `invalid` (422),
+  `rate_limited` (429, with `Retry-After`: 1,000 requests a minute per
+  token, 60 per IP address without one; wait, then retry). Each
   operation's scope is `x-scope` in the OpenAPI document. The full description is at https://api.g1t.sh/openapi.json.
 - Git remote: `https://g1t.sh/{workspace}/{repo}.git`. In API paths,
   `{owner}` is the workspace. Pull request forks:
@@ -752,6 +754,7 @@ https://docs.g1t.sh/guides/search/
 - [Git](https://docs.g1t.sh/guides/git/)
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
 - [API reference](https://docs.g1t.sh/reference/api/)
+- [Rate limits](https://docs.g1t.sh/reference/rate-limits/)
 - [What g1t can't do yet](https://docs.g1t.sh/about/limitations/)
 - [An open letter to Cloudflare](https://docs.g1t.sh/about/open-letter-to-cloudflare/)
 - [Source](https://g1t.sh/flagon-io/g1t), MIT licensed
