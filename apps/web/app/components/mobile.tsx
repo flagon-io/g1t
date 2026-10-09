@@ -108,8 +108,8 @@ export function useBack(fallback: string) {
 type Tab = { key: string; label: string; to: string; icon: ReactNode; badge?: { count: number; loud: boolean } };
 
 /**
- * The tab bar along the bottom of a phone: Home, Chat, Agents, Code (Docs,
- * for a member without Code) and the Inbox, each with what is unread. It
+ * The tab bar along the bottom of a phone: Home, Code (Docs, for a member
+ * without Code), Chat, Agents and the Inbox, each with what is unread. It
  * steps aside while the keyboard is up and inside a conversation.
  */
 export function MobileTabBar({ workspace, unread }: { workspace: Membership; unread: { inbox: number; chat: number; mentions: number } }) {
@@ -119,6 +119,9 @@ export function MobileTabBar({ workspace, unread }: { workspace: Membership; unr
   const mode = modeOf(pathname, slug);
   const tabs: Tab[] = [
     { key: "home", label: "Home", to: `/${slug}/-/home`, icon: <House size={21} /> },
+    code
+      ? { key: "code", label: "Code", to: `/${slug}/-/projects`, icon: <Code2 size={21} /> }
+      : { key: "docs", label: "Docs", to: `/${slug}/-/docs`, icon: <BookOpen size={21} /> },
     {
       key: "chat",
       label: "Chat",
@@ -127,9 +130,6 @@ export function MobileTabBar({ workspace, unread }: { workspace: Membership; unr
       badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
     },
     { key: "agents", label: "Agents", to: `/${slug}/-/agents`, icon: <Sparkles size={21} /> },
-    code
-      ? { key: "code", label: "Code", to: `/${slug}/-/projects`, icon: <Code2 size={21} /> }
-      : { key: "docs", label: "Docs", to: `/${slug}/-/docs`, icon: <BookOpen size={21} /> },
     { key: "inbox", label: "Inbox", to: "/inbox", icon: <Inbox size={21} />, badge: { count: unread.inbox, loud: true } },
   ];
   if (isConversation(pathname)) return null;

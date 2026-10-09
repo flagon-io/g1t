@@ -228,9 +228,10 @@ export function HelpMenu() {
 
 /**
  * The rail down the left (docs/WORKSPACE.md, "Shell"): the workspace and
- * its switcher; Home, Chat, Docs, Agents, Code and the Inbox; then, at the
- * foot, the workspace itself, help and your account. The mode lit follows
- * the address. A member without Code access has no Code.
+ * its switcher; Home, Code, Chat, Docs, Agents and the Inbox; then, at the
+ * foot, the workspace itself, help and your account. Code sits second: for
+ * those who have it, it is the everyday mode. The mode lit follows the
+ * address. A member without Code access has no Code.
  */
 export function Rail({
   user,
@@ -251,6 +252,7 @@ export function Rail({
   const code = hasCodeAccess(workspace);
   const modes: Mode[] = [
     { key: "home", label: "Home", icon: <House size={19} /> },
+    ...(code ? [{ key: "code" as const, label: "Code", icon: <Code2 size={19} /> }] : []),
     {
       key: "chat",
       label: "Chat",
@@ -259,7 +261,6 @@ export function Rail({
     },
     { key: "docs", label: "Docs", icon: <BookOpen size={19} /> },
     { key: "agents", label: "Agents", icon: <Sparkles size={19} /> },
-    ...(code ? [{ key: "code" as const, label: "Code", icon: <Code2 size={19} /> }] : []),
     { key: "inbox", label: "Inbox", icon: <Inbox size={19} />, badge: { count: unread.inbox, loud: true } },
   ];
   const workspaceMode: Mode = { key: "workspace", label: "Workspace", icon: <Building2 size={19} /> };

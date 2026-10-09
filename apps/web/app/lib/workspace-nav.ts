@@ -168,8 +168,8 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Chat, Docs, Agents
- * and Code are where work happens; the Inbox spans them; Workspace is the
+ * The rail's modes (docs/WORKSPACE.md, "Shell"). Home, Code, Chat, Docs
+ * and Agents are where work happens; the Inbox spans them; Workspace is the
  * workspace itself: its people, money, policies and settings. `account` is
  * your own settings, under the avatar. Each has a sidebar of its own, or
  * none, and which one is lit follows the address.
