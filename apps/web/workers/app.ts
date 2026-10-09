@@ -2,6 +2,7 @@ import { createRequestHandler } from "react-router";
 
 import { identityClient, isNamespaceShaped } from "@g1t/contracts";
 
+import { hardenRegistryHeaders } from "../app/lib/content-safety";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
@@ -167,12 +168,15 @@ async function proxyGit(env: Env, request: Request): Promise<Response> {
  * follows them itself. One that found nothing under a workspace's old name
  * or an alias staff set (`g1t` for `flagon-io`) is sent to the same path
  * under the workspace's name: only the not-found answer pays for the lookup.
+ * Every answer runs nothing in a browser (app/lib/content-safety.ts): what
+ * a registry serves is its publisher's, on this origin.
  */
 async function proxyPackages(env: Env, request: Request): Promise<Response> {
   const started = Date.now();
   const answer = await env.PACKAGES.fetch(new Request(request, { redirect: "manual" }));
   const moved = answer.status === 404 ? await registryMoved(env, request) : null;
   const response = moved ?? new Response(answer.body, answer);
+  hardenRegistryHeaders(response.headers);
   response.headers.append("server-timing", `packages;dur=${Date.now() - started}`);
   return response;
 }

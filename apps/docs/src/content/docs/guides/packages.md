@@ -192,6 +192,14 @@ counted approximately: an image's manifest fetched by tag or digest, an npm
 tarball, a crate, a Maven artifact (not its POM or signatures), a NuGet
 `.nupkg`, a gem, and a Composer zip.
 
+A package's files are its publisher's, so the registries never let a
+browser run them. Every registry answer carries
+`X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: default-src 'none'; sandbox`, and a file a
+browser would open as a page, such as a POM, a `.nuspec` or anything else
+in XML, HTML or SVG, comes with `Content-Disposition: attachment`, so it
+downloads instead. Package managers ignore these headers.
+
 ## The API
 
 The [REST API](/reference/api/) and the `package` tool of the
