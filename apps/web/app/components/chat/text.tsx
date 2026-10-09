@@ -1,7 +1,9 @@
-import { Fragment, type ReactNode, useMemo } from "react";
+import { Check, Copy } from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { MemberCard } from "./profile-card";
+import { Hint } from "../ui/hint";
 import { type Block, type Span, blocks, onlyEmoji } from "../../lib/chat";
 // The workspace's own emoji, drawn where `:name:` is written (components/emoji).
 import { useEmojiContext } from "../emoji/context";
@@ -114,29 +116,123 @@ function lines(list: Span[][], context: TextContext): ReactNode {
   ));
 }
 
+/** A run of blocks, a little apart. */
+function BlocksView({ list, context, className = "space-y-1.5" }: { list: Block[]; context: TextContext; className?: string }) {
+  return (
+    <div className={className}>
+      {list.map((block, index) => (
+        <BlockView key={index} block={block} context={context} />
+      ))}
+    </div>
+  );
+}
+
+function ListItem({ item, context }: { item: Block[]; context: TextContext }) {
+  // An item of one paragraph is its lines; one with more holds its blocks.
+  if (item.length === 1 && item[0]!.t === "p") return <li className="pl-0.5">{lines(item[0]!.lines, context)}</li>;
+  return (
+    <li className="pl-0.5">
+      <BlocksView list={item} context={context} className="space-y-1" />
+    </li>
+  );
+}
+
 function BlockView({ block, context }: { block: Block; context: TextContext }) {
   switch (block.t) {
     case "p":
       return <p>{lines(block.lines, context)}</p>;
+    case "heading":
+      // Chat, not a document: a heading is a bold line, the top two a touch larger.
+      return <p className={`font-semibold text-fg ${block.level <= 2 ? "text-base" : ""}`}>{spans(block.c, context)}</p>;
+    case "hr":
+      return <hr className="my-2 border-line" />;
     case "code":
-      return (
-        <pre className="my-1 overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 font-mono text-[0.8125rem] leading-relaxed text-fg-soft [scrollbar-width:thin]">
-          <code>{block.v}</code>
-        </pre>
-      );
+      return <CodeBlock language={block.lang} code={block.v} />;
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
       return (
-        <Tag className={`my-0.5 space-y-0.5 pl-5 ${block.ordered ? "list-decimal" : "list-disc"} marker:text-faint`}>
+        <Tag start={block.ordered && block.start !== 1 ? block.start : undefined} className={`space-y-0.5 pl-5 ${block.ordered ? "list-decimal" : "list-disc"} marker:text-faint`}>
           {block.items.map((item, index) => (
-            <li key={index}>{spans(item, context)}</li>
+            <ListItem key={index} item={item} context={context} />
           ))}
         </Tag>
       );
     }
     case "quote":
-      return <blockquote className="border-l-2 border-line-strong pl-3 text-muted">{lines(block.lines, context)}</blockquote>;
+      return (
+        <blockquote className="border-l-2 border-line-strong pl-3 text-muted">
+          <BlocksView list={block.c} context={context} className="space-y-1" />
+        </blockquote>
+      );
   }
+}
+
+type Token = { content: string; color?: string };
+
+/**
+ * Fenced code: plain at once, coloured once the highlighter has loaded
+ * when its language is one g1t knows (lib/shiki.ts), with a copy button.
+ * The colours are tokens drawn as text, never HTML.
+ */
+function CodeBlock({ language, code }: { language: string | null; code: string }) {
+  const [rows, setRows] = useState<Token[][] | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    setRows(null);
+    if (!language || code.length > 20_000) return;
+    let cancelled = false;
+    void import("../../lib/shiki")
+      .then(async ({ THEME, getHighlighter, languageNamed }) => {
+        const lang = languageNamed(language);
+        if (!lang) return null;
+        const core = await getHighlighter();
+        return core.codeToTokens(code, { lang, theme: THEME }).tokens.map((row) => row.map((token) => ({ content: token.content, color: token.color })));
+      })
+      .then((tokens) => {
+        if (!cancelled && tokens) setRows(tokens);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [language, code]);
+  return (
+    <div className="group/code relative my-1">
+      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 font-mono text-[0.8125rem] leading-relaxed text-fg-soft [scrollbar-width:thin]">
+        <code>
+          {rows
+            ? rows.map((row, index) => (
+                <span key={index} className="block min-h-lh">
+                  {row.map((token, at) => (
+                    <span key={at} style={token.color ? { color: token.color } : undefined}>
+                      {token.content}
+                    </span>
+                  ))}
+                </span>
+              ))
+            : code}
+        </code>
+      </pre>
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+        {language && <span className="font-mono text-[0.6875rem] text-faint">{language}</span>}
+        <Hint label={copied ? "Copied" : "Copy code"}>
+          <button
+            type="button"
+            aria-label="Copy code"
+            onClick={() => {
+              void navigator.clipboard?.writeText(code).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              });
+            }}
+            className="flex size-6 items-center justify-center rounded-md border border-line bg-raised text-muted hover:text-fg"
+          >
+            {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+          </button>
+        </Hint>
+      </div>
+    </div>
+  );
 }
 
 /** A message's text, rendered from parsed blocks: never as HTML. */

@@ -81,7 +81,9 @@ test("a reply links to its thread; a DM to the DM", () => {
 
 test("previews are one short line without markup", () => {
   assert.equal(preview("**bold**  and `code`\n\nnext [link](https://x)"), "bold and code next link");
-  assert.equal(preview("```\nlong code\n```"), "[code]");
+  assert.equal(preview("```\nlong code\n```"), "long code");
+  assert.equal(preview("## Done\n- shipped **#412** in #web\n- see \\*notes\\*"), "Done shipped #412 in #web see *notes*");
+  assert.equal(preview("snake_case and ~/src stay, <b>as typed</b>"), "snake_case and ~/src stay, <b>as typed</b>");
   assert.equal(preview("x".repeat(300)).length, 140);
 });
 
