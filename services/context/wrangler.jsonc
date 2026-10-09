@@ -41,5 +41,6 @@
 			{ "queue": "g1t-context-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 2 }
 		]
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: agents search it constantly.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

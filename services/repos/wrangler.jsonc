@@ -132,5 +132,6 @@
 		{ "name": "PACK_FILL_LIMIT", "namespace_id": "4301", "simple": { "limit": 30, "period": 60 } },
 		{ "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } }
 	],
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every git request and page is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

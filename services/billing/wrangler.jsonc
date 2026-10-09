@@ -145,5 +145,6 @@
 	// STRIPE_WEBHOOK_SECRET: the signing secret (whsec_…) of the destination
 	// made in Stripe's dashboard for https://api.g1t.sh/stripe/webhook.
 	// Without it every event is refused (the replay still reads them).
-	"observability": { "enabled": true }
+	// Every log kept: money moves here, and every failure matters.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

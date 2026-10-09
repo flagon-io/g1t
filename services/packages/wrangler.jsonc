@@ -72,5 +72,6 @@
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-packages", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every registry pull is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

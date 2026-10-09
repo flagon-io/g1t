@@ -76,5 +76,6 @@
 		{ "name": "STATUS_SUBSCRIBE_LIMIT", "namespace_id": "4601", "simple": { "limit": 3, "period": 60 } },
 		{ "name": "STATUS_EMAIL_LIMIT", "namespace_id": "4602", "simple": { "limit": 2, "period": 60 } }
 	],
-	"observability": { "enabled": true }
+	// Every log kept: few requests, and the checks' failures are what it is for.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

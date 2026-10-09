@@ -43,5 +43,6 @@
 	},
 	// Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
 	// sealed with it; without it nothing can be connected.
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every page and event asks it.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

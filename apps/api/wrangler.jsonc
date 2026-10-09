@@ -48,5 +48,6 @@
 		{ "name": "API_ANONYMOUS_LIMIT", "namespace_id": "4401", "simple": { "limit": 60, "period": 60 } },
 		{ "name": "API_TOKEN_LIMIT", "namespace_id": "4402", "simple": { "limit": 1000, "period": 60 } }
 	],
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: agents call it constantly.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

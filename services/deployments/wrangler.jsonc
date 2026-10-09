@@ -55,5 +55,6 @@
 	// Secret: CLOUDFLARE_API_TOKEN, scoped to Workers Scripts (edit) and
 	// Account Analytics (read), and, for custom domains, SSL and
 	// Certificates (edit) on the g1t.page zone. Without it nothing deploys.
-	"observability": { "enabled": true }
+	// Every log kept: few requests, and a failed deploy must be traceable.
+	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

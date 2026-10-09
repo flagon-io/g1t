@@ -34,5 +34,6 @@
 			{ "queue": "g1t-search-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3 }
 		]
 	},
-	"observability": { "enabled": true }
+	// Logs of a tenth of requests: every search is one.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

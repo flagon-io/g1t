@@ -54,6 +54,7 @@
 		{ "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
 		{ "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } }
 	],
-	"observability": { "enabled": true },
+	// Logs of a tenth of requests: every page view is one, too many to keep all.
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 },
 	"upload_source_maps": true
 }
