@@ -44,6 +44,8 @@ export type SpaceRow = {
   team: string | null;
   default_role: DocRole | null;
   agent_mode: DocAgentMode;
+  /** 1: people with edit access may share what is in it (migration 0005). */
+  editors_can_share: number;
   is_default: number;
   created_by: string;
   created_at: string;
@@ -270,6 +272,7 @@ export class Who {
       team: space.row.team,
       default_role: space.row.kind === "private" ? null : space.row.default_role,
       agent_mode: space.row.agent_mode,
+      editors_can_share: !!space.row.editors_can_share,
       is_default: !!space.row.is_default,
       projects: space.projects,
       created_by: created,

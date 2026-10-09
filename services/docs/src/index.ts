@@ -147,6 +147,7 @@ type SpaceRow = {
   team: string | null;
   default_role: DocRole | null;
   agent_mode: DocAgentMode;
+  editors_can_share: number;
   is_default: number;
   created_by: string;
   created_at: string;
@@ -482,6 +483,7 @@ class Docs {
       team: space.row.team,
       default_role: space.row.kind === "private" ? null : space.row.default_role,
       agent_mode: space.row.agent_mode,
+      editors_can_share: !!space.row.editors_can_share,
       is_default: !!space.row.is_default,
       projects: space.projects,
       created_by: created,
@@ -758,7 +760,7 @@ class Docs {
         path: file.path,
         title: file.title,
         markdown: file.markdown,
-        href: `/${workspace.slug}/-/docs/repo/${repoPath}/${encoded}`,
+        href: `/${workspace.slug}/-/artifacts/repo/${repoPath}/${encoded}`,
         code_href: `/${repoPath}/blob/${encodeURIComponent(match.repo.defaultBranch)}/${encoded}`,
       },
     });
@@ -942,6 +944,7 @@ class Docs {
     if (c.team !== undefined) set("team", c.team ? String(c.team).trim().toLowerCase() : null);
     if (c.default_role !== undefined && (c.kind ?? space.row.kind) !== "private") set("default_role", isRole(c.default_role) ? c.default_role : null);
     if (c.agent_mode !== undefined) set("agent_mode", c.agent_mode === "edit" ? "edit" : "suggest");
+    if (c.editors_can_share !== undefined) set("editors_can_share", c.editors_can_share ? 1 : 0);
     if (c.archived !== undefined) {
       if (space.row.is_default && c.archived) return fail("invalid", "The General space can't be archived.");
       set("archived_at", c.archived ? now() : null);

@@ -266,6 +266,21 @@ export const FOLIO_LIST_MAX = 100;
 
 export type FolioList = { items: Folio[]; next_cursor: string | null };
 
+/** A folio as its own page opens it: the folio, its saved text, where it sits, what is in it and what links to it. */
+export type FolioPage = {
+  folio: Folio;
+  /** Its text rendition when last saved (a doc's Markdown): what shows until the live editor loads. */
+  text: string;
+  /** The docs it sits under, from the top, that the viewer can read. */
+  breadcrumbs: FolioRef[];
+  /** What sits under it (a doc's sub-pages) that the viewer can read. */
+  children: FolioRef[];
+  /** Folios the viewer can read that link to it. */
+  backlinks: FolioRef[];
+  /** A doc's open suggestions. */
+  suggestions: FolioSuggestion[];
+};
+
 export type FoliosSidebarSpace = DocSpace & { joined: boolean; tree: FolioTreeNode[] };
 
 export type FoliosSidebar = {
@@ -599,6 +614,7 @@ export const FOLIO_RPC_METHODS = [
   "folio_list",
   "folio_sidebar",
   "folio",
+  "folio_page",
   // Changing folios.
   "create_folio",
   "update_folio",
@@ -659,6 +675,8 @@ export type FoliosApi = {
   sidebar(workspace: string, viewer: User): Promise<Result<FoliosSidebar>>;
   /** A folio and the viewer's role in it; records the visit (which is what makes a link folio readable). Not found when they can't read it. */
   folio(workspace: string, viewer: User, folioId: string): Promise<Result<Folio>>;
+  /** As `folio`, with what its page shows around it. Records the visit too. */
+  page(workspace: string, viewer: User, folioId: string): Promise<Result<FolioPage>>;
   create(workspace: string, viewer: User, input: NewFolio): Promise<Result<Folio>>;
   update(workspace: string, viewer: User, folioId: string, change: FolioChange): Promise<Result<Folio>>;
   /** Edit role where it is and where it goes. Refuses moving under itself, under a non-doc, or deeper than `FOLIO_MAX_DEPTH`. */
@@ -750,6 +768,7 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
     list: (workspace, viewer, query) => call("folio_list", { workspace, viewer, query }),
     sidebar: (workspace, viewer) => call("folio_sidebar", { workspace, viewer }),
     folio: (workspace, viewer, folioId) => call("folio", { workspace, viewer, folio_id: folioId }),
+    page: (workspace, viewer, folioId) => call("folio_page", { workspace, viewer, folio_id: folioId }),
     create: (workspace, viewer, input) => call("create_folio", { workspace, viewer, input }),
     update: (workspace, viewer, folioId, change) => call("update_folio", { workspace, viewer, folio_id: folioId, change }),
     move: (workspace, viewer, folioId, move) => call("move_folio", { workspace, viewer, folio_id: folioId, move }),

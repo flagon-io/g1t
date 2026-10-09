@@ -83,6 +83,8 @@ export type DocSpace = {
   /** What every workspace member (workspace) or team member (team) gets; null for a private space. */
   default_role: DocRole | null;
   agent_mode: DocAgentMode;
+  /** People with edit access may share what is in it (Artifacts), as people with full access can. Off unless turned on. */
+  editors_can_share: boolean;
   /** The workspace's General space, made the first time Docs is opened. Can't be archived. */
   is_default: boolean;
   /** Projects (repositories, `owner/name`) the space is about: Docs filters by them. */
@@ -454,6 +456,7 @@ export type NewDocSpace = {
   default_role?: DocRole | null;
   agent_mode?: DocAgentMode | null;
   projects?: string[] | null;
+  editors_can_share?: boolean | null;
 };
 
 export type DocSpaceChange = Partial<Omit<NewDocSpace, "kind">> & { kind?: DocSpaceKind; archived?: boolean };

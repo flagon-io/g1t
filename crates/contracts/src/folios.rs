@@ -498,10 +498,11 @@ pub fn agent_edit_error(edit: &Value) -> Result<FolioKind, String> {
 
 /// Every method the docs service answers for folios, as `FOLIO_RPC_METHODS`
 /// in folios.ts.
-pub const FOLIO_RPC_METHODS: [&str; 46] = [
+pub const FOLIO_RPC_METHODS: [&str; 47] = [
     "folio_list",
     "folio_sidebar",
     "folio",
+    "folio_page",
     "create_folio",
     "update_folio",
     "move_folio",

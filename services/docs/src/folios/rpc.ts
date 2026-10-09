@@ -16,6 +16,7 @@ export const FOLIO_RPC: Record<FolioRpcMethod, Handler> = {
   folio_list: (s, a) => s.list(a),
   folio_sidebar: (s, a) => s.sidebar(a),
   folio: (s, a) => s.folio(a),
+  folio_page: (s, a) => s.page(a),
   create_folio: (s, a) => s.create(a),
   update_folio: (s, a) => s.update(a),
   move_folio: (s, a) => s.move(a),

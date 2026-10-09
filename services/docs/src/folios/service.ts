@@ -54,6 +54,7 @@ import {
   type FolioList,
   type FolioListQuery,
   type FolioMove,
+  type FolioPage,
   type FolioPassage,
   type FolioProposal,
   type FolioRef,
@@ -111,6 +112,7 @@ import {
 import { agentMayFind, agentReach, audienceRule, type AgentReach, type AudienceRule } from "./agents.ts";
 import { publishFolioEvent } from "./events.ts";
 import { MAX_DEPTH, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
+import { REQUEST_RECIPIENTS, claimAccessRequest } from "./requests.ts";
 import type { FolioRoom } from "./room.ts";
 import { builtinFolioTemplate, builtinFolioTemplates } from "./templates.ts";
 
@@ -523,6 +525,45 @@ export class Folios {
     );
     const [folio] = await this.toFolios(ctx, [opened.value.row], { roles: new Map([[opened.value.row.id, opened.value.role]]), found: opened.value.found });
     return ok(folio!);
+  }
+
+  /** The folio, and what its page shows around it: the docs above it, what is under it, what links to it, open suggestions. */
+  async page(a: Args & { folio_id: string }): Promise<Result<FolioPage>> {
+    const found = await this.ctx(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const ctx = found.value;
+    const opened = await this.open(ctx, a.folio_id, "view", { trashed: true, opening: true, text: true });
+    if (!opened.ok) return opened;
+    const { row, role } = opened.value;
+    const at = now();
+    this.defer(
+      this.db
+        .prepare("INSERT INTO folio_visits (folio_id, user_id, first_at, last_at) VALUES (?, ?, ?, ?) ON CONFLICT (folio_id, user_id) DO UPDATE SET last_at = excluded.last_at")
+        .bind(row.id, ctx.viewer.id, at, at)
+        .run(),
+    );
+    const above = row.path.split("/").filter((id) => id && id !== row.id);
+    const [aboveRows, childRows, linkRows] = await Promise.all([
+      foliosById(this.db, above),
+      this.db.prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE parent_id = ? AND trashed_at IS NULL ORDER BY position LIMIT 200`).bind(row.id).all<FolioRow>(),
+      this.db
+        .prepare(`SELECT ${folioColumns("f")} FROM folio_links l JOIN folios f ON f.id = l.from_folio WHERE l.to_folio = ? AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 200`)
+        .bind(row.id, ctx.workspace.id)
+        .all<FolioRow>(),
+    ]);
+    const parents = above.map((id) => aboveRows.get(id)).filter((r): r is FolioRow => !!r);
+    const others = [...parents, ...childRows.results, ...linkRows.results.filter((r) => r.id !== row.id)];
+    const { roles } = await this.roles(ctx, others);
+    const readable = (list: FolioRow[]) => list.filter((r) => roles.get(r.id)).map((r) => this.ref(ctx.workspace.slug, r));
+    const [folio] = await this.toFolios(ctx, [row], { roles: new Map([[row.id, role]]), found: opened.value.found });
+    return ok({
+      folio: folio!,
+      text: row.text,
+      breadcrumbs: readable(parents),
+      children: readable(childRows.results),
+      backlinks: readable(linkRows.results.filter((r) => r.id !== row.id)),
+      suggestions: row.kind === "doc" ? await this.openSuggestions(ctx, row) : [],
+    });
   }
 
   // ── Making and changing ─────────────────────────────────────────────────
@@ -1099,9 +1140,14 @@ export class Folios {
       inherit: !!row.inherit,
       inherited_from: inherited,
       agent_mode: row.agent_mode,
-      can_share: canShare(role),
+      can_share: canShare(role, this.editorsShare(ctx, row)),
       public_link: "off",
     };
+  }
+
+  /** Whether the folio's space lets people with edit access share what is in it. */
+  private editorsShare(ctx: Ctx, row: Pick<FolioRow, "space_id">): boolean {
+    return !!(row.space_id && ctx.spaceById.get(row.space_id)?.row.editors_can_share);
   }
 
   async access(a: Args & { folio_id: string }): Promise<Result<FolioAccessList>> {
@@ -1136,9 +1182,15 @@ export class Folios {
     const opened = await this.open(ctx, a.folio_id, "view");
     if (!opened.ok) return opened;
     const { row, role } = opened.value;
-    if (!canShare(role)) return fail("forbidden", "Only people with full access can share it.");
+    if (!canShare(role, this.editorsShare(ctx, row))) return fail("forbidden", "Only people with full access can share it.");
+    // Editors whose space lets them share give up to edit; full access stays with managers.
+    if (role !== "manage" && change.op === "grant" && change.role === "manage") return fail("forbidden", "Only people with full access can give full access.");
     const principal = change.principal.startsWith("team:") ? `team:${change.principal.slice(5).toLowerCase()}` : change.principal;
     if (principal === row.owner) return fail("invalid", "Its owner always has full access.");
+    if (role !== "manage") {
+      const held = await this.db.prepare("SELECT role FROM folio_grants WHERE folio_id = ? AND principal = ?").bind(row.id, principal).first<{ role: DocRole }>();
+      if (held?.role === "manage") return fail("forbidden", "Only people with full access can change someone else's full access.");
+    }
     if (change.op === "revoke") {
       await this.db.prepare("DELETE FROM folio_grants WHERE folio_id = ? AND principal = ?").bind(row.id, principal).run();
       return ok(await this.afterShare(ctx, row));
@@ -1233,6 +1285,7 @@ export class Folios {
     const { roles } = await this.roles(ctx, [row]);
     if (roles.get(row.id)) return ok(true);
     if (!this.env.NOTIFY) return ok(true);
+    if (!(await claimAccessRequest(this.db, row.id, ctx.viewer.id))) return fail("conflict", "You already asked for access to this in the last day. Its owner has your request; you can ask again tomorrow.");
     // The owner and anyone with full access through a grant hear of it.
     const managers = (
       await this.db.prepare("SELECT principal FROM folio_access WHERE folio_id = ? AND role = 'manage' AND principal LIKE 'user:%'").bind(row.id).all<{ principal: string }>()
@@ -1241,7 +1294,7 @@ export class Folios {
     const message = cleanNote(a.message);
     const notify = notifyClient(this.env.NOTIFY);
     await Promise.all(
-      [...new Set([row.owner.slice(5), ...managers])].slice(0, 20).map((id) =>
+      [...new Set([row.owner.slice(5), ...managers])].slice(0, REQUEST_RECIPIENTS).map((id) =>
         notify
           .notify(
             { user_id: id },
