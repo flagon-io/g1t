@@ -1,20 +1,20 @@
 import { ArrowRight, ArrowUpRight, Box, CircleDot, GitBranch, GitPullRequest, KeyRound, Lock, Pin, Plus, Rocket } from "lucide-react";
-import { Link } from "react-router";
+import { Link, redirect } from "react-router";
 
 import type { PackageSummary, Project, ProjectDeploys, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
-import { host, StatusDot } from "../../components/deploy";
+import { DeployLink, host, StatusDot } from "../../components/deploy";
 import { Avatar, ButtonLink, CopyLine, Pill, TimeAgo } from "../../components/ui";
 import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
-import { planStatus, type UsageGlance, usageGlance } from "../../lib/billing";
 import { openedBy } from "../../lib/opened-by";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { kindLabel, libraryPackages, packageLine, packagePath, primaryLink } from "../../lib/project-kind";
 import { PinButton } from "../../components/pin-button";
 import { sortProjects } from "../../lib/project-list";
-import { billing, deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
+import { usageFor } from "../../lib/workspace-usage.server";
+import { deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
 
@@ -26,43 +26,13 @@ const MAX_ACTIVE = 6;
 const MAX_LISTED = 8;
 const MAX_PULLS = 8;
 const MAX_FACES = 8;
-/** The trial as published, when the price book cannot be read. */
-const DEFAULT_TRIAL_MICROS = 5_000_000;
-
-/**
- * The month for the Usage card, for members only: what was spent, what
- * pays first and what it went on. Fetched here, not with the sidebar, so
- * only this page pays for it; a billing service that cannot answer leaves
- * the card out rather than the page.
- */
-async function usageFor(slug: string, viewer: User | null): Promise<UsageGlance | null> {
-  const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const [account, usage, features, entitlements, limit, book] = await Promise.all([
-    billing.account(slug, viewer).catch(() => null),
-    billing.usage(slug, viewer, monthStart).catch(() => null),
-    billing.features(slug, viewer).catch(() => null),
-    billing.entitlements(slug).catch(() => null),
-    billing.limit(slug, viewer).catch(() => null),
-    billing.prices().catch(() => null),
-  ]);
-  if (!account?.ok || !usage?.ok) return null;
-  // Without payments set up (a g1t run without billing), there is no plan to show.
-  if (!account.value.status.enabled && !usage.value.free) return null;
-  const plan = features?.ok ? (features.value.find((state) => state.plan.feature === "plan") ?? null) : null;
-  return usageGlance({
-    usage: usage.value,
-    status: planStatus(plan, entitlements),
-    entitlements,
-    limit: limit?.ok ? limit.value : null,
-    trialMicros: book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS,
-  });
-}
-
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
+  // A member's way in is Home (Mission control's old address); this page
+  // is the workspace as a visitor sees it.
+  if (role) throw redirect(`/${slug}/-/home`);
   const [listed, members, deploys, usage, published, shortcuts] = await Promise.all([
     // The listing the sidebar and the Projects tab share.
     workspaceProjects(slug, viewer),
@@ -206,13 +176,13 @@ function ProjectCard({
             {project.name}
           </Link>
           {link && !(library && pkg && !production) ? (
-            <a
+            <DeployLink
               href={link}
               className="relative z-10 mt-0.5 flex items-center gap-1 truncate font-mono text-xs text-muted hover:text-accent"
             >
               {host(link)}
               <ArrowUpRight size={11} className="shrink-0" />
-            </a>
+            </DeployLink>
           ) : library && pkg ? (
             <Link
               to={packagePath(pkg)}

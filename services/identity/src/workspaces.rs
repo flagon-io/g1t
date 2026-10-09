@@ -77,6 +77,12 @@ impl From<WorkspaceRow> for Workspace {
     }
 }
 
+/// The name a new account's own workspace takes: its username, when that
+/// can name a workspace at all (g1t's own names cannot).
+pub(crate) fn own_workspace_slug(username: &str) -> Option<String> {
+    claimable_namespace(username)
+}
+
 /// One of a person's memberships, as stored.
 #[derive(Deserialize)]
 struct MembershipRow {
@@ -201,13 +207,43 @@ impl Identity {
                 "That workspace name is taken.",
             ));
         }
+        let name = match a.name.trim() {
+            "" => slug.clone(),
+            name => name.chars().take(MAX_NAME_LENGTH).collect(),
+        };
+        Ok(Outcome::Ok(self.insert_workspace(&a.user.id, slug, name).await?))
+    }
+
+    /// A new account's own workspace, named for its username, on the free
+    /// plan as every new workspace is: so nobody is left without one. Made
+    /// only when the username is free to use as a workspace's name (it
+    /// usually is: usernames and workspaces share one namespace). None
+    /// when it is not, and the site asks the person to make one.
+    pub(crate) async fn create_own_workspace(&self, user: &User) -> Result<Option<Workspace>> {
+        let Some(slug) = own_workspace_slug(&user.username) else {
+            return Ok(None);
+        };
+        if self.slug_in_use(&slug).await?
+            || self.slug_held(&slug).await?
+            || (self.slug_deleted(&slug).await? && !crate::deletion::may_reclaim(&slug, &user.username))
+        {
+            return Ok(None);
+        }
+        let made = self.insert_workspace(&user.id, slug.clone(), slug).await;
+        match made {
+            Ok(workspace) => Ok(Some(workspace)),
+            // Taken a moment ago: the person makes one themselves.
+            Err(error) if error.to_string().contains("UNIQUE") => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Makes a workspace `user_id` owns, once every check has passed.
+    async fn insert_workspace(&self, user_id: &str, slug: String, name: String) -> Result<Workspace> {
         let now = now_ms();
         let workspace = Workspace {
             id: new_id("wsp", now),
-            name: match a.name.trim() {
-                "" => slug.clone(),
-                name => name.chars().take(MAX_NAME_LENGTH).collect(),
-            },
+            name,
             description: None,
             slug,
             created_at: rfc3339(now),
@@ -230,7 +266,7 @@ impl Identity {
                         workspace.id.as_str().into(),
                         workspace.slug.as_str().into(),
                         workspace.name.as_str().into(),
-                        a.user.id.as_str().into(),
+                        user_id.into(),
                         workspace.created_at.as_str().into(),
                         workspace.base_permission.as_str().into(),
                     ])?,
@@ -241,13 +277,13 @@ impl Identity {
                     )
                     .bind(&[
                         workspace.id.as_str().into(),
-                        a.user.id.as_str().into(),
+                        user_id.into(),
                         workspace.created_at.as_str().into(),
                     ])?,
             ])
             .await?;
         self.forget_deleted(&workspace.slug).await?;
-        Ok(Outcome::Ok(workspace))
+        Ok(workspace)
     }
 
     pub async fn get_workspace(&self, a: SlugArgs) -> Result<Option<Workspace>> {
@@ -320,7 +356,7 @@ impl Identity {
         let rows = self
             .db
             .prepare(
-                "SELECT workspace_members.user_id, users.username, workspace_members.role, users.display_name AS name, users.avatar,
+                "SELECT workspace_members.user_id, users.username, users.display_username, workspace_members.role, users.display_name AS name, users.avatar,
                    workspace_members.billing_manager, workspace_members.security_manager,
                    EXISTS (SELECT 1 FROM two_factor WHERE two_factor.user_id = users.id AND two_factor.enabled_at IS NOT NULL) AS two_factor
                  FROM workspace_members
@@ -374,6 +410,25 @@ impl Identity {
             Outcome::Ok(target) => target,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
+        // A person is never added without saying yes: they get a workspace
+        // invitation to accept or decline (invites/invitations.rs). Only
+        // g1t's own agent is added at once.
+        if !crate::paid::is_g1t(&user.username) {
+            let invited = self
+                .invite_member(InviteMemberArgs {
+                    actor: a.actor,
+                    slug: a.slug,
+                    email: String::new(),
+                    username: Some(user.username),
+                    role: None,
+                    surface: a.surface,
+                })
+                .await?;
+            return Ok(match invited {
+                Outcome::Ok(_) => Outcome::Ok(true),
+                Outcome::Fail(failure) => Outcome::Fail(failure),
+            });
+        }
         // What the workspace asks of its members (security.rs); nothing yet.
         if let Some(why) = self.policy_refusal(&user.id, &a.slug.to_lowercase()).await? {
             return Ok(Outcome::fail(FailureCode::Forbidden, why));

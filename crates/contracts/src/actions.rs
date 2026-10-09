@@ -142,6 +142,14 @@ pub struct Job {
     /// steps and its post steps before it ends.
     #[serde(default)]
     pub cancelling: bool,
+    /// Where its deployment is (`environment.url`), for a job that deploys
+    /// and says; the current attempt's only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_url: Option<String>,
+    /// For a job that calls a reusable workflow: that workflow's file. Its
+    /// jobs' keys start with this job's key and a `/`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uses: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -1,5 +1,7 @@
 import { Form, Link, redirect } from "react-router";
 
+import { USERNAME_PATTERN } from "@g1t/contracts";
+
 import type { Route } from "./+types/auth-github-username";
 import { AuthCard } from "../components/auth-card";
 import { GithubMark } from "../components/github";
@@ -64,7 +66,7 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
       <Form method="post" className="space-y-4">
         <Field
           label="Username"
-          hint="Lowercase letters, digits and hyphens. It is how others see you on g1t."
+          hint="Letters, digits and single hyphens. It is how others see you on g1t, in the case you type it."
         >
           <Input
             name="username"
@@ -73,7 +75,7 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
             autoFocus
             maxLength={39}
             defaultValue={loaderData.suggestion ?? ""}
-            pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*"
+            pattern={USERNAME_PATTERN}
           />
         </Field>
         {loaderData.inviteRequired && (

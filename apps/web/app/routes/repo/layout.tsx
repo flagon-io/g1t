@@ -12,6 +12,8 @@ import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Pill, SoonPill } from "../../components/ui";
 import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
+import { ProjectStrip } from "../../components/mobile";
+import { seesSettings } from "../../lib/access";
 import { WatchMenu } from "../../components/notifications";
 import { PinButton } from "../../components/pin-button";
 import { StarButton } from "../../components/star-button";
@@ -225,6 +227,10 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           />
           {/* On the files' pages, About shows them. */}
           {!filesPage && <Topics topics={repo.topics} />}
+          {/* A phone: the project's pages, which the sidebar lists from 768px. */}
+          <div className="mt-3 md:hidden">
+            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} />
+          </div>
           {tabs && (
             <div className="mt-3">
               <PageTabs base={base} tabs={tabs} />

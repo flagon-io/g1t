@@ -2,7 +2,6 @@ import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/login";
 import { page } from "../lib/meta";
-import { useInviteOnly } from "../lib/registration";
 import { AuthCard } from "../components/auth-card";
 import { ContinueWithGithub, GithubMark, OrDivider } from "../components/github";
 import { PENDING_COOKIE, TWO_FACTOR_COOKIE, TWO_FACTOR_SECONDS, cookie, readCookie } from "../lib/github";
@@ -60,7 +59,6 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Login({ loaderData, actionData }: Route.ComponentProps) {
-  const inviteOnly = useInviteOnly();
   const registerUrl =
     loaderData.next === "/"
       ? "/register"
@@ -73,7 +71,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
         <>
           New to g1t?{" "}
           <Link to={registerUrl} className="text-fg underline underline-offset-4">
-            {inviteOnly ? "Request access or use an invite" : "Create an account"}
+            Create an account
           </Link>
         </>
       }

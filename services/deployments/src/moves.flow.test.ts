@@ -131,7 +131,6 @@ function world() {
     }),
     PROJECTS: service((method) => {
       if (method === "by_repo") return [project()];
-      if (method === "graph") return { dependsOn: [], usedBy: [] };
       return ok(project());
     }),
     IDENTITY: service((method, args) => {

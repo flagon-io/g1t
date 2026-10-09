@@ -371,7 +371,7 @@ pub struct ReviewEvent {
 }
 
 /// `comment.created`. `number` is the issue or pull request commented on.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentCreated {
     pub comment_id: String,
@@ -383,6 +383,16 @@ pub struct CommentCreated {
     /// Set when the comment is a review: approve or request changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<crate::work::Verdict>,
+    /// Set when one of the workspace's agents wrote it, as itself. The
+    /// event's actor is then the person it acted for (`actingFor`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::work::AgentRef>,
+    /// Who the agent acted for, set with `agent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acting_for: Option<crate::credentials::Principal>,
+    /// An agent's review, advisory: its verdict counts toward nothing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub advisory: bool,
 }
 
 /// `comment.edited`: a comment's text changed. `changes.body.from` is what
@@ -970,6 +980,44 @@ pub struct QueueChanged {
     pub repo_id: String,
 }
 
+/// The `doc.page.*` types the docs service (services/docs, TypeScript)
+/// publishes, with no `repoId` on the event: a page may be in a private
+/// space, so it never reaches a repository's timeline or webhooks.
+pub const DOC_PAGE_EVENTS: [&str; 4] = ["doc.page.created", "doc.page.updated", "doc.page.archived", "doc.page.stale"];
+
+/// What every `doc.page.*` event carries (`DocPageEventData` in
+/// events.ts). `doc.page.updated` adds `versionId`, `kind` and `authors`;
+/// `doc.page.stale` adds `repoId`, `repo`, `commit`, `pull`, `paths` and
+/// `owners` ([`DocPageStale`]).
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocPageEvent {
+    pub workspace: String,
+    pub workspace_id: String,
+    pub page_id: String,
+    pub space_id: String,
+    pub title: String,
+    /// The page's address on the site.
+    pub path: String,
+}
+
+/// `doc.page.stale`: code a page cites changed.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocPageStale {
+    #[serde(flatten)]
+    pub page: DocPageEvent,
+    pub repo_id: String,
+    /// `owner/name`.
+    pub repo: String,
+    pub commit: String,
+    /// The merged pull request's number, when a pull request made the change.
+    pub pull: Option<u32>,
+    pub paths: Vec<String>,
+    /// Member keys: `user:<id>`, `agent:<id>`.
+    pub owners: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1147,5 +1195,18 @@ mod tests {
         let data = serde_json::json!({ "workspaceId": "wsp_1", "from": "a", "to": "b" });
         let event: WorkspaceRenamed = serde_json::from_value(data).unwrap();
         assert_eq!((event.from.as_str(), event.to.as_str()), ("a", "b"));
+    }
+
+    #[test]
+    fn a_stale_page_reads_as_published() {
+        let data = serde_json::json!({
+            "workspace": "acme", "workspaceId": "wsp_1", "pageId": "pag_1", "spaceId": "spc_1",
+            "title": "Exports", "path": "/acme/-/docs/general/exports-pag_1",
+            "repoId": "rep_1", "repo": "acme/web", "commit": "abc", "pull": 431,
+            "paths": ["src/export.ts"], "owners": ["user:usr_1"]
+        });
+        let event: DocPageStale = serde_json::from_value(data).unwrap();
+        assert_eq!((event.page.page_id.as_str(), event.pull), ("pag_1", Some(431)));
+        assert!(DOC_PAGE_EVENTS.contains(&"doc.page.stale"));
     }
 }

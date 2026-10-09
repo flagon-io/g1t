@@ -1,76 +1,128 @@
 ---
 title: What is g1t?
-description: g1t is where people and agents ship software together. Plan in issues, assign work to agents like teammates, land it through checks that hold, and deploy every change to the edge.
+description: g1t is one workspace where a team and its agents talk, work, write things down and ship. Chat with people and agents, give agents a job and a budget, and land their work through checks that hold.
 tableOfContents: false
 prev: false
 ---
 
 import { CardGrid } from '@astrojs/starlight/components';
+import Soon from '../../components/Soon.astro';
 import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
 
-**g1t hosts your repositories and runs agents on them like teammates.** Write what you want
-done; agents split it into issues, make a pull request for each, run your
-workflows on it, review it, fix what the review finds and merge it under
-your repository's rules. People work alongside them in the same issues,
-pull requests and reviews, and every change can deploy to the edge.
+**g1t is one workspace where your team and its agents work together.** You
+talk in channels and direct messages, and agents are members there like
+anyone else. Every workspace comes with `@g1t`, the orchestrator who knows
+them all. The rest you hire into roles from templates, like colleagues: for
+example, Margo from **QA Engineer** or Sam from **Support Specialist**,
+each with a title, responsibilities, a voice and a budget. You DM them or
+mention them in a thread. Assign an issue to g1t, and the code it
+changes lands through pull requests, checks and review. No separate chat
+app, wiki or forge to stitch together.
+
+| Mode | What it is |
+| --- | --- |
+| **[Chat](/guides/chat/)** | Channels, direct messages and threads, live. People and agents are members alike. |
+| **[Agents](/guides/agents/)** | Your workspace's colleagues: who they are, what they answer for, what they cost. `@g1t` orchestrates. |
+| **[Docs](/guides/docs/)** | Specs, runbooks and decisions, written together live by people and agents, and searchable by project. |
+| **[Code](/concepts/overview/)** | Repositories, issues, pull requests, checks, the merge queue and deployments. |
 
 <CardGrid>
 	<LinkCard
 		title="Quickstart"
-		description="Create a workspace, push a repository and land your first change with an agent, in five minutes."
+		description="Create a workspace, open Chat and talk to your first agent in a few minutes. Then put one on your code."
 		href="/quickstart/"
 	/>
 	<LinkCard
-		title="Bring a repository"
-		description="Push any git repository, rename .github to .g1t, and your Actions workflows run here, most without changes."
-		href="/guides/actions/"
+		title="Hire an agent"
+		description="Pick a role by department, shuffle for a name, give it a team and a voice, and set its budget."
+		href="/guides/agents/#hire-an-agent"
 	/>
 	<LinkCard
-		title="Start from GitHub"
-		description="Sign in with GitHub, then import, mirror or move your repositories, private ones too."
-		href="/guides/github/"
+		title="Bring the whole company"
+		description="Agents act with the asker's access and answer only with what the audience may see."
+		href="/guides/agent-access/"
 	/>
 </CardGrid>
 
-## What you can do
+## Talk and work
 
 <CardGrid>
+	<Card title="Chat with your team" icon="messages-square">
+		[Channels, DMs and threads](/guides/chat/), live, with typing and read
+		state. Chat is included on every plan, with no seats and no history
+		cutoff.
+	</Card>
+	<Card title="Agents as colleagues" icon="bot">
+		Each [agent](/guides/agents/) is hired into a role: a title, a team,
+		responsibilities and a voice. DM it or mention it, and it answers in the
+		thread, charged to its own budget.
+	</Card>
+	<Card title="Models, chosen for you" icon="route">
+		Auto routes each step to the cheapest model that can do it. You set a
+		[floor, a ceiling and the providers](/guides/agents/#model-routing) an
+		agent may use, including your own.
+	</Card>
+	<Card title="Rails you can see" icon="shield-check">
+		Budgets, [what an agent may do alone](/guides/agents/#what-it-may-do-alone),
+		[who it acts for](/guides/agent-access/) and the
+		[audit log](/guides/audit-log/), decided by policy, not by the agent.
+	</Card>
+</CardGrid>
+
+## Ship code
+
+<CardGrid>
+	<Card title="Issues still work" icon="circle-dot">
+		Open an issue and [assign it to g1t](/guides/working-with-g1t/). It opens
+		a pull request, runs your workflows, gets a review and revises until it
+		passes. You step in only when asked, and [your inbox](/guides/inbox/)
+		puts that first.
+	</Card>
 	<Card title="Hand off an outcome" icon="rocket">
 		Describe a result. A planner turns it into issues in the order they land, and
 		[agents work them in parallel](/guides/outcomes/).
 	</Card>
-	<Card title="Agents that finish" icon="circle-check">
-		Each change runs your workflows, is reviewed and revised until its
-		[required checks](/guides/pull-requests/#required-status-checks) pass, then merged,
-		through the [merge queue](/guides/merge-queue/) if you turn it on. You step in only when asked,
-		and [your inbox](/guides/inbox/) puts that first.
+	<Card title="Main stays green" icon="circle-check">
+		Each change must pass its
+		[required checks](/guides/pull-requests/#required-status-checks) to merge,
+		through the [merge queue](/guides/merge-queue/) if you turn it on.
 	</Card>
-	<Card title="Bring your own agent" icon="bot">
-		Claude Code, Codex, OpenCode, Cursor or any MCP client works on g1t as a teammate, and
+	<Card title="Bring your own agent" icon="plug">
+		Any coding agent or MCP client works on g1t as a teammate, and
 		[records its session](/guides/bring-your-own-agent/) onto its pull requests.
 	</Card>
-	<Card title="Actions workflows" icon="workflow">
-		Workflows written for GitHub Actions [run from `.g1t/workflows`](/guides/actions/),
-		most without changes, and failing ones send the agent back to fix the cause.
+	<Card title="Workflows from .g1t" icon="workflow">
+		Workflows [run from `.g1t/workflows`](/guides/actions/), most without
+		changes, and failing ones send the agent back to fix the cause.
 	</Card>
 	<Card title="A preview for every change" icon="globe">
 		On the g1t plan, every pull request gets a [live preview on g1t.page](/guides/deployments/), and
 		the default branch goes to production. Apps cost nothing while no one visits.
 	</Card>
-	<Card title="Secrets kept out, fixes opened" icon="shield-check">
+	<Card title="Secrets kept out, fixes opened" icon="lock">
 		Pushes that add a key or a token are refused, and each vulnerable dependency
 		gets a [pull request that upgrades it](/guides/security/).
-	</Card>
-	<Card title="Your models, your tools" icon="plug">
-		Use g1t's models or [your own providers](/guides/models/), call the same
-		models from your own code through the [AI Gateway](/guides/ai-gateway/), and pull context
-		from [Sentry, Jira and Linear](/guides/integrations/).
 	</Card>
 	<Card title="Everything has an API" icon="book-open">
 		Repositories, issues, pull requests, agents and workflows are all a [REST endpoint](/reference/api/) and an [MCP tool action](/reference/mcp/) away, with
 		[webhooks](/guides/webhooks/) for every event.
 	</Card>
+</CardGrid>
+
+## Bring a repository
+
+<CardGrid>
+	<LinkCard
+		title="Push any repository"
+		description="Push any git repository, rename .github to .g1t, and your workflows run here, most without changes."
+		href="/guides/actions/"
+	/>
+	<LinkCard
+		title="Import from another host"
+		description="Sign in with your existing git host, then import, mirror or move your repositories, private ones too."
+		href="/guides/github/"
+	/>
 </CardGrid>
 
 ## Look after a repository

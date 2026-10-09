@@ -6,6 +6,7 @@ import type { Route } from "./+types/projects";
 import { host } from "../../components/deploy";
 import { PinButton } from "../../components/pin-button";
 import { EmptyState, Pill, TimeAgo, notACredential } from "../../components/ui";
+import { SelectField } from "../../components/ui/select";
 import { page as pageMeta } from "../../lib/meta";
 import {
   LANGUAGE_OF,
@@ -85,6 +86,8 @@ type Item = Route.ComponentProps["loaderData"]["items"][number];
 
 const CONTROL =
   "h-9 rounded-md border border-line bg-surface px-2.5 text-sm text-fg outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
+/** A filter's select, on the same surface as the other controls. */
+const FILTER = "w-auto bg-surface";
 
 /** Its language, its kind when it is not an app, and its state, as small words. */
 function Facts({ project }: { project: Item }) {
@@ -331,35 +334,63 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             /
           </kbd>
         </div>
-        <select name="visibility" aria-label="Visibility" defaultValue={query.visibility} onChange={() => apply()} className={CONTROL}>
-          <option value="all">All visibility</option>
-          <option value="public">{option("Public", facets.visibility.public)}</option>
-          <option value="private">{option("Private", facets.visibility.private)}</option>
-        </select>
-        <select name="kind" aria-label="Kind" defaultValue={query.kind} onChange={() => apply()} className={CONTROL}>
-          <option value="all">All kinds</option>
-          <option value="app">{option("Apps", facets.kind.app)}</option>
-          <option value="library">{option("Libraries", facets.kind.library)}</option>
-          {(facets.kind.tool > 0 || query.kind === "tool") && <option value="tool">{option("Tools", facets.kind.tool)}</option>}
-          {(facets.kind.docs > 0 || query.kind === "docs") && <option value="docs">{option("Docs", facets.kind.docs)}</option>}
-          {(facets.kind.other > 0 || query.kind === "other") && <option value="other">{option("Other", facets.kind.other)}</option>}
-        </select>
+        <SelectField
+          key={`visibility-${query.visibility}`}
+          name="visibility"
+          aria-label="Visibility"
+          defaultValue={query.visibility}
+          afterChange={() => apply()}
+          className={FILTER}
+          options={[
+            { value: "all", label: "All visibility" },
+            { value: "public", label: option("Public", facets.visibility.public) },
+            { value: "private", label: option("Private", facets.visibility.private) },
+          ]}
+        />
+        <SelectField
+          key={`kind-${query.kind}`}
+          name="kind"
+          aria-label="Kind"
+          defaultValue={query.kind}
+          afterChange={() => apply()}
+          className={FILTER}
+          options={[
+            { value: "all", label: "All kinds" },
+            { value: "app", label: option("Apps", facets.kind.app) },
+            { value: "library", label: option("Libraries", facets.kind.library) },
+            ...(facets.kind.tool > 0 || query.kind === "tool" ? [{ value: "tool", label: option("Tools", facets.kind.tool) }] : []),
+            ...(facets.kind.docs > 0 || query.kind === "docs" ? [{ value: "docs", label: option("Docs", facets.kind.docs) }] : []),
+            ...(facets.kind.other > 0 || query.kind === "other" ? [{ value: "other", label: option("Other", facets.kind.other) }] : []),
+          ]}
+        />
         {(facets.languages.length > 0 || query.language) && (
-          <select name="language" aria-label="Language" defaultValue={query.language ?? ""} onChange={() => apply()} className={CONTROL}>
-            <option value="">Any language</option>
-            {facets.languages.map((language) => (
-              <option key={language.name} value={language.name}>
-                {option(language.name, language.count)}
-              </option>
-            ))}
-          </select>
+          <SelectField
+            key={`language-${query.language ?? ""}`}
+            name="language"
+            aria-label="Language"
+            defaultValue={query.language ?? ""}
+            afterChange={() => apply()}
+            className={FILTER}
+            options={[
+              { value: "", label: "Any language" },
+              ...facets.languages.map((language) => ({ value: language.name, label: option(language.name, language.count) })),
+            ]}
+          />
         )}
         {(facets.archived > 0 || query.archived !== "hide") && (
-          <select name="archived" aria-label="Archived" defaultValue={query.archived} onChange={() => apply()} className={CONTROL}>
-            <option value="hide">Without archived</option>
-            <option value="include">With archived</option>
-            <option value="only">{option("Only archived", facets.archived)}</option>
-          </select>
+          <SelectField
+            key={`archived-${query.archived}`}
+            name="archived"
+            aria-label="Archived"
+            defaultValue={query.archived}
+            afterChange={() => apply()}
+            className={FILTER}
+            options={[
+              { value: "hide", label: "Without archived" },
+              { value: "include", label: "With archived" },
+              { value: "only", label: option("Only archived", facets.archived) },
+            ]}
+          />
         )}
         {member && (
           <label className={`${CONTROL} flex cursor-pointer items-center gap-2 select-none`}>
@@ -414,13 +445,18 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
         )}
         <div className="ml-auto flex items-center gap-2">
           {/* Part of the filters' form, beside the view it orders. */}
-          <select form="project-filters" name="sort" aria-label="Sort" defaultValue={query.sort} onChange={() => apply()} className={`${CONTROL} h-8`}>
-            {SORTS.map((sort) => (
-              <option key={sort.value} value={sort.value}>
-                {sort.label}
-              </option>
-            ))}
-          </select>
+          <SelectField
+            key={`sort-${query.sort}`}
+            form="project-filters"
+            name="sort"
+            aria-label="Sort"
+            defaultValue={query.sort}
+            afterChange={() => apply()}
+            size="sm"
+            className={FILTER}
+            align="end"
+            options={SORTS.map((sort) => ({ value: sort.value, label: sort.label }))}
+          />
           <nav aria-label="View" className="flex items-center gap-0.5 rounded-lg border border-line bg-bg p-0.5">
             {(
               [

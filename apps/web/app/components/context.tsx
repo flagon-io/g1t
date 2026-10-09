@@ -183,9 +183,9 @@ function Candidate({ memory, action }: { memory: Memory; action: string }) {
           {(memory.seen ?? 1) > 1 && <span>seen {memory.seen} times</span>}
           {memory.confidence != null && <span>{Math.round(memory.confidence * 100)}% sure</span>}
         </div>
-        <p className="mt-1.5 text-sm whitespace-pre-wrap">{memory.text}</p>
+        <p className="mt-1.5 text-sm whitespace-pre-wrap wrap-break-word">{memory.text}</p>
         {memory.source.evidence && (
-          <p className="mt-1 border-l-2 border-line pl-2 text-xs text-muted whitespace-pre-wrap">{memory.source.evidence}</p>
+          <p className="mt-1 border-l-2 border-line pl-2 text-xs text-muted whitespace-pre-wrap wrap-break-word">{memory.source.evidence}</p>
         )}
         <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-faint">
           <CandidateSource memory={memory} />

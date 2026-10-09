@@ -61,7 +61,7 @@ Free compute attracts people who would mine cryptocurrency with it, and stolen c
 
 ## Not built yet
 
-We'd rather tell you than have you assume. **Two-factor authentication and single sign-on are not available yet.** Until they are, use a long, unique password, and review your access tokens and authorized apps in your settings from time to time.
+We'd rather tell you than have you assume. **Single sign-on is not available yet.** Until it is, turn on [two-factor authentication](/settings/two-factor), and review your access tokens and authorized apps in your settings from time to time.
 
 ## Responsible disclosure
 
@@ -100,7 +100,15 @@ What you found, where, how to reproduce it, and what an attacker could do with i
 - We'll aim to fix critical problems within 30 days.
 - We'll credit you when we publish the fix, if you'd like.
 
-g1t doesn't have a paid bug bounty yet.
+### No bug bounty, yet
+
+g1t doesn't pay bug bounties right now. We want to, and we will once g1t is making money to pay them from. Until then, we can offer the credit above and our thanks.
+
+### Fixing it yourself
+
+g1t is open source, so you can also send the fix. [Its source](/flagon-io/g1t) is on g1t, and changes land through pull requests like anyone else's: see [contributing](/flagon-io/g1t/blob/main/CONTRIBUTING.md).
+
+For a vulnerability that isn't fixed yet, **write to us first**: a public pull request shows the problem to everyone before the fix is live. We'll agree with you when to open it. Hardening that doesn't point at an open hole, such as stricter headers, tighter checks or better tests, is welcome as a pull request straight away.
 
 ### Safe harbour
 

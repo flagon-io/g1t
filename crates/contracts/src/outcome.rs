@@ -1,4 +1,5 @@
 use serde::de::DeserializeOwned;
+use serde::de::value::UnitDeserializer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,7 +118,48 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Outcome<T> {
         match (wire.ok, wire.value, wire.error) {
             (true, Some(value), _) => Ok(Outcome::Ok(value)),
             (false, _, Some(error)) => Ok(Outcome::Fail(error)),
+            // `"value": null`, or no value: what `Ok(None)` and `Ok(())` are
+            // written as. `Option<Option<T>>` reads a null as the outer
+            // `None`, so the value is read from nothing instead: `None` for
+            // an `Option`, `()` for a unit, and still malformed for a type
+            // that needs a value.
+            (true, None, _) => T::deserialize(UnitDeserializer::<D::Error>::new())
+                .map(Outcome::Ok)
+                .map_err(|_| serde::de::Error::custom("malformed outcome: ok without a value")),
             _ => Err(serde::de::Error::custom("malformed outcome")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn round_trip<T: Serialize + DeserializeOwned>(outcome: &Outcome<T>) -> Result<Outcome<T>, String> {
+        // As a service replies (`g1t_kit::reply`) and its caller reads it
+        // (`g1t_kit::call`).
+        let wire = serde_json::to_string(outcome).map_err(|e| e.to_string())?;
+        serde_json::from_str(&wire).map_err(|e| e.to_string())
+    }
+
+    /// A cache miss is `Ok(None)`, written `{"ok":true,"value":null}`. It
+    /// was read back as malformed, so every miss of the toolkit's cache
+    /// (sccache's first lookup, `sccache/.sccache_check`) was a 500.
+    #[test]
+    fn ok_none_and_ok_unit_cross_the_wire() {
+        assert_eq!(serde_json::to_string(&Outcome::<Option<u8>>::Ok(None)).unwrap(), r#"{"ok":true,"value":null}"#);
+        assert!(matches!(round_trip(&Outcome::<Option<u8>>::Ok(None)), Ok(Outcome::Ok(None))));
+        assert!(matches!(round_trip(&Outcome::Ok(Some(7u8))), Ok(Outcome::Ok(Some(7)))));
+        assert!(matches!(round_trip(&Outcome::Ok(())), Ok(Outcome::Ok(()))));
+        assert!(matches!(serde_json::from_str::<Outcome<Option<u8>>>(r#"{"ok":true}"#), Ok(Outcome::Ok(None))));
+        let failed = round_trip(&Outcome::<Option<u8>>::fail(FailureCode::Unauthenticated, "no"));
+        assert!(matches!(failed, Ok(Outcome::Fail(Failure { code: FailureCode::Unauthenticated, .. }))));
+    }
+
+    #[test]
+    fn an_ok_without_the_value_it_needs_is_still_malformed() {
+        assert!(serde_json::from_str::<Outcome<u8>>(r#"{"ok":true,"value":null}"#).is_err());
+        assert!(serde_json::from_str::<Outcome<String>>(r#"{"ok":true}"#).is_err());
+        assert!(serde_json::from_str::<Outcome<u8>>(r#"{"ok":false}"#).is_err());
     }
 }

@@ -25,6 +25,7 @@ mod cards;
 mod closing;
 mod compute;
 mod costs;
+mod cycle;
 mod margin;
 mod platform;
 mod pricing;
@@ -867,6 +868,8 @@ impl Billing {
             "plan" => format!("Planning for {}", run.repo),
             "review" => format!("Review of {}#{}", run.repo, run.number),
             "update" => format!("Catching up {}#{}", run.repo, run.number),
+            "reply" => reply_label(&run.repo),
+            "session" => session_label(&run.repo),
             _ => format!("Work on {}#{}", run.repo, run.number),
         };
         description.push_str(&terms_note);
@@ -888,6 +891,26 @@ impl Billing {
         self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
         self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
         Ok(Outcome::Ok(true))
+    }
+}
+
+/// A workspace agent's chat reply, as its ledger line reads. The agents
+/// service bills a reply under `<workspace>/@<handle>` (no repository has an
+/// `@` in its name), so the line names the agent, not a project.
+fn reply_label(repo: &str) -> String {
+    match repo.split_once("/@") {
+        Some((workspace, handle)) => format!("Chat reply by @{handle} in {workspace}"),
+        None => format!("Chat reply in {repo}"),
+    }
+}
+
+/// A workspace agent's session (a piece of work it spun off, a routine's
+/// run, or a colleague's help with one), billed under the agent whose
+/// budget pays for it.
+fn session_label(repo: &str) -> String {
+    match repo.split_once("/@") {
+        Some((workspace, handle)) => format!("Agent session for @{handle} in {workspace}"),
+        None => format!("Agent session in {repo}"),
     }
 }
 
@@ -1613,6 +1636,12 @@ mod tests {
         assert!(row("('card_fee_percent'").contains("29000"));
         assert!(row("('card_fee_fixed'").contains("300000"));
         assert!(row("('card_fee', 'on'").contains("'on'"));
+    }
+
+    #[test]
+    fn a_chat_reply_is_labelled_by_its_agent() {
+        assert_eq!(reply_label("acme/@ship"), "Chat reply by @ship in acme");
+        assert_eq!(reply_label("acme/web"), "Chat reply in acme/web");
     }
 
     #[test]

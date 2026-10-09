@@ -124,6 +124,9 @@ pub enum Op {
     ListWorkspaceInvites,
     InviteMember,
     RevokeWorkspaceInvite,
+    ListInvitations,
+    AcceptInvitation,
+    DeclineInvitation,
     ListRepos,
     GetRepo,
     CreateRepo,
@@ -687,7 +690,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 325] = [
+    pub const ALL: [Op; 328] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -709,6 +712,9 @@ impl Op {
         Op::ListWorkspaceInvites,
         Op::InviteMember,
         Op::RevokeWorkspaceInvite,
+        Op::ListInvitations,
+        Op::AcceptInvitation,
+        Op::DeclineInvitation,
         Op::ListRepos,
         Op::GetRepo,
         Op::CreateRepo,
@@ -1043,6 +1049,9 @@ impl Op {
             Op::ListWorkspaceInvites => "list_workspace_invites",
             Op::InviteMember => "invite_member",
             Op::RevokeWorkspaceInvite => "revoke_workspace_invite",
+            Op::ListInvitations => "list_invitations",
+            Op::AcceptInvitation => "accept_invitation",
+            Op::DeclineInvitation => "decline_invitation",
             Op::ListRepos => "list_repos",
             Op::GetRepo => "get_repo",
             Op::CreateRepo => "create_repo",
@@ -1240,7 +1249,7 @@ impl Op {
                 "Add an email address to your account. g1t emails it a link to confirm it; until then it cannot be primary and does not sign you in. Adding an address you added before and have not confirmed sends the link again. An address another account has confirmed cannot be added. An account has at most 10. Needs your account `password`; your confirmed addresses are told. People only."
             }
             Op::ConfirmEmail => {
-                "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also joins the workspace its invite named, when the invite still applies: the answer's `joined` names it, or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only."
+                "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also invites it to the workspace its invite named, when the invite still applies: the answer's `invited_to` names it, and the invitation waits for you to accept or decline it (accept_invitation), or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only."
             }
             Op::RemoveEmail => {
                 "Remove an email address from your account. Never your primary address (make another primary first) and never your last confirmed one. Needs your account `password`; every confirmed address, the removed one included, is told. People only."
@@ -1249,10 +1258,10 @@ impl Op {
                 "Change what your addresses do; only the fields given change. `primary` is a confirmed address to make primary: account mail and password resets go there. `backup` is a confirmed address that also gets security notices, or an empty string for the primary only. Changing either needs your account `password`, and every confirmed address is told. `private_email` keeps your address off commits g1t makes for you (merges and changes made on the web, and agents' commits for you), which use your noreply address instead; `block_private_pushes` refuses pushes whose commits carry one of your addresses while it is private. People only."
             }
             Op::ListInvites => {
-                "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you; `status` is pending, redeemed, expired or revoked."
+                "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you. `status` is `pending`; `awaiting_confirmation` (used to make an account that has not confirmed its address yet); `awaiting_answer` (used to make an account that has yet to accept or decline the workspace it was invited to); `redeemed`; `declined` (its person declined the workspace); `expired`; or `revoked`. An invite that brings someone into a workspace names it in `workspace`, with the `role` it joins with and, once known, the account it is for in `invitee`."
             }
             Op::CreateInvite => {
-                "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. It uses one of your invites, or with `workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites."
+                "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. With `workspace`, the new account is brought into that workspace: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. That must be a workspace you own on the g1t plan; a free workspace is refused with `payment_required` (402). Without `workspace`, the new account gets a free workspace of its own. It uses one of your invites, or with `charge_workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites."
             }
             Op::RevokeInvite => {
                 "Revoke a pending invite you made, or one made for a workspace you own. It stops working at once, and the invite comes back to whoever it was charged to."
@@ -1261,9 +1270,18 @@ impl Op {
                 "The invites made for a workspace, newest first, with each pending one's `code`. Owners only."
             }
             Op::InviteMember => {
-                "Invite an email address into a workspace. It always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, accepting makes the account and joins the workspace in one step, and uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing, and they join when they accept. To add someone by username at once, use the workspace's People page. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then."
+                "Invite someone into a workspace, by `username` or by `email`. Nobody joins without saying yes: they get an invitation to accept or decline, and join with `role` (`member` unless you give `owner`) when they accept. By `username`, the account gets the invitation in its inbox and by email, and it costs nothing. By `email`, it always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, the link makes the account, which is invited once it confirms its address; while g1t is invite-only that uses one of the workspace's granted invites, or else one of yours, and once anyone can sign up it costs nothing. With one, it costs nothing. Refused with `409` when the person is already a member or already has a pending invitation to the workspace. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then."
             }
             Op::RevokeWorkspaceInvite => "Revoke a workspace's pending invite. Owners only.",
+            Op::ListInvitations => {
+                "The invitations to workspaces waiting for your answer, newest first: each one's `id`, the `workspace` (`slug`, `name`, `avatar`), the `role` accepting gives (`member` or `owner`), who sent it (`invited_by`, null when g1t staff did), and when it was made and when it expires. Expired, revoked and answered ones are left out. Accept or decline each by its `id`. People only; an agent's or a workspace's token gets an empty list."
+            }
+            Op::AcceptInvitation => {
+                "Accept an invitation to a workspace sent to you. You join it at once with the role it names. Returns the workspace's slug in `workspace`. Refused with `404` when you have no open invitation with that id (it may have been answered, revoked or expired), with `403` until you confirm your email address or when your account does not meet what the workspace asks of its members, such as two-factor authentication, and with `payment_required` (402) while the workspace is free: it can add no one until it starts the g1t plan, and the invitation stays open until then. People only."
+            }
+            Op::DeclineInvitation => {
+                "Decline an invitation to a workspace sent to you. Whoever sent it is told in their inbox, and the workspace's owners can invite you again. People only."
+            }
             Op::DeleteWorkspace => {
                 "Delete a workspace and everything in it. Owners only, signed in as a person, and confirm must be the workspace's slug. Billing must be able to settle it: no unpaid invoice, no prepaid credit left, and no usage this month still being metered; what it owes is charged to its card at once and its plan ends. Its repositories, projects and apps go with it at once, nobody can reach it, and its access tokens stop working. It is kept for 30 days, when g1t's support can restore it as it was; then it is purged, with its webhooks, integrations and workspace secrets. Its statements, invoices and audit log are kept. The slug is never given to another workspace; the person whose username it is may create it again once it is purged. Some workspaces, such as Flagon's, can never be deleted."
             }
@@ -1274,7 +1292,7 @@ impl Op {
                 "Change a workspace's display name and description, what every member gets on each of its repositories (base_permission: none, read, write or admin), who may create its teams (team_creation: members or owners), its member privileges, and whether it requires two-factor authentication. The member privileges are: members_can_create_public_repositories and members_can_create_private_repositories (who may create each kind; owners always can), members_can_change_repo_visibility (members with the Admin role on a repository may make it public or private), members_can_delete_repositories (they may delete or transfer it) and members_can_invite_outside_collaborators (they may give a role to someone outside the workspace). two_factor_requirement_enabled true holds every member and outside collaborator without two-factor authentication out of the workspace until they turn it on; you need it on yourself first. Only the fields given are changed; give at least one. An empty name falls back to the slug, which this never changes (that is a rename, on Settings); an empty description clears it. Owners only, signed in as a person. Returns the workspace as it is now."
             }
             Op::ListMembers => {
-                "A workspace's members, owners first, then by username. Each has their `username`, `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only."
+                "A workspace's members, owners first, then by username. Each has their `username`, `display_username` (the username as they wrote it), `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only."
             }
             Op::UpdateMember => {
                 "Change a member's role in a workspace: `role` (`owner` or `member`) and the roles they hold besides it (`org_roles`, a list of `billing_manager` and `security_manager`, which replaces the one they have). Only the fields given are changed. A billing manager manages the workspace's billing as an owner does, and gets nothing on repositories from it; a security manager reads every repository and sees and manages its security alerts and security settings. Refused with `409` when it would leave the workspace without an owner. Owners only, signed in as a person. Returns the member."
@@ -1366,7 +1384,7 @@ impl Op {
                 "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it. Filter by state, by a label's name, or by a milestone's number."
             }
             Op::GetIssue => {
-                "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried."
+                "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`."
             }
             Op::CreateIssue => {
                 "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request. labels are the repository's labels by name; a name it does not have yet is created when you have the Triage role or higher, and refused otherwise. milestone, a milestone's number, needs the Triage role."
@@ -1449,7 +1467,7 @@ impl Op {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed. Filter by a label's name, a milestone's number, or base, the branch they merge into."
             }
             Op::GetPullRequest => {
-                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them)."
+                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them). A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. An agent's review also has `advisory: true`: its `verdict` (none, for a review that only comments) is shown but never counts toward required approvals or code owners, and never blocks a merge."
             }
             Op::CreatePullRequest => {
                 "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
@@ -1848,6 +1866,10 @@ impl Op {
                     },
                     "workspace": {
                         "type": "string",
+                        "description": "The workspace the new account is invited to, by slug. Once it confirms its address it gets an invitation to join as a member, and no workspace of its own. One you own, on the g1t plan.",
+                    },
+                    "charge_workspace": {
+                        "type": "string",
                         "description": "Use one of the invites g1t granted this workspace instead of yours, by slug. Owners only.",
                     },
                 }),
@@ -1861,9 +1883,25 @@ impl Op {
             Op::InviteMember => object(
                 json!({
                     "workspace": workspace_schema(),
-                    "email": { "type": "string", "description": "The address to invite." },
+                    "username": {
+                        "type": "string",
+                        "description": "A g1t username to invite. Give this or email.",
+                    },
+                    "email": { "type": "string", "description": "An address to invite. Give this or username." },
+                    "role": {
+                        "type": "string",
+                        "enum": ["member", "owner"],
+                        "description": "The role they join with when they accept. member when left out.",
+                    },
                 }),
-                &["workspace", "email"],
+                &["workspace"],
+            ),
+            Op::ListInvitations => object(json!({}), &[]),
+            Op::AcceptInvitation | Op::DeclineInvitation => object(
+                json!({
+                    "id": { "type": "string", "description": "The invitation's id, from list_invitations." },
+                }),
+                &["id"],
             ),
             Op::RevokeWorkspaceInvite => object(
                 json!({
@@ -3344,6 +3382,9 @@ impl Op {
                 | Op::ListWorkspaceInvites
                 | Op::InviteMember
                 | Op::RevokeWorkspaceInvite
+                | Op::ListInvitations
+                | Op::AcceptInvitation
+                | Op::DeclineInvitation
                 | Op::ListDeletedRepos
                 | Op::SearchContext
                 | Op::GetEntity
@@ -3659,7 +3700,8 @@ impl Op {
                     &json!({
                         "user": actor(),
                         "email": optional_text(input, "email"),
-                        "workspace": optional_text(input, "workspace"),
+                        "workspace": optional_text(input, "charge_workspace"),
+                        "join": optional_text(input, "workspace"),
                         "surface": services.audit.surface,
                     }),
                 )
@@ -3672,15 +3714,46 @@ impl Op {
                 pass(identity, "workspace_invites", &json!({ "slug": workspace(), "viewer": viewer })).await
             }
             Op::InviteMember => {
+                let role = optional_text(input, "role");
+                if role.as_deref().is_some_and(|role| role != "member" && role != "owner") {
+                    return failed(FailureCode::Invalid, "role is member or owner.");
+                }
                 pass(
                     identity,
                     "invite_member",
                     &json!({
                         "actor": actor(),
                         "slug": workspace(),
-                        "email": text(input, "email"),
+                        "email": optional_text(input, "email").unwrap_or_default(),
+                        "username": optional_text(input, "username"),
+                        "role": role,
                         "surface": services.audit.surface,
                     }),
+                )
+                .await
+            }
+            Op::ListInvitations => {
+                let waiting: Vec<g1t_contracts::identity::WorkspaceInvitation> =
+                    g1t_kit::call(identity, "list_invitations", &json!({ "user": actor() })).await?;
+                ok(&waiting)
+            }
+            Op::AcceptInvitation => {
+                let joined: Outcome<String> = call(
+                    identity,
+                    "accept_invitation",
+                    &json!({ "user": actor(), "id": text(input, "id"), "surface": services.audit.surface }),
+                )
+                .await?;
+                match joined {
+                    Outcome::Ok(slug) => ok(&json!({ "workspace": slug })),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
+            }
+            Op::DeclineInvitation => {
+                pass(
+                    identity,
+                    "decline_invitation",
+                    &json!({ "user": actor(), "id": text(input, "id"), "surface": services.audit.surface }),
                 )
                 .await
             }
@@ -4637,6 +4710,7 @@ impl Op {
                             .unwrap_or_else(|| if g1t_contracts::rules::is_agent(&user) { "agent".into() } else { user.username.clone() }),
                         runtime: Runtime::External,
                         base: optional_text(input, "base"),
+                        draft: input.get("draft").and_then(|value| value.as_bool()).unwrap_or(false),
                     },
                 )
                 .await?;

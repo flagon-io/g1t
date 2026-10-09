@@ -31,7 +31,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     added,
     line: confirmedLine(done),
     lapsed: Boolean(done.inviteLapsed),
-    to: afterConfirming("/", done.joined),
+    to: afterConfirming("/", done.joined, done.invitedTo),
     signedIn: viewer != null,
   };
 }

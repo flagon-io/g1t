@@ -12,6 +12,7 @@ import {
   groupBuilds,
   hasPayload,
   isFiltered,
+  isNewestStatus,
   isPageBuild,
   orderEnvironments,
   pageRange,
@@ -194,4 +195,20 @@ test("words for states, sources, environments and pages", () => {
   assert.equal(hasPayload({}), false);
   assert.equal(hasPayload({ region: "wnam" }), true);
   assert.equal(hasPayload(null), false);
+});
+
+test("only a deployment's newest status can still be under way", () => {
+  const statuses = [
+    { created_at: "2026-10-08T10:00:00.000Z" }, // Deploying, building
+    { created_at: "2026-10-08T10:02:00.000Z" }, // Deployed
+  ];
+  assert.equal(isNewestStatus(statuses, 0), false);
+  assert.equal(isNewestStatus(statuses, 1), true);
+  // Listed out of order: the newest is still the latest written.
+  assert.equal(isNewestStatus([...statuses].reverse(), 0), true);
+  // Written in the same moment: the last listed is the newest.
+  const tied = [{ created_at: "2026-10-08T10:00:00.000Z" }, { created_at: "2026-10-08T10:00:00.000Z" }];
+  assert.equal(isNewestStatus(tied, 0), false);
+  assert.equal(isNewestStatus(tied, 1), true);
+  assert.equal(isNewestStatus([], 0), false);
 });

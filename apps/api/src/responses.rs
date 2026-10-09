@@ -210,6 +210,7 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<g1t_contracts::identity::Invite>(op, sent)
         }
         Op::ListWorkspaceInvites => through::<Vec<g1t_contracts::identity::Invite>>(op, sent),
+        Op::ListInvitations => through::<Vec<g1t_contracts::identity::WorkspaceInvitation>>(op, sent),
         Op::ListNotifications => through::<g1t_contracts::inbox::InboxPage>(op, sent),
         Op::GetNotificationThread | Op::MarkThreadRead | Op::MarkThreadDone | Op::SaveThread | Op::SnoozeThread => {
             through::<g1t_contracts::inbox::InboxThread>(op, sent)
@@ -267,7 +268,9 @@ fn no_route_answers_with_camel_case() {
                 assert!(wire::camel_case_keys(example).is_empty(), "{method} {path}");
                 continue;
             };
-            let sample = sample(op, example);
+            let mut sample = sample(op, example);
+            // Each person gets their chosen case on the way out (people.rs).
+            crate::people::fill(&mut sample, &std::collections::HashMap::new());
             converted += wire::camel_case_keys(&sample).len();
             let sent = wire::snake_case(sample);
             let leaked = wire::camel_case_keys(&sent);

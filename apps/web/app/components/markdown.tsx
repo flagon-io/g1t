@@ -8,15 +8,19 @@ import {
   MessageSquareWarning,
   OctagonAlert,
 } from "lucide-react";
+import type { Root } from "hast";
+import type { Components } from "react-markdown";
 import { type ReactNode, isValidElement, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import { Link } from "react-router";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { Checkbox } from "./ui/checkbox";
+import { WeightedLru } from "../lib/content-cache";
 import { type AlertKind, G1T_MENTION_HREF, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
+import { markdownTree, markdownWeight, renderMarkdownTree } from "../lib/markdown-tree";
+import { imageSource } from "../lib/usercontent";
 import { UserCard } from "./user-card";
 
 /** The text inside a React tree, for anchors and copying. */
@@ -45,6 +49,29 @@ const SCHEMA = {
     code: [...(defaultSchema.attributes?.code ?? []), ["className", /^language-./]],
   },
 };
+
+/**
+ * Parsed markdown, by repository and text: parsing and the plugins are
+ * nine tenths of rendering a README, and a page's markdown is rendered
+ * again on every view (and on every revalidation in the browser). The tree
+ * depends only on the text and the repository its references point into
+ * (lib/markdown-tree.ts). A tree takes about 20 bytes a character of its
+ * text, so 400,000 characters of markdown, about 8 MB, per
+ * isolate or tab.
+ */
+const trees = new WeightedLru<{ tree: Root; weight: number }>(400_000, (entry) => entry.weight);
+
+function treeOf(source: string, repo: MarkdownRepo | undefined): Root {
+  const key = `${repo ? `${repo.namespace}/${repo.name}` : ""}\n${source}`;
+  const kept = trees.get(key);
+  if (kept) return kept.tree;
+  const tree = markdownTree(source, {
+    remarkPlugins: [remarkGfm],
+    rehypePlugins: [rehypeRaw, [rehypeSanitize, SCHEMA], rehypeAlerts, [rehypeReferences, { repo }]],
+  });
+  trees.set(key, { tree, weight: markdownWeight(source) });
+  return tree;
+}
 
 const ALERT: Record<AlertKind, { title: string; icon: ReactNode; tone: string }> = {
   note: { title: "Note", icon: <Info size={15} />, tone: "border-info/60 [&_.alert-title]:text-info" },
@@ -124,7 +151,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
             : code}
         </code>
       </pre>
-      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {language && <span className="font-mono text-[0.6875rem] text-faint">{language}</span>}
         <button
           type="button"
@@ -160,99 +187,108 @@ export function Markdown({
   source,
   repo,
   base,
+  rawBase,
 }: {
   source: string;
   /** The repository the text belongs to, for its references. */
   repo?: MarkdownRepo;
   /** Where relative links point, e.g. `/acme/web/blob/main/docs` for a file's own folder. */
   base?: string;
+  /**
+   * Where relative images point: the same folder's raw files, e.g.
+   * `/acme/web/raw/<commit>/docs`, under `/acme/web/raw/<commit>`. An image
+   * path starting with `/` is from the repository's root.
+   */
+  rawBase?: string;
 }) {
   return (
-    <div className="prose">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, SCHEMA], rehypeAlerts, [rehypeReferences, { repo }]]}
-        components={{
-          h1: ({ children }) => <Heading level={1}>{children}</Heading>,
-          h2: ({ children }) => <Heading level={2}>{children}</Heading>,
-          h3: ({ children }) => <Heading level={3}>{children}</Heading>,
-          h4: ({ children }) => <Heading level={4}>{children}</Heading>,
-          a({ href = "", children, node }) {
-            const ref = (node?.properties as { dataRef?: string } | undefined)?.dataRef;
-            if (ref === "mention") {
-              // `@name` may be a person (with a card) or a workspace (none).
-              const name = href === G1T_MENTION_HREF ? "g1t" : href.replace(/^\//, "");
-              return (
-                <UserCard username={name}>
-                  <Link to={href} prefetch="intent" className="font-medium">
-                    {children}
-                  </Link>
-                </UserCard>
-              );
-            }
-            if (ref) {
-              return (
-                <Link
-                  to={href}
-                  prefetch="intent"
-                  className={ref === "commit" ? "font-mono text-[0.9em]" : ref === "mention" ? "font-medium" : ""}
-                >
+    // A long word or address breaks rather than widening the page.
+    <div className="prose wrap-break-word">
+      {renderMarkdownTree(treeOf(source, repo), {
+        h1: ({ children }) => <Heading level={1}>{children}</Heading>,
+        h2: ({ children }) => <Heading level={2}>{children}</Heading>,
+        h3: ({ children }) => <Heading level={3}>{children}</Heading>,
+        h4: ({ children }) => <Heading level={4}>{children}</Heading>,
+        a({ href = "", children, node }) {
+          const ref = (node?.properties as { dataRef?: string } | undefined)?.dataRef;
+          if (ref === "mention") {
+            // `@name` may be a person (with a card) or a workspace (none).
+            const name = href === G1T_MENTION_HREF ? "g1t" : href.replace(/^\//, "");
+            return (
+              <UserCard username={name}>
+                <Link to={href} prefetch="intent" className="font-medium">
                   {children}
                 </Link>
-              );
-            }
-            if (href.startsWith("#")) return <a href={href}>{children}</a>;
-            if (isExternal(href)) {
-              return (
-                <a href={href} rel="noreferrer nofollow ugc" target="_blank">
-                  {children}
-                </a>
-              );
-            }
-            // A link within the site, or relative to the document's folder.
-            const to = href.startsWith("/") || !base ? href : `${base}/${href.replace(/^\.\//, "")}`;
-            return <Link to={to}>{children}</Link>;
-          },
-          blockquote({ children, node }) {
-            const kind = (node?.properties as { dataAlert?: AlertKind } | undefined)?.dataAlert;
-            if (!kind || !ALERT[kind]) return <blockquote>{children}</blockquote>;
-            const alert = ALERT[kind];
-            return (
-              <div className={`markdown-alert border-l-2 py-1 pl-4 ${alert.tone}`}>
-                <p className="alert-title flex items-center gap-2 text-sm font-medium">
-                  {alert.icon}
-                  {alert.title}
-                </p>
-                <div className="mt-1 [&>*+*]:mt-3">{children}</div>
-              </div>
+              </UserCard>
             );
-          },
-          pre({ children }) {
-            const code = Array.isArray(children) ? children[0] : children;
-            if (isValidElement<{ className?: string; children?: ReactNode }>(code)) {
-              const language = /language-([\w+-]+)/.exec(code.props.className ?? "")?.[1] ?? null;
-              return <CodeBlock language={language} code={textOf(code.props.children).replace(/\n$/, "")} />;
-            }
-            return <pre>{children}</pre>;
-          },
-          input({ type, checked, disabled }) {
-            // Task list boxes: shown, not editable.
-            return type === "checkbox" ? (
-              <Checkbox
-                checked={checked === true}
-                disabled={disabled !== false}
-                aria-label={checked ? "Done" : "Not done"}
-                className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
-              />
-            ) : null;
-          },
-          img({ src, alt }) {
-            return <img src={typeof src === "string" ? src : undefined} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
-          },
-        }}
-      >
-        {source}
-      </ReactMarkdown>
+          }
+          if (ref) {
+            return (
+              <Link
+                to={href}
+                prefetch="intent"
+                className={ref === "commit" ? "font-mono text-[0.9em]" : ref === "mention" ? "font-medium" : ""}
+              >
+                {children}
+              </Link>
+            );
+          }
+          if (href.startsWith("#")) return <a href={href}>{children}</a>;
+          if (isExternal(href)) {
+            return (
+              <a href={href} rel="noreferrer nofollow ugc" target="_blank">
+                {children}
+              </a>
+            );
+          }
+          // A link within the site, or relative to the document's folder.
+          const to = href.startsWith("/") || !base ? href : `${base}/${href.replace(/^\.\//, "")}`;
+          return <Link to={to}>{children}</Link>;
+        },
+        blockquote({ children, node }) {
+          const kind = (node?.properties as { dataAlert?: AlertKind } | undefined)?.dataAlert;
+          if (!kind || !ALERT[kind]) return <blockquote>{children}</blockquote>;
+          const alert = ALERT[kind];
+          return (
+            <div className={`markdown-alert border-l-2 py-1 pl-4 ${alert.tone}`}>
+              <p className="alert-title flex items-center gap-2 text-sm font-medium">
+                {alert.icon}
+                {alert.title}
+              </p>
+              <div className="mt-1 [&>*+*]:mt-3">{children}</div>
+            </div>
+          );
+        },
+        pre({ children }) {
+          const code = Array.isArray(children) ? children[0] : children;
+          if (isValidElement<{ className?: string; children?: ReactNode }>(code)) {
+            const language = /language-([\w+-]+)/.exec(code.props.className ?? "")?.[1] ?? null;
+            return <CodeBlock language={language} code={textOf(code.props.children).replace(/\n$/, "")} />;
+          }
+          return <pre>{children}</pre>;
+        },
+        // A wide table scrolls on its own, inside the text, not the page.
+        table: ({ children }) => (
+          <div className="overflow-x-auto">
+            <table className="max-sm:[&_td]:min-w-32 max-sm:[&_th]:whitespace-nowrap">{children}</table>
+          </div>
+        ),
+        input({ type, checked, disabled }) {
+          // Task list boxes: shown, not editable.
+          return type === "checkbox" ? (
+            <Checkbox
+              checked={checked === true}
+              disabled={disabled !== false}
+              aria-label={checked ? "Done" : "Not done"}
+              className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
+            />
+          ) : null;
+        },
+        img({ src, alt }) {
+          const at = typeof src === "string" ? imageSource(src, rawBase) : undefined;
+          return <img src={at} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
+        },
+      } satisfies Components)}
     </div>
   );
 }

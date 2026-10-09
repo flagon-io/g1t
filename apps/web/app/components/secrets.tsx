@@ -196,7 +196,7 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
                 <Link
                   to={`?edit=${row.id}`}
                   aria-label={`Edit ${row.name}`}
-                  className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+                  className="rounded-md p-1.5 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-fg"
                 >
                   <Pencil size={14} />
                 </Link>
@@ -208,7 +208,7 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
                     icon
                     match={{ intent: "delete", id: row.id }}
                     aria-label={`Remove ${row.name}`}
-                    className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+                    className="rounded-md p-1.5 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
                   >
                     <Trash2 size={14} />
                   </SubmitButton>
@@ -243,10 +243,10 @@ function Drawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50" role="dialog" aria-modal="true" aria-label={editing ? "Edit" : "Add"}>
       <Link to="?" aria-label="Close" className="grow" />
-      <Form method="post" className="flex h-full w-full max-w-xl flex-col border-l border-line bg-bg shadow-2xl">
+      <Form method="post" className="flex h-full w-full max-w-xl flex-col border-l border-line bg-bg pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <h3 className="font-semibold">{editing ? `Edit ${row.name}` : "Add a secret or variable"}</h3>
-          <Link to="?" aria-label="Close" className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg">
+          <Link to="?" aria-label="Close" className="flex items-center justify-center rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg max-sm:size-10">
             <X size={16} />
           </Link>
         </div>

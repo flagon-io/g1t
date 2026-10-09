@@ -1,7 +1,8 @@
 import { Check, Copy, LoaderCircle, User } from "lucide-react";
 import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
-import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
+import { Link, type LinkProps, NavLink, useLocation, useNavigation, useRouteLoaderData } from "react-router";
 
+import { usercontentFrom } from "../../lib/addresses";
 import { isWaitingMessage, linkPaths } from "../../lib/compute";
 import { type Submission, isPending } from "../../lib/pending";
 import { Mark } from "../logo";
@@ -278,9 +279,13 @@ export function isSystemName(name: string | null | undefined): boolean {
   return name === "g1t";
 }
 
-/** Where an uploaded avatar is served, from the hash it is stored by. */
-export function avatarUrl(avatar: string): string {
-  return `/avatars/${avatar}`;
+/**
+ * Where an uploaded avatar is served, from the hash it is stored by: the
+ * usercontent origin, or the site's own address (which redirects there)
+ * when it is not known.
+ */
+export function avatarUrl(avatar: string, usercontent = ""): string {
+  return `${usercontent}/avatars/${avatar}`;
 }
 
 /**
@@ -304,6 +309,7 @@ export function Avatar({
   system?: boolean;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  const usercontent = usercontentFrom(useRouteLoaderData("root"));
   // g1t itself wears its own mark: the pixel 1 on a dark square.
   if (system || isSystemName(name)) {
     return (
@@ -332,7 +338,7 @@ export function Avatar({
   if (image && failed !== image) {
     return (
       <img
-        src={avatarUrl(image)}
+        src={avatarUrl(image, usercontent)}
         alt=""
         aria-hidden="true"
         width={size}

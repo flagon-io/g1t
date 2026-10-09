@@ -19,6 +19,7 @@ import type { Route } from "./+types/people";
 import { page } from "../../lib/meta";
 import { Avatar, Button, CopyLine, ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { PersonStatusEmoji, WithPresence } from "../../components/presence";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -38,9 +39,10 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
 import { forgetWorkspace } from "../../lib/workspace-choice";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Select, SelectContent, SelectField, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { inviteLink, inviteState, moreInvitesMailto } from "../../lib/invites";
+import { inviteLink, inviteState, moreInvitesMailto, workspaceInviteCopy } from "../../lib/invites";
+import { registrationMode } from "../../lib/registration.server";
 import { billing, identity } from "../../lib/services.server";
 import { StartPlanToInvite } from "../../components/start-plan";
 import {
@@ -51,6 +53,8 @@ import {
   unwrap,
 } from "../../lib/session.server";
 import { UserCard } from "../../components/user-card";
+import { PeoplePicker } from "../../components/people-picker";
+import { inviteTarget } from "../../lib/people-search";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `People · ${params.owner} · g1t` });
@@ -63,7 +67,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // someone a repository is shared with, gets nothing here.
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
-  const [members, invites, workspace, outside, teams, free] = await Promise.all([
+  const [members, invites, workspace, outside, teams, free, mode] = await Promise.all([
     identity.listMembers(params.owner, viewer),
     owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
     identity.getWorkspace(params.owner),
@@ -73,9 +77,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // A free workspace adds no one until it starts the plan; identity
     // refuses it either way, so a failure here only hides the note.
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
+    // Whether sign-up takes an invite: the invite form says what that means.
+    registrationMode(),
   ]);
   return {
     role,
+    name: workspace?.name?.trim() || params.owner,
+    inviteOnly: mode !== "open",
     free: free.includes(params.owner.toLowerCase()),
     members: unwrap(members),
     invites: invites?.ok ? invites.value : [],
@@ -126,17 +134,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return result.ok ? { based: result.value } : { error: result.error.message, base: true };
   }
   const member = String(form.get("member") ?? "").trim();
-  // An address is invited by email; a username is added at once.
-  if (form.get("action") !== "remove" && member.includes("@")) {
-    const result = await identity.inviteMember(user, params.owner, member);
-    return result.ok ? { invited: result.value.email, outOfInvites: false } : { error: result.error.message, outOfInvites: result.error.code === "limit" };
+  if (form.get("action") === "remove") {
+    const result = await identity.removeMember(user, params.owner, member);
+    return result.ok ? null : { error: result.error.message, converting: false };
   }
-  const result =
-    form.get("action") === "remove"
-      ? await identity.removeMember(user, params.owner, member)
-      : await identity.addMember(user, params.owner, member);
-  if (!result.ok) return { error: result.error.message, converting: form.get("action") === "convert" };
-  return form.get("action") === "convert" ? { converted: member } : null;
+  // Nobody joins without saying yes: a username or an address gets an
+  // invitation to accept or decline, with the role chosen here.
+  const who = inviteTarget(member);
+  if (!who) return { error: "Enter a g1t username or an email address.", outOfInvites: false };
+  const role = form.get("role") === "owner" ? "owner" : "member";
+  const result = await identity.inviteMember(user, params.owner, { ...who, role });
+  if (!result.ok) {
+    return { error: result.error.message, outOfInvites: result.error.code === "limit", converting: form.get("action") === "convert" };
+  }
+  if (form.get("action") === "convert") return { converted: member };
+  return { invited: "email" in who ? who.email : `@${"username" in who ? who.username : member}`, outOfInvites: false };
 }
 
 /** What the base permission means for members, in a sentence. */
@@ -196,7 +208,7 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
           <button
             type="button"
             aria-label={`Manage ${member.username}`}
-            className="rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-fg"
+            className="rounded-md p-1.5 text-faint transition-colors max-sm:p-2.5 hover:bg-raised hover:text-fg"
           >
             <Ellipsis size={16} />
           </button>
@@ -302,14 +314,19 @@ function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boo
 }
 
 export default function WorkspacePeople({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, invites, origin, base, outside, teams, free, me } = loaderData;
+  const { role, members, invites, origin, base, outside, teams, free, me, name, inviteOnly } = loaderData;
   const owner = role === "owner";
+  // The invitation to join this workspace, not an invite to g1t (Settings → Invites).
+  const inviteCopy = workspaceInviteCopy(name, inviteOnly);
   const owners = members.filter((member) => member.role === "owner").length;
   const rowError = (username: string) =>
     actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
   // Waiting to be used, or used by someone still confirming their email:
   // either can be revoked.
-  const pending = invites.filter((invite) => invite.status === "pending" || invite.status === "awaiting_confirmation");
+  // Waiting for an answer to a workspace invitation, too.
+  const pending = invites.filter(
+    (invite) => invite.status === "pending" || invite.status === "awaiting_confirmation" || invite.status === "awaiting_answer",
+  );
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
   const membersTab = (
@@ -317,13 +334,16 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       <ul className="divide-y divide-line rounded-xl border border-line">
         {members.map((member) => (
           <li key={member.username} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <Avatar name={member.username} image={member.avatar} size={28} />
+            <WithPresence person={{ username: member.username }} size={28}>
+              <Avatar name={member.username} image={member.avatar} size={28} />
+            </WithPresence>
             <div className="min-w-0 grow truncate">
               <UserCard username={member.username}>
                 <Link to={`/u/${member.username}`} className="font-mono text-sm hover:text-accent">
                   {member.username}
                 </Link>
               </UserCard>
+              <PersonStatusEmoji person={{ username: member.username }} size={13} className="ml-1.5 align-[-2px]" />
               {member.name && <span className="ml-2 hidden text-sm text-muted sm:inline">{member.name}</span>}
               {(teams[member.username] ?? []).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -363,30 +383,54 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       )}
       {owner && !free && (
         // Empty again once the person is on the list; kept as typed when it failed.
+        <section aria-labelledby="invite-to-workspace" className="mt-6">
+        <h2 id="invite-to-workspace" className="text-sm font-medium">
+          {inviteCopy.heading}
+        </h2>
+        <p className="mt-1 text-xs text-faint">{inviteCopy.hint}</p>
         <Form
           method="post"
           key={`${members.length}:${pending.length}`}
-          className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start"
+          className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start"
         >
           <input type="hidden" name="action" value="add" />
           <div className="grow">
-            <Field
-              label="Add a member"
-              hint="A g1t username joins at once, as a member. An email address gets an invite: without a g1t account, it makes one and joins in one step, using one of your invites."
-            >
-              <Input name="member" required maxLength={254} placeholder="username or name@example.com" />
+            <Field label="Who">
+              <PeoplePicker name="member" placeholder="username, name or name@example.com" />
             </Field>
           </div>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Role</span>
+            <SelectField
+              name="role"
+              defaultValue="member"
+              className="h-auto w-full py-2 sm:w-auto sm:min-w-32"
+              options={[
+                { value: "member", label: "Member" },
+                { value: "owner", label: "Owner" },
+              ]}
+            />
+          </label>
           <div className="sm:pt-[1.625rem]">
-            <SubmitButton match={{ action: "add" }} pending="Adding…">
-              Add
+            <SubmitButton match={{ action: "add" }} pending="Inviting…">
+              Invite
             </SubmitButton>
           </div>
         </Form>
+        {inviteCopy.elsewhere && (
+          <p className="mt-2 text-xs text-faint">
+            {inviteCopy.elsewhere.replace(/Settings → Invites\.$/, "")}
+            <Link to="/settings/invites" className="text-muted underline underline-offset-4 hover:text-fg">
+              Settings → Invites
+            </Link>
+            .
+          </p>
+        )}
+        </section>
       )}
       {actionData && "invited" in actionData && actionData.invited && (
         <p className="text-sm text-muted" role="status">
-          Invite sent to <span className="text-fg">{actionData.invited}</span>.
+          Invitation to join {name} sent to <span className="text-fg">{actionData.invited}</span>. They join once they accept.
         </p>
       )}
       {actionData && "transferred" in actionData && (
@@ -396,7 +440,7 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       )}
       {actionData && "converted" in actionData && (
         <p className="text-sm text-muted" role="status">
-          <span className="font-mono text-fg">{actionData.converted}</span> is now a member of {params.owner}.
+          <span className="font-mono text-fg">{actionData.converted}</span> is invited to join {params.owner} as a member, and joins once they accept.
         </p>
       )}
       {actionData &&
@@ -417,12 +461,24 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
 
       {owner && pending.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-sm font-medium">Pending invites</h2>
+          <h2 className="text-sm font-medium">Pending invitations</h2>
           <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
             {pending.map((invite) => (
               <li key={invite.id} className="space-y-2 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="min-w-0 grow truncate text-sm">{invite.email}</span>
+                  <span className="min-w-0 grow truncate text-sm">
+                    {invite.email ??
+                      (invite.invitee ? (
+                        <UserCard username={invite.invitee}>
+                          <Link to={`/u/${invite.invitee}`} className="font-mono hover:text-accent">
+                            @{invite.invitee}
+                          </Link>
+                        </UserCard>
+                      ) : (
+                        "Anyone with the link"
+                      ))}
+                  </span>
+                  {invite.role === "owner" && <Pill>Owner</Pill>}
                   <Pill>{inviteState(invite).label}</Pill>
                   <Form method="post">
                     <input type="hidden" name="action" value="revoke-invite" />
@@ -433,7 +489,8 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
                   </Form>
                 </div>
                 <p className="text-xs text-faint">
-                  By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} />
+                  By {invite.invitedBy ?? "g1t"} · <TimeAgo at={invite.createdAt} /> · works until{" "}
+                  {new Date(invite.expiresAt).toISOString().slice(0, 10)}
                 </p>
                 {invite.code && <CopyLine text={inviteLink(invite.code, origin)} />}
               </li>
@@ -598,8 +655,8 @@ function OutsideCollaborators({
                   <Form method="post">
                     <input type="hidden" name="action" value="convert" />
                     <input type="hidden" name="member" value={person.username} />
-                    <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Converting…">
-                      Convert to member
+                    <SubmitButton variant="quiet" match={{ action: "convert", member: person.username }} pending="Inviting…">
+                      Invite as a member
                     </SubmitButton>
                   </Form>
                 )}

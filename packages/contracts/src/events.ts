@@ -13,7 +13,7 @@ import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./
 import type { RepoMirror } from "./mirrors";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
-import type { Confidence, Verdict } from "./work";
+import type { AgentRef, Confidence, Verdict } from "./work";
 
 /** What every `package.*` event names. */
 export type PackageEventData = {
@@ -333,6 +333,14 @@ export type EventPayloads = {
     pullId?: string;
     /** Set when the comment is a review. */
     verdict?: Verdict;
+    /**
+     * Set when one of the workspace's agents wrote it, as itself; the
+     * event's actor is then the person it acted for (`actingFor`).
+     */
+    agent?: AgentRef;
+    actingFor?: { id: string; username: string };
+    /** An agent's review: its verdict is advisory and counts toward nothing. */
+    advisory?: boolean;
   };
   /** A comment's text changed; `changes.body.from` is what it said before. */
   "comment.edited": {
@@ -468,6 +476,41 @@ export type EventPayloads = {
     sandbox: string;
     metrics: Record<string, unknown> | null;
   };
+  /**
+   * Docs (services/docs): a page was made. Published with no `repoId`, so
+   * a page (which may be in a private space) never reaches a repository's
+   * timeline or webhooks; `actor` is the user's or agent's id. Readers
+   * check access with the docs service before showing anything of it.
+   */
+  "doc.page.created": DocPageEventData;
+  /**
+   * A page's content changed: at most once per page every ten minutes of
+   * editing (when its history records a version), and for every agent
+   * edit, accepted suggestion and restore. `authors` are member keys
+   * (`user:<id>`, `agent:<id>`) of everyone whose changes are in it.
+   */
+  "doc.page.updated": DocPageEventData & { versionId: string; kind: "edit" | "agent" | "suggestion" | "restore"; authors: string[] };
+  /** A page went to the trash (with every page under it; one event for the page asked about). */
+  "doc.page.archived": DocPageEventData;
+  /**
+   * A page became possibly out of date: a merged pull request or a push to
+   * a repository's default branch changed code it cites. `repoId` is in
+   * `data`, not on the event, for the same reason as above. `owners` are
+   * member keys; an agent that owns the page can update it
+   * (`stalePagesForAgent` in docs.ts).
+   */
+  "doc.page.stale": DocPageEventData & { repoId: string; repo: string; commit: string; pull: number | null; paths: string[]; owners: string[] };
+};
+
+/** What every `doc.page.*` event carries. */
+export type DocPageEventData = {
+  workspace: string;
+  workspaceId: string;
+  pageId: string;
+  spaceId: string;
+  title: string;
+  /** The page's address on the site. */
+  path: string;
 };
 
 export type EventType = keyof EventPayloads;

@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -51,13 +51,17 @@ import { AppShell, Progress, type ShellData, useLeaving } from "./components/she
 import { SiteFooter } from "./components/footer";
 import { SpikeBanner } from "./components/spike-banner";
 import { PolicyNotice } from "./components/policy-notice";
+import { identify } from "./lib/analytics.client";
+import { visitorAsksFirst } from "./lib/analytics-consent";
+import { AnalyticsConsent } from "./components/analytics-consent";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
 import { NotFound } from "./components/not-found";
 import { usesAppShell } from "./lib/chrome";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./components/command-palette";
-import { billing, inbox, projects } from "./lib/services.server";
+import { billing, chat, inbox, projects, workspaceAgents } from "./lib/services.server";
+import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
@@ -66,13 +70,21 @@ import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
 import { RELOADED_KEY, reloadFixes } from "./lib/stale-build";
+import { useNonce } from "./lib/nonce";
+import { LiveNotifications } from "./components/notifications/live-notifications";
 
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
   { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },
-  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+  { rel: "icon", type: "image/png", sizes: "512x512", href: "/icon-512.png" },
+  // Home screens and password managers look for a square, opaque 180px tile;
+  // the "-precomposed" name is served too, for the ones that ask for it.
+  { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+  // Installable: name, icons and colours for "Add to Home Screen" (public/site.webmanifest;
+  // manifest.webmanifest is the same file, kept for installs that already point at it).
+  { rel: "manifest", href: "/site.webmanifest" },
   // The text and headline faces are wanted on every page, so they start
   // loading with the stylesheet; mono waits until something uses it.
   { rel: "preload", href: sansFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
@@ -84,7 +96,8 @@ export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
-  // What sign-up buttons say: Request access while g1t is invite-only.
+  // Whether sign-up takes an invite: the sign-up page says so, and
+  // Settings → Invites offers invites to g1t only then. Cached per isolate.
   const [shell, mode] = await Promise.all([
     // An account still confirming its address sees only the pages that
     // allows (lib/confirm-gate.ts), in the visitor's frame.
@@ -96,10 +109,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
           return bareShell(user, params, chosen);
         })
       : visitorShell(params, context),
-    user ? Promise.resolve(null) : registrationMode(),
+    registrationMode(),
   ]);
   // Where this g1t lives, for clone lines, agent setup and link previews.
-  return { user, shell, inviteOnly: mode !== "open", addresses: addresses() };
+  return {
+    user,
+    shell,
+    inviteOnly: mode !== "open",
+    addresses: addresses(),
+    // Visitors from where the law asks first are asked before analytics runs.
+    analyticsConsent: visitorAsksFirst(request),
+  };
 }
 
 /**
@@ -165,7 +185,7 @@ async function shellFor(
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
     workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
-  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts] = await Promise.all([
+  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread, teamAgents] = await Promise.all([
     // Every project, for the palette and the count; the sidebar lists only
     // the person's pinned and recent ones (lib/pins.ts).
     workspace ? workspaceProjects(workspace.slug, user) : Promise.resolve(null),
@@ -181,6 +201,10 @@ async function shellFor(
     inbox.counts(user.username).catch(() => null),
     // Never kept: opening a project moves it up Recent.
     workspace ? projects.shortcuts(workspace.slug, user).catch(() => null) : Promise.resolve(null),
+    // The rail's Chat badge: never kept, and never waited on for long.
+    workspace ? chatUnreadFor(workspace.slug, user) : Promise.resolve(null),
+    // Home's Recent and the Agents sidebar, on every page: never waited on for long.
+    workspace ? agentsFor(workspace.slug, user) : Promise.resolve(null),
   ]);
   return {
     workspace,
@@ -216,11 +240,70 @@ async function shellFor(
         : null,
     shared,
     inbox: unread,
+    chat: chatUnread,
+    agents: teamAgents,
     // While g1t is free every charge is zero, so usage is shown at cost.
     // Usage at price, the one figure every page shows.
     monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : (usage.value.priceMicros ?? usage.value.spentMicros)) : null,
   };
 }
+
+/** Starred and recent conversations Home's sidebar lists. */
+const SHELL_CONVERSATIONS = 8;
+
+/**
+ * What is unread in chat, for the rail, and the starred and latest
+ * conversations, for Home's sidebar; null when chat is slow to answer or
+ * does not.
+ */
+async function chatUnreadFor(slug: string, user: User): Promise<ShellData["chat"]> {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
+  const read = chat
+    .sidebar(slug, user)
+    .then((result) => {
+      if (!result.ok) return null;
+      const entries = result.value.entries;
+      const latest = [...entries].sort((a, b) => (b.channel.last_message_at ?? "").localeCompare(a.channel.last_message_at ?? ""));
+      return {
+        ...unreadTotals(entries),
+        starred: entries.filter((e) => e.starred).slice(0, SHELL_CONVERSATIONS),
+        recent: latest.slice(0, SHELL_CONVERSATIONS),
+      };
+    })
+    .catch(() => null);
+  return Promise.race([read, timeout]);
+}
+
+/** The workspace's agents, as the shell lists them; null when the agents service is slow or down. */
+async function agentsFor(slug: string, user: User): Promise<ShellData["agents"]> {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
+  const read = workspaceAgents
+    .list(slug, user)
+    .then((result) =>
+      result.ok
+        ? result.value
+            .filter((agent) => !agent.archived_at)
+            .map((agent) => ({
+              id: agent.id,
+              handle: agent.handle,
+              display_name: agent.display_name,
+              avatar: agent.avatar,
+              avatar_seed: agent.avatar_seed,
+              role: agent.role,
+              title: agent.title,
+              team: agent.team,
+              department: agent.department,
+              status: agent.status,
+              builtin: agent.builtin === true,
+            }))
+        : null,
+    )
+    .catch(() => null);
+  return Promise.race([read, timeout]);
+}
+
+/** The longest the rail's Chat badge holds up a page. */
+const CHAT_BADGE_WAIT_MS = 300;
 
 /**
  * How long the sidebar's workspace answers are kept: as long as someone's
@@ -270,7 +353,7 @@ const PUBLIC_COMMANDS: PaletteCommand[] = [
   { label: "Sign up", to: "/register", icon: <Plus size={15} /> },
 ];
 
-/** Sign up, or Request access while g1t is invite-only. */
+/** Sign up: the sign-up page says whether it takes an invite. */
 function SignUpButton() {
   const copy = useSignUpCopy();
   return <ButtonLink to="/register">{copy.primary}</ButtonLink>;
@@ -314,7 +397,7 @@ function Header({ user }: { user: User | null | undefined }) {
         <CommandPalette
           open={palette}
           onOpenChange={setPalette}
-          commands={user ? [{ label: "Mission control", to: "/", icon: <LayoutDashboard size={15} /> }, ...PUBLIC_COMMANDS.slice(0, 4)] : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))}
+          commands={user ? [{ label: "Home", to: "/", icon: <LayoutDashboard size={15} /> }, ...PUBLIC_COMMANDS.slice(0, 4)] : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))}
           repo={repo}
         />
         <nav aria-label="Main" className="hidden items-center gap-0.5 sm:flex">
@@ -463,6 +546,7 @@ function Header({ user }: { user: User | null | undefined }) {
 let lastRoot: Awaited<ReturnType<typeof loader>> | undefined;
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const nonce = useNonce();
   // Undefined when the root loader itself failed.
   const loaded = useRouteLoaderData<typeof loader>("root");
   const inBrowser = typeof document !== "undefined";
@@ -512,13 +596,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0f0f11" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* The stylesheet before everything React Router preloads, so a slow
             connection paints sooner (docs/research/css-shipping.md). */}
         <link rel="stylesheet" href={appCss} precedence="default" />
+        {root?.analyticsConsent && <meta name="g1t-analytics" content="consent" />}
         <Meta />
-        <Links />
+        <Links nonce={nonce} />
       </head>
       <body className="flex min-h-screen flex-col">
         {/* The first stop for the keyboard: past the menus, to the page. */}
@@ -543,14 +630,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <SiteFooter user={user} />
           </>
         )}
-        <ScrollRestoration />
-        <Scripts />
+        {/* Live notifications for the signed-in: the feed socket, toasts, the tab's count (components/notifications). */}
+        {user && !awaitsConfirmation(user) && (
+          <LiveNotifications workspace={root?.shell?.workspace?.slug ?? null} inbox={root?.shell?.inbox?.unread ?? null} />
+        )}
+        <AnalyticsConsent />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );
 }
 
 export default function App() {
+  const userId = useRouteLoaderData<typeof loader>("root")?.user?.id ?? null;
+  // Tell analytics who is signed in, once per change; signing out forgets them.
+  const lastUserId = useRef<string | null>(null);
+  useEffect(() => {
+    identify(userId, lastUserId.current);
+    lastUserId.current = userId;
+  }, [userId]);
   return <Outlet />;
 }
 

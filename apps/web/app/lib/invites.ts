@@ -16,9 +16,13 @@ export function moreInvitesMailto(about?: string): string {
   return `mailto:${INVITES_CONTACT}?subject=${encodeURIComponent(subject)}`;
 }
 
-/** What the sign-up buttons say. While invite-only, nobody can just sign up. */
-export function signUpCopy(inviteOnly: boolean): { primary: string; secondary: string | null } {
-  return inviteOnly ? { primary: "Request access", secondary: "Have an invite?" } : { primary: "Sign up", secondary: null };
+/**
+ * What the sign-up buttons say: Sign up, whether or not registration is
+ * invite-only. Only the sign-up page itself says how to get in (an invite,
+ * or a request for one), so nothing else reads as a waiting room.
+ */
+export function signUpCopy(): { primary: string; secondary: string | null } {
+  return { primary: "Sign up", secondary: null };
 }
 
 /** The /register address that opens on the invite-code field. */
@@ -61,11 +65,75 @@ export function cleanCode(raw: string | null | undefined): string {
   return text.replace(/\s+/g, "").slice(0, 80);
 }
 
+/**
+ * The `proof` an invite email's link carries, tidied: hex, or null for
+ * anything else. Identity decides whether it is the invite's own; this only
+ * keeps junk out of what is passed on and put back into a form.
+ */
+export function cleanProof(raw: string | null | undefined): string | null {
+  const text = (raw ?? "").trim().toLowerCase();
+  return /^[0-9a-f]{16,128}$/.test(text) ? text : null;
+}
+
+/** An invite's page, keeping the email's proof when there is one. */
+export function invitePath(code: string, proof?: string | null): string {
+  const path = `/invite/${encodeURIComponent(code)}`;
+  return proof ? `${path}?proof=${encodeURIComponent(proof)}` : path;
+}
+
+type Proven = {
+  /** The bound address in full, or null for an invite to anyone with the code. */
+  address: string | null;
+  emailProven: boolean;
+  workspace: { name: string } | null;
+  repository: { name: string } | null;
+};
+
+/**
+ * What signing up on an invite's page says about the email address. Opened
+ * from the invite's own email (`emailProven`), the address is confirmed
+ * already, so there is no code to enter; otherwise the address is confirmed
+ * after sign-up, as it always is.
+ */
+export function inviteSignUpCopy(invite: Proven): {
+  /** Under "Create your account". */
+  intro: string;
+  /** Under the email field. */
+  hint: string;
+  /** Said plainly above the form when the address is confirmed already; null otherwise. */
+  confirmed: string | null;
+} {
+  const proven = invite.emailProven && invite.address !== null;
+  const when = proven ? "as soon as you create it" : "as soon as you confirm your email";
+  // A workspace is never joined without saying yes: the new account accepts its invitation.
+  const intro = invite.workspace
+    ? `You can join ${invite.workspace.name} ${when}: accept the invitation then.`
+    : invite.repository
+      ? `You get ${invite.repository.name} ${when}.`
+      : "It takes a minute.";
+  if (proven) {
+    return {
+      intro,
+      hint: "Your invite was sent here, and you opened it from that email, so this address is confirmed already.",
+      confirmed: `${invite.address} is confirmed: you came here from the invite we emailed to it, so there is no code to enter after you sign up.`,
+    };
+  }
+  return {
+    intro,
+    hint: invite.address
+      ? "Your invite was sent here. We email it a code to confirm it before you start."
+      : "We email it a code to confirm it before you start.",
+    confirmed: null,
+  };
+}
+
 type Listed = {
-  status: "pending" | "awaiting_confirmation" | "redeemed" | "expired" | "revoked";
+  status: "pending" | "awaiting_confirmation" | "awaiting_answer" | "redeemed" | "declined" | "expired" | "revoked";
   redeemedBy: string | null;
   email: string | null;
   workspace: string | null;
+  /** The account a workspace invitation is for, by username. */
+  invitee?: string | null;
 };
 
 /** How an invite's state reads in a list. */
@@ -79,8 +147,15 @@ export function inviteState(invite: Listed): { label: string; tone: "pending" | 
         label: invite.redeemedBy ? `@${invite.redeemedBy} is confirming their email` : "Confirming their email",
         tone: "pending",
       };
+    case "awaiting_answer": {
+      // The account is made and confirmed; the workspace waits for its yes or no.
+      const who = invite.redeemedBy ?? invite.invitee;
+      return { label: who ? `Waiting for @${who} to accept` : "Waiting for an answer", tone: "pending" };
+    }
     case "redeemed":
       return { label: invite.redeemedBy ? `Joined as @${invite.redeemedBy}` : "Used", tone: "done" };
+    case "declined":
+      return { label: invite.invitee ? `@${invite.invitee} declined` : "Declined", tone: "dead" };
     case "expired":
       return { label: "Expired", tone: "dead" };
     case "revoked":
@@ -88,10 +163,191 @@ export function inviteState(invite: Listed): { label: string; tone: "pending" | 
   }
 }
 
+type Previewed = {
+  kind: "account" | "workspace";
+  invitedBy: { username: string } | null;
+  workspace: { name: string } | null;
+  repository: { name: string; role: string } | null;
+  hasAccount: boolean;
+};
+
+/**
+ * What an invite's page (/invite/:code) says it is, so nobody mistakes one
+ * kind for the other: the headline, in three parts with the place between
+ * (shown in bold), and the line under it. "@syntaqx invited you to g1t" is
+ * an account and no workspace; "@syntaqx invited you to join Flagon, Inc.
+ * on g1t" is a workspace invitation, which also makes the account of
+ * someone who has none.
+ */
+export function invitePageCopy(
+  invite: Previewed,
+  signedIn: boolean,
+): { before: string; place: string | null; after: string; about: string } {
+  const from = invite.invitedBy ? `@${invite.invitedBy.username}` : "The g1t team";
+  const signingUp = !signedIn && !invite.hasAccount && invite.kind === "account";
+  const g1t = "g1t is one workspace where a team and its agents talk, work and ship";
+  if (invite.workspace) {
+    const name = invite.workspace.name;
+    return {
+      before: `${from} invited you to join `,
+      place: name,
+      after: " on g1t",
+      about: `This is an invitation to join ${name}, which you accept or decline. ${
+        signingUp
+          ? `You do not have a g1t account yet, so it also lets you make one: make it below, then join ${name}.`
+          : `Accepting joins you to ${name}.`
+      }`,
+    };
+  }
+  if (invite.repository) {
+    return {
+      before: `${from} invited you to collaborate on `,
+      place: invite.repository.name,
+      after: "",
+      about: `${g1t}. ${signingUp ? "Make your account below and you get" : "Accepting gives you"} the ${invite.repository.role} role on ${invite.repository.name}.`,
+    };
+  }
+  return {
+    before: `${from} invited you to g1t`,
+    place: null,
+    after: "",
+    about: `${g1t}: chat with people and agents, give agents a job and a budget, and land code through checks that hold. This invite lets you make an account. It does not add you to anyone's workspace: your account starts with a workspace of its own.`,
+  };
+}
+
 /** Who an invite is for, in a list. */
 export function inviteFor(invite: Listed): string {
-  const who = invite.email ?? "Anyone with the link";
-  return invite.workspace ? `${who} · joins ${invite.workspace}` : who;
+  return invite.email ?? (invite.invitee ? `@${invite.invitee}` : "Anyone with the link");
+}
+
+/**
+ * Which of the two invites a listed one is, in words: an invite to g1t
+ * (an account, and no workspace), or an invitation to join a workspace.
+ */
+export function inviteKind(invite: { workspace: string | null }): { kind: "g1t" | "workspace"; label: string } {
+  return invite.workspace
+    ? { kind: "workspace", label: `Invite to join ${invite.workspace}` }
+    : { kind: "g1t", label: "Invite to g1t" };
+}
+
+type Membership = { slug: string; name?: string | null; role: "owner" | "member" };
+
+/** One workspace an own invite can also invite its person to. */
+export type BringInto = { slug: string; name: string };
+
+/**
+ * The workspaces Settings → Invites can also invite the person to, when
+ * "Also invite them to a workspace" is ticked: the ones the viewer owns
+ * that are not on the free plan, which adds no one. None is chosen for
+ * them: the box is off at first, and the list starts on "Choose a
+ * workspace". `note` says why the viewer's current workspace is missing.
+ */
+export function bringIntoChoices(
+  memberships: Membership[],
+  free: string[],
+  current: string | null | undefined,
+): { options: BringInto[]; note: string | null } {
+  const isFree = new Set(free.map((slug) => slug.toLowerCase()));
+  const options = memberships
+    .filter((m) => m.role === "owner" && !isFree.has(m.slug.toLowerCase()))
+    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug }));
+  const here = current?.trim().toLowerCase() || null;
+  let note: string | null = null;
+  const membership = here ? memberships.find((m) => m.slug.toLowerCase() === here) : undefined;
+  if (membership && !options.some((option) => option.slug === here)) {
+    note =
+      membership.role !== "owner"
+        ? `Only the owners of ${membership.slug} can invite people to it.`
+        : `${membership.slug} is on the free plan, so it cannot add people. Start the plan to invite people to it.`;
+  }
+  return { options, note };
+}
+
+/**
+ * What the Settings → Invites form sends to identity. The workspace goes
+ * with it only when "Also invite them to a workspace" (`also_join`) is
+ * ticked: unticked, the invite is to g1t alone, whatever else the form held.
+ */
+export function inviteDraft(form: { get(name: string): unknown }): {
+  email: string | null;
+  workspace: string | null;
+  join?: string;
+  joinRole?: "owner" | "member";
+} {
+  const text = (name: string) => {
+    const value = form.get(name);
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const charge = text("charge");
+  const draft: ReturnType<typeof inviteDraft> = {
+    email: text("email") || null,
+    workspace: charge && charge !== "mine" ? charge : null,
+  };
+  const join = text("join");
+  if (text("also_join") === "on" && join) {
+    draft.join = join;
+    draft.joinRole = text("join_role") === "owner" ? "owner" : "member";
+  }
+  return draft;
+}
+
+/**
+ * What Settings → Invites shows. Invites to g1t exist only while sign-up
+ * takes one: then the page has the form. Once anyone can sign up, it
+ * keeps only the list of invites already made, and the settings menu
+ * lists the page only when there are some.
+ */
+export function invitesPage(mode: "invite" | "open" | null | undefined, made: number): { form: boolean; listed: boolean } {
+  const inviteOnly = mode !== "open";
+  return { form: inviteOnly, listed: inviteOnly || made > 0 };
+}
+
+/** The words for Settings → Invites, the invite to g1t. */
+export const G1T_INVITES = {
+  /** The page's heading. */
+  heading: "Invite people to g1t",
+  /** Its name in the settings menu and the account menu. */
+  nav: "Invites to g1t",
+  about:
+    "An invite to g1t lets one person make an account. It does not add them to any workspace: their account starts with a workspace of its own.",
+  /** In place of the form once anyone can sign up. */
+  open: "Anyone can sign up for g1t now, so there are no invites to make here. Invitations to a workspace live on each workspace's People page.",
+  /** The off-by-default box that also invites the person to a workspace. */
+  alsoJoin: "Also invite them to a workspace",
+  alsoJoinHint:
+    "Once their account is made, they get an invitation to the workspace to accept or decline. Left off, the invite is to g1t only.",
+  /** Where the other kind of invite lives. */
+  elsewhere: "To bring someone into a workspace, invite them from that workspace's People page",
+} as const;
+
+/**
+ * The words for a workspace's People page, the invitation to join it.
+ * `inviteOnly` says whether sign-up takes an invite: then an invitation to
+ * an address with no account also lets it make one (and costs an invite),
+ * and the page points to Settings → Invites for an invite to g1t alone.
+ */
+export function workspaceInviteCopy(name: string, inviteOnly: boolean): { heading: string; hint: string; elsewhere: string | null } {
+  const base = `Search people on g1t by username or name, or enter an email address. They get an invitation to join ${name}, in their inbox and by email, and join only if they accept.`;
+  return {
+    heading: `Invite to ${name}`,
+    hint: inviteOnly
+      ? `${base} If they do not have a g1t account yet, the invitation also lets them sign up; that uses one of ${name}'s shared invites, or else one of yours.`
+      : `${base} If they do not have a g1t account yet, they sign up from the invitation first.`,
+    elsewhere: inviteOnly ? `To invite someone to g1t without adding them to ${name}, use Settings → Invites.` : null,
+  };
+}
+
+/**
+ * The People pages Settings → Invites points to for a workspace
+ * invitation: the workspaces the viewer owns (only owners invite), the
+ * current one first.
+ */
+export function peoplePages(memberships: Membership[], current: string | null | undefined): { slug: string; name: string; to: string }[] {
+  const here = current?.trim().toLowerCase() || null;
+  return memberships
+    .filter((m) => m.role === "owner")
+    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug, to: `/${m.slug.toLowerCase()}/-/people` }))
+    .sort((a, b) => Number(b.slug === here) - Number(a.slug === here));
 }
 
 /** How many invites are left, in words. */
@@ -115,9 +371,10 @@ export function looksAutomated(form: { get(name: string): unknown }, now = Date.
 }
 
 /**
- * A username to offer someone signing up with `email`: its local part, as
- * usernames are written (lowercase letters, digits and single hyphens, up
- * to 39). Empty when nothing usable is left. Identity checks it is free.
+ * A username to offer someone signing up with `email`: its local part,
+ * lowercased, with anything a username cannot hold made single hyphens,
+ * up to 39. They can type it in any case they like. Empty when nothing
+ * usable is left. Identity checks it is free.
  */
 export function suggestUsername(email: string | null | undefined): string {
   const local = (email ?? "").split("@")[0]?.split("+")[0] ?? "";

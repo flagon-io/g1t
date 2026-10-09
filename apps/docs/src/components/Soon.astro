@@ -1,0 +1,26 @@
+---
+// "Coming soon": marks a feature that is planned and not built yet, so no
+// page promises what g1t can't do. Inline, beside a heading or in a line.
+---
+
+<span class="soon not-content">Coming soon</span>
+
+<style>
+	.soon {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.1rem 0.5rem;
+		border-radius: 999px;
+		border: 1px solid var(--g1t-line-strong);
+		background: var(--g1t-raised);
+		color: var(--g1t-muted);
+		font-family: var(--g1t-font-mono);
+		font-size: 0.6875rem;
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		white-space: nowrap;
+		vertical-align: middle;
+		line-height: 1.5;
+	}
+</style>

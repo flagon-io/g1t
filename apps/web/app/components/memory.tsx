@@ -114,7 +114,7 @@ function EditMemory({ memory, action }: { memory: Memory; action: string }) {
   }, [fetcher.state, fetcher.data]);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger aria-label="Edit" className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-fg">
+      <DialogTrigger aria-label="Edit" className="rounded p-1 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-fg">
         <Pencil size={13} />
       </DialogTrigger>
       <DialogContent>
@@ -156,7 +156,7 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
             </span>
           )}
         </div>
-        <p className="mt-1.5 text-sm whitespace-pre-wrap">{memory.text}</p>
+        <p className="mt-1.5 text-sm whitespace-pre-wrap wrap-break-word">{memory.text}</p>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
           <Source memory={memory} />
           <span>
@@ -174,14 +174,14 @@ function MemoryItem({ memory, action, editable }: { memory: Memory; action: stri
               aria-label={pinned ? "Unpin" : "Pin"}
               onClick={() => fetcher.submit({ intent: "update", id: memory.id, pinned: String(!pinned) }, { method: "post", action })}
               disabled={fetcher.state !== "idle"}
-              className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
+              className="rounded p-1 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-fg disabled:opacity-50"
             >
               {pinned ? <PinOff size={13} /> : <Pin size={13} />}
             </button>
           </Hint>
           <EditMemory memory={memory} action={action} />
           <AlertDialog>
-            <AlertDialogTrigger aria-label="Forget" className="rounded p-1 text-faint transition-colors hover:bg-raised hover:text-danger">
+            <AlertDialogTrigger aria-label="Forget" className="rounded p-1 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-danger">
               <Trash2 size={13} />
             </AlertDialogTrigger>
             <AlertDialogContent>

@@ -177,6 +177,9 @@ fn of_comment(comment: Comment) -> InboxComment {
         team_mentions: Vec::new(),
         verdict: comment.verdict.map(|verdict| verdict.as_str().to_owned()),
         event,
+        acting_for: comment.acting_for.as_ref().map(|user| principal(&user.id, &user.username)),
+        advisory: comment.advisory,
+        agent: comment.agent,
     }
 }
 

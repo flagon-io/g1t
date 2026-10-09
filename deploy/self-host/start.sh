@@ -28,6 +28,11 @@ fi
 if ! grep -q '^IDENTITY_KEY=' "$KEYS"; then
   echo "IDENTITY_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
 fi
+# The site's key, which signs the short-lived addresses of private
+# repositories' files.
+if ! grep -q '^USERCONTENT_KEY=' "$KEYS"; then
+  echo "USERCONTENT_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
+fi
 # The packages service's key, which signs registry tokens.
 if ! grep -q '^PACKAGES_TOKEN_SECRET=' "$KEYS"; then
   echo "PACKAGES_TOKEN_SECRET=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"

@@ -667,6 +667,16 @@ pub struct InboxComment {
     /// Something that happened (an assignment, a close), not something written.
     #[serde(default)]
     pub event: bool,
+    /// Set when one of the workspace's agents wrote it, as itself: it is
+    /// shown by its name, marked as an agent, never as a person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::work::AgentRef>,
+    /// Who the agent acted for, set with `agent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_for: Option<Principal>,
+    /// An agent's review: its verdict is advisory.
+    #[serde(default)]
+    pub advisory: bool,
 }
 
 /// A team a comment or description mentions, and who it tells.

@@ -102,11 +102,6 @@ export function runMemoryReadable(
   return memory.scope !== "workspace" && !!memory.repo && `${memory.repo.namespace}/${memory.repo.name}`.toLowerCase() === repo.toLowerCase();
 }
 
-/** Whether a run acting for `reader` may be told of the project `slug` (a dependency, or one depending on its own). */
-export function projectReadable(slug: string, reader: Reader | null): boolean {
-  return !reader || reader.full || reader.visible.has(slug);
-}
-
 /**
  * Entity counts by kind over the rows a reader may see, from rows grouped by
  * kind, project and privacy.

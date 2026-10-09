@@ -435,10 +435,10 @@ impl Registry {
             })
             .map(|grant| grant.repo_id.as_str())
             .collect();
-        // A fine-grained token's selected repositories, where its owner's
+        // A token's selected repositories, where its owner's
         // membership reaches them.
         if let Some(user) = viewer.as_ref()
-            && let Some(reach) = user.token.as_deref().and_then(|token| token.fine_grained.as_ref())
+            && let Some(reach) = user.token.as_deref().and_then(|token| token.reach.as_ref())
             && let Some(workspace) = reach.workspace.as_deref()
         {
             granted.extend(

@@ -2,6 +2,7 @@ import { CheckCircle2, Ticket } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
 
 import type { InvitePreview } from "@g1t/contracts";
+import { USERNAME_PATTERN } from "@g1t/contracts";
 
 import type { Route } from "./+types/register";
 import { page } from "../lib/meta";
@@ -11,7 +12,7 @@ import { Honeypot } from "../components/honeypot";
 import { githubSignInEnabled } from "../lib/github.server";
 import { Avatar, Button, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
-import { cleanCode, looksAutomated, sharedDomainsHint, sharedInviteLine } from "../lib/invites";
+import { cleanCode, cleanProof, invitePath, looksAutomated, sharedDomainsHint, sharedInviteLine } from "../lib/invites";
 import { clientKey, registrationMode } from "../lib/registration.server";
 import {
   assertSameOrigin,
@@ -36,7 +37,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // where it leads; it signs up, joins and lands in one go. A shared link
   // for a group signs up here: it joins nothing, and the form says which
   // group it is for.
-  if (invite && code && !invite.sharedLabel) throw redirect(`/invite/${encodeURIComponent(code)}`);
+  // The invite email's proof goes with it, so the address it proves stays
+  // confirmed there.
+  if (invite && code && !invite.sharedLabel) {
+    throw redirect(invitePath(code, cleanProof(new URL(request.url).searchParams.get("proof"))));
+  }
   // Signing up with GitHub carries the invite code and `next` through it.
   const params = new URLSearchParams();
   if (code) params.set("invite", code);
@@ -172,7 +177,7 @@ function SignUpForm({
         ) : null}
         <Field
           label="Username"
-          hint="Lowercase letters, digits and hyphens. It is how you sign in and how others see you."
+          hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it."
         >
           <Input
             name="username"
@@ -180,7 +185,7 @@ function SignUpForm({
             required
             autoFocus
             maxLength={39}
-            pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*"
+            pattern={USERNAME_PATTERN}
           />
         </Field>
         <Field
@@ -298,7 +303,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
   return (
     <AuthCard
       title={showForm ? "Create your account" : "g1t is invite-only for now"}
-      subtitle={showForm ? "Where people and agents ship software together" : "Enter your invite, or ask for one"}
+      subtitle={showForm ? "Your team and its agents, working in one place" : "Enter your invite, or ask for one"}
       footer={
         <>
           Already have an account?{" "}

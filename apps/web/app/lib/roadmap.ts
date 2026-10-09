@@ -47,12 +47,11 @@ export const ROADMAP: RoadmapItem[] = [
     key: "roadmap",
     title: "Roadmap",
     section: "Workspace",
-    summary: "Outcomes on a timeline, with their dependencies across projects.",
-    why: "An outcome is what should be true when the work is done. On a roadmap you see when each is expected, what it waits on in other projects, and how much has landed.",
+    summary: "Outcomes on a timeline, with how much of each has landed.",
+    why: "An outcome is what should be true when the work is done. On a roadmap you see when each is expected and how much has landed.",
     plans: [
       "Outcomes as bars on a timeline, from start to target",
       "Progress from merged work, not from guesses",
-      "Dependencies across projects, drawn from the project graph",
       "Slip warnings when the work left outgrows the time left",
     ],
     today: { label: "Outcomes", path: "plans" },
@@ -71,24 +70,12 @@ export const ROADMAP: RoadmapItem[] = [
     ],
   },
   // --- Code ---------------------------------------------------------------
-  {
-    key: "docs",
-    title: "Docs",
-    section: "Code",
-    summary: "Pages about the project that agents keep current as the code changes.",
-    why: "A wiki goes stale the day it is written. g1t's docs live with the code, and when a change makes a page wrong, an agent proposes the fix in the same pull request.",
-    plans: [
-      "Pages written in Markdown, kept in the repository",
-      "Agents update pages a change makes wrong, in the same pull request",
-      "Architecture pages drawn from the code itself",
-      "Search across every project's docs",
-    ],
-    today: { label: "Files", path: "code" },
-  },
+  // Nothing: code is not docs. Docs is its own workspace mode, filterable
+  // by project there, and a project never gets a Docs tab.
 
   // --- Agents -------------------------------------------------------------
   // At work, Sessions and Memory are built (see project-nav.ts), and so is
-  // the workspace's Agent fleet.
+  // the workspace's Agents overview.
   {
     key: "playbooks",
     title: "Playbooks",

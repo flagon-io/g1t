@@ -16,6 +16,8 @@ use crate::Identity;
 #[derive(Deserialize)]
 struct ProfileRow {
     username: String,
+    #[serde(default)]
+    display_username: Option<String>,
     display_name: Option<String>,
     bio: Option<String>,
     location: Option<String>,
@@ -30,6 +32,7 @@ impl From<ProfileRow> for Profile {
     fn from(row: ProfileRow) -> Self {
         Profile {
             username: row.username,
+            display_username: row.display_username,
             name: row.display_name,
             bio: row.bio,
             location: row.location,
@@ -43,7 +46,7 @@ impl From<ProfileRow> for Profile {
 }
 
 const PROFILE_COLUMNS: &str =
-    "username, display_name, bio, location, website, pronouns, timezone, avatar, created_at";
+    "username, display_username, display_name, bio, location, website, pronouns, timezone, avatar, created_at";
 
 /// A field as it is kept: whitespace runs made single spaces, control
 /// characters dropped, trimmed. Empty is none. Too long is refused.

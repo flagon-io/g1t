@@ -20,6 +20,7 @@
       "status": "approved",
       "token": "g1t_…",
       "username": "syntaqx",
+      "display_username": "syntaqx",
       "verified": true
     }
   },
@@ -27,6 +28,7 @@
     "response": {
       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
       "username": "syntaqx",
+      "display_username": "syntaqx",
       "kind": "user",
       "verified": true,
       "workspaces": [
@@ -134,6 +136,7 @@
     "response": [
       {
         "username": "ada",
+        "display_username": "Ada",
         "role": "owner",
         "org_roles": [],
         "two_factor": true,
@@ -142,6 +145,7 @@
       },
       {
         "username": "grace",
+        "display_username": "grace",
         "role": "member",
         "org_roles": [
           "security_manager"
@@ -166,6 +170,7 @@
     },
     "response": {
       "username": "grace",
+      "display_username": "grace",
       "role": "member",
       "org_roles": [
         "security_manager"
@@ -290,12 +295,14 @@
     },
     "response": {
       "username": "ada",
+      "display_username": "Ada",
       "email": "ada@example.com",
       "verified": true,
-      "joined": "acme",
+      "joined": null,
+      "invited_to": "acme",
       "invite_lapsed": null
     },
-    "notes": "The code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `joined` is set when confirming a new account's address joined the workspace its invite named; when the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address)."
+    "notes": "The code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `invited_to` is set when the invite the account signed up with brings it into a workspace: confirming the address sends the account an invitation to that workspace, which it accepts with `POST /user/invitations/{id}/accept` or declines; nobody joins a workspace without saying yes. `joined` is kept for older clients and is null. When the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address)."
   },
   "remove_email": {
     "request": {
@@ -409,7 +416,9 @@
           "created_at": "2026-10-05T17:00:00.000Z",
           "expires_at": "2026-11-04T17:00:00.000Z",
           "redeemed_at": null,
-          "revoked_at": null
+          "revoked_at": null,
+          "invitee": null,
+          "role": null
         },
         {
           "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
@@ -425,15 +434,18 @@
           "created_at": "2026-10-02T09:12:40.000Z",
           "expires_at": "2026-11-01T09:12:40.000Z",
           "redeemed_at": "2026-10-02T11:30:05.000Z",
-          "revoked_at": null
+          "revoked_at": null,
+          "invitee": "grace",
+          "role": null
         }
       ]
     },
-    "notes": "`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites)."
+    "notes": "`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed`, `declined`, `expired` or `revoked`. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites)."
   },
   "create_invite": {
     "request": {
-      "email": "ada@example.com"
+      "email": "ada@example.com",
+      "workspace": "acme-labs"
     },
     "response": {
       "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
@@ -441,7 +453,7 @@
       "hint": "g1t-k7m2",
       "email": "ada@example.com",
       "kind": "account",
-      "workspace": null,
+      "workspace": "acme-labs",
       "status": "pending",
       "charged_to": "user",
       "invited_by": "syntaqx",
@@ -449,9 +461,11 @@
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": null
+      "revoked_at": null,
+      "invitee": null,
+      "role": "member"
     },
-    "notes": "Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`."
+    "notes": "`workspace` brings the new account into a workspace you own: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. Leave `workspace` out and the new account gets a free workspace of its own. A workspace on the free plan cannot bring anyone in: `402` with `payment_required`, until it starts the g1t plan. `charge_workspace` is separate: it uses one of the invites g1t granted that workspace instead of one of yours, and works with or without `workspace`. Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`."
   },
   "revoke_invite": {
     "response": {
@@ -468,7 +482,9 @@
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": "2026-10-06T08:00:00.000Z"
+      "revoked_at": "2026-10-06T08:00:00.000Z",
+      "invitee": null,
+      "role": null
     }
   },
   "list_workspace_invites": {
@@ -487,13 +503,15 @@
         "created_at": "2026-10-05T17:00:00.000Z",
         "expires_at": "2026-11-04T17:00:00.000Z",
         "redeemed_at": null,
-        "revoked_at": null
+        "revoked_at": null,
+        "invitee": null,
+        "role": "member"
       },
       {
         "id": "inv_01kp1z9y8x7w6v5t4s3r2q1p0n",
         "code": "g1t-k7m2-q9xd-4hpw-…",
         "hint": "g1t-w2vb",
-        "email": "linus@example.com",
+        "email": null,
         "kind": "workspace",
         "workspace": "acme-labs",
         "status": "pending",
@@ -503,31 +521,36 @@
         "created_at": "2026-10-05T17:00:00.000Z",
         "expires_at": "2026-11-04T17:00:00.000Z",
         "redeemed_at": null,
-        "revoked_at": null
+        "revoked_at": null,
+        "invitee": "linus",
+        "role": "owner"
       }
     ]
   },
   "invite_member": {
     "request": {
-      "email": "ada@example.com"
+      "username": "ada",
+      "role": "member"
     },
     "response": {
       "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
       "code": "g1t-k7m2-q9xd-4hpw-…",
       "hint": "g1t-k7m2",
-      "email": "ada@example.com",
-      "kind": "account",
+      "email": null,
+      "kind": "workspace",
       "workspace": "acme-labs",
       "status": "pending",
-      "charged_to": "workspace",
+      "charged_to": "none",
       "invited_by": "syntaqx",
       "redeemed_by": null,
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": null
+      "revoked_at": null,
+      "invitee": "ada",
+      "role": "member"
     },
-    "notes": "`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan."
+    "notes": "Give `username` or `email`. Nobody is added without saying yes: the person gets an invitation to accept or decline, and joins with `role` when they accept. By username, `invitee` names the account and it costs nothing; `404` when there is no account with that username. By email, `kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when the link makes one; both answers look alike to the caller on purpose, and `invitee` stays null until an account is known. `409` when the person is already a member or already has a pending invitation to the workspace. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan. See [Workspace invitations](/reference/api/invites/list-invitations/) for the other side."
   },
   "revoke_workspace_invite": {
     "response": {
@@ -544,8 +567,48 @@
       "created_at": "2026-10-05T17:00:00.000Z",
       "expires_at": "2026-11-04T17:00:00.000Z",
       "redeemed_at": null,
-      "revoked_at": "2026-10-06T08:00:00.000Z"
+      "revoked_at": "2026-10-06T08:00:00.000Z",
+      "invitee": null,
+      "role": "member"
     }
+  },
+  "list_invitations": {
+    "response": [
+      {
+        "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+        "workspace": {
+          "slug": "acme-labs",
+          "name": "Acme Labs",
+          "avatar": null
+        },
+        "role": "member",
+        "invited_by": {
+          "username": "syntaqx",
+          "display_username": "syntaqx",
+          "name": "Chase",
+          "avatar": null
+        },
+        "created_at": "2026-10-05T17:00:00.000Z",
+        "expires_at": "2026-11-04T17:00:00.000Z"
+      }
+    ],
+    "notes": "Accept one with `POST /user/invitations/{id}/accept`, or decline it with `POST /user/invitations/{id}/decline`. An agent's or a workspace's token gets an empty list."
+  },
+  "accept_invitation": {
+    "params": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+    },
+    "response": {
+      "workspace": "acme-labs"
+    },
+    "notes": "You join at once with the invitation's `role`. `404` when you have no open invitation with that id (it may have been answered, revoked or expired). `403` until you confirm your email address, and when your account does not meet what the workspace asks of its members, such as two-factor authentication, with a message that says what to turn on. `402` with `payment_required` while the workspace is on the free plan; the invitation stays open until it starts the g1t plan. Recorded as `member.added`."
+  },
+  "decline_invitation": {
+    "params": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+    },
+    "response": true,
+    "notes": "Whoever sent it is told in their inbox. The workspace's owners can invite you again. `404` when you have no open invitation with that id."
   },
   "list_repos": {
     "query": {
@@ -997,6 +1060,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1039,6 +1103,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1074,6 +1139,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1122,6 +1188,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1169,6 +1236,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1185,6 +1253,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1226,6 +1295,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1267,6 +1337,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1300,6 +1371,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1352,6 +1424,7 @@
       "author": {
         "id": "usr_g1t_agent",
         "username": "g1t",
+        "display_username": "g1t",
         "kind": "agent",
         "verified": false,
         "workspaces": []
@@ -1359,6 +1432,7 @@
       "requested_by": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1388,6 +1462,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1435,6 +1510,7 @@
         "author": {
           "id": "usr_g1t_agent",
           "username": "g1t",
+          "display_username": "g1t",
           "kind": "agent",
           "verified": false,
           "workspaces": []
@@ -1442,6 +1518,7 @@
         "requested_by": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1469,6 +1546,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": true,
         "workspaces": [
@@ -1498,6 +1576,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": true,
         "workspaces": [
@@ -1604,6 +1683,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1666,6 +1746,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -1719,6 +1800,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1770,6 +1852,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1827,6 +1910,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1854,6 +1938,7 @@
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "kind": "user",
           "verified": false,
           "workspaces": []
@@ -1877,6 +1962,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -1886,6 +1972,36 @@
           "line": null,
           "verdict": null,
           "created_at": "2026-10-01T18:33:10.420Z"
+        },
+        {
+          "id": "cmt_01m43sw2a6c0e4h8k2n6r0v4z8",
+          "kind": "comment",
+          "author": {
+            "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+            "username": "margo",
+            "kind": "agent",
+            "verified": false,
+            "workspaces": []
+          },
+          "body": "The empty-name case is handled and tested. One nit: trim the name before using it.",
+          "path": null,
+          "line": null,
+          "verdict": "approve",
+          "created_at": "2026-10-01T18:36:41.207Z",
+          "agent": {
+            "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+            "handle": "margo",
+            "display_name": "Margo",
+            "avatar_seed": "margo"
+          },
+          "acting_for": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "advisory": true
         }
       ],
       "checks": null,
@@ -2041,6 +2157,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2061,6 +2178,7 @@
       "author": {
         "id": "usr_01kz9d3f7h1k5n9r3v7z1c5g9b",
         "username": "ana",
+        "display_username": "Ana",
         "kind": "user",
         "verified": true,
         "workspaces": [
@@ -2131,6 +2249,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2192,6 +2311,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2245,6 +2365,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2293,6 +2414,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2340,6 +2462,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -2388,6 +2511,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -4354,7 +4478,7 @@
           "kind": "project",
           "id": "ent_9b1d6f0a2c3e4b5d6e7f8a9b",
           "title": "web",
-          "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+          "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Owned by ana.",
           "project": "web",
           "url": "/acme/web",
           "score": 0.71,
@@ -4379,7 +4503,7 @@
         "kind": "project",
         "key": "web",
         "name": "web",
-        "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+        "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Owned by ana.",
         "project": "web",
         "private": true,
         "data": {
@@ -4404,21 +4528,21 @@
       },
       "relations": [
         {
-          "kind": "depends_on",
+          "kind": "exposes",
           "direction": "out",
           "entity": {
             "id": "ent_0a7c3e5b9d1f2a4c6e8b0d2f",
             "workspace": "acme",
-            "kind": "project",
-            "key": "api",
-            "name": "api",
-            "summary": "The public API. Written in Rust.",
-            "project": "api",
+            "kind": "package",
+            "key": "npm:@acme/web",
+            "name": "@acme/web",
+            "summary": null,
+            "project": "web",
             "private": true,
             "data": {},
             "source": "scan",
-            "ref": "/acme/api",
-            "updated_at": "2026-10-04T20:57:12.000Z"
+            "ref": "/acme/web/blob/main/package.json",
+            "updated_at": "2026-10-04T20:58:41.000Z"
           }
         },
         {
@@ -4450,6 +4574,7 @@
       "people": [
         {
           "username": "syntaqx",
+          "display_username": "syntaqx",
           "name": "Chase Pierce",
           "avatar": null,
           "role": "admin",
@@ -4459,6 +4584,7 @@
         },
         {
           "username": "linus",
+          "display_username": "linus",
           "name": null,
           "avatar": null,
           "role": "maintain",
@@ -4468,6 +4594,7 @@
         },
         {
           "username": "grace",
+          "display_username": "grace",
           "name": "Grace Hopper",
           "avatar": null,
           "role": "write",
@@ -4477,6 +4604,7 @@
         },
         {
           "username": "ada",
+          "display_username": "Ada",
           "name": "Ada Lovelace",
           "avatar": null,
           "role": "triage",
@@ -4539,7 +4667,7 @@
         "expires_at": "2026-10-12T17:00:00.000Z"
       }
     },
-    "notes": "`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/). On a free workspace, inviting anyone who is not a member answers `402` with `payment_required` until it starts the g1t plan."
+    "notes": "`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. A `collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/). On a free workspace, inviting anyone who is not a member answers `402` with `payment_required` until it starts the g1t plan."
   },
   "update_collaborator": {
     "params": {
@@ -4552,6 +4680,7 @@
     },
     "response": {
       "username": "ada",
+      "display_username": "Ada",
       "name": "Ada Lovelace",
       "avatar": null,
       "role": "write",
@@ -4578,6 +4707,7 @@
     },
     "response": {
       "username": "ada",
+      "display_username": "Ada",
       "role": "triage",
       "source": "direct",
       "capabilities": [
@@ -4716,6 +4846,7 @@
     "response": [
       {
         "username": "ada",
+        "display_username": "Ada",
         "name": "Ada Lovelace",
         "avatar": null,
         "repos": [
@@ -4991,6 +5122,7 @@
     "response": [
       {
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "name": "Chase Pierce",
         "avatar": null,
         "role": "maintainer",
@@ -4998,6 +5130,7 @@
       },
       {
         "username": "ana",
+        "display_username": "Ana",
         "name": "Ana Lima",
         "avatar": null,
         "role": "member",
@@ -5005,6 +5138,7 @@
       },
       {
         "username": "bo",
+        "display_username": "bo",
         "name": null,
         "avatar": null,
         "role": "member",
@@ -5024,6 +5158,7 @@
     },
     "response": {
       "username": "ana",
+      "display_username": "Ana",
       "name": "Ana Lima",
       "avatar": null,
       "role": "maintainer",
@@ -8592,6 +8727,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -8657,6 +8793,7 @@
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
+            "display_username": "syntaqx",
             "kind": "user",
             "verified": false,
             "workspaces": []
@@ -8717,6 +8854,7 @@
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
+        "display_username": "syntaqx",
         "kind": "user",
         "verified": false,
         "workspaces": []
@@ -10609,8 +10747,8 @@
       "workspace": "flagon-io"
     },
     "response": {
-      "allow_classic": true,
-      "allow_fine_grained": true,
+      "allow_tokens_for_all_workspaces": true,
+      "allow_tokens_for_this_workspace": true,
       "require_approval": true,
       "max_lifetime_days": null,
       "forbid_no_expiry": false,
@@ -10623,19 +10761,19 @@
       "workspace": "flagon-io"
     },
     "request": {
-      "allow_classic": false,
+      "allow_tokens_for_all_workspaces": false,
       "max_lifetime_days": 90
     },
     "response": {
-      "allow_classic": false,
-      "allow_fine_grained": true,
+      "allow_tokens_for_all_workspaces": false,
+      "allow_tokens_for_this_workspace": true,
       "require_approval": true,
       "max_lifetime_days": 90,
       "forbid_no_expiry": false,
       "updated_by": "ada",
       "updated_at": "2026-10-08T09:30:00.000Z"
     },
-    "notes": "From each token's next request, classic tokens no longer reach the workspace, and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else."
+    "notes": "From each token's next request, tokens made for all of a member's workspaces no longer reach this one (tokens made for it alone still do), and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else."
   },
   "list_member_tokens": {
     "params": {
@@ -10646,17 +10784,16 @@
         "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
         "name": "release-bot",
         "owner": "ada",
-        "kind": "fine_grained",
-        "description": "Publishes releases from CI",
+                "description": "Publishes releases from CI",
         "created_at": "2026-10-08T09:00:00.000Z",
         "created_by": null,
         "last_used_at": null,
         "expires_at": "2026-11-07T09:00:00.000Z",
-        "scopes": ["repo:read", "repo:write", "code:read", "code:write"],
-        "resource_owner": "flagon-io",
+        "scopes": ["repo:read", "code:write"],
+        "workspace": "flagon-io",
         "repository_selection": "selected",
         "repositories": ["flagon-io/hello"],
-        "permissions": { "contents": "write", "metadata": "read" },
+        "permissions": { "code": "write", "repo": "read" },
         "status": "pending",
         "review_reason": null,
         "reaches": false,
@@ -10673,17 +10810,16 @@
         "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
         "name": "release-bot",
         "owner": "ada",
-        "kind": "fine_grained",
-        "description": "Publishes releases from CI",
+                "description": "Publishes releases from CI",
         "created_at": "2026-10-08T09:00:00.000Z",
         "created_by": null,
         "last_used_at": null,
         "expires_at": "2026-11-07T09:00:00.000Z",
-        "scopes": ["repo:read", "repo:write", "code:read", "code:write"],
-        "resource_owner": "flagon-io",
+        "scopes": ["repo:read", "code:write"],
+        "workspace": "flagon-io",
         "repository_selection": "selected",
         "repositories": ["flagon-io/hello"],
-        "permissions": { "contents": "write", "metadata": "read" },
+        "permissions": { "code": "write", "repo": "read" },
         "status": "pending",
         "review_reason": null,
         "reaches": false,
@@ -10703,17 +10839,16 @@
       "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
       "name": "release-bot",
       "owner": "ada",
-      "kind": "fine_grained",
-      "description": "Publishes releases from CI",
+            "description": "Publishes releases from CI",
       "created_at": "2026-10-08T09:00:00.000Z",
       "created_by": null,
       "last_used_at": null,
       "expires_at": "2026-11-07T09:00:00.000Z",
-      "scopes": ["repo:read", "repo:write", "code:read", "code:write"],
-      "resource_owner": "flagon-io",
+      "scopes": ["repo:read", "code:write"],
+      "workspace": "flagon-io",
       "repository_selection": "selected",
       "repositories": ["flagon-io/hello"],
-      "permissions": { "contents": "write", "metadata": "read" },
+      "permissions": { "code": "write", "repo": "read" },
       "status": "active",
       "review_reason": null,
       "reaches": true,
@@ -10796,6 +10931,7 @@
           "kind": "user",
           "name": "ada",
           "username": "ada",
+          "display_username": "Ada",
           "avatar": "5f2b8c1d9e7a3f6b4c0d2e8a1b9c7d5e3f1a0b2c4d6e8f0a1b3c5d7e9f0a2b4c",
           "commits": 52,
           "first_at": "2026-09-28T14:11:52.000Z",
@@ -10854,11 +10990,13 @@
     "response": [
       {
         "username": "ada",
+        "display_username": "Ada",
         "avatar": null,
         "starred_at": "2026-10-06T18:30:00.000Z"
       },
       {
         "username": "sam",
+        "display_username": "sam",
         "avatar": null,
         "starred_at": "2026-10-02T09:12:00.000Z"
       }

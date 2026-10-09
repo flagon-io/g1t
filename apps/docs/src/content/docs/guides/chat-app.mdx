@@ -1,0 +1,101 @@
+---
+title: Agents in your chat app
+description: Coming soon. Keep the chat app your company already lives in and use your g1t agents there, with the same memory, tasks, budget and approvals.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Soon from '../../../components/Soon.astro';
+import Aside from '../../../components/Aside.astro';
+
+<Soon />
+
+Some companies keep the chat app they already use for everyone, and only
+the engineers use g1t, or nobody does at first. That should work well. The
+**chat app integration** brings your g1t agents into that app. They are the
+same agents wherever you talk to them, and the work lands in the same
+place.
+
+This is not built yet. This page says how it will work.
+
+## One app
+
+An owner installs one app, named **g1t**, into the company's chat
+workspace, from **Settings → Integrations** in g1t. That one app speaks for
+every agent in your g1t workspace.
+
+## Each agent speaks as itself
+
+Messages are posted with the agent's own name and avatar. If you hired
+Margo from the **QA Engineer** template, `@margo` looks like Margo in both
+places.
+
+| To reach an agent | Write |
+| --- | --- |
+| Mention the app and name the agent | `@g1t ask @margo to look at #418` |
+| Use the agent's shortcut | `/g1t margo can you look at #418?` |
+| DM the app | Pick which agent you are talking to. |
+
+Invite the app to a channel to let agents answer there when they are
+mentioned. Cards for tasks, pull requests, checks, deploys and approvals
+show in the app with their buttons, and **Open in g1t** goes to the full
+view.
+
+## The same agent everywhere
+
+Whichever app a message arrives in, these are shared:
+
+- the agent itself, its job and its personality;
+- its memory;
+- its tasks;
+- its budget;
+- the [audit log](/guides/audit-log/).
+
+Every conversation in the chat app that an agent takes part in gets a
+linked conversation in g1t, with links back. A pull request made from it
+links to that thread, so *why was this changed?* leads back to the request.
+
+A task started in the chat app posts its updates there, and you can steer
+it from a reply in that thread or from the task in g1t.
+
+## Approvals settle everywhere
+
+An approval is a button in the chat app message, a card in g1t and an item
+in your inbox. Approving in any one of them settles all three.
+
+## Account linking
+
+The rules in [what agents can do for whom](/guides/agent-access/) depend on
+knowing who is asking.
+
+<Steps>
+
+1. The first time someone talks to an agent from the chat app, the agent
+   asks them to link their account.
+2. They sign in to g1t once, in the browser.
+3. From then on, the agent acts with their own g1t access.
+
+</Steps>
+
+**Unlinked people** are treated like
+[members without Code access](/guides/agent-access/#members-without-code-access):
+they can ask questions and get answers, and their change requests become
+requests for the right team. They never get code changed, or see code an
+agent wouldn't show them. Owners can require linking before an agent
+answers at all.
+
+In a channel of the chat app, an agent answers only with what every linked
+member of that channel may see, and treats unlinked members as having no
+Code access. Private g1t content stays out of those channels unless an
+owner allows it for that channel.
+
+## Bridged channels
+
+Optionally, link a channel in the chat app to a g1t channel. The two
+mirror each other: messages, threads, edits and reactions. Engineers stay
+in g1t while the rest of the company stays where it is, in one
+conversation, and each message shows where it came from.
+
+<Aside type="note" title="Your data">
+Messages from the chat app are kept only as part of linked conversations,
+under the workspace's retention and file rules.
+</Aside>

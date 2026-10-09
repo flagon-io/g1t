@@ -16,7 +16,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'g1t docs',
-			description: 'Guides and reference for g1t, where people and agents ship software together.',
+			description: 'Guides and reference for g1t, the workspace where a team and its agents talk, work and ship.',
 			components: {
 				Footer: './src/components/Footer.astro',
 				Head: './src/components/Head.astro',
@@ -56,7 +56,10 @@ export default defineConfig({
 			head: [
 				{ tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
 				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icon-192.png' } },
-				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '512x512', href: '/icon-512.png' } },
+				{ tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
+				{ tag: 'link', attrs: { rel: 'manifest', href: '/site.webmanifest' } },
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0f0f11' } },
 			],
 			sidebar: [
 				{
@@ -67,6 +70,20 @@ export default defineConfig({
 						{ label: 'Your inbox', slug: 'guides/inbox' },
 						{ label: 'Search and Explore', slug: 'guides/search' },
 						{ label: 'Status and incidents', slug: 'guides/status' },
+					],
+				},
+				{
+					label: 'Chat and agents',
+					items: [
+						{ label: 'Chat', slug: 'guides/chat' },
+						{ label: 'Agents', slug: 'guides/agents' },
+						{ label: 'Sessions', slug: 'guides/agent-sessions' },
+						{ label: 'Agent memory', slug: 'guides/agent-memory' },
+						{ label: 'Routines', slug: 'guides/agent-routines' },
+						{ label: 'Agent budgets and spend', slug: 'guides/agent-budgets' },
+						{ label: 'What agents can do for whom', slug: 'guides/agent-access' },
+						{ label: 'Docs', slug: 'guides/docs' },
+						{ label: 'Agents in your chat app', slug: 'guides/chat-app', badge: { text: 'Soon', variant: 'default' } },
 					],
 				},
 				{
@@ -100,7 +117,7 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Agents',
+					label: 'Agents on code',
 					items: [
 						{ label: "g1t's agent", slug: 'guides/working-with-g1t' },
 						{ label: 'Guardrails', slug: 'guides/guardrails' },

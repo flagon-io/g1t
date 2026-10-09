@@ -1,0 +1,241 @@
+/**
+ * The agent form (components/agents-mode.tsx) as the agents service takes
+ * it: what each field means, and the checks made before it is sent. Pure,
+ * so it is tested on its own.
+ */
+import type { ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
+
+/** The tiers, cheapest first: `MODEL_TIERS` in the contracts. */
+const MODEL_TIERS: ModelTier[] = ["small", "large", "frontier"];
+
+export const PRESETS: { value: PersonalityPreset; label: string; about: string }[] = [
+  { value: "crisp", label: "Crisp", about: "Clear and to the point, with enough context to act on." },
+  { value: "friendly", label: "Friendly", about: "Warm and encouraging; explains as it goes." },
+  { value: "socratic", label: "Socratic", about: "Asks before it assumes; draws out what you mean." },
+  { value: "terse", label: "Terse operator", about: "As few words as will do. Status, then done." },
+];
+
+export const TIER_LABELS: Record<ModelTier, string> = {
+  small: "Fast: replies and triage",
+  large: "Standard: making changes, most reviews",
+  frontier: "Most capable: planning and hard work",
+};
+
+export const AUTONOMY = {
+  open_pull_requests: { label: "Open pull requests", options: [["alone", "On its own"], ["approval", "After approval"]] },
+  merge: { label: "Merge", options: [["alone", "On its own"], ["approval", "After approval"], ["never", "Never"]] },
+  deploy_production: { label: "Deploy to production", options: [["approval", "After approval"], ["never", "Never"]] },
+  edit_docs: { label: "Edit docs", options: [["alone", "Directly"], ["suggest", "As suggestions"]] },
+} as const;
+
+/** The handle as people type it: lowercase letters, digits and dashes. */
+export function cleanHandle(typed: string): string {
+  return typed
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 39);
+}
+
+/** Handles the site's own addresses use, and g1t's: never an agent's. */
+const RESERVED_HANDLES = new Set(["g1t", "new", "runs", "fleet"]);
+
+function tier(value: FormDataEntryValue | null): ModelTier | null {
+  const text = String(value ?? "");
+  return (MODEL_TIERS as string[]).includes(text) ? (text as ModelTier) : null;
+}
+
+function pick<T extends string>(value: FormDataEntryValue | null, allowed: readonly (readonly [T, string])[], fallback: T): T {
+  const text = String(value ?? "");
+  return (allowed.find(([key]) => key === text)?.[0] ?? fallback) as T;
+}
+
+export type AgentFormResult = { ok: true; input: NewWorkspaceAgent } | { ok: false; errors: Record<string, string> };
+
+/** The form, checked: the agent to make or the changes to save, or what to fix, by field. */
+export function readAgentForm(form: FormData, options: { orchestrator?: boolean } = {}): AgentFormResult {
+  const errors: Record<string, string> = {};
+  const display_name = String(form.get("display_name") ?? "").trim();
+  const handle = cleanHandle(String(form.get("handle") ?? "") || display_name);
+  const title = String(form.get("title") ?? "").trim();
+  // A team from the workspace's, or else a department label.
+  const team = String(form.get("team") ?? "").trim();
+  const department = String(form.get("department") ?? "").trim();
+  const responsibilities = form
+    .getAll("responsibility")
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .slice(0, MAX_RESPONSIBILITIES);
+  const subagents = readSubagents(form.get("subagents"));
+  // Docs spaces it reads first; the agents service checks them.
+  const reading = [...new Set(form.getAll("reading").map((value) => String(value).trim()).filter(Boolean))].slice(0, 10);
+  const instructions = String(form.get("instructions") ?? "").trim();
+  if (!display_name) errors.display_name = "Give it a name.";
+  if (!handle) errors.handle = "Give it a handle, like @ship.";
+  else if (RESERVED_HANDLES.has(handle) && !(options.orchestrator && handle === "g1t")) errors.handle = `@${handle} is taken by g1t.`;
+  if (!title && !options.orchestrator) errors.title = "Give it a title, like QA Engineer.";
+  if (subagents == null) errors.subagents = "The subagents couldn't be read. Edit one and save again.";
+  // g1t's job is fixed; what is written here is added to it, and may be nothing.
+  if (!instructions && !options.orchestrator) errors.instructions = "Tell it what it's responsible for.";
+  const floor = tier(form.get("floor"));
+  const ceiling = tier(form.get("ceiling"));
+  if (floor && ceiling && MODEL_TIERS.indexOf(floor) > MODEL_TIERS.indexOf(ceiling)) errors.ceiling = "The ceiling can't be below the floor.";
+  const budget = {
+    monthly_micros: microsFromDollars(form.get("monthly")),
+    daily_micros: microsFromDollars(form.get("daily")),
+    task_micros: microsFromDollars(form.get("task")),
+  };
+  for (const [field, value] of [["monthly", budget.monthly_micros], ["daily", budget.daily_micros], ["task", budget.task_micros]] as const) {
+    if (value != null && Number.isNaN(value)) errors[field] = "A sum in dollars, like 25.";
+  }
+  const capacity = Number(form.get("capacity") ?? 3);
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 20) errors.capacity = "Between 1 and 20.";
+  const providers = String(form.get("providers") ?? "any");
+  const pinned = String(form.get("pinned") ?? "").trim();
+  if (pinned && !/^[\w.-]+\/[\w.:@-]+$/.test(pinned)) errors.pinned = "As provider/model.";
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    input: {
+      handle,
+      display_name,
+      // Made from the title and team by the agents service.
+      role: "",
+      title,
+      team: team && team !== "none" ? team : null,
+      department,
+      responsibilities,
+      subagents: subagents ?? [],
+      reading,
+      instructions,
+      personality_preset: pick(form.get("personality_preset"), PRESETS.map((p) => [p.value, p.label] as const), "crisp"),
+      personality: String(form.get("personality") ?? "").trim(),
+      routing: {
+        floor,
+        ceiling,
+        providers: providers === "any" ? [] : [providers],
+        pinned: pinned || null,
+      },
+      budget,
+      autonomy: {
+        open_pull_requests: pick(form.get("open_pull_requests"), AUTONOMY.open_pull_requests.options, "alone"),
+        merge: pick(form.get("merge"), AUTONOMY.merge.options, "approval"),
+        deploy_production: pick(form.get("deploy_production"), AUTONOMY.deploy_production.options, "approval"),
+        edit_docs: pick(form.get("edit_docs"), AUTONOMY.edit_docs.options, "suggest"),
+      },
+      capacity,
+      template: String(form.get("template") ?? "") || null,
+    },
+  };
+}
+
+/** Most responsibilities an agent lists. */
+export const MAX_RESPONSIBILITIES = 8;
+
+/** The subagents, as the form sends them (JSON); null when they are not valid. */
+function readSubagents(value: FormDataEntryValue | null): SubagentDef[] | null {
+  const text = String(value ?? "").trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(
+      (item): item is SubagentDef =>
+        item != null && typeof item === "object" && typeof (item as SubagentDef).name === "string" && typeof (item as SubagentDef).description === "string",
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** A subagent's name: lowercase letters, digits and hyphens. */
+export function cleanSubagentName(typed: string): string {
+  return cleanHandle(typed).slice(0, 40);
+}
+
+/**
+ * A subagent's routing limits, kept within its agent's: a floor below the
+ * agent's is raised to it, a ceiling above the agent's is lowered to it,
+ * and a floor above the ceiling comes down to it.
+ */
+export function clampRouting(
+  sub: { floor: ModelTier | null; ceiling: ModelTier | null },
+  agent: { floor: ModelTier | null; ceiling: ModelTier | null },
+): { floor: ModelTier | null; ceiling: ModelTier | null } {
+  const rank = (tier: ModelTier) => MODEL_TIERS.indexOf(tier);
+  let floor = sub.floor;
+  let ceiling = sub.ceiling;
+  if (agent.floor && (!floor || rank(floor) < rank(agent.floor))) floor = agent.floor;
+  if (agent.ceiling && (!ceiling || rank(ceiling) > rank(agent.ceiling))) ceiling = agent.ceiling;
+  if (floor && ceiling && rank(floor) > rank(ceiling)) floor = ceiling;
+  return { floor, ceiling };
+}
+
+/** What the form starts from: an agent being edited, a template, or nothing. */
+export type AgentDraft = Pick<
+  WorkspaceAgent,
+  | "handle"
+  | "display_name"
+  | "role"
+  | "title"
+  | "team"
+  | "department"
+  | "responsibilities"
+  | "subagents"
+  | "reading"
+  | "instructions"
+  | "personality_preset"
+  | "personality"
+  | "routing"
+  | "budget"
+  | "autonomy"
+  | "capacity"
+  | "template"
+>;
+
+export const BLANK_DRAFT: AgentDraft = {
+  handle: "",
+  display_name: "",
+  role: "",
+  title: "",
+  team: null,
+  department: "",
+  responsibilities: [],
+  subagents: [],
+  reading: [],
+  instructions: "",
+  personality_preset: "crisp",
+  personality: "",
+  routing: { floor: null, ceiling: null, providers: [], pinned: null },
+  budget: { monthly_micros: 50_000_000, daily_micros: null, task_micros: 5_000_000 },
+  autonomy: { open_pull_requests: "alone", merge: "approval", deploy_production: "approval", edit_docs: "suggest" },
+  capacity: 3,
+  template: null,
+};
+
+/** Dollars from micro-dollars, for a form field: empty for none. */
+export function dollarsField(micros: number | null | undefined): string {
+  if (micros == null) return "";
+  const dollars = micros / 1_000_000;
+  return Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
+}
+
+/** Micro-dollars from a form field in dollars: null when empty, NaN when not a sum. */
+export function microsFromDollars(value: FormDataEntryValue | null): number | null {
+  const text = String(value ?? "").trim().replace(/^\$/, "").replaceAll(",", "");
+  if (!text) return null;
+  const dollars = Number(text);
+  if (!Number.isFinite(dollars) || dollars < 0) return Number.NaN;
+  return Math.round(dollars * 1_000_000);
+}
+
+/** "$12.40" from micro-dollars. */
+export function formatDollars(micros: number): string {
+  const dollars = micros / 1_000_000;
+  return `$${dollars < 10 && dollars > 0 && !Number.isInteger(dollars) ? dollars.toFixed(2) : dollars.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(dollars) ? 0 : 2 })}`;
+}
+

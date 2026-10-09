@@ -23,3 +23,12 @@ test("a review is edited but never deleted, and a note is never changed", () => 
   const note = { kind: "event" as const, verdict: null, author: ana };
   assert.deepEqual(mayChangeComment(note, "usr_1", true), { edit: false, delete: false });
 });
+
+test("an agent's comment is answered for by whoever it acted for; its review is never deleted", () => {
+  const margo = { id: "agt_1" };
+  const comment = { kind: "comment" as const, verdict: null, author: margo, actingFor: ana };
+  assert.deepEqual(mayChangeComment(comment, "usr_1", false), { edit: true, delete: true });
+  assert.deepEqual(mayChangeComment(comment, "agt_1", false), { edit: false, delete: false });
+  const review = { ...comment, advisory: true };
+  assert.deepEqual(mayChangeComment(review, "usr_1", false), { edit: true, delete: false });
+});

@@ -1,0 +1,39 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-chat",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings. The live socket's viewer comes
+	// in a header the site sets after checking the session, which is only
+	// safe to trust because nothing else can reach this Worker.
+	"workers_dev": false,
+	"placement": { "mode": "off" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-chat",
+			"database_id": "e837affd-a435-4408-9345-14d55d520316",
+			"migrations_dir": "migrations"
+		}
+	],
+	"services": [
+		// Workspaces by slug, and people's names and avatars for members.
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// The workspace's agents: who they are, and handing them messages to answer.
+		{ "binding": "AGENTS", "service": "g1t-agents" },
+		// Live notifications and unread counts for the people in a conversation (services/notify).
+		{ "binding": "NOTIFY", "service": "g1t-notify" }
+	],
+	// One room per channel for live delivery: it holds the channel's open
+	// sockets, hibernating while nobody says anything (src/room.ts).
+	"durable_objects": {
+		"bindings": [{ "name": "ROOMS", "class_name": "ChannelRoom" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelRoom"] }],
+	// Custom emoji images, kept by their hash under `emoji/` in the avatars
+	// namespace and served from the usercontent origin at /emoji/<hash>
+	// (apps/web/workers/usercontent.ts), never from the site.
+	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

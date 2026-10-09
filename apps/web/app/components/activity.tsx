@@ -74,6 +74,21 @@ function line(event: G1tEvent, base: string): Line | null {
         ),
       };
     case "comment.created":
+      // One of the workspace's agents, as itself: named, never the person it acted for.
+      if (event.data.agent) {
+        const said = event.data.verdict === "approve" ? "approved" : event.data.verdict === "request_changes" ? "asked for changes on" : event.data.advisory ? "reviewed" : "commented on";
+        return {
+          icon: event.data.verdict === "approve" ? <CircleCheck size={14} /> : event.data.verdict ? <CircleSlash size={14} /> : <MessageSquare size={14} />,
+          tone: "text-muted",
+          actor: `${event.data.agent.displayName} (agent)`,
+          text: (
+            <>
+              {said} {ref(event.data.number)}
+              {event.data.advisory && " (advisory)"}
+            </>
+          ),
+        };
+      }
       if (event.data.verdict) {
         return {
           icon: event.data.verdict === "approve" ? <CircleCheck size={14} /> : <CircleSlash size={14} />,

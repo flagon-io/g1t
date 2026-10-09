@@ -1,15 +1,14 @@
 ---
-// The header's right side: where people go from the docs, then the source.
+// The header's right side: where people go from the docs, then g1t on X and the source.
 import { GitBranch } from '@lucide/astro';
-
-// g1t.sh is invite-only for now. A build with PUBLIC_G1T_REGISTRATION=open
-// (an installation that lets anyone register) says Sign up again.
-const inviteOnly = (import.meta.env.PUBLIC_G1T_REGISTRATION ?? 'invite') !== 'open';
 ---
 
 <nav class="g1t-nav" aria-label="g1t">
 	<a href="https://g1t.sh/">g1t.sh</a>
-	<a href="https://g1t.sh/register" class="g1t-nav-cta">{inviteOnly ? 'Request access' : 'Sign up'}</a>
+	<a href="https://g1t.sh/register" class="g1t-nav-cta">Sign up</a>
+	<a href="https://x.com/g1t_sh" aria-label="g1t on X" title="g1t on X" class="g1t-nav-icon">
+		<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z" /></svg>
+	</a>
 	<a href="https://g1t.sh/flagon-io/g1t" aria-label="Source on g1t" title="Source on g1t" class="g1t-nav-icon">
 		<GitBranch />
 	</a>
@@ -21,38 +20,63 @@ const inviteOnly = (import.meta.env.PUBLIC_G1T_REGISTRATION ?? 'invite') !== 'op
 		align-items: center;
 		gap: 0.25rem;
 	}
-	a {
+	/* nav.g1t-nav: the menu's own link rule must not win where these sit
+	   at the foot of the phone menu. */
+	nav.g1t-nav a {
+		display: inline-flex;
+		align-items: center;
+		height: 2rem;
 		border-radius: 0.4rem;
-		padding: 0.3rem 0.6rem;
+		padding: 0 0.6rem;
 		font-size: 0.85rem;
+		white-space: nowrap;
 		color: var(--g1t-muted);
 		text-decoration: none;
 		transition: color 0.15s, background 0.15s;
 	}
-	a:hover {
+	nav.g1t-nav a:hover {
 		background: var(--g1t-raised);
 		color: var(--g1t-fg);
 	}
-	.g1t-nav-cta {
+	nav.g1t-nav .g1t-nav-cta {
 		margin-left: 0.25rem;
 		background: var(--g1t-fg);
 		color: var(--g1t-bg);
 		font-weight: 500;
 	}
-	.g1t-nav-cta:hover {
+	nav.g1t-nav .g1t-nav-cta:hover {
 		background: #fff;
 		color: var(--g1t-bg);
 	}
-	.g1t-nav-icon {
-		display: inline-flex;
-		padding: 0.4rem;
+	nav.g1t-nav .g1t-nav-icon {
+		justify-content: center;
+		width: 2rem;
+		padding: 0;
 	}
 	.g1t-nav-icon :global(svg) {
 		width: 1rem;
 		height: 1rem;
 	}
-	@media (max-width: 50rem) {
-		a:not(.g1t-nav-icon):not(.g1t-nav-cta) {
+	/* Tablets and phones: in the header g1t.sh's link gives way (the menu
+	   keeps it), and the icons grow to a size a finger can hit. */
+	@media (max-width: 49.99rem) {
+		:global(.g1t-header) nav.g1t-nav a:not(.g1t-nav-icon):not(.g1t-nav-cta) {
+			display: none;
+		}
+		nav.g1t-nav .g1t-nav-icon {
+			width: 2.5rem;
+			height: 2.5rem;
+		}
+		:global(.sidebar-content) nav.g1t-nav a {
+			height: 2.5rem;
+		}
+	}
+	/* Phones: Sign up leaves the header for the menu, where it has room. */
+	@media (max-width: 44.99rem) {
+		:global(.g1t-header) .g1t-nav {
+			gap: 0;
+		}
+		:global(.g1t-header) nav.g1t-nav .g1t-nav-cta {
 			display: none;
 		}
 	}

@@ -288,9 +288,24 @@ pub struct InviteEmail<'a> {
     pub workspace: Option<&'a str>,
     pub joins_existing_account: bool,
     pub code: &'a str,
+    /// The proof that whoever follows the link reads this inbox
+    /// (invites.rs, `email_proof`): the account made from it starts with
+    /// the address confirmed. None for an invite to an existing account,
+    /// or without IDENTITY_KEY.
+    pub proof: Option<&'a str>,
     pub days: u64,
     /// A line from whoever sent it, such as staff approving a request.
     pub note: Option<&'a str>,
+}
+
+/// An invite's page, as its email links to it: with the email's proof
+/// when it has one, so following it confirms the address (invites.rs).
+/// The code alone is what the inviter can see and share.
+pub fn invite_link(site: &str, code: &str, proof: Option<&str>) -> String {
+    match proof {
+        Some(proof) => format!("{site}/invite/{code}?proof={proof}"),
+        None => format!("{site}/invite/{code}"),
+    }
 }
 
 /// The subject and letter of an invite email.
@@ -314,7 +329,7 @@ pub fn invite_letter(invite: &InviteEmail, site: &str) -> (String, Letter) {
         paragraphs: vec![intro],
         quotes,
         code: None,
-        action: Some((action, format!("{site}/invite/{}", invite.code))),
+        action: Some((action, invite_link(site, invite.code, invite.proof))),
         footer: format!(
             "This invite works for {} days, only for this address. If you were not expecting it, you can ignore this message.",
             invite.days
@@ -413,8 +428,9 @@ pub async fn send_waitlist_summary(env: &Env, to: &str, new: &[Requested], waiti
 }
 
 /// An invitation to collaborate on one repository. `code` is set when the
-/// address has no account yet: the link then makes one and accepts; without
-/// it, the link opens the invitation to accept or decline.
+/// address has no account yet: the link then makes one and accepts, with
+/// `proof` (see [`invite_link`]); without it, the link opens the
+/// invitation to accept or decline.
 pub async fn send_repo_invite(
     env: &Env,
     to: &str,
@@ -422,11 +438,12 @@ pub async fn send_repo_invite(
     repo: &str,
     role: &str,
     code: Option<&str>,
+    proof: Option<&str>,
     days: u64,
 ) -> Result<()> {
     let (subject, intro) = repo_invite_wording(from, repo, role, code.is_some());
     let link = match code {
-        Some(code) => format!("{}/invite/{code}", site(env)),
+        Some(code) => invite_link(&site(env), code, proof),
         None => format!("{}/{repo}/invitations", site(env)),
     };
     send_link(
@@ -503,13 +520,13 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
     let who = from.unwrap_or("The g1t team");
     match (workspace, joins_existing_account) {
         (Some(workspace), true) => (
-            format!("{who} invited you to {workspace} on g1t"),
+            format!("{who} invited you to join {workspace} on g1t"),
             format!("{who} invited you to join the {workspace} workspace on g1t."),
         ),
         (Some(workspace), false) => (
-            format!("{who} invited you to {workspace} on g1t"),
+            format!("{who} invited you to join {workspace} on g1t"),
             format!(
-                "{who} invited you to join the {workspace} workspace on g1t, where people and agents ship software together. Accepting makes your account and joins you to {workspace}."
+                "{who} invited you to join the {workspace} workspace on g1t, where people and agents ship software together. You do not have a g1t account yet, so this invitation also lets you make one; then you accept or decline joining {workspace}."
             ),
         ),
         (None, _) => (
@@ -517,7 +534,7 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
                 Some(from) => format!("{from} invited you to g1t"),
                 None => "Your invite to g1t".to_owned(),
             },
-            format!("{who} invited you to g1t, where people and agents ship software together. g1t is invite-only for now; this invite lets you make your account."),
+            format!("{who} invited you to g1t, where people and agents ship software together. g1t is invite-only for now; this invite lets you make your account. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
         ),
     }
 }
@@ -558,13 +575,14 @@ mod tests {
         let (subject, intro) = invite_wording(Some("ada"), None, false);
         assert_eq!(subject, "ada invited you to g1t");
         assert!(intro.starts_with("ada invited you to g1t"));
+        assert!(intro.contains("does not add you to anyone's workspace"));
         let (subject, _) = invite_wording(None, None, false);
         assert_eq!(subject, "Your invite to g1t");
         let (subject, intro) = invite_wording(Some("ada"), Some("acme"), true);
-        assert_eq!(subject, "ada invited you to acme on g1t");
+        assert_eq!(subject, "ada invited you to join acme on g1t");
         assert_eq!(intro, "ada invited you to join the acme workspace on g1t.");
         let (_, intro) = invite_wording(Some("ada"), Some("acme"), false);
-        assert!(intro.contains("makes your account and joins you to acme"));
+        assert!(intro.contains("also lets you make one; then you accept or decline joining acme"));
     }
 
     fn invite<'a>(note: Option<&'a str>, from: Option<&'a str>) -> InviteEmail<'a> {
@@ -574,6 +592,7 @@ mod tests {
             workspace: Some("Flagon, Inc."),
             joins_existing_account: false,
             code: "g1t-abcd",
+            proof: None,
             days: 30,
             note,
         }
@@ -582,7 +601,7 @@ mod tests {
     #[test]
     fn an_invite_links_to_its_page_and_carries_a_note() {
         let (subject, letter) = invite_letter(&invite(Some("Welcome aboard <3"), None), SITE);
-        assert_eq!(subject, "The g1t team invited you to Flagon, Inc. on g1t");
+        assert_eq!(subject, "The g1t team invited you to join Flagon, Inc. on g1t");
         assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/invite/g1t-abcd");
         assert_eq!(letter.quotes, vec![("A note from the g1t team".to_owned(), "Welcome aboard <3".to_owned())]);
         let (text, html) = render(&letter, SITE);
@@ -593,6 +612,15 @@ mod tests {
         assert!(invite_letter(&invite(None, Some("Chase Pierce")), SITE).1.quotes.is_empty());
         assert!(invite_letter(&invite(Some("  "), Some("Chase Pierce")), SITE).1.quotes.is_empty());
         assert_eq!(invite_letter(&invite(Some("hi"), Some("Chase Pierce")), SITE).1.quotes[0].0, "A note from Chase Pierce");
+    }
+
+    #[test]
+    fn an_invite_link_carries_the_emails_proof_when_it_has_one() {
+        let proven = InviteEmail { proof: Some("4f9c2a"), ..invite(None, None) };
+        let (_, letter) = invite_letter(&proven, SITE);
+        assert_eq!(letter.action.as_ref().unwrap().1, "https://g1t.sh/invite/g1t-abcd?proof=4f9c2a");
+        // An invite sent before proofs, or for an existing account: the code alone.
+        assert_eq!(invite_link(SITE, "g1t-abcd", None), "https://g1t.sh/invite/g1t-abcd");
     }
 
     #[test]
@@ -688,6 +716,7 @@ mod tests {
             workspace: Some("Flagon, Inc."),
             joins_existing_account: false,
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+            proof: None,
             days: 30,
             note: None,
         }, SITE);
@@ -698,6 +727,7 @@ mod tests {
             workspace: None,
             joins_existing_account: false,
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
+            proof: None,
             days: 30,
             note: Some("Thanks for waiting. We would love to see the compiler."),
         }, SITE);

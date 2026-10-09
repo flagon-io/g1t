@@ -396,6 +396,33 @@ impl Pack {
             _ => None,
         }
     }
+
+    /// What the pack's own commits and trees say the objects they name
+    /// are: a commit's tree and parents, a tree's entries (submodules
+    /// left out). How a missing base can be asked for as what it is.
+    pub fn named_kinds(&self) -> HashMap<String, ObjectKind> {
+        let mut kinds = HashMap::new();
+        for (kind, data) in self.objects.values() {
+            match kind {
+                ObjectKind::Commit => {
+                    let commit = parse_commit(data);
+                    kinds.insert(commit.tree, ObjectKind::Tree);
+                    kinds.extend(commit.parents.into_iter().map(|parent| (parent, ObjectKind::Commit)));
+                }
+                ObjectKind::Tree => {
+                    for item in parse_tree(data) {
+                        if item.is_tree() {
+                            kinds.insert(item.id, ObjectKind::Tree);
+                        } else if item.mode != "160000" {
+                            kinds.insert(item.id, ObjectKind::Blob);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        kinds
+    }
 }
 
 /// What a commit says about its place in history, and whose it is.
@@ -568,6 +595,29 @@ pub(crate) mod tests {
         parsed.supply(&base_id, ObjectKind::Blob, base);
         assert_eq!(parsed.unresolved(), 0);
         assert!(parsed.blob(&object_id(ObjectKind::Blob, b"kept and more\n")).is_some());
+    }
+
+    #[test]
+    fn a_pack_says_what_the_objects_it_names_are() {
+        let blob_id = object_id(ObjectKind::Blob, b"x");
+        let sub_id = "1".repeat(40);
+        let module_id = "2".repeat(40);
+        let tree = encode_tree(&[
+            TreeItem { mode: "100644".into(), name: "a.txt".into(), id: blob_id.clone() },
+            TreeItem { mode: "40000".into(), name: "src".into(), id: sub_id.clone() },
+            TreeItem { mode: "160000".into(), name: "vendor".into(), id: module_id.clone() },
+        ]);
+        let tree_id = object_id(ObjectKind::Tree, &tree);
+        let parent = "3".repeat(40);
+        let commit = format!("tree {tree_id}\nparent {parent}\nauthor A <a@x> 1 +0000\n\nm\n");
+        let pack = Pack::parse(&build_pack(&[(ObjectKind::Tree, tree), (ObjectKind::Commit, commit.into_bytes())], &[])).unwrap();
+        let kinds = pack.named_kinds();
+        assert_eq!(kinds.get(&blob_id), Some(&ObjectKind::Blob));
+        assert_eq!(kinds.get(&sub_id), Some(&ObjectKind::Tree));
+        assert_eq!(kinds.get(&tree_id), Some(&ObjectKind::Tree));
+        assert_eq!(kinds.get(&parent), Some(&ObjectKind::Commit));
+        // A submodule's commit lives in another repository.
+        assert_eq!(kinds.get(&module_id), None);
     }
 
     #[test]

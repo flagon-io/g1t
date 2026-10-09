@@ -71,6 +71,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       agent: user.username,
       runtime: "external",
       base: String(form.get("base") ?? "") || undefined,
+      draft: form.get("intent") === "draft",
     },
   );
   if (!result.ok) return { error: result.error.message };
@@ -144,11 +145,17 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
         <Input name="issue" type="number" min={1} defaultValue={issue} placeholder="12" />
       </Field>
       <ErrorText>{actionData?.error}</ErrorText>
-      <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-        <SubmitButton pending="Opening…" disabled={mirrorBlocked != null}>
-          Open pull request
+      <div className="flex flex-wrap items-center gap-2">
+        <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
+          <SubmitButton name="intent" value="open" match={{ intent: "open" }} pending="Opening…" disabled={mirrorBlocked != null}>
+            Open pull request
+          </SubmitButton>
+        </Hint>
+        <SubmitButton name="intent" value="draft" match={{ intent: "draft" }} variant="quiet" pending="Opening…" disabled={mirrorBlocked != null}>
+          Open as draft
         </SubmitButton>
-      </Hint>
+        <span className="text-xs text-faint">A draft can't merge, and agents' review routines wait, until you mark it ready.</span>
+      </div>
     </Form>
   );
 }

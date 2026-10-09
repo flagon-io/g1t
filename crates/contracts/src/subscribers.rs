@@ -189,6 +189,24 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "team.deleted",
         ],
     ),
+    // Pages that cite code a merge or a push to the default branch
+    // changed become possibly out of date, and projects' docs folders shown
+    // in Docs are read again (docs/src/staleness.ts, repo-spaces.ts).
+    ("SUBSCRIBER_DOCS", &["git.push", "pull.merged"]),
+    // Agents' routines that run on events: a pull request ready for
+    // review or merged, checks or a deploy failing, an issue opened
+    // (agents/src/triggers.ts).
+    (
+        "SUBSCRIBER_AGENTS",
+        &[
+            "pull.opened",
+            "pull.ready",
+            "pull.merged",
+            "checks.completed",
+            "issue.opened",
+            "deployment.failed",
+        ],
+    ),
 ];
 
 /// Whether `pattern` (see the module's notes) matches the type `kind`.
@@ -214,7 +232,7 @@ mod tests {
     use super::*;
 
     /// Types published on the bus that hooks are not offered.
-    const UNOFFERED: [&str; 18] = [
+    const UNOFFERED: [&str; 22] = [
         "pull.mergecheck",
         "pull.mergeability",
         "deployment.review_requested",
@@ -233,6 +251,11 @@ mod tests {
         "workspace.deleting",
         "workspace.restored",
         "workspace.deleted",
+        // Docs pages: no repository, so no repository's hooks.
+        "doc.page.created",
+        "doc.page.updated",
+        "doc.page.archived",
+        "doc.page.stale",
     ];
 
     fn published(kind: &str) -> bool {
@@ -265,7 +288,7 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), count);
-        assert_eq!(count, 13);
+        assert_eq!(count, 15);
     }
 
     #[test]
@@ -282,6 +305,8 @@ mod tests {
         assert!(routed("SUBSCRIBER_SEARCH", "user.updated"));
         assert!(routed("SUBSCRIBER_REPOS", "user.deleting"));
         assert!(!routed("SUBSCRIBER_REPOS", "git.push"));
+        assert!(routed("SUBSCRIBER_DOCS", "pull.merged"));
+        assert!(!routed("SUBSCRIBER_DOCS", "pull.opened"));
         // Every subscriber follows what moves or removes a repository.
         for (binding, _) in ROUTES {
             for kind in LIFECYCLE {

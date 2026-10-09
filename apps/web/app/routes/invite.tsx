@@ -1,7 +1,8 @@
-import { CircleAlert, Lock, Ticket } from "lucide-react";
+import { CircleAlert, Lock, MailCheck, Ticket } from "lucide-react";
 import { Form, Link, data, redirect } from "react-router";
 
 import type { InvitePreview, User } from "@g1t/contracts";
+import { USERNAME_PATTERN } from "@g1t/contracts";
 
 import type { Route } from "./+types/invite";
 import { page } from "../lib/meta";
@@ -11,7 +12,7 @@ import { Honeypot } from "../components/honeypot";
 import { Avatar, ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { githubSignInEnabled } from "../lib/github.server";
 import { identity } from "../lib/services.server";
-import { cleanCode, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
+import { cleanCode, cleanProof, invitePageCopy, inviteSignUpCopy, landingFor, looksAutomated, suggestUsername, welcomeCookie } from "../lib/invites";
 import { clientKey } from "../lib/registration.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, startSession } from "../lib/session.server";
 import { rememberWorkspace } from "../lib/workspace-choice";
@@ -19,7 +20,7 @@ import { rememberWorkspace } from "../lib/workspace-choice";
 export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "You're invited · g1t",
-    description: "An invite to g1t, where people and agents ship software together.",
+    description: "An invite to g1t, one workspace where a team and its agents talk, work and ship.",
   });
 }
 
@@ -29,12 +30,19 @@ export function meta(args: Route.MetaArgs) {
  * an address that has an account), and the workspace or repository it
  * gives. Signing in or up elsewhere (GitHub, /login) comes back here with
  * `?accept=1`, which finishes the job.
+ *
+ * The link in the invite's own email also carries `?proof=`, which only
+ * that email has: signing up from it makes the account with the address
+ * confirmed already. The code alone (typed in, or a link passed on) does
+ * not, and the address is confirmed after sign-up as usual.
  */
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const code = cleanCode(params.code);
   const viewer = getViewer(context);
-  const accepting = new URL(request.url).searchParams.get("accept") === "1";
-  const checked = await identity.checkInvite(code, clientKey(request), { viewer, anyStatus: true });
+  const search = new URL(request.url).searchParams;
+  const accepting = search.get("accept") === "1";
+  const emailProof = cleanProof(search.get("proof"));
+  const checked = await identity.checkInvite(code, clientKey(request), { viewer, anyStatus: true, emailProof });
   const invite = checked.ok ? checked.value : null;
   // A shared link for a group signs up on /register, which names the group.
   if (invite?.sharedLabel) throw redirect(`/register?invite=${encodeURIComponent(code)}`);
@@ -61,6 +69,8 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
       alreadyIn: viewer && invite ? alreadyIn(viewer, invite) : false,
       github: false,
       suggestion: suggestUsername(invite?.address),
+      // Only a proof identity accepted goes back into the form.
+      proof: invite?.emailProven ? emailProof : null,
       started: Date.now(),
       acceptError: null as string | null,
     };
@@ -95,7 +105,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const code = cleanCode(params.code);
   const form = await request.formData();
   const client = clientKey(request);
-  const checked = await identity.checkInvite(code, client, { viewer: getViewer(context) });
+  const emailProof = cleanProof(String(form.get("proof") ?? ""));
+  const checked = await identity.checkInvite(code, client, { viewer: getViewer(context), emailProof });
   if (!checked.ok) return data({ error: checked.error.message }, { status: 422 });
   const invite = checked.value;
 
@@ -110,6 +121,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       String(form.get("password") ?? ""),
       code,
       client,
+      // Identity checks it again, against this invite and this address.
+      emailProof,
     );
     if (!result.ok) return data({ error: result.error.message }, { status: 422 });
     throw landIn(request, invite, [startSession(result.value.sessionToken)], true);
@@ -146,43 +159,23 @@ function Faces({ invite }: { invite: InvitePreview }) {
   );
 }
 
-function senderName(invite: InvitePreview): string {
-  return invite.invitedBy ? (invite.invitedBy.name ?? invite.invitedBy.username) : "The g1t team";
-}
-
-/** "Chase Pierce invited you to join Flagon, Inc. on g1t", with the place in bold. */
+/**
+ * Which invite it is, in the headline (`invitePageCopy`): "@syntaqx
+ * invited you to join Flagon, Inc. on g1t" (a workspace invitation, with
+ * the place in bold), "… to collaborate on acme/web", or "@syntaqx invited
+ * you to g1t" (an account, and no workspace).
+ */
 function Headline({ invite }: { invite: InvitePreview }) {
-  const from = senderName(invite);
-  if (invite.workspace) {
-    return (
-      <>
-        {from} invited you to join <strong className="font-semibold text-fg">{invite.workspace.name}</strong> on g1t
-      </>
-    );
-  }
-  if (invite.repository) {
-    return (
-      <>
-        {from} invited you to collaborate on <strong className="font-mono font-semibold text-fg">{invite.repository.name}</strong>
-      </>
-    );
-  }
-  return <>{from} invited you to g1t</>;
-}
-
-function about(invite: InvitePreview, signedIn: boolean): string {
-  const signingUp = !signedIn && !invite.hasAccount && invite.kind === "account";
-  if (invite.workspace) {
-    return `g1t is where people and agents ship software together. ${
-      signingUp ? "Make your account below and you join" : "Accepting joins you to"
-    } ${invite.workspace.name} as a member.`;
-  }
-  if (invite.repository) {
-    return `g1t is where people and agents ship software together. ${
-      signingUp ? "Make your account below and you get" : "Accepting gives you"
-    } the ${invite.repository.role} role on ${invite.repository.name}.`;
-  }
-  return "g1t is where people and agents ship software together: plan in issues, assign work to agents like teammates, and land it through checks that hold. It is invite-only for now; this invite gets you in.";
+  const copy = invitePageCopy(invite, false);
+  return (
+    <>
+      {copy.before}
+      {copy.place && (
+        <strong className={`font-semibold text-fg ${invite.repository && !invite.workspace ? "font-mono" : ""}`}>{copy.place}</strong>
+      )}
+      {copy.after}
+    </>
+  );
 }
 
 /** What accepting is called on its button. */
@@ -202,18 +195,19 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
   const here = `/invite/${loaded.code}`;
   const back = `${here}?accept=1`;
   const github = `/auth/github?${new URLSearchParams({ invite: loaded.code, next: back })}`;
+  const copy = inviteSignUpCopy(invite);
   return (
     <section aria-labelledby="sign-up" className="rounded-xl border border-line bg-surface/60 p-5 sm:p-6">
       <h2 id="sign-up" className="text-base font-semibold">
         Create your account
       </h2>
-      <p className="mt-1 text-sm text-muted">
-        {invite.workspace
-          ? `You join ${invite.workspace.name} as soon as you confirm your email.`
-          : invite.repository
-            ? `You get ${invite.repository.name} as soon as you confirm your email.`
-            : "It takes a minute."}
-      </p>
+      <p className="mt-1 text-sm text-muted">{copy.intro}</p>
+      {copy.confirmed && (
+        <p className="mt-4 flex items-start gap-2 rounded-md border border-success/40 bg-success/5 p-3 text-sm" role="status">
+          <MailCheck size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-success" />
+          <span>{copy.confirmed}</span>
+        </p>
+      )}
       {loaded.github && (
         <div className="mt-5">
           <ContinueWithGithub href={github} />
@@ -223,19 +217,24 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
       <Form method="post" className={`relative space-y-4 ${loaded.github ? "" : "mt-5"}`}>
         <input type="hidden" name="intent" value="register" />
         <Honeypot started={loaded.started} />
+        {loaded.proof && <input type="hidden" name="proof" value={loaded.proof} />}
         {invite.address ? (
-          <Field label="Email" hint="Your invite was sent here. We email it a code to confirm it before you start.">
+          <Field label="Email" hint={copy.hint}>
             <span className="relative block">
               <Input name="email" type="email" value={invite.address} readOnly aria-readonly="true" autoComplete="email" />
-              <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
+              {copy.confirmed ? (
+                <MailCheck size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-success" />
+              ) : (
+                <Lock size={14} aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-faint" />
+              )}
             </span>
           </Field>
         ) : (
-          <Field label="Email" hint="We email it a code to confirm it before you start.">
+          <Field label="Email" hint={copy.hint}>
             <Input name="email" type="email" autoComplete="email" required maxLength={254} />
           </Field>
         )}
-        <Field label="Username" hint="Lowercase letters, digits and hyphens. It is how you sign in and how others see you.">
+        <Field label="Username" hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it.">
           <Input
             name="username"
             autoComplete="username"
@@ -243,7 +242,7 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
             autoFocus
             maxLength={39}
             defaultValue={loaded.suggestion}
-            pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*"
+            pattern={USERNAME_PATTERN}
           />
         </Field>
         <Field label="Password" hint="At least 10 characters.">
@@ -424,7 +423,7 @@ function Dead({ loaded }: { loaded: Loaded }) {
         </div>
       )}
       <div className="mt-8 flex flex-wrap gap-3">
-        <ButtonLink to="/register#request">Request access</ButtonLink>
+        <ButtonLink to="/register#request">Sign up</ButtonLink>
         <ButtonLink to={loaded.viewer ? "/" : "/login"} variant="quiet">
           {loaded.viewer ? "Go to g1t" : "Sign in"}
         </ButtonLink>
@@ -448,7 +447,7 @@ export default function Invite({ loaderData, actionData }: Route.ComponentProps)
           <h1 className="mt-6 text-2xl font-semibold tracking-tight text-balance text-fg-soft">
             <Headline invite={invite} />
           </h1>
-          <p className="mt-2 text-sm leading-6 text-muted">{about(invite, loaderData.viewer !== null)}</p>
+          <p className="mt-2 text-sm leading-6 text-muted">{invitePageCopy(invite, loaderData.viewer !== null).about}</p>
           <dl className="mt-5 space-y-1 text-sm">
             {invite.invitedBy && (
               <div className="flex gap-2">

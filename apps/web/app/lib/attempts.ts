@@ -65,9 +65,15 @@ export function sharedPaths(mine: Pick<ChangedFile, "path">[], theirs: Pick<Chan
  * Where a pull request's review stands: each reviewer's latest verdict,
  * changes asked for first; otherwise whose review was asked for.
  */
-export function attemptReview(comments: Pick<Comment, "author" | "verdict">[], reviewers: string[]): AttemptReview {
+export function attemptReview(
+  comments: (Pick<Comment, "author" | "verdict"> & Partial<Pick<Comment, "agent" | "advisory">>)[],
+  reviewers: string[],
+): AttemptReview {
   const latest = new Map<string, NonNullable<Comment["verdict"]>>();
-  for (const comment of comments) if (comment.verdict) latest.set(comment.author.username, comment.verdict);
+  // An agent's review is advisory: it neither approves nor holds anything up.
+  for (const comment of comments) {
+    if (comment.verdict && !comment.agent && !comment.advisory) latest.set(comment.author.username, comment.verdict);
+  }
   const by = (verdict: NonNullable<Comment["verdict"]>) =>
     [...latest].filter(([, given]) => given === verdict).map(([reviewer]) => reviewer);
   const blocking = by("request_changes");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { HOSTED_ADDRESSES, addressesFor, addressesFrom, cloneUrl } from "./addresses.ts";
+import { HOSTED_ADDRESSES, addressesFor, addressesFrom, cloneUrl, usercontentFrom } from "./addresses.ts";
 import { MCP_URL } from "./agent-setup.ts";
 import { OG, SITE } from "./meta.ts";
 
@@ -18,8 +18,22 @@ test("settings replace the addresses, without trailing slashes", () => {
       MCP_URL: "http://localhost:8790/mcp/",
       OG_URL: "",
     }),
-    { site: "http://localhost:8787", api: "http://localhost:8788", mcp: "http://localhost:8790/mcp", og: null },
+    {
+      site: "http://localhost:8787",
+      api: "http://localhost:8788",
+      mcp: "http://localhost:8790/mcp",
+      og: null,
+      usercontent: "http://localhost:8787/-/usercontent",
+    },
   );
+});
+
+test("files people supply are served from an origin of their own", () => {
+  assert.equal(addressesFor({}).usercontent, "https://g1tusercontent.com");
+  assert.equal(addressesFor({ SITE_URL: "https://git.example.com", USERCONTENT_URL: "https://files.example.net/" }).usercontent, "https://files.example.net");
+  assert.equal(addressesFor({ SITE_URL: "https://git.example.com", USERCONTENT_URL: "https://git.example.com" }).usercontent, "https://git.example.com/-/usercontent");
+  assert.equal(usercontentFrom(undefined), "");
+  assert.equal(usercontentFrom({ addresses: HOSTED_ADDRESSES }), "https://g1tusercontent.com");
 });
 
 test("pages without root data use g1t.sh's addresses", () => {

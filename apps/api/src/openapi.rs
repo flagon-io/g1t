@@ -66,7 +66,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Personal access tokens",
-        "A workspace's rules for its members' personal access tokens: whether classic and fine-grained tokens reach it, whether fine-grained tokens wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
+        "A workspace's rules for its members' personal access tokens: whether tokens made for all of a member's workspaces reach it, whether tokens may be made for it alone and wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
         &[
             Op::Tokens(TokenOp::GetTokenPolicy),
             Op::Tokens(TokenOp::SetTokenPolicy),
@@ -83,7 +83,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Invites",
-        "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
+        "While g1t is invite-only, every new account needs an invite. Your invites, inviting people into a workspace by username or email, and answering the invitations to workspaces sent to you.",
         &[
             Op::ListInvites,
             Op::CreateInvite,
@@ -91,6 +91,9 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ListWorkspaceInvites,
             Op::InviteMember,
             Op::RevokeWorkspaceInvite,
+            Op::ListInvitations,
+            Op::AcceptInvitation,
+            Op::DeclineInvitation,
         ],
     ),
     (
@@ -566,6 +569,9 @@ fn title(op: Op) -> &'static str {
         Op::RevokeInvite => "Revoke an invite",
         Op::ListWorkspaceInvites => "List a workspace's invites",
         Op::InviteMember => "Invite someone to a workspace",
+        Op::ListInvitations => "List your workspace invitations",
+        Op::AcceptInvitation => "Accept a workspace invitation",
+        Op::DeclineInvitation => "Decline a workspace invitation",
         Op::RevokeWorkspaceInvite => "Revoke a workspace's invite",
         Op::TransferRepo => "Transfer a repository",
         Op::RenameRepo => "Rename a repository",
@@ -1060,7 +1066,8 @@ fn onboarding() -> Map<String, Value> {
                         "properties": {
                             "status": { "type": "string", "enum": ["pending", "approved", "denied", "expired"] },
                             "token": { "type": "string", "description": "Present when approved." },
-                            "username": { "type": "string" },
+                            "username": { "type": "string", "description": "Lowercased: what the account is found and linked by." },
+                            "display_username": { "type": "string", "description": "The username as its owner wrote it; the same as username when they chose no case." },
                             "verified": {
                                 "type": "boolean",
                                 "description": "Whether the account's email is confirmed.",

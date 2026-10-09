@@ -24,9 +24,22 @@ import {
   writeDeployConfig,
 } from "./image.mjs";
 
-import { annotation, commitFrom, liveCommit, pendingFrom, versionFrom } from "./cloudflare.mjs";
+import {
+  annotation,
+  apiAuth,
+  commitFrom,
+  databaseOf,
+  liveCommit,
+  liveFromApi,
+  migrationFiles,
+  pendingAgainst,
+  pendingFrom,
+  pendingMigrations,
+  readLive,
+  versionFrom,
+} from "./cloudflare.mjs";
 import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
-import { decide, planJson, pool } from "./plan.mjs";
+import { decide, git, planJson, pool } from "./plan.mjs";
 import {
   ROOT,
   buildGroups,
@@ -40,6 +53,7 @@ import {
   problems,
   resolveStack,
   resolvedStack,
+  testOnlySource,
   touches,
   touchesBase,
   touchesImage,
@@ -315,6 +329,95 @@ test("a shared package's change reaches what imports it", () => {
   assert.ok(!ids(stack.units, ["packages/contracts/src/index.ts"]).includes("events"));
 });
 
+test("a crate's tests, benches and examples deploy nothing", () => {
+  // 0cdd221 changed only this file, and the plan sent three Rust Workers.
+  assert.deepEqual(ids(stack.units, ["crates/actions/tests/repository_workflows.rs"]), []);
+  assert.ok(!touchesImage(unit("runner"), ["crates/actions/tests/repository_workflows.rs"]));
+  assert.deepEqual(ids(stack.units, ["crates/kit/benches/wire.rs", "crates/scan/examples/scan.rs", "services/repos/tests/git.rs"]), []);
+  // Their sources still do, and a folder merely named like one.
+  assert.deepEqual(ids(stack.units, ["crates/actions/src/expr.rs"]), ["actions", "security", "runner"]);
+  assert.ok(touchesImage(unit("runner"), ["crates/actions/src/expr.rs"]));
+  assert.deepEqual(ids(stack.units, ["services/repos/src/tests/helpers.rs"]), ["repos"]);
+  assert.deepEqual(ids(stack.units, ["crates/kit/testsuite/a.rs"]), ids(stack.units, ["crates/kit/src/lib.rs"]));
+  // A unit that is not a crate keeps its whole folder.
+  assert.deepEqual(unit("web").crateDirs, []);
+  assert.deepEqual(unit("events").crateDirs, ["crates/contracts", "crates/kit", "services/events"]);
+  assert.ok(unit("runner").crateDirs.includes("crates/runner"));
+});
+
+/** Rust sources by path, as `testOnlySource` reads them. */
+const sources = (files) => ({
+  read: (path) => files[path] ?? "",
+  list: (dir) => Object.keys(files).filter((path) => path.slice(0, path.lastIndexOf("/")) === dir),
+});
+
+test("a Rust file compiled only for tests is found from what declares it", () => {
+  const crate = ["crates/x"];
+  const tree = sources({
+    "crates/x/src/lib.rs": "pub mod api;\nmod store;\n#[cfg(test)]\nmod tests;\n#[cfg(test)] pub(crate) mod fixtures;\n#[cfg(any(test, feature = \"x\"))]\nmod both;\n",
+    "crates/x/src/api.rs": "mod wire;\n#[cfg(test)]\n#[path = \"api_tests.rs\"]\nmod tests;\n",
+    "crates/x/src/api/wire.rs": "",
+    "crates/x/src/api_tests.rs": "use super::*;",
+    "crates/x/src/store/mod.rs": "#[cfg(test)]\nmod memory;\n",
+    "crates/x/src/store/memory.rs": "mod deep;",
+    "crates/x/src/store/memory/deep.rs": "",
+    "crates/x/src/tests.rs": "",
+    "crates/x/src/fixtures/mod.rs": "",
+    "crates/x/src/both.rs": "",
+    "crates/x/src/bin/tool.rs": "",
+  });
+  const only = (file) => testOnlySource(file, crate, tree);
+  for (const file of ["crates/x/src/tests.rs", "crates/x/src/fixtures/mod.rs", "crates/x/src/api_tests.rs", "crates/x/src/store/memory.rs", "crates/x/src/store/memory/deep.rs"]) {
+    assert.ok(only(file), file);
+  }
+  // Built: roots, ordinary modules, a cfg that is not only test, a file
+  // nothing declares (new, or deleted), and files outside src or the crate.
+  for (const file of [
+    "crates/x/src/lib.rs",
+    "crates/x/src/api.rs",
+    "crates/x/src/api/wire.rs",
+    "crates/x/src/store/mod.rs",
+    "crates/x/src/both.rs",
+    "crates/x/src/bin/tool.rs",
+    "crates/x/src/new.rs",
+    "crates/x/build.rs",
+    "crates/y/src/tests.rs",
+    "crates/x/src/notes.md",
+  ]) {
+    assert.ok(!only(file), file);
+  }
+});
+
+test("this repository's test-only sources are read from git", () => {
+  const head = git.head();
+  const atHead = { read: (path) => git.show(head, path), list: (dir) => git.list(head, dir) };
+  const only = (u, file) => testOnlySource(file, unit(u).crateDirs, atHead);
+  assert.ok(only("api", "apps/api/src/responses.rs"));
+  assert.ok(only("billing", "services/billing/src/catalogue_tests.rs"));
+  assert.ok(only("billing", "services/billing/src/gateway_tests.rs"));
+  assert.ok(!only("billing", "services/billing/src/catalogue.rs"));
+  assert.ok(!only("api", "apps/api/src/toolkit.rs"));
+});
+
+test("decide: a change only to tests deploys nothing", () => {
+  const units = ["actions", "billing", "runner"].map(unit);
+  const live = { actions: { sha: OLD }, billing: { sha: OLD }, runner: { sha: OLD } };
+  const files = {
+    [`${HEAD}:services/billing/src/gateway.rs`]: "#[cfg(test)]\n#[path = \"gateway_tests.rs\"]\nmod tests;\n",
+    [`${HEAD}:services/billing/src/lib.rs`]: "mod gateway;\n",
+  };
+  const gitApi = {
+    ...fakeGit(["crates/actions/tests/repository_workflows.rs", "services/billing/src/gateway_tests.rs"]),
+    show: (sha, path) => files[`${sha}:${path}`] ?? "",
+    list: (sha, dir) => Object.keys(files).map((k) => k.slice(sha.length + 1)).filter((p) => p.startsWith(`${dir}/`)).concat(dir === "services/billing/src" ? ["services/billing/src/gateway_tests.rs"] : []),
+  };
+  const decisions = decide(units, { live, head: HEAD, gitApi });
+  assert.deepEqual(decisions.map((d) => [d.unit.id, d.deploy, d.image]), [["actions", false, false], ["billing", false, false], ["runner", false, false]]);
+  // With a source that ships beside them, only that is listed.
+  const mixed = decide([unit("billing")], { live, head: HEAD, gitApi: { ...gitApi, changed: () => ["services/billing/src/gateway_tests.rs", "services/billing/src/gateway.rs"] } });
+  assert.deepEqual([mixed[0].deploy, mixed[0].files], [true, ["services/billing/src/gateway.rs"]]);
+});
+
 test("own folders, declared inputs and root files", () => {
   assert.deepEqual(ids(stack.units, ["services/pages/src/index.ts"]), ["pages"]);
   assert.deepEqual(ids(stack.units, ["apps/web/app/lib/roadmap.ts"]), ["og", "web"]);
@@ -532,6 +635,104 @@ Migrations to be applied:
   assert.deepEqual(pendingFrom(pending), ["0021_confidence.sql", "0022_more.sql"]);
   assert.deepEqual(pendingFrom("Resource location: remote\n\n✅ No migrations to apply!"), []);
   assert.equal(versionFrom("Deployed g1t-events triggers\nCurrent Version ID: 2c7fc93a-82d9-4850-8a77-ba887d157a4f\n"), "2c7fc93a-82d9-4850-8a77-ba887d157a4f");
+});
+
+// Cloudflare's REST answers, as the API sends them (Wrangler's --json
+// prints the first deployment, and the versions' items).
+const AUTH = { token: "t", account: "acct" };
+const ok = (result) => ({ success: true, errors: [], messages: [], result });
+const refused = (code, message) => ({ success: false, errors: [{ code, message }], messages: [], result: null });
+/** A fetch that answers by path: { "GET /path": [status, body] }. */
+function fakeFetch(answers, calls = []) {
+  return async (url, init) => {
+    const path = url.replace("https://api.cloudflare.com/client/v4", "");
+    calls.push({ path, init });
+    const found = answers[`${init.method} ${path}`];
+    if (!found) throw new Error(`unexpected ${init.method} ${path}`);
+    const [status, body] = found;
+    return { status, text: async () => (typeof body === "string" ? body : JSON.stringify(body)) };
+  };
+}
+const SCRIPT = "/accounts/acct/workers/scripts/g1t-events";
+const deploymentsAnswer = (id) =>
+  ok({
+    deployments: [
+      { id: "d2", source: "wrangler", strategy: "percentage", versions: [{ version_id: id, percentage: 100 }], annotations: { "workers/triggered_by": "deployment" } },
+      { id: "d1", source: "wrangler", strategy: "percentage", versions: [{ version_id: "v1", percentage: 100 }] },
+    ],
+  });
+const versionsAnswer = ok({ items: [version("v1", 1, annotation(OLD).message), version("v2", 2, null, "secret")] });
+
+test("the API's answers: the live commit as Wrangler's would give it", async () => {
+  const calls = [];
+  const fetchImpl = fakeFetch({ [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v2")], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] }, calls);
+  const found = await readLive(unit("events"), { auth: AUTH, fetchImpl });
+  assert.equal(found.sha, OLD);
+  assert.equal(found.version, "v2");
+  assert.equal(found.at, "2026-10-05T00:00:00Z");
+  assert.equal(calls[0].init.headers.authorization, "Bearer t");
+  // The same as liveCommit over what Wrangler printed.
+  assert.deepEqual(liveFromApi("w", deploymentsAnswer("v2").result, versionsAnswer.result), liveCommit(deploymentsAnswer("v2").result.deployments[0], versionsAnswer.result.items));
+  // Versions that cannot be read: the live one is not among them.
+  assert.match(liveFromApi("w", deploymentsAnswer("v2").result, null).why, /not among/);
+  // No deployment at all is an error, as `deployments status` made it.
+  assert.match(liveFromApi("w", { deployments: [] }, versionsAnswer.result).error, /no deployments/);
+});
+
+test("the API's answers: a Worker never deployed, and a refusal, never throw", async () => {
+  const missing = fakeFetch({
+    [`GET ${SCRIPT}/deployments`]: [404, refused(10007, "workers.api.error.script_not_found")],
+    [`GET ${SCRIPT}/versions?deployable=true`]: [404, refused(10007, "workers.api.error.script_not_found")],
+  });
+  assert.deepEqual(await readLive(unit("events"), { auth: AUTH, fetchImpl: missing }), { sha: null, missing: true, why: "never deployed" });
+  const denied = fakeFetch({
+    [`GET ${SCRIPT}/deployments`]: [400, refused(10000, "Authentication error")],
+    [`GET ${SCRIPT}/versions?deployable=true`]: [400, refused(10000, "Authentication error")],
+  });
+  const found = await readLive(unit("events"), { auth: AUTH, fetchImpl: denied });
+  assert.equal(found.sha, null);
+  assert.match(found.error, /Authentication error \(10000\)/);
+  const broken = async () => {
+    throw new Error("connect ECONNREFUSED");
+  };
+  const offline = await readLive(unit("events"), { auth: AUTH, fetchImpl: broken });
+  assert.match(offline.error, /ECONNREFUSED/);
+  const garbled = fakeFetch({ [`GET ${SCRIPT}/deployments`]: [200, "<html>"], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] });
+  assert.match((await readLive(unit("events"), { auth: AUTH, fetchImpl: garbled })).error, /<html>/);
+});
+
+test("the API is used only with the token Wrangler would be given", () => {
+  assert.equal(apiAuth({ CLOUDFLARE_API_TOKEN: "shell" }), null);
+  assert.deepEqual(apiAuth({ CI: "true", CLOUDFLARE_API_TOKEN: "ci", CLOUDFLARE_ACCOUNT_ID: "a" }), { token: "ci", account: "a" });
+  assert.equal(apiAuth({ CLOUDFLARE_DEPLOY_TOKEN: "mine" }).token, "mine");
+  assert.equal(apiAuth({ CLOUDFLARE_DEPLOY_TOKEN: "mine" }).account, "1e6f2cffa3f445920836e8ebe446bb58");
+});
+
+test("pending migrations: the folder's files less the names in d1_migrations", async () => {
+  const events = unit("events");
+  const db = databaseOf(events);
+  assert.equal(db.id, events.config.d1_databases[0].database_id);
+  assert.equal(db.table, "d1_migrations");
+  const files = migrationFiles(join(ROOT, db.dir));
+  assert.ok(files.length > 2 && files.every((f) => f.endsWith(".sql")));
+  assert.deepEqual(files, [...files].sort());
+
+  assert.deepEqual(pendingAgainst(["0001_a.sql", "0002_b.sql", "0003_c.sql"], [{ results: [{ name: "0001_a.sql" }, { name: "0002_b.sql" }], success: true, meta: {} }]), ["0003_c.sql"]);
+  assert.deepEqual(pendingAgainst(["0001_a.sql"], [{ results: [], success: true }]), ["0001_a.sql"]);
+
+  const query = `POST /accounts/acct/d1/database/${db.id}/query`;
+  const calls = [];
+  const applied = files.slice(0, -1).map((name, i) => ({ name, id: i + 1 }));
+  const found = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [200, ok([{ results: applied, success: true, meta: {} }])] }, calls) });
+  assert.deepEqual(found, { pending: files.slice(-1) });
+  assert.match(JSON.parse(calls[0].init.body).sql, /^SELECT name FROM "d1_migrations"/);
+  const upToDate = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [200, ok([{ results: files.map((name) => ({ name })) }])] }) });
+  assert.deepEqual(upToDate, { pending: [] });
+  // A database never migrated has no table: everything is pending.
+  const fresh = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [400, refused(7500, "no such table: d1_migrations: SQLITE_ERROR")] }) });
+  assert.deepEqual(fresh, { pending: files });
+  const denied = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [400, refused(10000, "Authentication error")] }) });
+  assert.match(denied.error, /Authentication error/);
 });
 
 test("the pool runs everything, no more than its limit at once", async () => {

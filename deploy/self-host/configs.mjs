@@ -10,8 +10,9 @@
 //   which keeps repositories in the git store (gitstore/server.mjs);
 // - EMAIL (Email Sending) becomes a service binding to workers/mail;
 // - the packages service keeps files in S3-compatible storage (RustFS)
-//   instead of R2, and the repos service its nightly backups (a bucket of
-//   their own, BACKUP_S3_BUCKET);
+//   instead of R2, the repos service its nightly backups (a bucket of
+//   their own, BACKUP_S3_BUCKET), and the docs service the files in pages
+//   (DOCS_S3_BUCKET);
 // - services that are off in this phase (agents, the context hub, the
 //   g1t.page dispatcher, model proxy) are bound to workers/off instead, and
 //   events stop queueing work for them;
@@ -19,8 +20,9 @@
 //
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
-// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY,
-// PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, BACKUP_S3_BUCKET, S3_REGION,
+// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, USERCONTENT_KEY,
+// USERCONTENT_URL,
+// PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, BACKUP_S3_BUCKET, DOCS_S3_BUCKET, S3_REGION,
 // S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_ENDPOINT, and optionally
 // your own GitHub App: GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID,
 // GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET.
@@ -69,6 +71,7 @@ export const RUNNING = STACK.filter((unit) => unit.self_host === "run")
 const OFF_NAMES = {
   "g1t-runner": "Agents",
   "g1t-context": "Context search and memory",
+  "g1t-models": "Hosted models",
 };
 const OFF = Object.fromEntries(
   STACK.filter((unit) => unit.self_host === "off").map((unit) => [unit.worker, OFF_NAMES[unit.worker] ?? unit.worker]),
@@ -76,6 +79,7 @@ const OFF = Object.fromEntries(
 
 /** Sealing keys, by the service that holds each (hosted: Wrangler secrets). */
 const SECRETS = {
+  g1t: "USERCONTENT_KEY",
   "g1t-actions": "ACTIONS_KEY",
   "g1t-integrations": "INTEGRATIONS_KEY",
   "g1t-webhooks": "WEBHOOKS_KEY",
@@ -240,7 +244,11 @@ function selfHosted(service) {
   // shows: the site's clone URLs, meta tags and agent setup, the API's
   // OAuth issuer and MCP server, and identity's mail. No social cards: the
   // card service (services/og) is not run here.
-  if (service.web) Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "" });
+  // Repository files and avatars: USERCONTENT_URL, a host of its own that
+  // reaches this same site, or, empty, a path on it (PUBLIC_URL/-/usercontent).
+  if (service.web) {
+    Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "", USERCONTENT_URL: (process.env.USERCONTENT_URL ?? "").trim() });
+  }
   if (hosted.name === "g1t-api") Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL });
   if (hosted.name === "g1t-identity") config.vars.SITE_URL = PUBLIC_URL;
   // Nightly backups' bundles go to a bucket of their own on the same
@@ -256,6 +264,19 @@ function selfHosted(service) {
       S3_REGION: process.env.S3_REGION ?? "us-east-1",
       S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
       S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY ?? "",
+    });
+  }
+  // Files people put in Docs pages go to a bucket of their own on the same
+  // S3-compatible store, instead of the FILES R2 bucket (services/docs
+  // src/files.ts, `s3FileStore`).
+  if (hosted.name === "g1t-docs-service") {
+    Object.assign(config.vars, {
+      DOCS_FILES: "s3",
+      DOCS_S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://rustfs:9000",
+      DOCS_S3_BUCKET: process.env.DOCS_S3_BUCKET ?? "g1t-docs-files",
+      DOCS_S3_REGION: process.env.S3_REGION ?? "us-east-1",
+      DOCS_S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID ?? "",
+      DOCS_S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY ?? "",
     });
   }
   // Nothing to deploy to: deployments are off (no Cloudflare API token).

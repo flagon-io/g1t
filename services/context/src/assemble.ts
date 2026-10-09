@@ -29,7 +29,6 @@ export type FileRecord = { path: string; facts: FileFacts };
 export type Surroundings = {
   /** Members who own it: named in its files, or who wrote most of it. */
   owners: string[];
-  dependsOn: { slug: string; as: string | null }[];
   deploy: {
     enabled: boolean;
     production: { url: string; commit: string; deployedAt: string } | null;
@@ -90,7 +89,6 @@ export function assemble(project: ProjectInput, files: FileRecord[], around: Sur
         project.description,
         languages.length ? `Written in ${languages.join(", ")}.` : null,
         packages.length ? `Packages: ${packages.map((pkg) => pkg.name).join(", ")}.` : null,
-        around.dependsOn.length ? `Uses ${around.dependsOn.map((dep) => dep.slug).join(", ")}.` : null,
         owners.length ? `Owned by ${owners.join(", ")}.` : null,
       ]
         .filter(Boolean)
@@ -108,9 +106,6 @@ export function assemble(project: ProjectInput, files: FileRecord[], around: Sur
     ref: `/${project.repo.namespace}/${project.repo.name}${project.rootDir ? `/tree/${project.defaultBranch}/${project.rootDir}` : ""}`,
   });
 
-  for (const dep of around.dependsOn) {
-    relate(me, "depends_on", { kind: "project", key: dep.slug });
-  }
   for (const owner of owners) {
     entities.push({ kind: "owner", key: owner.toLowerCase(), name: owner, summary: null, data: {}, ref: `/u/${owner}` });
     relate(me, "owned_by", { kind: "owner", key: owner.toLowerCase() });

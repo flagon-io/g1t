@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { VISITOR_LINKS, projectPages, usesAppShell } from "./chrome.ts";
+import { VISITOR_LINKS, projectPageAt, projectPages, usesAppShell } from "./chrome.ts";
 
 test("someone signed in always gets the sidebar", () => {
   for (const path of ["/", "/pricing", "/acme/web", "/explore", "/does/not/exist"]) {
@@ -14,9 +14,6 @@ test("a visitor gets the sidebar on app pages", () => {
     "/acme/web",
     "/acme/web/code",
     "/acme/web/issues/4",
-    "/explore",
-    "/search",
-    "/u/ada",
     "/acme",
     "/nothing/here/at/all",
   ]) {
@@ -28,6 +25,15 @@ test("a visitor gets the marketing frame on the front, pricing and sign-in pages
   for (const path of ["/", "/pricing", "/pricing/", "/login", "/register", "/verify", "/confirm-email", "/forgot", "/reset", "/device", "/oauth/authorize"]) {
     assert.equal(usesAppShell(path, false), false, path);
   }
+});
+
+test("a visitor reads profiles, Explore and Search in the public frame, with no sidebar", () => {
+  for (const path of ["/u/ada", "/u/ada/", "/explore", "/explore/", "/search"]) {
+    assert.equal(usesAppShell(path, false), false, path);
+  }
+  // A workspace named like a page is still a workspace.
+  assert.equal(usesAppShell("/u", false), true);
+  assert.equal(usesAppShell("/explorers", false), true);
 });
 
 test("a visitor reads the policies, security, support and status in the marketing frame", () => {
@@ -54,4 +60,22 @@ test("a project's menu hides member-only pages from everyone else", () => {
   assert.ok(projectPages(true, { push: true }).includes("security"));
   // Anyone who can read a repository sees its deployments.
   assert.ok(visitor.includes("deployments") && projectPages(true).includes("deployments"));
+});
+
+test("the phone's project strip lights the page a path is under", () => {
+  assert.equal(projectPageAt(""), "overview");
+  assert.equal(projectPageAt("blob/main/README.md"), "code");
+  assert.equal(projectPageAt("commit/abc123"), "code");
+  assert.equal(projectPageAt("issues/12"), "issues");
+  assert.equal(projectPageAt("milestones"), "issues");
+  assert.equal(projectPageAt("pull/3/files"), "pulls");
+  assert.equal(projectPageAt("queue"), "pulls");
+  assert.equal(projectPageAt("sessions/abc"), "agents");
+  assert.equal(projectPageAt("actions/runs/9"), "actions");
+  assert.equal(projectPageAt("security/secret-scanning"), "security");
+  assert.equal(projectPageAt("stargazers"), "insights");
+  assert.equal(projectPageAt("settings/branches"), "settings");
+  assert.equal(projectPageAt("soon/logs", { logs: "observability" }), "observability");
+  assert.equal(projectPageAt("soon/boards", { boards: "issues" }), "issues");
+  assert.equal(projectPageAt("pulse"), null);
 });

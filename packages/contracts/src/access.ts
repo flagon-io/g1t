@@ -163,7 +163,9 @@ function membershipRole(user: User, membership: Membership): RepoRole | null {
 
 /** The user's role on the repository, not counting that it may be public. */
 export function granted(user: User, repo: RepoRef): RepoRole | null {
-  // A fine-grained token outside its resource owner or selection: no role.
+  // A token outside the workspace it is made for, or its selection: no
+  // role. (The wire key is `fine_grained`, kept from before tokens were
+  // one kind.)
   const reach = user.token?.fine_grained;
   if (reach) {
     const inside =

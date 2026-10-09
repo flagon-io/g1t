@@ -181,7 +181,7 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
           </RadioGroup>
         </Section>
 
-        <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
+        <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 -mx-4 flex flex-wrap items-center gap-4 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
           <SubmitButton pending="Saving…">Save settings</SubmitButton>
           {actionData?.saved && <span className="text-sm text-muted">Saved.</span>}
           <ErrorText>{actionData?.error}</ErrorText>

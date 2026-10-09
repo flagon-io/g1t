@@ -72,7 +72,9 @@ Call a tool with `tools/call`, its name, and `arguments` that hold the
 ### Results
 
 A result is the operation's answer as JSON text, with `snake_case` fields,
-as the REST API returns it:
+as the REST API returns it. Each person in it has a lowercased `username`
+and a `display_username`, the case they chose
+([Usernames](/reference/api/#requests-and-responses)):
 
 ```json
 {
@@ -131,8 +133,10 @@ curl https://mcp.g1t.sh \
 ## What you see depends on your token
 
 Each action needs one [scope](/guides/authentication/#scopes), shown in the
-tables below; `whoami` needs none. `tools/list` shows a token only what its
-scopes allow:
+tables below; `whoami` needs none. A scope is one level of one of a token's
+[permissions](/guides/authentication/#permissions): `issues:write` is
+Issues: read and write. `tools/list` shows a token only what its
+permissions allow:
 
 - The `action` field lists only the actions the token may use, and the
   schema has only their fields.
@@ -147,12 +151,14 @@ and `account` with `whoami`. A token with the
 [Read only preset](/guides/authentication/#presets) sees only the reading
 actions of each tool, and no `agent` tool at all.
 
-What a token may do is also bounded by the role of whoever it acts as: it
-reaches what they can reach, and no more. See
+What a token may do is also bounded by the role of whoever it acts as, and
+by [where it reaches](/guides/authentication/#where-a-token-reaches): all
+of their workspaces, one, or none. See
 [scopes](/guides/authentication/#scopes).
 
-A token or OAuth sign-in made before tokens had scopes, a token from
-signing in from a tool, and a token made with full access see every tool.
+A token with every permission at its highest level, such as one from
+signing in from a tool, and an OAuth sign-in made before applications had
+scopes, see every tool.
 
 ### Annotations
 
@@ -343,7 +349,7 @@ far.
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. `label`, `milestone` and `base` filter them. | `repo` | `pull_requests:read` |
-| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
+| [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. A comment or review one of the workspace's agents wrote as itself has `agent` and `acting_for`; an agent's review has `advisory: true` and never counts toward approvals ([agent reviews](/guides/pull-requests/#agent-reviews)). | `repo`, `number` | `pull_requests:read` |
 | [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
 | [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. It merges into the default branch unless `base` names another. | `repo` | `pull_requests:write` |
 | [`update`](/reference/api/pull-requests/update-pull-request/) | Change its `base` (the branch it merges into; Write role), `labels`, `milestone`, `assignees` or `reviewers`. `state` `open` reopens it and `closed` closes it. | `repo`, `number` | `pull_requests:write` |
@@ -656,7 +662,7 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`leave`](/reference/api/members/leave-workspace/) | Leave it yourself. Never the last owner. | `workspace` | `account:write` |
 | [`delete`](/reference/api/workspaces/delete-workspace/) | Delete an empty workspace whose billing is settled; `confirm` is its slug. Owners only. See [deleting a workspace](/guides/workspaces/#delete-a-workspace). | `workspace`, `confirm` | `workspace:admin` |
 | [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
-| [`invite_member`](/reference/api/invites/invite-member/) | Invite an address into a workspace, with an invite bound to it. Owners only. A free workspace cannot invite: refused with `402` until it starts the plan. | `workspace`, `email` | `workspace:admin` |
+| [`invite_member`](/reference/api/invites/invite-member/) | Invite someone into a workspace by `username` or `email`, to join with `role` (`member` or `owner`; `member` when left out). Nobody joins without saying yes: they get an invitation to accept or decline. Owners only. A free workspace cannot invite: refused with `402` until it starts the plan. | `workspace`, and `username` or `email` | `workspace:admin` |
 | [`revoke_invite`](/reference/api/invites/revoke-workspace-invite/) | Revoke a workspace's pending invite. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's connections. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
 | [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect a model provider (Anthropic, OpenAI, Gemini, or a compatible endpoint), Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |
@@ -678,12 +684,12 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`update_ruleset`](/reference/api/rules/update-workspace-ruleset/) | Change one. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`delete_ruleset`](/reference/api/rules/delete-workspace-ruleset/) | Delete one. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`rule_evaluations`](/reference/api/rules/list-workspace-rule-evaluations/) | How rules judged changes across its repositories, with insights. Members only. | `workspace` | `workspace:read` |
-| [`get_token_policy`](/reference/api/personal-access-tokens/get-token-policy/) | Its [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens): `allow_classic`, `allow_fine_grained`, `require_approval`, `max_lifetime_days` and `forbid_no_expiry`. Members only. | `workspace` | `workspace:read` |
+| [`get_token_policy`](/reference/api/personal-access-tokens/get-token-policy/) | Its [rules for personal access tokens](/guides/authentication/#a-workspaces-rules-for-tokens): `allow_tokens_for_this_workspace`, `allow_tokens_for_all_workspaces`, `require_approval`, `max_lifetime_days` and `forbid_no_expiry`. Members only. | `workspace` | `workspace:read` |
 | [`set_token_policy`](/reference/api/personal-access-tokens/set-token-policy/) | Change them; fields left out stay. `max_lifetime_days` of 0 removes the limit. Owners only, as people. | `workspace` | `workspace:admin` |
-| [`list_member_tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | The personal access tokens of its members and outside collaborators that can reach it, with their owner, permissions or scopes, last use, expiry, and whether each reaches it now (`reaches`, `blocked_by`). `kind` narrows to `classic` or `fine_grained`. Never the token itself. Owners only, as people. | `workspace` | `access:read` |
-| [`list_token_requests`](/reference/api/personal-access-tokens/list-token-requests/) | Fine-grained tokens naming it that wait for approval. Owners only, as people. | `workspace` | `access:read` |
+| [`list_member_tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | The personal access tokens of its members and outside collaborators that can reach it, with their owner, permissions, scopes, reach (`workspace`, `repository_selection`, `repositories`), last use, expiry, and whether each reaches it now (`reaches`, `blocked_by`). Never the token itself. Owners only, as people. | `workspace` | `access:read` |
+| [`list_token_requests`](/reference/api/personal-access-tokens/list-token-requests/) | Tokens made for it that wait for approval. Owners only, as people. | `workspace` | `access:read` |
 | [`review_token_request`](/reference/api/personal-access-tokens/review-token-request/) | Approve or deny one: `decision` is `approve` or `deny`, with an optional `reason` its owner is shown. Owners only, as people. | `workspace`, `id`, `decision` | `access:admin` |
-| [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A fine-grained token naming it stops reaching it; a classic one keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
+| [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A token made for it stops reaching it; one made for all of its owner's workspaces keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
 
 ## `billing`
 
@@ -737,7 +743,7 @@ cannot. Name an issue or pull request by a thread's `id`, or by `repo` and
 
 Who the token acts as and its workspaces, your email addresses, your
 invites while g1t is [invite-only](/guides/authentication/#invites), and
-invitations to repositories waiting for you. `whoami` is the default
+invitations to workspaces and repositories waiting for you. `whoami` is the default
 action, and needs no scope. An agent's token and a workspace's token cannot
 use the email and invite actions. An account that has not confirmed its
 email address gets `403` from every tool until it does; see
@@ -752,8 +758,11 @@ email address gets `403` from every tool until it does; see
 | [`remove_email`](/reference/api/accounts/remove-email/) | Remove an address; never the primary or the last confirmed one. | `email`, `password` | `account:write` |
 | [`update_email_settings`](/reference/api/accounts/update-email-settings/) | Change `primary` or `backup` (with `password`), `private_email` or `block_private_pushes`. See [email addresses](/guides/authentication/#email-addresses). | None | `account:write` |
 | [`list_invites`](/reference/api/invites/list-invites/) | Your invites, newest first, and how many you have left. | None | `account:read` |
-| [`create_invite`](/reference/api/invites/create-invite/) | Make an invite; with `email`, only that address can use it and it is emailed there. With `workspace`, use that workspace's granted invites. | None | `account:write` |
+| [`create_invite`](/reference/api/invites/create-invite/) | Make an invite; with `email`, only that address can use it and it is emailed there. With `workspace`, the new account is invited to that workspace (one you own, on the g1t plan) once it confirms its address, instead of getting a workspace of its own. With `charge_workspace`, use that workspace's granted invites instead of yours. | None | `account:write` |
 | [`revoke_invite`](/reference/api/invites/revoke-invite/) | Revoke a pending invite; it comes back to whoever it was charged to. | `id` | `account:write` |
+| [`list_workspace_invitations`](/reference/api/invites/list-invitations/) | The invitations to workspaces waiting for your answer, each with its `workspace`, the `role` it gives and who sent it. | None | `account:read` |
+| [`accept_workspace_invitation`](/reference/api/invites/accept-invitation/) | Accept one; you join the workspace at once with its role. | `id` | `account:write` |
+| [`decline_workspace_invitation`](/reference/api/invites/decline-invitation/) | Decline one; whoever sent it is told. | `id` | `account:write` |
 | [`list_repository_invitations`](/reference/api/access/list-my-repo-invitations/) | The invitations to repositories waiting for your answer. | None | `account:read` |
 | [`accept_repository_invitation`](/reference/api/access/accept-repo-invitation/) | Accept one; its role is yours at once. | `id` | `account:write` |
 | [`decline_repository_invitation`](/reference/api/access/decline-repo-invitation/) | Decline one. | `id` | `account:write` |

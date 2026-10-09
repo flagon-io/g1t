@@ -9,6 +9,7 @@ import { Form, Link } from "react-router";
 
 import { type Connection, MODEL_TASKS, MODEL_TIERS, type ModelRoute, type ModelTask, type ModelTier, type Provider, PROVIDERS, gatewayPatterns } from "@g1t/contracts";
 
+import { integrationsSection } from "../lib/integration-sections";
 import { Field, Input, SubmitButton } from "./ui";
 import { Hint } from "./ui/hint";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "./ui/select";
@@ -208,7 +209,7 @@ export function ProviderTiles({
       {providers.map((provider) => (
         <Link
           key={provider}
-          to={`/${slug}/-/integrations?add=${provider}#add`}
+          to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}?add=${provider}#add`}
           preventScrollReset
           className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
             adding === provider ? "border-accent-dim bg-surface" : "border-line hover:border-line-strong hover:bg-surface"

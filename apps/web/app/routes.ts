@@ -35,9 +35,13 @@ export default [
     route("notifications", "routes/settings/notifications.tsx"),
     route("invites", "routes/settings/invites.tsx"),
     route("keys", "routes/settings/keys.tsx"),
+    // Your access tokens: the list, a new one, and each one's page.
     route("tokens", "routes/settings/tokens.tsx"),
+    route("tokens/new", "routes/settings/token-new.tsx"),
+    route("tokens/:id", "routes/settings/token.tsx"),
     route("github", "routes/settings/github.tsx"),
     route("applications", "routes/settings/applications.tsx"),
+    route("integrations", "routes/settings/integrations.tsx"),
     route("two-factor", "routes/settings/two-factor.tsx"),
     route("security-log", "routes/settings/security-log.tsx"),
     route("account", "routes/settings/account.tsx"),
@@ -49,6 +53,10 @@ export default [
   // The card that opens over a person's name or avatar (lib/hovercard.ts).
   // `-` is no workspace's name, so nothing else is ever found here.
   route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
+  // Live notifications: each tab's feed socket, and the person's
+  // notification settings as JSON (services/notify).
+  route("-/live", "routes/notify/live.ts"),
+  route("-/notify", "routes/notify/api.ts"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/search.tsx"),
@@ -58,6 +66,10 @@ export default [
   // What the command palette shows as someone types.
   route("search.json", "routes/search-json.ts"),
   route("workspaces/new", "routes/workspace/new.tsx"),
+  // Workspace invitations waiting for the person's answer. `invitations` is reserved.
+  route("invitations", "routes/invitations.tsx"),
+  // People to invite, as the People page's invite form searches them.
+  route("-/people.json", "routes/people-json.ts"),
   // Trust pages: reserved names, like the rest above.
   route("policies", "routes/policies.tsx"),
   route("policies/:policy", "routes/policy.tsx"),
@@ -67,6 +79,9 @@ export default [
   route("status", "routes/status.tsx"),
   route("status.json", "routes/status-json.ts"),
   route(".well-known/security.txt", "routes/security-txt.ts"),
+  // For search engines: what may be crawled, and a map of the public pages.
+  route("robots.txt", "routes/robots-txt.ts"),
+  route("sitemap.xml", "routes/sitemap-xml.ts"),
   // Releases of the self-hosted runner and the g1t CLI, from R2.
   route("downloads/:tool/*", "routes/downloads-runner.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.
@@ -80,7 +95,10 @@ export default [
     route("-/pins", "routes/workspace/pins.ts"),
     // Pages that moved: Members is People, and the overview is the workspace.
     route("-/members", "routes/workspace/moved.ts", { id: "routes/workspace/moved-members" }),
-    route("-/overview", "routes/workspace/moved.ts", { id: "routes/workspace/moved-overview" }),
+    // Code's Overview: Mission control's code panels, for this workspace.
+    route("-/overview", "routes/workspace/code-overview.tsx"),
+    // The workspace itself, at a glance: members, plan and spend.
+    route("-/workspace", "routes/workspace/workspace-overview.tsx"),
     // Teams: the list, a new one, and each team's pages.
     route("-/teams", "routes/workspace/teams.tsx"),
     route("-/teams/new", "routes/workspace/team-new.tsx"),
@@ -90,7 +108,10 @@ export default [
       route("repositories", "routes/workspace/team/repositories.tsx"),
       route("settings", "routes/workspace/team/settings.tsx"),
     ]),
+    // The workspace's own access tokens: the list, a new one, and each one's page.
     route("-/tokens", "routes/workspace/tokens.tsx"),
+    route("-/tokens/new", "routes/workspace/token-new.tsx"),
+    route("-/tokens/:id", "routes/workspace/token.tsx"),
     // Its rules for members' personal access tokens, and approving them.
     route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
     route("-/usage", "routes/workspace/usage.tsx"),
@@ -98,16 +119,77 @@ export default [
     route("-/billing", "routes/workspace/billing.tsx"),
     route("-/billing/entries", "routes/workspace/statement-entries.ts"),
     route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
-    route("-/integrations", "routes/workspace/integrations.tsx"),
+    // The integrations directory, and the setup page for each kind of
+    // provider connection: models, alerts, trackers (lib/integration-sections).
+    route("-/integrations", "routes/workspace/integrations-directory.tsx"),
+    route("-/integrations/:section", "routes/workspace/integrations.tsx"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
+    // The workspace's own emoji, for chat (components/emoji).
+    route("-/emoji", "routes/workspace/emoji.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/runners", "routes/workspace/runners.tsx"),
     route("-/actions", "routes/workspace/actions-settings.tsx"),
     route("-/packages", "routes/workspace/packages.tsx"),
     route("-/packages/:ecosystem/*", "routes/workspace/package.tsx"),
     route("-/settings", "routes/workspace/settings.tsx"),
+    // What members may do in chat: channels, emoji, default channels.
+    route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
-    route("-/agents", "routes/workspace/agents.tsx"),
+    // Agents mode: the overview (budget, sessions, roster, spend) first, then
+    // each of the workspace's own agents and its sessions (docs/WORKSPACE.md).
+    // `new` is no agent's handle.
+    route("-/agents", "routes/workspace/agents/layout.tsx", [
+      index("routes/workspace/agents.tsx"),
+      route("new", "routes/workspace/agents/new.tsx"),
+      route(":handle", "routes/workspace/agents/agent.tsx", [
+        index("routes/workspace/agents/sessions.tsx"),
+        route("sessions/:id", "routes/workspace/agents/session.tsx"),
+        route("memory", "routes/workspace/agents/memory.tsx"),
+        route("routines", "routes/workspace/agents/routines.tsx"),
+        route("spend", "routes/workspace/agents/spend.tsx"),
+        route("activity", "routes/workspace/agents/activity.tsx"),
+        route("profile", "routes/workspace/agents/profile.tsx"),
+      ]),
+    ]),
+    // Chat mode: channels by name, direct messages by id, and what the page
+    // calls as it runs: the live socket and the JSON for sending and reading.
+    route("-/chat/live", "routes/workspace/chat/live.ts"),
+    route("-/chat/api", "routes/workspace/chat/api.ts"),
+    // A person's card in Chat: their profile and teams here.
+    route("-/chat/person/:username", "routes/workspace/chat/person.ts"),
+    route("-/chat", "routes/workspace/chat/layout.tsx", [
+      index("routes/workspace/chat/index.tsx"),
+      route("browse", "routes/workspace/chat/browse.tsx"),
+      route("dm/:id", "routes/workspace/chat/channel.tsx", { id: "routes/workspace/chat/dm" }),
+      route(":channel", "routes/workspace/chat/channel.tsx"),
+    ]),
+    // Docs mode (docs/WORKSPACE.md, "Docs"): what its pages call as they
+    // run (a page's live socket, JSON, comments, uploads, export), then
+    // Home, search, templates, the trash, a new space, and each space and
+    // page by its address. A page's address ends in its id, so renaming it
+    // keeps links working.
+    route("-/docs/live", "routes/workspace/docs/live.ts"),
+    route("-/docs/api", "routes/workspace/docs/api.ts"),
+    route("-/docs/threads/:page/*", "routes/workspace/docs/threads.ts"),
+    route("-/docs/upload", "routes/workspace/docs/upload.ts"),
+    route("-/docs/export", "routes/workspace/docs/export.ts"),
+    route("-/docs", "routes/workspace/docs/layout.tsx", [
+      index("routes/workspace/docs/home.tsx"),
+      route("search", "routes/workspace/docs/search.tsx"),
+      route("templates", "routes/workspace/docs/templates.tsx"),
+      route("trash", "routes/workspace/docs/trash.tsx"),
+      route("new", "routes/workspace/docs/new-space.tsx"),
+      // Pages possibly out of date, and a project's docs folder, read-only.
+      route("stale", "routes/workspace/docs/stale.tsx"),
+      route("repo/:repoOwner/:repoName/*", "routes/workspace/docs/repo-file.tsx"),
+      route(":space", "routes/workspace/docs/space.tsx"),
+      route(":space/settings", "routes/workspace/docs/space-settings.tsx"),
+      route(":space/:page", "routes/workspace/docs/page.tsx"),
+    ]),
+    // Home for a member without Code, and what Code's pages say to them
+    // (docs/WORKSPACE.md, "Members without Code").
+    route("-/home", "routes/workspace/home.tsx"),
+    route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),
     route("-/context", "routes/workspace/context.tsx"),
     route("-/security", "routes/workspace/security.tsx"),
@@ -142,6 +224,8 @@ export default [
   route(":owner/:repo/add-ci", "routes/repo/add-ci.ts"),
   // A screenshot of a project's production, for its overview.
   route(":owner/:repo/production.jpg", "routes/repo/production-screenshot.ts"),
+  // A file as it is, sent on to the usercontent origin (lib/usercontent.ts).
+  route(":owner/:repo/raw/:ref/*", "routes/repo/raw.ts"),
   // A project: its overview first, its repository's code under Code. The
   // 1:1 project of a repository has the repository's name, so every
   // repository address below keeps working.
@@ -222,7 +306,6 @@ export default [
     route("settings/runners", "routes/repo/settings-runners.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/domains", "routes/repo/settings-domains.tsx"),
-    route("settings/dependencies", "routes/repo/settings-dependencies.tsx"),
     route("settings/guardrails", "routes/repo/settings-guardrails.tsx"),
     route("settings/agents", "routes/repo/settings-agents.tsx"),
     // What the project will have: one page for each Soon in its menu.

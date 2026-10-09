@@ -1,6 +1,6 @@
 //! Workflow files: a token adds, changes or deletes files under
 //! `.g1t/workflows/` or `.github/workflows/` only with the
-//! `workflow_files:write` scope (a fine-grained token's Workflows
+//! `workflow_files:write` scope (a token's Workflow files: write
 //! permission). A workflow job's token never may. Without the gate, a token
 //! that can push code could write a workflow that runs with the
 //! repository's secrets and a stronger token than its own.
@@ -17,14 +17,12 @@ use std::cell::Cell;
 
 use g1t_contracts::User;
 use g1t_contracts::scopes::{TokenAccess, WORKFLOW_DIRS, decide_workflow_files};
-use g1t_scan::pack::{ObjectKind, Pack, TreeItem, pack_start};
-use worker::{Response, Result};
+use g1t_scan::pack::{ObjectKind, Pack, TreeItem};
+use worker::Result;
 
-use crate::registry::store_key;
 use crate::rule_facts::{self, MAX_COMMITS};
 use crate::secret_scan::Objects;
-use crate::store::{GitRepo, GitStore};
-use crate::Repos;
+use crate::store::GitRepo;
 
 /// The token behind a push or an edit, when it is one this gate checks:
 /// any token without `workflow_files:write`, and every job's token.
@@ -104,31 +102,46 @@ pub(crate) async fn changed_in_commits<R: GitRepo>(pack: &Pack, repo: &R, ids: &
 /// Why a push is refused, as the reason git shows beside each ref and the
 /// lines it prints, when `token` may not change workflow files and the
 /// push (`body`, read `whole` or not) does or cannot be checked.
+#[cfg(test)]
 pub(crate) async fn judge_push<R: GitRepo>(token: &TokenAccess, body: &[u8], whole: bool, git: &R) -> Result<Option<(&'static str, Vec<String>)>> {
+    let mut pack = whole.then(|| crate::push_checks::read_pack(body));
+    if let Some(Ok(pack)) = &mut pack {
+        crate::secret_scan::supply_bases(pack, git).await?;
+    }
+    judge_pack(token, body, pack.as_ref(), git).await
+}
+
+/// [`judge_push`] for a push whose pack was read already, with its bases
+/// supplied (push_checks.rs); `None` when it was not read whole.
+pub(crate) async fn judge_pack<R: GitRepo>(
+    token: &TokenAccess,
+    body: &[u8],
+    pack: Option<&std::result::Result<Pack, String>>,
+    git: &R,
+) -> Result<Option<(&'static str, Vec<String>)>> {
     let updates = crate::git_http::ref_updates(body);
     if updates.iter().all(|(_, _, new)| new.is_none()) {
         return Ok(None);
     }
     let too_large = |line: String| Ok(Some(("push too large to check for workflow files", vec![line, "Push in smaller parts, or with a token that has the workflow_files:write scope.".to_owned()])));
-    if !whole {
+    let Some(pack) = pack else {
         return too_large("This push is too large for g1t to check whether it changes workflow files, and this token may not change them.".to_owned());
-    }
-    let mut pack = match pack_start(body).map(|start| Pack::parse(&body[start..])) {
-        Some(Ok(pack)) => pack,
-        // Nothing but ref moves to commits the repository has.
-        None => return Ok(None),
-        Some(Err(problem)) => {
+    };
+    // A push with no pack moves refs to commits the repository has: an
+    // empty pack, which changes nothing.
+    let pack = match pack {
+        Ok(pack) => pack,
+        Err(problem) => {
             worker::console_error!("a push's pack could not be read for workflow files: {problem}");
             return Ok(Some(("push could not be checked for workflow files", vec!["g1t could not read this push to check it for workflow files. Push again.".to_owned()])));
         }
     };
-    crate::secret_scan::supply_bases(&mut pack, git).await?;
     for (_, _, new) in updates {
         let Some(new) = new else { continue };
-        let Some(ids) = rule_facts::added(&pack, &new, MAX_COMMITS) else {
+        let Some(ids) = rule_facts::added(pack, &new, MAX_COMMITS) else {
             return too_large(format!("This push adds more than {MAX_COMMITS} commits to one ref, too many for g1t to check for workflow files, and this token may not change them."));
         };
-        if let Some(path) = changed_in_commits(&pack, git, &ids).await? {
+        if let Some(path) = changed_in_commits(pack, git, &ids).await? {
             let reason = decide_workflow_files(Some(token), [path.as_str()])
                 .and_then(|decision| decision.reason)
                 .unwrap_or_else(|| format!("This access token cannot change the workflow file {path}."));
@@ -139,21 +152,6 @@ pub(crate) async fn judge_push<R: GitRepo>(token: &TokenAccess, body: &[u8], who
         }
     }
     Ok(None)
-}
-
-impl<S: GitStore> Repos<S> {
-    /// For a push by a token this gate checks: the response declining it
-    /// when it changes a workflow file, or when it cannot be checked.
-    pub(crate) async fn workflow_gate(&self, repo: &g1t_contracts::repos::Repo, pusher: Option<&User>, body: &[u8], whole: bool) -> Result<Option<Response>> {
-        let Some(token) = gated(pusher) else {
-            return Ok(None);
-        };
-        let git = self.store.open(&store_key(repo)).await?;
-        match judge_push(token, body, whole, &git).await? {
-            Some((reason, lines)) => Ok(Some(crate::git_http::declined(body, reason, &lines)?)),
-            None => Ok(None),
-        }
-    }
 }
 
 #[cfg(test)]

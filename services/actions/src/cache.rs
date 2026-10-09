@@ -86,6 +86,12 @@ pub(crate) fn to_evict(entries: &[(String, u64)], keep: &str, quota: u64) -> Vec
     out
 }
 
+/// Whether a repository holding `total` bytes must evict to stay within
+/// `quota`: what `to_evict` would take something from.
+pub(crate) fn over_quota(total: u64, quota: u64) -> bool {
+    total > quota
+}
+
 /// A month's GB-months from the bytes held each day so far: each day's
 /// bytes over 30 days.
 pub(crate) fn gb_months(days: &[u64]) -> f64 {
@@ -328,6 +334,25 @@ impl Actions {
         if ready.is_none() {
             return Ok(fail(FailureCode::NotFound, "No upload of that entry is in progress."));
         }
+        // What the repository holds, summed: only past the quota are its
+        // entries listed to choose what to evict. A tool that saves an
+        // entry per compiled file (sccache) commits thousands of small
+        // entries a build, and listing them all on each was quadratic.
+        #[derive(Deserialize)]
+        struct Total {
+            bytes: Option<f64>,
+        }
+        let total = self
+            .db
+            .prepare("SELECT SUM(size) AS bytes FROM cache_entries WHERE repo_id = ? AND status = 'ready'")
+            .bind(&[job.repo_id.as_str().into()])?
+            .first::<Total>(None)
+            .await?
+            .and_then(|t| t.bytes)
+            .unwrap_or(0.0);
+        if !over_quota(total as u64, CACHE_REPO_QUOTA_BYTES) {
+            return Ok(Outcome::Ok(CacheCommitted { evicted: Vec::new() }));
+        }
         #[derive(Deserialize)]
         struct Held {
             id: String,
@@ -510,6 +535,14 @@ mod tests {
         assert_eq!(to_evict(&held, "new", 7), ["old", "c"]);
         // The entry just saved stays, even when it alone is past the quota.
         assert_eq!(to_evict(&entries(&[("big", 20), ("a", 1)]), "big", 10), ["a"]);
+        // Entries are listed only when the sum is over: at or under the
+        // quota, nothing would be evicted.
+        for (held, quota) in [(entries(&[("a", 4), ("b", 6)]), 10), (entries(&[("a", 1)]), 12)] {
+            let total = held.iter().map(|(_, size)| size).sum();
+            assert!(!over_quota(total, quota));
+            assert!(to_evict(&held, "a", quota).is_empty());
+        }
+        assert!(over_quota(11, 10));
     }
 
     #[test]

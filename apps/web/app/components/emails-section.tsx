@@ -6,6 +6,7 @@ import { type AccountEmails, type SecurityEvent, securityEventLabel } from "@g1t
 import { addressActions, backupChoices } from "../lib/emails";
 import type { EmailActionData } from "../lib/emails.server";
 import { ErrorText, Field, Input, Pill, SubmitButton, TimeAgo } from "./ui";
+import { SelectField } from "./ui/select";
 import { SwitchCard } from "./ui/switch";
 
 /** One small form posting one intent about one address. */
@@ -181,22 +182,16 @@ export function EmailsSection({
         </p>
         <Form method="post" className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
           <input type="hidden" name="intent" value="backup-email" />
-          <label className="block grow">
-            <span className="sr-only">Backup address</span>
-            <select
+          <div className="block grow">
+            <SelectField
               name="backup"
+              aria-label="Backup address"
               defaultValue={backup?.email ?? ""}
               disabled={backups.length === 0}
-              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors hover:border-line-strong focus:border-accent-dim disabled:opacity-60"
-            >
-              <option value="">Primary address only</option>
-              {backups.map((email) => (
-                <option key={email.email} value={email.email}>
-                  {email.email}
-                </option>
-              ))}
-            </select>
-          </label>
+              className="h-auto py-2"
+              options={[{ value: "", label: "Primary address only" }, ...backups.map((email) => ({ value: email.email, label: email.email }))]}
+            />
+          </div>
           <SubmitButton variant="quiet" pending="Saving…" match={{ intent: "backup-email" }} disabled={backups.length === 0}>
             Save
           </SubmitButton>

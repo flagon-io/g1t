@@ -2,21 +2,37 @@ import { createRequestHandler } from "react-router";
 
 import { identityClient, isNamespaceShaped } from "@g1t/contracts";
 
+import { addressesFor } from "../app/lib/addresses";
+import { visitorAsksFirst } from "../app/lib/analytics-consent";
+import { hardenRegistryHeaders } from "../app/lib/content-safety";
+import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
-import { gitLimited, pageLimited } from "../app/lib/front-door-limits";
+import { gitLimited, pageLimited, usercontentLimited } from "../app/lib/front-door-limits";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
 import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
+import { usercontentPath } from "../app/lib/usercontent";
+import { serveUsercontent } from "./usercontent";
 
-const requestHandler = createRequestHandler(
-  () => import("virtual:react-router/server-build"),
-  import.meta.env.MODE,
-);
+const loadBuild = () => import("virtual:react-router/server-build");
 
-/** An uploaded avatar, by the SHA-256 of its bytes. */
-const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
-/** The only types identity stores, having checked each image's bytes. */
-const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+/**
+ * Given a function for the build, React Router derives everything from it
+ * again on every request: each route wrapped for the timings in
+ * entry.server.tsx, then the route table flattened and ranked, about a
+ * millisecond and a half of CPU a page. The build never changes while an
+ * isolate lives, so outside development it is loaded once and the handler
+ * made once. Development keeps the function, so a changed file is picked up.
+ * Only the made handler is kept, never a promise of one, so no request
+ * waits on another's (a build that fails to load is loaded again next time).
+ */
+let handler: ReturnType<typeof createRequestHandler> | undefined;
+async function requestHandler(request: Request): Promise<Response> {
+  if (import.meta.env.DEV) return createRequestHandler(loadBuild, import.meta.env.MODE)(request);
+  handler ??= createRequestHandler(await loadBuild(), import.meta.env.MODE);
+  return handler(request);
+}
+
 const DOCS = "https://docs.g1t.sh";
 
 /** Where the documentation pages that used to live under /docs are now. */
@@ -33,53 +49,62 @@ const MOVED_DOCS: Record<string, string> = {
 
 export default {
   async fetch(request, env, ctx) {
-    const { pathname } = new URL(request.url);
-    // Git over HTTPS shares this hostname but belongs to the repos service.
-    // Its answer goes back to the git client as it is: a repository under a
-    // renamed workspace's old name answers with a 301, which git follows and
-    // must see, so the redirect is never followed here.
-    // The container registry (`docker login g1t.sh`) and the npm registry
-    // (`g1t.sh/-/npm/`) are the packages
-    // service's, handed over the same way.
-    // `go get g1t.sh/<workspace>/<repo>`: where its code is, from the
-    // address alone, so it costs nothing and caches.
-    const go = request.method === "GET" ? goImport(new URL(request.url)) : null;
-    if (go) {
-      return new Response(go, {
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
-      });
+    // Repository files and avatars, on their own origin
+    // (g1tusercontent.com): answered before anything of the site's runs,
+    // so nothing there reads or sets the session cookie.
+    const usercontent = usercontentPath(new URL(request.url), addressesFor(env).usercontent);
+    if (usercontent !== null) {
+      return (await usercontentLimited(env, request, usercontent)) ?? serveUsercontent(env, ctx, request, usercontent);
     }
-    const service = servicePath(pathname);
-    if (service === "git") {
-      // Per address without credentials, per credential with them
-      // (app/lib/front-door-limits.ts): anonymous clones are not free to
-      // the repository's owner.
-      return (await gitLimited(env, request)) ?? proxyGit(env, request);
-    }
-    if (service === "packages") {
-      return proxyPackages(env, request);
-    }
-    const avatar = AVATAR_PATH.exec(pathname);
-    if (avatar) {
-      return serveAvatar(env, ctx, request, avatar[1]);
-    }
-    // The documentation is its own site.
-    if (pathname === "/docs" || pathname.startsWith("/docs/")) {
-      const page = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-      const target = MOVED_DOCS[page] ?? "/";
-      return Response.redirect(DOCS + target, 301);
-    }
-    // Pages and data requests, limited per address signed out and per
-    // session signed in (app/lib/front-door-limits.ts).
-    const limited = await pageLimited(env, request, pathname);
-    if (limited) return limited;
-    // Every page and data request says where its time went (Server-Timing)
-    // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
-    const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
-    if (anonymousPage(request, pathname)) return servePublic(env, request, ctx, render);
-    return render();
+    // Every answer: no sniffing, a referrer of the origin alone, and no
+    // framing of pages (app/lib/page-headers.ts).
+    return withSiteHeaders(await site(request, env, ctx));
   },
 } satisfies ExportedHandler<Env>;
+
+async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const { pathname } = new URL(request.url);
+  // Git over HTTPS shares this hostname but belongs to the repos service.
+  // Its answer goes back to the git client as it is: a repository under a
+  // renamed workspace's old name answers with a 301, which git follows and
+  // must see, so the redirect is never followed here.
+  // The container registry (`docker login g1t.sh`) and the npm registry
+  // (`g1t.sh/-/npm/`) are the packages
+  // service's, handed over the same way.
+  // `go get g1t.sh/<workspace>/<repo>`: where its code is, from the
+  // address alone, so it costs nothing and caches.
+  const go = request.method === "GET" ? goImport(new URL(request.url)) : null;
+  if (go) {
+    return new Response(go, {
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
+    });
+  }
+  const service = servicePath(pathname);
+  if (service === "git") {
+    // Per address without credentials, per credential with them
+    // (app/lib/front-door-limits.ts): anonymous clones are not free to
+    // the repository's owner.
+    return (await gitLimited(env, request)) ?? proxyGit(env, request);
+  }
+  if (service === "packages") {
+    return proxyPackages(env, request);
+  }
+  // The documentation is its own site.
+  if (pathname === "/docs" || pathname.startsWith("/docs/")) {
+    const page = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+    const target = MOVED_DOCS[page] ?? "/";
+    return Response.redirect(DOCS + target, 301);
+  }
+  // Pages and data requests, limited per address signed out and per
+  // session signed in (app/lib/front-door-limits.ts).
+  const limited = await pageLimited(env, request, pathname);
+  if (limited) return limited;
+  // Every page and data request says where its time went (Server-Timing)
+  // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
+  const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
+  if (anonymousPage(request, pathname)) return servePublic(env, request, ctx, render);
+  return render();
+}
 
 /**
  * Public pages as someone signed out sees them: the same for every such
@@ -104,7 +129,10 @@ function anonymousPage(request: Request, pathname: string): boolean {
 
 async function servePublic(env: Env, request: Request, ctx: ExecutionContext, render: () => Promise<Response>): Promise<Response> {
   const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(request.url, { method: "GET" });
+  // Visitors asked about analytics first get a page that says so, kept apart.
+  const keyUrl = new URL(request.url);
+  if (visitorAsksFirst(request)) keyUrl.searchParams.set("_g1t_consent", "1");
+  const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;
   // Asked alongside the cache, so a hit waits for one indexed read at most.
   const [cached, visible] = await Promise.all([cache.match(key), repository ? isStillPublic(env, repository) : Promise.resolve(true)]);
@@ -175,12 +203,15 @@ async function proxyGit(env: Env, request: Request): Promise<Response> {
  * follows them itself. One that found nothing under a workspace's old name
  * or an alias staff set (`g1t` for `flagon-io`) is sent to the same path
  * under the workspace's name: only the not-found answer pays for the lookup.
+ * Every answer runs nothing in a browser (app/lib/content-safety.ts): what
+ * a registry serves is its publisher's, on this origin.
  */
 async function proxyPackages(env: Env, request: Request): Promise<Response> {
   const started = Date.now();
   const answer = await env.PACKAGES.fetch(new Request(request, { redirect: "manual" }));
   const moved = answer.status === 404 ? await registryMoved(env, request) : null;
   const response = moved ?? new Response(answer.body, answer);
+  hardenRegistryHeaders(response.headers);
   response.headers.append("server-timing", `packages;dur=${Date.now() - started}`);
   return response;
 }
@@ -200,49 +231,4 @@ async function registryMoved(env: Env, request: Request): Promise<Response | nul
   const get = request.method === "GET" || request.method === "HEAD";
   // 308 keeps a publish a PUT, for the clients that follow it.
   return new Response(null, { status: get ? 301 : 308, headers: { location: named.under(current) + url.search } });
-}
-
-/**
- * An uploaded avatar. Its address is its hash, so it never changes and is
- * kept for good. It is served as nothing but an image: the stored type,
- * no sniffing, and a policy that lets nothing in it run.
- */
-/**
- * An uploaded icon. Its address is its content's hash, so it never changes:
- * each data centre keeps it in its cache after the first view, and storage
- * is read about once per place, not once per visitor.
- */
-async function serveAvatar(env: Env, ctx: ExecutionContext, request: Request, hash: string): Promise<Response> {
-  const method = request.method;
-  if (method !== "GET" && method !== "HEAD") {
-    return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
-  }
-  // The Workers runtime's own cache, which the DOM types do not know.
-  const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(new URL(`/avatars/${hash}`, request.url).toString(), { method: "GET" });
-  const cached = await cache.match(key);
-  if (cached) {
-    return method === "HEAD" ? new Response(null, { headers: cached.headers }) : cached;
-  }
-  const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(hash, {
-    type: "arrayBuffer",
-    cacheTtl: 86400,
-  });
-  const contentType = metadata?.contentType;
-  if (!value || !contentType || !AVATAR_TYPES.has(contentType)) {
-    return new Response("Not found", {
-      status: 404,
-      headers: { "cache-control": "public, max-age=60" },
-    });
-  }
-  const headers = {
-    "content-type": contentType,
-    "content-length": String(value.byteLength),
-    "cache-control": "public, max-age=31536000, immutable",
-    "x-content-type-options": "nosniff",
-    "content-security-policy": "default-src 'none'; sandbox",
-    "cross-origin-resource-policy": "cross-origin",
-  };
-  ctx.waitUntil(cache.put(key, new Response(value, { headers })));
-  return new Response(method === "HEAD" ? null : value, { headers });
 }

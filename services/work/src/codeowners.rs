@@ -99,10 +99,10 @@ pub(crate) fn answerable(requirements: Vec<Requirement>, members: &HashMap<Strin
 }
 
 /// Each reviewer's latest verdict, by username, in the order they last gave
-/// one.
+/// one. An agent's review is advisory and is not one of them.
 pub(crate) fn latest_verdicts(comments: &[Comment]) -> Vec<codeowners::Verdict> {
     let mut latest: Vec<codeowners::Verdict> = Vec::new();
-    for comment in comments {
+    for comment in comments.iter().filter(|comment| !comment.advisory && comment.agent.is_none()) {
         let Some(verdict) = comment.verdict else {
             continue;
         };
@@ -624,6 +624,9 @@ mod tests {
             verdict,
             created_at: String::new(),
             edited_at: None,
+            agent: None,
+            acting_for: None,
+            advisory: false,
         }
     }
 
@@ -743,6 +746,23 @@ mod tests {
         assert!(own.missing.is_some());
         let other = standing("CODEOWNERS", true, &api, &members, &latest_verdicts(&[comment("ana", Some(Verdict::Approve))]), "zed", 0);
         assert_eq!(other.missing, None);
+    }
+
+    #[test]
+    fn an_agent_review_is_never_a_code_owner_approval() {
+        // Margo (@margo) approving as herself, on ana's behalf, is advisory;
+        // even with a handle that names an owner, it approves nothing.
+        let mut margo = comment("ana", Some(Verdict::Approve));
+        margo.agent = Some(g1t_contracts::work::AgentRef {
+            id: "agt_1".into(),
+            handle: "ana".into(),
+            display_name: "Margo".into(),
+            avatar_seed: "margo".into(),
+        });
+        margo.advisory = true;
+        assert!(latest_verdicts(&[margo.clone()]).is_empty());
+        let person = comment("bo", Some(Verdict::Approve));
+        assert_eq!(latest_verdicts(&[margo, person]).len(), 1);
     }
 
     #[test]

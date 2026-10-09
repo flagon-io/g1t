@@ -12,8 +12,8 @@
 //!   the package itself (its Manage access settings).
 //!
 //! Anyone pulls a public package. A token is limited further by its scopes
-//! (`packages:read`, `packages:write`, `packages:delete`); a fine-grained
-//! token only reaches packages inside its resource owner and repository
+//! (`packages:read`, `packages:write`, `packages:delete`); a token made
+//! for one workspace only reaches packages inside it and its repository
 //! selection; a workspace's own token is a member with Write unless an
 //! owner gave it Admin. A workflow job's token reaches a package only from
 //! the repository it is linked to (Write) or from a repository listed under
@@ -147,12 +147,12 @@ fn from_repo_role(role: RepoRole) -> PackageRole {
 }
 
 /// What a member's membership of the workspace gives on its packages. A
-/// fine-grained token's repository selection does not apply: the caller
-/// checked its resource owner.
+/// token's repository selection does not apply: the caller checked the
+/// workspace it is made for.
 fn workspace_role(user: &User, workspace: &str) -> Option<RepoRole> {
     let mut user = user.clone();
     if let Some(token) = user.token.as_deref_mut() {
-        token.fine_grained = None;
+        token.reach = None;
     }
     // No repository has an empty id, so only the membership counts.
     access::granted(&user, RepoRef { id: "", namespace: workspace, private: true })
@@ -173,7 +173,7 @@ fn owns(user: &User, workspace: &str) -> bool {
 }
 
 /// Whether a token reaches the package for more than a public pull: a
-/// fine-grained one only inside its resource owner and, for a linked
+/// narrowed one only inside the workspace it is made for and, for a linked
 /// package, its repository selection.
 fn reaches(token: Option<&TokenAccess>, target: &Target<'_>) -> bool {
     let Some(token) = token else {
@@ -181,7 +181,7 @@ fn reaches(token: Option<&TokenAccess>, target: &Target<'_>) -> bool {
     };
     match target.repo {
         Some(repo) => token.covers_repo(repo.id, target.workspace),
-        None => token.fine_grained.as_ref().is_none_or(|reach| reach.owned_by(target.workspace)),
+        None => token.reach.as_ref().is_none_or(|reach| reach.owned_by(target.workspace)),
     }
 }
 
@@ -404,7 +404,7 @@ mod tests {
     use g1t_contracts::Membership;
     use g1t_contracts::access::{BasePermission, RepoGrant};
     use g1t_contracts::credentials::{Acting, CredentialUse, GitGrant, Principal, RunBinding, RunCredentialKind};
-    use g1t_contracts::scopes::{FineGrainedReach, JobToken, RepositorySelection, Scope, TokenAccess};
+    use g1t_contracts::scopes::{JobToken, RepositorySelection, Scope, TokenAccess, TokenReach};
 
     fn person(role: Role, base: Option<BasePermission>) -> User {
         User {
@@ -588,12 +588,12 @@ mod tests {
         assert!(may(Some(&legacy), linked(PRIVATE_REPO), Action::Delete));
     }
 
-    fn fine_grained(selection: RepositorySelection, ids: &[&str], workspace: Option<&str>) -> User {
+    fn narrowed(selection: RepositorySelection, ids: &[&str], workspace: Option<&str>) -> User {
         let mut user = person(Role::Owner, None);
         user.token = Some(Box::new(TokenAccess {
             token_id: "tok_fg".into(),
             scopes: Some(vec!["packages:write".into()]),
-            fine_grained: Some(FineGrainedReach {
+            reach: Some(TokenReach {
                 workspace: workspace.map(str::to_owned),
                 repositories: selection,
                 repo_ids: ids.iter().map(|id| (*id).to_owned()).collect(),
@@ -604,21 +604,21 @@ mod tests {
     }
 
     #[test]
-    fn a_fine_grained_token_reaches_only_its_selection_and_owner() {
-        let selected = fine_grained(RepositorySelection::Selected, &["rep_1"], Some("acme"));
+    fn a_narrowed_token_reaches_only_its_selection_and_workspace() {
+        let selected = narrowed(RepositorySelection::Selected, &["rep_1"], Some("acme"));
         assert!(may(Some(&selected), linked(PRIVATE_REPO), Action::Push));
         let api = LinkedTo { id: "rep_2", name: "api", private: true };
         assert!(!may(Some(&selected), linked(api), Action::Pull), "outside its selection");
         let public_api = LinkedTo { private: false, ..api };
         assert!(may(Some(&selected), linked(public_api), Action::Pull), "a public one still pulls");
         assert!(!may(Some(&selected), linked(public_api), Action::Push));
-        // The workspace's unlinked packages go by the resource owner alone.
+        // The workspace's unlinked packages go by the workspace alone.
         assert!(may(Some(&selected), unlinked(false), Action::Push));
-        let elsewhere = fine_grained(RepositorySelection::All, &[], Some("other"));
+        let elsewhere = narrowed(RepositorySelection::All, &[], Some("other"));
         assert!(!may(Some(&elsewhere), unlinked(false), Action::Pull));
         assert!(may(Some(&elsewhere), unlinked(true), Action::Pull));
         assert!(!may(Some(&elsewhere), linked(PRIVATE_REPO), Action::Pull));
-        let own_account = fine_grained(RepositorySelection::All, &[], None);
+        let own_account = narrowed(RepositorySelection::All, &[], None);
         assert!(!may(Some(&own_account), unlinked(false), Action::Pull));
         // Grants on the package do not reach past the token's selection.
         let grants = [Grant { kind: GranteeKind::User, id: "usr_1".into(), role: PackageRole::Admin }];

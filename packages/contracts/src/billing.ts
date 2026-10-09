@@ -1539,6 +1539,12 @@ export type OverallMargin = {
   taxCollectedMicros?: number;
   /** Card processing fees passed on with card payments, net of refunds: they pay Stripe's fee, not revenue. */
   cardFeesMicros?: number;
+  /** What workspaces were charged while payments were not live (Stripe's test mode): given, never money in. */
+  givenUnpaidMicros?: number;
+  /** Cloudflare's subscriptions over the range: each day's share of the billing cycle it is in. */
+  subscriptionsMicros?: number;
+  /** What AI Gateway priced g1t's own provider traffic at over the range, beside the ledger's model cost. */
+  gatewayCostMicros?: number;
 };
 
 /** A count, cost or leak that does not add up. */
@@ -1680,6 +1686,57 @@ export type CostsReport = {
   settings: CostSettings;
   /** g1t's own spend against its two caps. */
   caps: SpendCaps;
+  /** Cloudflare's current billing cycle: usage cost so far by meter, and the projection. Absent until the bill is read. */
+  cycle?: CloudflareCycle | null;
+  /** The last read of Cloudflare's billable usage: what came back. */
+  billRead?: BillRead | null;
+  /** Of the range's cost, what no workspace's usage could carry: running g1t, attributed to no one. */
+  unattributedMicros?: number;
+};
+
+/** Cloudflare's billing cycle, as its Billable usage page shows it. */
+export type CloudflareCycle = {
+  /** First and last days, YYYY-MM-DD, UTC. */
+  start: string;
+  end: string;
+  days: number;
+  /** Days from its start to today, today included. */
+  daysElapsed: number;
+  /** Usage cost so far, after the included allowances. */
+  usageMicros: number;
+  /** usageMicros over the days elapsed, times the cycle's days. */
+  projectedMicros: number;
+  averageDailyMicros: number;
+  /** Cloudflare's subscriptions for the cycle (not on the usage bill). */
+  subscriptionsMicros: number;
+  meters: CycleMeter[];
+};
+
+/** One of Cloudflare's meters over the cycle so far. */
+export type CycleMeter = {
+  product: string;
+  meter: string;
+  rawName: string;
+  unit: string;
+  quantity: number;
+  /** What the cycle includes; null without a list price. */
+  included: number | null;
+  billableQuantity: number;
+  costMicros: number;
+  /** cloudflare: Cloudflare's own cost; list: the list price past the included amount; none: no list price known. */
+  basis: "cloudflare" | "list" | "none" | string;
+};
+
+/** What the last read of Cloudflare's billable usage got back. */
+export type BillRead = {
+  readAt: string;
+  since: string;
+  until: string;
+  rows: number;
+  pages: number;
+  consumedRows: number;
+  pricingOnlyRows: number;
+  costedRows: number;
 };
 
 /** One level of the platform pause, as sudo shows it. Snake case, as billing sends it. */
@@ -1769,6 +1826,8 @@ export type SpendCaps = {
   fixedReadAt?: string | null;
   /** Each subscription, when read from Cloudflare. */
   fixedItems?: { name: string; monthlyMicros: number }[];
+  /** Of fixedMonthlyMicros, this calendar month's days so far, each at its billing cycle's daily share. */
+  fixedMonthMicros?: number;
   /** Money in this month, through the last reconciled day. */
   revenueMicros: number;
   /**

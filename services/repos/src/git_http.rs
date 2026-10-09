@@ -14,6 +14,7 @@ use worker::{Fetch, Fetcher, Headers, Method, Request, RequestInit, Response, Re
 
 use crate::meters;
 use crate::pack_limits::{PackSizer, Violation};
+use crate::push_checks::{Checks, Verdict};
 use crate::resilience::{self, Busy, Failure};
 
 const ENDPOINTS: [&str; 3] = ["info/refs", "git-upload-pack", "git-receive-pack"];
@@ -87,11 +88,14 @@ pub fn parse(url: &Url) -> Option<GitRequest> {
 /// Step names and whole milliseconds only. The Workers clock moves only
 /// while a request waits on something, so each step is the time spent
 /// waiting on the database, another service or the git store. A note
-/// says how a step went without a duration: `refs;desc=hit-colo`.
+/// says how a step went without a duration: `refs;desc=hit-colo`. A part
+/// is one of several things a step did at once, with its own duration: a
+/// push's `checks` step is its `read`, `rules` and `scan` parts side by side.
 pub struct Timing {
     started: u64,
     last: u64,
     steps: Vec<(&'static str, u64)>,
+    parts: Vec<(&'static str, u64)>,
     notes: Vec<(&'static str, &'static str)>,
 }
 
@@ -102,8 +106,15 @@ impl Timing {
             started: now,
             last: now,
             steps: Vec::new(),
+            parts: Vec::new(),
             notes: Vec::new(),
         }
+    }
+
+    /// Says how long `part` of the step under way took. Parts overlap, so
+    /// they are listed after the steps and are not part of the total.
+    pub fn part(&mut self, part: &'static str, ms: u64) {
+        self.parts.push((part, ms));
     }
 
     /// Says how `name` went: where an answer or a credential came from.
@@ -122,16 +133,17 @@ impl Timing {
     pub fn apply(&self, response: Response) -> Result<Response> {
         let total = g1t_kit::now_ms().saturating_sub(self.started);
         let headers = response.headers().clone();
-        headers.set("server-timing", &server_timing(&self.steps, &self.notes, total))?;
+        headers.set("server-timing", &server_timing(&self.steps, &self.parts, &self.notes, total))?;
         Ok(response.with_headers(headers))
     }
 }
 
-/// A `Server-Timing` value: each step with its duration, the notes, then
-/// the total.
-fn server_timing(steps: &[(&str, u64)], notes: &[(&str, &str)], total: u64) -> String {
+/// A `Server-Timing` value: each step with its duration, then each part,
+/// the notes, and the total.
+fn server_timing(steps: &[(&str, u64)], parts: &[(&str, u64)], notes: &[(&str, &str)], total: u64) -> String {
     steps
         .iter()
+        .chain(parts)
         .map(|(step, ms)| format!("{step};dur={ms}"))
         .chain(notes.iter().map(|(name, description)| format!("{name};desc={description}")))
         .chain(std::iter::once(format!("total;dur={total}")))
@@ -844,11 +856,13 @@ async fn without_early_pack(mut response: Response) -> Result<Response> {
 }
 
 /// Sends the request on to the git store and returns its response as is,
-/// unless it is a push the rules refuse (`rules`, rules.rs), one the
-/// store could not hold (`limits`, pack_limits.rs), or one that `scan`
-/// (push protection) answers itself. A fetch's ref listing has its `HEAD`
-/// pointed at `default_branch` (see [`with_head`]). A POST's body is
-/// `read` when the caller has read it already.
+/// unless it is a push `checks` refuse (the workflow gate, the rules, push
+/// protection: push_checks.rs), or one the store could not hold (`limits`,
+/// pack_limits.rs). `checks` is given as much of the push as was read,
+/// whether that is all of it, and whether to scan it for secrets. A
+/// fetch's ref listing has its `HEAD` pointed at `default_branch` (see
+/// [`with_head`]). A POST's body is `read` when the caller has read it
+/// already.
 ///
 /// A push is read as it arrives: up to `limits.scan_cap` is kept, to be
 /// scanned and sent on whole; past it, the push is declined, or streamed
@@ -862,10 +876,10 @@ pub async fn forward(
     read: Option<Vec<u8>>,
     git: &GitRequest,
     access: &GitAccess,
-    rules: impl AsyncFnOnce(&[u8], bool) -> Result<Option<Response>>,
+    checks: impl AsyncFnOnce(&[u8], bool, bool) -> Result<Checks>,
     default_branch: Option<&str>,
     limits: PushLimits,
-    scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
+    timing: &mut Timing,
 ) -> Result<Push> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
@@ -881,7 +895,7 @@ pub async fn forward(
     let namespace = crate::store::health_namespace(&access.remote);
 
     if method == Method::Post && git.endpoint == "git-receive-pack" {
-        return push(request, &url, headers, rules, limits, scan, &namespace).await;
+        return push(request, &url, headers, checks, limits, &namespace, timing).await;
     }
 
     // A read: the ref advertisement, `ls-refs`, or a fetch of objects.
@@ -962,16 +976,17 @@ pub async fn forward(
     }))
 }
 
-/// A receive-pack request; see [`forward`].
+/// A receive-pack request; see [`forward`]. Its steps: `recv` (the push
+/// read), `checks`, `upload` (the store's answer).
 #[allow(clippy::too_many_arguments)]
 async fn push(
     mut request: Request,
     url: &str,
     headers: Headers,
-    rules: impl AsyncFnOnce(&[u8], bool) -> Result<Option<Response>>,
+    checks: impl AsyncFnOnce(&[u8], bool, bool) -> Result<Checks>,
     limits: PushLimits,
-    scan: impl AsyncFnOnce(&[u8]) -> Result<Option<Response>>,
     namespace: &str,
+    timing: &mut Timing,
 ) -> Result<Push> {
     let mut stream = request.stream()?;
     let mut head: Vec<u8> = Vec::new();
@@ -993,14 +1008,26 @@ async fn push(
             }
         }
     }
-    // The rules of the branches and tags it changes, first: what they
-    // refuse is refused whatever else is wrong with it.
-    if let Some(response) = rules(&head, ended).await? {
-        if !ended {
-            drain(&mut stream).await?;
-        }
-        return Ok(Push::Refused(response));
+    timing.mark("recv");
+    // The workflow gate and the rules of the branches and tags it changes,
+    // with push protection alongside for a push read whole that is within
+    // the size limits (push_checks.rs). What the rules refuse is refused
+    // whatever else is wrong with it.
+    let checked = checks(&head, ended, ended && violation.is_none()).await?;
+    for (part, ms) in checked.spans {
+        timing.part(part, ms);
     }
+    timing.mark("checks");
+    let blocked = match checked.verdict {
+        Verdict::Refused(response) => {
+            if !ended {
+                drain(&mut stream).await?;
+            }
+            return Ok(Push::Refused(response));
+        }
+        Verdict::Blocked(response) => Some(response),
+        Verdict::Clear => None,
+    };
     if !ended && limits.large == LargePushes::Refuse && violation.is_none() {
         let size = head.len() as u64 + drain(&mut stream).await?;
         violation = Some(SizeViolation::Unscannable { size, cap: limits.scan_cap });
@@ -1018,7 +1045,7 @@ async fn push(
     init.with_method(Method::Post).with_headers(headers);
     let started = g1t_kit::now_ms();
     let (answered, pack_bytes, sent, unscanned) = if ended {
-        if let Some(response) = scan(&head).await? {
+        if let Some(response) = blocked {
             return Ok(Push::Blocked(response));
         }
         let pack = pack_bytes(&head);
@@ -1061,6 +1088,7 @@ async fn push(
         (answered, pack, first + walked.1, true)
     };
     let ms = g1t_kit::now_ms().saturating_sub(started);
+    timing.mark("upload");
     let failure = match &answered {
         Ok(response) => resilience::classify_status(response.status_code()),
         Err(_) => Some(Failure::Transient),
@@ -1104,12 +1132,17 @@ mod tests {
     #[test]
     fn server_timing_names_each_step_and_the_total() {
         assert_eq!(
-            server_timing(&[("repo", 12), ("token", 0), ("store", 140)], &[], 153),
+            server_timing(&[("repo", 12), ("token", 0), ("store", 140)], &[], &[], 153),
             "repo;dur=12, token;dur=0, store;dur=140, total;dur=153"
         );
-        assert_eq!(server_timing(&[], &[], 3), "total;dur=3");
+        assert_eq!(server_timing(&[], &[], &[], 3), "total;dur=3");
+        // A push's checks run side by side: their parts come after the steps.
         assert_eq!(
-            server_timing(&[("repo", 1), ("cache", 2)], &[("refs", "hit-colo")], 4),
+            server_timing(&[("recv", 30), ("checks", 120), ("upload", 300)], &[("read", 40), ("rules", 110), ("scan", 90)], &[], 450),
+            "recv;dur=30, checks;dur=120, upload;dur=300, read;dur=40, rules;dur=110, scan;dur=90, total;dur=450"
+        );
+        assert_eq!(
+            server_timing(&[("repo", 1), ("cache", 2)], &[], &[("refs", "hit-colo")], 4),
             "repo;dur=1, cache;dur=2, refs;desc=hit-colo, total;dur=4"
         );
     }

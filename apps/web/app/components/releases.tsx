@@ -64,7 +64,12 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
         </div>
         <div className="px-5 py-4">
           {release.body.trim() ? (
-            <Markdown source={release.body} repo={repo} base={`${base}/blob/${encodeTag(release.tagName)}`} />
+            <Markdown
+              source={release.body}
+              repo={repo}
+              base={`${base}/blob/${encodeTag(release.tagName)}`}
+              rawBase={`${base}/raw/${encodeURIComponent(release.tagName)}`}
+            />
           ) : (
             <p className="text-sm text-faint">No notes.</p>
           )}

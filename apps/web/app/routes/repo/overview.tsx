@@ -1,6 +1,5 @@
 import {
   Activity as ActivityIcon,
-  ArrowDownLeft,
   ArrowRight,
   ArrowUpRight,
   BookOpen,
@@ -16,7 +15,6 @@ import {
   HeartPulse,
   Loader2,
   Lock,
-  Network,
   Package as PackageGlyph,
   Pin,
   Rocket,
@@ -41,7 +39,7 @@ import {
 
 import type { Route } from "./+types/overview";
 import { InlineMarkdown } from "../../components/inline-markdown";
-import { host, StatusDot } from "../../components/deploy";
+import { DeployLink, host, StatusDot } from "../../components/deploy";
 import { CheckBadge } from "../../components/checks";
 import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
@@ -74,6 +72,7 @@ import {
   projectFeed,
   queuedNumbers,
   rankNeeds,
+  runHealth,
   stuckMinutes,
 } from "../../lib/mission";
 import { agentWasAssigned, checklistPlan, hasInstructions, productionChecklist, releaseChecklist, startChecklist } from "../../lib/checklist";
@@ -163,6 +162,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const libraryRepoP = Promise.all([planP, repoP]).then(([plan, repo]) => (plan === "release" && repo?.ok ? repo.value : null));
   const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
   const workflowsP = planP.then((plan) => (plan && plan !== "production" ? forMembers(() => actions.workflows(path, viewer)) : null));
+  // Recent workflow runs, for Health when no pull request's checks have finished lately.
+  const workflowRunsP = soft(actions.runs(path, viewer, { limit: 30 }));
   // Only the kinds the feed shows: the newest events are mostly session
   // steps and merge checks, which would otherwise crowd out everything.
   const eventsP = repoP.then((repo) =>
@@ -210,7 +211,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     branchesP.catch(() => null),
     new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), crawler ? BRANCHES_WAIT_CRAWLER_MS : BRANCHES_WAIT_MS)),
   ]);
-  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, deps, runs, queue, issues, memories, recent, mine, domains, root, packageList, workflows, tagList] = await Promise.all([
+  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, runs, queue, issues, memories, recent, mine, domains, root, packageList, workflows, tagList] = await Promise.all([
     accessP,
     projectP,
     forMembers(() => deployments.settings(ref, viewer)),
@@ -220,7 +221,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     // With their people, in one identity call.
     soft(repos.log(path, viewer, null, COMMITS_SHOWN).then(async (found) => (found.ok ? { ok: true as const, value: await showCommits(found.value) } : found))),
     soft(countsFor(context, params)),
-    soft(projects.dependencies(params.owner, params.repo, viewer)),
     soft(agents.listRuns(viewer, { repo: path, limit: 60 })),
     soft(work.queue(path, viewer)),
     soft(work.listIssues(path, viewer, { state: "open" })),
@@ -235,6 +235,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     // The latest release, for About.
     soft(repos.tags(path, viewer)),
   ]);
+  const workflowRuns = await workflowRunsP;
   const ok = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
   const openPulls = ok(open) ?? [];
@@ -453,7 +454,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     languages: null as { name: string; share: number }[] | null,
     contributors: null as { username: string }[] | null,
     open: ok(counts) ?? { issues: openIssues?.length ?? 0, pulls: openPulls.length },
-    dependencies: ok(deps),
     agentsLive: live.slice(0, 6),
     runsLoaded: runs?.ok ?? false,
     pullsLoaded: open?.ok ?? false,
@@ -463,9 +463,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     groups: groupActivity(items).slice(0, 30),
     eventsLoaded: recent != null,
     health: {
-      passRate: passRate(checkEvents.map((c) => c.passed)),
-      firstPass: firstPassRate(checkEvents),
-      checkRuns: checkEvents.length,
+      // A pull request's checks when any finished lately; otherwise the
+      // project's workflow runs, for one that ships straight to its branch.
+      ...(checkEvents.length > 0 || !workflowRuns?.ok
+        ? { passRate: passRate(checkEvents.map((c) => c.passed)), firstPass: firstPassRate(checkEvents), checkRuns: checkEvents.length }
+        : runHealth(workflowRuns.value)),
       ages: openIssues ? ageBuckets(openIssues.map((issue) => issue.createdAt), now) : null,
     },
     knows: knows as Memory[],
@@ -780,7 +782,7 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, builds, live, commit, open, dependencies, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library, checks } =
+  const { member, project, settings, builds, live, commit, open, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library, checks } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
   // What it is to its remotes, from the repository layout.
@@ -831,10 +833,10 @@ function Overview({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-2.5 text-xs sm:px-6">
             <KindMenu project={project} label={kindLabel(project)} canChange={canChange} />
             {stripLinks.map((link) => (
-              <a key={link.key} href={link.url} rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1.5 text-muted hover:text-fg">
+              <DeployLink key={link.key} href={link.url} className="inline-flex min-w-0 items-center gap-1.5 text-muted hover:text-fg">
                 {link.type === "docs" ? <BookOpen size={12} className="shrink-0 text-faint" /> : <Globe size={12} className="shrink-0 text-faint" />}
                 <span className="truncate">{link.type === "docs" ? `Docs · ${bare(link.url)}` : link.label}</span>
-              </a>
+              </DeployLink>
             ))}
           </div>
         )}
@@ -874,13 +876,13 @@ function Overview({
               </p>
               {production ? (
                 <>
-                  <a
+                  <DeployLink
                     href={productionUrl ?? production.url}
                     className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
                   >
                     {host(productionUrl ?? production.url)}
                     <ArrowUpRight size={16} className="shrink-0 text-faint" />
-                  </a>
+                  </DeployLink>
                   <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                     {latestProduction && <StatusDot status={latestProduction.status} label={latestProduction.status === "ready" ? "Live" : undefined} />}
                     <span className="inline-flex items-center gap-1 font-mono">
@@ -917,7 +919,7 @@ function Overview({
             {member && (
               <div className="flex shrink-0 items-center gap-2">
                 {production && (
-                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
+                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
                     Visit
                     <ArrowUpRight size={14} />
                   </ButtonLink>
@@ -1273,9 +1275,9 @@ function Overview({
                 {previews.map((app) => (
                   <li key={app.url} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                     <span className="min-w-0 grow">
-                      <a href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
+                      <DeployLink href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
                         {host(app.url)}
-                      </a>
+                      </DeployLink>
                       <span className="text-xs text-muted">
                         {app.branch}
                         {app.number != null && (
@@ -1466,64 +1468,6 @@ function Overview({
                 )}
               </div>
             </div>
-          </section>
-
-          <section className="rounded-xl border border-line bg-surface p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                <Network size={14} className="text-faint" />
-                Dependencies
-              </h2>
-              {member && (
-                <Link to={`${base}/settings/dependencies`} className="text-xs text-muted hover:text-fg">
-                  Manage
-                </Link>
-              )}
-            </div>
-            {!dependencies ? (
-              <p className="mt-3 text-xs text-muted">Dependencies could not be loaded just now.</p>
-            ) : dependencies.dependsOn.length === 0 && dependencies.usedBy.length === 0 ? (
-              <p className="mt-3 text-xs leading-5 text-muted">
-                Uses no other project, and none uses it. Declare one, and builds get its address and agents know what depends on
-                what.
-              </p>
-            ) : (
-              <div className="mt-3 space-y-3 text-xs">
-                {dependencies.dependsOn.length > 0 && (
-                  <div>
-                    <p className="flex items-center gap-1 text-muted">
-                      <ArrowUpRight size={12} /> Uses
-                    </p>
-                    <ul className="mt-1.5 space-y-1">
-                      {dependencies.dependsOn.map((d) => (
-                        <li key={d.slug} className="flex items-center justify-between gap-2">
-                          <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
-                            {d.name}
-                          </Link>
-                          {d.as && <code className="font-mono text-faint">{d.as}</code>}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {dependencies.usedBy.length > 0 && (
-                  <div>
-                    <p className="flex items-center gap-1 text-muted">
-                      <ArrowDownLeft size={12} /> Used by
-                    </p>
-                    <ul className="mt-1.5 space-y-1">
-                      {dependencies.usedBy.map((d) => (
-                        <li key={d.slug}>
-                          <Link to={`/${params.owner}/${d.slug}`} className="font-medium hover:underline">
-                            {d.name}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
           </section>
 
           {source && (

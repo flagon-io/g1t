@@ -36,6 +36,8 @@
 
   --animate-fade-up: fade-up 0.6s ease-out both;
   --animate-dash: dash 1.2s linear infinite;
+  /* An agent's face, on hover: a small, quick wiggle (components/agent-avatar.tsx). */
+  --animate-wiggle: wiggle 0.45s ease-in-out;
 
   /* Menus, popovers and dialogs (components/ui): in quickly, out quicker. */
   --animate-pop-in: pop-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
@@ -49,6 +51,12 @@
   --animate-sheet-out-right: sheet-out-right 0.16s ease-in forwards;
   --animate-sheet-in-left: sheet-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-sheet-out-left: sheet-out-left 0.16s ease-in forwards;
+}
+
+@keyframes sheet-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
 }
 
 @keyframes sheet-in-right {
@@ -123,6 +131,15 @@
   }
 }
 
+@keyframes wiggle {
+  25% {
+    transform: rotate(-8deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+}
+
 @keyframes dash {
   to {
     stroke-dashoffset: -16;
@@ -132,6 +149,43 @@
 html {
   color-scheme: dark;
   scroll-behavior: smooth;
+  /* A tap shows the control's own active state, not the browser's grey flash. */
+  -webkit-tap-highlight-color: transparent;
+  /* Phones: no text inflation on rotation. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/*
+ * Phones: a field under 16px makes iOS zoom the page when it is focused, so
+ * every field is at least that; and nothing scrolls the page sideways.
+ */
+/*
+ * The phone's tab bar (components/mobile.tsx): how much of the bottom it
+ * takes, for the shell to keep every page's end clear of it.
+ */
+:root {
+  --tabbar-h: 0px;
+  /* The top bar's height (components/shell.tsx), for what sticks just under it. */
+  --topbar-h: 3.5rem;
+}
+@media (max-width: 767px) {
+  :root {
+    --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
+    /* On a phone it grows by the notch. */
+    --topbar-h: calc(3.5rem + env(safe-area-inset-top));
+  }
+}
+
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+  body {
+    overflow-x: clip;
+  }
 }
 
 body {
@@ -606,3 +660,136 @@ body {
   background: radial-gradient(circle at 70% 30%, rgb(182 168 255 / 0.12), rgb(255 189 140 / 0.04) 45%, transparent 70%);
   box-shadow: inset 14px -8px 50px rgb(255 214 186 / 0.07);
 }
+
+/*
+ * On a phone, every field's text is at least 16px: iOS zooms the page into
+ * a field set smaller as soon as it is focused. Unlayered, so it wins over
+ * a field's text-sm utility.
+ */
+@media (max-width: 639px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* A card's Markdown preview in chat (components/chat/card.tsx): the same Markdown, smaller and tighter. */
+.card-md .prose {
+  @apply text-[0.8125rem] leading-relaxed;
+}
+.card-md .prose > * + * {
+  @apply mt-2;
+}
+.card-md .prose p,
+.card-md .prose li {
+  @apply text-[0.8125rem] text-fg/85;
+}
+.card-md .prose h1,
+.card-md .prose h2,
+.card-md .prose h3,
+.card-md .prose h4 {
+  @apply mt-3 border-0 pb-0 text-sm font-semibold;
+}
+.card-md .prose ul,
+.card-md .prose ol {
+  @apply space-y-0.5 pl-5;
+}
+.card-md .prose pre {
+  @apply p-2.5 text-xs leading-5;
+}
+
+/*
+ * The Docs page editor (components/docs/editor.tsx) is BlockNote with its
+ * shadcn components. Their classes are generated from the package, and
+ * shadcn's token names map onto g1t's. `accent` and `muted` mean
+ * something else in shadcn (a hover fill, a quiet fill), so inside the
+ * editor they are redefined; g1t's own blocks there use the g1t tokens
+ * directly.
+ */
+@source "../../../node_modules/@blocknote/shadcn/dist";
+
+@theme {
+  --color-background: var(--g1t-bg);
+  --color-foreground: var(--g1t-fg);
+  --color-popover: var(--g1t-surface);
+  --color-popover-foreground: var(--g1t-fg);
+  --color-card: var(--g1t-surface);
+  --color-card-foreground: var(--g1t-fg);
+  --color-primary: var(--g1t-accent);
+  --color-primary-foreground: var(--g1t-bg);
+  --color-secondary: var(--g1t-raised);
+  --color-secondary-foreground: var(--g1t-fg);
+  --color-muted-foreground: var(--g1t-muted);
+  --color-accent-foreground: var(--g1t-fg);
+  --color-destructive: var(--g1t-danger);
+  --color-destructive-foreground: var(--g1t-bg);
+  --color-border: var(--g1t-line);
+  --color-input: var(--g1t-line);
+  --color-ring: var(--g1t-accent);
+}
+
+.bn-shadcn {
+  --color-accent: var(--g1t-raised);
+  --color-muted: var(--g1t-raised);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: var(--g1t-fg);
+  --bn-colors-menu-background: var(--g1t-surface);
+  --bn-colors-menu-text: var(--g1t-fg);
+  --bn-colors-hovered-background: var(--g1t-raised);
+  --bn-colors-side-menu: var(--g1t-faint);
+  --bn-colors-border: var(--g1t-line);
+  --bn-border-radius: 8px;
+}
+
+.g1t-editor .bn-editor {
+  font-family: var(--g1t-font-sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  background: transparent;
+  color: var(--g1t-fg);
+}
+
+/* The drag handle and + sit in the margin, so the text lines up with the title. */
+@media (min-width: 768px) {
+  .g1t-editor .bn-container {
+    margin-inline: -54px;
+  }
+}
+
+.g1t-editor .bn-block-content[data-content-type="heading"] h1,
+.g1t-editor .bn-block-content[data-content-type="heading"] h2,
+.g1t-editor .bn-block-content[data-content-type="heading"] h3 {
+  font-family: var(--g1t-font-display);
+  letter-spacing: -0.012em;
+}
+
+.g1t-editor .bn-inline-content code {
+  font-family: var(--g1t-font-mono);
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--g1t-raised);
+}
+
+.g1t-editor .bn-block-content[data-content-type="codeBlock"] {
+  border-radius: 10px;
+  background: var(--g1t-surface);
+  border: 1px solid var(--g1t-line);
+}
+
+.g1t-editor .bn-thread-mark {
+  background: color-mix(in srgb, var(--g1t-warn) 22%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--g1t-warn) 60%, transparent);
+}
+
+.g1t-editor a {
+  color: var(--g1t-accent);
+}
+
+/* A page read before the editor loads: the same measure as the editor. */
+.docs-read .prose {
+  font-size: 1rem;
+  line-height: 1.65;
+}
+

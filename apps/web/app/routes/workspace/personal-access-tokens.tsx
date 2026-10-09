@@ -1,31 +1,33 @@
 import { Check, KeyRound, X } from "lucide-react";
-import { Form, Link, useSearchParams } from "react-router";
+import { Form, Link, redirect } from "react-router";
 
-import type { MemberToken, TokenKind } from "@g1t/contracts";
+import type { MemberToken } from "@g1t/contracts";
 
 import type { Route } from "./+types/personal-access-tokens";
 import { page } from "../../lib/meta";
 import { Avatar, EmptyState, ErrorText, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
+import { SelectField } from "../../components/ui/select";
 import { SwitchCard } from "../../components/ui/switch";
-import { AccessSummary } from "../../components/token-scopes";
+import { TokenBadges, TokenFacts, TokenMeta } from "../../components/token-list";
 import { identity } from "../../lib/services.server";
-import { describeExpiry } from "../../lib/token-scopes";
-import { lifetimeFromForm, permissionChips, reachSummary, statusBadge } from "../../lib/fine-grained";
+import { currentTokensPath, lifetimeFromForm } from "../../lib/access-tokens";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
-import { cn } from "../../lib/cn";
 
 // A workspace's rules for its members' personal access tokens, the tokens
-// that reach it, and approving fine-grained ones. Owners only; identity
+// that reach it, and approving the ones made for it. Owners only; identity
 // decides (services/identity/src/token_reach.rs).
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Personal access tokens · ${params.owner} · g1t` });
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
-  const viewer = getViewer(context);
+export async function loader({ request, params, context }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
+  // `?kind=` filtered the two kinds tokens used to come in.
+  const moved = currentTokensPath(`/${slug}/-/personal-access-tokens`, new URL(request.url).searchParams);
+  if (moved) throw redirect(moved, 301);
+  const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
   if (!viewer || role !== "owner") return { slug, role, policy: null, tokens: [] as MemberToken[] };
   const [policy, tokens] = await Promise.all([identity.getTokenPolicy(slug, viewer), identity.listMemberTokens(viewer, slug)]);
@@ -44,8 +46,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const lifetime = lifetimeFromForm(form.get("max_lifetime_days"));
       if (!lifetime.ok) return { error: lifetime.error, saved: false };
       const saved = await identity.setTokenPolicy(user, slug, {
-        allowClassic: form.get("allow_classic") === "on",
-        allowFineGrained: form.get("allow_fine_grained") === "on",
+        allowTokensForAllWorkspaces: form.get("allow_tokens_for_all_workspaces") === "on",
+        allowTokensForThisWorkspace: form.get("allow_tokens_for_this_workspace") === "on",
         requireApproval: form.get("require_approval") === "on",
         maxLifetimeDays: lifetime.value ?? 0,
         forbidNoExpiry: form.get("forbid_no_expiry") === "on",
@@ -77,7 +79,6 @@ const LIFETIMES = [
 
 export default function PersonalAccessTokens({ loaderData, actionData }: Route.ComponentProps) {
   const { slug, role, policy, tokens } = loaderData;
-  const [params] = useSearchParams();
   if (role !== "owner" || !policy) {
     return (
       <EmptyState title="Owners only">
@@ -89,9 +90,8 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
       </EmptyState>
     );
   }
-  const pending = tokens.filter((member) => member.token.fineGrained?.status === "pending");
-  const kind = (params.get("kind") as TokenKind | null) ?? null;
-  const listed = tokens.filter((member) => member.token.fineGrained?.status !== "pending" && (!kind || member.token.kind === kind));
+  const pending = tokens.filter((member) => member.token.status === "pending");
+  const listed = tokens.filter((member) => member.token.status !== "pending");
   const lifetime = policy.maxLifetimeDays == null ? "" : String(policy.maxLifetimeDays);
   return (
     <div className="max-w-3xl space-y-10">
@@ -105,16 +105,24 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
         </p>
         <Form method="post" className="mt-4 space-y-3">
           <input type="hidden" name="intent" value="policy" />
-          <SwitchCard name="allow_fine_grained" defaultChecked={policy.allowFineGrained} title="Allow fine-grained personal access tokens">
-            Members may make tokens that name {slug} as their resource owner, reaching only the repositories and
-            permissions they choose.
+          <SwitchCard
+            name="allow_tokens_for_this_workspace"
+            defaultChecked={policy.allowTokensForThisWorkspace}
+            title={`Allow tokens made for ${slug}`}
+          >
+            Members may make tokens for {slug} alone, reaching only the repositories and permissions they choose.
           </SwitchCard>
-          <SwitchCard name="require_approval" defaultChecked={policy.requireApproval} title="Require approval of fine-grained tokens">
-            A member's fine-grained token waits for an owner to approve it, and again when they widen it. Owners' own
+          <SwitchCard name="require_approval" defaultChecked={policy.requireApproval} title={`Require approval of tokens made for ${slug}`}>
+            A member's token made for {slug} waits for an owner to approve it, and again when they widen it. Owners' own
             tokens never wait.
           </SwitchCard>
-          <SwitchCard name="allow_classic" defaultChecked={policy.allowClassic} title="Allow classic personal access tokens">
-            Classic tokens reach every workspace their owner belongs to. Off: they no longer reach {slug}.
+          <SwitchCard
+            name="allow_tokens_for_all_workspaces"
+            defaultChecked={policy.allowTokensForAllWorkspaces}
+            title="Allow tokens made for all of a member's workspaces"
+          >
+            A token made for every workspace its owner belongs to reaches {slug} too. Off: such tokens no longer reach {slug},
+            and members make a token for {slug} alone instead.
           </SwitchCard>
           <SwitchCard name="forbid_no_expiry" defaultChecked={policy.forbidNoExpiry} title="Tokens must expire">
             A token that never expires does not reach {slug}.
@@ -124,18 +132,13 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
               <span className="block text-sm font-medium text-fg">Longest lifetime</span>
               <span className="mt-1 block text-sm text-muted">A token that lasts longer does not reach {slug}.</span>
             </label>
-            <select
+            <SelectField
               id="pat-lifetime"
               name="max_lifetime_days"
               defaultValue={LIFETIMES.some(([value]) => value === lifetime) ? lifetime : ""}
-              className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm sm:w-40"
-            >
-              {LIFETIMES.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              className="h-auto w-full py-2 sm:w-40"
+              options={LIFETIMES.map(([value, label]) => ({ value, label }))}
+            />
           </div>
           <div className="flex items-center gap-3">
             <SubmitButton match={{ intent: "policy" }} pending="Saving…">
@@ -165,7 +168,7 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
           {pending.length > 0 && <Badge tone="warn">{pending.length}</Badge>}
         </h2>
         {pending.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">No fine-grained token is waiting for approval.</p>
+          <p className="mt-2 text-sm text-muted">No token is waiting for approval.</p>
         ) : (
           <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
             {pending.map((member) => (
@@ -192,33 +195,9 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
       </section>
 
       <section aria-labelledby="pat-active">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 id="pat-active" className="font-medium">
-            Tokens that can reach {slug}
-          </h2>
-          <nav aria-label="Kind" className="flex gap-1 text-xs">
-            {(
-              [
-                [null, "All"],
-                ["fine_grained", "Fine-grained"],
-                ["classic", "Classic"],
-              ] as const
-            ).map(([value, label]) => (
-              <Link
-                key={label}
-                to={value ? `?kind=${value}` : "?"}
-                preventScrollReset
-                aria-current={kind === value ? "page" : undefined}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 transition-colors",
-                  kind === value ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg",
-                )}
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-        </div>
+        <h2 id="pat-active" className="font-medium">
+          Tokens that can reach {slug}
+        </h2>
         <p className="mt-1 text-sm text-muted">
           Members' and outside collaborators' tokens, never the tokens themselves. The workspace's own tokens are under{" "}
           <Link to={`/${slug}/-/tokens`} className="text-fg underline underline-offset-4">
@@ -228,7 +207,7 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
         </p>
         {listed.length === 0 ? (
           <div className="mt-3">
-            <EmptyState title="No tokens">No member has a personal access token of this kind that can reach {slug}.</EmptyState>
+            <EmptyState title="No tokens">No member has a personal access token that can reach {slug}.</EmptyState>
           </div>
         ) : (
           <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
@@ -237,7 +216,7 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
                 <div className="min-w-0 grow">
                   <TokenLine member={member} />
                 </div>
-                {member.token.fineGrained?.status !== "revoked" && !(member.blockedBy === "revoked") && (
+                {member.token.status !== "revoked" && member.blockedBy !== "revoked" && (
                   <Form method="post" className="shrink-0">
                     <input type="hidden" name="intent" value="revoke" />
                     <input type="hidden" name="id" value={member.token.id} />
@@ -258,9 +237,6 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
 /** One member's token: whose, what it is, what it reaches and may do. */
 function TokenLine({ member }: { member: MemberToken }) {
   const { token } = member;
-  const fine = token.kind === "fine_grained";
-  const badge = statusBadge(token.fineGrained?.status);
-  const expiry = describeExpiry(token.expiresAt);
   return (
     <div className="min-w-0 space-y-1.5">
       <p className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
@@ -272,37 +248,14 @@ function TokenLine({ member }: { member: MemberToken }) {
           <KeyRound size={13} className="shrink-0 text-faint" />
           <span className="truncate">{token.name}</span>
         </span>
-        <Badge tone={fine ? "accent" : "neutral"}>{fine ? "Fine-grained" : "Classic"}</Badge>
-        {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-        {!badge && !member.reaches && member.blockedBy && <Badge tone="danger">Kept out: {member.blockedBy}</Badge>}
+        <TokenBadges token={token} />
+        {(token.status ?? "active") === "active" && !member.reaches && member.blockedBy && (
+          <Badge tone="danger">Kept out: {member.blockedBy}</Badge>
+        )}
       </p>
       {token.description && <p className="text-xs text-muted">{token.description}</p>}
-      <p className="text-xs text-faint">
-        Created <TimeAgo at={token.createdAt} /> ·{" "}
-        {token.lastUsedAt ? (
-          <>
-            last used <TimeAgo at={token.lastUsedAt} />
-          </>
-        ) : (
-          "never used"
-        )}{" "}
-        · <span className={expiry === "No expiry" ? "text-warn" : undefined}>{expiry}</span>
-        {fine && <> · {reachSummary(token)}</>}
-      </p>
-      {fine ? (
-        <div className="flex flex-wrap gap-1.5">
-          {permissionChips(token.fineGrained?.permissions).map((chip) => (
-            <span key={chip} className="rounded border border-line px-1.5 py-px text-[0.6875rem] text-muted">
-              {chip}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <AccessSummary holder={token} className="mt-0" />
-      )}
-      {fine && token.fineGrained?.repositorySelection === "selected" && token.fineGrained.repositories.length > 0 && (
-        <p className="truncate font-mono text-[0.6875rem] text-faint">{token.fineGrained.repositories.join(", ")}</p>
-      )}
+      <TokenMeta token={token} />
+      <TokenFacts token={token} />
     </div>
   );
 }

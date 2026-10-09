@@ -41,6 +41,8 @@
 	   beneath it. */
 	--sl-nav-height: 6.25rem;
 	--sl-sidebar-width: 17rem;
+	/* Big enough to tap. */
+	--sl-menu-button-size: 2.5rem;
 
 	color-scheme: dark;
 }
@@ -62,13 +64,12 @@ header.header {
 	backdrop-filter: blur(10px);
 	border-bottom: 1px solid var(--g1t-line);
 }
+/* The search box fills the header's middle column; Header.astro centres
+   that column in the header, the same on every page. */
 site-search {
+	display: flex;
+	justify-content: center;
 	width: 100%;
-	max-width: 30rem;
-}
-/* On phones the menu button sits in the header's top row, not its middle. */
-.sl-menu-button {
-	top: calc((3.5rem - var(--sl-menu-button-size)) / 2) !important;
 }
 site-search button[data-open-modal] {
 	border-radius: 0.5rem;
@@ -79,6 +80,58 @@ site-search button[data-open-modal] {
 site-search button[data-open-modal]:hover {
 	border-color: var(--g1t-line-strong);
 	color: var(--g1t-muted);
+}
+@media (min-width: 50rem) {
+	site-search button[data-open-modal] {
+		max-width: none;
+	}
+}
+/* Tablets: the full search box, as on desktop, since there is room. */
+@media (min-width: 45rem) and (max-width: 49.99rem) {
+	site-search button[data-open-modal] {
+		width: 100%;
+		border: 1px solid var(--g1t-line);
+		padding-inline: 0.75rem 0.5rem;
+		font-size: var(--sl-text-sm);
+	}
+	site-search button[data-open-modal] > span.sl-hidden {
+		display: block;
+	}
+	site-search button[data-open-modal] > kbd.sl-hidden {
+		display: flex;
+		margin-inline-start: auto;
+	}
+}
+/* Phones: a search icon, as big as a fingertip. */
+@media (max-width: 44.99rem) {
+	site-search button[data-open-modal] {
+		justify-content: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--g1t-muted);
+		font-size: 1.125rem;
+	}
+}
+/* The menu button sits in the header's top row, at the end, drawn like
+   the header's other icon buttons rather than as a floating disc. */
+.sl-menu-button {
+	top: calc((3.5rem - var(--sl-menu-button-size)) / 2) !important;
+	align-items: center;
+	justify-content: center;
+	border-radius: 0.5rem;
+	padding: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--g1t-fg-soft);
+	font-size: 1.25rem;
+}
+.sl-menu-button:hover,
+.sl-menu-button:has(~ :popover-open) {
+	background: var(--g1t-raised);
+	color: var(--g1t-fg);
 }
 
 /* --- Sidebar -------------------------------------------------------------- */
@@ -216,6 +269,11 @@ site-search button[data-open-modal]:hover {
 		white-space: nowrap;
 		overflow-wrap: normal;
 		word-break: normal;
+	}
+	/* The last column usually holds the sentences. Kept readable, it
+	   scrolls the table sideways instead of folding to a word a line. */
+	.sl-markdown-content :is(td, th):last-child:not(:first-child) {
+		min-width: 12rem;
 	}
 }
 .sl-markdown-content th {
@@ -397,6 +455,16 @@ site-search button[data-open-modal]:hover {
 	white-space: nowrap;
 	color: var(--g1t-fg);
 }
+/* On a phone a long path wraps onto a second line rather than hiding its end. */
+@media (max-width: 40rem) {
+	.sl-markdown-content .g1t-endpoint {
+		align-items: flex-start;
+	}
+	.sl-markdown-content .g1t-endpoint code {
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+}
 /* Methods: the same small mono tag in the sidebar and on the page. */
 .g1t-method {
 	--method: var(--g1t-muted);
@@ -441,4 +509,16 @@ site-search button[data-open-modal]:hover {
 	text-align: center;
 	font-size: 0.625rem;
 	line-height: 1.6;
+}
+
+/* "Soon" beside a sidebar entry for a feature not built yet: quiet, like
+   the site's Coming soon tag, not a call to action. */
+.sidebar-content .sl-badge {
+	background: var(--g1t-raised);
+	border: 1px solid var(--g1t-line-strong);
+	color: var(--g1t-muted);
+	font-family: var(--g1t-font-mono);
+	font-size: 0.625rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
 }

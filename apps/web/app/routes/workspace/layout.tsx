@@ -44,6 +44,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 /** A workspace's own pages, each with its title and what it is for. */
 const PAGES: Record<string, { title: string; about: string }> = {
+  workspace: {
+    title: "Workspace",
+    about: "Who is in it, what it is on, and what it has spent this month. Everything about the workspace itself is in this sidebar.",
+  },
   settings: { title: "General", about: "The workspace's name, icon, address and description, who can create teams, and deleting it." },
   people: {
     title: "People",
@@ -63,11 +67,11 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   tokens: {
     title: "Access tokens",
-    about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team. Each has Write on the workspace's repositories, or Admin when an owner gives it that.",
+    about: "Tokens that belong to the workspace, not a person: for CI, integrations and agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
   },
   "personal-access-tokens": {
     title: "Personal access tokens",
-    about: "Which of your members' own tokens may reach the workspace and for how long, the fine-grained tokens waiting for an owner's approval, and every token that can reach it.",
+    about: "Which of your members' own tokens may reach the workspace and for how long, the tokens made for it that wait for an owner's approval, and every token that can reach it.",
   },
   packages: {
     title: "Packages",
@@ -80,8 +84,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
   agents: {
-    title: "Agent fleet",
-    about: "Every agent at work across the workspace's projects: what each holds, what it is doing now, and what it has cost.",
+    title: "Agents",
+    about: "The workspace's agents together: what they are working on now, what waits on you, and where this month's agent budget went.",
   },
   memory: {
     title: "Workspace memory",
@@ -117,7 +121,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   integrations: {
     title: "Integrations",
-    about: "Model providers, alerts and trackers. Secrets are sealed when saved, and agents never see them.",
+    about:
+      "The tools your team works with, connected once for everyone in the workspace and its agents. Secrets are sealed when saved, and agents never see them.",
   },
 };
 
@@ -144,6 +149,11 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
   const next = going && going.pathname !== pathname ? workspacePage(going.pathname, workspace.slug) : null;
   const shown = next ?? here;
   const parts = (pathname.split("/-/")[1] ?? "").split("/").filter(Boolean);
+  // Chat fills the page edge to edge: its conversation, thread and details
+  // are columns of their own (components/chat/channel.tsx).
+  if (parts[0] === "chat" && !next) return <Outlet />;
+  // Code's Overview lays itself out, as Mission control did.
+  if (parts[0] === "overview" && parts.length === 1 && !next) return <Outlet />;
   if (shown !== "overview") {
     const key = shown ?? parts[0] ?? "";
     const heading = PAGES[key];
@@ -152,7 +162,12 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     const titled = heading && (shown != null || parts.length === 1);
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-        {titled && <PageHeader title={heading.title} about={heading.about} />}
+        {titled && (
+          // A phone's Agents tab opens on its list of agents (agents/layout.tsx); the fleet's heading would sit above it.
+          <div className={key === "agents" ? "max-md:hidden" : undefined}>
+            <PageHeader title={heading.title} about={heading.about} />
+          </div>
+        )}
         {next ? <WorkspacePageSkeleton page={next} /> : <Outlet />}
       </div>
     );

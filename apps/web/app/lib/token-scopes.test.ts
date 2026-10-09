@@ -8,7 +8,6 @@ import {
   consentedScopes,
   describeExpiry,
   everyScope,
-  expiryTtl,
   grantFromForm,
   impliedBy,
   matchingPreset,
@@ -97,11 +96,7 @@ test("consent keeps only what was asked for", () => {
   assert.deepEqual(consentedScopes(form({}), requested), []);
 });
 
-test("expiry choices and words", () => {
-  assert.equal(expiryTtl("7"), 7 * 86_400);
-  assert.equal(expiryTtl("never"), undefined);
-  assert.equal(expiryTtl("13"), 90 * 86_400);
-  assert.equal(expiryTtl(null), 90 * 86_400);
+test("expiry words", () => {
   const now = Date.parse("2026-10-05T00:00:00Z");
   assert.equal(describeExpiry(null, now), "No expiry");
   assert.equal(describeExpiry("2026-10-04T00:00:00Z", now), "Expired");

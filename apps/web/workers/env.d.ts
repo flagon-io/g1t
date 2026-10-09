@@ -22,6 +22,21 @@ declare global {
       CONTEXT: ServiceBinding;
       /** Search across all of g1t, and Explore. */
       SEARCH: ServiceBinding;
+      /**
+       * Chat: channels, messages and read state over RPC, and the live
+       * socket, forwarded as it is (app/lib/chat-live.server.ts).
+       */
+      CHAT: ServiceBinding & { fetch(request: Request): Promise<Response> };
+      /** Docs (services/docs): RPC, each page's live socket, and files in pages. */
+      DOCS: ServiceBinding & { fetch(request: Request | string, init?: RequestInit): Promise<Response> };
+      /** The workspace's own agents: definitions, templates and desks. */
+      AGENTS: ServiceBinding;
+      /**
+       * Live notifications, counts and browser push (services/notify): RPC,
+       * and each tab's feed socket, forwarded as it is (routes/notify/live.ts).
+       * Absent where it is not deployed: pages work without it.
+       */
+      NOTIFY?: ServiceBinding & { fetch(request: Request): Promise<Response> };
       /** Production screenshots, from the og service's `Screenshots` entrypoint. */
       SCREENSHOTS?: {
         image(input: { host: string; commit: string; since?: string }): Promise<{
@@ -51,6 +66,14 @@ declare global {
       WEB_ADDRESS_LIMIT?: RateLimitBinding;
       GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
       GIT_SIGNED_LIMIT?: RateLimitBinding;
+      /**
+       * Where repository files and avatars are served (app/lib/usercontent.ts).
+       * Unset on g1t.sh, which is https://g1tusercontent.com; unset on another
+       * site, `<SITE_URL>/-/usercontent`.
+       */
+      USERCONTENT_URL?: string;
+      /** Signs the short-lived addresses of private repositories' files. A secret. */
+      USERCONTENT_KEY?: string;
     }
   }
   interface Env extends Cloudflare.Env {}

@@ -46,8 +46,6 @@ import {
   mentionsClient,
   billingClient,
   can,
-  granted,
-  projectsClient,
   fail,
   identityClient,
   integrationsClient,
@@ -90,11 +88,11 @@ import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
-import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { capModelTokens, holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, jobTokenRefusal, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
+import { answered, describeError, tellStopped, withinTimeCap } from "./lifecycle";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -412,8 +410,9 @@ const MERGECHECK_TOKEN_TTL_SECONDS = 10 * 60;
  * it and cleans up if it dies without reporting.
  */
 export class AttemptSandbox extends Container<RunnerEnv> {
-  // Past the longest time cap (implement, 90 minutes) and its alarm, so a
-  // long run is never put to sleep before its own cap ends it. A finished
+  // Past the longest default time cap (implement, 90 minutes) and its
+  // alarm. A run whose guardrails allow longer (up to 240 minutes) is kept
+  // past it by `onActivityExpired`, so only its own cap ends it. A finished
   // run's process exits and stops the sandbox well before this.
   sleepAfter = "100m";
   // A guarded sandbox's HTTPS goes through `egress` too (guard.ts).
@@ -439,6 +438,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
           ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId, build.job, build.hosts), limits)
           : null;
     } catch (error) {
+      // Thrown to the caller, which says why the work did not start; logged
+      // here too, so a sandbox that never started is traceable on its own.
+      console.error("sandbox not started", run.kind, describeError(error));
       await this.settle(0);
       throw error;
     }
@@ -501,6 +503,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         await this.schedule(cap * 60 + ALARM_GRACE_SECONDS, "timeUp");
       }
     } catch (error) {
+      console.error("sandbox not started", run.kind, describeError(error));
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage, this.env.INTEGRATIONS);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
       await this.settle(0);
@@ -632,7 +635,46 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await this.remoteEnded(1, reason);
       return;
     }
-    await this.destroy();
+    // A container already gone has nothing to stop; one that will not stop
+    // is logged, and its time cap still ends it.
+    await this.destroy().catch((error: unknown) => console.error("sandbox not destroyed", reason, describeError(error)));
+  }
+
+  /**
+   * The library's `sleepAfter` has passed. The runner never fetches its
+   * container, so to the library every sandbox looks idle: a run inside its
+   * time cap keeps going, and the cap's own alarm (`timeUp`) ends it. Only
+   * a sandbox with no cap is stopped for inactivity.
+   */
+  override async onActivityExpired(): Promise<void> {
+    const started = await this.ctx.storage.get<number>("started");
+    const cap = await this.ctx.storage.get<number>("timeCap");
+    if (withinTimeCap(started, cap, Date.now(), ALARM_GRACE_SECONDS)) return;
+    await super.onActivityExpired();
+  }
+
+  /**
+   * A container that crashed or could not be reached, as the library tells
+   * it. Logged at error level with the sandbox, never thrown: the library
+   * ignores what this throws, and the stop that follows is handled by
+   * `onStop` or by `run`, which says why the work did not start.
+   */
+  override onError(error: unknown): void {
+    console.error("sandbox container error", this.ctx.id.toString(), describeError(error));
+  }
+
+  /**
+   * The library's alarm: scheduled callbacks, the container's keep-alive,
+   * and `onStop` once it has stopped. A failure is logged with the retry it
+   * was, then thrown so Cloudflare tries the alarm again.
+   */
+  override async alarm(alarmProps?: AlarmInvocationInfo): Promise<void> {
+    try {
+      await super.alarm(alarmProps);
+    } catch (error) {
+      console.error("sandbox alarm failed", this.ctx.id.toString(), `retry ${alarmProps?.retryCount ?? 0}`, describeError(error));
+      throw error;
+    }
   }
 
   /**
@@ -713,9 +755,21 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (ended === "stopped" && run && STOP_ENDS.has(run.kind)) return;
     console.log("sandbox stopped", run?.kind, "exit", exitCode, reason);
     if (!run) return;
+    // Never thrown: this runs in the sandbox's alarm, which a throw would
+    // fail, retry and count as an error, running all of the above again.
+    // What could not be told is logged, and the sweep catches it up.
+    await tellStopped(run.kind, () => this.reportStopped(run, why, exitCode));
+  }
+
+  /**
+   * Tells whoever is waiting on the sandbox's work that it stopped without
+   * finishing it. Each is refused harmlessly when the sandbox reported its
+   * end before it stopped. Throws when the service could not be reached.
+   */
+  private async reportStopped(run: Run, why: string | null, exitCode: number): Promise<void> {
     if (run.kind === "actions") {
       // Refused harmlessly if the job reported its end before it stopped.
-      await this.env.ACTIONS.fetch("https://actions/rpc/job_report", {
+      const response = await this.env.ACTIONS.fetch("https://actions/rpc/job_report", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -724,6 +778,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
           report: { kind: "done", conclusion: "failure", reason: why ?? "The runner stopped before the job finished." },
         }),
       });
+      await answered("job_report", response);
       return;
     }
     // Nothing was pushed, so no pull request opens; why is in its log.
@@ -731,18 +786,17 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (run.kind === "backup") {
       // Refused harmlessly if the sandbox reported before it stopped; the
       // job is otherwise tried again later tonight.
-      await reposClient(this.env.REPOS)
-        .failBackup(run.jobId, run.token, why ?? `The sandbox exited with ${exitCode}.`)
-        .catch((error: unknown) => console.log("backup failure not reported", run.jobId, String(error)));
+      await reposClient(this.env.REPOS).failBackup(run.jobId, run.token, why ?? `The sandbox exited with ${exitCode}.`);
       return;
     }
     if (run.kind === "deploy") {
       // Refused harmlessly if the build reported its end before it stopped.
-      await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
+      const response = await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: run.token, message: why ?? "The build stopped before it finished." }),
       });
+      await answered("deploy fail", response);
       return;
     }
     const work = workClient(this.env.WORK);
@@ -951,7 +1005,11 @@ function describePeopleSaid(comments: Comment[]): string | null {
           : comment.verdict === "approve"
             ? " (approved)"
             : "";
-      return `- ${comment.author.username}${where}${verdict}: ${comment.body.trim()}`;
+      // A workspace's agent says so, and its review is advisory: a person's request outranks it.
+      const who = comment.agent
+        ? `${comment.agent.displayName} (an agent${comment.actingFor ? ` for ${comment.actingFor.username}` : ""}${comment.advisory ? ", advisory review" : ""})`
+        : comment.author.username;
+      return `- ${who}${where}${verdict}: ${comment.body.trim()}`;
     });
   if (said.length === 0) return null;
   let text = said.join("\n");
@@ -1525,15 +1583,14 @@ export default class RunnerService
     return [describeOutside(items), projects].filter(Boolean).join("\n\n");
   }
 
-  /** The project's surroundings and what is remembered about it, for an agent. */
+  /** What is remembered about the project, for an agent. */
   private async projectAndMemory(repo: RepoPath, task: string, requester: User): Promise<string | null> {
-    const [projects, memory, hub] = await Promise.all([
-      this.projectContext(repo, requester).catch(() => null),
+    const [memory, hub] = await Promise.all([
       this.memoryContext(repo, requester),
       // The context hub: catalog, relevant memory, recent decisions (hub.ts).
       hubContext(this.env, repo, task, requester),
     ]);
-    return [projects, memory, hub].filter(Boolean).join("\n\n") || null;
+    return [memory, hub].filter(Boolean).join("\n\n") || null;
   }
 
   /**
@@ -1570,52 +1627,6 @@ export default class RunnerService
       console.log("sandbox not destroyed", runId, String(error));
     }
     return ok(stopped.value.run);
-  }
-
-  /**
-   * The projects this repository is the source of, what they use and what
-   * uses them: so an agent changing an interface knows who calls it, and
-   * opens issues there rather than widening its change. Only the projects
-   * `requester`, whom the run acts for, can read are named.
-   */
-  private async projectContext(repo: RepoPath, requester: User): Promise<string | null> {
-    const found = await reposClient(this.env.REPOS).get(repo, null);
-    if (!found.ok) return null;
-    const response = await this.env.PROJECTS.fetch("https://projects/rpc/context_for_repo", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repoId: found.value.id }),
-    });
-    if (!response.ok) return null;
-    const projects = readableSurroundings((await response.json()) as ProjectSurroundings[], await this.readableProjects(repo.namespace, requester));
-    const lines: string[] = [];
-    for (const project of projects) {
-      const { dependsOn, usedBy } = project.dependencies;
-      if (dependsOn.length === 0 && usedBy.length === 0) continue;
-      const named = (list: { slug: string; as: string | null }[]) =>
-        list.map((d) => (d.as ? `${d.slug} (its address is in ${d.as})` : d.slug)).join(", ");
-      if (dependsOn.length > 0) lines.push(`- The ${project.name} project uses: ${named(dependsOn)}.`);
-      if (usedBy.length > 0) lines.push(`- Projects that use ${project.name}: ${named(usedBy)}.`);
-    }
-    if (lines.length === 0) return null;
-    return [
-      "This repository's projects and the projects around them in the workspace:",
-      ...lines,
-      "If your change alters what the projects that use this one rely on (an API, a package's exports, a message's shape), keep it working for them, or open an issue on each with create_issue saying what they need to change, and mention it in your summary. Do not change their code from here.",
-    ].join("\n");
-  }
-
-  /**
-   * The slugs of the projects in `workspace` that `viewer` can read, or null
-   * when they read every repository there (an owner, a member whose base
-   * permission is Read or more).
-   */
-  private async readableProjects(workspace: string, viewer: User): Promise<Set<string> | null> {
-    const slug = workspace.toLowerCase();
-    const member = (viewer.workspaces ?? []).some((membership) => membership.slug.toLowerCase() === slug);
-    if (member && granted(viewer, { id: "", namespace: slug, isPrivate: true }) != null) return null;
-    const listed = await projectsClient(this.env.PROJECTS).list(slug, viewer).catch(() => null);
-    return new Set(listed?.ok ? listed.value.map((project) => project.slug.toLowerCase()) : []);
   }
 
   /** The same, for a step g1t takes by itself: a refusal stops the step. */

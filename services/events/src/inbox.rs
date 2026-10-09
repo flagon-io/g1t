@@ -20,6 +20,7 @@
 //! | `pull.ready` for a change g1t made | whoever asked g1t for it | author | success |
 //! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
+//! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
 //! | `issue.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
 //!
 //! Watchers of a repository at `all` (or `custom`, for the kinds they
@@ -643,13 +644,24 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             let Some(comment) = on.comment.as_ref().filter(|comment| !comment.event) else {
                 return Vec::new();
             };
-            // Whoever wrote it is the actor, whatever the event says.
-            let writer = Actor {
-                id: Some(comment.author.id.clone()),
-                username: Some(comment.author.username.clone()),
+            // Whoever wrote it is the actor, whatever the event says. One of
+            // the workspace's agents is shown by its name, marked as an
+            // agent; its handle is not a person's, so nobody is left out
+            // for sharing it, and whoever it acted for hears of it as of
+            // anything they set off.
+            let writer = match &comment.agent {
+                Some(agent) => Actor { id: Some(agent.id.clone()), username: None },
+                None => Actor {
+                    id: Some(comment.author.id.clone()),
+                    username: Some(comment.author.username.clone()),
+                },
             };
             told.actor = &writer;
-            let who = &comment.author.username;
+            let who = match &comment.agent {
+                Some(agent) => format!("{} (agent)", agent.display_name),
+                None => comment.author.username.clone(),
+            };
+            let advisory = if comment.advisory { " (advisory)" } else { "" };
             let body = if comment.excerpt.is_empty() { &on.title } else { &comment.excerpt };
             for name in &comment.mentions {
                 let title = format!("{who} mentioned you on {at}");
@@ -662,13 +674,15 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                 }
             }
             let (severity, title) = match comment.verdict.as_deref() {
-                Some("approve") => (Severity::Success, format!("{who} approved {at}")),
-                Some("request_changes") => (Severity::Info, format!("{who} asked for changes on {at}")),
+                Some("approve") => (Severity::Success, format!("{who} approved {at}{advisory}")),
+                Some("request_changes") => (Severity::Info, format!("{who} asked for changes on {at}{advisory}")),
+                _ if comment.advisory => (Severity::Info, format!("{who} reviewed {at}{advisory}")),
                 _ => (Severity::Info, format!("{who} commented on {at}")),
             };
-            // An approval or a request for changes is the owner's to hear
-            // of whatever they chose; the rest, as they subscribed.
-            if comment.verdict.is_some() {
+            // An approval or a request for changes (or an agent's review)
+            // is the owner's to hear of whatever they chose; the rest, as
+            // they subscribed.
+            if comment.verdict.is_some() || comment.advisory {
                 told.tell_person(on.owner(), Reason::Author, severity, &title, body, true);
             }
             told.tell_subscribed(on, None, severity, &title, body);
@@ -694,7 +708,8 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
     match event.kind.as_str() {
         "comment.created" => {
             if let Some(comment) = subject.and_then(|subject| subject.comment.as_ref()).filter(|comment| !comment.event) {
-                if !is_g1t_id(&comment.author.id) {
+                // An agent is no person to subscribe; its handle may be someone's name.
+                if !is_g1t_id(&comment.author.id) && comment.agent.is_none() {
                     add(&comment.author.username, Reason::Comment);
                 }
                 for name in &comment.mentions {
@@ -767,6 +782,8 @@ pub struct Sources<'a> {
     pub work: &'a Fetcher,
     pub repos: &'a Fetcher,
     pub identity: &'a Fetcher,
+    /// The notify service, told of each new item for live toasts and pushes; None, nobody is.
+    pub notify: Option<&'a Fetcher>,
 }
 
 /// One notice written, and whether it was news (not a redelivery): what
@@ -775,6 +792,7 @@ struct Written {
     notice: Notice,
     repo_id: String,
     url: String,
+    event_id: String,
 }
 
 /// Writes the items a batch from the bus calls for. Never fails the batch:
@@ -787,6 +805,15 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
     for event in events.iter().filter(|event| WORKSPACE_EVENTS.contains(&event.kind.as_str())) {
         if let Err(error) = deliver_workspace(db, event).await {
             worker::console_error!("inbox: {} {} not delivered: {error}", event.kind, event.id);
+        } else if let Some(notify) = sources.notify {
+            // Notify: the feed tells each person once per event, redelivered or not.
+            let (_, told) = workspace_notices(event, None);
+            let link = event.data["link"].as_str().filter(|link| link.starts_with('/')).unwrap_or("/inbox");
+            let live = told.iter().map(|notice| (notice.username.clone(), live_notification(&event.id, notice, link, &event.time))).collect();
+            tell_live(notify, live).await;
+            for notice in &told {
+                tell_inbox_count(db, notify, &notice.username).await;
+            }
         }
     }
     let wanted: Vec<(&Event, Wanted)> = events
@@ -831,6 +858,18 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
             Err(error) => worker::console_error!("inbox: {} {} not delivered: {error}", event.kind, event.id),
         }
     }
+    // Notify: every item that was news, live in the person's tabs (services/notify).
+    if let Some(notify) = sources.notify {
+        let live = written
+            .iter()
+            .map(|item| (item.notice.username.clone(), live_notification(&item.event_id, &item.notice, &item.url, &rfc3339(now_ms()))))
+            .collect::<Vec<_>>();
+        tell_live(notify, live).await;
+        let people: HashSet<&str> = written.iter().map(|item| item.notice.username.as_str()).collect();
+        for username in people {
+            tell_inbox_count(db, notify, username).await;
+        }
+    }
     if let Err(error) = email(db, sources.identity, written).await {
         worker::console_error!("inbox: emails not sent: {error}");
     }
@@ -844,17 +883,39 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
 /// | --- | --- | --- | --- |
 /// | `token.approval_requested` | the workspace's owners | review_requested | warning |
 /// | `token.approval_reviewed` | the token's owner | author | info |
-pub const WORKSPACE_EVENTS: [&str; 2] = ["token.approval_requested", "token.approval_reviewed"];
+/// | `workspace_invitation.created` | the person invited | review_requested | warning |
+/// | `workspace_invitation.accepted` | who invited them | author | success |
+/// | `workspace_invitation.declined` | who invited them | author | info |
+///
+/// An invitation's item for the person invited is done once it is
+/// accepted, declined or revoked (`workspace_invitation.revoked`, which
+/// tells nobody).
+pub const WORKSPACE_EVENTS: [&str; 5] = [
+    "token.approval_requested",
+    "token.approval_reviewed",
+    "workspace_invitation.created",
+    "workspace_invitation.accepted",
+    "workspace_invitation.declined",
+];
+
+/// Events that close what a workspace invitation asked of its person.
+pub const INVITATION_ANSWERED: [&str; 3] =
+    ["workspace_invitation.accepted", "workspace_invitation.declined", "workspace_invitation.revoked"];
 
 /// The notices a workspace event calls for, and the thread they go to.
 pub fn workspace_notices(event: &Event, actor: Option<&str>) -> (String, Vec<Notice>) {
     let data = &event.data;
     let text = |key: &str| data[key].as_str().unwrap_or_default().to_owned();
     let (reason, severity) = match event.kind.as_str() {
-        "token.approval_requested" => (Reason::ReviewRequested, Severity::Warning),
+        "token.approval_requested" | "workspace_invitation.created" => (Reason::ReviewRequested, Severity::Warning),
+        "workspace_invitation.accepted" => (Reason::Author, Severity::Success),
         _ => (Reason::Author, Severity::Info),
     };
-    let thread = format!("workspace:{}/token/{}", text("workspace"), text("tokenId"));
+    // An invitation names its own thread; a token approval's is the token's.
+    let thread = match data["thread"].as_str().filter(|thread| !thread.is_empty()) {
+        Some(thread) => thread.to_owned(),
+        None => format!("workspace:{}/token/{}", text("workspace"), text("tokenId")),
+    };
     let notices = names(data, "notify")
         .into_iter()
         .map(|name| name.to_lowercase())
@@ -931,6 +992,19 @@ async fn resolve(db: &D1Database, events: &[Event]) -> Result<()> {
             db.prepare(
                 "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
                  WHERE thread = ?2 AND reason = 'agent' AND done_at IS NULL",
+            )
+            .bind(&[now.as_str().into(), thread.into()])?,
+        );
+    }
+    // A workspace invitation answered or revoked no longer waits on its person.
+    for event in events.iter().filter(|event| INVITATION_ANSWERED.contains(&event.kind.as_str())) {
+        let Some(thread) = event.data["thread"].as_str().filter(|thread| thread.starts_with("invitation:")) else {
+            continue;
+        };
+        statements.push(
+            db.prepare(
+                "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
+                 WHERE thread = ?2 AND reason = 'review_requested' AND done_at IS NULL",
             )
             .bind(&[now.as_str().into(), thread.into()])?,
         );
@@ -1118,6 +1192,7 @@ async fn deliver_one(
             notice,
             repo_id: wanted.repo_id.clone(),
             url: item_url.clone(),
+            event_id: event.id.clone(),
         })
         .collect())
 }
@@ -1156,6 +1231,70 @@ const BUMP: &str = "INSERT INTO inbox_items (id, username, thread, event_id, eve
    activity = inbox_items.activity + 1,
    read_at = NULL,
    done_at = NULL";
+
+/// What the notify service is told of an inbox item (`FeedNotification` in
+/// @g1t/contracts): its kind from why the person was told, the workspace
+/// from where it links, and the item's title and first line.
+pub fn live_notification(event_id: &str, notice: &Notice, url: &str, at: &str) -> serde_json::Value {
+    let kind = match notice.reason {
+        Reason::Agent => "agent_waiting",
+        Reason::ReviewRequested => "approval",
+        Reason::Mention | Reason::TeamMention => "mention",
+        _ => "inbox",
+    };
+    let path = url.split(['?', '#']).next().unwrap_or_default();
+    let mut segments = path.trim_start_matches('/').split('/');
+    let workspace = segments.next().unwrap_or_default().to_lowercase();
+    let repo = segments.next().map(|name| format!("{workspace}/{name}"));
+    let name = repo.unwrap_or_else(|| if workspace.is_empty() { "g1t".to_owned() } else { workspace.clone() });
+    serde_json::json!({
+        "id": format!("inbox:{event_id}"),
+        "kind": kind,
+        "workspace": workspace,
+        "title": notice.title,
+        "body": clip(&notice.body, 140),
+        "href": if url.starts_with('/') { url } else { "/inbox" },
+        "actor": { "kind": "system", "id": name, "name": name },
+        "created_at": at,
+    })
+}
+
+/// What the notify service is told when a person's inbox count changes
+/// (its `set_inbox`): the count as it now is, never a difference, so a
+/// call repeated or out of order still ends right.
+pub fn inbox_count_update(username: &str, unread: u32) -> serde_json::Value {
+    serde_json::json!({ "username": username.to_lowercase(), "unread": unread })
+}
+
+/// Tells the notify service a person's unread count as it now is, so every
+/// tab of theirs shows it at once: after items arrive, and after marks made
+/// anywhere (the site, the API, MCP). Logged and left when it fails.
+pub async fn tell_inbox_count(db: &D1Database, notify: &Fetcher, username: &str) {
+    let counted = counts(db, InboxCountsArgs { username: username.to_owned() }).await;
+    let told: Result<serde_json::Value> = match counted {
+        Ok(counts) => g1t_kit::call(notify, "set_inbox", &inbox_count_update(username, counts.unread)).await,
+        Err(error) => Err(error),
+    };
+    if let Err(error) = told {
+        worker::console_error!("inbox: live count not sent: {error}");
+    }
+}
+
+/// Hands items to the notify service, one call each. Logged and left when it
+/// cannot be reached: the inbox and email do not wait on it.
+async fn tell_live(notify: &Fetcher, items: Vec<(String, serde_json::Value)>) {
+    #[derive(serde::Serialize)]
+    struct NotifyArgs {
+        username: String,
+        notification: serde_json::Value,
+    }
+    for (username, notification) in items {
+        let told: Result<serde_json::Value> = g1t_kit::call(notify, "notify", &NotifyArgs { username, notification }).await;
+        if let Err(error) = told {
+            worker::console_error!("inbox: live notification not sent: {error}");
+        }
+    }
+}
 
 /// Emails what was news to people who asked to be emailed for its reason.
 /// Identity sends each, only to a confirmed address and only if the person
@@ -2225,6 +2364,30 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_s_review_is_shown_by_its_name_and_marked_advisory() {
+        // Margo (@margo), acting for bo, asks for changes on ana's pull request.
+        let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
+        let mut on = comment(person("agt_1", "ana"), "Trim the name.", &[]);
+        if let Some(said) = on.comment.as_mut() {
+            said.agent = Some(g1t_contracts::work::AgentRef {
+                id: "agt_1".into(),
+                handle: "ana".into(),
+                display_name: "Margo".into(),
+                avatar_seed: "margo".into(),
+            });
+            said.acting_for = Some(person("usr_bo", "bo"));
+            said.verdict = Some("request_changes".into());
+            said.advisory = true;
+        }
+        let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), Some(&on), &nobody());
+        // Its handle sharing ana's name leaves nobody out: ana owns it and hears.
+        assert!(told(&notices_).contains(&("ana", Reason::Author, Severity::Info)));
+        assert_eq!(notices_[0].title, "Margo (agent) asked for changes on acme/rocket#7 (advisory)");
+        // An agent subscribes nobody by its handle.
+        assert!(subscribes(&created, Some(&on)).iter().all(|(name, _)| name != "ana"));
+    }
+
+    #[test]
     fn comments_tell_those_mentioned_then_everyone_subscribed_never_the_writer() {
         let created = event("comment.created", Some("usr_bo"), json!({ "number": 7, "commentId": "cmt_1" }));
         let on = comment(person("usr_bo", "bo"), "@cy @bo have a look", &["cy", "bo", "g1t"]);
@@ -2340,6 +2503,32 @@ mod tests {
     }
 
     #[test]
+    fn live_notifications_say_what_and_where() {
+        let notice = Notice {
+            username: "ana".into(),
+            reason: Reason::Agent,
+            severity: Severity::Warning,
+            title: "g1t needs you on acme/api#4".into(),
+            body: "Which database?".into(),
+        };
+        let live = live_notification("evt_1", &notice, "/Acme/api/pull/4#c1", "2026-10-08T00:00:00Z");
+        assert_eq!(live["id"], "inbox:evt_1");
+        assert_eq!(live["kind"], "agent_waiting");
+        assert_eq!(live["workspace"], "acme");
+        assert_eq!(live["href"], "/Acme/api/pull/4#c1");
+        assert_eq!(live["actor"]["name"], "acme/api");
+        let mention = Notice { reason: Reason::TeamMention, ..notice };
+        assert_eq!(live_notification("evt_2", &mention, "https://elsewhere", "t")["href"], "/inbox");
+        assert_eq!(live_notification("evt_2", &mention, "/x", "t")["kind"], "mention");
+    }
+
+    #[test]
+    fn inbox_counts_are_told_as_they_are_by_username() {
+        assert_eq!(inbox_count_update("Ana", 3), serde_json::json!({ "username": "ana", "unread": 3 }));
+        assert_eq!(inbox_count_update("bo", 0)["unread"], 0);
+    }
+
+    #[test]
     fn token_approvals_tell_the_people_named_about_no_repository() {
         let mut asked = event(
             "token.approval_requested",
@@ -2358,5 +2547,30 @@ mod tests {
         let (_, told) = workspace_notices(&reviewed, None);
         assert_eq!(told[0].reason, Reason::Author);
         assert!(WORKSPACE_EVENTS.contains(&"token.approval_reviewed"));
+    }
+
+    #[test]
+    fn a_workspace_invitation_asks_its_person_and_tells_whoever_sent_it_the_answer() {
+        let mut sent = event(
+            "workspace_invitation.created",
+            Some("usr_owner"),
+            json!({ "workspace": "flagon-io", "invitationId": "inv_1", "thread": "invitation:inv_1", "notify": ["daweazl"], "title": "@syntaqx invited you to join Flagon, Inc.", "link": "/invitations" }),
+        );
+        sent.repo_id = None;
+        let (thread, told) = workspace_notices(&sent, None);
+        assert_eq!(thread, "invitation:inv_1");
+        assert_eq!(told.len(), 1);
+        assert_eq!((told[0].username.as_str(), told[0].reason, told[0].severity), ("daweazl", Reason::ReviewRequested, Severity::Warning));
+        let accepted = event("workspace_invitation.accepted", None, json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }));
+        let (thread, told) = workspace_notices(&accepted, None);
+        assert_eq!(thread, "invitation:inv_1");
+        assert_eq!((told[0].reason, told[0].severity), (Reason::Author, Severity::Success));
+        let declined = event("workspace_invitation.declined", None, json!({ "workspace": "flagon-io", "thread": "invitation:inv_1", "notify": ["syntaqx"] }));
+        assert_eq!(workspace_notices(&declined, None).1[0].severity, Severity::Info);
+        // Answered or revoked, the person's item is done; a revocation tells nobody.
+        for kind in ["workspace_invitation.accepted", "workspace_invitation.declined", "workspace_invitation.revoked"] {
+            assert!(INVITATION_ANSWERED.contains(&kind));
+        }
+        assert!(!WORKSPACE_EVENTS.contains(&"workspace_invitation.revoked"));
     }
 }

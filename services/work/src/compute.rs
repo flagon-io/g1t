@@ -233,6 +233,7 @@ impl Work {
                 number: a.number,
                 pull_id,
                 verdict: None,
+                ..CommentCreated::default()
             },
         )
         .await?;

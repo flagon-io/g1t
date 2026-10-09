@@ -68,6 +68,7 @@ gives their values out, so they cannot be copied across.
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
 | `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
 | Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
+| sccache with `SCCACHE_GHA_ENABLED` | The same: its entries go to the repository's cache. See [caching Rust builds](#caching-rust-builds). |
 | `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
 | `docker build`, `push`, `run`, `login`, `compose`, Buildx | The same, with a Docker Engine of the job's own. See [Docker](#docker). |
 | `services:` | The same: each service starts before the steps, health checks are waited for, and it is reached at `localhost` on its port and by its name. |
@@ -595,7 +596,7 @@ downloads from another run of the same repository, such as the one a
 `pattern`, uploads them as one artifact (`name`, `merged-artifacts` unless
 you say), and deletes them with `delete-merged: true`.
 
-A run's page lists its artifacts with their size and when they expire.
+A run's summary lists its artifacts with their size and when they expire.
 Anyone who can see the run downloads them there; someone with the Write
 role can delete one before it expires.
 
@@ -623,6 +624,77 @@ repository's cache.
   with its own message. `actions/upload-artifact`,
   `actions/download-artifact` and `actions/upload-artifact/merge` work:
   g1t runs those itself.
+
+## Caching Rust builds
+
+A checkout gives every file a new modification time, so Cargo compiles
+your workspace's own crates again even when `target/` was restored from
+the cache. [sccache](https://github.com/mozilla/sccache) caches each
+compiler call by what it compiles (the source, the flags, the toolchain
+and the dependencies), so a crate that did not change comes back from the
+cache instead. Its GitHub Actions backend works on g1t as it is: it keeps
+its entries in the repository's cache, under [the cache's](#the-cache)
+limits and branch rules.
+
+1. Install sccache, pinned to a release and checked against its checksum.
+2. Set `RUSTC_WRAPPER: sccache` and `SCCACHE_GHA_ENABLED: "true"`. The
+   job's `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_CACHE_URL` are already in
+   every step's environment; no step needs to export them.
+3. Set `CARGO_INCREMENTAL: "0"`: sccache does not cache incremental
+   builds, and a fresh checkout gains nothing from them.
+
+```yaml
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install sccache
+        env:
+          VERSION: v0.18.0
+          SHA256: 45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
+        run: |
+          name="sccache-$VERSION-x86_64-unknown-linux-musl"
+          curl -fsSL -o "$RUNNER_TEMP/sccache.tar.gz" \
+            "https://github.com/mozilla/sccache/releases/download/$VERSION/$name.tar.gz"
+          echo "$SHA256  $RUNNER_TEMP/sccache.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/sccache.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/$name/sccache" "$HOME/.cargo/bin/sccache"
+      - run: cargo test --workspace --locked
+      - name: sccache's hits and misses
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          sccache --show-stats | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+```
+
+What to expect:
+
+| | |
+| --- | --- |
+| What is cached | Every library crate (`rlib`): your workspace's crates and their dependencies. |
+| What is compiled each time | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses. |
+| Its entries | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted. |
+| Branches | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache. |
+| Starting over | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself. |
+| If the cache cannot be reached | sccache refuses to start. Set `SCCACHE_IGNORE_SERVER_IO_ERROR: "1"` to have rustc run without it instead. |
+
+sccache adds to `actions/cache` rather than replacing it: keep caching
+`~/.cargo/registry/cache` and `target/` keyed by `Cargo.lock`, so Cargo
+does not call rustc at all for dependencies that did not change, and
+sccache answers the calls it still makes for your own crates.
+`Swatinem/rust-cache` works the same way.
 
 ## OIDC tokens
 
@@ -825,17 +897,56 @@ Open a repository's **Actions** page, in its sidebar. Pick a workflow to
 see its runs, run it by hand if it has `workflow_dispatch`, or turn it off
 without touching its file.
 
-A run's page shows its jobs, each job's steps, and their logs as they are
-written. Groups fold, errors and warnings are marked, and secrets are
-replaced with `***`.
+A run's page opens on its **Summary**. Its sidebar lists **All jobs**;
+pick one to see its steps and their logs as they are written. Groups
+fold, errors and warnings are marked, and secrets are replaced with
+`***`. The page keeps itself up to date while the run goes on.
 
 The start of each job's log lists what its [token](#the-jobs-token) may do.
 
+### The run's summary
+
+The summary holds, top to bottom:
+
+| Part | What it shows |
+| --- | --- |
+| The run | What triggered it and when, who, the commit and its branch (or pull request), how the run stands, how long it took in all, and how many artifacts it kept. |
+| The jobs graph | The workflow file and its event (`deploy.yml · on: push`), then every job and how they depend on each other. See [the jobs graph](#the-jobs-graph). |
+| Annotations | Every job's errors, warnings and notices, counted by kind, each with the job it came from. Folds away. |
+| Job summaries | What each job's steps wrote to `$GITHUB_STEP_SUMMARY`, under `<job> summary`. See [job summaries](#job-summaries). |
+| Artifacts | What the run kept, to download. The count in the run's card jumps here. |
+
+Under **Run details** in the sidebar, **Workflow file** opens the
+workflow as it was at the run's commit.
+
+### The jobs graph
+
+Jobs are laid out left to right by their `needs:`: a job that needs
+nothing starts a row on the left, and each job sits one column to the
+right of the furthest job it needs. Within a column, jobs are ordered so
+that as few connectors as possible cross.
+
+| Node | How it shows |
+| --- | --- |
+| A job | Its status, its name and how long it took. Click it to open its steps and logs. |
+| A job that deploys | Its environment's address (`environment.url`), as a link, under its name. |
+| A matrix | One node with how many jobs it made (`test · 6 jobs`) and how they stand together. Click it to list each combination; click one to open it. |
+| A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way. The jobs that need the calling job connect to the box. |
+
+Connectors run from a job to each job that needs it. They are red from a
+job that failed, and move while the job they lead to is running (they
+stay still if your system asks for reduced motion).
+
+A wide graph scrolls sideways inside its card, on a phone as on a desktop.
+
+The sidebar groups jobs the same way: a matrix's jobs, and a called
+workflow's jobs, fold under their name.
+
 ### Job summaries
 
-Markdown a step appends to the file in `$GITHUB_STEP_SUMMARY` shows at
-the top of the run's page, a card per job, in the order its steps wrote
-it:
+Markdown a step appends to the file in `$GITHUB_STEP_SUMMARY` shows on
+the run's summary, below the graph, a card per job, in the order its
+steps wrote it. The card's title opens the job:
 
 ```yaml
 - name: Report the tests
@@ -1156,8 +1267,8 @@ change or delete a file under `.g1t/workflows/` or `.github/workflows/`,
 even with `contents: write`. A push that does is declined, naming the file,
 so a workflow cannot rewrite the workflows that run with its repository's
 secrets. To change workflows from a job, push with a
-[fine-grained token](/guides/authentication/#workflow-files) that has the
-Workflows permission, kept as a secret.
+[personal access token](/guides/authentication/#workflow-files) that has
+Workflow files: write, kept as a secret.
 
 The job's token is the repository's workspace acting with the Write role
 at most, never Admin: it cannot manage webhooks, secrets, deploy keys or who

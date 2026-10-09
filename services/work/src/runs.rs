@@ -24,6 +24,18 @@ use crate::checks::{hash, new_token};
 use crate::rows::SessionRow;
 use crate::{Work, optional};
 
+/// How the runner starts a step that notes something about the sandbox
+/// rather than what the run is doing: a host it was refused (the runner's
+/// egress.ts `blockedStep`).
+const NOTE_PREFIXES: [&str; 1] = ["Blocked: "];
+
+/// Where a report leaves the run: its newest step that says what the run
+/// is doing. A note (a refused host) stays in the steps but never stands
+/// for the run, which carries on past it. `None` when there is only notes.
+fn current_step(steps: &[String]) -> Option<String> {
+    steps.iter().rev().find(|step| !NOTE_PREFIXES.iter().any(|prefix| step.starts_with(prefix))).cloned()
+}
+
 /// The most steps a run keeps; older ones fall off the start.
 const MAX_STEPS: u32 = 200;
 /// The most steps taken from one report.
@@ -343,7 +355,7 @@ impl Work {
             .as_deref()
             .map(|step| one_line(step, MAX_STEP_CHARS))
             .filter(|step| !step.is_empty())
-            .or_else(|| steps.last().cloned());
+            .or_else(|| current_step(&steps));
         let outcome = a
             .outcome
             .filter(|outcome| matches!(outcome, RunStatus::Succeeded | RunStatus::Failed));
@@ -660,6 +672,15 @@ impl Work {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_host_is_noted_but_never_where_the_run_is() {
+        let steps = |list: &[&str]| list.iter().map(|step| (*step).to_owned()).collect::<Vec<String>>();
+        assert_eq!(current_step(&steps(&["Running npm ci", "Blocked: sparrow.cloudflare.com (not an allowed domain)"])).as_deref(), Some("Running npm ci"));
+        assert_eq!(current_step(&steps(&["Blocked: a.com (not an allowed domain)"])), None);
+        assert_eq!(current_step(&steps(&["Blocked: a.com (not an allowed domain)", "Typecheck"])).as_deref(), Some("Typecheck"));
+        assert_eq!(current_step(&[]), None);
+    }
 
     #[test]
     fn steps_are_one_short_line() {

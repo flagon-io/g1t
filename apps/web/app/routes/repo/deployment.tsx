@@ -9,12 +9,12 @@ import { page } from "../../lib/meta";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Hint } from "../../components/ui/hint";
-import { host } from "../../components/deploy";
+import { DeployLink, host } from "../../components/deploy";
 import { DeploymentStateBadge, DeploymentStateIcon, STATE_TONE, sourceLabel } from "../../components/deployments-panel";
 import { deployments } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
 import { requireRepo } from "../../lib/access.server";
-import { STATE_WORD, buildError, environmentLabel, hasPayload, isPageBuild, shortSha } from "../../lib/deployments";
+import { STATE_WORD, buildError, environmentLabel, hasPayload, isNewestStatus, isPageBuild, shortSha } from "../../lib/deployments";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Deployment · ${params.owner}/${params.repo} · g1t` });
@@ -89,13 +89,13 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
           </p>
         </div>
         {url && (
-          <a
+          <DeployLink
             href={url}
             className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-bg hover:bg-accent-hover"
           >
             <span className="truncate">{host(url)}</span>
             <ExternalLink size={14} className="shrink-0" />
-          </a>
+          </DeployLink>
         )}
       </header>
 
@@ -169,7 +169,12 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
         ) : (
           <ol className="mt-4">
             {deployment.statuses.map((status, index) => (
-              <StatusItem key={status.id} status={status} last={index === deployment.statuses.length - 1} />
+              <StatusItem
+                key={status.id}
+                status={status}
+                last={index === deployment.statuses.length - 1}
+                over={!isNewestStatus(deployment.statuses, index)}
+              />
             ))}
           </ol>
         )}
@@ -201,16 +206,16 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** One status on the timeline, oldest at the top, with a line down to the next. */
-function StatusItem({ status, last }: { status: DeploymentStatus; last: boolean }) {
+function StatusItem({ status, last, over }: { status: DeploymentStatus; last: boolean; over: boolean }) {
   return (
     <li className="relative flex gap-3 pb-5 last:pb-0">
       {!last && <span aria-hidden="true" className="absolute top-6 bottom-1 left-[9px] w-px bg-line" />}
       <span className="relative mt-0.5 flex size-[19px] shrink-0 items-center justify-center bg-bg">
-        <DeploymentStateIcon state={status.state} size={18} />
+        <DeploymentStateIcon state={status.state} size={18} over={over} />
       </span>
       <div className="min-w-0 grow">
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-          <span className={`font-medium ${STATE_TONE[status.state]}`}>{STATE_WORD[status.state]}</span>
+          <span className={`font-medium ${over && status.state === "in_progress" ? "text-muted" : STATE_TONE[status.state]}`}>{STATE_WORD[status.state]}</span>
           <span className="text-xs text-faint">
             {status.creator} ·{" "}
             <Hint label={new Date(status.created_at).toUTCString()}>
@@ -224,10 +229,10 @@ function StatusItem({ status, last }: { status: DeploymentStatus; last: boolean 
         {(status.environment_url || status.log_url) && (
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
             {status.environment_url && (
-              <a href={status.environment_url} className="inline-flex min-w-0 items-center gap-1 font-mono text-accent hover:underline">
+              <DeployLink href={status.environment_url} className="inline-flex min-w-0 items-center gap-1 font-mono text-accent hover:underline">
                 <span className="truncate">{host(status.environment_url)}</span>
                 <ExternalLink size={11} className="shrink-0" />
-              </a>
+              </DeployLink>
             )}
             {status.log_url && (
               <a href={status.log_url} className="inline-flex items-center gap-1 text-muted hover:text-fg">
@@ -265,10 +270,10 @@ function BuildHeading({ build, base }: { build: Deployment; base: string }) {
         {BUILD_WORDS[build.status]} · started <TimeAgo at={build.createdAt} /> by {build.createdBy}
       </p>
       {build.status === "ready" && (
-        <a href={build.url} className="mt-3 inline-flex items-center gap-1.5 font-mono text-sm text-accent hover:underline">
+        <DeployLink href={build.url} className="mt-3 inline-flex items-center gap-1.5 font-mono text-sm text-accent hover:underline">
           {host(build.url)}
           <ExternalLink size={12} />
-        </a>
+        </DeployLink>
       )}
     </>
   );

@@ -1,13 +1,13 @@
 /**
- * Choosing what a token, an application or a workspace's token may do:
- * the checklist's fields, read into the scopes identity stores, and the
- * words settings use to show them again.
+ * Choosing what an application signed in with OAuth may do: the
+ * checklist's fields, read into the scopes identity stores, and the words
+ * settings use to show them again. Access tokens are made with
+ * permissions instead (lib/access-tokens.ts), which are the same scopes
+ * read per resource.
  *
- * Tokens are classic: a token reaches whatever its owner can, and its
- * scopes say what it may do there. The form posts one `scope` field per
- * ticked box. A higher level of a resource includes the lower ones
- * (`issues:write` gives `issues:read`), so only the highest ticked level
- * of each resource is stored.
+ * The checklist posts one `scope` field per ticked box. A higher level of
+ * a resource includes the lower ones (`issues:write` gives `issues:read`),
+ * so only the highest ticked level of each resource is stored.
  */
 
 import {
@@ -125,25 +125,6 @@ export function requestedScopes(scope: string | null | undefined): Scope[] {
 export function consentedScopes(form: FormLike, requested: readonly Scope[]): Scope[] {
   const ticked = new Set(form.getAll("scope").map(String));
   return normalizeScopes(requested.filter((scope) => ticked.has(scope)));
-}
-
-/** Expiry choices for a new token, in days; `never` does not expire. */
-export const EXPIRY_CHOICES = [
-  { value: "7", label: "7 days" },
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-  { value: "365", label: "1 year" },
-  { value: "never", label: "No expiry" },
-] as const;
-
-export const DEFAULT_EXPIRY = "90";
-
-/** Seconds a new token lives, or undefined for no expiry. Anything unknown is the default. */
-export function expiryTtl(value: unknown): number | undefined {
-  const text = String(value ?? DEFAULT_EXPIRY);
-  if (text === "never") return undefined;
-  const days = EXPIRY_CHOICES.some((choice) => choice.value === text) ? Number(text) : Number(DEFAULT_EXPIRY);
-  return days * 86_400;
 }
 
 /** "Expires in 3 days", "Expired", "No expiry". */

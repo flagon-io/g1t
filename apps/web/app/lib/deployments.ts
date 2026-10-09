@@ -9,6 +9,7 @@ import type {
   DeploymentFilter,
   DeploymentSource,
   DeploymentState,
+  DeploymentStatus,
   RepoDeployment,
 } from "@g1t/contracts";
 
@@ -209,4 +210,16 @@ export function pageRange(page: number, perPage: number, total: number): string 
 /** Whether a deployment's payload has anything in it to show. */
 export function hasPayload(payload: Record<string, unknown> | null | undefined): boolean {
   return payload != null && typeof payload === "object" && Object.keys(payload).length > 0;
+}
+
+/**
+ * Whether a status on a deployment's timeline is its newest: the latest
+ * one written (the last listed, when two share a time). Only the newest
+ * can still be under way; one a later status followed is over, whatever
+ * it said, so it is never shown as running.
+ */
+export function isNewestStatus(statuses: readonly Pick<DeploymentStatus, "created_at">[], index: number): boolean {
+  const at = statuses[index]?.created_at;
+  if (at == null) return false;
+  return statuses.every((other, i) => i === index || (i < index ? other.created_at <= at : other.created_at < at));
 }

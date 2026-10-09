@@ -5,8 +5,10 @@ import {
   actionsClient,
   agentsClient,
   billingClient,
+  chatClient,
   contextClient,
   deploymentsClient,
+  docsClient,
   memoryReviewClient,
   mirrorsClient,
   packagesClient,
@@ -22,6 +24,7 @@ import {
   securitySuiteClient,
   webhooksClient,
   workClient,
+  workspaceAgentsClient,
 } from "@g1t/contracts";
 
 import { instrumented } from "./perf.server";
@@ -44,6 +47,9 @@ const SECURITY = instrumented("security", env.SECURITY);
 const CONTEXT = instrumented("context", env.CONTEXT);
 const SEARCH = instrumented("search", env.SEARCH);
 const PACKAGES = instrumented("packages", env.PACKAGES);
+const CHAT = instrumented("chat", env.CHAT);
+const AGENTS = instrumented("agents", env.AGENTS);
+const DOCS = instrumented("docs", env.DOCS);
 
 export const identity = identityClient(IDENTITY);
 /** A person's email addresses and account security: methods of identity. */
@@ -76,3 +82,9 @@ export const search = searchClient(SEARCH);
 export const packages = packagesClient(PACKAGES);
 /** Memory candidates and their review: methods of the work service. */
 export const memoryReview = memoryReviewClient(WORK);
+/** Channels, direct messages and threads, where people and agents talk. */
+export const chat = chatClient(CHAT);
+/** The workspace's own agents: who they are, their limits and their desks. */
+export const workspaceAgents = workspaceAgentsClient(AGENTS);
+/** Docs: spaces, pages, history, suggestions and comments. */
+export const docs = docsClient(DOCS);

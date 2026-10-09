@@ -32,6 +32,7 @@ import {
 import { cn } from "../lib/cn";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
+import { SelectField } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 
 const SELECT =
@@ -117,13 +118,16 @@ export function UsageFilterBar({
   };
   return (
     <Form ref={form} method="get" preventScrollReset className="flex flex-wrap items-center gap-2">
-      <select name="period" defaultValue={filters.period} onChange={submit} className={SELECT} aria-label="Period">
-        {(Object.keys(PERIODS) as Period[]).map((key) => (
-          <option key={key} value={key}>
-            {PERIODS[key]}
-          </option>
-        ))}
-      </select>
+      <SelectField
+        key={`period-${filters.period}`}
+        name="period"
+        defaultValue={filters.period}
+        afterChange={submit}
+        size="sm"
+        className="w-auto"
+        aria-label="Period"
+        options={(Object.keys(PERIODS) as Period[]).map((key) => ({ value: key, label: PERIODS[key] }))}
+      />
       {filters.period === "custom" ? (
         <span className="flex items-center gap-1 text-sm">
           <input type="date" name="from" defaultValue={filters.from} aria-label="From" className={SELECT} />
@@ -135,11 +139,20 @@ export function UsageFilterBar({
       )}
       <MultiSelect name="product" label="Products" options={products.map((p) => ({ value: p.key, label: p.label }))} chosen={filters.products} />
       {!fixedProject && <MultiSelect name="project" label="Projects" options={projects.map((p) => ({ value: p, label: p }))} chosen={filters.projects} />}
-      <select name="group" defaultValue={filters.group} onChange={submit} className={SELECT} aria-label="Group by">
-        <option value="product">Group by product</option>
-        {!fixedProject && <option value="project">Group by project</option>}
-        <option value="day">Group by day</option>
-      </select>
+      <SelectField
+        key={`group-${filters.group}`}
+        name="group"
+        defaultValue={filters.group}
+        afterChange={submit}
+        size="sm"
+        className="w-auto"
+        aria-label="Group by"
+        options={[
+          { value: "product", label: "Group by product" },
+          ...(fixedProject ? [] : [{ value: "project", label: "Group by project" }]),
+          { value: "day", label: "Group by day" },
+        ]}
+      />
       <input type="hidden" name="grain" value={filters.grain} />
       {filters.cumulative && <input type="hidden" name="cumulative" value="1" />}
       <noscript>

@@ -120,7 +120,9 @@ pub(crate) struct OwnRow {
 /// open-source pool, and discounts on an account's terms (what they took
 /// below cost plus the margin, `ledger.discount_micros`), and credits g1t
 /// staff gave, promotional and goodwill, when spent (`grants`), and usage a
-/// testing reset wiped (`reset_costs`): g1t paid for it and nobody will.
+/// testing reset wiped (`reset_costs`): g1t paid for it and nobody will;
+/// and what was charged while payments were not live (Stripe's test mode),
+/// which brought in no real money (`without_real_money`).
 /// The Team plan's included usage is paid for by the plan's price, so it is
 /// sold, not given; so is what a refund pays for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -133,11 +135,12 @@ pub(crate) struct Given {
     pub credit_promotional: i64,
     pub credit_goodwill: i64,
     pub reset: i64,
+    pub unpaid: i64,
 }
 
 impl Given {
     pub fn total(&self) -> i64 {
-        self.comped + self.free + self.trial + self.pool + self.discount + self.credit() + self.reset
+        self.comped + self.free + self.trial + self.pool + self.discount + self.credit() + self.reset + self.unpaid
     }
 
     /// Credits from g1t, both kinds.
@@ -154,6 +157,7 @@ impl Given {
         self.credit_promotional += other.credit_promotional;
         self.credit_goodwill += other.credit_goodwill;
         self.reset += other.reset;
+        self.unpaid += other.unpaid;
     }
 
     /// The same shares of `cost` as these are of `value`, at most all of it.
@@ -173,6 +177,7 @@ impl Given {
             credit_promotional: part(self.credit_promotional),
             credit_goodwill: part(self.credit_goodwill),
             reset: part(self.reset),
+            unpaid: part(self.unpaid),
         }
     }
 }
@@ -230,6 +235,32 @@ pub(crate) fn apply_credits(rows: &mut Vec<UsageRow>, draws: &[(String, crate::g
             }
         }
     }
+}
+
+/// Money in only where it is real. Charges made while payments were not
+/// live (Stripe's test mode) brought in nothing: a row's cash from before
+/// `live_since` (all of it while payments are not live, `None`) is taken
+/// out of cash and counted as given away (`unpaid`), so it is never money
+/// in, never margin, and never what a workspace paid.
+pub(crate) fn without_real_money(rows: &mut [UsageRow], live_since: Option<&str>) {
+    for row in rows {
+        if live_since.is_some_and(|since| row.day.as_str() >= since) || row.cash == 0 {
+            continue;
+        }
+        // What else gave it away already (a 100% discount) stays that.
+        row.given.unpaid += row.cash.min(row.value - row.given.total()).max(0);
+        row.cash = 0;
+    }
+}
+
+/// The day payments went live, from `cost_settings` (`payments_live_since`)
+/// as a value read there: None while they are not live, the day kept when
+/// they are, else `today` (the first time they are seen live).
+pub(crate) fn live_since(live: bool, kept: Option<&str>, today: &str) -> Option<String> {
+    if !live {
+        return None;
+    }
+    Some(kept.filter(|d| d.len() >= 10).map_or_else(|| today.to_owned(), |d| d[..10].to_owned()))
 }
 
 /// What a workspace was charged for one key on one day.
@@ -464,8 +495,10 @@ pub(crate) fn delta_percent(ours: f64, theirs: f64) -> Option<f64> {
 pub(crate) enum DriftKind {
     /// g1t counted a different number of units than Cloudflare did.
     Count,
-    /// What Cloudflare charged differs from what the price book says the
-    /// same usage cost.
+    /// The price book's cost of a bucket's usage differs from what the
+    /// same usage comes to at Cloudflare's list prices, before the included
+    /// amounts (a price may be stale); on `models`, the ledger's model cost
+    /// differs from what AI Gateway priced the same traffic at.
     Cost,
     /// Cloudflare charged for something nothing charges customers for.
     Leak,
@@ -495,10 +528,18 @@ pub(crate) struct Drift {
 }
 
 /// Drift over a window for one bucket: counts more than `threshold`
-/// percent apart, a bill that far from the price book's cost of the same
-/// usage, and cost with nothing charged for it. Under `min_cost_micros`
-/// in all, cost says nothing.
-pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted: bool, min_cost_micros: i64) -> Vec<Drift> {
+/// percent apart, the price book's cost of the usage that far from what the
+/// same usage comes to at Cloudflare's list prices (`list_micros`, from
+/// `list_costs`), and cost with nothing charged for it. Under
+/// `min_cost_micros` in all, cost says nothing.
+///
+/// The price book is set against the list cost, never against what
+/// Cloudflare billed: the bill is net of the included amounts and the price
+/// book's cost is of every unit, so a bucket whose usage mostly fits in
+/// them would read as a stale price when nothing changed. Without a list
+/// cost (a meter in the bucket with no list price) the price book is not
+/// checked. A leak is still what Cloudflare billed: money spent.
+pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted: bool, min_cost_micros: i64, list_micros: Option<f64>) -> Vec<Drift> {
     let overhead = OVERHEAD.contains(&bucket);
     let sum = |f: &dyn Fn(&ProductDay) -> f64| days.iter().map(f).sum::<f64>();
     let cf_cost = sum(&|d| d.cf_cost_micros as f64);
@@ -517,16 +558,19 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
             out.push(Drift { bucket: bucket.into(), kind: DriftKind::Count, ours: own_quantity, cloudflare: cf_quantity, delta_percent: delta });
         }
     }
-    let enough = cf_cost.max(own_cost) >= min_cost_micros as f64;
     // Models: what AI Gateway priced g1t's own provider traffic at (its
     // lines, as "Cloudflare's" side) against the ledger's model cost. Only
     // once the gateway has been read; then the ledger having none of it is
-    // drift too (traffic no run was charged for).
-    let models = NOT_CLOUDFLARE.contains(&bucket) && cf_cost > 0.0;
-    if enough && !overhead && cf_cost > 0.0 && (own_cost > 0.0 || models) {
-        let delta = delta_percent(own_cost, cf_cost);
+    // drift too (traffic no run was charged for). Every other bucket: its
+    // usage at Cloudflare's list prices, before the included amounts.
+    let not_cloudflare = NOT_CLOUDFLARE.contains(&bucket);
+    let theirs = if not_cloudflare { cf_cost } else { list_micros.unwrap_or(0.0) };
+    let enough = theirs.max(own_cost) >= min_cost_micros as f64;
+    let models = not_cloudflare && cf_cost > 0.0;
+    if enough && !overhead && theirs > 0.0 && (own_cost > 0.0 || models) {
+        let delta = delta_percent(own_cost, theirs);
         if delta.is_some_and(|d| d.abs() > threshold) {
-            out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: cf_cost, delta_percent: delta });
+            out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: theirs, delta_percent: delta });
         }
     }
     // The ledger has model cost and the gateway priced none of it: a token
@@ -537,6 +581,28 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
     }
     if !overhead && cf_cost >= min_cost_micros as f64 && value <= 0.0 {
         out.push(Drift { bucket: bucket.into(), kind: DriftKind::Leak, ours: value, cloudflare: cf_cost, delta_percent: None });
+    }
+    out
+}
+
+/// What each bucket's billable usage over a window comes to at
+/// Cloudflare's list prices, before the included amounts (`cycle::list_cost`
+/// line by line, in micros): what the price book's cost of the same usage
+/// is checked against. None for a bucket with usage on a meter that has no
+/// list price: its usage cannot be priced like for like, so it is not
+/// checked. Other sources (Artifacts events, AI Gateway) are left out.
+pub(crate) fn list_costs(rules: &[Rule], lines: &[LineRow]) -> BTreeMap<String, Option<f64>> {
+    let mut out: BTreeMap<String, Option<f64>> = BTreeMap::new();
+    for line in lines.iter().filter(|l| l.source == SOURCE_BILLABLE) {
+        let bucket = costs::classify(rules, &line.product, &line.meter).map_or(UNMAPPED, |r| r.bucket.as_str());
+        let entry = out.entry(bucket.to_owned()).or_insert(Some(0.0));
+        if line.quantity <= 0.0 {
+            continue;
+        }
+        *entry = match (*entry, crate::cycle::list_cost(&line.product, &line.meter, line.quantity)) {
+            (Some(sum), Some(cost)) => Some(sum + cost * 1_000_000.0),
+            _ => None,
+        };
     }
     out
 }
@@ -862,9 +928,9 @@ pub(crate) fn anomalies(rows: &[(String, i64, i64)], factor: f64, floor_micros: 
     out
 }
 
-/// Cloudflare's marginal rate for one of its units: the median over the
-/// charged days of cost over quantity, in dollars. None while the included
-/// amounts still cover it. Each item is a day's (quantity, cost).
+/// Cloudflare's rate for one of its units: the median over the costed
+/// days of cost over quantity, in dollars. None while nothing is costed.
+/// Each item is a day's (quantity, cost), from `rate_line`.
 pub(crate) fn billed_rate(days: &[(f64, f64)]) -> Option<f64> {
     let mut rates: Vec<f64> = days.iter().filter(|(q, c)| *q > 0.0 && *c > 0.0).map(|(q, c)| c / q).collect();
     if rates.is_empty() {
@@ -872,6 +938,17 @@ pub(crate) fn billed_rate(days: &[(f64, f64)]) -> Option<f64> {
     }
     rates.sort_by(f64::total_cmp);
     Some(rates[rates.len() / 2])
+}
+
+/// A line's (quantity, cost) for `billed_rate`: at its list price for all
+/// of the quantity where the meter has one, never what the cycle billed,
+/// which is net of the included amounts (nothing until the cycle passes
+/// them, part of a day's usage on the day it does, then whole millions) and
+/// so says nothing about the price of each unit. A meter with no list
+/// price has only what Cloudflare billed; the median over the charged days
+/// leaves out the day its included amount ran out.
+pub(crate) fn rate_line(product: &str, meter: &str, quantity: f64, cost_usd: f64) -> (f64, f64) {
+    (quantity, crate::cycle::list_cost(product, meter, quantity).unwrap_or(cost_usd))
 }
 
 /// What one of g1t's units costs, from Cloudflare's rate per its own unit
@@ -1016,6 +1093,8 @@ struct MarginRow {
     given_credit_goodwill_micros: Option<i64>,
     #[serde(default)]
     given_reset_micros: Option<i64>,
+    #[serde(default)]
+    given_unpaid_micros: Option<i64>,
 }
 
 impl From<MarginRow> for ProductDay {
@@ -1038,6 +1117,7 @@ impl From<MarginRow> for ProductDay {
                 credit_promotional: r.given_credit_promotional_micros.unwrap_or(0),
                 credit_goodwill: r.given_credit_goodwill_micros.unwrap_or(0),
                 reset: r.given_reset_micros.unwrap_or(0),
+                unpaid: r.given_unpaid_micros.unwrap_or(0),
             },
         }
     }
@@ -1050,10 +1130,18 @@ impl Billing {
     pub(crate) async fn costs_daily(&self, env: &Env, keeper: &crate::keeper::Keeper) -> Result<CostsRun> {
         let mut run = CostsRun::default();
         let mut gateway = costs::GatewayRead::default();
-        let (since, until) = match self.read_cloudflare(keeper, &mut run.problems, &mut gateway).await? {
-            Some((since, until, lines)) => {
+        // The subscriptions first: they say when the billing cycle starts,
+        // which the bill is priced by. Not a problem for the run: the last
+        // read, or the estimate, stays.
+        if keeper.can_read_bill()
+            && let Err(error) = self.read_subscriptions(keeper).await
+        {
+            worker::console_error!("Cloudflare's subscriptions were not read: {error}");
+        }
+        let (since, until, bill_since) = match self.read_cloudflare(keeper, &mut run.problems, &mut gateway).await? {
+            Some((since, until, lines, bill_since)) => {
                 run.lines = lines;
-                (since, until)
+                (since, until, Some(bill_since))
             }
             // Without the bill, still reconcile what g1t knows itself, over
             // the same days the bill would be read for.
@@ -1063,15 +1151,10 @@ impl Billing {
                     day: Option<String>,
                 }
                 let last = self.db.prepare("SELECT MAX(day) AS day FROM margin_days").first::<Last>(None).await?.and_then(|l| l.day);
-                costs::window(last.as_deref(), now_ms())
+                let (since, until) = costs::window(last.as_deref(), now_ms());
+                (since, until, None)
             }
         };
-        // Not a problem for the run: the last read, or the estimate, stays.
-        if keeper.can_read_bill()
-            && let Err(error) = self.read_subscriptions(keeper).await
-        {
-            worker::console_error!("Cloudflare's subscriptions were not read: {error}");
-        }
         if let Err(error) = self.count_own(&since, &until).await {
             run.problems.push(format!("g1t's own counts could not be read: {error}"));
         }
@@ -1080,7 +1163,7 @@ impl Billing {
         // bill was read for: it reads only what is already kept, so a change
         // in how a day is valued reaches every day shown at the next run.
         let window = day_before(&until, costs::BACKFILL_DAYS - 1);
-        let reconcile_from = if window < since { window } else { since.clone() };
+        let reconcile_from = [Some(window), Some(since.clone()), bill_since].into_iter().flatten().min().unwrap_or_default();
         run.days = self.reconcile_range(&reconcile_from, &until).await?;
         let drift = self.find_drift(&until, &gateway).await?;
         run.proposals = self.measure_units(&until).await?;
@@ -1244,7 +1327,40 @@ impl Billing {
                 }
             }
         }
+        // Charges without real money behind them are not money in.
+        without_real_money(&mut out, self.payments_live_since().await?.as_deref());
         Ok(out)
+    }
+
+    /// The day payments went live (`live_since`): kept in `cost_settings`
+    /// the first time they are seen live, so charges from before it stay
+    /// test money after the switch.
+    pub(crate) async fn payments_live_since(&self) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            value: String,
+        }
+        let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
+        let kept = self
+            .db
+            .prepare("SELECT value FROM cost_settings WHERE key = 'payments_live_since'")
+            .first::<Row>(None)
+            .await?
+            .map(|r| r.value)
+            .filter(|v| v.len() >= 10);
+        let today = rfc3339(now_ms())[..10].to_owned();
+        let since = live_since(live, kept.as_deref(), &today);
+        if let Some(day) = since.as_deref().filter(|_| kept.is_none()) {
+            self.db
+                .prepare(
+                    "INSERT INTO cost_settings (key, value, updated_at, updated_by) VALUES ('payments_live_since', ?1, ?2, 'billing')
+                     ON CONFLICT (key) DO UPDATE SET value = ?1, updated_at = ?2, updated_by = 'billing'",
+                )
+                .bind(&[day.into(), rfc3339(now_ms()).into()])?
+                .run()
+                .await?;
+        }
+        Ok(since)
     }
 
     /// Which bucket each ledger key (and month-end source) is revenue of.
@@ -1387,8 +1503,8 @@ impl Billing {
                 statements.push(
                     self.db
                         .prepare(
-                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, given_credit_promotional_micros, given_credit_goodwill_micros, given_reset_micros, computed_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO margin_days (day, bucket, cf_cost_micros, own_cost_micros, value_micros, cash_micros, cf_quantity, own_quantity, given_micros, given_comped_micros, given_free_micros, given_trial_micros, given_pool_micros, given_discount_micros, given_credit_promotional_micros, given_credit_goodwill_micros, given_reset_micros, given_unpaid_micros, computed_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(&[
                             d.day.as_str().into(),
@@ -1408,6 +1524,7 @@ impl Billing {
                             (d.given.credit_promotional as f64).into(),
                             (d.given.credit_goodwill as f64).into(),
                             (d.given.reset as f64).into(),
+                            (d.given.unpaid as f64).into(),
                             now.as_str().into(),
                         ])?,
                 );
@@ -1497,6 +1614,17 @@ impl Billing {
         }
         let caveats = self.gateway_caveats(&since, until).await?;
         let resets = self.resets_since(&since, until).await?;
+        // The same days' usage at list prices, before the included amounts:
+        // what the price book is checked against (never the bill, which is
+        // net of them).
+        let lines = self
+            .db
+            .prepare("SELECT day, source, product, meter, quantity, cost_usd FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3")
+            .bind(&[SOURCE_BILLABLE.into(), since.as_str().into(), until.into()])?
+            .all()
+            .await?
+            .results::<LineRow>()?;
+        let list = list_costs(&rules, &lines);
         let mut found = Vec::new();
         if let Some(drift) = unpriced_drift(&caveats) {
             found.push(drift);
@@ -1506,7 +1634,8 @@ impl Billing {
             let threshold = bucket_rules.iter().map(|r| r.drift_percent).fold(f64::INFINITY, f64::min);
             let threshold = if threshold.is_finite() { threshold } else { 10.0 };
             let counted = bucket_rules.iter().any(|r| r.own_meter.is_some());
-            for drift in drifts(bucket, days, threshold, counted, settings.min_daily_cost_micros) {
+            let list_micros = list.get(bucket).copied().flatten();
+            for drift in drifts(bucket, days, threshold, counted, settings.min_daily_cost_micros, list_micros) {
                 if wiped_not_leaked(&drift, &resets) {
                     continue;
                 }
@@ -1520,7 +1649,7 @@ impl Billing {
                         drift.delta_percent.unwrap_or(0.0)
                     ),
                     DriftKind::Cost => format!(
-                        "{title}: Cloudflare charged {} over the last {DRIFT_DAYS} days; the price book's cost of the same usage is {} ({:+.1}%). A price may be stale: see the proposals.",
+                        "{title}: the last {DRIFT_DAYS} days' usage comes to {} at Cloudflare's list prices, before the included amounts; the price book's cost of the same usage is {} ({:+.1}%). A price may be stale: see the proposals.",
                         dollars(drift.cloudflare as i64),
                         dollars(drift.ours as i64),
                         drift.delta_percent.unwrap_or(0.0)
@@ -1605,7 +1734,7 @@ impl Billing {
             let mine: Vec<(f64, f64)> = lines
                 .iter()
                 .filter(|l| costs::classify(&rules, &l.product, &l.meter).is_some_and(|r| r.product == s.product && r.meter == s.meter))
-                .map(|l| (l.quantity, l.cost_usd))
+                .map(|l| rate_line(&l.product, &l.meter, l.quantity, l.cost_usd))
                 .collect();
             let Some(rate) = billed_rate(&mine) else { continue };
             let cf_units: f64 = mine.iter().map(|(q, _)| q).sum();
@@ -1964,6 +2093,7 @@ impl Billing {
             overall.given_credit_promotional_micros += d.given.credit_promotional;
             overall.given_credit_goodwill_micros += d.given.credit_goodwill;
             overall.given_reset_micros += d.given.reset;
+            overall.given_unpaid_micros += d.given.unpaid;
             let sold = (d.cost() - d.given.total()).max(0);
             if OVERHEAD.contains(&d.bucket.as_str()) {
                 overall.plans_micros += d.cash_micros;
@@ -1993,18 +2123,23 @@ impl Billing {
         struct Included {
             micros: Option<i64>,
         }
-        overall.included_micros = self
-            .db
-            .prepare(format!(
-                "SELECT SUM(COALESCE(credit_micros, 0)) AS micros FROM ledger
-                 WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND workspace NOT IN ({})",
-                crate::sales::INTERNAL_SQL
-            ))
-            .bind(&[since.as_str().into(), format!("{until}T23:59:59.999Z").into()])?
-            .first::<Included>(None)
-            .await?
-            .and_then(|r| r.micros)
-            .unwrap_or(0);
+        // Only what a plan paid for with real money (`without_real_money`).
+        let live_since = self.payments_live_since().await?;
+        overall.included_micros = match &live_since {
+            None => 0,
+            Some(live) => self
+                .db
+                .prepare(format!(
+                    "SELECT SUM(COALESCE(credit_micros, 0)) AS micros FROM ledger
+                     WHERE kind = 'usage' AND created_at >= ?1 AND created_at <= ?2 AND workspace NOT IN ({})",
+                    crate::sales::INTERNAL_SQL
+                ))
+                .bind(&[std::cmp::max(since.clone(), live.clone()).into(), format!("{until}T23:59:59.999Z").into()])?
+                .first::<Included>(None)
+                .await?
+                .and_then(|r| r.micros)
+                .unwrap_or(0),
+        };
         let usage_in = overall.usage_micros + overall.included_micros;
         overall.usage_margin_micros = usage_in - overall.usage_cost_micros;
         overall.usage_margin_percent = margin_percent(usage_in, overall.usage_cost_micros);
@@ -2154,6 +2289,38 @@ impl Billing {
         }
         let fetched_at = self.db.prepare("SELECT MAX(fetched_at) AS at FROM cost_lines").first::<Fetched>(None).await?.and_then(|f| f.at);
 
+        // Cloudflare's subscriptions over the range, day by day as each
+        // day's share of its billing cycle; and the cycle itself.
+        let anchor = self.cycle_anchor().await?;
+        let fixed = self.fixed_monthly(self.caps.fixed_monthly).await?;
+        overall.subscriptions_micros = crate::cycle::accrued(fixed.monthly_micros, &since, &until, anchor);
+        let cycle = self.cloudflare_cycle(&until, anchor, fixed.monthly_micros).await?;
+        let bill_read = self.bill_read().await?;
+        // What AI Gateway priced g1t's own provider traffic at, beside the
+        // ledger's model cost (Cloudflare-billed requests are Cloudflare's).
+        overall.gateway_cost_micros = self
+            .db
+            .prepare("SELECT SUM(cost_usd) AS cost FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3 AND substr(meter, 1, 11) <> ?4")
+            .bind(&[costs::SOURCE_GATEWAY.into(), since.as_str().into(), until.as_str().into(), costs::GATEWAY_WHOLESALE.into()])?
+            .first::<CostSum>(None)
+            .await?
+            .and_then(|c| c.cost)
+            .map_or(0, micros);
+        // The workspaces' shares of the cost, and what no one's usage carried.
+        #[derive(Deserialize)]
+        struct Shared {
+            micros: Option<i64>,
+        }
+        let shared = self
+            .db
+            .prepare("SELECT SUM(cost_micros) AS micros FROM workspace_costs WHERE day >= ?1 AND day <= ?2")
+            .bind(&[since.as_str().into(), until.as_str().into()])?
+            .first::<Shared>(None)
+            .await?
+            .and_then(|s| s.micros)
+            .unwrap_or(0);
+        let unattributed_micros = unattributed(overall.cost_micros, shared);
+
         Ok(CostsReport {
             configured,
             fetched_at,
@@ -2181,7 +2348,122 @@ impl Billing {
             mappings,
             settings: self.cost_settings().await?,
             caps: self.spend_caps().await?,
+            cycle,
+            bill_read,
+            unattributed_micros,
         })
+    }
+
+    /// Cloudflare's billing cycle that `today` is in: its usage cost so far,
+    /// by meter, with the included amounts, and where it is heading. None
+    /// while nothing of it has been read.
+    async fn cloudflare_cycle(&self, today: &str, anchor: u32, monthly_micros: i64) -> Result<Option<CloudflareCycle>> {
+        #[derive(Deserialize)]
+        struct Row {
+            product: String,
+            meter: String,
+            raw_name: String,
+            unit: String,
+            quantity: f64,
+            billable_quantity: Option<f64>,
+            cost_usd: f64,
+            basis: Option<String>,
+        }
+        let cycle = crate::cycle::cycle_of(today, anchor);
+        let rows = self
+            .db
+            .prepare(
+                "SELECT product, meter, MAX(raw_name) AS raw_name, MAX(unit) AS unit, SUM(quantity) AS quantity,
+                        SUM(billable_quantity) AS billable_quantity, SUM(cost_usd) AS cost_usd, MAX(basis) AS basis
+                 FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3 GROUP BY product, meter",
+            )
+            .bind(&[SOURCE_BILLABLE.into(), cycle.start.as_str().into(), today.into()])?
+            .all()
+            .await?
+            .results::<Row>()?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+        let elapsed = cycle.days_elapsed(today);
+        let meters = rows
+            .into_iter()
+            .map(|r| {
+                let list = crate::cycle::list_price(&r.product, &r.meter);
+                CycleMeter {
+                    included: list.map(|p| if p.daily { p.included * elapsed as f64 } else { p.included }),
+                    billable_quantity: r.billable_quantity.unwrap_or(0.0),
+                    cost_micros: micros(r.cost_usd),
+                    basis: r.basis.filter(|b| !b.is_empty()).unwrap_or_else(|| crate::cycle::BASIS_NONE.to_owned()),
+                    product: r.product,
+                    meter: r.meter,
+                    raw_name: r.raw_name,
+                    unit: r.unit,
+                    quantity: r.quantity,
+                }
+            })
+            .collect();
+        Ok(Some(cycle_report(&cycle, elapsed, meters, monthly_micros)))
+    }
+
+    /// The last read of billable usage (`cost_reads`).
+    async fn bill_read(&self) -> Result<Option<BillRead>> {
+        #[derive(Deserialize)]
+        struct Row {
+            read_at: String,
+            since: String,
+            until: String,
+            rows: u32,
+            pages: u32,
+            consumed_rows: u32,
+            pricing_only_rows: u32,
+            costed_rows: u32,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT * FROM cost_reads WHERE source = ?1")
+            .bind(&[SOURCE_BILLABLE.into()])?
+            .first::<Row>(None)
+            .await?
+            .map(|r| BillRead {
+                read_at: r.read_at,
+                since: r.since,
+                until: r.until,
+                rows: r.rows,
+                pages: r.pages,
+                consumed_rows: r.consumed_rows,
+                pricing_only_rows: r.pricing_only_rows,
+                costed_rows: r.costed_rows,
+            }))
+    }
+}
+
+#[derive(Deserialize)]
+struct CostSum {
+    cost: Option<f64>,
+}
+
+/// Of `total` cost, what the workspaces' shares did not carry: running g1t
+/// on days no workspace used anything. Never below zero.
+pub(crate) fn unattributed(total: i64, shared: i64) -> i64 {
+    (total - shared).max(0)
+}
+
+/// The cycle as sudo shows it: the meters, most costly first, their total,
+/// the average day and Cloudflare's projection.
+pub(crate) fn cycle_report(cycle: &crate::cycle::Cycle, elapsed: u32, mut meters: Vec<CycleMeter>, monthly_micros: i64) -> CloudflareCycle {
+    meters.sort_by(|a, b| b.cost_micros.cmp(&a.cost_micros).then(b.quantity.total_cmp(&a.quantity)).then(a.meter.cmp(&b.meter)));
+    let usage: i64 = meters.iter().map(|m| m.cost_micros).sum();
+    let days = cycle.days();
+    CloudflareCycle {
+        start: cycle.start.clone(),
+        end: cycle.end.clone(),
+        days,
+        days_elapsed: elapsed,
+        usage_micros: usage,
+        projected_micros: crate::cycle::project(usage, elapsed, days),
+        average_daily_micros: if elapsed > 0 { usage / elapsed as i64 } else { usage },
+        subscriptions_micros: monthly_micros,
+        meters,
     }
 }
 
@@ -2360,24 +2642,94 @@ mod tests {
     fn counts_more_than_the_threshold_apart_are_drift() {
         // Cloudflare counted 30,000 operations where g1t counted 10,000:
         // binding reads, perhaps. -66.7%.
-        let drift = drifts("git", &[day("git", 3_000_000, 1_500_000, 1_800_000, 30_000.0, 10_000.0)], 10.0, true, 100_000);
+        let drift = drifts("git", &[day("git", 3_000_000, 1_500_000, 1_800_000, 30_000.0, 10_000.0)], 10.0, true, 100_000, Some(3_000_000.0));
         assert_eq!(drift.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Count, DriftKind::Cost]);
         assert!((drift[0].delta_percent.unwrap() + 66.666).abs() < 0.01);
         // 9% apart: within 10%.
-        assert!(drifts("git", &[day("git", 1_000_000, 1_000_000, 1_200_000, 10_000.0, 10_900.0)], 10.0, true, 100_000).is_empty());
+        assert!(drifts("git", &[day("git", 1_000_000, 1_000_000, 1_200_000, 10_000.0, 10_900.0)], 10.0, true, 100_000, Some(1_000_000.0)).is_empty());
         // Uncounted products have no count drift.
-        assert!(drifts("sandboxes", &[day("sandboxes", 1_000_000, 1_050_000, 1_200_000, 5.0, 0.0)], 10.0, false, 100_000).is_empty());
+        assert!(drifts("sandboxes", &[day("sandboxes", 1_000_000, 1_050_000, 1_200_000, 5.0, 0.0)], 10.0, false, 100_000, Some(1_000_000.0)).is_empty());
     }
 
     #[test]
     fn cost_with_no_revenue_is_a_leak_but_not_for_running_g1t() {
-        let leak = drifts("actions_cache", &[day("actions_cache", 400_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000);
+        let leak = drifts("actions_cache", &[day("actions_cache", 400_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None);
         assert_eq!(leak.len(), 1);
         assert_eq!(leak[0].kind, DriftKind::Leak);
-        assert!(drifts("platform", &[day("platform", 5_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        assert!(drifts("platform", &[day("platform", 5_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
         // Pennies say nothing.
-        assert!(drifts("actions_cache", &[day("actions_cache", 50_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
-        assert!(drifts(UNMAPPED, &[day(UNMAPPED, 250_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000)[0].kind == DriftKind::Leak);
+        assert!(drifts("actions_cache", &[day("actions_cache", 50_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
+        assert!(drifts(UNMAPPED, &[day(UNMAPPED, 250_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None)[0].kind == DriftKind::Leak);
+    }
+
+    /// A week of sandboxes mostly inside the cycle's included amounts:
+    /// Cloudflare billed $0.0922 (the memory past 25 GiB-hours), and the
+    /// same usage is $1.70 at list prices.
+    fn sandbox_week() -> (Vec<Rule>, Vec<LineRow>) {
+        let mut rules = rules();
+        rules.push(rule("durable_objects", "durable_objects_compute_duration", "sandboxes", None));
+        let lines = vec![
+            line("2026-10-07", SOURCE_BILLABLE, "containers", "container_memory_per_gib_second", 126_870.0, 0.092_175),
+            line("2026-10-07", SOURCE_BILLABLE, "containers", "container_vcpu", 12_000.0, 0.0),
+            line("2026-10-07", SOURCE_BILLABLE, "containers", "container_disk_per_gb_second", 253_740.0, 0.0),
+            line("2026-10-07", SOURCE_BILLABLE, "durable_objects", "durable_objects_compute_duration", 90_000.0, 0.0),
+            // Not billable usage: no part of the list cost.
+            line("2026-10-07", SOURCE_ARTIFACTS, "artifacts", "events_push", 40.0, 0.0),
+        ];
+        (rules, lines)
+    }
+
+    #[test]
+    fn usage_inside_the_included_amounts_is_not_a_stale_price() {
+        let (rules, lines) = sandbox_week();
+        let list = list_costs(&rules, &lines);
+        let sandboxes = list["sandboxes"].unwrap();
+        assert!((sandboxes - 1_699_936.8).abs() < 1.0, "{sandboxes}");
+        // The price book's cost of the same usage is $1.69: within 1% of
+        // the list, though Cloudflare billed $0.0922 after the included
+        // amounts. Before, that read as +1733.6%.
+        let week = day("sandboxes", 92_175, 1_690_000, 2_028_000, 0.0, 0.0);
+        assert!(drifts("sandboxes", std::slice::from_ref(&week), 10.0, false, 100_000, Some(sandboxes)).is_empty());
+        let net = drifts("sandboxes", &[week], 10.0, false, 100_000, Some(92_175.0));
+        assert_eq!(net[0].kind, DriftKind::Cost, "billed against the price book was the false alarm");
+    }
+
+    #[test]
+    fn a_stale_price_is_still_drift() {
+        let (rules, lines) = sandbox_week();
+        let sandboxes = list_costs(&rules, &lines)["sandboxes"].unwrap();
+        // The price book still costs the same usage at $1.20: a list price
+        // rose and the book did not follow.
+        let found = drifts("sandboxes", &[day("sandboxes", 92_175, 1_200_000, 1_440_000, 0.0, 0.0)], 10.0, false, 100_000, Some(sandboxes));
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].kind, found[0].ours, found[0].cloudflare.round()), (DriftKind::Cost, 1_200_000.0, 1_699_937.0));
+        assert!((found[0].delta_percent.unwrap() + 29.4).abs() < 0.1);
+        // Nothing billed at all (the whole week inside the included
+        // amounts) is checked all the same.
+        assert_eq!(drifts("sandboxes", &[day("sandboxes", 0, 1_200_000, 1_440_000, 0.0, 0.0)], 10.0, false, 100_000, Some(sandboxes)).len(), 1);
+    }
+
+    #[test]
+    fn a_bucket_with_a_meter_with_no_list_price_is_not_checked() {
+        let (rules, mut lines) = sandbox_week();
+        lines.push(line("2026-10-07", SOURCE_BILLABLE, "artifacts", "storage", 3.0, 0.4));
+        lines.push(line("2026-10-07", SOURCE_BILLABLE, "artifacts", "operations", 0.0, 0.0));
+        let list = list_costs(&rules, &lines);
+        assert_eq!(list["git"], None);
+        assert!(list["sandboxes"].is_some());
+        // No list cost: no cost drift, but a leak is still what was billed.
+        assert!(drifts("git", &[day("git", 3_000_000, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
+        assert_eq!(drifts("git", &[day("git", 3_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None)[0].kind, DriftKind::Leak);
+    }
+
+    #[test]
+    fn a_unit_rate_is_the_list_price_where_there_is_one() {
+        // Billed $0.20 for 11.16M CPU ms (9.16M past the included 30M, in
+        // whole millions): $0.02 a million at list, whatever was billed.
+        let (q, c) = rate_line("workers", "workers_cpu_ms", 11_160_000.0, 0.20);
+        assert!((billed_rate(&[(q, c)]).unwrap() * 1e6 - 0.02).abs() < 1e-12);
+        // No list price: what Cloudflare billed.
+        assert_eq!(rate_line("artifacts", "operations", 1_000.0, 0.5), (1_000.0, 0.5));
     }
 
     #[test]
@@ -2412,15 +2764,15 @@ mod tests {
         let on = |day: &str, cf: f64, own: f64| ProductDay { day: day.into(), bucket: "git".into(), cf_quantity: cf, own_quantity: own, ..ProductDay::default() };
         // Five days of Cloudflare's count before g1t's meter, then two that match.
         let days = vec![on("2026-10-01", 500.0, 0.0), on("2026-10-05", 300.0, 0.0), on("2026-10-06", 210.0, 231.0), on("2026-10-07", 450.0, 458.0)];
-        assert!(drifts("git", &days, 10.0, true, 0).iter().all(|d| d.kind != DriftKind::Count));
+        assert!(drifts("git", &days, 10.0, true, 0, None).iter().all(|d| d.kind != DriftKind::Count));
         // A real gap on the days both counted still shows.
         let days = vec![on("2026-10-01", 500.0, 0.0), on("2026-10-06", 400.0, 231.0), on("2026-10-07", 600.0, 300.0)];
-        let found = drifts("git", &days, 10.0, true, 0);
+        let found = drifts("git", &days, 10.0, true, 0, None);
         let count = found.iter().find(|d| d.kind == DriftKind::Count).unwrap();
         assert_eq!((count.ours, count.cloudflare), (531.0, 1000.0));
         // A meter that never counted is compared over every day.
         let days = vec![on("2026-10-06", 400.0, 0.0)];
-        assert!(drifts("git", &days, 10.0, true, 0).iter().any(|d| d.kind == DriftKind::Count));
+        assert!(drifts("git", &days, 10.0, true, 0, None).iter().any(|d| d.kind == DriftKind::Count));
     }
 
     #[test]
@@ -2528,18 +2880,18 @@ mod tests {
     #[test]
     fn the_gateways_total_against_the_ledgers_model_cost_is_drift() {
         // The gateway priced $5 of g1t's own traffic; the ledger has $3.
-        let short = drifts("models", &[day("models", 5_000_000, 3_000_000, 3_600_000, 0.0, 0.0)], 10.0, false, 100_000);
+        let short = drifts("models", &[day("models", 5_000_000, 3_000_000, 3_600_000, 0.0, 0.0)], 10.0, false, 100_000, None);
         assert_eq!(short.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost]);
         assert!((short[0].delta_percent.unwrap() + 40.0).abs() < 1e-9);
         // Gateway traffic with nothing on the ledger at all: cost drift and a leak.
-        let none = drifts("models", &[day("models", 2_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000);
+        let none = drifts("models", &[day("models", 2_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None);
         assert_eq!(none.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost, DriftKind::Leak]);
         // Within the threshold: nothing.
-        assert!(drifts("models", &[day("models", 1_050_000, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        assert!(drifts("models", &[day("models", 1_050_000, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
         // The gateway priced nothing against a ledger that has model cost:
         // not agreement (a token that cannot see AI Gateway reads as no
         // rows), so it is said. Under the minimum, or no model cost: nothing.
-        let silent = drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000);
+        let silent = drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000, None);
         assert_eq!(silent, vec![Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 1_000_000.0, cloudflare: 0.0, delta_percent: None }]);
         // Why it is empty, as far as the run could tell.
         let why = |caveats: &costs::GatewayCaveats, read: costs::GatewayRead| models_detail(&silent[0], caveats, &[], &read);
@@ -2556,8 +2908,8 @@ mod tests {
         let unpriced = costs::GatewayCaveats { requests: 42.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
         let said = why(&unpriced, costs::GatewayRead::Rows);
         assert!(said.contains("logged 42 requests") && said.contains("no price for the models used (anthropic_claude_new_1)"), "{said}");
-        assert!(drifts("models", &[day("models", 0, 50_000, 60_000, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
-        assert!(drifts("models", &[day("models", 0, 0, 0, 0.0, 0.0)], 10.0, false, 100_000).is_empty());
+        assert!(drifts("models", &[day("models", 0, 50_000, 60_000, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
+        assert!(drifts("models", &[day("models", 0, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
         // The detail says which way and why it may be off.
         let caveats = costs::GatewayCaveats { cache_read_tokens: 3_000_000.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
         let detail = models_detail(&short[0], &caveats, &[], &costs::GatewayRead::default());
@@ -2627,14 +2979,14 @@ mod tests {
         let models = |days: &[ProductDay]| days.iter().find(|d| d.bucket == "models").cloned().unwrap();
         // Without it: AI Gateway's $11.11 against the ledger's $2.49.
         let (days, _) = gateway_and_ledger(false);
-        let drift = drifts("models", &[models(&days)], 10.0, false, 100_000);
+        let drift = drifts("models", &[models(&days)], 10.0, false, 100_000, None);
         assert_eq!(drift.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost]);
         assert_eq!((drift[0].ours, drift[0].cloudflare), (2_490_000.0, 11_110_000.0));
         // With it: the ledger's model cost and the reset's add up to the gateway's.
         let (days, _) = gateway_and_ledger(true);
         let m = models(&days);
         assert_eq!(m.own_cost_micros, 11_110_000);
-        assert!(drifts("models", &[m], 10.0, false, 100_000).is_empty());
+        assert!(drifts("models", &[m], 10.0, false, 100_000, None).is_empty());
         // The reset's own row makes no bucket of its own.
         assert!(!days.iter().any(|d| d.bucket.is_empty()));
     }
@@ -2672,8 +3024,76 @@ mod tests {
             given_credit_promotional_micros: Some(0),
             given_credit_goodwill_micros: Some(0),
             given_reset_micros: Some(models.given.reset),
+            given_unpaid_micros: Some(0),
         };
         assert_eq!(ProductDay::from(row).given, models.given);
+    }
+
+    #[test]
+    fn test_mode_charges_are_never_money_in() {
+        // A $12 sandbox charge and the $20 plan, both while payments were in
+        // Stripe's test mode: valued as before, given as unpaid, no cash.
+        let mut rows = vec![
+            usage("2026-10-06", "acme", "sandbox", 12_000_000, 12_000_000, 10_000_000),
+            UsageRow { day: "2026-10-06".into(), workspace: "acme".into(), key: "plan".into(), value: 666_667, cash: 666_667, ..UsageRow::default() },
+        ];
+        without_real_money(&mut rows, None);
+        assert!(rows.iter().all(|r| r.cash == 0));
+        // A comped workspace's charge is given once, as comped.
+        let mut comped = vec![UsageRow { given: Given { comped: 500, ..Given::default() }, ..usage("2026-10-06", "flagon-io", "sandbox", 500, 500, 400) }];
+        without_real_money(&mut comped, None);
+        assert_eq!((comped[0].cash, comped[0].given.total()), (0, 500));
+        assert_eq!(rows[0].given.unpaid, 12_000_000);
+        assert_eq!(rows[0].value, 12_000_000);
+        assert_eq!(rows[1].given.unpaid, 666_667);
+        let (days, workspaces) = fold(&rules(), &revenue_map(), &[], &[], &rows, &BTreeSet::new());
+        assert_eq!(days.iter().map(|d| d.cash_micros).sum::<i64>(), 0);
+        let sandboxes = days.iter().find(|d| d.bucket == "sandboxes").unwrap();
+        assert_eq!(sandboxes.given.unpaid, sandboxes.cost());
+        assert!(workspaces.iter().all(|w| w.revenue == 0));
+        // Once live: from that day on, it is money.
+        let mut rows = vec![
+            usage("2026-10-06", "acme", "sandbox", 1_000_000, 1_000_000, 800_000),
+            usage("2026-10-07", "acme", "sandbox", 1_000_000, 1_000_000, 800_000),
+        ];
+        without_real_money(&mut rows, Some("2026-10-07"));
+        assert_eq!((rows[0].cash, rows[0].given.unpaid), (0, 1_000_000));
+        assert_eq!((rows[1].cash, rows[1].given.unpaid), (1_000_000, 0));
+        // When payments went live is kept from the first time it is seen.
+        assert_eq!(live_since(false, Some("2026-10-07"), "2026-10-09"), None);
+        assert_eq!(live_since(true, None, "2026-10-09").as_deref(), Some("2026-10-09"));
+        assert_eq!(live_since(true, Some("2026-10-07"), "2026-10-09").as_deref(), Some("2026-10-07"));
+    }
+
+    #[test]
+    fn workspaces_and_running_g1t_add_up_to_the_bill() {
+        // Running g1t on a day with usage is shared; on a day with none it
+        // is no one's, and the report says so.
+        let lines = vec![
+            line("2026-10-06", SOURCE_BILLABLE, "workers", "workers_cpu_ms", 1.0, 0.10),
+            line("2026-10-07", SOURCE_BILLABLE, "workers", "workers_cpu_ms", 1.0, 0.20),
+            line("2026-10-07", SOURCE_BILLABLE, "containers", "container_memory_per_gib_second", 1.0, 0.09),
+        ];
+        let usage = vec![usage("2026-10-07", "acme", "sandbox", 100, 100, 80), usage("2026-10-07", "beta", "sandbox", 300, 300, 240)];
+        let (days, workspaces) = fold(&rules(), &revenue_map(), &lines, &[], &usage, &BTreeSet::new());
+        let total: i64 = days.iter().map(ProductDay::cost).sum();
+        let shared: i64 = workspaces.iter().map(|w| w.cost).sum();
+        assert_eq!(total, 390_000);
+        assert_eq!(unattributed(total, shared), 100_000);
+        assert_eq!(shared + unattributed(total, shared), total);
+    }
+
+    #[test]
+    fn the_cycle_report_projects_as_cloudflare_does() {
+        let cycle = crate::cycle::cycle_of("2026-10-09", 28);
+        let meter = |meter: &str, cost: i64, quantity: f64| CycleMeter { meter: meter.into(), cost_micros: cost, quantity, ..CycleMeter::default() };
+        let report = cycle_report(&cycle, 12, vec![meter("container_memory", 92_175, 126_870.0), meter("workers_cpu_ms", 200_000, 39_160_000.0), meter("d1_rows_read", 0, 61_820_000.0)], 30_000_000);
+        assert_eq!((report.start.as_str(), report.end.as_str(), report.days, report.days_elapsed), ("2026-09-28", "2026-10-27", 30, 12));
+        assert_eq!(report.usage_micros, 292_175);
+        assert_eq!(report.projected_micros, 730_438);
+        assert_eq!(report.average_daily_micros, 24_347);
+        assert_eq!(report.meters[0].meter, "workers_cpu_ms");
+        assert_eq!(report.meters[2].meter, "d1_rows_read");
     }
 
     #[test]

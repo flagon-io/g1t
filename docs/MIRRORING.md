@@ -79,7 +79,7 @@ difference between the two is a bug.
     `MirrorSettings`;
   - the hand-back logic: `ref_action` and `HandbackPlan`;
   - `MirrorEvent`.
-- **repos** (`src/mirror.rs`, migration 0017 `repos.mirror`):
+- **repos** (`src/mirror.rs`, migration 0018 `repos.mirror`):
   - `set_mirror`;
   - `mirror`, which now also keeps replaced commits and announces pushes
     as `mirrored`;

@@ -10,6 +10,7 @@ export type AccountSettingsPage =
   | "invites"
   | "keys"
   | "tokens"
+  | "integrations"
   | "github"
   | "applications"
   | "two-factor"
@@ -17,7 +18,7 @@ export type AccountSettingsPage =
   | "account";
 
 /** Each page's name and what it is for, in the sidebar's order. */
-export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; about: string }> = {
+export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; about: string; heading?: string }> = {
   profile: { title: "Profile", about: "Your picture, and what everyone sees on your profile." },
   emails: {
     title: "Emails",
@@ -28,12 +29,24 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
     title: "Notifications",
     about: "What you are also emailed for, and how you watch repositories. Everything comes to your inbox either way.",
   },
-  invites: { title: "Invites", about: "Bring people to g1t, and see which invites were used." },
+  // The invite to g1t, not a workspace's invitation (lib/invites.ts, G1T_INVITES).
+  invites: {
+    title: "Invites to g1t",
+    heading: "Invite people to g1t",
+    about:
+      "An invite to g1t lets one person make an account. It does not add them to any workspace: their account starts with a workspace of its own.",
+  },
   keys: { title: "SSH keys", about: "Keys that let git on your computers reach g1t as you." },
   tokens: {
     title: "Access tokens",
     about:
       "Use a token as the password when git asks for one over HTTPS, and to authenticate agents and the API. A token here acts as you.",
+  },
+  integrations: {
+    title: "Integrations",
+    heading: "Your integrations",
+    about:
+      "Your own accounts, connected just for you and working in every workspace you belong to, such as your calendar setting your status. Tools the whole team shares are a workspace's.",
   },
   github: {
     title: "GitHub",
@@ -86,9 +99,9 @@ export function settingsPathForHash(hash: string): string | null {
   return page ? `/settings/${page}` : null;
 }
 
-/** Which settings page a path is, or null when it is none. */
+/** Which settings page a path is, or null when it is none. A page within one (a token under Access tokens) is that page's. */
 export function accountSettingsPage(pathname: string): AccountSettingsPage | null {
-  const match = /^\/settings\/([^/]+)\/?$/.exec(pathname);
+  const match = /^\/settings\/([^/]+)(?:\/.*)?$/.exec(pathname);
   const page = match?.[1];
   return page && page in ACCOUNT_SETTINGS ? (page as AccountSettingsPage) : null;
 }

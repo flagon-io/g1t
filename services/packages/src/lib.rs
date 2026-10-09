@@ -852,29 +852,85 @@ impl Packages {
     }
 }
 
+impl Packages {
+    /// A registry request, to the registry its path names.
+    async fn serve_registry(&self, request: Request, ctx: &Context) -> Result<Response> {
+        let path = request.path();
+        if path.starts_with("/-/npm/") || path == "/-/npm" {
+            return self.npm(request, ctx).await;
+        }
+        if path.starts_with("/-/composer/") {
+            return self.composer(request, ctx).await;
+        }
+        if path.starts_with("/-/cargo/") {
+            return self.cargo(request, ctx).await;
+        }
+        if path.starts_with("/-/maven/") {
+            return self.maven(request, ctx).await;
+        }
+        if path.starts_with("/-/nuget/") {
+            return self.nuget(request, ctx).await;
+        }
+        if path.starts_with("/-/rubygems/") {
+            return self.rubygems(request, ctx).await;
+        }
+        self.registry(request, ctx).await
+    }
+}
+
+/// The policy for registry answers: what they serve is a publisher's bytes,
+/// on the site's origin, so nothing in them may load or run.
+const NOTHING_RUNS: &str = "default-src 'none'; sandbox";
+
+/// Whether a browser could open a body of this type as a page: HTML, SVG,
+/// any XML, or a type it does not know as data. Such a body is a download.
+fn opens_as_document(content_type: Option<&str>) -> bool {
+    let kind = content_type.unwrap_or("").split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    if kind.ends_with("+xml") || kind.ends_with("/xml") || kind.contains("html") || kind.contains("svg") || kind.contains("xsl") {
+        return true;
+    }
+    let data = kind == "text/plain"
+        || kind == "application/json"
+        || (kind.starts_with("application/") && kind.ends_with("+json"))
+        || matches!(
+            kind.as_str(),
+            "application/octet-stream"
+                | "application/gzip"
+                | "application/x-gzip"
+                | "application/zip"
+                | "application/x-tar"
+                | "application/java-archive"
+                | "application/pgp-signature"
+                | "image/png"
+                | "image/jpeg"
+                | "image/gif"
+                | "image/webp"
+                | "image/avif"
+        )
+        || kind.starts_with("application/vnd.");
+    !data
+}
+
+/// The headers every registry answer carries: no sniffing, nothing runs,
+/// and a type a browser would open is an attachment. The site's Worker
+/// sets the same (apps/web/app/lib/content-safety.ts); this keeps the
+/// service safe on its own.
+fn harden(mut response: Response) -> Result<Response> {
+    let headers = response.headers_mut();
+    headers.set("x-content-type-options", "nosniff")?;
+    headers.set("content-security-policy", NOTHING_RUNS)?;
+    if headers.get("content-disposition")?.is_none() && opens_as_document(headers.get("content-type")?.as_deref()) {
+        headers.set("content-disposition", "attachment")?;
+    }
+    Ok(response)
+}
+
 #[event(fetch)]
 async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let packages = Packages::from_env(&env)?;
     let Some(method) = rpc_method(&request) else {
-        if request.path().starts_with("/-/npm/") || request.path() == "/-/npm" {
-            return packages.npm(request, &ctx).await;
-        }
-        if request.path().starts_with("/-/composer/") {
-            return packages.composer(request, &ctx).await;
-        }
-        if request.path().starts_with("/-/cargo/") {
-            return packages.cargo(request, &ctx).await;
-        }
-        if request.path().starts_with("/-/maven/") {
-            return packages.maven(request, &ctx).await;
-        }
-        if request.path().starts_with("/-/nuget/") {
-            return packages.nuget(request, &ctx).await;
-        }
-        if request.path().starts_with("/-/rubygems/") {
-            return packages.rubygems(request, &ctx).await;
-        }
-        return packages.registry(request, &ctx).await;
+        let answer = packages.serve_registry(request, &ctx).await?;
+        return harden(answer);
     };
     let body: serde_json::Value = request.json().await?;
     match method.as_str() {
@@ -962,6 +1018,26 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn publisher_documents_are_downloads() {
+        for kind in ["application/xml", "text/xml; charset=utf-8", "application/xhtml+xml", "text/html", "image/svg+xml", "application/vnd.foo+xml", "", "text/javascript"] {
+            assert!(opens_as_document(Some(kind)), "{kind}");
+        }
+        assert!(opens_as_document(None));
+        for kind in [
+            "application/json",
+            "text/plain; charset=utf-8",
+            "application/vnd.oci.image.manifest.v1+json",
+            "application/vnd.npm.install-v1+json",
+            "application/octet-stream",
+            "application/java-archive",
+            "application/gzip",
+            "application/pgp-signature",
+        ] {
+            assert!(!opens_as_document(Some(kind)), "{kind}");
+        }
+    }
 
     fn event(kind: &str, data: serde_json::Value) -> Event {
         Event {

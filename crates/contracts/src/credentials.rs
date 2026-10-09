@@ -402,6 +402,9 @@ pub const NEVER: &[&str] = &[
     "list_my_repo_invitations",
     "accept_repo_invitation",
     "decline_repo_invitation",
+    // Nor answers a workspace invitation: only the person it is for does.
+    "accept_invitation",
+    "decline_invitation",
     "set_base_permission",
     "list_outside_collaborators",
     // Deploy keys, which let a machine into a repository.
@@ -847,6 +850,7 @@ pub fn as_person(user: &User) -> Option<User> {
     Some(User {
         id: acting.on_behalf_of.id.clone(),
         username: acting.on_behalf_of.username.clone(),
+        display_username: None,
         kind: PrincipalKind::User,
         verified: user.verified,
         workspaces: user.workspaces.clone(),
@@ -963,6 +967,7 @@ mod tests {
         User {
             id: "usr_g1t_agent".to_owned(),
             username: "g1t".to_owned(),
+            display_username: None,
             kind: PrincipalKind::Agent,
             verified: true,
             workspaces: member_of

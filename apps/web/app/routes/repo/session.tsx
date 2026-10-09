@@ -48,7 +48,7 @@ function Entry({ entry }: { entry: SessionEntry }) {
     return (
       <li className="flex gap-2.5 px-4 py-3 text-sm">
         <MessageSquare size={14} className="mt-0.5 shrink-0 text-faint" />
-        <p className="min-w-0 grow whitespace-pre-wrap">{entry.text}</p>
+        <p className="min-w-0 grow whitespace-pre-wrap wrap-break-word">{entry.text}</p>
         {at}
       </li>
     );

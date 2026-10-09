@@ -41,8 +41,15 @@ async function rpc<T>(
 export function identityClient(service: ServiceBinding): IdentityApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    register: (username, email, password, inviteCode, client) =>
-      call("register", { username, email, password, invite_code: inviteCode ?? null, client: client ?? null }),
+    register: (username, email, password, inviteCode, client, emailProof) =>
+      call("register", {
+        username,
+        email,
+        password,
+        invite_code: inviteCode ?? null,
+        email_proof: emailProof ?? null,
+        client: client ?? null,
+      }),
     signIn: (username, password, client) => call("sign_in", { username, password, client: client ?? null }),
     twoFactorSignIn: (challenge, code, client) => call("two_factor_sign_in", { challenge, code, client: client ?? null }),
     signOut: (sessionToken) => call("sign_out", { sessionToken }),
@@ -91,20 +98,12 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     setWorkspaceAvatar: (actor, slug, image) => call("set_workspace_avatar", { actor, slug, image }),
     setUserAvatar: (user, image) => call("set_user_avatar", { user, image }),
     listWorkspaceTokens: (slug, viewer) => call("list_workspace_tokens", { slug, viewer }),
-    createWorkspaceToken: (actor, slug, name, grant) =>
-      call("create_workspace_token", {
-        actor,
-        slug,
-        name,
-        scopes: grant?.scopes ?? null,
-        ttl_seconds: grant?.ttlSeconds ?? null,
-        admin: grant?.admin ?? false,
-      }),
     removeWorkspaceToken: (actor, slug, id) =>
       call("remove_workspace_token", { actor, slug, id }),
-    createFineGrainedToken: (user, input) =>
-      call("create_fine_grained_token", {
-        user,
+    createToken: (actor, input) =>
+      call("create_token", {
+        actor,
+        owner: input.owner ?? null,
         name: input.name,
         description: input.description ?? null,
         ttl_seconds: input.ttlSeconds,
@@ -113,10 +112,11 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         repositories: input.repositories,
         permissions: input.permissions,
       }),
-    updateFineGrainedToken: (user, id, change) =>
-      call("update_fine_grained_token", {
-        user,
+    updateToken: (actor, id, change, owner) =>
+      call("update_token", {
+        actor,
         id,
+        owner: owner ?? null,
         name: change.name ?? null,
         description: change.description ?? null,
         repository_selection: change.repositorySelection ?? null,
@@ -128,15 +128,15 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("set_token_policy", {
         actor,
         slug,
-        allow_classic: change.allowClassic ?? null,
-        allow_fine_grained: change.allowFineGrained ?? null,
+        allow_tokens_for_all_workspaces: change.allowTokensForAllWorkspaces ?? null,
+        allow_tokens_for_this_workspace: change.allowTokensForThisWorkspace ?? null,
         require_approval: change.requireApproval ?? null,
         max_lifetime_days: change.maxLifetimeDays ?? null,
         forbid_no_expiry: change.forbidNoExpiry ?? null,
         surface: "web",
       }),
     listMemberTokens: (actor, slug, filter = {}) =>
-      call("list_member_tokens", { actor, slug, status: filter.status ?? null, kind: filter.kind ?? null }),
+      call("list_member_tokens", { actor, slug, status: filter.status ?? null }),
     reviewTokenRequest: (actor, slug, id, approve, reason) =>
       call("review_token_request", { actor, slug, id, approve, reason: reason ?? null, surface: "web" }),
     revokeMemberToken: (actor, slug, id, reason) =>
@@ -145,7 +145,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     registration: () => call("registration", {}),
     listInvites: (user) => call("list_invites", { user }),
     createInvite: (user, options = {}) =>
-      call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null }),
+      call("create_invite", { user, email: options.email ?? null, workspace: options.workspace ?? null, join: options.join ?? null, join_role: options.join ? (options.joinRole ?? null) : null }),
     revokeInvite: (user, id) => call("revoke_invite", { user, id }),
     checkInvite: (code, client, options = {}) =>
       call("check_invite", {
@@ -153,9 +153,15 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         client: client ?? null,
         viewer: options.viewer ?? null,
         any_status: options.anyStatus ?? false,
+        email_proof: options.emailProof ?? null,
       }),
     acceptInvite: (user, code) => call("accept_invite", { user, code }),
-    inviteMember: (actor, slug, email) => call("invite_member", { actor, slug, email }),
+    inviteMember: (actor, slug, who) =>
+      call("invite_member", { actor, slug, email: who.email ?? "", username: who.username ?? null, role: who.role ?? null }),
+    listInvitations: (user) => call("list_invitations", { user }),
+    acceptInvitation: (user, id) => call("accept_invitation", { user, id, surface: "web" }),
+    declineInvitation: (user, id) => call("decline_invitation", { user, id, surface: "web" }),
+    findPeople: (query, limit) => call("find_people", { query, limit: limit ?? null }),
     workspaceInvites: (slug, viewer) => call("workspace_invites", { slug, viewer }),
     revokeWorkspaceInvite: (actor, slug, id) => call("revoke_workspace_invite", { actor, slug, id }),
     requestAccess: (email, about, client) => call("request_access", { email, about, client: client ?? null }),
@@ -165,6 +171,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     userForSshKey: (fingerprint) => call("user_for_ssh_key", { fingerprint }),
     userByUsername: (username) => call("user_by_username", { username }),
     usernames: (ids) => call("usernames", { ids }),
+    usersForAudience: (ids) => call("users_for_audience", { ids }),
     profile: (username) => call("profile", { username }),
     updateProfile: (actor, fields) => call("update_profile", { actor, ...fields }),
     profileWorkspaces: (username, viewer, publicIn) =>
@@ -182,8 +189,6 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         scopes: grant?.scopes ?? null,
         listed: grant?.listed ?? false,
       }),
-    updateAccessToken: (user, id, grant) =>
-      call("update_access_token", { user, id, scopes: grant.scopes }),
     createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
       call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
@@ -394,6 +399,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
     deleteRelease: (actor, path, id) => call("delete_release", { path, actor, id }),
     listFiles: (repoId, ref, limit) => call("list_files", { repoId, ref, skipDirs: [], limit }),
     rawBlobs: (repoId, hashes, maxBytes) => call("raw_blobs", { repoId, hashes, maxBytes }),
+    rawFile: (repoId, ref, path, maxBytes) => call("raw_file", { repoId, ref, path, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
     compare: (repoId, viewer, base, head, baseBranch) => call("compare", { repoId, viewer, base, head, baseBranch }),
@@ -460,6 +466,10 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("add_comment", { actor, repo, number, ...comment }),
     editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
     deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
+    workspaceAgentComment: (repo, number, agent, actingFor, body) =>
+      call("workspace_agent_comment", { repo, number, agent, acting_for: actingFor, body }),
+    workspaceAgentReview: (repo, number, agent, actingFor, verdict, body) =>
+      call("workspace_agent_review", { repo, number, agent, acting_for: actingFor, verdict, body }),
     startChecks: (pullId) => call("start_checks", { pullId }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
@@ -515,6 +525,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("merge_pull", { actor, repo, number, ...options }),
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
     byAuthor: (username, viewer, filter = {}) => call("by_author", { username, viewer, ...filter }),
+    contributions: (username, viewer) => call("contributions", { username, viewer }),
     startPlan: (actor, repo, brief) => call("start_plan", { actor, repo, brief }),
     failPlan: (planId, token, error) => call("report_plan", { planId, token, error }),
     getPlan: (repo, viewer, id) => call("get_plan", { repo, viewer, id }),
@@ -839,7 +850,6 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
     get: (project, id, viewer) => call("get", { project, id, viewer }),
     redeploy: (actor, project, branch) => call("redeploy", { actor, project, branch }),
     takeDown: (actor, project, branch) => call("take_down", { actor, project, branch }),
-    stack: (actor, project, branch) => call("stack", { actor, project, branch }),
     overview: (workspace, viewer) => call("overview", { workspace, viewer }),
     usage: (workspace, viewer) => call("usage", { workspace, viewer }),
     domains: (project, viewer) => call("domains", { project, viewer }),
@@ -930,10 +940,6 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     create: (actor, workspace, input) => call("create", { actor, workspace, input }),
     update: (actor, workspace, slug, changes) => call("update", { actor, workspace, slug, changes }),
     deploymentsChanged: (projectId, enabled) => call("deployments_changed", { projectId, enabled }),
-    dependencies: (workspace, slug, viewer) => call("dependencies", { workspace, slug, viewer }),
-    addDependency: (actor, workspace, slug, on, as) => call("add_dependency", { actor, workspace, slug, on, as }),
-    removeDependency: (actor, workspace, slug, on) => call("remove_dependency", { actor, workspace, slug, on }),
-    graph: (projectId) => call("graph", { projectId }),
     shortcuts: (workspace, viewer) => call("shortcuts", { workspace, viewer }),
     pin: (actor, workspace, slug, position) => call("pin", { actor, workspace, slug, position: position ?? null }),
     unpin: (actor, workspace, slug) => call("unpin", { actor, workspace, slug }),

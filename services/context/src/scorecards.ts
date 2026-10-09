@@ -61,7 +61,7 @@ export function evaluate(card: CardInput): RuleResult[] {
             "  - ana",
             "```",
             "",
-            "Pick the people from the history of the project: who wrote and reviewed most of it recently. Keep any `dependsOn` the file already has.",
+            "Pick the people from the history of the project: who wrote and reviewed most of it recently.",
           ].join("\n"),
           checks: ["grep -q '^owners:' .g1t/project.yml"],
         }),

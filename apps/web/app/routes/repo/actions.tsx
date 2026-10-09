@@ -6,7 +6,7 @@ import type { DispatchInput, Workflow, WorkflowRun } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions";
 import { page } from "../../lib/meta";
-import { Notes, StatusIcon, duration, shortRef } from "../../components/actions";
+import { Duration, Notes, StatusIcon, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { Button, ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { useWorkflowReason } from "../../components/mirror";
@@ -122,7 +122,7 @@ function RunRow({ run, base, showWorkflow }: { run: WorkflowRun; base: string; s
         </span>
         <span className="w-28 shrink-0 text-right text-xs text-faint">
           <TimeAgo at={run.createdAt} />
-          {run.startedAt && <span className="block font-mono">{duration(run.startedAt, run.finishedAt)}</span>}
+          {run.startedAt && <Duration className="block font-mono" start={run.startedAt} end={run.finishedAt} />}
         </span>
       </Link>
     </li>

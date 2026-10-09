@@ -7,6 +7,7 @@
 import type { Route } from "./+types/archive";
 import { cloneUrl } from "../../lib/addresses";
 import { addresses } from "../../lib/addresses.server";
+import { contentDisposition } from "../../lib/content-safety";
 import { repos } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
 import { zip } from "../../lib/zip";
@@ -61,7 +62,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return new Response(archive, {
     headers: {
       "content-type": "application/zip",
-      "content-disposition": `attachment; filename="${label}.zip"`,
+      // A ref may hold quotes; the header never does.
+      "content-disposition": contentDisposition(`${label}.zip`),
       // A commit's files never change; a branch's do.
       "cache-control": /^[0-9a-f]{40}$/.test(ref) ? "private, max-age=31536000, immutable" : "private, no-cache",
     },

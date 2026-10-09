@@ -17,7 +17,8 @@
 	//
 	// migrations: every pending D1 migration, before any code.
 	// core:       the services, reached through service bindings.
-	// edge:       public endpoints other than the site: API, MCP, models, g1t.page, status.
+	// edge:       public endpoints other than the site: API, MCP, g1t.page, status
+	//             (models is public too, but in core: agents binds to it).
 	// front:      the site, sudo and the docs.
 	"stages": ["migrations", "core", "edge", "front"],
 
@@ -112,6 +113,65 @@
 			"d1": { "database": "g1t-projects", "migrations": "migrations" },
 			"stage": "core",
 			"secrets": [],
+			"self_host": "run"
+		},
+		"chat": {
+			"path": "services/chat",
+			"kind": "ts-worker",
+			"worker": "g1t-chat",
+			"d1": { "database": "g1t-chat", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-chat, then put its id in services/chat/wrangler.jsonc"
+			],
+			"self_host": "run"
+		},
+		// Docs mode's service. Its Worker is g1t-docs-service: g1t-docs is
+		// the documentation site (apps/docs).
+		"docs-service": {
+			"path": "services/docs",
+			"kind": "ts-worker",
+			"worker": "g1t-docs-service",
+			"d1": { "database": "g1t-docs", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/docs/wrangler.jsonc",
+				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files",
+				"The queue the events service sends it merges and pushes on (pages whose cited code changed, projects' docs): npx wrangler queues create g1t-events-docs. The service also sends its own backfill jobs to it (JOBS)",
+				"The Vectorize index agents recall Docs from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)"
+			],
+			"self_host": "run"
+		},
+		"notify": {
+			"path": "services/notify",
+			"kind": "ts-worker",
+			"worker": "g1t-notify",
+			// No D1: each person's feed keeps its own state in its Durable
+			// Object's SQLite storage.
+			"stage": "core",
+			// The private half of the VAPID key pair browser pushes are signed
+			// with; without it, notifications are live in open tabs only.
+			"secrets": ["VAPID_PRIVATE_KEY"],
+			"setup": [
+				"The VAPID key pair for browser push: `node scripts/ops/vapid-keys.mjs` prints both halves and stores nothing. Put the public half in VAPID_PUBLIC_KEY in services/notify/wrangler.jsonc, and the private half with `npx wrangler secret put VAPID_PRIVATE_KEY` in services/notify"
+			],
+			"self_host": "run"
+		},
+		"agents": {
+			"path": "services/agents",
+			"kind": "ts-worker",
+			"worker": "g1t-agents",
+			"d1": { "database": "g1t-agents", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-agents, then put its id in services/agents/wrangler.jsonc"
+			],
+			// Replies route and gate model work exactly as runs do, with the
+			// runner's own modules: its routing policy and who may use hosted models.
+			"inputs": ["services/runner/src/model-env.ts", "services/runner/src/hosted.ts"],
 			"self_host": "run"
 		},
 		"billing": {
@@ -248,10 +308,14 @@
 			"path": "services/models",
 			"kind": "ts-worker",
 			"worker": "g1t-models",
-			"stage": "edge",
+			// Core, though it is public at models.g1t.sh: the agents service
+			// reaches it by service binding for chat replies. It binds only to
+			// core services itself.
+			"stage": "core",
 			"secrets": ["AI_GATEWAY_TOKEN"],
 			"setup": ["The AI Gateway `g1t`"],
-			"self_host": "none"
+			// Not run self-hosted, but bound to the off Worker: agents binds to it.
+			"self_host": "off"
 		},
 		"pages": {
 			"path": "services/pages",
@@ -277,8 +341,15 @@
 			"kind": "react-router",
 			"worker": "g1t",
 			"stage": "front",
-			"secrets": [],
-			"setup": ["The R2 bucket g1t-downloads, for the self-hosted runner's releases: npx wrangler r2 bucket create g1t-downloads"],
+			// USERCONTENT_KEY signs the short-lived addresses of private
+			// repositories' files on g1tusercontent.com; without it they are
+			// served from g1t.sh instead.
+			"secrets": ["USERCONTENT_KEY"],
+			"setup": [
+				"The R2 bucket g1t-downloads, for the self-hosted runner's releases: npx wrangler r2 bucket create g1t-downloads",
+				"The zone g1tusercontent.com on the account; the Worker's custom domain on it is made by the deploy",
+				"The key for private files' addresses: `node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" | npx wrangler secret put USERCONTENT_KEY` in apps/web"
+			],
 			"self_host": "run"
 		},
 		"sudo": {

@@ -52,7 +52,7 @@ app's address. Entries relate to each other:
 
 | Relation | Example |
 | --- | --- |
-| `depends_on` | `web` depends on `api`; `@acme/web` depends on `@acme/ui` |
+| `depends_on` | `@acme/web` depends on `@acme/ui` |
 | `owned_by` | `web` is owned by `ana` |
 | `deploys_to` | the `web` app deploys to `web/production` |
 | `documented_by` | `web` is documented by its `README.md` |
@@ -227,8 +227,6 @@ memory, within about 4,000 characters:
 
 - the project's stack, test commands, owners, docs, and its environments
   with their addresses;
-- the projects it uses, with their live addresses and the variables that
-  carry them, and the projects that use it;
 - the kept memories closest to the task, beyond the pinned ones every run
   already has;
 - the latest decisions from merged pull requests.

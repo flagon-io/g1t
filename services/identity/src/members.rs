@@ -40,6 +40,8 @@ const NOT_A_MEMBER: &str = "That person is not a member of this workspace.";
 pub(crate) struct MemberRow {
     pub user_id: String,
     pub username: String,
+    #[serde(default)]
+    pub display_username: Option<String>,
     pub role: Role,
     #[serde(default)]
     pub name: Option<String>,
@@ -66,6 +68,10 @@ impl MemberRow {
     pub fn member(&self, two_factor: Option<bool>) -> Member {
         Member {
             username: self.username.clone(),
+            display_username: self
+                .display_username
+                .clone()
+                .filter(|display| display.eq_ignore_ascii_case(&self.username) && *display != self.username),
             role: self.role,
             org_roles: self.org_roles(),
             two_factor,
@@ -103,7 +109,7 @@ impl Identity {
     pub(crate) async fn member_row(&self, workspace_id: &str, username: &str) -> Result<Option<MemberRow>> {
         self.db
             .prepare(
-                "SELECT m.user_id, u.username, m.role, u.display_name AS name, u.avatar,
+                "SELECT m.user_id, u.username, u.display_username, m.role, u.display_name AS name, u.avatar,
                    m.billing_manager, m.security_manager
                  FROM workspace_members m JOIN users u ON u.id = m.user_id
                  WHERE m.workspace_id = ? AND u.username = ?",
@@ -480,12 +486,20 @@ mod tests {
         MemberRow {
             user_id: "usr_1".into(),
             username: "ada".into(),
+            display_username: Some("Ada".into()),
             role: Role::Member,
             name: None,
             avatar: None,
             billing_manager: billing,
             security_manager: security,
         }
+    }
+
+    #[test]
+    fn a_member_keeps_their_usernames_chosen_case() {
+        assert_eq!(row(0, 0).member(None).display_username.as_deref(), Some("Ada"));
+        let plain = MemberRow { display_username: Some("ada".into()), ..row(0, 0) };
+        assert_eq!(plain.member(None).display_username, None);
     }
 
     #[test]

@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  // Node runs the tests on the files as they are (`npm test`).
+  "exclude": ["src/**/*.test.ts"]
 }

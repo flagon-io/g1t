@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronDown, LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowUpRight, LoaderCircle, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
@@ -8,6 +8,7 @@ import { cn } from "../lib/cn";
 import type { NotStarted } from "../lib/delegate";
 import { Avatar } from "./ui";
 import { CONTROL } from "./ui/input";
+import { SelectField } from "./ui/select";
 
 /** What the composer's action said back: why nothing opened, or the issue that opened without its agent. */
 export type ComposerResult = { error: string | null; notStarted: NotStarted | null } | null;
@@ -46,8 +47,10 @@ export function AgentComposer({
   // Closed by Escape or by a click outside it, as a menu is.
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
+    // A select's list, open inside it, takes its own Escape and clicks.
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && !event.defaultPrevented && setOpen(false);
     const onClick = (event: MouseEvent) => {
+      if ((event.target as Element | null)?.closest?.("[data-radix-popper-content-wrapper]")) return;
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener("keydown", onKey);
@@ -86,16 +89,13 @@ export function AgentComposer({
           <div className="mt-4 space-y-3">
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-muted">Project</span>
-              <span className="relative block">
-                <select name="repo" required className={cn(CONTROL, "h-9 appearance-none pr-8")} defaultValue={repos[0] ? `${repos[0].namespace}/${repos[0].name}` : ""}>
-                  {repos.map((repo) => (
-                    <option key={`${repo.namespace}/${repo.name}`} value={`${repo.namespace}/${repo.name}`}>
-                      {repo.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-faint" />
-              </span>
+              <SelectField
+                name="repo"
+                required
+                defaultValue={repos[0] ? `${repos[0].namespace}/${repos[0].name}` : undefined}
+                placeholder="Choose a project"
+                options={repos.map((repo) => ({ value: `${repo.namespace}/${repo.name}`, label: repo.name }))}
+              />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-muted">Title</span>

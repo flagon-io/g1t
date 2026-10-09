@@ -379,6 +379,7 @@ impl Identity {
             expires_at: link.expires_at.clone(),
             shared_label: Some(link.label.clone()),
             shared_domains: link.domains(),
+            email_proven: false,
         }
     }
 

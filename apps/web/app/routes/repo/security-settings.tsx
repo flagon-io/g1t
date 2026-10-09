@@ -6,6 +6,7 @@ import type { Route } from "./+types/security-settings";
 import { page } from "../../lib/meta";
 import { ActivationPrompt, CARD, SectionHeader } from "../../components/security-suite";
 import { Hint } from "../../components/ui/hint";
+import { SelectField } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
@@ -58,7 +59,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   return saved.ok ? { ok: true } : { ok: false, error: saved.error.message };
 }
 
-const SELECT = "h-9 w-full rounded-md border border-line bg-bg px-2.5 text-sm text-fg outline-none hover:border-line-strong focus:border-accent-dim sm:w-72";
+const SELECT = "w-full sm:w-72";
 
 export default function SecuritySettings({ loaderData, params }: Route.ComponentProps) {
   const { view, price, can, owner } = loaderData;
@@ -78,13 +79,14 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
           <legend className="sr-only">Code scanning</legend>
           <p className="text-sm font-medium">Code scanning results</p>
           <p className="text-sm text-muted">The Code scanning check fails when a pull request brings new results on the lines it changes at this level.</p>
-          <select name="codeScanningGate" defaultValue={settings.codeScanningGate} className={SELECT} aria-label="When code scanning fails">
-            {CODE_SCANNING_GATES.map((gate) => (
-              <option key={gate.gate} value={gate.gate}>
-                {gate.label}
-              </option>
-            ))}
-          </select>
+          <SelectField
+            name="codeScanningGate"
+            defaultValue={settings.codeScanningGate}
+            disabled={disabled}
+            className={SELECT}
+            aria-label="When code scanning fails"
+            options={CODE_SCANNING_GATES.map((gate) => ({ value: gate.gate, label: gate.label }))}
+          />
         </fieldset>
         <fieldset disabled={disabled} className={`${CARD} space-y-3 p-4 disabled:opacity-60`}>
           <legend className="sr-only">Dependency review</legend>
@@ -100,13 +102,19 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
           </label>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted">Fail on vulnerabilities of</span>
-            <select name="reviewFailOn" defaultValue={settings.reviewFailOn} className={SELECT}>
-              <option value="critical">Critical severity</option>
-              <option value="high">High severity or higher</option>
-              <option value="medium">Medium severity or higher</option>
-              <option value="low">Any severity</option>
-              <option value="none">Never fail on vulnerabilities</option>
-            </select>
+            <SelectField
+              name="reviewFailOn"
+              defaultValue={settings.reviewFailOn}
+              disabled={disabled}
+              className={SELECT}
+              options={[
+                { value: "critical", label: "Critical severity" },
+                { value: "high", label: "High severity or higher" },
+                { value: "medium", label: "Medium severity or higher" },
+                { value: "low", label: "Any severity" },
+                { value: "none", label: "Never fail on vulnerabilities" },
+              ]}
+            />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted">Licenses not allowed (SPDX ids)</span>

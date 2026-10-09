@@ -3,7 +3,7 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    CheckStatus, Comment, CommentKind, Issue, IssueReason, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry,
+    AgentRef, AgentVerdict, CheckStatus, Comment, CommentKind, Issue, IssueReason, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry,
     SessionEntryKind, State, Verdict,
 };
 use serde::Deserialize;
@@ -252,20 +252,68 @@ pub struct CommentRow {
     /// The issue or pull request it is on, where the query reads it.
     #[serde(default)]
     pub number: u32,
+    /// One of the workspace's agents that wrote it, as itself, and whom it
+    /// acted for (migrations/0033_agent_comments.sql).
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub agent_handle: Option<String>,
+    #[serde(default)]
+    pub agent_name: Option<String>,
+    #[serde(default)]
+    pub agent_avatar_seed: Option<String>,
+    #[serde(default)]
+    pub acting_for_id: Option<String>,
+    #[serde(default)]
+    pub acting_for_name: Option<String>,
+    /// An agent review's verdict, kept apart from `verdict`, which every
+    /// rule about approvals reads: so it is advisory.
+    #[serde(default)]
+    pub agent_verdict: Option<String>,
+}
+
+impl CommentRow {
+    /// Who answers for it: whoever an agent acted for, or its author.
+    pub fn answerable_id(&self) -> &str {
+        self.acting_for_id.as_deref().unwrap_or(&self.author_id)
+    }
+
+    /// Whether it carries a verdict, a person's or an agent's.
+    pub fn has_verdict(&self) -> bool {
+        self.verdict.is_some() || self.agent_verdict.is_some()
+    }
 }
 
 impl From<CommentRow> for Comment {
     fn from(row: CommentRow) -> Self {
+        let agent = match (row.agent_id, row.agent_handle) {
+            (Some(id), Some(handle)) => Some(AgentRef {
+                display_name: row.agent_name.unwrap_or_else(|| handle.clone()),
+                avatar_seed: row.agent_avatar_seed.unwrap_or_else(|| handle.clone()),
+                id,
+                handle,
+            }),
+            _ => None,
+        };
+        let advisory_verdict = row.agent_verdict.as_deref().and_then(AgentVerdict::parse);
+        let mut author = user(row.author_id, row.author_name);
+        if agent.is_some() {
+            author.kind = g1t_contracts::PrincipalKind::Agent;
+        }
         Comment {
             id: row.id,
             kind: row.kind,
-            author: user(row.author_id, row.author_name),
+            author,
             body: row.body,
             path: row.path,
             line: row.line,
-            verdict: row.verdict,
+            // A person's verdict, or for showing, an agent's advisory one.
+            verdict: row.verdict.or(advisory_verdict.and_then(AgentVerdict::verdict)),
             created_at: row.created_at,
             edited_at: row.edited_at,
+            acting_for: agent.as_ref().and(requester(row.acting_for_id, row.acting_for_name)),
+            advisory: agent.is_some() && advisory_verdict.is_some(),
+            agent,
         }
     }
 }

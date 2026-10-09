@@ -108,6 +108,26 @@ export const EGRESS_ENV: Record<string, string> = {
   GIT_SSL_CAINFO: SYSTEM_BUNDLE,
 };
 
+/**
+ * Tools that report usage home by default, told not to: in a guarded
+ * sandbox the report would only be refused, and a refused host is noted on
+ * the run. `DO_NOT_TRACK` is the convention many tools follow; the rest are
+ * the tools' own switches.
+ */
+export const QUIET_ENV: Record<string, string> = {
+  DO_NOT_TRACK: "1",
+  WRANGLER_SEND_METRICS: "false",
+  NEXT_TELEMETRY_DISABLED: "1",
+  ASTRO_TELEMETRY_DISABLED: "1",
+  NUXT_TELEMETRY_DISABLED: "1",
+  GATSBY_TELEMETRY_DISABLED: "1",
+  STORYBOOK_DISABLE_TELEMETRY: "1",
+  TURBO_TELEMETRY_DISABLED: "1",
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1",
+  HOMEBREW_NO_ANALYTICS: "1",
+  CHECKPOINT_DISABLE: "1",
+};
+
 /** What a sandbox's guardrails come to for one run. */
 export type RunGuard = {
   policy: Guardrails;
@@ -130,7 +150,7 @@ export function harnessEnv(guard: RunGuard, sandboxEnv: Record<string, string>, 
       defaultBranch: sandboxEnv.UPSTREAM_BRANCH ?? null,
     }),
   };
-  return restricted ? { ...vars, ...EGRESS_ENV } : vars;
+  return restricted ? { ...vars, ...EGRESS_ENV, ...QUIET_ENV } : vars;
 }
 
 /**

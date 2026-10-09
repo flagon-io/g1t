@@ -5,7 +5,6 @@ const PAGES: Record<string, { title: string; about: string }> = {
   "": { title: "General", about: "The project's name, where its code lives, and what it is for." },
   deployments: { title: "Deployments", about: "How the project builds, where it runs, and its previews." },
   domains: { title: "Domains", about: "Addresses of your own for the production deployment." },
-  dependencies: { title: "Dependencies", about: "What the project relies on and what relies on it." },
   agents: { title: "Agents", about: "How g1t picks up work here, and what it reads first." },
   guardrails: { title: "Guardrails", about: "What agents may reach, run and spend while they work here." },
   repository: { title: "Repository", about: "Its name, details and default branch, who can see it, and archiving, moving or deleting it." },

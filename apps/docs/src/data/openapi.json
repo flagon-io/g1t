@@ -84,7 +84,7 @@
     },
     {
       "name": "Personal access tokens",
-      "description": "A workspace's rules for its members' personal access tokens: whether classic and fine-grained tokens reach it, whether fine-grained tokens wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
+      "description": "A workspace's rules for its members' personal access tokens: whether tokens made for all of a member's workspaces reach it, whether tokens may be made for it alone and wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
       "x-tools": [
         "get_token_policy",
         "set_token_policy",
@@ -107,14 +107,17 @@
     },
     {
       "name": "Invites",
-      "description": "While g1t is invite-only, every new account needs an invite. Your invites, and inviting people into a workspace by email.",
+      "description": "While g1t is invite-only, every new account needs an invite. Your invites, inviting people into a workspace by username or email, and answering the invitations to workspaces sent to you.",
       "x-tools": [
         "list_invites",
         "create_invite",
         "revoke_invite",
         "list_workspace_invites",
         "invite_member",
-        "revoke_workspace_invite"
+        "revoke_workspace_invite",
+        "list_invitations",
+        "accept_invitation",
+        "decline_invitation"
       ]
     },
     {
@@ -711,7 +714,12 @@
                       "description": "Present when approved."
                     },
                     "username": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Lowercased: what the account is found and linked by."
+                    },
+                    "display_username": {
+                      "type": "string",
+                      "description": "The username as its owner wrote it; the same as username when they chose no case."
                     },
                     "verified": {
                       "type": "boolean",
@@ -723,6 +731,7 @@
                   "status": "approved",
                   "token": "g1t_…",
                   "username": "syntaqx",
+                  "display_username": "syntaqx",
                   "verified": true
                 }
               }
@@ -758,6 +767,7 @@
                 "example": {
                   "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "username": "syntaqx",
+                  "display_username": "syntaqx",
                   "kind": "user",
                   "verified": true,
                   "workspaces": [
@@ -1578,7 +1588,7 @@
           "Accounts"
         ],
         "summary": "Confirm an email address",
-        "description": "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also joins the workspace its invite named, when the invite still applies: the answer's `joined` names it, or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only.\n\nThe code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `joined` is set when confirming a new account's address joined the workspace its invite named; when the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address).",
+        "description": "Confirm an email address with the six-digit `code` from the confirmation email g1t sent it. The same email has a link that does the same; either one works, once, for 60 minutes, and asking for a new email ends both. A new account must confirm its address before it can do anything else: until then this, `GET /user` and `GET /user/emails` are the only calls its token can make, and everything else, MCP included, is refused with `403`. Confirming a new account's address also invites it to the workspace its invite named, when the invite still applies: the answer's `invited_to` names it, and the invitation waits for you to accept or decline it (accept_invitation), or `invite_lapsed` says why not. Ten wrong codes in an hour pause checking for the account. People only.\n\nThe code confirms the address it was sent to, and ends the link sent with it. A wrong, used or expired code answers `422` with one message for all three; after ten wrong codes in an hour the account answers `409` for a while, and the link in the email still works. `verified` says whether the account is confirmed: whether its primary address is. `invited_to` is set when the invite the account signed up with brings it into a workspace: confirming the address sends the account an invitation to that workspace, which it accepts with `POST /user/invitations/{id}/accept` or declines; nobody joins a workspace without saying yes. `joined` is kept for older clients and is null. When the invite was revoked or expired, or the workspace deleted, while the account waited, the address is confirmed all the same and `invite_lapsed` says so. See [Confirming your email address](/guides/authentication/#confirming-your-email-address).",
         "x-operation": "confirm_email",
         "x-mcp-tool": "account",
         "x-mcp-action": "confirm_email",
@@ -1599,9 +1609,11 @@
                 "schema": {},
                 "example": {
                   "username": "ada",
+                  "display_username": "Ada",
                   "email": "ada@example.com",
                   "verified": true,
-                  "joined": "acme",
+                  "joined": null,
+                  "invited_to": "acme",
                   "invite_lapsed": null
                 }
               }
@@ -1987,7 +1999,7 @@
           "Invites"
         ],
         "summary": "List your invites",
-        "description": "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you; `status` is pending, redeemed, expired or revoked.\n\n`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites).",
+        "description": "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you. `status` is `pending`; `awaiting_confirmation` (used to make an account that has not confirmed its address yet); `awaiting_answer` (used to make an account that has yet to accept or decline the workspace it was invited to); `redeemed`; `declined` (its person declined the workspace); `expired`; or `revoked`. An invite that brings someone into a workspace names it in `workspace`, with the `role` it joins with and, once known, the account it is for in `invitee`.\n\n`allowance.limit` and `allowance.remaining` are null when you have no limit. A revoked or expired invite that was never used is not counted. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed`, `declined`, `expired` or `revoked`. Ask for more at hey@flagon.io with the subject `[g1t Invites]`. See [Invites](/guides/authentication/#invites).",
         "x-operation": "list_invites",
         "x-mcp-tool": "account",
         "x-mcp-action": "list_invites",
@@ -2038,7 +2050,9 @@
                       "created_at": "2026-10-05T17:00:00.000Z",
                       "expires_at": "2026-11-04T17:00:00.000Z",
                       "redeemed_at": null,
-                      "revoked_at": null
+                      "revoked_at": null,
+                      "invitee": null,
+                      "role": null
                     },
                     {
                       "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
@@ -2054,7 +2068,9 @@
                       "created_at": "2026-10-02T09:12:40.000Z",
                       "expires_at": "2026-11-01T09:12:40.000Z",
                       "redeemed_at": "2026-10-02T11:30:05.000Z",
-                      "revoked_at": null
+                      "revoked_at": null,
+                      "invitee": "grace",
+                      "role": null
                     }
                   ]
                 }
@@ -2109,7 +2125,7 @@
           "Invites"
         ],
         "summary": "Create an invite",
-        "description": "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. It uses one of your invites, or with `workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites.\n\nRefused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`.",
+        "description": "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. With `workspace`, the new account is brought into that workspace: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. That must be a workspace you own on the g1t plan; a free workspace is refused with `payment_required` (402). Without `workspace`, the new account gets a free workspace of its own. It uses one of your invites, or with `charge_workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites.\n\n`workspace` brings the new account into a workspace you own: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. Leave `workspace` out and the new account gets a free workspace of its own. A workspace on the free plan cannot bring anyone in: `402` with `payment_required`, until it starts the g1t plan. `charge_workspace` is separate: it uses one of the invites g1t granted that workspace instead of one of yours, and works with or without `workspace`. Refused with `402` (`limit`) when you have no invites left, with `409` when you already have a pending invite for that address or it already has a g1t account, and with `403` for an agent's or a workspace's token. The code is returned in full; send people the link `https://g1t.sh/invite/<code>`.",
         "x-operation": "create_invite",
         "x-mcp-tool": "account",
         "x-mcp-action": "create_invite",
@@ -2134,7 +2150,7 @@
                   "hint": "g1t-k7m2",
                   "email": "ada@example.com",
                   "kind": "account",
-                  "workspace": null,
+                  "workspace": "acme-labs",
                   "status": "pending",
                   "charged_to": "user",
                   "invited_by": "syntaqx",
@@ -2142,7 +2158,9 @@
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": null
+                  "revoked_at": null,
+                  "invitee": null,
+                  "role": "member"
                 }
               }
             }
@@ -2211,12 +2229,17 @@
                   },
                   "workspace": {
                     "type": "string",
+                    "description": "The workspace the new account is invited to, by slug. Once it confirms its address it gets an invitation to join as a member, and no workspace of its own. One you own, on the g1t plan."
+                  },
+                  "charge_workspace": {
+                    "type": "string",
                     "description": "Use one of the invites g1t granted this workspace instead of yours, by slug. Owners only."
                   }
                 }
               },
               "example": {
-                "email": "ada@example.com"
+                "email": "ada@example.com",
+                "workspace": "acme-labs"
               }
             }
           }
@@ -2273,7 +2296,9 @@
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": "2026-10-06T08:00:00.000Z"
+                  "revoked_at": "2026-10-06T08:00:00.000Z",
+                  "invitee": null,
+                  "role": null
                 }
               }
             }
@@ -2331,6 +2356,291 @@
         }
       }
     },
+    "/user/invitations": {
+      "get": {
+        "operationId": "list_invitations",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "List your workspace invitations",
+        "description": "The invitations to workspaces waiting for your answer, newest first: each one's `id`, the `workspace` (`slug`, `name`, `avatar`), the `role` accepting gives (`member` or `owner`), who sent it (`invited_by`, null when g1t staff did), and when it was made and when it expires. Expired, revoked and answered ones are left out. Accept or decline each by its `id`. People only; an agent's or a workspace's token gets an empty list.\n\nAccept one with `POST /user/invitations/{id}/accept`, or decline it with `POST /user/invitations/{id}/decline`. An agent's or a workspace's token gets an empty list.",
+        "x-operation": "list_invitations",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "list_workspace_invitations",
+        "x-scope": "account:read",
+        "security": [
+          {
+            "token": [
+              "account:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+                    "workspace": {
+                      "slug": "acme-labs",
+                      "name": "Acme Labs",
+                      "avatar": null
+                    },
+                    "role": "member",
+                    "invited_by": {
+                      "username": "syntaqx",
+                      "display_username": "syntaqx",
+                      "name": "Chase",
+                      "avatar": null
+                    },
+                    "created_at": "2026-10-05T17:00:00.000Z",
+                    "expires_at": "2026-11-04T17:00:00.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/invitations/{id}/accept": {
+      "post": {
+        "operationId": "accept_invitation",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Accept a workspace invitation",
+        "description": "Accept an invitation to a workspace sent to you. You join it at once with the role it names. Returns the workspace's slug in `workspace`. Refused with `404` when you have no open invitation with that id (it may have been answered, revoked or expired), with `403` until you confirm your email address or when your account does not meet what the workspace asks of its members, such as two-factor authentication, and with `payment_required` (402) while the workspace is free: it can add no one until it starts the g1t plan, and the invitation stays open until then. People only.\n\nYou join at once with the invitation's `role`. `404` when you have no open invitation with that id (it may have been answered, revoked or expired). `403` until you confirm your email address, and when your account does not meet what the workspace asks of its members, such as two-factor authentication, with a message that says what to turn on. `402` with `payment_required` while the workspace is on the free plan; the invitation stays open until it starts the g1t plan. Recorded as `member.added`.",
+        "x-operation": "accept_invitation",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "accept_workspace_invitation",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invitation's id, from list_invitations."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "acme-labs"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+        }
+      }
+    },
+    "/user/invitations/{id}/decline": {
+      "post": {
+        "operationId": "decline_invitation",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Decline a workspace invitation",
+        "description": "Decline an invitation to a workspace sent to you. Whoever sent it is told in their inbox, and the workspace's owners can invite you again. People only.\n\nWhoever sent it is told in their inbox. The workspace's owners can invite you again. `404` when you have no open invitation with that id.",
+        "x-operation": "decline_invitation",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "decline_workspace_invitation",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invitation's id, from list_invitations."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y"
+        }
+      }
+    },
     "/workspaces/{workspace}/invitations": {
       "get": {
         "operationId": "list_workspace_invites",
@@ -2382,13 +2692,15 @@
                     "created_at": "2026-10-05T17:00:00.000Z",
                     "expires_at": "2026-11-04T17:00:00.000Z",
                     "redeemed_at": null,
-                    "revoked_at": null
+                    "revoked_at": null,
+                    "invitee": null,
+                    "role": "member"
                   },
                   {
                     "id": "inv_01kp1z9y8x7w6v5t4s3r2q1p0n",
                     "code": "g1t-k7m2-q9xd-4hpw-…",
                     "hint": "g1t-w2vb",
-                    "email": "linus@example.com",
+                    "email": null,
                     "kind": "workspace",
                     "workspace": "acme-labs",
                     "status": "pending",
@@ -2398,7 +2710,9 @@
                     "created_at": "2026-10-05T17:00:00.000Z",
                     "expires_at": "2026-11-04T17:00:00.000Z",
                     "redeemed_at": null,
-                    "revoked_at": null
+                    "revoked_at": null,
+                    "invitee": "linus",
+                    "role": "owner"
                   }
                 ]
               }
@@ -2452,7 +2766,7 @@
           "Invites"
         ],
         "summary": "Invite someone to a workspace",
-        "description": "Invite an email address into a workspace. It always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, accepting makes the account and joins the workspace in one step, and uses one of the workspace's granted invites, or else one of yours. With one, it costs nothing, and they join when they accept. To add someone by username at once, use the workspace's People page. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then.\n\n`kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when accepting makes one. Both answers look alike to the caller on purpose: the invite is emailed either way. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan.",
+        "description": "Invite someone into a workspace, by `username` or by `email`. Nobody joins without saying yes: they get an invitation to accept or decline, and join with `role` (`member` unless you give `owner`) when they accept. By `username`, the account gets the invitation in its inbox and by email, and it costs nothing. By `email`, it always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, the link makes the account, which is invited once it confirms its address; while g1t is invite-only that uses one of the workspace's granted invites, or else one of yours, and once anyone can sign up it costs nothing. With one, it costs nothing. Refused with `409` when the person is already a member or already has a pending invitation to the workspace. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then.\n\nGive `username` or `email`. Nobody is added without saying yes: the person gets an invitation to accept or decline, and joins with `role` when they accept. By username, `invitee` names the account and it costs nothing; `404` when there is no account with that username. By email, `kind` is `workspace` when the address already has a g1t account (`charged_to` is then `none`), and `account` when the link makes one; both answers look alike to the caller on purpose, and `invitee` stays null until an account is known. `409` when the person is already a member or already has a pending invitation to the workspace. A free workspace cannot invite anyone: `402` with `payment_required`, until it starts the g1t plan. See [Workspace invitations](/reference/api/invites/list-invitations/) for the other side.",
         "x-operation": "invite_member",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "invite_member",
@@ -2485,17 +2799,19 @@
                   "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
                   "code": "g1t-k7m2-q9xd-4hpw-…",
                   "hint": "g1t-k7m2",
-                  "email": "ada@example.com",
-                  "kind": "account",
+                  "email": null,
+                  "kind": "workspace",
                   "workspace": "acme-labs",
                   "status": "pending",
-                  "charged_to": "workspace",
+                  "charged_to": "none",
                   "invited_by": "syntaqx",
                   "redeemed_by": null,
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": null
+                  "revoked_at": null,
+                  "invitee": "ada",
+                  "role": "member"
                 }
               }
             }
@@ -2552,23 +2868,33 @@
           }
         },
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "A g1t username to invite. Give this or email."
+                  },
                   "email": {
                     "type": "string",
-                    "description": "The address to invite."
+                    "description": "An address to invite. Give this or username."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "member",
+                      "owner"
+                    ],
+                    "description": "The role they join with when they accept. member when left out."
                   }
-                },
-                "required": [
-                  "email"
-                ]
+                }
               },
               "example": {
-                "email": "ada@example.com"
+                "username": "ada",
+                "role": "member"
               }
             }
           }
@@ -2582,7 +2908,7 @@
           "Personal access tokens"
         ],
         "summary": "Get a workspace's personal access token policy",
-        "description": "A workspace's rules for its members' personal access tokens: allow_classic (classic tokens reach it), allow_fine_grained (fine-grained tokens may name it as their resource owner), require_approval (a fine-grained token naming it waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a fine-grained token lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only.",
+        "description": "A workspace's rules for its members' personal access tokens: allow_tokens_for_all_workspaces (a token made for every workspace of its owner reaches this one), allow_tokens_for_this_workspace (a token may be made for this workspace alone), require_approval (a token made for this workspace waits for an owner's approval; true unless an owner says, and never for an owner's own token), max_lifetime_days (the longest a token reaching it may last; null for no limit, and a token with an expiry lasts at most 366 days anyway) and forbid_no_expiry (a token that never expires does not reach it). A token outside the rules keeps working elsewhere and reaches the workspace's public repositories only. Members only.",
         "x-operation": "get_token_policy",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "get_token_policy",
@@ -2612,8 +2938,8 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "allow_classic": true,
-                  "allow_fine_grained": true,
+                  "allow_tokens_for_all_workspaces": true,
+                  "allow_tokens_for_this_workspace": true,
                   "require_approval": true,
                   "max_lifetime_days": null,
                   "forbid_no_expiry": false,
@@ -2674,7 +3000,7 @@
           "Personal access tokens"
         ],
         "summary": "Set a workspace's personal access token policy",
-        "description": "Change a workspace's rules for personal access tokens; fields left out stay as they are. max_lifetime_days of 0 removes the limit. The rules apply from each token's next request, to tokens made before them too. Owners only, as people.\n\nFrom each token's next request, classic tokens no longer reach the workspace, and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else.",
+        "description": "Change a workspace's rules for personal access tokens; fields left out stay as they are. max_lifetime_days of 0 removes the limit. The rules apply from each token's next request, to tokens made before them too. Owners only, as people.\n\nFrom each token's next request, tokens made for all of a member's workspaces no longer reach this one (tokens made for it alone still do), and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else.",
         "x-operation": "set_token_policy",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "set_token_policy",
@@ -2704,8 +3030,8 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "allow_classic": false,
-                  "allow_fine_grained": true,
+                  "allow_tokens_for_all_workspaces": false,
+                  "allow_tokens_for_this_workspace": true,
                   "require_approval": true,
                   "max_lifetime_days": 90,
                   "forbid_no_expiry": false,
@@ -2773,17 +3099,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "allow_classic": {
+                  "allow_tokens_for_all_workspaces": {
                     "type": "boolean",
-                    "description": "Classic tokens reach the workspace."
+                    "description": "A token made for every workspace of its owner reaches this one."
                   },
-                  "allow_fine_grained": {
+                  "allow_tokens_for_this_workspace": {
                     "type": "boolean",
-                    "description": "Fine-grained tokens may name the workspace as their resource owner."
+                    "description": "A token may be made for this workspace alone."
                   },
                   "require_approval": {
                     "type": "boolean",
-                    "description": "A fine-grained token naming the workspace waits for an owner's approval."
+                    "description": "A token made for this workspace waits for an owner's approval."
                   },
                   "max_lifetime_days": {
                     "type": "integer",
@@ -2796,7 +3122,7 @@
                 }
               },
               "example": {
-                "allow_classic": false,
+                "allow_tokens_for_all_workspaces": false,
                 "max_lifetime_days": 90
               }
             }
@@ -2814,7 +3140,7 @@
           "Personal access tokens"
         ],
         "summary": "List the personal access tokens that reach a workspace",
-        "description": "The personal access tokens of the workspace's members and outside collaborators that can reach it: every fine-grained token naming it as its resource owner, whatever its status, and every classic token that has not expired. Each with its owner, kind, name, scopes, a fine-grained token's permissions, repository_selection, repositories and status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, classic tokens not allowed, lasts too long, never expires). Never the token itself. kind narrows it to classic or fine_grained. Owners only, as people.",
+        "description": "The personal access tokens of the workspace's members and outside collaborators that can reach it and have not expired: every token made for this workspace, whatever its status, and every token made for all of its owner's workspaces. Each with its owner, name, description, permissions (each resource at its level, such as {\"issues\": \"write\"}), scopes, workspace (the one it is made for; null for all of its owner's), repository_selection (all, selected or public), repositories, status (active, pending, denied or revoked), when it was made, last used and expires, and whether it reaches the workspace now (reaches, and blocked_by when not: pending approval, denied, revoked, tokens for all workspaces not allowed, tokens made for this workspace not allowed, lasts too long, never expires). Never the token itself. Owners only, as people.",
         "x-operation": "list_member_tokens",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_member_tokens",
@@ -2835,19 +3161,6 @@
               "type": "string"
             },
             "description": "The workspace's name, e.g. \"acme\"."
-          },
-          {
-            "name": "kind",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "classic",
-                "fine_grained"
-              ]
-            },
-            "description": "Only tokens of this kind."
           }
         ],
         "responses": {
@@ -2861,7 +3174,6 @@
                     "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
                     "name": "release-bot",
                     "owner": "ada",
-                    "kind": "fine_grained",
                     "description": "Publishes releases from CI",
                     "created_at": "2026-10-08T09:00:00.000Z",
                     "created_by": null,
@@ -2869,18 +3181,16 @@
                     "expires_at": "2026-11-07T09:00:00.000Z",
                     "scopes": [
                       "repo:read",
-                      "repo:write",
-                      "code:read",
                       "code:write"
                     ],
-                    "resource_owner": "flagon-io",
+                    "workspace": "flagon-io",
                     "repository_selection": "selected",
                     "repositories": [
                       "flagon-io/hello"
                     ],
                     "permissions": {
-                      "contents": "write",
-                      "metadata": "read"
+                      "code": "write",
+                      "repo": "read"
                     },
                     "status": "pending",
                     "review_reason": null,
@@ -2944,7 +3254,7 @@
           "Personal access tokens"
         ],
         "summary": "Revoke a member's token in a workspace",
-        "description": "Take a member's token out of the workspace, with an optional reason its owner is shown. A fine-grained token naming the workspace stops reaching it for good; a classic token keeps working everywhere else but never reaches this workspace again. Recorded in the audit log as token.revoked. Owners only, as people.",
+        "description": "Take a member's token out of the workspace, with an optional reason its owner is shown. A token made for this workspace stops reaching it for good; a token made for all of its owner's workspaces keeps working everywhere else but never reaches this one again. Recorded in the audit log as token.revoked. Owners only, as people.",
         "x-operation": "revoke_member_token",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "revoke_member_token",
@@ -3070,8 +3380,8 @@
         "tags": [
           "Personal access tokens"
         ],
-        "summary": "List fine-grained tokens waiting for approval",
-        "description": "The fine-grained tokens naming the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people.",
+        "summary": "List personal access tokens waiting for approval",
+        "description": "The tokens made for the workspace that wait for an owner's approval, as list_member_tokens shows them. Until approved, a token reaches public repositories only. Owners only, as people.",
         "x-operation": "list_token_requests",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_token_requests",
@@ -3105,7 +3415,6 @@
                     "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
                     "name": "release-bot",
                     "owner": "ada",
-                    "kind": "fine_grained",
                     "description": "Publishes releases from CI",
                     "created_at": "2026-10-08T09:00:00.000Z",
                     "created_by": null,
@@ -3113,18 +3422,16 @@
                     "expires_at": "2026-11-07T09:00:00.000Z",
                     "scopes": [
                       "repo:read",
-                      "repo:write",
-                      "code:read",
                       "code:write"
                     ],
-                    "resource_owner": "flagon-io",
+                    "workspace": "flagon-io",
                     "repository_selection": "selected",
                     "repositories": [
                       "flagon-io/hello"
                     ],
                     "permissions": {
-                      "contents": "write",
-                      "metadata": "read"
+                      "code": "write",
+                      "repo": "read"
                     },
                     "status": "pending",
                     "review_reason": null,
@@ -3187,8 +3494,8 @@
         "tags": [
           "Personal access tokens"
         ],
-        "summary": "Approve or deny a fine-grained token",
-        "description": "Approve or deny a fine-grained token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people.\n\nThe token's owner hears of it in their inbox. A denied token reaches public repositories only.",
+        "summary": "Approve or deny a personal access token",
+        "description": "Approve or deny a token waiting for approval: decision is approve or deny, and reason, if given, is shown to the token's owner, who hears of it in their inbox. An approved token reaches the workspace from its next request; a denied one reaches public repositories only. Recorded in the audit log as token.approved or token.denied. Owners only, as people.\n\nThe token's owner hears of it in their inbox. A denied token reaches public repositories only.",
         "x-operation": "review_token_request",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "review_token_request",
@@ -3230,7 +3537,6 @@
                   "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
                   "name": "release-bot",
                   "owner": "ada",
-                  "kind": "fine_grained",
                   "description": "Publishes releases from CI",
                   "created_at": "2026-10-08T09:00:00.000Z",
                   "created_by": null,
@@ -3238,18 +3544,16 @@
                   "expires_at": "2026-11-07T09:00:00.000Z",
                   "scopes": [
                     "repo:read",
-                    "repo:write",
-                    "code:read",
                     "code:write"
                   ],
-                  "resource_owner": "flagon-io",
+                  "workspace": "flagon-io",
                   "repository_selection": "selected",
                   "repositories": [
                     "flagon-io/hello"
                   ],
                   "permissions": {
-                    "contents": "write",
-                    "metadata": "read"
+                    "code": "write",
+                    "repo": "read"
                   },
                   "status": "active",
                   "review_reason": null,
@@ -3405,7 +3709,9 @@
                   "created_at": "2026-10-05T17:00:00.000Z",
                   "expires_at": "2026-11-04T17:00:00.000Z",
                   "redeemed_at": null,
-                  "revoked_at": "2026-10-06T08:00:00.000Z"
+                  "revoked_at": "2026-10-06T08:00:00.000Z",
+                  "invitee": null,
+                  "role": "member"
                 }
               }
             }
@@ -3514,6 +3820,7 @@
                   "people": [
                     {
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "name": "Chase Pierce",
                       "avatar": null,
                       "role": "admin",
@@ -3523,6 +3830,7 @@
                     },
                     {
                       "username": "linus",
+                      "display_username": "linus",
                       "name": null,
                       "avatar": null,
                       "role": "maintain",
@@ -3532,6 +3840,7 @@
                     },
                     {
                       "username": "grace",
+                      "display_username": "grace",
                       "name": "Grace Hopper",
                       "avatar": null,
                       "role": "write",
@@ -3541,6 +3850,7 @@
                     },
                     {
                       "username": "ada",
+                      "display_username": "Ada",
                       "name": "Ada Lovelace",
                       "avatar": null,
                       "role": "triage",
@@ -3631,7 +3941,7 @@
           "Access"
         ],
         "summary": "Add a collaborator",
-        "description": "Give someone a role on a repository, by username or email address. A member of its workspace gets the role at once (`result` is `granted`, with the `collaborator`). Anyone else becomes an outside collaborator once they accept an invitation, which is emailed to them and waits 7 days (`result` is `invited`, with the `invitation`); an address with no g1t account is sent an invite that makes the account and accepts in one step. The role is read, triage, write, maintain or admin. Needs the Admin role on the repository, signed in as a person with a confirmed email address; agents' and workspaces' tokens are refused. A free workspace can give its members a role, but cannot invite anyone from outside it: that is refused with `payment_required` (402) until the workspace starts the g1t plan.\n\n`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/). On a free workspace, inviting anyone who is not a member answers `402` with `payment_required` until it starts the g1t plan.",
+        "description": "Give someone a role on a repository, by username or email address. A member of its workspace gets the role at once (`result` is `granted`, with the `collaborator`). Anyone else becomes an outside collaborator once they accept an invitation, which is emailed to them and waits 7 days (`result` is `invited`, with the `invitation`); an address with no g1t account is sent an invite that makes the account and accepts in one step. The role is read, triage, write, maintain or admin. Needs the Admin role on the repository, signed in as a person with a confirmed email address; agents' and workspaces' tokens are refused. A free workspace can give its members a role, but cannot invite anyone from outside it: that is refused with `payment_required` (402) until the workspace starts the g1t plan.\n\n`invitee` is a username or an email address. A member of the workspace answers `{\"result\": \"granted\", \"collaborator\": {…}}` with the role already given, shown as list_collaborators shows a person. Anyone else answers `{\"result\": \"invited\", \"invitation\": {…}}`: the invitation is emailed and waits 7 days, and the role is theirs once they accept it. An email address without an account gets an invitation with `email` set and `invitee` null, and an invite that makes the account and accepts in one step. Refused with `404` when no account has that username, `409` when they already have a role of their own or a pending invitation (change it with update_collaborator), and `403` without the Admin role, from an agent's or a workspace's token, or when the person does not meet what the workspace asks of everyone with access. A `collaborator_added` webhook event is sent once they have the role. See [Access and roles](/guides/access-and-roles/). On a free workspace, inviting anyone who is not a member answers `402` with `payment_required` until it starts the g1t plan.",
         "x-operation": "add_collaborator",
         "x-mcp-tool": "access",
         "x-mcp-action": "add_collaborator",
@@ -3832,6 +4142,7 @@
                 "schema": {},
                 "example": {
                   "username": "ada",
+                  "display_username": "Ada",
                   "name": "Ada Lovelace",
                   "avatar": null,
                   "role": "write",
@@ -4099,6 +4410,7 @@
                 "schema": {},
                 "example": {
                   "username": "ada",
+                  "display_username": "Ada",
                   "role": "triage",
                   "source": "direct",
                   "capabilities": [
@@ -10016,11 +10328,13 @@
                 "example": [
                   {
                     "username": "ada",
+                    "display_username": "Ada",
                     "avatar": null,
                     "starred_at": "2026-10-06T18:30:00.000Z"
                   },
                   {
                     "username": "sam",
+                    "display_username": "sam",
                     "avatar": null,
                     "starred_at": "2026-10-02T09:12:00.000Z"
                   }
@@ -10271,6 +10585,7 @@
                       "kind": "user",
                       "name": "ada",
                       "username": "ada",
+                      "display_username": "Ada",
                       "avatar": "5f2b8c1d9e7a3f6b4c0d2e8a1b9c7d5e3f1a0b2c4d6e8f0a1b3c5d7e9f0a2b4c",
                       "commits": 52,
                       "first_at": "2026-09-28T14:11:52.000Z",
@@ -12160,7 +12475,7 @@
           "Members"
         ],
         "summary": "List a workspace's members",
-        "description": "A workspace's members, owners first, then by username. Each has their `username`, `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only.\n\nOwners first, then by username. `two_factor` is shown to owners only, and is `null` for anyone else. `403` for anyone who is not a member. See [Workspaces](/guides/workspaces/#members-and-owners).",
+        "description": "A workspace's members, owners first, then by username. Each has their `username`, `display_username` (the username as they wrote it), `name`, `avatar`, `role` (`owner` or `member`), the roles they hold besides it (`org_roles`: `billing_manager`, `security_manager`), and, when an owner asks, whether they have two-factor authentication on (`two_factor`; null for anyone else). Members only.\n\nOwners first, then by username. `two_factor` is shown to owners only, and is `null` for anyone else. `403` for anyone who is not a member. See [Workspaces](/guides/workspaces/#members-and-owners).",
         "x-operation": "list_members",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_members",
@@ -12192,6 +12507,7 @@
                 "example": [
                   {
                     "username": "ada",
+                    "display_username": "Ada",
                     "role": "owner",
                     "org_roles": [],
                     "two_factor": true,
@@ -12200,6 +12516,7 @@
                   },
                   {
                     "username": "grace",
+                    "display_username": "grace",
                     "role": "member",
                     "org_roles": [
                       "security_manager"
@@ -12305,6 +12622,7 @@
                 "schema": {},
                 "example": {
                   "username": "grace",
+                  "display_username": "grace",
                   "role": "member",
                   "org_roles": [
                     "security_manager"
@@ -13471,6 +13789,7 @@
                 "example": [
                   {
                     "username": "ada",
+                    "display_username": "Ada",
                     "name": "Ada Lovelace",
                     "avatar": null,
                     "repos": [
@@ -14355,6 +14674,7 @@
                 "example": [
                   {
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "name": "Chase Pierce",
                     "avatar": null,
                     "role": "maintainer",
@@ -14362,6 +14682,7 @@
                   },
                   {
                     "username": "ana",
+                    "display_username": "Ana",
                     "name": "Ana Lima",
                     "avatar": null,
                     "role": "member",
@@ -14369,6 +14690,7 @@
                   },
                   {
                     "username": "bo",
+                    "display_username": "bo",
                     "name": null,
                     "avatar": null,
                     "role": "member",
@@ -14484,6 +14806,7 @@
                 "schema": {},
                 "example": {
                   "username": "ana",
+                  "display_username": "Ana",
                   "name": "Ana Lima",
                   "avatar": null,
                   "role": "maintainer",
@@ -36629,6 +36952,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -36694,6 +37018,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -37115,6 +37440,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -37240,6 +37566,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -37368,7 +37695,7 @@
           "Issues"
         ],
         "summary": "Get an issue",
-        "description": "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
+        "description": "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
         "x-operation": "get_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "get",
@@ -37432,6 +37759,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -37480,6 +37808,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -37527,6 +37856,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -37543,6 +37873,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -37669,6 +38000,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -37864,6 +38196,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -38028,6 +38361,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -38185,6 +38519,7 @@
                   "author": {
                     "id": "usr_g1t_agent",
                     "username": "g1t",
+                    "display_username": "g1t",
                     "kind": "agent",
                     "verified": false,
                     "workspaces": []
@@ -38192,6 +38527,7 @@
                   "requested_by": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -38484,6 +38820,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -38531,6 +38868,7 @@
                     "author": {
                       "id": "usr_g1t_agent",
                       "username": "g1t",
+                      "display_username": "g1t",
                       "kind": "agent",
                       "verified": false,
                       "workspaces": []
@@ -38538,6 +38876,7 @@
                     "requested_by": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -38884,7 +39223,7 @@
                       "kind": "project",
                       "id": "ent_9b1d6f0a2c3e4b5d6e7f8a9b",
                       "title": "web",
-                      "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+                      "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Owned by ana.",
                       "project": "web",
                       "url": "/acme/web",
                       "score": 0.71,
@@ -39018,7 +39357,7 @@
                     "kind": "project",
                     "key": "web",
                     "name": "web",
-                    "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+                    "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Owned by ana.",
                     "project": "web",
                     "private": true,
                     "data": {
@@ -39043,21 +39382,21 @@
                   },
                   "relations": [
                     {
-                      "kind": "depends_on",
+                      "kind": "exposes",
                       "direction": "out",
                       "entity": {
                         "id": "ent_0a7c3e5b9d1f2a4c6e8b0d2f",
                         "workspace": "acme",
-                        "kind": "project",
-                        "key": "api",
-                        "name": "api",
-                        "summary": "The public API. Written in Rust.",
-                        "project": "api",
+                        "kind": "package",
+                        "key": "npm:@acme/web",
+                        "name": "@acme/web",
+                        "summary": null,
+                        "project": "web",
                         "private": true,
                         "data": {},
                         "source": "scan",
-                        "ref": "/acme/api",
-                        "updated_at": "2026-10-04T20:57:12.000Z"
+                        "ref": "/acme/web/blob/main/package.json",
+                        "updated_at": "2026-10-04T20:58:41.000Z"
                       }
                     },
                     {
@@ -52270,6 +52609,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -52426,6 +52766,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -52590,6 +52931,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": true,
                     "workspaces": [
@@ -52751,6 +53093,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": true,
                     "workspaces": [
@@ -53077,6 +53420,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -53213,6 +53557,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -53330,7 +53675,7 @@
           "Pull requests"
         ],
         "summary": "Get a pull request",
-        "description": "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them).\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/).",
+        "description": "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them). A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. An agent's review also has `advisory: true`: its `verdict` (none, for a review that only comments) is shown but never counts toward required approvals or code owners, and never blocks a merge.\n\n| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/).",
         "x-operation": "get_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "get",
@@ -53418,6 +53763,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -53445,6 +53791,7 @@
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",
+                      "display_username": "syntaqx",
                       "kind": "user",
                       "verified": false,
                       "workspaces": []
@@ -53468,6 +53815,7 @@
                       "author": {
                         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                         "username": "syntaqx",
+                        "display_username": "syntaqx",
                         "kind": "user",
                         "verified": false,
                         "workspaces": []
@@ -53477,6 +53825,36 @@
                       "line": null,
                       "verdict": null,
                       "created_at": "2026-10-01T18:33:10.420Z"
+                    },
+                    {
+                      "id": "cmt_01m43sw2a6c0e4h8k2n6r0v4z8",
+                      "kind": "comment",
+                      "author": {
+                        "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+                        "username": "margo",
+                        "kind": "agent",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "body": "The empty-name case is handled and tested. One nit: trim the name before using it.",
+                      "path": null,
+                      "line": null,
+                      "verdict": "approve",
+                      "created_at": "2026-10-01T18:36:41.207Z",
+                      "agent": {
+                        "id": "agt_01m43q8d2f6h0k4n8r2v6z0c4g",
+                        "handle": "margo",
+                        "display_name": "Margo",
+                        "avatar_seed": "margo"
+                      },
+                      "acting_for": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx",
+                        "kind": "user",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "advisory": true
                     }
                   ],
                   "checks": null,
@@ -53681,6 +54059,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -54009,6 +54388,7 @@
                   "author": {
                     "id": "usr_01kz9d3f7h1k5n9r3v7z1c5g9b",
                     "username": "ana",
+                    "display_username": "Ana",
                     "kind": "user",
                     "verified": true,
                     "workspaces": [
@@ -54204,6 +54584,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -54396,6 +54777,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -54889,6 +55271,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -55066,6 +55449,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -55221,6 +55605,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -55376,6 +55761,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []
@@ -55533,6 +55919,7 @@
                   "author": {
                     "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "username": "syntaqx",
+                    "display_username": "syntaqx",
                     "kind": "user",
                     "verified": false,
                     "workspaces": []

@@ -1,15 +1,16 @@
 //! Access tokens: the `g1t_…` secrets used by git, the API and the MCP
 //! server.
 //!
-//! There is one implementation and two kinds of owner. A personal token
+//! There is one kind of token and two kinds of owner. A personal token
 //! acts as the person who made it. A workspace's token belongs to the
 //! workspace and acts as it, so automation needs no account of its own and
-//! keeps working when the member who set it up leaves.
+//! keeps working when the member who set it up leaves. Either is made and
+//! changed with permissions and a reach (token_reach.rs); this file mints,
+//! resolves, lists and deletes them.
 
 use g1t_contracts::identity::*;
-use g1t_contracts::scopes::{FULL_ACCESS, JobToken, Scope, TokenAccess, parse_scopes, scopes_text};
+use g1t_contracts::scopes::{FULL_ACCESS, JobToken, Scope, TokenAccess, everything, parse_scopes, permissions_of, scopes_text};
 use g1t_contracts::time::{SQL_NOW, rfc3339};
-use g1t_contracts::tokens::TokenKind;
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, Viewer, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -21,13 +22,13 @@ use crate::{Identity, crypto};
 pub const TOKEN_PREFIX: &str = "g1t_";
 /// How stale a token's last-used time may get before it is written again.
 const LAST_USED_RESOLUTION_MS: u64 = 5 * 60 * 1000;
-const MAX_TOKENS_PER_WORKSPACE: usize = 50;
+pub(crate) const MAX_TOKENS_PER_WORKSPACE: usize = 50;
 const WORKSPACE_ID_PREFIX: &str = "wsp_";
 
 pub(crate) const TOKEN_COLUMNS: &str = "access_tokens.id, access_tokens.name, access_tokens.created_at,
   access_tokens.last_used_at, users.username AS created_by, access_tokens.scopes,
-  access_tokens.expires_at, access_tokens.kind, access_tokens.description, access_tokens.admin,
-  access_tokens.workspace_id, access_tokens.repository_selection, access_tokens.permissions,
+  access_tokens.expires_at, access_tokens.description, access_tokens.admin,
+  access_tokens.workspace_id, access_tokens.repository_selection,
   access_tokens.status, access_tokens.review_reason,
   (SELECT slug FROM workspaces WHERE workspaces.id = access_tokens.owner_workspace_id) AS owner_workspace";
 
@@ -49,8 +50,8 @@ pub(crate) struct TokenRow {
     created_by: Option<String>,
     scopes: Option<String>,
     expires_at: Option<String>,
-    /// What a fine-grained token, and a workspace's, add (migration 0034;
-    /// see token_reach.rs).
+    /// Its reach, status, description and a workspace token's Admin
+    /// (migration 0034; see token_reach.rs).
     #[serde(flatten)]
     pub(crate) more: crate::token_reach::TokenRowMore,
 }
@@ -120,9 +121,9 @@ struct Presented {
     job_run_id: Option<String>,
     #[serde(default)]
     job_pulls: Option<u32>,
-    /// A fine-grained token's resource owner and status, a workspace
-    /// token's Admin, and when it was made and expires, for the rules of
-    /// the workspaces it reaches (token_reach.rs).
+    /// The workspace it is made for, its repositories and status, a
+    /// workspace token's Admin, and when it was made and expires, for the
+    /// rules of the workspaces it reaches (token_reach.rs).
     #[serde(flatten)]
     facts: crate::token_reach::Facts,
 }
@@ -146,7 +147,7 @@ impl Identity {
             .db
             .prepare(format!(
                 "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name,
-                   repo, job_id, job_run_id, job_pulls, created_at, expires_at, kind,
+                   repo, job_id, job_run_id, job_pulls, created_at, expires_at,
                    owner_workspace_id, repository_selection, status, admin
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
@@ -205,7 +206,7 @@ impl Identity {
                 },
                 ..TokenAccess::default()
             }));
-            // What it reaches: a fine-grained token's resource owner and
+            // What it reaches: the workspace it is made for and its
             // repositories, the workspaces whose rules let it in, a
             // workspace token's role.
             self.apply_reach(user, &presented.id, presented.user_id.is_some(), &presented.facts).await?;
@@ -215,6 +216,7 @@ impl Identity {
 
     pub(crate) fn info(row: TokenRow) -> AccessToken {
         let (scopes, legacy) = stored_scopes(row.scopes.as_deref());
+        let held: Vec<Scope> = scopes.as_ref().map_or_else(everything, |scopes| scopes.iter().filter_map(|scope| Scope::parse(scope)).collect());
         let mut info = AccessToken {
             id: row.id,
             name: row.name,
@@ -224,6 +226,7 @@ impl Identity {
             scopes,
             legacy,
             expires_at: row.expires_at,
+            permissions: permissions_of(&held),
             ..AccessToken::default()
         };
         row.more.describe(&mut info);
@@ -299,7 +302,8 @@ impl Identity {
                 .map(|scopes| scopes.iter().map(|scope| scope.as_str().to_owned()).collect()),
             legacy: false,
             expires_at: expires_at.clone(),
-            kind: if workspace_id.is_some() { TokenKind::Workspace } else { TokenKind::Classic },
+            permissions: permissions_of(&grant.scopes.clone().unwrap_or_else(everything)),
+            workspace_owned: workspace_id.is_some(),
             ..AccessToken::default()
         };
         self.db
@@ -388,47 +392,6 @@ impl Identity {
         Ok(())
     }
 
-    /// Changes what one of a person's own tokens may do.
-    pub async fn update_access_token(&self, a: UpdateAccessTokenArgs) -> Result<Outcome<AccessToken>> {
-        let grant = Grant::asked(&a.scopes);
-        let found: Option<String> = self
-            .db
-            .prepare(
-                "UPDATE access_tokens SET scopes = ?
-                 WHERE id = ? AND user_id = ? AND agent_scope IS NULL AND kind IS NULL
-                 RETURNING id",
-            )
-            .bind(&[
-                grant.scopes_column().into(),
-                a.id.as_str().into(),
-                a.user.id.as_str().into(),
-            ])?
-            .first(Some("id"))
-            .await?;
-        if found.is_none() {
-            return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
-        }
-        let row = self
-            .db
-            .prepare(format!(
-                "SELECT {TOKEN_COLUMNS} FROM access_tokens
-                 LEFT JOIN users ON users.id = access_tokens.created_by
-                 WHERE access_tokens.id = ?"
-            ))
-            .bind(&[a.id.into()])?
-            .first::<TokenRow>(None)
-            .await?;
-        match row {
-            Some(row) => {
-                let info = Self::info(row);
-                self.log_security(&a.user.id, "token_rescoped", Some(&info.name), None).await;
-                self.audit_account(&a.user, "token.rescoped", &format!("Changed the scopes of access token {}", info.name)).await;
-                Ok(Outcome::Ok(info))
-            }
-            None => Ok(Outcome::fail(FailureCode::NotFound, "No such token.")),
-        }
-    }
-
     /// A token for a g1t agent working for `on_behalf_of`, which can do
     /// only what `scope` lists. It is recorded as theirs, so it is listed and
     /// can be deleted with their other tokens.
@@ -471,7 +434,7 @@ impl Identity {
 
     pub async fn list_access_tokens(&self, a: UserArgs) -> Result<Vec<AccessToken>> {
         let mut tokens = self.tokens_where("access_tokens.user_id = ?", &a.user.id).await?;
-        // A fine-grained token's selected repositories, by name.
+        // Its selected repositories, by name.
         self.name_repositories(&mut tokens, &Some(a.user)).await?;
         Ok(tokens)
     }
@@ -479,7 +442,7 @@ impl Identity {
     /// The tokens a person or workspace made on purpose: those that do not
     /// expire, and those made with an expiry from settings, rather than
     /// those issued to an application or a hosted agent.
-    async fn tokens_where(&self, owner: &str, id: &str) -> Result<Vec<AccessToken>> {
+    pub(crate) async fn tokens_where(&self, owner: &str, id: &str) -> Result<Vec<AccessToken>> {
         let rows = self
             .db
             .prepare(format!(
@@ -501,7 +464,7 @@ impl Identity {
         a: WorkspaceTokensArgs,
     ) -> Result<Outcome<Vec<AccessToken>>> {
         let slug = a.slug.to_lowercase();
-        if !a.viewer.is_some_and(|viewer| viewer.is_member(&slug)) {
+        if !a.viewer.as_ref().is_some_and(|viewer| viewer.is_member(&slug)) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Only members can see a workspace's access tokens.",
@@ -510,14 +473,13 @@ impl Identity {
         let Some(workspace) = self.get_workspace(SlugArgs { slug }).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
         };
-        Ok(Outcome::Ok(
-            self.tokens_where("access_tokens.workspace_id = ?", &workspace.id)
-                .await?,
-        ))
+        let mut tokens = self.tokens_where("access_tokens.workspace_id = ?", &workspace.id).await?;
+        self.name_repositories(&mut tokens, &a.viewer).await?;
+        Ok(Outcome::Ok(tokens))
     }
 
     /// The workspace's id, if `actor` is a person who owns it.
-    async fn owned_workspace(&self, actor: &User, slug: &str) -> Result<Outcome<String>> {
+    pub(crate) async fn owned_workspace(&self, actor: &User, slug: &str) -> Result<Outcome<String>> {
         let slug = slug.to_lowercase();
         if actor.kind != PrincipalKind::User || actor.role_in(&slug) != Some(Role::Owner) {
             return Ok(Outcome::fail(
@@ -529,69 +491,6 @@ impl Identity {
             Some(workspace) => Outcome::Ok(workspace.id),
             None => Outcome::fail(FailureCode::NotFound, "Workspace not found."),
         })
-    }
-
-    pub async fn create_workspace_token(
-        &self,
-        a: CreateWorkspaceTokenArgs,
-    ) -> Result<Outcome<CreatedAccessToken>> {
-        let workspace_id = match self.owned_workspace(&a.actor, &a.slug).await? {
-            Outcome::Ok(id) => id,
-            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-        };
-        if a.name.trim().is_empty() {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "Name the token after what will use it.",
-            ));
-        }
-        let existing = self
-            .tokens_where("access_tokens.workspace_id = ?", &workspace_id)
-            .await?;
-        if existing.len() >= MAX_TOKENS_PER_WORKSPACE {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This workspace has the maximum number of access tokens. Delete one first.",
-            ));
-        }
-        // A workspace's token reaches that workspace only: it acts as the
-        // workspace (see `workspace_principal`), narrowed by its scopes.
-        let grant = Grant::asked(&a.scopes);
-        let mut created = self
-            .mint(
-                Owner::Workspace {
-                    id: &workspace_id,
-                    created_by: Some(&a.actor.id),
-                },
-                &a.name,
-                a.ttl_seconds,
-                &grant,
-                true,
-            )
-            .await?;
-        created.info.created_by = Some(a.actor.username.clone());
-        // Admin on the workspace's repositories, only when the owner says.
-        if a.admin {
-            self.db
-                .prepare("UPDATE access_tokens SET admin = 1 WHERE id = ?")
-                .bind(&[created.info.id.as_str().into()])?
-                .run()
-                .await?;
-            created.info.admin = true;
-        }
-        self.audit_workspace(
-            &a.actor,
-            "workspace_token.created",
-            &a.slug.to_lowercase(),
-            g1t_contracts::audit::Surface::Web,
-            format!(
-                "Created workspace access token {}{}",
-                created.info.name,
-                if created.info.admin { " with Admin" } else { "" }
-            ),
-        )
-        .await;
-        Ok(Outcome::Ok(created))
     }
 
     pub async fn remove_workspace_token(

@@ -185,7 +185,7 @@ than it reads (indexing), so replicas help it least.
 | --- | --- | --- | --- |
 | Static assets (`/assets/*`) | browser and edge | a year, immutable | hashed file names |
 | Avatars | edge cache | a year, immutable | by content hash |
-| Public pages for people signed out | the data centre's cache (`workers/app.ts`, `servePublic`) | fresh 30 s, then served once more while a new copy is made, up to 5 min | GET, no `g1t_session` cookie, an allowlisted path (home, pricing, explore, policies, a project's pages), status 200 or 404, no `Set-Cookie`, nothing private. Reserved first segments and workspace pages (`-`) are never kept. A project's kept page is served only after repos' `visibility` says the repository is still there and public (one indexed read, alongside the cache lookup); a repository made private or deleted is never served from any data centre's copy, and the copy is dropped. The answer says `server-timing: cache;desc="hit, Ns old"`. |
+| Public pages for people signed out | the data centre's cache (`workers/app.ts`, `servePublic`) | fresh 30 s, then served once more while a new copy is made, up to 5 min | GET, no `g1t_session` cookie, an allowlisted path (home, pricing, explore, policies, a project's pages), status 200 or 404, no `Set-Cookie`, nothing private. Reserved first segments and workspace pages (`-`) are never kept. A project's kept page is served only after repos' `visibility` says the repository is still there and public (one indexed read, alongside the cache lookup); a repository made private or deleted is never served from any data centre's copy, and the copy is dropped. Visitors from the EU, EEA, UK and Switzerland, whose page asks about the analytics cookie, get a copy of their own (the cache key gains `_g1t_consent=1`, `lib/analytics-consent.ts`). The answer says `server-timing: cache;desc="hit, Ns old"`. |
 | Sidebar data (projects, spend, limit, entitlements) | per isolate (`lib/cache.server.ts`) | 15 s, per person and workspace | skipped during a write and for 30 s after the person's last one; failures not kept; only settled answers kept |
 | Registration mode | per isolate | 60 s | |
 | A commit's log by hash | repos' data-centre cache | for good | history from a commit never changes. One of 100 commits or more is put together from a 16-commit read and the history kept from any of those commits, when there is one (`store.rs` `spliced_log`): a default branch that moved by a merge costs 16 commits, not 120 or 1,000 |
@@ -195,6 +195,10 @@ than it reads (indexing), so replicas help it least.
 | A branch's log, the branch list, a file by branch and path | repos' data-centre cache | until the repository's refs change (`refs_version`), 5 min at most | only while no handed-out push credential is live; by commit hash for good (docs/ARTIFACTS.md R9) |
 | A target branch's history, for mergeability | the repos isolate | 60 s, per target head | 100 pull requests checked after a push walk it once (R10) |
 | Git store credentials | repos isolate and KV | reused 50 min (1 h tokens); 3 min for ones handed out | (R3) |
+| A file's highlighted lines (blob, blame) | the site's isolate (about 8 MB), then the data centre's cache (`content.g1t.internal/highlight-lines/`) | for good (30 days in the data centre) | by SHA-256 of the language and the text, nothing else: the same text on any branch, commit or page is one entry. `HIGHLIGHT_VERSION` in `lib/highlight.server.ts` is in the key; bump it when the theme, grammars, Shiki or `linesToHtml` change. Nothing kept for a file without a language or over 200,000 characters |
+| A pull request's first highlighted files | as above (`highlight-diff/`, about 4 MB per isolate) | for good | by the language and each line's side and text (`diffContent` in `lib/diff.ts`); line numbers and the path are not in it |
+| Parsed markdown | the isolate, or the browser tab (400,000 characters of source, about 8 MB) | until pushed out | by the text and the repository its references point into (`components/markdown.tsx`); the tree is rendered with the page's components each time |
+| React Router's route tables | the isolate | its life | the build is loaded once and the handler made once (`workers/app.ts`); development still reloads it per request |
 
 ## Server-Timing
 
@@ -357,6 +361,99 @@ Now:
 | Crawler, after a push | 3,606 ms (the 3.5 s timeout) | at most about 0.8 s: the rest of the page, or 0.7 s for Active branches |
 | Crawler, nothing moved | 460 to 570 ms | not yet measured on production |
 | Browser, first byte | 115 to 160 ms (`total`), 200 to 245 ms measured from Colorado | unchanged: the page does not wait for any of this |
+
+## CPU per page (2026-10-09)
+
+Workers bill CPU time past 30 million ms a cycle. From 1 to 9 October the
+site (`g1t`) used 83.3 million CPU-ms over 1.93 million requests, about 43
+ms a request and seven tenths of all g1t's Workers CPU; `g1t-repos` used
+28.3 million over 6.58 million (about 4 ms). Signed-out pages are kept
+for 30 s (above), but a crawler reads each file once, so most of its
+requests render.
+
+### Measuring it
+
+`Server-Timing` cannot show CPU: a Worker's clock does not move while it
+computes, so `total;dur=0` on a page that rendered for 20 ms is normal.
+Measure locally instead, with the built site and fake services:
+
+1. `npm run build -w apps/web`.
+2. Load `build/server/index.js` in Node with `cloudflare:workers` pointed
+   at a stub whose `env` has a service binding per service, answering
+   `POST /rpc/<method>` from fixtures. A page's `.data` (fetched signed
+   out from production) decoded with React Router's turbo-stream decoder
+   gives realistic answers; files and READMEs can come from the working
+   tree.
+3. Call the worker's `fetch` with a crawler's user agent (the whole page
+   renders before the answer) and read `process.cpuUsage()` over 100
+   requests after a few to warm up. Run Node with `--single-threaded` so
+   garbage collection and compilation count on the one thread, as in a
+   Worker; on Windows `cpuUsage` moves in 15.6 ms steps, so divide a long
+   run, never time one request.
+4. `node --cpu-prof` on the same loop says where it goes.
+
+### Where it went
+
+Profiled with fixtures from flagon-io/g1t:
+
+| Page | CPU a request | Where |
+| --- | --- | --- |
+| A 130-line TypeScript file | 30 ms | 63% highlighting (Shiki's tokenizer), 17% rendering |
+| A 1,800-line TSX file (2.4 MB page) | 250 ms | 85% highlighting; the rest rendering and encoding the page |
+| The Files page with a README | 32 ms | 46% parsing the README (remark, rehype-raw, sanitize, the plugins) |
+| Any page | 1 to 1.5 ms more | React Router rebuilt its route tables for every request: given the build as a function, it wraps every route for the timings and flattens and ranks the route table again each time |
+| `package-lock.json` (3.8 MB page, too large to highlight) | 170 ms | rendering one row per line and the file again in the page's data |
+
+The CSP nonce, `isbot`, Server-Timing bookkeeping and the signed-out
+cache's own work were each under 1% of a page's CPU in the profiles.
+
+### What changed
+
+- **Highlighting is kept by content** (`lib/highlight.server.ts`,
+  `lib/content-cache.ts`): the isolate first, then the data centre's
+  cache, then Shiki. The key is a SHA-256 of the language and the text,
+  with a version, so a file that is the same on another branch or commit,
+  in blame, or for the next crawler is highlighted once per data centre.
+  A pull request's first files are kept the same way.
+- **Markdown is parsed once per text** (`lib/markdown-tree.ts`,
+  `components/markdown.tsx`): the steps `react-markdown` runs on every
+  render are split, and the parsed tree is kept per isolate (and per
+  browser tab). `lib/markdown-tree.test.ts` renders README.md, this file
+  and a set of edge cases (raw HTML, scripts, `javascript:` links, alerts,
+  references) both ways and checks the HTML is identical.
+- **The request handler is made once per isolate** (`workers/app.ts`).
+- Shiki's module is asked for once per isolate, not on every highlight.
+
+### Measured
+
+Locally, CPU a request, median of three runs of 100 requests, signed out
+as a crawler. "Seen" is a file or README this isolate (or data centre)
+has highlighted or parsed before; "new" is one it has not.
+
+| Page | Before | After, seen | After, new |
+| --- | --- | --- | --- |
+| `/` (landing) | 12.7 ms | 10.6 ms | 10.6 ms |
+| `/pricing` | 4.8 ms | 3.3 ms | 3.3 ms |
+| Files, root with README.md | 30.8 ms | 9.5 ms | 23.7 ms |
+| Files, `docs/` (a 30,000-character README) | 44.7 ms | 8.9 ms | 33.1 ms |
+| Files, no README | 9.2 ms | 7.2 ms | 6.9 ms |
+| A 130-line TypeScript file | 27.3 ms | 7.8 ms | 24.5 ms |
+| A 1,800-line TSX file | 255.6 ms | 41.3 ms | 246.7 ms |
+| A 560-line Rust file | 34.7 ms | 14.8 ms | 30.0 ms |
+| A markdown file's source | 18.4 ms | 11.6 ms | 18.8 ms |
+| `package-lock.json` | 200.2 ms | 134.1 ms | 127.8 ms |
+
+A pull request's first screens: a 288-line diff took 18.8 ms to
+highlight and 0.15 ms to read back from the data centre's cache. Hashing
+the text for the key is part of every "new" figure above. Small
+differences (a few ms) are within the noise of these runs; the large
+saving on `package-lock.json`, which nothing here caches, is partly that
+noise and partly less garbage per request.
+
+What is left on large files is rendering: a row per line, and the same
+lines again in the page's data for hydration. Files over 200,000
+characters (lock files) are not highlighted and still cost about 130 ms
+for a crawler.
 
 ## Client navigation
 

@@ -26,7 +26,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::github::*;
 use g1t_contracts::identity::{SignedIn, UserArgs};
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
-use g1t_contracts::{FailureCode, Outcome, User, claimable_namespace, is_reserved_name, is_valid_namespace, new_id};
+use g1t_contracts::{FailureCode, Outcome, User, claimable_username, is_reserved_name, is_valid_namespace, new_id};
 use g1t_kit::now_ms;
 use g1t_secrets::Sealer;
 use serde::{Deserialize, Serialize};
@@ -122,14 +122,14 @@ pub fn verified_emails(emails: &[GithubEmail]) -> Vec<String> {
     out
 }
 
-/// A username made from a GitHub login: lowercased, with anything g1t does
-/// not allow turned into single hyphens. A login that is a reserved name,
-/// such as `g1t`, is suggested with `-gh` after it, so signing up still
-/// goes ahead under a name of its own.
+/// A username made from a GitHub login: its case kept, with anything g1t
+/// does not allow turned into single hyphens. A login that is a reserved
+/// name in any case, such as `g1t`, is suggested with `-gh` after it, so
+/// signing up still goes ahead under a name of its own.
 pub fn suggest_username(login: &str) -> String {
     let mut out = String::new();
-    for character in login.trim().to_lowercase().chars() {
-        if character.is_ascii_lowercase() || character.is_ascii_digit() {
+    for character in login.trim().chars() {
+        if character.is_ascii_alphanumeric() {
             out.push(character);
         } else if !out.ends_with('-') {
             out.push('-');
@@ -456,6 +456,8 @@ impl Identity {
 
     /// Whether `username` could be registered now.
     async fn username_free(&self, username: &str) -> Result<bool> {
+        // Taken in any case: names are found lowercased.
+        let username = &username.to_ascii_lowercase();
         if !is_valid_namespace(username) {
             return Ok(false);
         }
@@ -575,15 +577,23 @@ impl Identity {
         tokens: Option<&Tokens>,
         invite_code: Option<&str>,
     ) -> Result<Outcome<User>> {
+        // Kept as chosen for showing, found lowercased.
+        let Some(chosen) = claimable_username(username) else {
+            return Ok(Outcome::fail(FailureCode::Invalid, crate::USERNAME_RULES));
+        };
+        let username = chosen.canonical.as_str();
         // Made where every account is made, so the invite is checked and
         // spent in one place, with registration's rules (invites.rs).
         let user = match self
             .create_account(crate::invites::NewAccount {
                 username,
+                display_username: chosen.display_if_cased(),
                 email,
                 password_hash: "",
                 verified: true,
                 invite_code,
+                // GitHub has confirmed the address already.
+                email_proof: None,
                 client: None,
             })
             .await?
@@ -740,12 +750,11 @@ impl Identity {
         let Some(row) = self.pending_row(&a.pending).await?.filter(|row| row.kind == "username") else {
             return Ok(Outcome::fail(FailureCode::NotFound, "This GitHub sign-in has expired. Start again."));
         };
-        let Some(username) = claimable_namespace(&a.username) else {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                "Usernames use lowercase letters, digits and single hyphens, up to 39 characters, and cannot be a reserved word.",
-            ));
+        let Some(chosen) = claimable_username(&a.username) else {
+            return Ok(Outcome::fail(FailureCode::Invalid, crate::USERNAME_RULES));
         };
+        // As chosen: create_from_github keeps the case for showing.
+        let username = chosen.display;
         if !self.username_free(&username).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, "That username is taken. Choose another."));
         }
@@ -1032,7 +1041,8 @@ mod tests {
 
     #[test]
     fn usernames_come_from_logins() {
-        assert_eq!(suggest_username("Octo-Cat"), "octo-cat");
+        assert_eq!(suggest_username("Octo-Cat"), "Octo-Cat");
+        assert_eq!(suggest_username("octocat"), "octocat");
         assert_eq!(suggest_username("a_b..c"), "a-b-c");
         assert_eq!(suggest_username("-x-"), "x");
         assert_eq!(suggest_username(&"a".repeat(50)).len(), 39);
@@ -1041,11 +1051,12 @@ mod tests {
     #[test]
     fn a_login_named_like_g1t_gets_a_name_of_its_own() {
         assert_eq!(suggest_username("g1t"), "g1t-gh");
-        assert_eq!(suggest_username("G1T"), "g1t-gh");
+        assert_eq!(suggest_username("G1T"), "G1T-gh");
         assert_eq!(suggest_username("g1t-agent"), "g1t-agent-gh");
-        assert_eq!(suggest_username("G1t_Agent"), "g1t-agent-gh");
+        assert_eq!(suggest_username("G1t_Agent"), "G1t-Agent-gh");
         assert_eq!(suggest_username("api"), "api-gh");
         assert!(is_valid_namespace(&suggest_username("g1t")));
+        assert!(claimable_username(&suggest_username("G1T")).is_some());
         assert_eq!(suggest_username("g1t-fan"), "g1t-fan");
         // So signing up goes ahead, rather than failing on the login.
         let facts = Facts { suggestion: suggest_username("g1t"), ..facts() };
@@ -1056,9 +1067,11 @@ mod tests {
     fn a_chosen_username_cannot_be_g1ts() {
         // What github_sign_up takes from the form.
         for name in ["g1t", " G1T ", "g1t-agent", "G1T-AGENT"] {
-            assert_eq!(claimable_namespace(name), None, "{name}");
+            assert!(claimable_username(name).is_none(), "{name}");
         }
-        assert_eq!(claimable_namespace(" Octo-Cat ").as_deref(), Some("octo-cat"));
+        let chosen = claimable_username(" Octo-Cat ").unwrap();
+        assert_eq!(chosen.canonical, "octo-cat");
+        assert_eq!(chosen.display, "Octo-Cat");
     }
 
     fn facts() -> Facts<'static> {

@@ -2,11 +2,13 @@
  * Which frame a page is drawn in, and what the sidebar offers someone who
  * is not signed in.
  *
- * g1t is a sidebar site: projects, Explore, Search, profiles and
- * not-found pages are drawn in the app's sidebar for everyone, so a
- * visitor browsing public projects finds their way the same as a member.
- * Only the front page and the pages about signing in or paying keep the
- * marketing header and footer.
+ * Someone signed in always gets the app's frame: the rail and its modes.
+ * A visitor gets it on projects, workspaces and not-found pages, where the
+ * sidebar is the project's own menu. g1t's public pages that belong to no
+ * workspace (a person's profile, Explore, Search) are drawn for a visitor
+ * in the public frame instead: the top bar with the mark, search and
+ * signing in, the page at full width, and the footer. So do the front page
+ * and the pages about signing in, paying and trust.
  */
 
 import type { Abilities, Capability } from "@g1t/contracts";
@@ -35,11 +37,16 @@ const MARKETING = new Set([
   "/workspaces/new",
 ]);
 
+/** g1t's public pages that are no workspace's: a visitor reads them in the public frame. */
+const PUBLIC_PAGES = new Set(["/explore", "/search"]);
+
 /** Whether the page is drawn in the app's sidebar frame. */
 export function usesAppShell(pathname: string, signedIn: boolean): boolean {
   if (signedIn) return true;
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  if (MARKETING.has(path)) return false;
+  if (MARKETING.has(path) || PUBLIC_PAGES.has(path)) return false;
+  // A person's profile: theirs, not any workspace's.
+  if (/^\/u\/[^/]+$/.test(path)) return false;
   if (path === "/oauth" || path.startsWith("/oauth/")) return false;
   // An invite link is the front door: the marketing frame, like /register.
   if (path.startsWith("/invite/")) return false;
@@ -99,4 +106,38 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
   return pages.filter(
     (page): page is ProjectPage => page !== false && (!can || !PAGE_NEEDS[page] || Boolean(can[PAGE_NEEDS[page]!])),
   );
+}
+
+/**
+ * A project's pages as the phone's strip of tabs under its name names them
+ * (routes/repo/layout.tsx): the sidebar's words, and the paths under the
+ * project at which each is the current one.
+ */
+export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: string; also: string[]; soon?: boolean }> = {
+  code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare"] },
+  issues: { label: "Issues", path: "issues", also: ["plans", "milestones", "labels"] },
+  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue"] },
+  agents: { label: "Agents", path: "agents", also: ["sessions", "memory"] },
+  actions: { label: "Workflows", path: "actions", also: [] },
+  deployments: { label: "Deployments", path: "deployments", also: [] },
+  observability: { label: "Observability", path: "soon/logs", also: [], soon: true },
+  security: { label: "Security", path: "security", also: [] },
+  insights: { label: "Insights", path: "contributors", also: ["activity", "stargazers"] },
+  settings: { label: "Settings", path: "settings", also: [] },
+};
+
+/**
+ * Which of a project's pages `rest` (the path under the project, no
+ * leading slash) is on: "overview" for the project itself. `soon` says
+ * which page a roadmap page (`soon/<key>`) sits under.
+ */
+export function projectPageAt(rest: string, soon: Record<string, ProjectPage> = {}): ProjectPage | "overview" | null {
+  const path = rest.replace(/^\/+|\/+$/g, "");
+  if (path === "") return "overview";
+  const soonKey = /^soon\/([^/]+)/.exec(path)?.[1];
+  if (soonKey && soon[soonKey]) return soon[soonKey]!;
+  for (const [page, link] of Object.entries(PROJECT_PAGE_LINKS) as [ProjectPage, (typeof PROJECT_PAGE_LINKS)[ProjectPage]][]) {
+    if ([link.path, ...link.also].some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return page;
+  }
+  return null;
 }

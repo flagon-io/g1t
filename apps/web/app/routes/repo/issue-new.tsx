@@ -10,6 +10,7 @@ import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../component
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { useMirrorReason } from "../../components/mirror";
+import { SelectField } from "../../components/ui/select";
 import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
@@ -171,19 +172,17 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
         </fieldset>
         {loaderData.canTriage && loaderData.milestones.length > 0 && (
           <Field label="Milestone">
-            <select
+            <SelectField
               name="milestone"
               defaultValue=""
-              className="h-9 w-full rounded-md border border-line bg-bg px-2 text-sm outline-none hover:border-line-strong focus:border-accent-dim"
-            >
-              <option value="">None</option>
-              {loaderData.milestones.map((milestone) => (
-                <option key={milestone.number} value={milestone.number}>
-                  {milestone.title}
-                  {milestone.dueOn ? ` (due ${milestone.dueOn})` : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "None" },
+                ...loaderData.milestones.map((milestone) => ({
+                  value: String(milestone.number),
+                  label: milestone.dueOn ? `${milestone.title} (due ${milestone.dueOn})` : milestone.title,
+                })),
+              ]}
+            />
           </Field>
         )}
         {loaderData.canAssign && (

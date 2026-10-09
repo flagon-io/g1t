@@ -15,6 +15,8 @@ const RESERVED = new Set([
   "policies", "security", "support", "status", "terms", "privacy", "help", "blog",
   // Invite links, and the waitlist.
   "invite", "invites", "waitlist",
+  // g1t.sh/invitations: the workspace invitations waiting for an answer.
+  "invitations",
   // The container registry, at g1t.sh/v2/.
   "v2",
   // g1t.sh/inbox, and the name it might also go by.
@@ -36,6 +38,33 @@ export function isValidNamespace(value: string): boolean {
  */
 export function isNamespaceShaped(value: string): boolean {
   return NAMESPACE.test(value);
+}
+
+/**
+ * Usernames: letters of either case, digits and single hyphens, not
+ * starting or ending with a hyphen, 1 to 39 characters, never reserved in
+ * any case. The case is kept for showing; everything finds a person by the
+ * name lowercased (`canonicalUsername`), so `Ana` and `ana` are one name.
+ */
+const USERNAME = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+
+/** The `pattern` a username field takes in a form: the same rule, for the browser. */
+export const USERNAME_PATTERN = "[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9]))*";
+
+export function isValidUsername(value: string): boolean {
+  const name = value.trim();
+  return USERNAME.test(name) && !isReservedName(name);
+}
+
+/** The name a person is found, linked and mentioned by: lowercased. */
+export function canonicalUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/** How a person's username shows: as they wrote it, or as it is kept. */
+export function shownUsername(person: { username: string; display_username?: string | null; displayUsername?: string | null }): string {
+  const display = person.display_username ?? person.displayUsername;
+  return display && display.toLowerCase() === person.username.toLowerCase() ? display : person.username;
 }
 
 export function isValidRepoName(value: string): boolean {

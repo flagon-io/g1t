@@ -165,6 +165,10 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
       if (!event.data.verdict) return null;
       return { ...base, actor: "g1t", verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
     case "comment.created":
+      // An agent's advisory review is not a verdict, and its writer is the agent.
+      if (event.data.agent) {
+        return { ...base, actor: `${event.data.agent.displayName} (agent)`, verb: "commented", number: event.data.number };
+      }
       if (event.data.verdict) {
         return { ...base, verb: event.data.verdict === "approve" ? "approved" : "changes_requested", number: event.data.number };
       }
@@ -411,6 +415,20 @@ export function firstPassRate(events: { repo: string; number: number; at: number
 export function passRate(results: boolean[]): number | null {
   if (results.length === 0) return null;
   return results.filter(Boolean).length / results.length;
+}
+
+/**
+ * A project's health from its recent workflow runs, for one that ships
+ * without pull requests (whose checks are what `checks.completed` counts).
+ * Only runs that finished and passed or failed count: cancelled and skipped
+ * say nothing about the code. A run passed on the first try when its first
+ * attempt is the one that passed.
+ */
+export function runHealth(runs: { attempt: number; status: string; conclusion: string | null }[]): { passRate: number | null; firstPass: { rate: number | null; of: number }; checkRuns: number } {
+  const decided = runs.filter((run) => run.status === "completed" && (run.conclusion === "success" || run.conclusion === "failure"));
+  const passed = decided.map((run) => run.conclusion === "success");
+  const first = decided.filter((run) => run.conclusion === "success" && run.attempt <= 1).length;
+  return { passRate: passRate(passed), firstPass: { rate: decided.length ? first / decided.length : null, of: decided.length }, checkRuns: decided.length };
 }
 
 /** How long from an issue being opened to its change landing, for each that did, in ms. */

@@ -94,9 +94,10 @@ over many steps.
 
 ## Connect a provider
 
-1. Open the workspace's **Settings → Integrations**. You need to be an owner.
-2. Under **Model providers**, choose one, and give its key (and address, for
-   an endpoint).
+1. Open the workspace's **Integrations** and choose **AI models**, or go
+   straight to **Model providers** at `g1t.sh/<workspace>/-/integrations/models`.
+   You need to be an owner.
+2. Choose a provider, and give its key (and address, for an endpoint).
 3. **Connect**. g1t checks the key at once and lists the provider's models.
    **Test** checks it again later.
 

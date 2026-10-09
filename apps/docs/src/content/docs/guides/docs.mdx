@@ -1,0 +1,418 @@
+---
+title: Docs
+description: Write a workspace's specs, runbooks, decisions and onboarding together, live, with your agents. Spaces and pages, a block editor with diagrams and math, comments, suggestions from agents you accept or reject, pages that cite code and say when it changed, projects' docs folders, full history, templates, search by project, and Markdown export.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Soon from '../../../components/Soon.astro';
+import Aside from '../../../components/Aside.astro';
+
+**Docs is the workspace's written knowledge**: specs, runbooks, decisions,
+onboarding and meeting notes, in the same place as the conversations and the
+code they describe. People and agents write it together. Agents read it before
+they answer, and when they change a page, you see exactly what they changed
+and decide whether it stays.
+
+Docs is open to every member of a workspace, on every plan. Open **Docs** in
+the rail on the left, or go to `g1t.sh/<workspace>/-/docs`.
+
+## How it fits together
+
+| | |
+| --- | --- |
+| **Spaces** | Where pages live: one for the whole workspace, one per team or project, or a private one for a few people. Each space decides who can read and write it, and how agents change it. |
+| **Pages** | A tree inside each space. A page can hold other pages. Every page has an icon, an optional cover, owners, linked projects, history, comments and backlinks. |
+| **The editor** | Blocks you add with `/`: text, headings, lists, to-dos, toggles, callouts, code, tables, images and files, Mermaid diagrams, math, and live cards for issues, pull requests, channels, projects and other pages. |
+| **Agents** | Read the pages the person they work for can read. Suggest changes you accept or reject inline, or edit directly where a space allows it. Every change is attributed in the history. |
+| **Code** | A page cites the code it describes. When a merged pull request changes that code, the page says it may be out of date, and its owners are told. A project's `docs/` folder can sit beside your spaces, read-only. |
+
+Docs is its own mode, not a tab in a project. To see the pages about one
+project, filter Docs by that project.
+
+## Spaces
+
+Every workspace starts with a **General** space for things everyone should
+know. Make more from **New space** on Docs' home, or **+** beside **Spaces**
+in the sidebar.
+
+A space is for one of three audiences:
+
+| Who it's for | Who can open it |
+| --- | --- |
+| **Everyone in the workspace** | Every member, with the space's base role. |
+| **A team** | Members of that team, with the space's base role. |
+| **Only its members** | The people, agents and teams listed in the space, and nobody else. Workspace owners don't see a private space unless they're added. |
+
+Whoever makes a space has full access to it. Owners of the workspace have full
+access to every workspace and team space.
+
+### Roles
+
+Each person's role in a space is the highest that applies to them: the
+space's base role (for everyone, or for the team), and any role they were
+given in the space's **Members**, directly or through a team.
+
+| Role | Can |
+| --- | --- |
+| **Can view** | Read pages, their history and their comments. |
+| **Can comment** | Read, and comment on passages or whole pages. |
+| **Can edit** | Write and organize pages, accept or reject suggestions, restore versions, and move pages to the trash. |
+| **Full access** | Edit, change the space's settings and members, and delete pages from the trash for good. |
+
+Change them in the space's **Settings** (the gear beside the space in the
+sidebar, or **Settings** on the space's page):
+
+- **Members**: add a person, an agent or a team with a role; change or remove
+  it. A private space always keeps at least one person with full access.
+- **Agents in this space**: **Suggest changes** (the default) or **Edit
+  directly**. See [Agents and pages](#agents-and-pages).
+- **Projects**: the repositories the space is about, as `owner/name`. Docs
+  can be filtered by them.
+- **Archive this space** takes it out of the sidebar and search. Its pages and
+  history are kept. The General space can't be archived.
+
+## Pages
+
+Make a page with **New page** on Docs' home or a space's page, **+** beside a
+space or a page in the sidebar (a page inside it), or from a
+[template](#templates). Give it a title, and press **Enter** to start
+writing.
+
+Above the title, **Add icon** gives the page an emoji and **Add cover** a
+banner. Under the title you see who edited it last and when, its owners, the
+projects it's linked to, and how long it takes to read.
+
+### Organize
+
+- **Drag** a page in the sidebar onto another to put it inside, or onto the
+  top edge of one to put it before it. Drop it on a space's name to move it
+  to the top of that space.
+- **⋯ → Move** does the same from the page, including to another space. Pages
+  inside a page move with it.
+- **⋯ → Duplicate** copies a page, content and all, next to it.
+- A page's address ends in its id: `/<workspace>/-/docs/engineering/release-plan-pag_01j…`.
+  Renaming or moving a page keeps every link to it working.
+
+### Favorites and recent
+
+Star a page (the star at the top of it) to keep it under **Favorites** in the
+sidebar. **Recent** lists the pages you opened last.
+
+### Trash
+
+**⋯ → Move to trash** puts a page, and the pages inside it, in the **Trash**
+(in the sidebar). Anyone who can edit the space can restore it from there,
+with what was inside it. Deleting from the trash removes the page, its
+history and its comments for good, and needs full access to the space.
+
+## The editor
+
+Type `/` anywhere for the block menu, and keep typing to filter it.
+
+| Block | How to add it | In Markdown |
+| --- | --- | --- |
+| Text, Heading 1–3 | `/text`, `/h1`, or type `#`, `##`, `###` and a space | `#`, `##`, `###` |
+| Bulleted, numbered and to-do lists | `/bullet`, `/numbered`, `/todo`, or type `-`, `1.`, `[]` | `-`, `1.`, `- [ ]` |
+| Toggle | `/toggle` | `<details>` |
+| Quote | `/quote`, or type `>` | `>` |
+| Callout (info, warning, success) | `/callout`, `/warning`, `/tip`. Click its icon to change its kind. | `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]`, `> [!CAUTION]` |
+| Divider | `/divider`, or type `---` | `---` |
+| Code, with syntax highlighting | `/code`, or type ` ``` ` and a language | fenced code |
+| Table | `/table` | GitHub tables |
+| Image, video, audio, file | `/image`, `/video`, `/audio`, `/file`: upload one, or paste a link | `![]()`, links |
+| Diagram | `/diagram` or `/mermaid`. **Edit source** to change it; it's drawn as you type. | ` ```mermaid ` |
+| Math | `/math` or `/latex`. Click the formula to change it. | `$$ … $$` |
+| Embed from g1t | `/embed`, then paste the address of an issue, pull request, channel, project or page. The card shows its live title and state (open, merged, closed). | a link |
+| Date | `/date` | the date |
+| Cite code | `/cite`: choose a repository and a path, and what there the page describes (the file or folder, a symbol, an endpoint, an environment variable). See [Pages that cite code](#pages-that-cite-code). | a link to the file |
+
+Inline:
+
+- **Bold**, *italic*, underline, ~~strikethrough~~, `code` and links from the
+  toolbar that appears when you select text, or with Markdown as you type
+  (`**bold**`, `_italic_`, `` `code` ``) and the usual shortcuts
+  (<kbd>⌘ B</kbd>, <kbd>⌘ I</kbd>, <kbd>⌘ U</kbd>).
+- **`@`** mentions a person or an agent. A person mentioned in a page is
+  told, once, in their notifications.
+- **`[[`** links to another page by title. The page you link to lists yours
+  under **Linked from**.
+
+Every block has a handle on its left when you hover it: drag it to move the
+block, or open its menu to change its type, color or delete it. Press
+<kbd>Tab</kbd> to nest a block under the one above it.
+
+**Pasting Markdown** turns it into blocks. **⋯ → Copy as Markdown** puts the
+whole page on your clipboard as Markdown.
+
+Images and files you add are kept with the workspace and served from
+`g1tusercontent.com`, never from `g1t.sh`. Each can be up to 25 MB.
+Anyone with a file's address can open it, as with any shared link, so don't
+put a page's files where the page itself shouldn't go.
+
+<Aside type="note" title="Who can edit">
+People who can only view or comment see the page live, with everyone's
+changes as they happen, but can't change it. The editor says so under the
+title.
+</Aside>
+
+## Writing together
+
+Pages are live: everyone with a page open sees each other's changes as they
+type, with a cursor and name for each person. The faces at the top of the page
+are who's on it now, agents included while they work on it.
+
+Edits merge however many people type at once, even in the same paragraph, and
+nothing is lost if your connection drops: the page says **Offline** and
+sends your changes when you're back.
+
+## Comments
+
+- **On a passage**: select text and choose **Comment**. The passage is
+  highlighted, and the thread stays attached to it as the page changes.
+- **On the whole page**: write in **Discussion** at the bottom of the page.
+- **All of them**: the comments button at the top of the page opens them
+  beside the text, in the order they appear in it.
+
+Reply in a thread, react to a comment, and **Resolve** a thread when it's
+done (you can reopen it). `@`-mention someone in a comment to tell them; they
+are told only if they can read the page.
+
+Anyone who can comment can start threads, reply, react and resolve. Only a
+comment's author edits it; its author or an editor deletes it; editors delete
+whole threads.
+
+## Agents and pages
+
+Agents work on Docs for a person, never on their own authority. An agent
+asked by you:
+
+- **reads** only pages in spaces you can read. When it answers somewhere
+  others will read the answer (a channel), it uses only pages everyone there
+  can read. See [What agents can do for whom](/guides/agent-access/).
+- **suggests** a change where you can comment or edit. A suggestion is a
+  tracked change: the blocks it replaces are struck through in place, and
+  the card beside them (or above the page on a narrower screen) shows what
+  it would write instead.
+- **edits directly** only where you can edit **and** the space's **Agents in
+  this space** is **Edit directly**. Otherwise its edit becomes a
+  suggestion.
+- **makes new pages** where you can edit, such as "write this up" in a
+  thread. The page is yours: you're its owner, and it links back to where it
+  came from.
+
+### How agents find your docs
+
+You don't have to point an agent at the right page. Before an agent answers
+in chat, and as it works through each step of a session, it recalls the
+passages of your Docs closest in meaning to what it's been asked: a few
+sections of pages (and of projects' docs), each with the page and heading it
+came from, so it can follow your runbooks and decisions and link you to them.
+When nothing in Docs is about the question, it recalls nothing.
+
+- **Only what everyone in the conversation can read.** In a DM or a private
+  channel, that's the spaces every person there can read; in a public
+  channel, only spaces the whole workspace can read. Private spaces stay
+  private: their pages never reach a conversation that includes someone
+  outside them. Projects' docs come only from repositories everyone there
+  can read (in a public channel, only public repositories).
+- **Required reading first.** An agent can be given spaces to read first.
+  Recall looks there before the rest of the workspace, so a support agent
+  leans on the support runbooks.
+- **Current, not cached.** A page is indexed within about half a minute of
+  a change, without slowing the editor, and pages in the trash, or in an archived space, are never recalled. A page
+  marked possibly out of date is recalled with that warning, so the agent
+  says so instead of trusting it.
+- **Meaning, then words.** Recall matches by meaning, so "how do we roll
+  back?" finds a section titled "Reverting a deploy". When meaning finds
+  too little, passages with the question's words fill in.
+
+An agent can still read a whole page, search, or list a space's pages when
+recall isn't enough; recall is the head start.
+
+### Write a thread up
+
+In chat, **⋯ → Write this up in Docs** on a message or an open thread asks
+an agent for a page about the thread. Choose the space (only spaces you can
+write in are listed), a title if you want one, and which agent writes it:
+@g1t, or another agent in the conversation. The ask is posted in the thread,
+as you, so everyone there sees what was asked, and it carries the thread's
+link. The agent writes what was decided, why, and what's next, links the
+thread as its source, and replies with the page. As with any page an agent
+makes for you, you own it.
+
+### Accept or reject
+
+Each suggestion says which agent made it, who it was for, and why.
+
+- **Accept** applies it to the page, live for everyone on it. The history
+  records it as "Suggested by @inky, accepted by @ana".
+- **Reject** drops it. Nothing on the page changes.
+- **Accept all** applies every open suggestion on the page, oldest first.
+
+Accepting needs edit access to the space. When the part of the page a
+suggestion changes was deleted meanwhile, the suggestion can't be applied and
+is marked stale.
+
+A page's owners are told when an agent suggests a change to it.
+
+<Aside type="tip" title="Ask in chat">
+"@inky the rollout section of the release plan is out of date, fix it" in a
+channel works: Inky reads the page, and suggests or makes the change for
+you, depending on the space.
+</Aside>
+
+## Pages that cite code
+
+A page about code says which code. When that code changes, the page tells
+you it may be out of date, instead of quietly going wrong.
+
+**Cite code in the text.** Type `/cite`, choose a repository and a path, and
+say what the page describes there:
+
+| What it describes | For example |
+| --- | --- |
+| A file or folder | `src/export.ts`, `src/export` (everything in it) |
+| A symbol | `exportCsv` in `src/export.ts` |
+| An endpoint | `POST /v1/exports` in `api/routes.rs` |
+| An environment variable | `EXPORT_BUCKET` in `wrangler.jsonc` |
+
+The path can be a pattern: `*` matches within a folder, `**` across folders
+(`src/**/*.sql`), `?` one character. The citation is a chip in the text that
+opens the code at the commit it was cited at. A link to a file in a repository
+(`/acme/web/blob/main/src/export.ts`), pasted or written by an agent, counts
+as a citation too.
+
+**Say what the whole page describes.** Under the title, **Describes** lists
+repositories and paths the page is about. Press **+** to add one, or remove
+one from the same place. Anyone who can edit the page can change it.
+
+**When the code changes.** When a pull request that changes a cited path is
+merged, or a commit is pushed straight to the default branch, the page is
+marked **possibly out of date**:
+
+- A banner on the page says which change and which paths: "Possibly out of
+  date since acme/web#431 changed src/export.ts". **Review changes** opens
+  the pull request's changes.
+- The page's owners are told in their notifications.
+- The page shows **Possibly stale** on its card, a dot in the sidebar's tree,
+  and in **Possibly stale** in the sidebar, which lists every such page you
+  can read. Docs' home shows the latest under **Possibly out of date**.
+
+Read what changed, update the page if it needs it, then press **Mark as
+current**. That needs edit access, and clears it for everyone.
+
+Only the change's repository decides who sees it: someone who can't read
+that repository sees "a change you can't see" instead of its name, and is
+told without it.
+
+**Agents keep pages current.** An agent asked to bring a page up to date
+reads what changed, then edits the page or suggests the change as usual,
+saying the edit brings it up to date: once it is applied (or you accept the
+suggestion), the page is current again. An agent only learns of changes in
+repositories the person it works for can read.
+
+## History
+
+**⋯ → History** lists every version of the page: when, who (people and agents),
+and what kind of change it was. Choose a version to see what changed in it,
+line by line.
+
+A new version is recorded:
+
+- after a burst of editing, at most every 10 minutes while people type;
+- for every change an agent makes, and every suggestion accepted;
+- when a version is restored.
+
+**Restore this version** makes the page what it was then, as a new version,
+so nothing after it is lost. Restoring needs edit access.
+
+## Templates
+
+Start a page with its structure already in place: **Templates** in the
+sidebar, the template row on Docs' home, or ask an agent to use one.
+
+g1t's templates:
+
+| Template | For |
+| --- | --- |
+| **Meeting notes** | Attendees, agenda, decisions, action items. |
+| **Spec / RFC** | Problem, goals and non-goals, design with a diagram, alternatives, rollout, open questions. |
+| **Decision record** | Context, the decision, options compared, consequences. |
+| **Runbook** | Symptoms, checks, the fix, when to escalate. |
+| **Onboarding** | A new teammate's first day and week, people to know, links. |
+| **Project brief** | Why, what done looks like, scope, team, milestones, risks. |
+| **Postmortem** | Severity, timeline, root cause, what went well and badly, action items. |
+| **Weekly update** | Shipped, in progress, next, blocked. |
+
+Save any page as one of your workspace's templates with **⋯ → Save as
+template**. Everyone in the workspace can use it. Whoever saved a template,
+or an owner, can delete it.
+
+## Search and projects
+
+The search box at the top of the sidebar, and **Search docs** on Docs' home,
+look through every page you can read, and the projects' docs shown in Docs, by
+their words and by what they mean. Type words, or ask a question: "how do we
+rotate the API key?" finds the section that explains it even when it's
+worded differently. Each result shows the passage that matched, under its
+heading. Narrow it to one space or one project.
+
+Linking to a page from the editor searches titles and text as you type.
+
+A page belongs to a project when the page, or its space, is linked to the
+project. On Docs' home, **All projects** filters the recently edited pages and
+the spaces to one project.
+
+Agents search the same way, and only find what the people they answer can
+read. See [How agents find your docs](#how-agents-find-your-docs).
+
+## Projects' docs
+
+A repository's own docs (its `docs/` folder and its README) stay in the
+repository and change through pull requests. Docs can show them beside your
+spaces, so one sidebar and one search cover both.
+
+<Steps>
+
+1. On Docs' home, press **Show a project's docs**, or **+** next to
+   **Projects' docs** in the sidebar.
+2. Choose a repository you can read. Its README and every Markdown file under
+   `docs/` on the default branch appear in the sidebar, in their folders.
+
+</Steps>
+
+- The files are read-only here, rendered as Code renders them, with links and
+  pictures pointing into the repository. **Edit in Code** opens the file;
+  change it there or in a pull request.
+- They follow the default branch: every push reads the changed files again.
+- Search finds them with your pages, marked with the repository's name.
+- Each person sees only the repositories they can read, whoever added them.
+- Whoever added a project's docs, or a workspace owner, can stop showing them
+  from the bin icon on any of its pages.
+
+A project's docs show its first 300 Markdown files; a file over 512 KB is
+listed but not shown.
+
+## Export
+
+- **⋯ → Export Markdown** downloads a page as a `.md` file.
+- **Export** on a space's page downloads the whole space as a zip of Markdown
+  files, in folders that follow its page tree.
+
+Diagrams export as ` ```mermaid ` blocks, math as `$$` blocks, callouts as
+GitHub alerts, toggles as `<details>`, and embeds and page links as links, so
+the files read well anywhere Markdown does.
+
+## Coming soon <Soon />
+
+- **"Write this up" from a thread** in one click, linked both ways.
+- **A documenter agent** that keeps a space current after merges (updating
+  the pages marked possibly out of date) and writes the weekly summary.
+- **Editing a project's docs from Docs**, opening a pull request for you.
+
+## Pricing
+
+Docs is included on every plan: spaces, pages, live editing, comments, history
+and search, with no seats. Files in pages count toward storage. Agents' work
+on pages is charged to the agent, like any of its work; see
+[what an agent costs](/guides/agents/#what-an-agent-costs).

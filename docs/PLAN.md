@@ -277,8 +277,9 @@ phone and Claude Code are views of the same session.
 ## For people who do not write code
 
 - **Documents are first-class.** Specs, guides, policies and decisions live
-  in repos as markdown, shown in a Docs view: rendered pages, edited in the
-  browser like a document, with inline comments. "Suggest a change" is an
+  in Docs, its own mode (docs/WORKSPACE.md, "Docs"), not a tab on a
+  project: rendered pages, edited in the browser like a document, with
+  inline comments, and filtered by the project they are about. "Suggest a change" is an
   pull request and "publish" is merge, without git vocabulary.
 - **Document issues.** "Write the onboarding guide for the billing API" is
   an issue. Its Definition of done is a checklist judged by a reviewer agent
@@ -498,6 +499,17 @@ This **reverses identity/0023**, which retired a token's reach to some
 workspaces or repositories and left classic tokens only. The reason it is
 reversed: the owner chose GitHub parity, and GitHub has fine-grained tokens
 beside classic ones, with workspaces (organizations) governing both.
+
+> **2026-10-09 (owner): one kind of token.** "We don't need classic and
+> fine-grained tokens ... not 2 different implementations we don't need to
+> maintain." identity/0041 folds both into one access token: a level per
+> resource (each level *is* a scope, so every check below reads scopes
+> unchanged), a reach (all your workspaces, one workspace with all,
+> selected or only public repositories, or none), an owner (a person or a
+> workspace) and an expiry. `TokenKind` and `g1t_contracts::fine_grained`
+> are gone; the reach type is `TokenReach`. The governance below now reads
+> "allow tokens for all workspaces" and "allow tokens for this workspace".
+> The history below is kept for why.
 
 - **Fine-grained personal access tokens** (identity/0034,
   `services/identity/src/token_reach.rs`, `g1t_contracts::fine_grained`):
@@ -1082,6 +1094,14 @@ URL `g1t.sh/<workspace>/<project>`.
 
 ### Dependencies: why this gets powerful
 
+> **Removed 2026-10-09.** Project-to-project dependencies (Settings →
+> Dependencies, `dependsOn` in `.g1t/project.yml`, reference variables
+> such as `API_URL`, preview stacks, **Affects** on pull requests, and the
+> lines agents were told about what a project uses and what uses it) were
+> taken out end to end. The owner: "it's doing nothing, wasting space";
+> it may come back in a more meaningful way when the focus turns to DX.
+> The plan below is kept as history, not as work to do.
+
 Declared in the UI, or in the source as `.g1t/project.yml` (which wins
 when present, as `catalog-info.yaml` does in Backstage):
 
@@ -1145,9 +1165,10 @@ What g1t does with them:
 1. **Projects as the home of deployments and secrets**, 1:1 with every
    existing repository: the service, the pages, deployments and secrets
    moved to the project, `<project>--<workspace>.g1t.page`.
-2. **Dependencies:** declared in the UI and `.g1t/project.yml`, reference
-   variables, impact on pull requests and in agents' context, the map.
-3. **Preview stacks** and cross-project change sets.
+2. ~~**Dependencies:** declared in the UI and `.g1t/project.yml`, reference
+   variables, impact on pull requests and in agents' context, the map.~~
+   Removed 2026-10-09; see above.
+3. ~~**Preview stacks** and cross-project change sets.~~ Removed with them.
 4. **Monorepos:** several projects on one repository, each with a root
    directory, building only what a push touched.
 5. **Mirrored sources:** GitHub first, then GitLab and Bitbucket.

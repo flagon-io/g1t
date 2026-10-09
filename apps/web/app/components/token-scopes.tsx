@@ -17,8 +17,6 @@ import {
 
 import { cn } from "../lib/cn";
 import {
-  DEFAULT_EXPIRY,
-  EXPIRY_CHOICES,
   accessSummary,
   everyScope,
   impliedBy,
@@ -27,11 +25,10 @@ import {
 } from "../lib/token-scopes";
 import { Badge } from "./ui/badge";
 import { Hint } from "./ui/hint";
-import { CONTROL } from "./ui/input";
 
-// Choosing what a token or an application may do: a classic checklist.
-// A token reaches whatever its owner can; the boxes say what it may do
-// there. Every box is a plain form field (`scope`), so the form posts the
+// Choosing what an application signed in with OAuth may do: a checklist
+// of scopes. (Access tokens are made with permissions, the same scopes read
+// per resource: components/token-form.tsx.) Every box is a plain form field (`scope`), so the form posts the
 // same with or without JavaScript; the script applies presets and ticks the
 // lower levels a higher one includes. `lib/token-scopes.ts` reads it back.
 
@@ -195,38 +192,7 @@ export function ScopeChecklist({
   );
 }
 
-/** When a new token stops working: 90 days unless chosen otherwise. Posts `expires`. */
-export function ExpiryField({ id = "token-expires" }: { id?: string }) {
-  const [value, setValue] = useState<string>(DEFAULT_EXPIRY);
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-muted">
-        Expires
-      </label>
-      <select
-        id={id}
-        name="expires"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        className={CONTROL}
-      >
-        {EXPIRY_CHOICES.map((choice) => (
-          <option key={choice.value} value={choice.value}>
-            {choice.label}
-          </option>
-        ))}
-      </select>
-      {value === "never" && (
-        <p className="flex items-start gap-1.5 text-xs text-warn">
-          <TriangleAlert size={13} className="mt-px shrink-0" />
-          It works until someone deletes it. Prefer an expiry.
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** A token's or an application's access in a list: what it may do. */
+/** An application's access in a list: what it may do. */
 export function AccessSummary({
   holder,
   className,

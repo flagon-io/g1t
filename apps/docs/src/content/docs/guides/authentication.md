@@ -1,6 +1,6 @@
 ---
 title: Accounts and authentication
-description: Accounts, invites, email addresses, confirming them, two-factor authentication and recovery codes, fine-grained and classic personal access tokens, scopes and permissions, a workspace's rules for tokens, OAuth, signing in from a tool, password reset, your security log and deleting your account.
+description: Accounts, invites, email addresses, confirming them, two-factor authentication and recovery codes, personal access tokens and their permissions and scopes, a workspace's rules for tokens, OAuth, signing in from a tool, password reset, your security log and deleting your account.
 ---
 
 ## Creating an account
@@ -8,11 +8,21 @@ description: Accounts, invites, email addresses, confirming them, two-factor aut
 g1t is invite-only for now: to make an account you need an
 [invite](#invites). Open the link in your invite, or enter its code at
 [g1t.sh/register](https://g1t.sh/register). Without one, ask for access
-on the same page. Usernames are lowercase letters, digits and single
-hyphens, up to 39 characters.
+on the same page.
+
+Usernames are letters, digits and single hyphens, 1 to 39 characters, not
+starting or ending with a hyphen. They keep the case you type: choose
+`Ana-Lopez` and your profile, menus and cards show `Ana-Lopez`. Case never
+makes a different name, though: `ana-lopez` is the same person and can't
+be registered by anyone else, signing in works in any case,
+`g1t.sh/u/ANA-LOPEZ` opens the same profile, and an `@ana-lopez` mention
+reaches you. Addresses and git URLs use the lowercase form. Reserved words
+(such as `settings`, `api` or `g1t`) are reserved in every case.
 
 Before you can do anything else, you [confirm your email
-address](#confirming-your-email-address) with the code g1t emails you.
+address](#confirming-your-email-address) with the code g1t emails you,
+unless you signed up from the link in an invite g1t emailed to that address
+(see [invites from your inbox](#invites-from-your-inbox)).
 
 Accounts can only be created in a browser. There is no API for it, by
 design: it keeps passwords out of scripts and agents, and lets g1t protect
@@ -28,9 +38,10 @@ under **Your settings**; the sidebar then lists every page.
 | --- | --- | --- |
 | Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
-| Invites | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites](#invites). |
+| Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites to g1t](#making-invites), while g1t is invite-only; after that, the invites you made. |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
-| Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): fine-grained and classic. |
+| Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire. |
+| Integrations | [`/settings/integrations`](https://g1t.sh/settings/integrations) | [Your own integrations](/guides/integrations/#workspace-and-personal): what you have connected for yourself, in every workspace, and what is coming. |
 | GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
 | Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
 | Two-factor authentication | [`/settings/two-factor`](https://g1t.sh/settings/two-factor) | [An authenticator app and recovery codes](#two-factor-authentication). |
@@ -112,6 +123,21 @@ Passkeys are not supported yet; they are next.
 
 ## Invites
 
+There are two kinds of invite, and they do different things:
+
+| | Invite to g1t | Invite to a workspace |
+| --- | --- | --- |
+| Made from | [Settings → Invites](https://g1t.sh/settings/invites), your own | The workspace's **People** page, by its owners |
+| What it gives | One new account. It adds them to no workspace: the account gets a workspace of its own | An invitation to join that workspace, which they accept or decline |
+| Someone without an account | Makes their account with it | Makes their account with it too, while g1t is invite-only, then answers the invitation |
+| Someone already on g1t | Nothing: they have an account | The invitation, in their inbox and by email |
+| Exists | Only while g1t is invite-only | Always |
+| What its page and email say | "@syntaqx invited you to g1t" | "@syntaqx invited you to join Flagon, Inc. on g1t" |
+
+So you can invite someone to g1t without inviting them into any
+workspace; an invite to g1t only adds them to a workspace when you tick
+**Also invite them to a workspace** (see [making invites](#making-invites)).
+
 While g1t is invite-only, every new account needs an invite code, such as
 `g1t-k7m2-q9xd-…`. People already on g1t make them, and g1t sends them to
 people who [asked for access](#asking-for-access). An invite:
@@ -130,36 +156,66 @@ repository, or just making an account), and finishes the job there:
 
 1. **No account yet**: sign up on the page. When the invite was sent to
    your address, the email field is filled in and locked. Choose a
-   username (one is suggested from your address) and a password, then
+   username (one is suggested from your address) and a password. If you
+   opened the page from the invite email itself, the address is already
+   confirmed and you go straight in (see
+   [invites from your inbox](#invites-from-your-inbox)); otherwise
    [confirm the address](#confirming-your-email-address) with the code g1t
-   emails it, even though the invite came there: an invite link can be
-   forwarded, so it does not prove the inbox is yours. Or select
-   **Continue with GitHub**: the invite rides along, and the account uses
-   the invited address when GitHub has verified it too, in which case no
-   confirmation is needed.
+   emails it. Or select **Continue with GitHub**: the invite rides along,
+   and the account uses the invited address when GitHub has verified it
+   too, in which case no confirmation is needed.
 2. **The address already has an account**: select **Sign in to accept**.
    After you sign in, the invite is accepted for you.
 3. **Signed in as someone else**: an invite sent to one address works only
    for an account that has confirmed that address. The page says so and
    offers **Sign out and continue**.
 
-Once you have signed in, or your new account has confirmed its address,
-you land in the workspace (or the repository) the invite was for, already
-a member, with a one-time "You're in" banner, and it becomes the workspace
-your sidebar shows.
+Nobody joins a workspace without saying yes. With an existing account,
+accepting on the invite's page is that yes: you land in the workspace (or
+the repository) the invite was for, with a one-time "You're in" banner,
+and it becomes the workspace your sidebar shows.
+
+A new account made from an invite that names a workspace is invited to
+it: once the account's address is confirmed, g1t takes you to
+[g1t.sh/invitations](https://g1t.sh/invitations), where you
+[accept or decline](#workspace-invitations) it. Until you answer, you have
+no workspace of your own, so you never end up with two. An invite that
+names no workspace gives the new account a workspace of its own instead;
+see [your first workspace](#your-first-workspace).
 
 Signing up spends the invite at once, so nobody else can use it while you
-confirm your address, but you join its workspace only when you confirm, in
-the same step. Until then the invite shows as **confirming their email** to
-whoever made it, and they can still revoke it. If the invite is revoked or
-expires, or its workspace is deleted, before you confirm, your address is
-confirmed all the same and g1t tells you the invite no longer applies: ask
-whoever invited you to add you again. A
+confirm your address. Until you confirm, the invite shows as **confirming
+their email** to whoever made it, and they can still revoke it. If the
+invite is revoked or expires, or its workspace is deleted, before you
+confirm, your address is confirmed all the same and g1t tells you the
+invite no longer applies: ask whoever invited you to invite you again. A
 code typed at [g1t.sh/register](https://g1t.sh/register) goes to the
 same page.
 
 An expired, revoked or used invite says which, and who sent it, so you
 can ask them for a new one; or ask for access from the same page.
+
+### Invites from your inbox
+
+When g1t emails an invite to an address (an invite you make for someone,
+an owner's invite into a workspace or a repository, or an approved
+[request for access](#asking-for-access)), the link in that email carries a
+`proof` that only the email has: `g1t.sh/invite/<code>?proof=…`. Opening
+the link shows that you can read that inbox, so:
+
+- the invite page says the address is confirmed because you came from the
+  invite email, and the email field stays locked to it;
+- your new account starts with the address confirmed: no code is sent. A
+  repository the invite was for is yours straight away; a workspace it
+  names is a [workspace invitation](#workspace-invitations) you accept or
+  decline straight away, since nobody joins a workspace without saying yes.
+
+Anything else confirms the address the usual way, after you sign up: the
+code typed at [g1t.sh/register](https://g1t.sh/register), an invite link
+copied from **Settings → Invites** (whoever made the invite sees the code,
+never the proof), an invite made for anyone with the link, or an invite
+email sent before this existed. The proof is tied to one invite and its
+address, and stops working when the invite is used, revoked or expires.
 
 ### Invite links for a group
 
@@ -189,29 +245,96 @@ of their own; group links are made by g1t staff only.
 
 ### Making invites
 
-1. Open [Settings → Invites](https://g1t.sh/settings/invites).
+These are invites to g1t. They let one person make an account, and add
+them to no workspace unless you say so.
+
+1. Open [Settings → Invites](https://g1t.sh/settings/invites) (**Invites
+   to g1t** in your settings and account menu).
 2. Optionally enter the email address of the person you are inviting.
    With one, g1t emails them the invite, and only that address can use it.
    Without one, anyone with the link can, once.
-3. Select **Create invite**, then copy the link.
+3. Optionally tick **Also invite them to a workspace**, then choose the
+   workspace and the role (**Member** or **Owner**) they are invited with.
+   It is off to start with, and no workspace is chosen for you, not even
+   the one you are in.
+4. Select **Create invite**, then copy the link.
+
+Left unticked, the invite is to g1t only: the new account gets a
+[workspace of its own](#your-first-workspace). Ticked, the new account
+gets a [workspace invitation](#workspace-invitations) to the workspace you
+chose once its address is confirmed, and is not given a workspace of its
+own. The list of workspaces holds the ones you can add members to: the ones
+you own that are on the g1t plan. A workspace on the free plan cannot add
+people, so it is not offered, and the form says so when it is the one you
+are in.
+
+To bring someone into a workspace, you do not need an invite to g1t:
+invite them from the workspace's People page instead (see
+[inviting someone into a workspace](#inviting-someone-into-a-workspace)).
+Settings → Invites links to the People pages of the workspaces you own.
+
+Once anyone can sign up for g1t, there are no invites to g1t to make:
+Settings → Invites keeps only the list of invites you already made, and
+says that anyone can sign up now and that workspace invitations live on
+each workspace's People page. With no invites made, the page is not listed
+in your settings or account menu.
 
 Each person can have **5** invites out at a time. Pending and used invites
 count; an invite you revoke, or one that expires before anyone uses it,
 comes back to you. The list under the form shows each invite's state:
 pending, confirming their email (used to sign up by someone who has not
-confirmed their address yet), joined (with the username of who joined),
-expired or revoked. You
+confirmed their address yet), waiting for them to accept (the account is
+made and confirmed, and the workspace invitation waits for its answer),
+joined (with the username of who joined), declined, expired or revoked. You
 must confirm your email before you can make invites. An agent's token and
 a workspace's token cannot make them.
 
 ### Inviting someone into a workspace
 
-An owner can invite an email address straight into a workspace from its
-People page; see [members and roles](/guides/workspaces/#members-and-roles).
-When the address has no g1t account, the invite makes the account, which
-joins the workspace once it confirms its email address, and it uses one
-invite. Inviting someone who is
-already on g1t costs nothing.
+An owner can invite someone into a workspace from its People page, by
+username or by email address, with the role they join as; see
+[add people](/guides/workspaces/#add-people). Nobody is added without
+saying yes: someone on g1t gets a [workspace invitation](#workspace-invitations)
+to accept or decline. When an address has no g1t account, the invitation
+also lets it make one first, and the invitation is answered once the
+account's address is confirmed (at once when it was made from the invite
+email's link). While g1t is invite-only, that uses one invite: one of the
+workspace's shared invites when it has any, otherwise one of yours. Once
+anyone can sign up, it costs nothing. Inviting someone who is already on
+g1t never costs anything.
+
+### Workspace invitations
+
+A workspace invitation asks one account to join one workspace, with the
+role chosen when it was sent. You hear of it in your inbox and by email,
+and answer it at [g1t.sh/invitations](https://g1t.sh/invitations):
+
+- **Accept** joins the workspace with that role, and takes you there.
+- **Decline** joins nothing; whoever invited you is told in their inbox.
+
+An invitation works for 30 days, the same as an invite. Until it is
+answered, the workspace's owners see it under **Pending invitations** on
+its People page and can revoke it. A workspace on the free plan cannot add
+people, so an invitation to one cannot be accepted until it starts the
+plan. Only you can answer your invitations: an agent's token and a
+workspace's token cannot.
+
+### Your first workspace
+
+Everything on g1t lives in a workspace, so every new account gets one:
+
+- An account whose invite brings it into a workspace gets the invitation
+  to it, and no workspace of its own.
+- Every other account (signed up with a password, with GitHub, from a
+  shared invite link or an invite from g1t staff, or with an invite that
+  names no workspace) gets a workspace of its own, named for its username,
+  on the free plan. Rename it or start the plan on it whenever you like.
+
+Signed in without any workspace (you declined an invitation, or left the
+only workspace you were in), g1t shows **Create your workspace or ask to
+join one** in place of Mission control: the invitations waiting for you, if
+any, and the form to create a workspace. To join a team already on g1t,
+ask one of its owners to invite you by your username.
 
 ### Need more invites?
 
@@ -238,14 +361,18 @@ does not move you down the list.
 | Route | MCP tool and action | What it does |
 | --- | --- | --- |
 | [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites and how many you have left |
-| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email` |
+| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Make an invite, optionally for one `email`; with `workspace` (a slug), the new account is invited to that workspace |
 | [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite, or one whose new account has not confirmed its address |
-| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite an address into a workspace. Owners only. |
+| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite a `username` or an `email` into a workspace, with a `role`. Owners only. |
+| [`GET /user/invitations`](/reference/api/invites/list-invitations/) | `account` `list_workspace_invitations` | The workspace invitations waiting for your answer |
+| [`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/) | `account` `accept_workspace_invitation` | Join the invitation's workspace with its role |
+| [`POST /user/invitations/{id}/decline`](/reference/api/invites/decline-invitation/) | `account` `decline_invitation` | Decline it; whoever sent it is told |
 
 ## Confirming your email address
 
 A new account confirms its email address before it can do anything else on
-g1t. Right after you sign up, g1t emails the address from `noreply@g1t.sh`
+g1t, unless it already has (it was made with GitHub, or from the link in
+its invite email). Right after you sign up, g1t emails the address from `noreply@g1t.sh`
 with two ways to confirm it, either one enough:
 
 - a **six-digit code**, shown large in the email (and in its subject, so a
@@ -282,7 +409,7 @@ An account that has not confirmed its address can only confirm it:
 - **The MCP server** answers `403` with the same message.
 - **Git** over HTTPS refuses pushes and fetches with your credentials, with
   the same message. Package registries treat them as wrong credentials.
-- You cannot create a workspace, join the one your invite named, make
+- You cannot create a workspace, answer the invitation your invite brought, make
   invites or tokens, or approve a tool's sign-in.
 
 You cannot make a token before you confirm, so the API and MCP refusals
@@ -293,6 +420,13 @@ matter only for an account that made one before this rule existed.
 An account made with **Continue with GitHub** starts confirmed: its address
 is one GitHub has verified, so GitHub has already proved the inbox is
 yours, and no code is sent.
+
+### Addresses an invite email has confirmed
+
+An account made from the link in the invite g1t emailed to its address
+starts confirmed the same way: following that link proved the inbox is
+yours. It works only for the address the invite was sent to, and only from
+the email's own link; see [invites from your inbox](#invites-from-your-inbox).
 
 ### Accounts that never confirmed
 
@@ -309,8 +443,11 @@ gives it a new address.
 | [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/) | `account` `confirm_email` | Confirm an address with the `code` from its email |
 
 The answer says whether the account is now confirmed (`verified`), the
-workspace confirming joined it to (`joined`), or why its invite no longer
-applies (`invite_lapsed`).
+workspace its invite invites it to (`invited_to`: accept or decline it with
+[`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/)
+or [`/decline`](/reference/api/invites/decline-invitation/)), or why its
+invite no longer applies (`invite_lapsed`). `joined` is always null: nothing
+is joined without an answer.
 
 ## Email addresses
 
@@ -432,8 +569,9 @@ token and a workspace's token are refused.
 
 ## Workspaces
 
-Your account does not own repositories itself: a workspace does. After
-confirming your email, the first thing you do is create one. Workspaces,
+Your account does not own repositories itself: a workspace does. A new
+account gets one of its own, named for its username, unless its invite
+brings it into one; see [your first workspace](#your-first-workspace). Workspaces,
 their members and roles, and the access tokens that belong to a workspace
 are covered in [workspaces](/guides/workspaces/).
 
@@ -451,183 +589,160 @@ A token is shown once, when it is created; g1t stores only a hash of it.
 If you lose one, delete it and create another. Delete a token the moment
 you think someone else has seen it.
 
-There are two kinds of personal access token, on two tabs of
-[Settings → Access tokens](https://g1t.sh/settings/tokens):
+There is one kind of access token. Every token has:
 
-| | Fine-grained token | Classic token |
-| --- | --- | --- |
-| Reaches | One resource owner: one workspace you belong to, or your own account | Every workspace and repository you can reach, including ones you join later |
-| Repositories | All of the workspace's, the ones you choose (up to 50), or public ones only | All you can reach |
-| What it may do | A level for each [permission](#permissions) | Its [scopes](#scopes) |
-| Expires | Always, within 366 days | 7 days to 1 year, or never |
-| A workspace can | Require an owner's approval first, or keep them out | Keep them out |
+- **Permissions**: a level for each resource, such as Issues: read and
+  write, or Code: read. See [permissions](#permissions).
+- **A reach**: the workspaces and repositories it works in. See
+  [where a token reaches](#where-a-token-reaches).
+- **An expiration**: 7 days to 1 year, or none where the workspaces it
+  reaches allow that.
 
-Both never do more than you could on the website, and both are sent the
-same way. Prefer a fine-grained token: it reaches only what it needs.
+It never does more than you could on the website. Your own tokens are
+under [Settings → Access tokens](https://g1t.sh/settings/tokens). For CI
+and integrations that work for a team, a workspace can have tokens of its
+own, made with the same form, that act as the workspace and keep working
+when their creator leaves. See [workspace tokens](#workspace-tokens).
 
-For CI and integrations that work for a team, a workspace can have tokens
-of its own that act as the workspace and keep working when their creator
-leaves. See [workspace tokens](#workspace-tokens).
+### Create a token
 
-### Create a fine-grained token
+1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens) and
+   select **New token**.
+2. Give it a **Token name** after what will use it, and optionally a
+   **Description**, which a workspace's owners see if they review it.
+3. Choose its **Expiration**: 7, 30, 60, 90 or 180 days, 1 year, or **No
+   expiration**. A workspace it reaches can set a shorter limit, or forbid
+   tokens that never expire; the choices follow its rules. No expiration
+   shows a warning: the token works until someone deletes it.
+4. Under **Where it reaches**, choose **Workspaces**:
+   - **All your workspaces**: every workspace you belong to, including
+     ones you join later.
+   - **One workspace**: then choose its **Repository access**: **All
+     repositories** (including ones made later), **Only select
+     repositories** (tick up to 50), or **No private repositories**
+     (public repositories, read-only, and the workspace's own settings its
+     permissions allow).
+   - **No workspace**: your account and public repositories only, such as
+     a token that reads your inbox.
+5. Under **Permissions**, set each resource the token needs to a level.
+   **Read only**, **Agent** and **CI** fill in a [preset](#presets);
+   **Clear** sets everything back to no access.
+6. Select **Generate token**, and copy it. It is not shown again.
 
-1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens). The
-   **Fine-grained tokens** tab is first.
-2. Under **New fine-grained token**, give it a **Token name** after what
-   will use it, and optionally a **Description**, which a workspace's
-   owners see if they review it.
-3. Choose the **Resource owner**: a workspace you belong to, or **Your
-   account**. A workspace that does not allow fine-grained tokens cannot be
-   chosen.
-4. Choose its **Expiration**: 7, 30, 60, 90 or 180 days, or 1 year, or
-   less when the workspace sets a shorter limit.
-5. Under **Repository access**, choose **Public repositories** (read-only),
-   **All repositories** of the workspace (including ones made later), or
-   **Only select repositories**, and tick up to 50.
-6. Under **Permissions**, set each one the token needs to **Read-only** or
-   **Read and write** (and **Admin** for packages). **Metadata** is always
-   read-only. Each row shows the g1t scopes its level gives.
-7. Select **Generate token**, and copy it. It is not shown again.
+When you make a token for one workspace that
+[requires approval](#a-workspaces-rules-for-tokens), and you are not one of
+its owners, the token is made **Pending approval**: it works at once, but
+reads public repositories only until an owner approves it. The owners hear
+of it in their [inbox](/guides/inbox/), and you hear of their answer in
+yours. An owner's own token never waits.
 
-When the workspace [requires approval](#a-workspaces-rules-for-tokens) and
-you are not one of its owners, the token is made **Pending approval**: it
-works at once, but reads public repositories only until an owner approves
-it. The owners hear of it in their [inbox](/guides/inbox/), and you hear of
-their answer in yours. An owner's own token never waits.
+### Change or delete a token
 
-Select **Edit** on a token to change its name, description, repositories
-or permissions. The token stays the same. Widening it in a workspace that
-requires approval asks again. Its resource owner and expiry cannot change;
-make a new token instead.
+The list under Settings → Access tokens shows each token's name, status
+(pending, denied or revoked, with the owner's note), where it reaches, its
+permissions, and when it was made, last used and expires. Select a token to
+open its page, where you can change its name, description, repositories
+and permissions, and select **Save changes**. The token itself stays the
+same; the change applies from its next request. Widening a token made for
+a workspace that requires approval asks its owners again. Where it reaches
+and when it expires cannot change; make a new token instead.
 
-The list shows each token's status (pending, denied or revoked, with the
-owner's note), what it reaches, its permissions, and when it was made, last
-used and expires.
+**Delete token**, at the bottom of its page, stops it working at once.
 
 ### Permissions
 
-Each level of a fine-grained token's permissions gives g1t
-[scopes](#scopes), and the token is checked by those scopes
-exactly as a classic token is. Where two permissions give the same scopes
-(Checks and Commit statuses; Secrets and Variables; Deployments and Pages),
-giving either gives both.
+A permission is a resource and a level. A higher level includes the lower
+ones: Issues: read and write includes reading issues. Each level is one of
+g1t's [scopes](#scopes), so Issues: read and write is `issues:write`; the
+API, the MCP server and git check every token by those scopes.
 
-Repository permissions, for a workspace as the resource owner:
+Repository permissions apply in every repository the token reaches:
 
-| Permission | Levels | What it covers | g1t scopes it gives |
-| --- | --- | --- | --- |
-| `actions` (Actions) | read, write | Workflow runs, jobs, logs and artifacts: reading them, and running, cancelling and rerunning workflows | read: `workflows:read`; write: `workflows:write` |
-| `administration` (Administration) | read, write | Repository settings, rulesets, who has access and deploy keys; renaming, archiving, transferring and deleting | read: `repo:read`, `access:read`; write: `repo:admin`, `access:admin` |
-| `agents` (g1t agents) | write | Putting g1t's agents to work and messaging them, which uses the workspace's money | write: `agents:run` |
-| `checks` (Checks) | read, write | Check runs and check suites on commits. Shares its scopes with Commit statuses | read: `checks:read`; write: `checks:write` |
-| `contents` (Contents) | read, write | Code, branches, commits and releases: cloning and fetching, pushing, and publishing releases | read: `code:read`; write: `code:write`, `repo:write` |
-| `deployments` (Deployments) | read, write | Deployments and their statuses | read: `deployments:read`; write: `deployments:write` |
-| `environments` (Environments) | read, write | Environments, and their secrets and variables | read: `deployments:read`, `secrets:read`; write: `secrets:admin` |
-| `issues` (Issues) | read, write | Issues, their comments, labels and milestones, and plans | read: `issues:read`; write: `issues:write` |
-| `memory` (Memory and context) | read, write | Recalling memory and searching the workspace's context, and saving memory for the next agent | read: `memory:read`; write: `memory:write` |
-| `metadata` (Metadata) | read | Seeing repositories and searching them. Always read | read: `repo:read` |
-| `packages` (Packages) | read, write, admin | Pulling private packages, publishing them, and (admin) deleting packages and versions | read: `packages:read`; write: `packages:write`; admin: `packages:delete` |
-| `pages` (Pages) | read, write | Deployments on g1t.page. Shares its scopes with Deployments | read: `deployments:read`; write: `deployments:write` |
-| `pull_requests` (Pull requests) | read, write | Pull requests, their reviews, changes, sessions and merge queues | read: `pull_requests:read`; write: `pull_requests:write` |
-| `secrets` (Secrets) | read, write | Actions secrets: listing them (never their values), setting and deleting them. Shares its scopes with Variables | read: `secrets:read`; write: `secrets:admin` |
-| `security_events` (Security events and alerts) | read, write | Code scanning, secret scanning and vulnerability alerts, SARIF uploads and security settings | read: `security:read`; write: `security:write` |
-| `statuses` (Commit statuses) | read, write | Statuses on commits. Shares its scopes with Checks | read: `checks:read`; write: `checks:write` |
-| `variables` (Variables) | read, write | Actions variables: reading, setting and deleting them. Shares its scopes with Secrets | read: `secrets:read`; write: `secrets:admin` |
-| `webhooks` (Webhooks) | read, write | Webhooks and their deliveries | read: `webhooks:read`; write: `webhooks:admin` |
-| `workflows` (Workflows) | write | Adding, changing and deleting workflow files under .g1t/workflows and .github/workflows. Write only | write: `workflow_files:write` |
+| Permission | Levels | Scope names |
+| --- | --- | --- |
+| Repositories | read, read and write, admin | `repo:read`, `repo:write`, `repo:admin` |
+| Code | read, read and write | `code:read`, `code:write` |
+| Security | read, read and write | `security:read`, `security:write` |
+| Packages | read, read and write, read, write and delete | `packages:read`, `packages:write`, `packages:delete` |
+| Issues | read, read and write | `issues:read`, `issues:write` |
+| Pull requests | read, read and write | `pull_requests:read`, `pull_requests:write` |
+| g1t agents | run | `agents:run` |
+| Workflows | read, read and write | `workflows:read`, `workflows:write` |
+| Workflow files | write | `workflow_files:write` |
+| Checks and statuses | read, read and write | `checks:read`, `checks:write` |
+| Deployments | read, read and write | `deployments:read`, `deployments:write` |
+| Memory and context | read, read and write | `memory:read`, `memory:write` |
+| Who has access | read, admin | `access:read`, `access:admin` |
+| Webhooks | read, admin | `webhooks:read`, `webhooks:admin` |
+| Secrets and variables | read, admin | `secrets:read`, `secrets:admin` |
 
-Workspace permissions, for a workspace as the resource owner:
+Workspace permissions apply to the workspaces the token reaches themselves:
 
-| Permission | Levels | What it covers | g1t scopes it gives |
-| --- | --- | --- | --- |
-| `members` (Members) | read, write | The workspace's people, invitations and teams | read: `workspace:read`; write: `workspace:admin` |
-| `workspace_administration` (Administration) | read, write | The workspace's settings, integrations, rulesets and base permission | read: `workspace:read`, `access:read`; write: `workspace:admin`, `access:admin` |
-| `workspace_billing` (Billing) | read, write | Usage, budget, AI credit and invoices, and (write) changing the budget and buying credit | read: `billing:read`; write: `billing:write` |
-| `models` (AI Gateway) | read, write | AI Gateway requests: seeing them, and sending requests, which uses the workspace's AI credit | read: `models:read`; write: `models:write` |
-| `self_hosted_runners` (Self-hosted runners) | read, write | Runners, their groups and settings | read: `runners:read`; write: `runners:admin` |
-| `workspace_secrets` (Secrets) | read, write | The workspace's Actions secrets. Shares its scopes with the repository Secrets permission | read: `secrets:read`; write: `secrets:admin` |
-| `workspace_webhooks` (Webhooks) | read, write | The workspace's webhooks. Shares its scopes with the repository Webhooks permission | read: `webhooks:read`; write: `webhooks:admin` |
+| Permission | Levels | Scope names |
+| --- | --- | --- |
+| Workspaces | read, admin | `workspace:read`, `workspace:admin` |
+| Billing | read, read and write | `billing:read`, `billing:write` |
+| Self-hosted runners | read, admin | `runners:read`, `runners:admin` |
+| AI Gateway | read, read and write | `models:read`, `models:write` |
 
-Account permissions, for your own account as the resource owner:
+Account permissions are about you, wherever you are, and only a personal
+token can hold them:
 
-| Permission | Levels | What it covers | g1t scopes it gives |
-| --- | --- | --- | --- |
-| `email_addresses` (Email addresses) | read, write | Your email addresses and email settings, invites and invitations | read: `account:read`; write: `account:write` |
-| `starring` (Starring) | read, write | Stars and pinned projects. Shares its scopes with Email addresses | read: `account:read`; write: `account:write` |
-| `notifications` (Notifications) | read, write | Your inbox, subscriptions and watched repositories | read: `notifications:read`; write: `notifications:write` |
+| Permission | Levels | Scope names |
+| --- | --- | --- |
+| Your account | read, read and write | `account:read`, `account:write` |
+| Notifications | read, read and write | `notifications:read`, `notifications:write` |
 
-### What a fine-grained token reaches
+What each level lets a token do is in [scopes](#scopes). On the form, each
+row says it for the level chosen, and admin and delete levels are shown in
+red: they change things that are hard to undo, or decide who can reach
+what. Give them only to something you trust as much as yourself.
 
-- **In its workspace**, what your role allows, in the repositories it
-  reaches, and only what its permissions give.
-- **Elsewhere**, public repositories, read-only, as anyone can. It cannot
-  comment, open issues or push there.
-- **With your account as its resource owner**, public repositories,
-  read-only, and what its account permissions give.
-- **While pending, denied or revoked**, public repositories, read-only.
+### Where a token reaches
+
+| Made for | Reaches |
+| --- | --- |
+| All your workspaces | Every workspace you belong to, and repositories you were given, including ones you join later, unless a workspace's [rules](#a-workspaces-rules-for-tokens) keep it out. |
+| One workspace, all repositories | That workspace, and every repository of it you can reach. |
+| One workspace, select repositories | That workspace, and only the repositories chosen. |
+| One workspace, no private repositories | That workspace's own settings its permissions allow, and public repositories. |
+| No workspace | Your account, and public repositories. |
+
+Wherever it does not reach, a token reads public repositories, read-only,
+as anyone can; it cannot comment, open issues or push there. While a token
+made for a workspace is pending, denied or revoked, that is all it does
+there too.
 
 A request it cannot make answers `403` naming why: the scope it lacks, or
-`This fine-grained token's resource owner is the workspace acme: it can only
-read public repositories elsewhere, …`. A repository outside its selection
-answers as if it did not exist.
+`This access token is made for the workspace acme: elsewhere it can only
+read public repositories, …`. A repository outside its selection answers as
+if it did not exist.
 
-### Create a classic token
+### Presets
 
-1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens), and
-   select the **Tokens (classic)** tab.
-2. Under **New classic token**, give it a **Name** after what will use it.
-3. Choose when it **Expires**: 7 days, 30 days, 90 days (the default),
-   1 year, or No expiry. An expired token stops working; make a new one.
-   No expiry shows a warning: the token works until someone deletes it.
-4. Under **Scopes**, tick the boxes for what it may do. They are grouped
-   by area. The form starts on the **Agent** [preset](#presets); select
-   another preset to tick its boxes instead.
-5. Select **Create token**, and copy the token. It is not shown again.
+A preset fills in a starting set of permissions. Select one, then change
+any row.
 
-The list shows each token's name, when it was made and last used, when it
-expires, and its access: a preset's name, its scopes, or Full access. To
-change what a token may do, select **Edit access**, tick or untick boxes,
-and select **Save access**. The token stays the same; the change applies
-from its next request.
+| Preset | Permissions |
+| --- | --- |
+| Read only | Every resource at read. Changes nothing. |
+| Agent | Every resource at read except Self-hosted runners, and Code, Issues, Pull requests, Memory and context and Notifications at read and write, and g1t agents at run. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin level. |
+| CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 
-A classic token reaches every workspace you belong to unless the
-workspace's [rules](#a-workspaces-rules-for-tokens) keep it out: one that
-does not allow classic tokens, one whose longest lifetime this token
-exceeds, or one whose owner revoked it there. It keeps working everywhere
-else.
+A new personal token starts on Read only; a new workspace token on CI.
 
 ## Scopes
 
-A scope is a resource and a level, written `resource:level`, such as
-`issues:write`. A higher level includes the lower ones of the same
-resource: `repo:admin` includes `repo:write`, which includes `repo:read`.
-It never includes another resource: `repo:admin` does not let a token push,
-which is `code:write`.
+A scope is a permission's level, written `resource:level`, such as
+`issues:write`. A token stores the highest scope of each resource it
+holds, and every check reads them. A higher level includes the lower ones
+of the same resource: `repo:admin` includes `repo:write`, which includes
+`repo:read`. It never includes another resource: `repo:admin` does not let
+a token push, which is `code:write`.
 
-On the form, scopes are a checklist grouped by area:
-
-| Group | Scopes |
-| --- | --- |
-| Repositories & code | `repo:read`, `repo:write`, `code:read`, `code:write` |
-| Packages | `packages:read`, `packages:write` |
-| Issues & pull requests | `issues:read`, `issues:write`, `pull_requests:read`, `pull_requests:write` |
-| Agents | `agents:run` |
-| Workflows | `workflows:read`, `workflows:write`, `workflow_files:write` |
-| Checks | `checks:read`, `checks:write` |
-| Deployments | `deployments:read`, `deployments:write` |
-| Memory & search | `memory:read`, `memory:write` |
-| Account | `account:read`, `account:write` |
-| Notifications | `notifications:read`, `notifications:write` |
-| Security | `security:read`, `security:write` |
-| Workspace | `workspace:read`, `access:read`, `webhooks:read`, `secrets:read` |
-| Billing | `billing:read`, `billing:write` |
-| Runners | `runners:read` |
-| AI Gateway | `models:read`, `models:write` |
-| Dangerous | `repo:admin`, `packages:delete`, `workspace:admin`, `access:admin`, `webhooks:admin`, `secrets:admin`, `runners:admin` |
-
-Ticking a higher level ticks the lower ones of its resource and greys
-them out: tick `issues:write` and `issues:read` is ticked too. Untick
-`issues:write` and `issues:read` stays ticked.
+Applications that [sign in with OAuth](#signing-in-with-oauth) ask for
+scopes by these names, and you choose them on a checklist when you approve
+one.
 
 | Scope | What it lets a token do |
 | --- | --- |
@@ -648,7 +763,7 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `agents:run` | Put g1t to work and message it, which uses the workspace's money |
 | `workflows:read` | Read workflows, runs and logs |
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
-| `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset but full access. |
+| `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset. |
 | `checks:read` | Read commits' statuses, check runs, check suites and annotations |
 | `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
 | `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
@@ -662,7 +777,7 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `workspace:read` | Read workspace settings, invites, integrations, model routes and [teams](/guides/teams/) |
 | `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
 | `billing:read` | See a workspace's [usage, budget, AI credit and invoices](/guides/usage-and-billing/) |
-| `billing:write` | Change a workspace's budget and buy AI credit. Only owners, as people: a workspace's own token and g1t's agents never change billing, whatever their scopes. Not in any preset but full access. |
+| `billing:write` | Change a workspace's budget and buy AI credit. Only owners, as people: a workspace's own token and g1t's agents never change billing, whatever their scopes. Not in any preset. |
 | `access:read` | See who has access to repositories |
 | `access:admin` | Give people and teams access to repositories, and take it away |
 | `webhooks:read` | See webhooks and their deliveries |
@@ -672,13 +787,14 @@ them out: tick `issues:write` and `issues:read` is ticked too. Untick
 | `runners:read` | See [self-hosted runners](/guides/self-hosted-runners/), their groups and where agents run. Not in the Agent preset. |
 | `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
 | `models:read` | See the workspace's [AI Gateway](/guides/ai-gateway/) requests: their models, tokens, cost and status |
-| `models:write` | Send model requests through the [AI Gateway](/guides/ai-gateway/), which uses the workspace's AI credit. Only a workspace's own token can send them. Not in any preset but full access. |
+| `models:write` | Send model requests through the [AI Gateway](/guides/ai-gateway/), which uses the workspace's AI credit. Only a workspace's own token can send them. Not in any preset. |
 
 Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page
 in the [API reference](/reference/api/) names its scope, and so does each
-action in [MCP tools](/reference/mcp/). A few calls need a second scope for
-what they ask:
+action in [MCP tools](/reference/mcp/); the MCP server lists only the tools
+a token's permissions can use. A few calls need a second scope for what
+they ask:
 
 | Call | Also needs |
 | --- | --- |
@@ -691,33 +807,12 @@ what they ask:
 What a request may do is where these overlap:
 
 1. **Your role.** A token never does more than you could on the website. A
-   token with `repo:admin` still cannot delete a repository unless you are
-   an owner of its workspace. See [access and roles](/guides/access-and-roles/).
-2. **What it reaches.** A classic token, every workspace and repository you
-   can reach, including ones you join later, unless a workspace's
-   [rules](#a-workspaces-rules-for-tokens) keep it out. A fine-grained
-   token, its [resource owner](#what-a-fine-grained-token-reaches) only.
-3. **Its scopes.** What kinds of thing it may do: chosen directly on a
-   classic token, given by its permissions on a fine-grained one.
-
-To keep a token away from other workspaces, make a fine-grained one, or use
-a [workspace token](#workspace-tokens): it reaches only its own workspace.
-
-### Presets
-
-A preset ticks a starting set of boxes. Select one, then tick or untick
-any box.
-
-| Preset | Scopes |
-| --- | --- |
-| Read only | Every `read` scope. Changes nothing. |
-| Agent | Every `read` scope except `runners:read`, and `code:write`, `issues:write`, `pull_requests:write`, `agents:run`, `memory:write` and `notifications:write`. Reads everything, works on issues and pull requests, pushes code, puts g1t to work, and answers your inbox. No admin scope. |
-| CI | `repo:read`, `code:read`, `code:write`, `packages:read`, `packages:write`, `workflows:read`, `workflows:write`, `checks:read`, `checks:write`, `deployments:read` and `deployments:write`. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
-| Full access | Everything you can do, including deleting repositories and changing who has access. Marked **Dangerous**. |
-
-Admin scopes change things that are hard to undo, or decide who can reach
-what. They are under **Dangerous**, with a warning. Give them only to
-something you trust as much as yourself.
+   token with Repositories: admin still cannot delete a repository unless
+   you are an owner of its workspace. See
+   [access and roles](/guides/access-and-roles/).
+2. **Where it reaches.** All your workspaces, one, or none, and in one, its
+   repositories. See [where a token reaches](#where-a-token-reaches).
+3. **Its permissions.** What kinds of thing it may do there.
 
 ### Git and scopes
 
@@ -725,10 +820,10 @@ Over HTTPS, git checks the same token:
 
 | To | Needs |
 | --- | --- |
-| Clone or fetch a public repository | No scope |
-| Clone or fetch a private repository | `code:read` |
-| Push | `code:write` |
-| Push commits that add, change or delete [workflow files](#workflow-files) | `code:write` and `workflow_files:write` |
+| Clone or fetch a public repository | No permission |
+| Clone or fetch a private repository | Code: read (`code:read`) |
+| Push | Code: read and write (`code:write`) |
+| Push commits that add, change or delete [workflow files](#workflow-files) | Code: read and write, and Workflow files: write (`workflow_files:write`) |
 
 Your role on the repository applies too, as on the website. A refused push
 or clone says which scope is missing.
@@ -737,9 +832,9 @@ or clone says which scope is missing.
 
 A workflow runs with its repository's secrets and a token of its own, so
 changing one is as powerful as holding those. A token therefore needs
-`workflow_files:write` (a fine-grained token's **Workflows** permission) to
-add, change or delete any file under `.g1t/workflows/` or
-`.github/workflows/`, besides `code:write`:
+Workflow files: write (`workflow_files:write`) to add, change or delete any
+file under `.g1t/workflows/` or `.github/workflows/`, besides Code: read
+and write:
 
 - **With git**, every commit a push adds is compared with its parent, and a
   push that changes a workflow file is declined, naming it:
@@ -757,8 +852,7 @@ add, change or delete any file under `.g1t/workflows/` or
   See [the job's token](/guides/actions/#the-jobs-token).
 - **Signed in on g1t.sh**, your role decides, as for any file.
 
-Full-access tokens, and tokens made before scopes, include it. A
-[deploy key](/guides/git/#deploy-keys) with write access may change
+A [deploy key](/guides/git/#deploy-keys) with write access may change
 workflow files.
 
 ### When a token lacks a scope
@@ -776,35 +870,48 @@ The API answers `403` with the scope that was missing in `needed_scope`:
 ```
 
 Through MCP the same message comes back as a tool result with `isError`
-set. Give the token that scope with **Edit access**, or make a new token.
+set. Give the token that permission on its page, or make a new token.
 
-### Tokens made before scopes
+### Tokens made before
 
-Tokens and OAuth sign-ins made before tokens had scopes keep full access,
-so nothing that uses them stops working. Settings marks each one
-**Legacy · full access**, and says to narrow it to what it needs. For a
-token, select **Narrow this token**; for an application, **Change access**
-in [Connected applications](https://g1t.sh/settings/applications). Then
-tick its scopes. A token you make with Full access on purpose is not marked
-legacy.
+Tokens once came in two kinds, with scopes or with permissions for one
+workspace. Every one of them is now a token like any other, and does
+exactly what it did:
 
-A token from [signing in from a tool](#signing-in-from-a-tool), such as the
-g1t CLI, has full access.
+- A token made with scopes is made for **all your workspaces**, with the
+  permissions its scopes were.
+- A token made for one workspace (or for your account only) is made for
+  that workspace (or for **No workspace**), with the repositories it had,
+  and with permissions that are the scopes its old permissions gave.
+- A token with full access, including one made before tokens had scopes and
+  one from [signing in from a tool](#signing-in-from-a-tool) such as the
+  g1t CLI, has every permission at its highest level. Narrow it on its page
+  to what it needs.
+
+An application signed in with OAuth before applications had scopes keeps
+full access too, marked **Legacy · full access**: select **Change access**
+in [Connected applications](https://g1t.sh/settings/applications) to narrow
+it.
+
+The old addresses of the token settings lead to the list and to each
+token's page.
 
 ### Workspace tokens
 
 A workspace's own tokens act as the workspace rather than a person. An
-owner makes them in the workspace's **Settings → Access tokens**, with the
-same checklist and expiry choices; the form starts on the CI preset. A
-workspace token reaches all of that workspace's repositories, never
-another workspace, and cannot manage people, tokens or workspaces.
+owner makes them in the workspace's **Settings → Access tokens**
+(`g1t.sh/<workspace>/-/tokens`), with **New token**: the same form as a
+personal token, starting on the CI preset. A workspace token reaches all
+of that workspace's repositories, or the ones chosen, never another
+workspace, and cannot manage people, tokens or workspaces. It holds no
+account permissions.
 
 It has the Write role on the workspace's repositories, as a member does:
-it pushes, merges and works on issues and pull requests, within its scopes.
-Tick **Admin on the workspace's repositories** when making it to give it
-Admin instead, so it can also manage webhooks, secrets, deploy keys and who
-has access, and manage teams as an owner would. Only an owner can, and only
-when making it. See
+it pushes, merges and works on issues and pull requests, within its
+permissions. Give it **Repositories: admin** to make it an admin of the
+workspace's repositories instead, so it can also manage webhooks, secrets,
+deploy keys and who has access, and manage teams as an owner would. Only an
+owner can make, change or delete one. See
 [workspace access tokens](/guides/workspaces/#workspace-access-tokens).
 
 ## A workspace's rules for tokens
@@ -818,25 +925,26 @@ repositories as anyone can.
 
 | Rule | Default | What it does |
 | --- | --- | --- |
-| Allow fine-grained personal access tokens | On | Off: no fine-grained token can name the workspace as its resource owner, and existing ones stop reaching it. |
-| Require approval of fine-grained tokens | On | A member's fine-grained token naming the workspace waits for an owner's approval, and again when it is widened. Owners' own tokens never wait. |
-| Allow classic personal access tokens | On | Off: classic tokens no longer reach the workspace. |
+| Allow tokens made for the workspace | On | Off: no token can be made for the workspace alone, and existing ones stop reaching it. |
+| Require approval of tokens made for the workspace | On | A member's token made for the workspace waits for an owner's approval, and again when it is widened. Owners' own tokens never wait. |
+| Allow tokens made for all of a member's workspaces | On | Off: tokens made for all of their owner's workspaces no longer reach this one; members make a token for it alone instead, which the rule above can require approval for. |
 | Tokens must expire | Off | On: a token that never expires does not reach the workspace. |
-| Longest lifetime | No limit | A token that lasts longer (from when it was made to when it expires), or never expires, does not reach the workspace. Fine-grained tokens for it cannot be made longer. |
+| Longest lifetime | No limit | A token that lasts longer (from when it was made to when it expires), or never expires, does not reach the workspace. Tokens for it cannot be made longer. |
 
 The same page lists:
 
-- **Waiting for approval.** Each pending fine-grained token with its owner,
+- **Waiting for approval.** Each pending token with its owner,
   permissions, repositories and expiry. Add an optional note, then select
   **Approve** or **Deny**. Its owner hears of it in their inbox, with the
   note.
-- **Tokens that can reach the workspace.** Every fine-grained token naming
-  it, and every classic token of its members and outside collaborators that
-  has not expired, with its owner, permissions or scopes, last use and
-  expiry, and whether it reaches the workspace now (and if not, why). Never
-  the token itself. Select **Revoke** to take one out: a fine-grained token
-  stops reaching the workspace for good; a classic token keeps working
-  everywhere else, but never reaches this workspace again.
+- **Tokens that can reach the workspace.** Every token made for it, and
+  every token of its members and outside collaborators made for all of
+  their workspaces, that has not expired, with its owner, permissions,
+  reach, last use and expiry, and whether it reaches the workspace now (and
+  if not, why). Never the token itself. Select **Revoke** to take one out:
+  a token made for the workspace stops reaching it for good; a token made
+  for all of its owner's workspaces keeps working everywhere else, but
+  never reaches this workspace again.
 
 Approvals, denials, revocations and rule changes are
 [audit log](/guides/audit-log/) entries: `token.approval_requested`,
@@ -845,15 +953,15 @@ Approvals, denials, revocations and rule changes are
 
 ### A workspace's rules through the API
 
-Owners, as people (a personal token with the scope works; a workspace's own
-token does not):
+Owners, as people (a personal token with the permission works; a
+workspace's own token does not):
 
 | Route | MCP tool and action | What it does | Scope |
 | --- | --- | --- | --- |
 | [`GET /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/get-token-policy/) | `workspace` `get_token_policy` | The rules. Members may read them. | `workspace:read` |
-| [`PATCH /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/set-token-policy/) | `workspace` `set_token_policy` | Change `allow_classic`, `allow_fine_grained`, `require_approval`, `max_lifetime_days` (0 for no limit) or `forbid_no_expiry` | `workspace:admin` |
-| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | `workspace` `list_member_tokens` | The tokens that can reach it; `kind` is `classic` or `fine_grained` | `access:read` |
-| [`GET /workspaces/{workspace}/personal-access-token-requests`](/reference/api/personal-access-tokens/list-token-requests/) | `workspace` `list_token_requests` | The fine-grained tokens waiting for approval | `access:read` |
+| [`PATCH /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/set-token-policy/) | `workspace` `set_token_policy` | Change `allow_tokens_for_this_workspace`, `allow_tokens_for_all_workspaces`, `require_approval`, `max_lifetime_days` (0 for no limit) or `forbid_no_expiry` | `workspace:admin` |
+| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | `workspace` `list_member_tokens` | The tokens that can reach it, each with its `permissions` (`{"issues": "write"}`), `scopes`, `workspace` (null when made for all of its owner's), `repository_selection`, `repositories` and `status` | `access:read` |
+| [`GET /workspaces/{workspace}/personal-access-token-requests`](/reference/api/personal-access-tokens/list-token-requests/) | `workspace` `list_token_requests` | The tokens waiting for approval | `access:read` |
 | [`POST /workspaces/{workspace}/personal-access-token-requests/{id}`](/reference/api/personal-access-tokens/review-token-request/) | `workspace` `review_token_request` | `decision` is `approve` or `deny`, with an optional `reason` | `access:admin` |
 | [`POST /workspaces/{workspace}/personal-access-tokens/{id}`](/reference/api/personal-access-tokens/revoke-member-token/) | `workspace` `revoke_member_token` | Revoke a token in the workspace, with an optional `reason` | `access:admin` |
 
@@ -943,7 +1051,7 @@ can delete it.
 
 Only approve a code you asked for. The token has full access: it can do
 everything you can. To give a tool less, make an
-[access token](#create-a-fine-grained-token) with only the scopes it needs instead.
+[access token](#create-a-token) with only the scopes it needs instead.
 
 ## Resetting your password
 
@@ -1039,7 +1147,7 @@ At once, when you delete it:
 | | |
 | --- | --- |
 | Signing in | You are signed out everywhere. Signing in with your password, GitHub, a recovery code or from a tool fails, with the same answer a wrong password gets. |
-| Access tokens, SSH keys and applications | Your personal access tokens (classic and fine-grained), SSH keys, connected applications and sign-ins from a tool stop working and are removed, and so do the deploy keys you added to repositories. A workspace's own tokens are not affected, even ones you made. |
+| Access tokens, SSH keys and applications | Your personal access tokens, SSH keys, connected applications and sign-ins from a tool stop working and are removed, and so do the deploy keys you added to repositories. A workspace's own tokens are not affected, even ones you made. |
 | Workspaces, teams and repositories | You leave every workspace and team, and lose the roles you were given on single repositories. Repository invitations waiting for you are withdrawn, and invites you made that nobody used are revoked. |
 | Your profile | `g1t.sh/<username>` answers 404, and you drop out of search. Nobody can add you to a workspace, team or repository, and nothing more is emailed to you. |
 | What you wrote | Stays where it is, under your username for now. Commits made with your confirmed or noreply addresses show as `ghost`, and as yours again if your account is restored. |

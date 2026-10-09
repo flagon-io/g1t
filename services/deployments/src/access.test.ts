@@ -29,7 +29,7 @@ const allowed = (viewer: User | null, method: Method, isPrivate = true) => can(v
 test("a Read collaborator sees a project's deployments but cannot deploy or change them", () => {
   const reader = collaborator("read");
   for (const method of ["settings", "list", "get", "listDomains"] as const) assert.ok(allowed(reader, method), method);
-  for (const method of ["redeploy", "stack", "takeDown", "updateSettings", "addDomain"] as const) assert.ok(!allowed(reader, method), method);
+  for (const method of ["redeploy", "takeDown", "updateSettings", "addDomain"] as const) assert.ok(!allowed(reader, method), method);
   assert.equal(needs(NEEDS.redeploy), "Needs the Write role or higher.");
 });
 

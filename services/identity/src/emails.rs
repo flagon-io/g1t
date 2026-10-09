@@ -31,9 +31,10 @@
 //!
 //! An account with no confirmed primary is pending: the site, the API and
 //! git let it do nothing but confirm its address, change it, or sign out.
-//! The invite it signed up with was spent then, and what it gives (its
-//! workspace) is applied in the same transaction that confirms the address
-//! (invites.rs, `apply_invite_statements`).
+//! The invite it signed up with was spent then, and what it gives is
+//! applied in the same transaction that confirms the address (invites.rs,
+//! `apply_invite_statements`): the workspace it names becomes a workspace
+//! invitation the person accepts or declines (invitations.rs).
 
 use std::collections::HashMap;
 
@@ -693,7 +694,7 @@ impl Identity {
         self.log_security(user_id, "email_verified", Some(&row.display), None).await;
         self.announce_email("user.email_verified", user_id, false).await;
         let verified = self.account_confirmed(user_id).await?;
-        let (mut joined, mut invite_lapsed) = (None, None);
+        let (mut invited_to, mut invite_lapsed) = (None, None);
         if let (Some(invite), Some(join), true) = (&awaiting, &join, verified) {
             let user = g1t_contracts::User {
                 id: user_id.to_owned(),
@@ -701,12 +702,12 @@ impl Identity {
                 verified: true,
                 ..g1t_contracts::User::default()
             };
-            joined = self.after_applied(invite, &user, join).await?;
+            invited_to = self.after_applied(invite, &user, join).await?;
             invite_lapsed = match join {
                 AwaitingJoin::Lapsed(why) => Some(why.clone()),
                 // Revoked between the read and the transaction.
-                AwaitingJoin::Join { .. } if joined.is_none() => Some(
-                    "Your email address is confirmed. The invite you signed up with no longer applies, so it did not join you to a workspace."
+                AwaitingJoin::Invited { .. } if invited_to.is_none() => Some(
+                    "Your email address is confirmed. The invite you signed up with no longer applies, so it does not invite you to a workspace."
                         .to_owned(),
                 ),
                 _ => None,
@@ -716,7 +717,8 @@ impl Identity {
             username: account.username,
             email: row.display,
             verified,
-            joined,
+            joined: None,
+            invited_to,
             invite_lapsed,
         }))
     }

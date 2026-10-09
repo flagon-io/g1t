@@ -1,3 +1,7 @@
 # Fingerprinted by the build (typefaces, styles, scripts): kept for good.
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
+
+# The web app manifest: name, icons and colours for home screens.
+/site.webmanifest
+  Content-Type: application/manifest+json

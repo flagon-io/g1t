@@ -2,7 +2,8 @@
 
 How g1t checks what it charges against what Cloudflare charges it, keeps
 prices at cost plus 20%, and tells staff when the margin slips. Internal.
-Code: `services/billing/src/costs.rs` (reading the bill), `margin.rs`
+Code: `services/billing/src/costs.rs` (reading the bill), `cycle.rs`
+(Cloudflare's billing cycle, list prices and included amounts), `margin.rs`
 (reconciliation, drift, alerts), `pricing.rs` (versions, proposals,
 notice), `keeper.rs` (sandbox and Workers for Platforms measurements),
 `budget.rs` (what g1t pays for itself, and its caps; see
@@ -19,14 +20,14 @@ to what g1t sells is data you change from sudo, without a deploy.
 
 | Source | What | Where it lands |
 | --- | --- | --- |
-| Billable usage, `GET /accounts/{account}/billable-usage?from=&to=` | One row per service per day in FOCUS columns: `ServiceFamilyName`, `ServiceName`, `ChargePeriodStart`, `PricingQuantity`, `ContractedCost` / `BilledCost` / `ListCost`. Every product g1t uses appears once it is used: Workers, Workers for Platforms, D1, KV, R2, Queues, Containers, Durable Objects, Artifacts, Browser Rendering, Workers AI, Vectorize, Cloudflare for SaaS, Email. Inside an included amount the cost is 0. | `cost_lines`, source `billable_usage` |
+| Billable usage, `GET /accounts/{account}/billable-usage?from=&to=` | One row per service per day in FOCUS columns: `ServiceFamilyName`, `ServiceName`, `ChargePeriodStart`, `ConsumedQuantity` (else `PricingQuantity`), `ContractedCost` / `BilledCost` / `EffectiveCost`. Every page is read (`result_info`: `cursor`, else `total_pages`), over whole billing cycles (see [The billing cycle](#the-billing-cycle)). Every product g1t uses appears here once it is used: Workers, Workers for Platforms, D1, KV, R2, Queues, Containers, Durable Objects, Artifacts, Browser Rendering, Workers AI, Vectorize, Cloudflare for SaaS, Email. While a cycle is open its rows carry no cost; `ListCost` is never taken as a cost, since it is before the included amounts (the keeper reads it for a unit's rate, below). | `cost_lines`, source `billable_usage`: `quantity` (consumed), `billed_usd` (Cloudflare's own cost), `billable_quantity` and `cost_usd` (over the cycle), `basis`; the read itself in `cost_reads` |
 | GraphQL `artifactsEventsAdaptiveGroups` | Artifacts' own count by `date`, `eventType` and `repositoryName`. Operations are `create`, `fork`, `push`, `pull`, `delete`; errors (`rateLimited`, `serverError`, …) are kept but not counted. | `cost_lines`, source `artifacts_events`; per workspace (from the store key `<workspace>--<repo>`; a pull request's working copy, `pulls--<id>`, is its repository's workspace's, from repos' `pull_owners`) in `own_counts` as `cloudflare_git` |
 | GraphQL `aiGatewayRequestsAdaptiveGroups`, filtered to `AI_GATEWAY_ID` | What AI Gateway priced g1t's own provider traffic at, by `date`, `provider` and `model`: `count`, `sum.cost` (dollars), `sum.tokensIn`/`tokensOut`/`cacheReadTokens`/`cacheWriteTokens`; asked twice in one query, filtered `wholesale: 0` and `wholesale: 1`. `wholesale` is never a dimension: grouped by it, Cloudflare answers no rows and no error (until 2026-10-08 that left the gateway's side empty while it had logged $11.11). Read over its own window: the last 31 days until it has answered with a line, then the last few. Field names checked against Cloudflare's schema (introspection of `AccountAiGatewayRequestsAdaptiveGroups{Sum,Dimensions,Filter_InputObject}`). An adaptive (sampled) dataset: an estimate, close at g1t's volumes. Only g1t's hosted models go through this gateway: a workspace's own provider is called at its own address, never here. | `cost_lines`, source `ai_gateway`, product `ai_gateway_requests`: per day and model a line `<provider>_<model>` (requests, at the gateway's cost), and at no cost `…__tokens`, `…__cache_read_tokens`, `…__cache_write_tokens`; Cloudflare-billed (unified billing) requests are prefixed `wholesale__`. Mapped to `models` (migration 0036). A re-read day replaces all its gateway lines. |
 | The ledger | Every charge: its cost at the price book's cost, what it was charged at price, what paid for it. | read, never written |
 | `pending_usage` | Month-end meters (git, storage, scans, embeddings, the cache) as they stand. | snapshotted daily into `pending_days` |
 | `plan_payments` | The plan's $20. | read |
 | repos `git_operations` | Operations customers are charged for, per workspace, counted by repos through its `operation_mapping`. | `own_counts` meter `git_operations` |
-| Subscriptions, `GET /accounts/{account}/subscriptions` | What g1t pays each month whatever it uses (Workers Paid, add-ons): each subscription that is paid, trialing or awaiting payment, at its price over its frequency. Not on the billable-usage bill. Read in the daily run with the bill's token; a failure is logged and the last read stays. | `cf_subscriptions` (one row) |
+| Subscriptions, `GET /accounts/{account}/subscriptions` | What g1t pays each month whatever it uses (Workers Paid, add-ons): each subscription that is paid, trialing or awaiting payment, at its price over its frequency; and `current_period_start` of the monthly one, the day every billing cycle starts. Not on the billable-usage bill. Read first in the daily run, with the bill's token; a failure is logged and the last read stays. | `cf_subscriptions` (one row; `cycle_start`) |
 | repos `artifacts_usage` | Every raw meter of the git store (`git.fetch`, `git.receive_pack`, `binding.*`, …) per day and workspace, with repos' `operation_mapping`. | `own_counts` meters `artifacts_<raw meter>`, and `cost_operations` (raw counts × the mapping's `cost_operations`: what g1t expects Cloudflare to bill) |
 
 A meter's slug is Cloudflare's name lower-cased with words joined by `_`
@@ -34,6 +35,88 @@ and the "(First … included)" note dropped: `Workers for Platforms CPU ms
 (First 60M ms are included)` under `Workers` is product `workers`, meter
 `workers_for_platforms_cpu_ms`. Several rows of the same day and meter
 (regions, tiers) are added together before they are stored.
+
+## The billing cycle
+
+Cloudflare bills usage per billing cycle: a month from the day the
+account's subscription renews. g1t's account renews on the 28th, so a cycle
+runs from the 28th to the 27th (Sep 28 to Oct 27, 2026). Each meter's
+included amount ("first 30M are included") is the account's, once a cycle:
+not a day's, not a calendar month's, and not per product. Code:
+`services/billing/src/cycle.rs`.
+
+- **When a cycle starts**: `current_period_start` of the monthly
+  subscription, from the daily read of the subscriptions
+  (`cf_subscriptions.cycle_start`). Until that has worked,
+  `CLOUDFLARE_BILLING_DAY` on g1t-billing (`28`), else the 1st.
+- **What is read**: the whole current cycle, every run, and the cycle
+  before while it is in its first 4 days (Cloudflare posts a day a day or
+  two late and restates recent days) or when nothing has been read yet.
+  Every page of the answer. The days read replace what was kept for them.
+- **What a meter costs**: where Cloudflare put a cost on any of a meter's
+  lines in the cycle, that cost, line by line (`basis` `cloudflare`).
+  Otherwise the list price past the included amount (`basis` `list`), on
+  the days the cycle's running total passes it: a cycle that crosses the
+  included amount on the 7th has all of its cost on the 7th and after, as
+  on Cloudflare's Billable usage page. Meters priced per million
+  (requests, CPU ms, rows, operations) are billed in whole millions:
+  9.16M CPU ms past the included 30M is 10M, $0.20. A meter with no list
+  price is costed at $0 (`basis` `none`), and sudo lists it.
+- **List prices** (`cycle::LIST_PRICES`), each with its included amount
+  per cycle:
+
+  | Meter | Included | Price |
+  | --- | --- | --- |
+  | Workers standard requests | 10M | $0.30 per million |
+  | Workers CPU ms | 30M | $0.02 per million |
+  | Workers for Platforms requests | 20M | $0.30 per million |
+  | Workers for Platforms CPU ms | 60M | $0.02 per million |
+  | Workers for Platforms scripts | 1,000 | $0.02 each |
+  | Workers Logs events | 20M | $0.60 per million |
+  | D1 rows read / written | 25B / 50M | $0.001 / $1.00 per million |
+  | D1 storage | 5 GB-month | $0.75 per GB-month |
+  | KV reads / writes, lists, deletes | 10M / 1M each | $0.50 / $5.00 per million |
+  | KV storage | 1 GB | $0.50 per GB-month |
+  | R2 Class A / Class B operations | 1M / 10M | $4.50 / $0.36 per million |
+  | Durable Objects requests | 1M | $0.15 per million |
+  | Durable Objects duration | 400,000 GB-s | $12.50 per million GB-s |
+  | Durable Objects SQL rows read / written | 25B / 50M | $0.001 / $1.00 per million |
+  | Durable Objects SQL storage | 5 GB-month | $0.20 per GB-month |
+  | Queues operations | 1M | $0.40 per million |
+  | Containers memory | 25 GiB-hours (90,000 GiB-s) | $0.0000025 per GiB-second |
+  | Containers vCPU | 375 vCPU-minutes (22,500 vCPU-s) | $0.000020 per vCPU-second |
+  | Containers disk | 200 GB-hours (720,000 GB-s) | $0.00000007 per GB-second |
+  | Containers egress, North America and Europe / elsewhere | 1 TB / 500 GB | $0.025 / $0.04 per GB |
+  | Vectorize queried / stored dimensions | 50M / 10M | $0.01 per million / $0.05 per 100 million |
+  | Workers AI neurons | 10,000 a day | $0.011 per 1,000 |
+
+  Not priced yet, so $0 until Cloudflare's lines carry a cost: Artifacts
+  (billed from 2026-10-14), Email Service, Browser Rendering, R2 storage,
+  Cloudflare for SaaS. When Cloudflare changes a price or an included
+  amount, change the table and its test in the same pull request.
+- **Projection**: the cycle's cost so far over the days elapsed, times the
+  cycle's days, as Cloudflare's page projects it ($0.29 over 12 days of a
+  30-day cycle is $0.73).
+- **Subscriptions** (Workers Paid and Workers for Platforms, $30 a month)
+  accrue day by day: each day is its cycle's share of the month's price.
+  The statement's range and g1t's own spend (the calendar month so far) both
+  add up the same days, so they never disagree about a day.
+
+Sudo's Bill & pricing page opens with **This billing cycle**: each meter's
+use, what the cycle includes, what is past it and its cost, the total so
+far, the average day, the projection and the subscriptions. Under it, what
+the last read got back (`cost_reads`): rows, pages, how many rows had a
+consumed quantity and how many only a pricing quantity, and how many carried
+Cloudflare's own cost.
+
+To check the figures against Cloudflare: in the dashboard, Billing →
+Billable usage, for the same cycle. The total so far, the projection and
+each meter's total and billable quantity should agree within a cent. If
+they do not, read the answer itself with a token with Billing Read:
+`GET https://api.cloudflare.com/client/v4/accounts/{account}/billable-usage?from=<cycle start>&to=<today>`,
+and compare, for `Workers CPU ms` and `Container Memory`, the
+`ConsumedQuantity`, `PricingQuantity`, `PricingUnit` and the cost columns,
+and `result_info` for more pages.
 
 ## Credentials
 
@@ -61,14 +144,19 @@ The daily cron (`17 4 * * *`, `keeper::DAILY`) runs, in order:
 1. The keeper's measurements (sandbox seconds, app requests and CPU), each
    a proposal now, not a direct change.
 2. `costs_daily`:
-   1. Read the bill, the Artifacts events and AI Gateway's analytics. The first run reads the last
-      31 days (GraphQL keeps 31); later runs the last 4, since Cloudflare
-      restates recent days, or back to the last day read after a gap.
-      Lines are upserted on `(day, source, product, meter)`, so a re-read
-      replaces, never adds.
+   1. Read Cloudflare's subscriptions (and with them when the billing cycle
+      starts), then the bill, the Artifacts events and AI Gateway's
+      analytics. The bill is read over whole billing cycles, every page
+      (see [The billing cycle](#the-billing-cycle)), and priced over each
+      cycle; its days replace what was kept for them. The Artifacts events
+      and the gateway: the first run reads the last 31 days (GraphQL keeps
+      31); later runs the last 4, since Cloudflare restates recent days, or
+      back to the last day read after a gap. Lines are upserted on
+      `(day, source, product, meter)`, so a re-read replaces, never adds.
    2. g1t's own counts for the same days (replaced per day).
    3. Snapshot `pending_usage` into `pending_days`.
-   4. Reconcile the last 31 days (further back after a gap) into
+   4. Reconcile the last 31 days (further back after a gap, or to the
+      first day of the bill's read) into
       `margin_days` and `workspace_costs`
       (replaced per day).
    5. Drift over the last 7 days into `cost_drift`.
@@ -103,9 +191,10 @@ prefix, `*` last. A line no row claims goes to `unmapped`.
 
 For each day and bucket:
 
-- **Cloudflare cost** = Σ the bucket's lines' cost, as billed: after the
-  included allowances, so a month inside them costs $0 here as on
-  Cloudflare's Billable usage page. `models` uses the ledger's cost of the
+- **Cloudflare cost** = Σ the bucket's lines' cost, after the included
+  amounts over the billing cycle (see [The billing cycle](#the-billing-cycle)),
+  so a cycle inside them costs $0 here as on Cloudflare's Billable usage
+  page, and the day its total passes one carries the cost. `models` uses the ledger's cost of the
   tokens instead; that is paid to the model providers and is not on
   Cloudflare's bill. Its "Cloudflare" column is what AI Gateway priced the
   same traffic at, which drift compares with the ledger (below); it is
@@ -116,9 +205,10 @@ For each day and bucket:
 - **Value** = what customers were charged at price: `-amount_micros` plus
   what the plan's included usage, a trial, the open-source pool or g1t paid.
   g1t's own (comped) workspaces are valued at cost plus the margin.
-- **Cash** = what workspaces paid: `-amount_micros`, and the plan's price.
-  Never tax or card fees: a payment credits the balance, and
-  `plan_payments`, without them (see [Tax and the card fee](#tax-and-the-card-fee)).
+- **Cash** = what workspaces paid with real money: `-amount_micros`, and
+  the plan's price, from the day payments went live (see "charged without
+  real money" below). Never tax or card fees: a payment credits the
+  balance, and `plan_payments`, without them (see [Tax and the card fee](#tax-and-the-card-fee)).
 - **Given away** = the part of the cost that went on usage g1t paid for
   itself on purpose, by why:
   - **comped**: all of a comped workspace's cost, every bucket;
@@ -141,7 +231,15 @@ For each day and bucket:
     0046). The model calls and Cloudflare usage still happened, so the
     reconciliation reads the kept rows back as that workspace's usage on
     their days: valued as before, no cash, all of it given. See
-    [Resetting a test workspace](#resetting-a-test-workspace).
+    [Resetting a test workspace](#resetting-a-test-workspace);
+  - **charged without real money**: what workspaces were charged, and
+    plans paid, while payments were not live (Stripe's test mode), or
+    before the day they went live (`cost_settings.payments_live_since`,
+    kept the first time the run sees live payments). It brought in no
+    money, so it is taken out of cash and given (`given_unpaid_micros`,
+    migration 0052): never money in, never margin, never what a workspace
+    paid. The plan's included usage counts as money in only from that day
+    too.
 
   Otherwise a workspace's day is split by those shares of its value at
   price, and the same shares of each of its buckets' cost are given, its
@@ -163,16 +261,21 @@ For each day and bucket:
     sits near 16.7%.
   - **Running g1t**: the plan's price against `platform` less its given
     share.
-  - **Cloudflare subscriptions**: what Cloudflare lists, a month, over
-    the range (`cf_subscriptions`); until a read has worked,
-    `CLOUDFLARE_FIXED_MONTHLY_MICROS`, an estimate.
+  - **Cloudflare subscriptions**: what Cloudflare lists, a month
+    (`cf_subscriptions`), accrued over the range day by day as each day's
+    share of its billing cycle (`OverallMargin.subscriptions_micros`);
+    until a read has worked, `CLOUDFLARE_FIXED_MONTHLY_MICROS`, an
+    estimate.
   - **Not mapped**: billed, charged for by nothing.
   - **Given away**: by why. A budget, watched under g1t's own spend, never
     shown as a loss.
   - **All in**: money in against all of it, with the figure without what
     was given beside it. **Who g1t paid** is All in's cost, split into
     Cloudflare's usage, Cloudflare's subscriptions over the range, and the
-    model providers.
+    model providers (the ledger's cost); where AI Gateway priced g1t's own
+    provider traffic at more than a cent apart from that
+    (`OverallMargin.gateway_cost_micros`, Cloudflare-billed requests left
+    out), it says so beside it, and the `models` drift says why.
 
   The overall alert is (Σ cash − (Σ cost − Σ given)) / Σ cash.
 - **Quantities**: where a mapping names an `own_meter`, Cloudflare's
@@ -186,14 +289,17 @@ own count, what its usage cost (so free use carries its own cost), what
 each was charged for it. `platform`
 and `unmapped` are shared by each workspace's share of all usage that
 day. Shares are whole micros that add up to the bill exactly (largest
-remainder).
+remainder). On a day no workspace used anything, running g1t has no one to
+share it: it stays no one's, and sudo says how much under **Workspaces that
+cost most** (`CostsReport.unattributed_micros`), so the workspaces' costs
+and it add up to the statement's cost.
 
 ## Drift (last 7 days)
 
 | Kind | When | What to do |
 | --- | --- | --- |
 | Count | g1t's count and Cloudflare's differ by more than the mapping's `drift_percent` (10%) | Find out what Cloudflare counts: compare its events with `own_counts` `artifacts_*` and `cost_operations`. If it counts more (binding reads, `ls-refs`), either change repos' `operation_mapping` so customers are charged for what Cloudflare counts, or leave it and let the per-unit cost rise (below). |
-| Cost | Cloudflare charged more than `drift_percent` away from the price book's cost of the same usage, with at least `min_daily_cost` | A price is stale: check the proposals. |
+| Cost | The price book's cost of a product's usage over the 7 days (the ledger's `cost_micros`) is more than `drift_percent` away from what the same usage comes to at Cloudflare's list prices before the included amounts, with at least `min_daily_cost` either side. The list cost is each billable-usage line mapped to the product, its whole quantity at `cycle::LIST_PRICES` (not rounded to whole millions; `margin::list_costs`). Never what Cloudflare billed: that is net of the cycle's included amounts while the price book costs every unit, so a product whose usage mostly fits in them (sandboxes inside 25 GiB-hours of Containers memory) would read as a stale price when nothing changed; what was billed is still the cost in the margins, and a leak. A product with usage on a meter that has no list price (Artifacts, Cloudflare for SaaS, R2 storage until priced) is not checked, since its usage cannot be priced like for like; add the price to `cycle::LIST_PRICES`. `cost_drift` is replaced every run and an alert whose drift is gone is resolved on the same run, so an alert raised by the old comparison (what was billed against the price book) closes on the next | A price is stale: check the proposals, and `cycle::LIST_PRICES` against Cloudflare's pricing page. |
 | Cost, on `models` | What AI Gateway priced g1t's own provider traffic at over the 7 days, against the ledger's model cost for the same days (billed to g1t: comped, free and trial use included, a workspace's own provider not) plus the model cost testing resets kept for those days (`reset_costs`), more than the `ai_gateway_requests` mapping's `drift_percent` (10%) apart, with at least `min_daily_cost`. A ledger with none of the gateway's cost is drift too, and so is a gateway that priced nothing against a ledger with at least `min_daily_cost` of model cost (no percentage): that is not agreement. Its detail says why as far as the run could tell: requests logged with no price (add the models' prices), a token Cloudflare refuses for the gateway (give it AI Gateway Read, or fix `AI_GATEWAY_ID`), a gateway the token sees with no requests (calls went around it), or a read that failed | The gateway higher: model calls g1t paid for and charged no one: runs not settled yet (they catch up within the hour), runs with no session, a run started without a billing ticket, or something else on g1t's gateway. The ledger higher: runs that reached a provider without the gateway. The detail adds why the gateway's own figure may be off: prompt-cache read and write tokens (the gateway prices them at its rates for cache tokens, which can lag the provider's; check against the provider's invoice), requests Cloudflare billed itself (unified billing: on Cloudflare's bill, not a provider's), and models with no price. A testing reset in the window is named in the detail: one that kept its cost says how much of the ledger's side it is; one from before resets kept their cost (the audit log has it, `reset_costs` does not) says the gateway's figure includes usage the ledger no longer has, so that part is not a leak, and the day it leaves the 7 days; while such a reset is in the window the `models` leak is not raised. Days are UTC by when a request ran (gateway) and when a charge was entered (ledger), so a run across midnight shifts a little between days; the 7-day sum absorbs it. |
 | Unpriced | Over the 7 days, a model in AI Gateway's analytics with tokens and $0 cost, or runs settled with `runs.gateway_note` (the gateway could not price all of a run) | The gateway has no price for a model g1t runs: add it in the gateway (custom cost) or route away from it. Until then those runs are charged no less than the sandbox reported (Claude Code's own price table), never $0 silently. |
 | Leak | Cost of at least `min_daily_cost` and nothing charged for it (never for `platform`), or a meter in `unmapped` | Map the meter (below), or decide it is overhead (`platform`). |
@@ -209,9 +315,16 @@ remainder).
 - Proposals come from the keeper (sandbox seconds, app requests and CPU)
   and the reconciler (mappings with `scale_to_own`: today git operations).
   For git operations: Cloudflare's rate per its own operation (the median
-  over charged days of cost ÷ quantity) × (Cloudflare's operations ÷ g1t's)
+  over costed days of cost ÷ quantity) × (Cloudflare's operations ÷ g1t's)
   × 1,000. If Cloudflare counts three for each one g1t counts, the per-1,000
   price triples. At least 1,000 of g1t's operations are needed.
+- A rate is always a price per unit before the included amounts, like the
+  price book's: never what was billed over all of the quantity, which is
+  net of them and reads as a cheaper unit. The reconciler takes a line's
+  cost at `cycle::LIST_PRICES` where its meter has one (`margin::rate_line`),
+  else Cloudflare's own cost (the median leaves out the day an included
+  amount ran out). The keeper takes the bill's `ListCost` ÷ quantity
+  (`keeper::billed_rate`), and the published rates where there is none.
 - Decision (`pricing::decide`): under 2% is noise; more than 4× either way
   is suspect and waits for staff; within `auto_apply_percent` (25%) it is
   applied on its own when `auto_apply` is on; anything else waits.
@@ -789,7 +902,11 @@ Migration `0036_model_costs_in_full.sql` adds `ledger.discount_micros`,
 `margin_days.given_credit_{promotional,goodwill}_micros`, and backfills
 earlier credits (see [Credits from g1t](#credits-from-g1t)). Migration
 `0046_reset_costs.sql` adds `reset_costs` and `margin_days.given_reset_micros`
-(see [Resetting a test workspace](#resetting-a-test-workspace)).
+(see [Resetting a test workspace](#resetting-a-test-workspace)). Migration
+`0052_cloudflare_cycle.sql` adds `cost_lines.billed_usd`,
+`billable_quantity` and `basis`, `cf_subscriptions.cycle_start`,
+`cost_reads`, `margin_days.given_unpaid_micros` and the
+`payments_live_since` setting (see [The billing cycle](#the-billing-cycle)).
 
 ## Spend caps
 
@@ -825,9 +942,10 @@ backfills the current month from the ledger.
 so far, today included, counted as each charge settled: the model
 providers' cost and the price book's cost of sandboxes and builds. The
 statement is the range, reconciled against Cloudflare's bill, where
-sandboxes inside Cloudflare's included usage cost $0. The section shows
-Cloudflare's subscriptions for the whole month, the statement over the
-range. And `g1t_spend` is never wiped: spend on a workspace a testing reset
+sandboxes inside Cloudflare's included usage cost $0. Both count
+Cloudflare's subscriptions the same way: each day its billing cycle's share
+of the month's price (`SpendCaps.fixed_month_micros` here, the month's days
+so far). And `g1t_spend` is never wiped: spend on a workspace a testing reset
 wiped later stays here (sudo names it, `SpendCaps.reset_micros`), while the
 statement has it only where the reset kept it (`reset_costs`, given away as
 testing resets). syntaqx's $7.41 of 2026-10-02 to 10-05, reset on 10-07
@@ -841,8 +959,8 @@ before resets kept their cost, is that case.
 | The daily breaker | `PLATFORM_DAILY_SPEND_CAP_MICROS` | $75 a day (UTC) | New agent runs on g1t's hosted models that g1t would pay for are refused until 00:00 UTC. Not paused: agents on the workspace's own model provider, checks and builds, and workspaces paying with live payments on the plan (not given by staff) or an enterprise contract. In test mode that exemption covers no one. |
 
 `0` turns either off. Cloudflare's subscriptions are read from Cloudflare
-each day (`cf_subscriptions`) and shown on the page only;
-`CLOUDFLARE_FIXED_MONTHLY_MICROS` ($30) stands in until a read works.
+each day (`cf_subscriptions`) and shown on the page only, accrued day by
+day; `CLOUDFLARE_FIXED_MONTHLY_MICROS` ($30) stands in until a read works.
 
 The checks are cheap: `reserve` reads today's total (one indexed sum) and,
 for a comped account, its month's comped rows. Refusals come back as

@@ -10,7 +10,12 @@ export const COMPANY = {
   url: "https://www.flagon.io",
   /** How the footer describes it. */
   about: "a small, independent software company",
+  /** Who founded it, named wherever the company is described. */
+  founder: "Chase Pierce",
 };
+
+/** g1t's own accounts elsewhere. */
+export const SOCIAL: { label: string; url: string }[] = [{ label: "X", url: "https://x.com/g1t_sh" }];
 
 /**
  * Flagon's other launched products, which the footer's maker line names
@@ -84,10 +89,15 @@ export const POLICIES: Policy[] = [
 ];
 
 /** When any policy last changed, `YYYY-MM-DD`. */
-export const POLICIES_UPDATED = "2026-10-06";
+export const POLICIES_UPDATED = "2026-10-09";
 
 /** Every change to the policies, newest first. */
 export const POLICY_HISTORY: { date: string; change: string }[] = [
+  {
+    date: "2026-10-09",
+    change:
+      "Privacy Policy: g1t.sh uses HeyCatch for site analytics, with names removed outside the public pages, and one analytics cookie, set in the EU, EEA, UK and Switzerland only after you allow it. Subprocessors: HeyCatch, Inc. added.",
+  },
   {
     date: "2026-10-06",
     change:

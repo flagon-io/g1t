@@ -105,6 +105,10 @@ export type Job = {
   runner?: string | null;
   /** Cancelled, and running its `if: always()` and `cancelled()` steps and post steps before it ends. */
   cancelling?: boolean;
+  /** Where its deployment is (`environment.url`), for a job that deploys and says; the current attempt's only. */
+  environmentUrl?: string | null;
+  /** For a job that calls a reusable workflow: that workflow's file. Its jobs' keys are this job's key, `/`, their own. */
+  uses?: string | null;
 };
 
 /** One attempt of a run: the first, or a re-run. */

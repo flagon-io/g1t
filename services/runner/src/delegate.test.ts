@@ -13,7 +13,7 @@ test("each refusal points at where it is fixed", () => {
     ["trial_used", "https://g1t.sh/acme/-/billing"],
     ["limit", "https://g1t.sh/acme/-/billing#limit"],
     ["issue_cap", "https://g1t.sh/acme/-/billing#caps"],
-    ["no_model", "https://g1t.sh/acme/-/integrations"],
+    ["no_model", "https://g1t.sh/acme/-/integrations/models"],
     // Nothing on a page fixes these: support does, or a minute's wait.
     ["paused", null],
     ["billing_unavailable", null],

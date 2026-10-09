@@ -25,3 +25,7 @@ serde_json = { workspace = true }
 # native-certs: a guarded sandbox re-signs HTTPS with a certificate the
 # runner adds to the system store (guard.rs), which webpki-roots never sees.
 ureq = { version = "2", features = ["json", "native-certs"] }
+
+[target.'cfg(unix)'.dependencies]
+# A step's signals back to their defaults before it runs (actions/process.rs).
+libc = "0.2"

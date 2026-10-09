@@ -10,8 +10,16 @@ there is no separate notion of an organization.
 
 ## Create a workspace
 
-Your account does not own repositories itself. After confirming your email
-the first thing you do is create a workspace, and repositories go in it.
+Your account does not own repositories itself: a workspace does, and
+repositories go in it. Every new account gets a workspace of its own, named
+for its username and on the free plan, unless its invite brings it into
+someone else's workspace; see
+[your first workspace](/guides/authentication/#your-first-workspace).
+Signed in without a workspace, g1t shows **Create your workspace or ask to
+join one** in place of Mission control: the invitations waiting for you,
+and the form below.
+
+To create another:
 
 1. Open [g1t.sh/workspaces/new](https://g1t.sh/workspaces/new).
 2. Choose its name in URLs: lowercase letters, digits and single hyphens.
@@ -80,7 +88,7 @@ owner opens **Settings → General** and picks an image:
 
 The icon then shows wherever the workspace does, and on its link previews
 (PNG and JPEG icons only). Each image is served from
-`g1t.sh/avatars/<sha256>`, an address named after its contents, so an icon
+`g1tusercontent.com/avatars/<sha256>`, an address named after its contents, so an icon
 that changes gets a new address and nothing shows the old one.
 
 You can upload a picture of yourself the same way, under
@@ -320,30 +328,68 @@ leave.
 
 ### Add people
 
-Whoever creates a workspace is its owner. An owner adds people on the
-workspace's **People**, `g1t.sh/<workspace>/-/people` (in the sidebar):
+Whoever creates a workspace is its owner. Nobody is added to a workspace
+without saying yes: an owner invites people, and each person accepts or
+declines.
 
-- **By username**: someone already on g1t joins at once, as a member.
+This is an invitation to join one workspace. It is not the same as an
+invite to g1t, which only lets someone make an account:
+
+| | Invite to a workspace | Invite to g1t |
+| --- | --- | --- |
+| Where | The workspace's **People** page, **Invite to** *workspace* | [Settings → Invites](https://g1t.sh/settings/invites) |
+| What they get | An invitation to join the workspace, to accept or decline | One new account, in no workspace but its own |
+| Without an account | The invitation lets them sign up first, while g1t is invite-only | It lets them sign up |
+| When | Always | Only while g1t is invite-only |
+
+To invite someone to g1t without adding them to your workspace, use
+[Settings → Invites](/guides/authentication/#making-invites); the People
+page links there while g1t is invite-only.
+
+On the workspace's **People**, `g1t.sh/<workspace>/-/people` (in the
+sidebar):
+
+1. Under **Invite to** *workspace name*, type a username, a name or an email address.
+   As you type, people on g1t are offered by username and name, with their
+   pictures; hover over one for their card. Only usernames, names and
+   pictures are shown, never anyone's email address.
+2. Choose the **Role** they join with: **Member** or **Owner**.
+3. Select **Invite**.
+
+- **By username**: they get a
+  [workspace invitation](/guides/authentication/#workspace-invitations) in
+  their inbox and by email, and join with that role when they accept at
+  [g1t.sh/invitations](https://g1t.sh/invitations). If they decline, you
+  are told in your inbox. It costs nothing.
 - **By email address**: g1t emails an invite that only that address can
-  use. Without a g1t account, accepting it makes the account and joins the
-  workspace in one step, and uses one of the workspace's granted invites, or
-  else one of yours (see [invites](/guides/authentication/#invites)). With
-  an account, it costs nothing, and they join when they accept. The page
-  never says which it was.
+  use. With a g1t account, it is a workspace invitation like the one above
+  and costs nothing. Without one, the invitation also lets them make the
+  account first; while g1t is invite-only that uses one of the workspace's
+  granted invites, or else one of yours (see
+  [invites](/guides/authentication/#invites)), and once anyone can sign up
+  it costs nothing. The new account is then invited to the workspace, and
+  joins when it accepts. The page never says which it was.
 
 The email names you and the workspace and links to the invite's page.
-Someone new signs up right there, with the invited address filled in, and
-joins once they confirm it with the code g1t emails them; someone with an
-account signs in. Either way they land in the workspace as a member, with
-a one-time welcome. Until a new account confirms its address, its invite
-shows as **confirming their email** under the members, and you can still
-revoke it. See
+Someone new signs up right there, with the invited address filled in; once
+the address is confirmed (straight away when they opened the page from
+that email, which proves the address is theirs, otherwise with the code g1t
+emails them), they are asked to accept or decline the invitation. Someone
+with an account signs in and accepts on the page. Accepting lands them in
+the workspace, with a one-time welcome. See
 [using an invite](/guides/authentication/#using-an-invite).
 
-Pending invites are listed under the members, with a link to copy and
-**Revoke**. Through the API, use
+Pending invitations are listed under the members, with the person or
+address, the role, until when it works (30 days), a link to copy and
+**Revoke**: one waiting to be used, one whose new account is **confirming
+their email**, and one **waiting for them to accept**. Converting an
+outside collaborator to a member sends them an invitation the same way.
+Through the API, use
 [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/)
-(the `workspace` tool's `invite_member` action over MCP).
+with a `username` or an `email` and a `role` (the `workspace` tool's
+`invite_member` action over MCP); the person answers with
+[`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/)
+or [`/decline`](/reference/api/invites/decline-invitation/).
 
 To give someone a role on one repository without making them a member,
 add them as an [outside collaborator](/guides/access-and-roles/#outside-collaborators).
@@ -495,7 +541,7 @@ belong to. Below it, under the workspace's name, is the workspace:
 
 1. **Overview**, the [workspace's page](#the-workspaces-page).
 2. Its [projects](#pinned-and-recent-projects), ending with **All projects**.
-3. The places work happens across them: **Agent fleet**, **Context**,
+3. The places work happens across them: **Agents**, **Context**,
    **Memory**, **Security** and [**Packages**](/guides/packages/), with
    **Insights**, **Boards** and **Roadmap** soon.
 4. **People**, [**Teams**](/guides/teams/), **Usage**, what g1t's runs have
@@ -515,7 +561,7 @@ the row at the top, **‹ Settings**, slides back:
 | **Guardrails** | Members | What agents may do and spend across the workspace. Owners change them. |
 | [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. |
 | **Runners** | Owners | The workspace's self-hosted machines, their groups and registration tokens. |
-| [**Integrations**](/guides/integrations/) | Members | Model providers and connected services. Owners connect and remove them. |
+| [**Integrations**](/guides/integrations/) | Members | Every tool the workspace connects to, by category: what is connected, what is available, and what is coming. Owners connect and remove them. |
 | [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. |
 | **Billing and plans** | Members | [The g1t plan](/guides/usage-and-billing/#the-g1t-plan), [limits](/guides/usage-and-billing/#limits) and the statement. Owners start the plan, check a card, prepay and set limits. |
 | **Audit log** | Members | [Every action agents, people and tokens took](/guides/audit-log/). |
@@ -554,6 +600,30 @@ and the other [pinned projects](/reference/api/pinned-projects/list-pinned-proje
 operations, or the `workspace` tool's `list_pinned_projects`,
 `pin_project`, `unpin_project` and `reorder_pinned_projects` actions
 over MCP.
+
+### On your phone
+
+On a screen narrower than a tablet, g1t keeps the same places and moves
+them within reach of your thumb:
+
+| | What it does |
+| --- | --- |
+| **The tabs along the bottom** | **Home**, **Code** (or **Docs**, if you don't use Code in this workspace), **Chat**, **Agents** and **Inbox**, each with what is unread. They step aside while the keyboard is up and inside a conversation. |
+| **The menu button** (☰), beside the workspace's icon at the top left | Opens the sidebar of the mode you are in from the left: the same lists and links as on a computer. Inside a project, that is the project's own list; on a workspace or settings page, the Workspace or account sidebar. Tap outside it, or open a page, and it closes. |
+| **The tab you are already on** | Tap it again to open that mode's sidebar too. |
+| **The workspace's icon** at the top left | Everything else, from the bottom: **Docs** first, then the workspace's **Overview**, **People**, **Teams**, **Usage and billing**, **Integrations** and **Settings**; switching workspaces; help; and your status, profile, settings and signing out. |
+
+Inside a [project](/guides/projects/), its pages (**Overview**, **Code**,
+**Issues**, **Pull requests**, **Agents**, **Workflows**, **Deployments**,
+**Insights** and, for the roles that see them, **Security** and
+**Settings**) run in a row under its name that scrolls sideways, with the
+page you are on kept in view, so issues and pull requests are one tap
+away. Pages with more than one view, such as **Files**, **Commits** and
+**Branches**, show those as a second row of tabs.
+
+Menus stay inside the screen, dialogs rise from the bottom and sit on top
+of the keyboard while you type, and nothing scrolls the page sideways: a
+wide file, diff or table scrolls within its own box.
 
 ## Mission control
 
@@ -625,9 +695,9 @@ for or lose the password to.
 | --- | --- | --- |
 | Belongs to | You | The workspace |
 | Acts as | You | The workspace: its name is the author of what it does |
-| Can reach | A classic token, every workspace you belong to; a fine-grained one, the one it names | That workspace only |
-| Can do | What its [scopes](/guides/authentication/#scopes) or permissions allow, never more than you can | What its scopes allow, with Write on the workspace's repositories (Admin only when an owner gives it that); it cannot manage people, tokens or workspaces |
-| Expires | A classic token: 7, 30 or 90 days (the default), 1 year, or never. A fine-grained one: within a year | 7, 30 or 90 days, 1 year, or never |
+| Can reach | All your workspaces, one of them, or none ([where a token reaches](/guides/authentication/#where-a-token-reaches)) | That workspace only: all of its repositories, or the ones chosen |
+| Can do | What its [permissions](/guides/authentication/#permissions) allow, never more than you can | What its permissions allow, with Write on the workspace's repositories (Admin with Repositories: admin); it cannot manage people, tokens or workspaces, and holds no account permissions |
+| Expires | 7 days to 1 year, or never where the workspaces it reaches allow | 7 days to 1 year, or never |
 | When its creator leaves | Stops working | Keeps working |
 | Created by | You, in [Settings → Access tokens](https://g1t.sh/settings/tokens) | An owner, under the workspace's **Settings → Access tokens** |
 
@@ -637,13 +707,15 @@ username works; the token is the password. `GET /user` answers with
 `"kind": "workspace"` for one, and `"kind": "user"` for a personal token.
 
 Every member can see a workspace's tokens: the name, who created each,
-when it was last used and when it expires. Only owners can create or
-delete them. An owner creates one with a name, an expiry (No expiry shows
-a warning) and the same scope checklist as a classic personal token,
-starting on the CI preset. Each token shows **Write** or **Admin**: tick
-**Admin on the workspace's repositories** when making it to let it manage
-webhooks, secrets, deploy keys and who has access, and teams as an owner
-would. A token made before this choice existed has Write.
+its permissions and repositories, when it was last used and when it
+expires. Only owners can create, change or delete them. An owner selects
+**New token** and fills in the same form as a personal token: a name, an
+expiration (No expiration shows a warning), its repositories (all, or the
+ones chosen) and its permissions, starting on the CI preset. Each token
+shows **Write** or **Admin**: give it **Repositories: admin** to let it
+manage webhooks, secrets, deploy keys and who has access, and teams as an
+owner would. Select a token to change its permissions or repositories, or
+to delete it.
 
 Which of your members' own personal tokens reach the workspace is set under
 **Settings → Personal access tokens**; see
@@ -658,13 +730,36 @@ requests link to it.
 **What it shows.** Your picture, name, username, pronouns, bio, location,
 website and when you joined; then your work in three tabs:
 
-- **Overview:** pull requests merged, open pull requests and issues
-  opened, and your most recent activity.
+- **Overview:** your contribution calendar, then pull requests merged,
+  open pull requests and issues opened, and your most recent activity.
 - **Pull requests** and **Issues:** everything you opened, and what g1t
   opened for you, newest first,
   with filters beside the list for state (open, closed, merged), type,
   repository and sort order. Add `?tab=pulls&state=merged` and the like to
   link to a filtered list.
+
+**The contribution calendar.** The last year as a square a day, a column a
+week, shaded more strongly the more you did that day, with the total
+above it ("128 contributions in the last year"). A contribution is a
+commit you pushed, an issue or pull request you opened (or g1t opened for
+you), and a review you gave. Days are counted in UTC. Hover over a square,
+or tap it, to see its day, its count and how many were commits ("5
+contributions on Oct 4, 2026, 3 of them commits"). On a narrow screen the
+calendar scrolls sideways inside its card, starting at today.
+
+Commits count like this:
+
+- **Pushed to the default branch, or to `gh-pages`.** Commits on other
+  branches count once they reach the default branch, which is usually a
+  pull request, and the pull request is counted already.
+- **Credited to whoever pushed,** on the day of the push, not to the
+  commits' authors. Pushes with an agent's, a workspace's or a workflow
+  job's token are not counted on anyone's calendar.
+- **The new commits along the branch's own line,** at most 50 a push. A
+  merge commit counts once. The first push of a branch counts one, so
+  importing a long history doesn't fill a single day.
+- **Only from the time this was added:** pushes before 9 October 2026 are
+  not counted.
 
 **Edit it** in [Settings → Profile](https://g1t.sh/settings/profile). Every
 field is optional. The bio takes up to 160 characters and is also what a
@@ -685,12 +780,18 @@ are filtered for whoever is looking:
 | On the profile | Shown to a visitor when |
 | --- | --- |
 | An issue or pull request, and its title | They can read its repository: it is public, or they are a member of its workspace |
-| The counts | Only what they could see is counted |
+| The counts, and the contribution calendar | Only what they could see is counted |
 | A workspace | They are a member of it too, or you made a public project in it, whose page shows that already |
 
 Someone signed out sees your public work and the workspaces where you made
-a public project; nothing else. The link preview for a profile uses only
-public work.
+a public project; nothing else, and their calendar counts only work in
+public repositories. The link preview for a profile uses only public work.
+
+**How it is laid out.** Signed out, a profile, Explore and Search are
+shown with g1t's public top bar (search, Explore, signing in) and the page
+at full width, with no workspace sidebar. Signed in, the rail stays, but
+no mode is lit and no mode's sidebar opens beside these pages: they are
+nobody's workspace, and the profile's own left column says whose it is.
 
 ### The card over a name
 

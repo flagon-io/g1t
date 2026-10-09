@@ -113,7 +113,7 @@ export function CommitChecksMark({ checks, className }: { checks: CommitChecks |
       <PopoverTrigger
         aria-label={`${headline}: ${checksTally(checks)}`}
         className={cn(
-          "relative z-10 inline-flex size-6 shrink-0 animate-fade-in items-center justify-center rounded-md transition-colors hover:bg-raised data-[state=open]:bg-raised",
+          "relative z-10 inline-flex size-6 shrink-0 pointer-coarse:size-8 animate-fade-in items-center justify-center rounded-md transition-colors hover:bg-raised data-[state=open]:bg-raised",
           className,
         )}
       >

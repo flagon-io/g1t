@@ -44,14 +44,14 @@ table is shown.
 | Reason | Shown as | Why you were told |
 | --- | --- | --- |
 | `agent` | agent waiting | An agent is waiting on you: it asked a question, or it stopped until a person steps in. |
-| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. Also a workflow run waiting for you, as one of an [environment's reviewers](/guides/actions/#environments), to approve its deployment, and, for a workspace's owners, a member's fine-grained token waiting for [approval](/guides/authentication/#a-workspaces-rules-for-tokens) (in the inbox only, never emailed). |
+| `review_requested` | review requested | Someone asked you, or a team you are in, to review a pull request; it changes files you own; or you are one of its reviewers. Also a workflow run waiting for you, as one of an [environment's reviewers](/guides/actions/#environments), to approve its deployment, and, for a workspace's owners, a member's token made for the workspace waiting for [approval](/guides/authentication/#a-workspaces-rules-for-tokens) (in the inbox only, never emailed). |
 | `assign` | assigned | You were assigned, or you are an assignee. |
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
 | `team_mention` | team mentioned | Someone mentioned a [team](/guides/teams/#mentions) you are in with `@workspace/team`, or a team you are in was mentioned on it before. |
 | `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly, or recovered. |
 | `security_alert` | security alert | A new secret, code scanning or vulnerability alert on a repository you look after, a push of yours that push protection blocked, or a [bypass request](/guides/security/secret-protection/#delegated-bypass) to review or its answer. The workspace's owners hear of new alerts; watchers who chose **Security alerts** do too, if they can see findings. |
 | `state_change` | state changed | It was closed, reopened or merged. |
-| `author` | your work | You opened it, or you asked g1t for it. Also an owner's answer to your [fine-grained token](/guides/authentication/#create-a-fine-grained-token) waiting for approval, or its revocation. |
+| `author` | your work | You opened it, or you asked g1t for it. Also an owner's answer to your [token made for a workspace](/guides/authentication/#create-a-token) waiting for approval, or its revocation. |
 | `comment` | commented | You commented on it. |
 | `manual` | subscribed | You subscribed to it yourself. |
 | `subscribed` | watching | You watch its repository. |
@@ -83,6 +83,7 @@ what it was:
 | Someone mentioned you with `@username` in a comment | You | `mention` | Info |
 | Someone mentioned a team with `@workspace/team` in a comment, or in an issue or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
 | Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
+| One of your workspace's agents commented on or reviewed an issue or pull request, as itself | The same people, and the person the pull request belongs to for a review; shown as from "Margo (agent)", with "(advisory)" on a review. See [agent reviews](/guides/pull-requests/#agent-reviews) | Why each is subscribed, or `author` for a review | Info, or Success for an approval |
 | An issue or pull request was opened | People watching its kind | `subscribed` | Info |
 
 "The person a pull request belongs to" is its author, or, for a change g1t

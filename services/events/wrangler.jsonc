@@ -35,7 +35,13 @@
 			{ "binding": "SUBSCRIBER_SECURITY", "queue": "g1t-events-security" },
 			{ "binding": "SUBSCRIBER_CONTEXT", "queue": "g1t-events-context" },
 			{ "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" },
-			{ "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" }
+			{ "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" },
+			// Pages that cite code a merge changed, and projects' docs folders
+			// (services/docs/src/staleness.ts). Create it once:
+			//   npx wrangler queues create g1t-events-docs
+			{ "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" },
+			// Agents' routines that run on events (services/agents/src/triggers.ts).
+			{ "binding": "SUBSCRIBER_AGENTS", "queue": "g1t-events-agents" }
 		],
 		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
@@ -48,7 +54,9 @@
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" }
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// Each new inbox item, told live in the person's tabs and pushed (services/notify).
+		{ "binding": "NOTIFY", "service": "g1t-notify" }
 	],
 	// Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
 	// everyone (keep it at least billing's AUDIT_MAX_DAYS), then each

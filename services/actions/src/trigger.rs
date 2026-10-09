@@ -285,7 +285,7 @@ impl Actions {
                 });
                 payload::changed(&mut payload, data);
                 if event_name == "pull_request_review" {
-                    let review = detail.comments.iter().rev().find(|c| c.verdict.is_some());
+                    let review = detail.comments.iter().rev().find(|c| c.verdict.is_some() && !c.advisory);
                     payload["review"] = json!({
                         "state": review.and_then(|r| r.verdict).map(|v| format!("{v:?}").to_lowercase()),
                         "body": review.map(|r| r.body.clone()),

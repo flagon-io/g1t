@@ -410,6 +410,110 @@ pub fn scopes_text(scopes: &[Scope]) -> String {
     scopes.iter().map(|scope| scope.as_str()).collect::<Vec<_>>().join(" ")
 }
 
+/// Where a resource sits on the token form, and which tokens may hold it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceGroup {
+    /// About repositories: what they hold and how they are run.
+    Repository,
+    /// About a workspace itself.
+    Workspace,
+    /// About the person: only a personal token may hold these.
+    Account,
+}
+
+impl ResourceGroup {
+    pub const ALL: [ResourceGroup; 3] = [ResourceGroup::Repository, ResourceGroup::Workspace, ResourceGroup::Account];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ResourceGroup::Repository => "repository",
+            ResourceGroup::Workspace => "workspace",
+            ResourceGroup::Account => "account",
+        }
+    }
+}
+
+impl Resource {
+    pub fn group(self) -> ResourceGroup {
+        match self {
+            Resource::Account | Resource::Notifications => ResourceGroup::Account,
+            Resource::Workspace | Resource::Billing | Resource::Runners | Resource::Models => ResourceGroup::Workspace,
+            _ => ResourceGroup::Repository,
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Resource> {
+        let text = text.trim().to_ascii_lowercase();
+        Resource::ALL.into_iter().find(|resource| resource.as_str() == text)
+    }
+
+    /// Its scopes, least first.
+    pub fn scopes(self) -> Vec<Scope> {
+        Scope::ALL.into_iter().filter(|scope| scope.resource() == self).collect()
+    }
+}
+
+// --- Permissions --------------------------------------------------------------
+//
+// A token's permissions are its scopes read per resource: each resource
+// at none or one level (`{"issues": "write", "repo": "read"}`). A level
+// includes the ones below it, so the highest scope held of each resource
+// says everything; that is what a token stores. Personal tokens and a
+// workspace's own tokens are made, shown and checked this way alike.
+
+/// The highest scope of each resource held, in table order: the fewest
+/// scopes that give the same access, as tokens store them.
+pub fn top_scopes(scopes: &[Scope]) -> Vec<Scope> {
+    let mut top: Vec<Scope> = Vec::new();
+    for resource in Resource::ALL {
+        if let Some(best) = scopes.iter().filter(|scope| scope.resource() == resource).max_by_key(|scope| scope.level()) {
+            top.push(*best);
+        }
+    }
+    normalize(&mut top);
+    top
+}
+
+/// Every resource at its highest level: all a token can be given.
+pub fn everything() -> Vec<Scope> {
+    top_scopes(&Scope::ALL)
+}
+
+/// Scopes as permissions: each resource held, by name, at its highest
+/// level held.
+pub fn permissions_of(scopes: &[Scope]) -> std::collections::BTreeMap<String, String> {
+    top_scopes(scopes)
+        .into_iter()
+        .map(|scope| (scope.resource().as_str().to_owned(), scope.level().as_str().to_owned()))
+        .collect()
+}
+
+/// Permissions as asked for (`{"issues": "write"}`, `none` or empty left
+/// out) into the scopes a token stores, or why they cannot be. `personal`
+/// is whether the token is a person's: only theirs may hold account ones.
+pub fn resolve_permissions(asked: &std::collections::BTreeMap<String, String>, personal: bool) -> Result<Vec<Scope>, String> {
+    let mut scopes = Vec::new();
+    for (name, level) in asked {
+        let Some(resource) = Resource::parse(name) else {
+            return Err(format!("There is no permission called {name}."));
+        };
+        let level = level.trim().to_ascii_lowercase();
+        if level.is_empty() || level == "none" {
+            continue;
+        }
+        let Some(scope) = Scope::parse(&format!("{}:{level}", resource.as_str())) else {
+            let levels: Vec<&str> = resource.scopes().iter().map(|scope| scope.level().as_str()).collect();
+            return Err(format!("{} is none or {}, not {level}.", resource.as_str(), levels.join(", ")));
+        };
+        if resource.group() == ResourceGroup::Account && !personal {
+            return Err(format!("{} is about a person's account: a workspace's token cannot hold it.", resource.as_str()));
+        }
+        scopes.push(scope);
+    }
+    Ok(top_scopes(&scopes))
+}
+
 /// What a token stores for full access, which is not a scope a client can
 /// ask for by name.
 pub const FULL_ACCESS: &str = "*";
@@ -520,11 +624,15 @@ pub struct TokenAccess {
     /// token made a request. Absent where whoever resolved it did not say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Set on a fine-grained personal access token: whose resources it
-    /// reaches, and which of their repositories. Absent on a classic token,
-    /// which reaches whatever its owner can.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fine_grained: Option<FineGrainedReach>,
+    /// Set on a token narrowed to less than its owner can reach: one
+    /// workspace (all, selected or none of its private repositories), or
+    /// none at all (its owner's account and public repositories). Absent
+    /// on a token that reaches every workspace its owner can.
+    ///
+    /// The wire key is `fine_grained`, kept from before tokens were one
+    /// kind, so services deployed at different moments agree on it.
+    #[serde(rename = "fine_grained", default, skip_serializing_if = "Option::is_none")]
+    pub reach: Option<TokenReach>,
     /// Set on a workspace's own token that an owner gave Admin when making
     /// it. Without it a workspace's token has Write on the workspace's
     /// repositories, as a member would (see [`crate::access`]).
@@ -536,7 +644,7 @@ pub struct TokenAccess {
     pub deploy_key: Option<String>,
 }
 
-/// Which of the resource owner's repositories a fine-grained token reaches.
+/// Which repositories a token reaches in the workspace it is made for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RepositorySelection {
@@ -547,6 +655,7 @@ pub enum RepositorySelection {
     Selected,
     /// None of the workspace's private repositories: public repositories,
     /// read-only, and the workspace's own settings its permissions allow.
+    /// With no workspace: the owner's account and public repositories only.
     Public,
 }
 
@@ -569,12 +678,12 @@ impl RepositorySelection {
     }
 }
 
-/// What a fine-grained token reaches, as identity resolves it on each use.
+/// What a narrowed token reaches, as identity resolves it on each use.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FineGrainedReach {
-    /// The resource owner: the workspace whose repositories and settings it
-    /// reaches, by slug as it is now. Absent: the person's own account
-    /// only, with public repositories read-only.
+pub struct TokenReach {
+    /// The workspace whose repositories and settings it reaches, by slug as
+    /// it is now. Absent: its owner's account only, with public
+    /// repositories read-only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
     #[serde(default)]
@@ -584,7 +693,7 @@ pub struct FineGrainedReach {
     pub repo_ids: Vec<String>,
 }
 
-impl FineGrainedReach {
+impl TokenReach {
     /// Whether it reaches the repository with this id in the workspace
     /// `namespace` for more than what anyone may do with a public one.
     pub fn covers(&self, repo_id: &str, namespace: &str) -> bool {
@@ -601,7 +710,7 @@ impl FineGrainedReach {
         }
     }
 
-    /// Whether the workspace `slug` is its resource owner.
+    /// Whether it is made for the workspace `slug`.
     pub fn owned_by(&self, slug: &str) -> bool {
         self.workspace.as_deref().is_some_and(|workspace| workspace.eq_ignore_ascii_case(slug))
     }
@@ -631,8 +740,6 @@ pub fn decide_workflow_files<'a>(access: Option<&TokenAccess>, paths: impl IntoI
     let path = paths.into_iter().find(|path| is_workflow_file(path))?;
     let why = if access.job.is_some() {
         "a workflow job's token can never add or change workflow files".to_owned()
-    } else if access.fine_grained.is_some() {
-        "it needs the Workflows permission (read and write), which maps to the workflow_files:write scope".to_owned()
     } else {
         format!("it needs the {} scope", Scope::WorkflowFilesWrite.as_str())
     };
@@ -687,11 +794,11 @@ impl TokenAccess {
     }
 
     /// Whether it reaches the repository with this id in `namespace` for
-    /// more than reading a public one: every token but a fine-grained one
-    /// outside its resource owner or repository selection. Its owner's role
+    /// more than reading a public one: every token but a narrowed one
+    /// outside its workspace or repository selection. Its owner's role
     /// still decides; see [`crate::access`].
     pub fn covers_repo(&self, repo_id: &str, namespace: &str) -> bool {
-        self.fine_grained.as_ref().is_none_or(|reach| reach.covers(repo_id, namespace))
+        self.reach.as_ref().is_none_or(|reach| reach.covers(repo_id, namespace))
     }
 }
 
@@ -708,6 +815,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_invites", Scope::AccountRead),
     ("create_invite", Scope::AccountWrite),
     ("revoke_invite", Scope::AccountWrite),
+    ("list_invitations", Scope::AccountRead),
+    ("accept_invitation", Scope::AccountWrite),
+    ("decline_invitation", Scope::AccountWrite),
     ("list_my_repo_invitations", Scope::AccountRead),
     ("accept_repo_invitation", Scope::AccountWrite),
     ("decline_repo_invitation", Scope::AccountWrite),
@@ -1156,20 +1266,20 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
             }
         }
     }
-    // A fine-grained token only reads outside its resource owner: public
-    // repositories, as anyone may. Inside it, its repository selection is
-    // checked with its owner's role (`access::granted`).
-    if let Some(reach) = &access.fine_grained
+    // A token made for one workspace (or none) only reads outside it:
+    // public repositories, as anyone may. Inside it, its repository
+    // selection is checked with its owner's role (`access::granted`).
+    if let Some(reach) = &access.reach
         && let Some(repo) = input["repo"].as_str()
         && !NO_SCOPE.contains(&operation)
     {
         let namespace = repo.split('/').next().unwrap_or_default();
         let changes = needed(operation, input).iter().any(|scope| scope.level() != Level::Read);
         if changes && !reach.owned_by(namespace) {
-            let owner = reach.workspace.as_deref().map_or_else(|| "your account".to_owned(), |workspace| format!("the workspace {workspace}"));
+            let made_for = reach.workspace.as_deref().map_or_else(|| "your account only".to_owned(), |workspace| format!("the workspace {workspace}"));
             return Decision::deny(
                 "token:resource-owner",
-                format!("This fine-grained token's resource owner is {owner}: it can only read public repositories elsewhere, and {repo} is not its owner's."),
+                format!("This access token is made for {made_for}: elsewhere it can only read public repositories, and {repo} is not in its reach."),
             );
         }
     }
@@ -1412,9 +1522,9 @@ mod tests {
     }
 
     #[test]
-    fn a_fine_grained_token_only_reads_outside_its_resource_owner() {
-        let reach = FineGrainedReach { workspace: Some("acme".into()), repositories: RepositorySelection::All, repo_ids: Vec::new() };
-        let fine = TokenAccess { fine_grained: Some(reach), ..token(&[Scope::RepoRead, Scope::IssuesRead, Scope::IssuesWrite]) };
+    fn a_narrowed_token_only_reads_outside_its_workspace() {
+        let reach = TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::All, repo_ids: Vec::new() };
+        let fine = TokenAccess { reach: Some(reach), ..token(&[Scope::RepoRead, Scope::IssuesRead, Scope::IssuesWrite]) };
         assert!(decide(&fine, "create_issue", &json!({ "repo": "acme/web" })).allowed);
         assert!(decide(&fine, "create_issue", &json!({ "repo": "Acme/web" })).allowed);
         let elsewhere = decide(&fine, "create_issue", &json!({ "repo": "globex/site" }));
@@ -1422,15 +1532,50 @@ mod tests {
         assert!(elsewhere.reason.unwrap().contains("acme"));
         assert!(decide(&fine, "get_issue", &json!({ "repo": "globex/site" })).allowed, "public repositories elsewhere read");
         assert!(!decide(&fine, "create_pull_request", &json!({ "repo": "acme/web" })).allowed, "its scopes still hold");
-        let mine = TokenAccess { fine_grained: Some(FineGrainedReach::default()), ..token(&[Scope::IssuesWrite]) };
+        let mine = TokenAccess { reach: Some(TokenReach::default()), ..token(&[Scope::IssuesWrite]) };
         assert!(decide(&mine, "create_issue", &json!({ "repo": "acme/web" })).reason.unwrap().contains("your account"));
         assert!(fine.covers_repo("rep_1", "acme") && !fine.covers_repo("rep_1", "globex"));
-        let selected = FineGrainedReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()] };
+        let selected = TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()] };
         assert!(selected.covers("rep_1", "ACME") && !selected.covers("rep_2", "acme"));
-        let public = FineGrainedReach { repositories: RepositorySelection::Public, ..selected.clone() };
+        let public = TokenReach { repositories: RepositorySelection::Public, ..selected.clone() };
         assert!(!public.covers("rep_1", "acme") && public.owned_by("acme"));
-        assert!(token(&[]).covers_repo("rep_1", "anything"), "a classic token's reach is its owner's");
+        assert!(token(&[]).covers_repo("rep_1", "anything"), "a token for every workspace reaches what its owner can");
         assert_eq!(RepositorySelection::parse("public_only"), Some(RepositorySelection::Public));
+    }
+
+    #[test]
+    fn permissions_are_scopes_read_per_resource() {
+        let asked: std::collections::BTreeMap<String, String> =
+            [("issues", "write"), ("repo", "read"), ("code", "none"), ("packages", "delete")].iter().map(|(a, b)| ((*a).to_owned(), (*b).to_owned())).collect();
+        let scopes = resolve_permissions(&asked, true).unwrap();
+        assert_eq!(scopes, vec![Scope::RepoRead, Scope::PackagesDelete, Scope::IssuesWrite]);
+        let back = permissions_of(&scopes);
+        assert_eq!(back.get("issues").map(String::as_str), Some("write"));
+        assert_eq!(back.get("packages").map(String::as_str), Some("delete"));
+        assert!(!back.contains_key("code"));
+        // Lower levels held beside a higher one say nothing more.
+        assert_eq!(top_scopes(&[Scope::RepoRead, Scope::RepoAdmin, Scope::RepoWrite]), vec![Scope::RepoAdmin]);
+        // Every resource's top, and nothing a level can lose.
+        let all = everything();
+        assert_eq!(all.len(), Resource::ALL.len());
+        for scope in Scope::ALL {
+            assert!(all.iter().any(|held| held.includes(scope)), "{scope:?}");
+        }
+    }
+
+    #[test]
+    fn permissions_are_checked_by_name_level_and_owner() {
+        let one = |name: &str, level: &str| -> std::collections::BTreeMap<String, String> { [(name.to_owned(), level.to_owned())].into() };
+        assert!(resolve_permissions(&one("wiki", "read"), true).unwrap_err().contains("wiki"));
+        assert!(resolve_permissions(&one("issues", "admin"), true).unwrap_err().contains("read, write"));
+        assert!(resolve_permissions(&one("workflow_files", "read"), true).is_err(), "workflow files are written only");
+        assert!(resolve_permissions(&one("notifications", "read"), false).unwrap_err().contains("account"));
+        assert_eq!(resolve_permissions(&one("notifications", "read"), true).unwrap(), vec![Scope::NotificationsRead]);
+        assert_eq!(resolve_permissions(&one("agents", "run"), false).unwrap(), vec![Scope::AgentsRun]);
+        for resource in Resource::ALL {
+            assert_eq!(Resource::parse(resource.as_str()), Some(resource));
+            assert!(!resource.scopes().is_empty());
+        }
     }
 
     #[test]
@@ -1585,6 +1730,19 @@ mod tests {
                 .map(|scopes| scopes.iter().map(|scope| scope.as_str()).collect())
                 .unwrap_or_else(|| vec!["*"]);
             assert_eq!(mirrored, expected, "{}", preset.as_str());
+        }
+        // Each resource with its group, in the same order.
+        let resources = ts
+            .split_once("export const SCOPE_RESOURCES")
+            .and_then(|(_, rest)| rest.split_once("
+];"))
+            .map(|(table, _)| table)
+            .expect("SCOPE_RESOURCES in scopes.ts");
+        let rows: Vec<&str> = resources.lines().filter(|line| line.trim_start().starts_with("{ resource:")).collect();
+        assert_eq!(rows.len(), Resource::ALL.len());
+        for (row, resource) in rows.iter().zip(Resource::ALL) {
+            assert!(row.contains(&format!("resource: \"{}\"", resource.as_str())), "{row}");
+            assert!(row.contains(&format!("group: \"{}\"", resource.group().as_str())), "{row}");
         }
     }
 }

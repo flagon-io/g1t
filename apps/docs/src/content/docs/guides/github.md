@@ -17,9 +17,10 @@ choose there and bring them across.
 
 The first time, g1t makes your account:
 
-- **Username**: your GitHub login, lowercased, if it is free and follows
-  g1t's rules (lowercase letters, digits and single hyphens, up to 39
-  characters). Otherwise you choose one.
+- **Username**: your GitHub login, in its own case, if it is free in any
+  case and follows g1t's rules (letters, digits and single hyphens, up to
+  39 characters; see [creating an account](/guides/authentication/#creating-an-account)).
+  Otherwise you choose one.
 - **Email**: the primary address on your GitHub account, if GitHub says it
   is verified. Only verified addresses count, and GitHub's
   `@users.noreply.github.com` relay addresses are not used. Your email is

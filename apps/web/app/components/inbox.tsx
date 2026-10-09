@@ -4,6 +4,7 @@ import { Link, useFetcher } from "react-router";
 
 import type { InboxCounts, InboxItem, InboxSeverity } from "@g1t/contracts";
 
+import { WaitingCards } from "./notifications/card-actions";
 import { SubmitButton } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Hint } from "./ui/hint";
@@ -174,7 +175,7 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
 }
 
 const ICON_BUTTON =
-  "flex size-7 items-center justify-center rounded-md border border-line bg-surface text-muted transition-colors outline-none hover:border-line-strong hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60";
+  "flex size-7 max-sm:size-10 items-center justify-center rounded-md border border-line bg-surface text-muted transition-colors outline-none hover:border-line-strong hover:text-fg focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60";
 
 /** What an empty list says, for its tab. */
 export function InboxEmpty({ tab, view }: { tab: InboxTab; view?: "inbox" | "saved" | "done" }) {
@@ -304,6 +305,8 @@ export function InboxBell({ counts: loaded }: { counts: InboxCounts | null }) {
           <InboxTabs tab={tab} counts={counts} onChange={setTab} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {/* Chat cards waiting on you (live notifications), to act on from here. */}
+          <WaitingCards onNavigate={() => setOpen(false)} />
           {items == null ? (
             list.state === "idle" && list.data?.tab === tab ? (
               <p className="text-sm text-muted">The inbox could not be loaded. Try again in a moment.</p>

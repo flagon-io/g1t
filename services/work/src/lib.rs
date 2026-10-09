@@ -4,6 +4,7 @@
 //! `g1t_contracts::work` for the methods and their arguments. It also
 //! consumes its queue of events from the bus.
 
+mod agent_comments;
 mod authored;
 mod capture;
 mod checks;
@@ -11,6 +12,7 @@ mod ghost;
 mod codeowners;
 mod commit_checks;
 mod compute;
+mod contributions;
 mod confidence;
 mod guardrails;
 mod inbox;
@@ -59,7 +61,7 @@ use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, Ses
 
 pub(crate) const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
-const MAX_ENTRY_CHARS: usize = 64_000;
+pub(crate) const MAX_ENTRY_CHARS: usize = 64_000;
 const MAX_TITLE_CHARS: usize = 200;
 const SESSION_PAGE: u32 = 500;
 const LIST_PAGE: u32 = 100;
@@ -1010,6 +1012,9 @@ impl Work {
             verdict: a.verdict,
             created_at: rfc3339(now),
             edited_at: None,
+            agent: None,
+            acting_for: None,
+            advisory: false,
         };
         self.db
             .batch(vec![
@@ -1057,6 +1062,7 @@ impl Work {
                 number: a.number,
                 pull_id,
                 verdict: a.verdict,
+                ..CommentCreated::default()
             },
         )
         .await?;
@@ -1083,16 +1089,18 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::NotFound, "Comment not found."));
         };
         let maintains = access::can(Some(&a.actor), &repo, Capability::ManageSettings);
+        // What an agent wrote as itself is answered for by whoever it acted for.
+        let author_id = row.answerable_id().to_owned();
         if let Err(refusal) = may_change_comment(
             row.kind,
-            row.verdict.is_some(),
-            &row.author_id,
+            row.has_verdict(),
+            &author_id,
             &a.actor.id,
             maintains,
             deleting,
         ) {
             // Someone who may change it otherwise was refused for what it is.
-            let code = if row.author_id == a.actor.id || maintains { FailureCode::Conflict } else { FailureCode::Forbidden };
+            let code = if author_id == a.actor.id || maintains { FailureCode::Conflict } else { FailureCode::Forbidden };
             return Ok(Outcome::fail(code, refusal));
         }
         let pull_id = self.pull(&repo.id, row.number).await?.map(|pull| pull.id);
@@ -1108,7 +1116,7 @@ impl Work {
         }
         let (repo, row, pull_id) = check!(self.changeable_comment(&a, false).await?);
         // An approval speaks for itself; anything else has to say something.
-        if body.is_empty() && row.verdict != Some(Verdict::Approve) {
+        if body.is_empty() && row.verdict != Some(Verdict::Approve) && row.agent_verdict.as_deref() != Some("approve") {
             return Ok(Outcome::fail(FailureCode::Invalid, "A comment cannot be empty."));
         }
         let number = row.number;
@@ -1308,7 +1316,8 @@ impl Work {
         };
         // A branch already holds the work, so its pull request is ready for
         // review from the start; one with a fork starts as a draft.
-        let status = if branch.is_some() { "open" } else { "draft" };
+        // Asked for as a draft, it waits until it is marked ready.
+        let status = if branch.is_some() && !a.draft { "open" } else { "draft" };
         let body = Some(a.body.trim().to_owned()).filter(|body| !body.is_empty());
 
         let number = self.next_number(&repo.id).await?;
@@ -2722,6 +2731,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
+        // A workspace's own agents, as themselves (agent_comments.rs). For
+        // the agents service; never reachable with a person's token.
+        "workspace_agent_comment" => reply(&work.workspace_agent_comment(args(body)?).await?),
+        "workspace_agent_review" => reply(&work.workspace_agent_review(args(body)?).await?),
         "start_checks" => reply(&work.start_checks(args(body)?).await?),
         "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
@@ -2772,6 +2785,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
         "by_author" => reply(&work.by_author(args(body)?).await?),
+        "contributions" => reply(&work.contributions(args(body)?).await?),
         "start_plan" => reply(&work.start_plan(args(body)?).await?),
         "report_plan" => reply(&work.report_plan(args(body)?).await?),
         "get_plan" => reply(&work.get_plan(args(body)?).await?),

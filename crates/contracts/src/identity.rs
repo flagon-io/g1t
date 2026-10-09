@@ -33,7 +33,8 @@ pub struct AccessToken {
     /// For a workspace's token, the username of the member who made it.
     /// Null once that account is gone, and on personal tokens.
     pub created_by: Option<String>,
-    /// Its scopes, as `resource:level`. Null: full access.
+    /// Its scopes, as `resource:level`, the highest of each resource.
+    /// Null: full access (an application's or an agent's credential).
     #[serde(default)]
     pub scopes: Option<Vec<String>>,
     /// Made before tokens had scopes: full access until someone narrows it.
@@ -42,17 +43,39 @@ pub struct AccessToken {
     /// RFC 3339. Null: it does not expire.
     #[serde(default)]
     pub expires_at: Option<String>,
-    /// Classic, fine-grained, or a workspace's own.
+    /// Its scopes as permissions: each resource it may use, by name, at
+    /// the highest level, such as `{"issues": "write"}`. Every resource at
+    /// its highest when `scopes` is null.
     #[serde(default)]
-    pub kind: crate::tokens::TokenKind,
+    pub permissions: std::collections::BTreeMap<String, String>,
     /// What it is for, as its owner wrote it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// A fine-grained token's resource owner, repositories, permissions and
-    /// status.
+    /// A personal token's reach: the workspace it is made for, by slug;
+    /// null for every workspace its owner belongs to (or, with
+    /// `repository_selection` public, none). Null on a workspace's own
+    /// token, which reaches its workspace.
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// Which repositories of that workspace it reaches.
+    #[serde(default)]
+    pub repository_selection: crate::scopes::RepositorySelection,
+    /// With `selected`: the repositories, as `owner/name`, that the viewer
+    /// can see.
+    #[serde(default)]
+    pub repositories: Vec<String>,
+    /// Whether a token made for a workspace that approves tokens may be
+    /// used there yet.
+    #[serde(default)]
+    pub status: crate::tokens::TokenStatus,
+    /// Why an owner denied or revoked it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fine_grained: Option<crate::tokens::FineGrainedDetails>,
-    /// A workspace's own token an owner gave Admin when making it.
+    pub review_reason: Option<String>,
+    /// Whether it is a workspace's own token, acting as the workspace.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub workspace_owned: bool,
+    /// A workspace's own token with Repositories: admin, which acts as an
+    /// admin of the workspace's repositories rather than with Write.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub admin: bool,
 }
@@ -124,6 +147,15 @@ pub struct UsernameArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UsernamesArgs {
     pub ids: Vec<String>,
+}
+
+/// `display_usernames`: how each of these people (by lowercased username,
+/// at most 200) wrote their username, for showing it beside the key.
+/// Returns a map from the lowercased username to its chosen case; people
+/// who chose none, and names nobody has, are left out.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct DisplayUsernamesArgs {
+    pub usernames: Vec<String>,
 }
 
 /// `list_ssh_keys` and `list_access_tokens`.
@@ -212,17 +244,6 @@ pub struct RevokeJobTokensArgs {
     pub job_id: String,
 }
 
-/// `update_access_token`: changes what one of a person's tokens may do.
-/// The token itself is unchanged. Returns `Outcome<AccessToken>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateAccessTokenArgs {
-    pub user: User,
-    pub id: String,
-    /// Null: full access.
-    #[serde(default)]
-    pub scopes: Option<Vec<String>>,
-}
-
 /// The plaintext token is returned once and never stored.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreatedAccessToken {
@@ -245,6 +266,11 @@ pub struct RegisterArgs {
     /// registration is open.
     #[serde(default)]
     pub invite_code: Option<String>,
+    /// The `proof` from the invite email's link. When it is the invite's
+    /// own and `email` is the address the invite was sent to, the account
+    /// starts with that address confirmed; otherwise it is ignored.
+    #[serde(default)]
+    pub email_proof: Option<String>,
     /// Who is asking, such as the visitor's IP address, for rate limits.
     #[serde(default)]
     pub client: Option<String>,
@@ -384,6 +410,10 @@ pub struct Workspace {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Member {
     pub username: String,
+    /// The username as its owner wrote it (`Ana`), when that differs from
+    /// `username`: what pages show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_username: Option<String>,
     pub role: crate::Role,
     /// The roles they hold besides `role`.
     #[serde(default)]
@@ -463,7 +493,10 @@ pub struct ListMembersArgs {
     pub viewer: crate::Viewer,
 }
 
-/// `add_member` and `remove_member`: owners only. Removing yourself is
+/// `add_member` and `remove_member`: owners only. `add_member` never adds a
+/// person at once: it sends them a workspace invitation to accept or
+/// decline, as `invite_member` with a username does. Only g1t's own agent
+/// is added at once. Removing yourself is
 /// leaving (`members::LeaveWorkspaceArgs`); removing an owner is refused
 /// when they are the last. Each returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -729,27 +762,6 @@ pub struct WorkspaceTokensArgs {
     pub viewer: crate::Viewer,
 }
 
-/// `create_workspace_token`: owners only. The token belongs to the
-/// workspace, acts as it, and keeps working when the member who made it
-/// leaves. Returns `Outcome<CreatedAccessToken>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateWorkspaceTokenArgs {
-    pub actor: User,
-    pub slug: String,
-    pub name: String,
-    /// Its scopes; null for full access.
-    #[serde(default)]
-    pub scopes: Option<Vec<String>>,
-    /// When set, the token stops working after this many seconds. It is
-    /// listed with the workspace's tokens either way. Null: no expiry.
-    #[serde(default)]
-    pub ttl_seconds: Option<u64>,
-    /// Admin on the workspace's repositories, rather than Write: given by
-    /// the owner on purpose, when making it.
-    #[serde(default)]
-    pub admin: bool,
-}
-
 /// `remove_workspace_token`: owners only. Returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RemoveWorkspaceTokenArgs {
@@ -981,7 +993,11 @@ pub const MAX_PROFILE_TIMEZONE: usize = 64;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
+    /// Lowercased: what the profile is found and linked by.
     pub username: String,
+    /// The username as its owner wrote it, when that differs: what the page shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_username: Option<String>,
     /// The name they go by, if they gave one.
     pub name: Option<String>,
     /// One or two lines about them, at most [`MAX_PROFILE_BIO`] characters.
@@ -1131,7 +1147,13 @@ pub enum InviteStatus {
     /// yet. The code is spent; the workspace (or repository) it gives is
     /// joined when the address is confirmed, unless it is revoked first.
     AwaitingConfirmation,
+    /// Used to make an account that has confirmed its address, for a
+    /// workspace it has not yet joined or declined: the workspace
+    /// invitation waits for the person's answer (`accept_invitation`).
+    AwaitingAnswer,
     Redeemed,
+    /// Its person declined the workspace it invited them to.
+    Declined,
     Expired,
     Revoked,
 }
@@ -1189,6 +1211,13 @@ pub struct Invite {
     pub redeemed_at: Option<String>,
     /// RFC 3339.
     pub revoked_at: Option<String>,
+    /// The account a workspace invitation is for, by username: someone
+    /// invited by username, or the account the invite made.
+    #[serde(default)]
+    pub invitee: Option<String>,
+    /// The role `workspace` is joined with. Null when it names none.
+    #[serde(default)]
+    pub role: Option<crate::Role>,
     /// The staff member who minted it. Only in staff views.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff: Option<String>,
@@ -1256,6 +1285,16 @@ pub struct CreateInviteArgs {
     /// Use this workspace's granted invites, by slug.
     #[serde(default)]
     pub workspace: Option<String>,
+    /// The workspace the new account is invited to, by slug: one the
+    /// person owns that can add members (not on the free plan). Once the
+    /// account is confirmed it gets a workspace invitation to accept, as a
+    /// member, and no workspace of its own is made for it.
+    #[serde(default)]
+    pub join: Option<String>,
+    /// The role `join` invites them with; member when absent. Ignored
+    /// without `join`.
+    #[serde(default)]
+    pub join_role: Option<crate::Role>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
@@ -1278,6 +1317,10 @@ pub struct InviteCodeArgs {
     pub viewer: Option<User>,
     #[serde(default)]
     pub any_status: bool,
+    /// The `proof` from the invite email's link, if the page was opened
+    /// from it: sets `InvitePreview::email_proven`.
+    #[serde(default)]
+    pub email_proof: Option<String>,
 }
 
 /// Someone shown on an invite.
@@ -1333,6 +1376,12 @@ pub struct InvitePreview {
     /// domains, such as `["cloudflare.com"]`. Empty for any address.
     #[serde(default)]
     pub shared_domains: Vec<String>,
+    /// Whether `email_proof` was this pending invite's own, from the email
+    /// it was sent in: the account made with it starts with `address`
+    /// confirmed. False without a proof, with a wrong one, and for an
+    /// invite bound to no address.
+    #[serde(default)]
+    pub email_proven: bool,
 }
 
 /// `accept_invite`: a signed-in person uses a workspace invite made for
@@ -1355,10 +1404,63 @@ pub struct AcceptInviteArgs {
 pub struct InviteMemberArgs {
     pub actor: User,
     pub slug: String,
+    /// An email address. Give this or `username`.
+    #[serde(default)]
     pub email: String,
+    /// A g1t username: that account gets a workspace invitation to accept
+    /// or decline, in its inbox and by email. Nobody joins without saying
+    /// yes.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// The role they join with; member when absent.
+    #[serde(default)]
+    pub role: Option<crate::Role>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
+}
+
+/// A workspace invitation waiting for its person's answer, as they see it.
+/// `list_invitations` (takes `UserArgs`) returns `Vec<WorkspaceInvitation>`,
+/// newest first: pending ones only, never expired, revoked or answered.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceInvitation {
+    pub id: String,
+    pub workspace: ProfileWorkspace,
+    /// The role accepting joins with.
+    pub role: crate::Role,
+    /// Null when g1t staff sent it.
+    pub invited_by: Option<InviteFrom>,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub expires_at: String,
+}
+
+/// `accept_invitation`: the person it is for joins the workspace with the
+/// role it names. Returns `Outcome<String>`, the workspace's slug.
+///
+/// `decline_invitation`: they say no; whoever sent it is told in their
+/// inbox. Returns `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvitationArgs {
+    pub user: User,
+    pub id: String,
+    /// Where the request came in, for the audit log; g1t.sh when absent.
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `find_people`: accounts whose username starts with `query`, or whose
+/// name contains it, for picking someone to invite. Only what a profile
+/// shows: a username, a name and an avatar, never an email address.
+/// Returns `Vec<InviteFrom>`, at most `limit` (10 at most, 8 when absent).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FindPeopleArgs {
+    pub query: String,
+    #[serde(default)]
+    pub limit: Option<u32>,
 }
 
 /// `workspace_invites` (takes `ListMembersArgs`): a workspace's invites,

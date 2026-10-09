@@ -67,6 +67,12 @@ test("what the page says once confirmed, and where it goes", () => {
   assert.equal(afterConfirming("", null), "/");
 });
 
+test("confirming an account whose invite names a workspace goes on to accept or decline it", () => {
+  assert.match(confirmedLine({ invitedTo: "flagon-io" }), /invited to join flagon-io: accept or decline/);
+  assert.equal(afterConfirming("/flagon-io", null, "flagon-io"), "/invitations");
+  assert.equal(afterConfirming("/", null, null), "/");
+});
+
 test("the code field is a one-time code typed with a number pad", () => {
   const page = readFileSync(new URL("../routes/confirm-email.tsx", import.meta.url), "utf8");
   const input = /<Input[\s\S]*?name="code"[\s\S]*?\/>/.exec(page)?.[0] ?? "";

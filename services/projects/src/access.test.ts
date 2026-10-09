@@ -19,12 +19,12 @@ test("a private project is seen by those who can read its repository", () => {
   assert.equal(permission(outside, repoRef(row(true))), "read", "an outside collaborator sees the project of a repository shared with them");
 });
 
-test("changing a project and its dependencies takes Maintain", () => {
+test("changing a project takes Maintain", () => {
   const member = person({ workspaces: [{ slug: "acme", role: "member" }] });
-  assert.ok(!can(member, repoRef(row(true)), NEEDS.addDependency), "Write, the default base permission, is not enough");
+  assert.ok(!can(member, repoRef(row(true)), NEEDS.update), "Write, the default base permission, is not enough");
   assert.equal(needs(NEEDS.update), "Needs the Maintain role or higher.");
   const maintainer = person({ grants: [{ repo_id: "repo_api", workspace: "acme", role: "maintain" }] });
-  for (const capability of [NEEDS.update, NEEDS.addDependency, NEEDS.removeDependency]) assert.ok(can(maintainer, repoRef(row(true)), capability));
+  for (const capability of [NEEDS.update, NEEDS.create]) assert.ok(can(maintainer, repoRef(row(true)), capability));
   const owner = person({ workspaces: [{ slug: "acme", role: "owner" }] });
   assert.ok(can(owner, repoRef(row(true)), NEEDS.create));
 });

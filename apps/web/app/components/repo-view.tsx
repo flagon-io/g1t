@@ -15,6 +15,7 @@ import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
 import { useAddresses } from "../lib/addresses";
+import { isImagePath } from "../lib/usercontent";
 import { CloneBox } from "./clone-box";
 import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { type AboutData, RepoAboutPanel } from "./repo-about";
@@ -42,23 +43,42 @@ function Breadcrumbs({
 }) {
   const segments = path.split("/").filter(Boolean);
   if (segments.length === 0) return null;
+  // On a phone, one line: the folders between the repository and the last
+  // two fold into an ellipsis that opens the deepest of them.
+  const folded = segments.length - 2;
+  const slash = <span className="mx-1.5 shrink-0 text-faint">/</span>;
   return (
-    <p className="font-mono text-sm text-muted">
-      <Link to={`${base}/tree/${gitRef}`} className="text-accent hover:underline">
+    <nav aria-label="Path" className="flex min-w-0 basis-full items-center font-mono text-sm whitespace-nowrap text-muted sm:basis-auto sm:flex-wrap sm:whitespace-normal">
+      <Link to={`${base}/tree/${gitRef}`} className="shrink-0 py-2 text-accent hover:underline sm:py-0">
         {repo}
       </Link>
+      {folded > 0 && (
+        <span className="flex shrink-0 items-center sm:hidden">
+          {slash}
+          <Link
+            to={`${base}/tree/${gitRef}/${encodePath(segments.slice(0, folded).join("/"))}`}
+            aria-label={`Up to ${segments.slice(0, folded).join("/")}`}
+            className="rounded px-1 py-2 text-accent hover:underline"
+          >
+            …
+          </Link>
+        </span>
+      )}
       {segments.map((segment, i) => {
         const to = encodePath(segments.slice(0, i + 1).join("/"));
         const last = i === segments.length - 1;
         return (
-          <span key={to}>
-            <span className="mx-1.5 text-faint">/</span>
+          <span
+            key={to}
+            className={`${i < folded ? "hidden sm:flex" : "flex"} items-center ${last ? "min-w-0" : i === segments.length - 2 ? "min-w-0 shrink-[2]" : "shrink-0"}`}
+          >
+            {slash}
             {last ? (
-              <span className="font-medium text-fg">{segment}</span>
+              <span className="truncate font-medium text-fg">{segment}</span>
             ) : (
               <Link
                 to={`${base}/tree/${gitRef}/${to}`}
-                className="text-accent hover:underline"
+                className="truncate py-2 text-accent hover:underline sm:py-0"
               >
                 {segment}
               </Link>
@@ -66,7 +86,7 @@ function Breadcrumbs({
           </span>
         );
       })}
-    </p>
+    </nav>
   );
 }
 
@@ -76,7 +96,7 @@ export type Tree = Omit<RawTree, "head"> & { head: ShownCommit | null };
 
 function CommitBar({ commit, base, checks }: { commit: ShownCommit; base: string; checks?: ChecksSource }) {
   return (
-    <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-sm">
+    <div className="flex items-center gap-2.5 border-b border-line bg-surface px-3 py-2.5 text-sm sm:gap-3 sm:px-4">
       <CommitAvatars commit={commit} />
       <span className="shrink-0 font-medium">
         <CommitNames commit={commit} />
@@ -85,14 +105,16 @@ function CommitBar({ commit, base, checks }: { commit: ShownCommit; base: string
         {commit.message.split("\n")[0]}
       </Link>
       <CommitChecksBadge checks={checks} sha={commit.hash} className="-ml-1.5" />
-      <span className="ml-auto flex shrink-0 items-center gap-4 text-xs text-faint">
+      <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-faint sm:gap-4">
         <Link to={`${base}/commit/${commit.hash}`} className="hidden font-mono hover:text-fg sm:inline">
           {commit.hash.slice(0, 7)}
         </Link>
-        <TimeAgo at={commit.authoredAt} />
-        <Link to={`${base}/commits`} className="inline-flex items-center gap-1.5 font-medium text-muted hover:text-fg">
+        <span className="hidden sm:inline">
+          <TimeAgo at={commit.authoredAt} />
+        </span>
+        <Link to={`${base}/commits`} aria-label="History" className="-my-2 inline-flex items-center gap-1.5 py-2 font-medium text-muted hover:text-fg">
           <History size={14} />
-          History
+          <span className="hidden sm:inline">History</span>
         </Link>
       </span>
     </div>
@@ -143,14 +165,14 @@ function BranchMenu({
 /** Searches this repository's code on the search page, where it can be widened to all of g1t. */
 function SearchCode({ repo }: { repo: string }) {
   return (
-    <Form action="/search" role="search" className="relative ml-auto w-full min-w-40 grow sm:w-64 sm:grow-0">
+    <Form action="/search" role="search" className="relative ml-auto min-w-0 flex-1 basis-40 sm:w-64 sm:flex-none sm:basis-auto">
       <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
       <input
         name="q"
         {...notACredential()}
         placeholder="Search code"
         aria-label={`Search ${repo}`}
-        className="h-8 w-full rounded-md border border-line bg-surface pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
+        className="h-9 w-full rounded-md border border-line bg-surface pr-3 pl-8 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim sm:h-8"
       />
       <input type="hidden" name="repo" value={repo} />
       <input type="hidden" name="type" value="code" />
@@ -167,7 +189,7 @@ function CodeButton({ path, gitRef }: { path: string; gitRef: string }) {
         Code
         <ChevronDown size={13} />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-0">
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-0">
         <div className="p-4">
           <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
             <SquareTerminal size={15} className="text-faint" />
@@ -260,10 +282,11 @@ function FileRows({
         const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
         const commit = byName.get(entry.name);
         return (
-          <li key={entry.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2 transition-colors hover:bg-surface sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]">
+          <li key={entry.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 transition-colors hover:bg-surface sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]">
+            {/* The whole row's height is the link's: a 44px target on a phone. */}
             <Link
               to={`${base}/${isTree ? "tree" : "blob"}/${gitRef}/${prefix}${encodeURIComponent(entry.name)}`}
-              className="flex min-w-0 items-center gap-3 hover:text-accent hover:underline"
+              className="flex min-h-11 min-w-0 items-center gap-3 py-2 hover:text-accent hover:underline sm:min-h-0"
             >
               <Icon size={15} className={`shrink-0 ${isTree ? "text-accent-dim" : "text-faint"}`} />
               <span className="truncate font-mono text-[0.8125rem]">{entry.name}</span>
@@ -365,13 +388,15 @@ export function TreeView({
               <BookOpen size={15} className="text-faint" />
               {readme.name}
             </h2>
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {/\.(md|markdown)$/i.test(readme.name) ? (
                 <Markdown
                   source={readme.text}
                   repo={{ namespace: repo.namespace, name: repo.name }}
-                  // Relative links in a README point into the repository.
+                  // Relative links in a README point into the repository,
+                  // and its pictures at the files of the commit shown.
                   base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
+                  rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
                 />
               ) : (
                 <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
@@ -419,11 +444,13 @@ export function BlobView({
   const { repo, ref, path, size, text } = blob;
   const lines = text?.replace(/\n$/, "").split("\n");
   const base = `/${repo.namespace}/${repo.name}`;
+  // The file as it is, on the usercontent origin (routes/repo/raw.ts).
+  const raw = `${base}/raw/${encodeURIComponent(ref)}/${encodePath(path)}`;
   const toggle = (label: string, on: boolean, search: string) => (
     <Link
       to={{ search }}
       preventScrollReset
-      className={`rounded px-2 py-0.5 transition-colors ${on ? "bg-raised text-fg" : "hover:text-fg"}`}
+      className={`rounded px-2.5 py-1.5 transition-colors sm:px-2 sm:py-0.5 ${on ? "bg-raised text-fg" : "hover:text-fg"}`}
     >
       {label}
     </Link>
@@ -442,23 +469,36 @@ export function BlobView({
       </div>
       {notice}
       <div className="overflow-hidden rounded-xl border border-line">
-        <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs text-muted">
+        <div className="flex items-center gap-3 border-b border-line bg-surface px-3 py-2 text-xs text-muted sm:px-4 sm:py-2.5">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
-          <span>{size.toLocaleString("en-US")} bytes</span>
-          {lines && (
-            <span className="ml-auto flex rounded-md border border-line p-0.5">
-              {toggle("Code", !blame, "")}
-              {toggle("Blame", Boolean(blame), "?blame=1")}
-            </span>
-          )}
+          <span className="hidden min-[400px]:inline">{size.toLocaleString("en-US")} bytes</span>
+          <span className="ml-auto flex items-center gap-2">
+            {lines && (
+              <span className="flex rounded-md border border-line p-0.5">
+                {toggle("Code", !blame, "")}
+                {toggle("Blame", Boolean(blame), "?blame=1")}
+              </span>
+            )}
+            <a href={raw} className="rounded-md border border-line px-2.5 py-2 transition-colors hover:text-fg sm:px-2 sm:py-1">
+              Raw
+            </a>
+          </span>
         </div>
         {blame && lines ? (
           <BlameView base={base} path={path} lines={lines} html={blame.lines} blame={blame.blame} />
         ) : lines ? (
           <CodeLines lines={lines} html={html} marked={marked} />
+        ) : isImagePath(path) ? (
+          <div className="flex justify-center bg-[repeating-conic-gradient(var(--color-raised)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-6">
+            <img src={raw} alt={path.split("/").pop() ?? path} className="max-h-[70vh] max-w-full" />
+          </div>
         ) : (
           <p className="p-6 text-sm text-muted">
-            This file is binary or too large to show.
+            This file is binary or too large to show.{" "}
+            <a href={raw} className="text-accent hover:underline">
+              View it raw
+            </a>
+            .
           </p>
         )}
       </div>

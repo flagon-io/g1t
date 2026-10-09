@@ -14,7 +14,6 @@ export const NEEDS = {
   get: "read",
   listDomains: "read",
   redeploy: "run",
-  stack: "run",
   takeDown: "run",
   updateSettings: "manage_integrations",
   addDomain: "manage_integrations",

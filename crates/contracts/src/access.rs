@@ -35,10 +35,10 @@
 //!
 //! **Tokens.** A workspace's own token has Write on its workspace's
 //! repositories, as a member would, and Admin only when an owner gave it
-//! Admin when making it ([`crate::scopes::TokenAccess::admin`]); what is
-//! for people only stays refused by the checks that say so. A
-//! fine-grained personal token has no role outside its resource owner and
-//! repository selection ([`crate::scopes::FineGrainedReach`]): there it
+//! Repositories: admin ([`crate::scopes::TokenAccess::admin`]); what is
+//! for people only stays refused by the checks that say so. A token
+//! made for one workspace (or none) has no role outside it and its
+//! repository selection ([`crate::scopes::TokenReach`]): there it
 //! reads public repositories, as anyone may, and nothing more. An
 //! agent's token carries the memberships and grants of the person it acts
 //! for, cut down to its repository's workspace
@@ -360,7 +360,7 @@ fn membership_role(user: &User, membership: &Membership) -> Option<RepoRole> {
 
 /// `user`'s role on the repository, not counting that it may be public.
 pub fn granted(user: &User, repo: RepoRef<'_>) -> Option<RepoRole> {
-    // A fine-grained token outside its resource owner, or its repository
+    // A token outside the workspace it is made for, or its repository
     // selection, has no role there: a public repository still reads.
     if user.token.as_deref().is_some_and(|token| !token.covers_repo(repo.id, repo.namespace)) {
         return None;
@@ -401,7 +401,7 @@ pub fn can<'a>(viewer: Option<&User>, repo: impl Into<RepoRef<'a>>, capability: 
     let Some(role) = permission(viewer, repo) else {
         return false;
     };
-    // Where a fine-grained token does not reach, it only reads.
+    // Where a narrowed token does not reach, it only reads.
     if capability != Capability::Read
         && viewer
             .and_then(|user| user.token.as_deref())
@@ -1103,12 +1103,12 @@ mod tests {
     }
 
     #[test]
-    fn a_fine_grained_token_has_a_role_only_inside_its_reach() {
-        use crate::scopes::{FineGrainedReach, RepositorySelection, TokenAccess};
+    fn a_narrowed_token_has_a_role_only_inside_its_reach() {
+        use crate::scopes::{RepositorySelection, TokenAccess, TokenReach};
         let mut person = user(&[("acme", Role::Owner, None), ("globex", Role::Member, None)], &[("rep_9", "initech", RepoRole::Write)]);
         let reach = |workspace: Option<&str>, repositories, ids: &[&str]| {
             Some(Box::new(TokenAccess {
-                fine_grained: Some(FineGrainedReach { workspace: workspace.map(str::to_owned), repositories, repo_ids: ids.iter().map(|id| (*id).to_owned()).collect() }),
+                reach: Some(TokenReach { workspace: workspace.map(str::to_owned), repositories, repo_ids: ids.iter().map(|id| (*id).to_owned()).collect() }),
                 ..TokenAccess::default()
             }))
         };
@@ -1118,7 +1118,7 @@ mod tests {
         let elsewhere = repo("rep_4", "globex", true);
         person.token = reach(Some("acme"), RepositorySelection::All, &[]);
         assert_eq!(permission(Some(&person), web), Some(RepoRole::Admin));
-        assert_eq!(permission(Some(&person), elsewhere), None, "only its resource owner");
+        assert_eq!(permission(Some(&person), elsewhere), None, "only the workspace it is made for");
         assert_eq!(permission(Some(&person), repo("rep_9", "initech", true)), None, "nor where its owner collaborates");
         person.token = reach(Some("acme"), RepositorySelection::Selected, &["rep_1"]);
         assert_eq!(permission(Some(&person), web), Some(RepoRole::Admin));

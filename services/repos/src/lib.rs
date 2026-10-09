@@ -32,6 +32,8 @@ mod moves;
 mod namespaces;
 mod pack_cache;
 mod pack_limits;
+mod push_checks;
+mod push_commits;
 mod refs;
 mod refs_cache;
 mod registry;
@@ -224,6 +226,9 @@ pub(crate) struct Repos<S: GitStore> {
     shared: Option<Rc<shared::Shared>>,
     /// Packs for fresh clones (pack_cache.rs); `None` without the bucket.
     packs: Option<Rc<pack_cache::Packs>>,
+    /// What this request started that need not hold up its answer
+    /// (store.rs), handed to its `waitUntil` once it has answered.
+    deferred: Rc<store::Deferred>,
 }
 
 impl<S: GitStore> Repos<S> {
@@ -1882,9 +1887,11 @@ impl<S: GitStore> Repos<S> {
             .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
             .map(|(normalized, version)| pack_cache::Key::new(&repo.id, version, &normalized));
         // A kept answer and the free workspace limits, with a kept
-        // credential looked up alongside. A kept answer goes back without
-        // waiting for the credential, which it does not need.
-        let ((answer, pack, limited), kept_access) = {
+        // credential and, for a push, what the repository holds looked up
+        // alongside. A kept answer goes back without waiting for the
+        // credential, which it does not need.
+        let pushing = write && !get;
+        let ((answer, pack, (limited, held)), kept_access) = {
             let shared = self.shared.as_deref();
             let answer_and_limits = std::pin::pin!(futures_util::future::join3(
                 async {
@@ -1899,12 +1906,14 @@ impl<S: GitStore> Repos<S> {
                         _ => None,
                     }
                 },
-                self.git_limits(call, git, &repo, env),
+                futures_util::future::join(self.git_limits(call, git, &repo, env), async {
+                    if pushing { Some(self.held(&repo).await) } else { None }
+                }),
             ));
             let kept_access = std::pin::pin!(self.store.kept_access(&key, scope));
             match futures_util::future::select(answer_and_limits, kept_access).await {
                 futures_util::future::Either::Left((first, kept_access)) => {
-                    let answered = first.0.is_some() || first.1.is_some() || matches!(first.2, Ok(Some(_)) | Err(_));
+                    let answered = first.0.is_some() || first.1.is_some() || matches!(first.2.0, Ok(Some(_)) | Err(_));
                     (first, if answered { None } else { kept_access.await })
                 }
                 futures_util::future::Either::Right((kept_access, first)) => (first.await, kept_access),
@@ -1973,16 +1982,16 @@ impl<S: GitStore> Repos<S> {
         // request is tried again with a new one; the requests after it then
         // have that one too.
         let again = if get { Some(request.clone()?) } else { None };
-        // Push protection: a push that adds a secret is refused. See secret_scan.rs.
-        let scan = async |body: &[u8]| self.protect(&repo, viewer.as_ref(), body).await;
-        // Rulesets: what the rules of the branches and tags it changes
-        // refuse is declined, saying which rule and why (rules.rs).
-        let rules = async |head: &[u8], whole: bool| self.check_push(&repo, viewer.as_ref(), head, whole).await;
+        // A push's checks: workflow files, the rules of the branches and
+        // tags it changes, saying which rule and why (rules.rs), and push
+        // protection, which refuses a push that adds a secret
+        // (secret_scan.rs). See push_checks.rs.
+        let checks = async |head: &[u8], whole: bool, scan: bool| self.check_receive(&repo, viewer.as_ref(), head, whole, scan).await;
         // What a push may bring (pack_limits.rs): the repository's size is
         // its own and its pull requests' working copies'.
-        let limits = if write && !get {
+        let limits = if let Some(held) = held {
             git_http::PushLimits {
-                held: self.held(&repo).await,
+                held,
                 repo_limit: self.repo_limit,
                 large: self.large_pushes,
                 ..git_http::PushLimits::default()
@@ -1995,10 +2004,10 @@ impl<S: GitStore> Repos<S> {
             body,
             git,
             &access,
-            rules,
+            checks,
             default_branch.as_deref(),
             limits,
-            scan,
+            timing,
         )
         .await?;
         let turned_down = matches!(
@@ -2009,16 +2018,15 @@ impl<S: GitStore> Repos<S> {
             self.store.forget_access(&key).await;
             if let Some(again) = again {
                 let access = self.store.mint_access(&key, scope).await?;
-                let nothing = async |_: &[u8]| Ok(None);
                 outcome = git_http::forward(
                     again,
                     None,
                     git,
                     &access,
-                    async |_: &[u8], _: bool| Ok(None),
+                    async |_: &[u8], _: bool, _: bool| Ok(push_checks::Checks::clear()),
                     default_branch.as_deref(),
                     git_http::PushLimits::default(),
-                    nothing,
+                    timing,
                 )
                 .await?;
             }
@@ -2107,6 +2115,11 @@ impl<S: GitStore> Repos<S> {
                 pushed: forwarded.pushed,
                 pack_bytes: forwarded.pack_bytes,
                 caused_by_job: viewer.as_ref().and_then(g1t_contracts::events::job_run_of).map(str::to_owned),
+                // The calendar credits people, never a job's, an agent's or a workspace's token.
+                credit: viewer
+                    .as_ref()
+                    .filter(|user| user.kind == PrincipalKind::User && g1t_contracts::events::job_run_of(user).is_none())
+                    .map(|user| user.id.clone()),
                 actor: viewer.map(|user: User| user.id),
                 unscanned: forwarded.unscanned,
             });
@@ -2202,6 +2215,7 @@ impl<S: GitStore> Repos<S> {
             actor,
             unscanned,
             caused_by_job,
+            credit,
         } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
@@ -2240,6 +2254,21 @@ impl<S: GitStore> Repos<S> {
                     head.first().is_none_or(|commit| commit.hash == pushed.after)
                 }),
             };
+            // The person's contribution calendar (push_commits.rs). A
+            // failure only leaves the day short.
+            if moved
+                && let (Some(user_id), Some(branch)) = (credit.as_deref(), pushed.branch())
+                && push_commits::counts(branch, &repo.default_branch)
+            {
+                let credited = async {
+                    let log = stored.log(&pushed.after, push_commits::MOST_PER_PUSH + 1).await?;
+                    let commits = push_commits::new_commits(&log, pushed.before.as_deref());
+                    push_commits::record(&self.registry.db, user_id, &repo.id, &rfc3339(now_ms())[..10], commits).await
+                };
+                if let Err(error) = credited.await {
+                    worker::console_error!("commits pushed to {} not credited: {error}", repo.name);
+                }
+            }
             if moved {
                 self.publish_git_push(
                     &repo,
@@ -2293,6 +2322,9 @@ struct PushDone {
     /// The run whose job's token pushed, if one did: its push starts no
     /// workflows.
     caused_by_job: Option<String>,
+    /// The person credited with the push's commits on their contribution
+    /// calendar: whoever pushed, when that is a person (push_commits.rs).
+    credit: Option<String>,
 }
 
 /// What a git request leaves for after its answer: its audit entry, with
@@ -2331,15 +2363,18 @@ impl AfterGit {
             {
                 worker::console_error!("push not recorded: {error}");
             }
+            repos.deferred.settle().await;
         });
     }
 }
 
 fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
     let shared = shared::Shared::from_env(env).map(Rc::new);
+    let deferred = Rc::new(store::Deferred::default());
     Ok(Repos {
         registry: Registry { db: env.d1("DB")? },
-        store: ArtifactsStore::new(env, shared.clone())?,
+        store: ArtifactsStore::new(env, shared.clone(), deferred.clone())?,
+        deferred,
         shared,
         packs: pack_cache::Packs::from_env(env).map(Rc::new),
         events: env.service("EVENTS")?,
@@ -2425,11 +2460,13 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         && let Some((job_id, number)) = backup_part_path(&request.path())
     {
         let answered = backup_part(&mut request, &env, &repos, job_id, number).await;
+        repos.deferred.hand_over(&ctx);
         flush_later(&env, &ctx);
         return answered;
     }
     let Some(method) = rpc_method(&request) else {
         let answered = repos.git_http(request, &env, &ctx).await;
+        repos.deferred.hand_over(&ctx);
         flush_later(&env, &ctx);
         return answered;
     };
@@ -2445,6 +2482,12 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "readable" => {
             let a: ReadableArgs = args(body)?;
             reply(&repos.registry.readable(&a.ids, &a.viewer).await?)
+        }
+        // Work's contribution calendar: the commits a person pushed each
+        // day, in repositories the viewer may read (push_commits.rs).
+        "commit_days" => {
+            let a: g1t_contracts::repos::CommitDaysArgs = args(body)?;
+            reply(&push_commits::days(&repos.registry, &a.user_id, &a.since, &a.viewer).await?)
         }
         "public_namespaces" => {
             let a: PublicNamespacesArgs = args(body)?;
@@ -2675,6 +2718,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         },
         answered => answered,
     };
+    repos.deferred.hand_over(&ctx);
     flush_later(&env, &ctx);
     served.finish(answered)
 }

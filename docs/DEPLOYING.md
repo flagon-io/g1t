@@ -124,10 +124,26 @@ scripts/deploy.sh [units...]                 # the old entry point: all, or thos
 On the Worker itself. Every deploy runs `wrangler deploy --message
 "g1t-deploy <40-char sha> <subject>" --tag g1t-<12-char sha>`, which
 Cloudflare keeps as the version's `workers/message` and `workers/tag`
-annotations. `plan` reads them back with `wrangler deployments status`
-(the live version) and `wrangler versions list` (its annotations): two
-read-only calls per unit, in parallel; a plan of all 22 units takes about
-10 seconds. No KV namespace or other infrastructure is needed.
+annotations. `plan` reads them back with two read-only requests per unit
+to Cloudflare's API, the ones `wrangler deployments status` and `wrangler
+versions list` make: `GET /accounts/{account_id}/workers/scripts/{worker}/deployments`
+(the live version) and `GET .../versions?deployable=true` (its
+annotations). Pending migrations are one more per database: `POST
+/accounts/{account_id}/d1/database/{database_id}/query` with `SELECT name
+FROM "d1_migrations"` (the table Wrangler keeps; a unit's
+`migrations_table` if it names one), compared with the `.sql` files in the
+unit's migrations folder. Every request starts at once, at most 16 in
+flight, each tried once more after a 403, 429, 5xx or network error, so a
+plan of every unit takes a few seconds and needs no Wrangler. No KV
+namespace or other infrastructure is needed.
+
+The API is used when the tool has the token Wrangler would be given (in CI,
+`CLOUDFLARE_API_TOKEN`; on a laptop, `CLOUDFLARE_DEPLOY_TOKEN`) and
+`CLOUDFLARE_ACCOUNT_ID` (or g1t's account by default). Without a token
+(your `wrangler login`) the plan asks Wrangler instead, with the same
+answers, a few units at a time; that takes minutes. Either way a Worker
+that does not exist (404, or Cloudflare's code 10007) is "never deployed",
+and any other failure is a reason in the plan, never a crash.
 
 - A version made by `wrangler secret put` keeps the code of the one before
   it, so the tool looks through those to the deploy before.
@@ -142,6 +158,11 @@ read-only calls per unit, in parallel; a plan of all 22 units takes about
 1. Plans: for each unit, the live commit; `git diff` from it to `HEAD`;
    whether the changed files touch the unit (its folder, the crates and
    packages it is built from, its inputs, lockfile changes that reach it).
+   A Rust crate's `tests/`, `benches/` and `examples/` are not what it is
+   built from, and neither is a source file compiled only for tests: one
+   whose every `mod` declaration is under `#[cfg(test)]` (with or without
+   `#[path]`), or inside a module that is. A change to a crate's tests
+   alone deploys nothing (`scripts/deploy/stack.mjs`, `testOnlySource`).
 2. Refuses if uncommitted changes touch what would deploy (`--allow-dirty`).
 3. Applies every pending migration (`wrangler d1 migrations apply --remote`),
    in parallel. Any failure stops the deploy before code.
@@ -211,7 +232,9 @@ To turn it on (once; until then deploys are not announced):
 On a laptop the tool uses your `wrangler login` (or `CLOUDFLARE_DEPLOY_TOKEN`
 if set), as `scripts/deploy.sh` always did: a `CLOUDFLARE_API_TOKEN` or
 global API key in your shell, or in the repository's `.env`, is ignored.
-With `CI=true` it uses `CLOUDFLARE_API_TOKEN`.
+With `CI=true` it uses `CLOUDFLARE_API_TOKEN`. With a token, `plan` reads
+Cloudflare's API itself; with only `wrangler login`, it asks Wrangler (see
+"Where the deployed commit is kept").
 
 ### The runner's images
 
@@ -368,6 +391,50 @@ Containers allow decides how it runs (findings in `docs/PLAN.md`,
   Not yet seen on Cloudflare itself: watch the first runs' logs for the
   `Docker: started` line, and `dockerd.log` if it does not come.
 
+#### Sandbox errors
+
+Each sandbox is a Durable Object of `g1t-runner`, and Cloudflare counts
+each of its invocations: the `run` call that starts it, `halt`,
+`noteBlocked` and `flagAbuse`, and its alarms. The containers library keeps
+an alarm going for as long as the container runs (each one waits up to
+three minutes), and runs `onStop` from the alarm after the container
+exits, so most of a sandbox's invocations are alarms.
+
+To see what the errors are, by namespace and status, and what was thrown:
+
+```sh
+CLOUDFLARE_API_TOKEN=<token> node scripts/ops/runner-errors.mjs            # the last 7 days
+CLOUDFLARE_API_TOKEN=<token> node scripts/ops/runner-errors.mjs --days 30 --json
+```
+
+The token needs Account Analytics: Read and Workers Observability: Read
+(Workers Scripts: Read adds namespace names). The report puts each message
+in a bucket and says whether it is expected:
+
+| Bucket | Expected | What it is |
+| --- | --- | --- |
+| `deploy_reset` | Yes | A runner deploy resets every sandbox's object, failing the alarm or call in flight. The container keeps running and the next alarm picks it up. |
+| `no_capacity` | Yes | No container instance was free (`max_instances`). The work fails to start and says so. |
+| `container_exited`, `caller_gone` | Yes | A container that stopped, or a caller that went away first. |
+| `stop_not_reported` | No | `onStop` could not tell a service that the sandbox stopped after two tries. The five-minute sweep catches the work up. |
+| `alarm_failed`, `not_started`, `storage`, `limits`, `other` | No | Read the message. |
+
+The runner logs these at error level, each with a fixed prefix you can
+search for in Workers Logs:
+
+- `sandbox not started`
+- `sandbox stop not reported`
+- `sandbox alarm failed`
+- `sandbox container error`
+- `sandbox not destroyed`
+
+`onStop` never throws. A throw would fail the alarm, which Cloudflare
+retries and counts as an error each time, running the whole stop again.
+A sandbox's run inside its time cap is not stopped for inactivity. The
+library's `sleepAfter` (100 minutes) would otherwise stop a run whose
+guardrails allow longer, up to 240 minutes, because the runner never
+fetches the container, so to the library every sandbox looks idle.
+
 ## Build speed
 
 Measured on the development machine (Windows, 32 cores, warm Cargo cache),
@@ -415,8 +482,52 @@ Where the time went, and what changed:
   | The runner binary, cold (builder container) | | 99 s |
   | A Rust CI job's build (events, search, repos; 4 vCPUs) | | 51 s cold, 13 s with the Cargo target restored (107 MB zstd entry) |
 
+- **sccache** (`scripts/sccache.sh`, pinned by version and sha256): a
+  checkout gives every source a new mtime, so Cargo calls rustc again for
+  every workspace crate a unit uses, however much of `target/` was
+  restored. With `RUSTC_WRAPPER=sccache` and its GitHub Actions backend,
+  each call that makes a library is looked up by its inputs in the
+  repository's Actions cache (the same cache as `actions/cache`, scoped to
+  `main`), and an unchanged crate comes back from it. Measured on the
+  development machine on 2026-10-08, `repos` and `events` for wasm32,
+  release, `-j 4`, the dependencies already built, every workspace source
+  touched as a checkout does (sccache's local disk cache; the Actions
+  cache adds a download per hit):
+
+  | | Time |
+  | --- | --- |
+  | Without sccache (before) | 44.3 s, 44.6 s |
+  | sccache, empty cache (its first run, filling it) | 48.8 s |
+  | sccache, filled (6 hits: `contracts`, `kit`, `rules`, `scan`, `secrets`, `blobstore`) | 24.2 s |
+
+  CI's build the same way (`cargo test --workspace --no-run`, debug,
+  `-j 4`, `CARGO_INCREMENTAL=0`): 70.2 s and 74.6 s without sccache, 66.5 s
+  filling it, 40.6 s filled (7 library hits; 23 test harnesses and
+  cdylibs compiled).
+
+  What is left is each Worker's own crate: a `cdylib` is linked, and
+  sccache does not cache what rustc links (binaries, cdylibs, proc
+  macros, build scripts, test harnesses). That compile is real work
+  anyway: a unit deploys because it, or a crate it uses, changed. The
+  same holds for CI's `cargo test`: the workspace's libraries come back
+  from the cache, the test harnesses are compiled. Every Rust job of
+  Deploy and CI's Rust job end with sccache's hits and misses in the
+  run's summary. If the cache cannot be reached, or the download fails
+  its checksum, the job warns and builds as before. On g1t, sccache
+  speaks the toolkit cache's older protocol (`GITHUB_SERVER_URL` is not
+  github.com): a lookup, a reservation, one `PATCH` of the whole entry
+  (`Content-Range: bytes 0-N/*`) and a commit per miss; a lookup and a
+  blob `GET` per hit. Its storage check saves `sccache/.sccache_check`
+  once, and takes the `409` on later runs as "already there".
+- **Not restoring mtimes:** setting each file's mtime from git (so Cargo
+  would trust the restored `target/`) was considered and left out. A
+  restored `target/` may come from another commit (the cache's
+  `restore-keys` take the nearest earlier entry, of any group), and a
+  file changed by an older commit than that build would look unchanged:
+  a stale crate deployed. sccache looks at what is compiled, not when.
 - **Only what changed** is the largest saving: a change to one service
-  deploys one service.
+  deploys one service, and a change only to a crate's tests deploys
+  nothing.
 
 ## The workflow
 
@@ -427,23 +538,28 @@ not), `all` and `dry_run` (plan only).
 | Job | Does | Needs |
 | --- | --- | --- |
 | `check` | `manifest --check` and `npm run test:deploy` | — |
-| `plan` | `plan --github-output`: outputs per stage, the plan in the run's summary | `check` |
-| `migrate` | `migrate --only <units with pending migrations>` | `plan`; skipped when none are pending |
-| `core`, `edge`, `front` | `deploy --only <units> --force --no-migrations`, one job per build group | the stages before; skipped when empty |
-| `smoke` | `node scripts/ops/smoke.mjs`: the landing page, sign-in, sign-up and pricing load, and the waitlist form reaches identity (sent an address identity refuses before keeping or counting anything, so the real waitlist is never touched) | every stage; skipped when nothing deployed |
+| `plan` | `plan --github-output`: outputs per stage, the plan in the run's summary. Reads Cloudflare's API itself, so it installs nothing. | — (runs beside `check`) |
+| `migrate` | `migrate --only <units with pending migrations>` | `check` and `plan`; skipped when none are pending |
+| `core`, `edge`, `front` | `deploy --only <units> --force --no-migrations`, one job per build group | `check`, `plan` and the stages before; skipped when empty |
+| `smoke` | `node scripts/ops/smoke.mjs`: the landing page, sign-in, sign-up and pricing load, and the waitlist form reaches identity (sent an address identity refuses before keeping or counting anything, so the real waitlist is never touched) | `check`, `plan` and every stage; skipped when nothing deployed |
 
 - **One at a time:** `concurrency: deploy-production`, never cancelled in
   progress; a second push waits.
+- **Check and plan side by side:** neither waits for the other, so the
+  plan's few seconds overlap the check's tests; nothing migrates or deploys
+  until both have succeeded. The plan job keeps `fetch-depth: 0`: it diffs
+  from each Worker's live commit, which may be any commit, and tells a
+  rollback by ancestry, which a shallow clone cannot answer.
 - **Build groups:** a stage's units are split so each job shares a build:
   Rust workers at most four to a job (each a 4-vCPU `g1t-4core` machine), the
   TypeScript Workers together, each site alone, and a unit whose image must
   be rebuilt alone (`image: true` in the matrix, also on `g1t-4core`, where
   it builds and pushes the image with the job's own Docker Engine). `fail-fast: false`, so one failed job does not cut
   another off mid-upload; the next stage then does not start.
-- **Tests:** there is no CI workflow on g1t yet; `main` is kept passing by
-  the merge queue's checks. `check` runs the deploy tool's own tests. When a
-  CI workflow is added, make `plan` wait for it (`workflow_run`, or a job in
-  this file).
+- **Tests:** `.g1t/workflows/ci.yml` tests every pull request into `main`
+  (and, on pushes to `main`, runs only its Rust job, to keep the caches
+  pull requests restore from current). `check` runs the deploy tool's own
+  tests. Deploy does not wait for CI.
 - **Machines:** Rust jobs and the runner's image run on `g1t-4core` (4 vCPUs,
   12 GiB, 20 GB), the others on the standard machine
   (`runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}`).
@@ -454,15 +570,18 @@ not), `all` and `dry_run` (plan only).
   downloaded tools, `~/.cargo/registry/cache`, and the Cargo target's
   release dependencies (`target/release` and
   `target/wasm32-unknown-unknown/release`, without `incremental` or
-  `.wasm`), keyed by the build group, `Cargo.lock` and `base.json`. The
-  workspace's own crates are compiled again on every run (a checkout's
-  sources are newer than any cache); the crates.io dependencies are not.
-  npm's cache is not kept: every job runs `npm ci` of only what its units
-  need (`deploy.mjs install`: Wrangler alone for Rust jobs).
+  `.wasm`), keyed by the build group, `Cargo.lock` and `base.json`. Cargo
+  calls rustc again for the workspace's own crates on every run (a
+  checkout's sources are newer than any cache); **sccache** answers those
+  calls from the repository's Actions cache when a crate's inputs did not
+  change (see [Build speed](#build-speed)). npm's cache is not kept: every
+  job runs `npm ci` of only what its units need (`deploy.mjs install`:
+  Wrangler alone for Rust jobs).
 - **Conditions:** each stage runs with `!failure() && !cancelled()`, which
   on g1t (as on GitHub) is true when no job before it failed, however far
   back: a `migrate` job skipped for having nothing to apply does not stop
-  the stages after it, and a failed `check` stops all of them.
+  the stages after it, and a failed `check` or `plan` stops all of them
+  (`migrate`'s own condition needs both to have succeeded).
 - `crates/actions/tests/repository_workflows.rs` reads the workflow with
   g1t's own parser and expressions, and checks the jobs start, wait and
   stop as above (`cargo test -p g1t-actions --test repository_workflows`).
@@ -487,7 +606,11 @@ then a no-op, and worker-build is restored from the cache, installed on a
 miss. The image job adds `x86_64-unknown-linux-musl` (about 30 MB from
 `static.rust-lang.org`) and keeps its Cargo target in the cache. worker-build
 fetches wasm-bindgen and wasm-opt from GitHub releases and esbuild from
-npm. All of those hosts are on the list every workflow job may reach.
+npm. Each Rust job downloads sccache (about 10 MB) from its GitHub release
+too (`scripts/sccache.sh`, which checks its sha256); it is not in the base
+image, and putting it there means a pinned download in the base's
+Dockerfile and a base rebuild (`build-base`). All of those hosts are on
+the list every workflow job may reach.
 
 ### Network
 
@@ -505,7 +628,7 @@ registry.cloudflare.com | deploy.yml, runner-base.yml | production
 status.g1t.sh | deploy.yml | production
 ```
 
-`api.cloudflare.com` is Wrangler's API; `registry.cloudflare.com` is where
+`api.cloudflare.com` is Cloudflare's API, which Wrangler and the plan call; `registry.cloudflare.com` is where
 the deploy asks whether the runner's image is already built, and where the
 `runner-image` job pulls the base from and pushes the runner's image to
 (as `runner-base.yml` pushes the base); `status.g1t.sh` hears the deploy
@@ -525,8 +648,8 @@ Token → Custom token**, named `g1t deploys (CI)`:
 
 | Scope | Permission | Why |
 | --- | --- | --- |
-| Account | Workers Scripts: Edit | Upload, versions, deployments, crons, bindings, `secret list` (doctor) |
-| Account | D1: Edit | `d1 migrations list` and `apply` |
+| Account | Workers Scripts: Edit | Upload, versions, deployments (the plan reads both), crons, bindings, `secret list` (doctor) |
+| Account | D1: Edit | The plan's query of each database's `d1_migrations`, and `d1 migrations apply` |
 | Account | Queues: Edit | Attaching each unit's queue consumers on deploy |
 | Account | Workers R2 Storage: Read | Wrangler checks `og`'s bucket binding |
 | Account | Account Settings: Read | Wrangler reads the account |

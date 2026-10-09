@@ -164,8 +164,10 @@ impl Identity {
                 user: User { ..user.clone() },
                 name: row.client_name,
                 ttl_seconds: None,
-                // A tool a person signed in to themselves acts as them.
-                scopes: None,
+                // A tool a person signed in to themselves acts as them:
+                // every permission, set out as any token's are, so it can
+                // be narrowed under Settings, Access tokens like the rest.
+                scopes: Some(g1t_contracts::scopes::everything().iter().map(|scope| scope.as_str().to_owned()).collect()),
                 listed: false,
             })
             .await?;

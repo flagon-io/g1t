@@ -92,7 +92,7 @@ export default function CommandPaletteDialog({
         <Primitive.Content
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}
-          className="fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl shadow-black/60 outline-none"
+          className="fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-2rem)] max-sm:top-[calc(env(safe-area-inset-top)+0.5rem)] max-sm:w-[calc(100vw-1rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-line-strong bg-raised shadow-2xl shadow-black/60 outline-none"
         >
           <Primitive.Title className="sr-only">Go to or search</Primitive.Title>
           {/* Filtering is done here: search already filtered its results. */}
@@ -109,7 +109,7 @@ export default function CommandPaletteDialog({
               />
               <kbd className="rounded border border-line px-1.5 font-mono text-[0.6875rem] text-faint">esc</kbd>
             </div>
-            <CommandList className="max-h-[55vh] p-1.5">
+            <CommandList className="max-h-[55vh] p-1.5 max-sm:max-h-[calc(var(--vv-height,100dvh)-env(safe-area-inset-top)-5.5rem)]">
               <CommandEmpty>Nothing matches.</CommandEmpty>
               {trimmed && (
                 <CommandGroup heading="Search">

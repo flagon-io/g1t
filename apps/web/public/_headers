@@ -4,3 +4,22 @@
 # kept for good. That includes the typefaces.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Every static file: only the type it says, and a referrer of the origin
+# alone, as the Worker's own answers (app/lib/page-headers.ts).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# The web app manifest, so a phone installs g1t to its home screen.
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+
+/site.webmanifest
+  Content-Type: application/manifest+json
+
+# The service worker (browser notifications only): always checked for a
+# newer one, never kept, and allowed to control the whole site.
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /

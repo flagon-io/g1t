@@ -1,0 +1,38 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-notify",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings. The live socket's viewer comes
+	// in a header the site sets after checking the session, which is only
+	// safe to trust because nothing else can reach this Worker.
+	"workers_dev": false,
+	"placement": { "mode": "off" },
+	"services": [
+		// Who a username is, for the inbox's notices (they name people by username).
+		{ "binding": "IDENTITY", "service": "g1t-identity" }
+	],
+	// One feed per person: their tabs' sockets (hibernating), their latest
+	// notifications, unread counts and push subscriptions, in the object's
+	// own SQLite storage (src/feed.ts). No D1.
+	// One presence room per workspace (src/room.ts): who is online, away or
+	// in Do Not Disturb, and their statuses, passed to everyone there who is
+	// online. Also in the object's own SQLite storage.
+	"durable_objects": {
+		"bindings": [
+			{ "name": "FEEDS", "class_name": "Feed" },
+			{ "name": "ROOMS", "class_name": "Room" }
+		]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["Feed"] },
+		{ "tag": "v2", "new_sqlite_classes": ["Room"] }
+	],
+	// Web Push (RFC 8292): the public half of the VAPID key pair browsers
+	// subscribe with, and who the push services may contact. The private
+	// half is the secret VAPID_PRIVATE_KEY (scripts/ops/vapid-keys.mjs).
+	// Empty: no pushes, everything else works.
+	"vars": { "VAPID_PUBLIC_KEY": "BBAhBFy-jgfEKm4IDEWKNN_5Nft9SjHqahXtpuZf1Aohop03XduSZgyat-hhDKXAP2hdtMv8yPX7TfqWyR6vJTo", "VAPID_SUBJECT": "https://g1t.sh" },
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

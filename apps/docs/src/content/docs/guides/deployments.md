@@ -142,28 +142,6 @@ build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
 What Deployments cannot run yet, such as long-running servers, is on
 [What g1t can't do yet](/about/limitations/#deployments).
 
-## Addresses of other projects
-
-A project that [depends on another](/guides/projects/#dependencies) with
-`as: API_URL` gets that project's address as `API_URL`, in its build and in
-its running app:
-
-| Building | `API_URL` is |
-| --- | --- |
-| Production | The other project's production. |
-| A preview of branch `x` | The other project's preview of `x` if it is up, else its production. |
-
-A secret or variable of the same name wins over it.
-
-### Preview stacks
-
-A change to an API is best seen in the apps that call it. On a pull
-request whose preview is up, **Preview them against this change** (under
-**Affects**) builds a preview of every project that uses this one, from its
-own default branch, under the same branch name. Each gets this preview's
-address through its variable. They come down with their idle days, like
-any preview.
-
 ## Previews of branches
 
 A preview is built when a pull request is opened, when it is marked ready,
@@ -311,7 +289,7 @@ What you can do with a project's deployments follows your
 | | Needs |
 | --- | --- |
 | See its deployments, their build logs, previews and domains | Read |
-| **Redeploy**, preview a stack, take an app down | Write |
+| **Redeploy**, take an app down | Write |
 | Turn deployments on or off, change their settings | Admin |
 | Add, verify and remove custom domains | Admin |
 

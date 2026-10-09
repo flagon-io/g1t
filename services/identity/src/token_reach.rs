@@ -1,37 +1,42 @@
-//! What a personal access token reaches, and the rules a workspace sets for
-//! the tokens that reach it. See `g1t_contracts::tokens`.
+//! Making and changing access tokens, what each one reaches, and the rules
+//! a workspace sets for the personal tokens that reach it. See
+//! `g1t_contracts::tokens`.
 //!
-//! **Classic tokens** reach whatever their owner can, narrowed by their
-//! scopes. **Fine-grained tokens** (migration 0034) name one resource owner
-//! (their owner's own account, or one workspace), all, selected or only
-//! public repositories of it, and a level for each permission, stored as
-//! the scopes those give. Migration 0023 had retired a token's reach in
-//! favour of classic tokens only; the owner chose GitHub's model instead,
-//! with both kinds side by side.
+//! There is one kind of token. Its **permissions** are a level for each
+//! resource, stored as scopes (the highest of each resource), which every
+//! check reads. Its **reach** is where they apply: a person's token is made
+//! for every workspace its owner belongs to, for one workspace (all,
+//! selected or none of its private repositories), or for no workspace (its
+//! owner's account and public repositories only); a workspace's token for
+//! its own workspace, all of its repositories or the ones selected.
+//!
+//! Migration 0041 made the tokens of both earlier kinds this one: classic
+//! tokens became tokens for every workspace, with the permissions their
+//! scopes already were; tokens with a resource owner became tokens for that
+//! workspace (or for no workspace), keeping their scopes.
 //!
 //! Each time a token is used, [`Identity::apply_reach`] cuts the person it
-//! resolves to down to what it reaches: a fine-grained token keeps only its
-//! resource owner's membership and grants (none while it waits for
-//! approval), and any personal token loses the workspaces whose rules keep
-//! it out (a kind they do not allow, a lifetime past their limit, or an
-//! owner revoking it there). Services then decide as for anyone, and
-//! `access::granted` holds a fine-grained token to its repositories.
+//! resolves to down to what it reaches: a token made for one workspace
+//! keeps only that membership and its grants (none while it waits for
+//! approval), a token made for no workspace keeps none, and a token made
+//! for every workspace loses those whose rules keep it out (not allowing
+//! such tokens, a lifetime past their limit, or an owner revoking it
+//! there). Services then decide as for anyone, and `access::granted` holds
+//! a token to its selected repositories.
 //!
-//! **Approval.** A fine-grained token naming a workspace that asks for
-//! approval starts pending, unless its owner is an owner there. The
-//! workspace's owners hear of it in their inbox (`token.approval_requested`)
-//! and approve or deny it; its owner hears back
-//! (`token.approval_reviewed`). Changing a token's repositories or
-//! permissions asks again.
+//! **Approval.** A token made for a workspace that asks for approval
+//! starts pending, unless its owner is an owner there. The workspace's
+//! owners hear of it in their inbox (`token.approval_requested`) and
+//! approve or deny it; its owner hears back (`token.approval_reviewed`).
+//! Changing its repositories or permissions asks again.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::audit::Surface;
 use g1t_contracts::events::{NewEvent, Publish};
-use g1t_contracts::fine_grained::{self, Access, MAX_LIFETIME_DAYS};
 use g1t_contracts::identity::{AccessToken, CreatedAccessToken};
 use g1t_contracts::repos::RepoPath;
-use g1t_contracts::scopes::{FineGrainedReach, RepositorySelection, scopes_text};
+use g1t_contracts::scopes::{RepositorySelection, Scope, TokenReach, permissions_of, resolve_permissions, scopes_text};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::tokens::*;
 use g1t_contracts::{FailureCode, Outcome, Role, User, Viewer};
@@ -42,9 +47,8 @@ use worker::wasm_bindgen::JsValue;
 
 use crate::Identity;
 use crate::security::is_person;
-use crate::tokens::{Grant, Owner};
+use crate::tokens::{Grant, MAX_TOKENS_PER_WORKSPACE, Owner};
 
-const FINE_GRAINED: &str = "fine_grained";
 const DAY_SECONDS: u64 = 86_400;
 
 /// What a token row says about its reach, read with it when it is used.
@@ -56,8 +60,6 @@ pub(crate) struct Facts {
     #[serde(default)]
     expires_at: Option<String>,
     #[serde(default)]
-    kind: Option<String>,
-    #[serde(default)]
     owner_workspace_id: Option<String>,
     #[serde(default)]
     repository_selection: Option<String>,
@@ -68,8 +70,18 @@ pub(crate) struct Facts {
 }
 
 impl Facts {
-    fn fine_grained(&self) -> bool {
-        self.kind.as_deref() == Some(FINE_GRAINED)
+    fn selection(&self) -> RepositorySelection {
+        self.repository_selection.as_deref().and_then(RepositorySelection::parse).unwrap_or_default()
+    }
+
+    /// Made for one workspace.
+    fn made_for_one(&self) -> bool {
+        self.owner_workspace_id.is_some()
+    }
+
+    /// Made for no workspace: its owner's account and public repositories.
+    fn account_only(&self) -> bool {
+        self.owner_workspace_id.is_none() && self.selection() == RepositorySelection::Public
     }
 
     fn lifetime(&self) -> (u64, Option<u64>) {
@@ -82,8 +94,6 @@ impl Facts {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub(crate) struct TokenRowMore {
     #[serde(default)]
-    kind: Option<String>,
-    #[serde(default)]
     description: Option<String>,
     #[serde(default)]
     admin: Option<f64>,
@@ -91,8 +101,6 @@ pub(crate) struct TokenRowMore {
     workspace_id: Option<String>,
     #[serde(default)]
     repository_selection: Option<String>,
-    #[serde(default)]
-    permissions: Option<String>,
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
@@ -107,29 +115,12 @@ impl TokenRowMore {
     pub(crate) fn describe(&self, info: &mut AccessToken) {
         info.description = self.description.clone();
         info.admin = self.admin.is_some_and(|admin| admin >= 1.0);
-        info.kind = if self.kind.as_deref() == Some(FINE_GRAINED) {
-            TokenKind::FineGrained
-        } else if self.workspace_id.is_some() {
-            TokenKind::Workspace
-        } else {
-            TokenKind::Classic
-        };
-        if info.kind == TokenKind::FineGrained {
-            info.fine_grained = Some(FineGrainedDetails {
-                workspace: self.owner_workspace.clone(),
-                repository_selection: self.repository_selection.as_deref().and_then(RepositorySelection::parse).unwrap_or_default(),
-                repositories: Vec::new(),
-                permissions: stored_permissions(self.permissions.as_deref()),
-                status: TokenStatus::parse(self.status.as_deref().unwrap_or("active")),
-                review_reason: self.review_reason.clone(),
-            });
-        }
+        info.workspace_owned = self.workspace_id.is_some();
+        info.workspace = self.owner_workspace.clone();
+        info.repository_selection = self.repository_selection.as_deref().and_then(RepositorySelection::parse).unwrap_or_default();
+        info.status = TokenStatus::parse(self.status.as_deref().unwrap_or("active"));
+        info.review_reason = self.review_reason.clone();
     }
-}
-
-/// A `permissions` column read back.
-fn stored_permissions(text: Option<&str>) -> BTreeMap<String, Access> {
-    text.and_then(|text| serde_json::from_str(text).ok()).unwrap_or_default()
 }
 
 /// A workspace whose rules apply to a token, as read for it.
@@ -137,8 +128,10 @@ fn stored_permissions(text: Option<&str>) -> BTreeMap<String, Access> {
 struct RuleRow {
     id: String,
     slug: String,
+    /// Stored as `allow_classic`: tokens made for every workspace.
     #[serde(default)]
     allow_classic: Option<f64>,
+    /// Stored as `allow_fine_grained`: tokens made for this one.
     #[serde(default)]
     allow_fine_grained: Option<f64>,
     #[serde(default)]
@@ -160,8 +153,8 @@ impl RuleRow {
     fn policy(&self) -> TokenPolicy {
         let flag = |value: Option<f64>, default: bool| value.map_or(default, |value| value >= 1.0);
         TokenPolicy {
-            allow_classic: flag(self.allow_classic, true),
-            allow_fine_grained: flag(self.allow_fine_grained, true),
+            allow_tokens_for_all_workspaces: flag(self.allow_classic, true),
+            allow_tokens_for_this_workspace: flag(self.allow_fine_grained, true),
             require_approval: flag(self.require_approval, true),
             max_lifetime_days: self.max_lifetime_days.filter(|days| *days >= 1.0).map(|days| days as u32),
             forbid_no_expiry: flag(self.forbid_no_expiry, false),
@@ -172,11 +165,11 @@ impl RuleRow {
 }
 
 /// Why a token does not reach a workspace, as its owners are told; `None`
-/// when it does. `fine_grained` is whether the token is one aimed at this
-/// workspace, with `status`.
+/// when it does. `this_workspace` is whether the token is made for this
+/// workspace alone, with `status`.
 pub(crate) fn blocked_by(
     policy: &TokenPolicy,
-    fine_grained: bool,
+    this_workspace: bool,
     status: TokenStatus,
     revoked: bool,
     created_ms: u64,
@@ -185,17 +178,17 @@ pub(crate) fn blocked_by(
     if revoked || status == TokenStatus::Revoked {
         return Some("revoked");
     }
-    if fine_grained {
+    if this_workspace {
         match status {
             TokenStatus::Pending => return Some("pending approval"),
             TokenStatus::Denied => return Some("denied"),
             _ => {}
         }
-        if !policy.allow_fine_grained {
-            return Some("fine-grained tokens not allowed");
+        if !policy.allow_tokens_for_this_workspace {
+            return Some("tokens made for this workspace not allowed");
         }
-    } else if !policy.allow_classic {
-        return Some("classic tokens not allowed");
+    } else if !policy.allow_tokens_for_all_workspaces {
+        return Some("tokens for all workspaces not allowed");
     }
     if !policy.lifetime_allowed(created_ms, expires_ms) {
         return Some(if expires_ms.is_none() { "never expires" } else { "lasts too long" });
@@ -203,13 +196,13 @@ pub(crate) fn blocked_by(
     None
 }
 
-/// `{"contents": "write"}`, as stored.
-fn permissions_column(permissions: &fine_grained::Permissions) -> String {
-    serde_json::to_string(permissions).unwrap_or_else(|_| "{}".to_owned())
-}
-
 fn text(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
+}
+
+/// A description as kept: trimmed, at most 500 characters, none if empty.
+fn tidy(text: Option<&str>) -> Option<String> {
+    text.map(str::trim).filter(|text| !text.is_empty()).map(|text| text.chars().take(500).collect())
 }
 
 /// `token.approval_requested` and `token.approval_reviewed`: told in the
@@ -230,8 +223,8 @@ struct TokenNotice<'a> {
 struct Owned {
     id: String,
     user_id: Option<String>,
+    workspace_id: Option<String>,
     name: String,
-    kind: Option<String>,
     owner_workspace_id: Option<String>,
     status: Option<String>,
 }
@@ -241,60 +234,77 @@ impl Identity {
     /// token reaches. `personal` is whether it is a person's token (not a
     /// workspace's or a job's). See the module docs.
     pub(crate) async fn apply_reach(&self, user: &mut User, token_id: &str, personal: bool, facts: &Facts) -> Result<()> {
-        let Some(access) = user.token.as_deref_mut() else {
-            return Ok(());
-        };
-        if !personal {
-            // A workspace's own token: Write on its repositories, or Admin
-            // when an owner gave it that.
-            access.admin = facts.admin.is_some_and(|admin| admin >= 1.0);
+        if user.token.is_none() {
             return Ok(());
         }
-        let fine = facts.fine_grained();
+        if !personal {
+            // A workspace's own token: Write on its repositories, or Admin
+            // when it holds Repositories: admin; the selected ones only
+            // when it has a selection.
+            let selected = facts.selection() == RepositorySelection::Selected;
+            let repo_ids = if selected { self.token_repo_ids(token_id).await? } else { Vec::new() };
+            let slug = user.username.clone();
+            if let Some(access) = user.token.as_deref_mut() {
+                access.admin = facts.admin.is_some_and(|admin| admin >= 1.0);
+                if selected {
+                    access.reach = Some(TokenReach { workspace: Some(slug), repositories: RepositorySelection::Selected, repo_ids });
+                }
+            }
+            return Ok(());
+        }
+        if facts.account_only() {
+            user.workspaces.clear();
+            user.grants.clear();
+            if let Some(access) = user.token.as_deref_mut() {
+                access.reach = Some(TokenReach { workspace: None, repositories: RepositorySelection::Public, repo_ids: Vec::new() });
+            }
+            return Ok(());
+        }
+        let one = facts.made_for_one();
         // The workspaces it could reach, with their rules for it.
         let mut slugs: Vec<String> = user.workspaces.iter().map(|membership| membership.slug.clone()).collect();
         slugs.extend(user.grants.iter().map(|grant| grant.workspace.to_lowercase()));
         slugs.sort();
         slugs.dedup();
-        if slugs.is_empty() && !fine {
+        if slugs.is_empty() && !one {
             return Ok(());
         }
         let rules = self.rules_for(&slugs, token_id).await?;
         let (created, expires) = facts.lifetime();
         let status = TokenStatus::parse(facts.status.as_deref().unwrap_or("active"));
         let mut keep: HashSet<String> = HashSet::new();
-        let mut owner_slug: Option<String> = None;
+        let mut made_for: Option<String> = None;
         for rule in &rules {
-            if fine && facts.owner_workspace_id.as_deref() != Some(rule.id.as_str()) {
+            if one && facts.owner_workspace_id.as_deref() != Some(rule.id.as_str()) {
                 continue;
             }
-            if fine {
-                owner_slug = Some(rule.slug.clone());
+            if one {
+                made_for = Some(rule.slug.clone());
             }
             let revoked = rule.revoked.is_some_and(|revoked| revoked >= 1.0);
-            if blocked_by(&rule.policy(), fine, status, revoked, created, expires).is_none() {
+            if blocked_by(&rule.policy(), one, status, revoked, created, expires).is_none() {
                 keep.insert(rule.slug.clone());
             }
         }
-        // Workspaces without a rules row: the defaults, which let a classic
-        // token in, and a fine-grained one once it is active.
+        // Workspaces without a rules row: the defaults, which let in a
+        // token for every workspace, and one made for them once active.
         for slug in &slugs {
             if rules.iter().any(|rule| &rule.slug == slug) {
                 continue;
             }
-            if !fine && blocked_by(&TokenPolicy::default(), false, status, false, created, expires).is_none() {
+            if !one && blocked_by(&TokenPolicy::default(), false, status, false, created, expires).is_none() {
                 keep.insert(slug.clone());
             }
         }
         user.workspaces.retain(|membership| keep.contains(&membership.slug));
         user.grants.retain(|grant| keep.contains(&grant.workspace.to_lowercase()));
-        if fine {
-            let selection = facts.repository_selection.as_deref().and_then(RepositorySelection::parse).unwrap_or_default();
-            let reaches = owner_slug.as_ref().is_some_and(|slug| keep.contains(slug));
+        if one {
+            let selection = facts.selection();
+            let reaches = made_for.as_ref().is_some_and(|slug| keep.contains(slug));
             let repo_ids = if reaches && selection == RepositorySelection::Selected { self.token_repo_ids(token_id).await? } else { Vec::new() };
             if let Some(access) = user.token.as_deref_mut() {
-                access.fine_grained = Some(FineGrainedReach {
-                    workspace: owner_slug,
+                access.reach = Some(TokenReach {
+                    workspace: made_for,
                     // Until it reaches its workspace, public repositories only.
                     repositories: if reaches { selection } else { RepositorySelection::Public },
                     repo_ids,
@@ -305,8 +315,8 @@ impl Identity {
     }
 
     /// The workspaces named by `slugs` that have rules, or that `token_id`
-    /// was revoked in, with both. For a fine-grained token, its resource
-    /// owner too, whatever its rules.
+    /// was revoked in, with both. For a token made for one workspace, that
+    /// workspace too, whatever its rules.
     async fn rules_for(&self, slugs: &[String], token_id: &str) -> Result<Vec<RuleRow>> {
         let mut binds: Vec<JsValue> = vec![token_id.into()];
         binds.extend(slugs.iter().map(|slug| JsValue::from(slug.as_str())));
@@ -359,7 +369,7 @@ impl Identity {
         Ok(row.map(|row| (row.id.clone(), row.policy())))
     }
 
-    // --- Fine-grained tokens --------------------------------------------------
+    // --- Making and changing tokens --------------------------------------------
 
     /// Repositories as asked for (`owner/name`, or a name in `slug`), as
     /// the person can see them: their ids, or why one cannot be chosen.
@@ -375,7 +385,7 @@ impl Identity {
             let name = name.trim().trim_start_matches('/');
             let (namespace, repo) = name.split_once('/').unwrap_or((slug, name));
             if !namespace.eq_ignore_ascii_case(slug) {
-                return Ok(Err(format!("{name} is not a repository of {slug}, the token's resource owner.")));
+                return Ok(Err(format!("{name} is not a repository of {slug}, the workspace the token is made for.")));
             }
             let path = RepoPath { namespace: slug.to_owned(), name: repo.to_owned() };
             match self.repo_for(&path, &Some(user.clone())).await? {
@@ -393,145 +403,238 @@ impl Identity {
         user.role_in(&slug.to_lowercase()) == Some(Role::Owner)
     }
 
-    pub async fn create_fine_grained_token(&self, a: CreateFineGrainedTokenArgs) -> Result<Outcome<CreatedAccessToken>> {
-        if !is_person(&a.user) || a.user.token.is_some() {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person, signed in on g1t.sh, can make a personal access token."));
+    pub async fn create_token(&self, a: CreateTokenArgs) -> Result<Outcome<CreatedAccessToken>> {
+        if !is_person(&a.actor) || a.actor.token.is_some() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person, signed in on g1t.sh, can make an access token."));
         }
-        if !a.user.verified {
+        if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address before making a token."));
         }
         if a.name.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Name the token after what will use it."));
         }
-        if a.ttl_seconds < DAY_SECONDS || a.ttl_seconds > u64::from(MAX_LIFETIME_DAYS) * DAY_SECONDS {
+        if a.ttl_seconds.is_some_and(|ttl| !(DAY_SECONDS..=u64::from(MAX_LIFETIME_DAYS) * DAY_SECONDS).contains(&ttl)) {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                format!("A fine-grained token lasts between 1 and {MAX_LIFETIME_DAYS} days."),
+                format!("A token lasts between 1 and {MAX_LIFETIME_DAYS} days, or does not expire."),
             ));
         }
-        let slug = a.workspace.as_deref().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty());
-        let (permissions, scopes) = match fine_grained::resolve(&a.permissions, slug.is_some()) {
-            Ok(resolved) => resolved,
+        match a.owner.as_deref().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty()) {
+            Some(slug) => self.create_workspace_owned(&a, &slug).await,
+            None => self.create_personal(&a).await,
+        }
+    }
+
+    /// A workspace's own token, made by an owner.
+    async fn create_workspace_owned(&self, a: &CreateTokenArgs, slug: &str) -> Result<Outcome<CreatedAccessToken>> {
+        let workspace_id = match self.owned_workspace(&a.actor, slug).await? {
+            Outcome::Ok(id) => id,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let scopes = match resolve_permissions(&a.permissions, false) {
+            Ok(scopes) => scopes,
             Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
         };
-        if permissions.is_empty() {
+        if scopes.is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Give the token at least one permission."));
         }
+        let selection = a.repository_selection;
+        if selection == RepositorySelection::Public {
+            return Ok(Outcome::fail(FailureCode::Invalid, "A workspace's token reaches all of its repositories, or the ones you select."));
+        }
+        if self.tokens_where("access_tokens.workspace_id = ?", &workspace_id).await?.len() >= MAX_TOKENS_PER_WORKSPACE {
+            return Ok(Outcome::fail(FailureCode::Conflict, "This workspace has the maximum number of access tokens. Delete one first."));
+        }
+        let repo_ids = if selection == RepositorySelection::Selected {
+            match self.chosen_repositories(&a.actor, slug, &a.repositories).await? {
+                Ok(ids) => ids,
+                Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+            }
+        } else {
+            Vec::new()
+        };
+        // Repositories: admin makes it an admin of the workspace's
+        // repositories; without it, it has Write, as a member does.
+        let admin = scopes.contains(&Scope::RepoAdmin);
+        let grant = Grant { scopes: Some(scopes) };
+        let mut created = self.mint(Owner::Workspace { id: &workspace_id, created_by: Some(&a.actor.id) }, &a.name, a.ttl_seconds, &grant, true).await?;
+        let description = tidy(a.description.as_deref());
+        let mut statements = vec![self
+            .db
+            .prepare("UPDATE access_tokens SET repository_selection = ?, description = ?, admin = ? WHERE id = ?")
+            .bind(&[
+                selection.as_str().into(),
+                text(description.as_deref()),
+                JsValue::from(u8::from(admin)),
+                created.info.id.as_str().into(),
+            ])?];
+        statements.extend(self.repository_rows(&created.info.id, &repo_ids)?);
+        self.db.batch(statements).await?;
+        created.info.created_by = Some(a.actor.username.clone());
+        created.info.description = description;
+        created.info.admin = admin;
+        created.info.repository_selection = selection;
+        created.info.repositories = qualified_all(Some(slug), &repo_ids, &a.repositories);
+        self.audit_workspace(
+            &a.actor,
+            "workspace_token.created",
+            slug,
+            Surface::Web,
+            format!("Created workspace access token {}{}", created.info.name, if admin { " with Repositories: admin" } else { "" }),
+        )
+        .await;
+        Ok(Outcome::Ok(created))
+    }
+
+    /// A person's own token.
+    async fn create_personal(&self, a: &CreateTokenArgs) -> Result<Outcome<CreatedAccessToken>> {
+        let scopes = match resolve_permissions(&a.permissions, true) {
+            Ok(scopes) => scopes,
+            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        };
+        if scopes.is_empty() {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Give the token at least one permission."));
+        }
+        let slug = a.workspace.as_deref().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty());
+        let selection = a.repository_selection;
         let mut status = TokenStatus::Active;
         let mut workspace_id = None;
         let mut repo_ids = Vec::new();
-        let selection = if slug.is_some() { a.repository_selection } else { RepositorySelection::Public };
-        if let Some(slug) = &slug {
-            if !a.user.is_member(slug) {
-                return Ok(Outcome::fail(FailureCode::Forbidden, format!("You can only aim a token at a workspace you belong to, and {slug} is not one.")));
-            }
-            let Some((id, policy)) = self.policy_of(slug).await? else {
-                return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
-            };
-            if let Some(refusal) = policy.refusal(slug, TokenKind::FineGrained, Some(a.ttl_seconds)) {
-                return Ok(Outcome::fail(FailureCode::Forbidden, refusal));
-            }
-            if policy.require_approval && !Self::owns(&a.user, slug) {
-                status = TokenStatus::Pending;
-            }
-            if selection == RepositorySelection::Selected {
-                repo_ids = match self.chosen_repositories(&a.user, slug, &a.repositories).await? {
-                    Ok(ids) => ids,
-                    Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        match &slug {
+            Some(slug) => {
+                if !a.actor.is_member(slug) {
+                    return Ok(Outcome::fail(FailureCode::Forbidden, format!("You can only make a token for a workspace you belong to, and {slug} is not one.")));
+                }
+                let Some((id, policy)) = self.policy_of(slug).await? else {
+                    return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
                 };
+                if let Some(refusal) = policy.refusal(slug, true, a.ttl_seconds) {
+                    return Ok(Outcome::fail(FailureCode::Forbidden, refusal));
+                }
+                if policy.require_approval && !Self::owns(&a.actor, slug) {
+                    status = TokenStatus::Pending;
+                }
+                if selection == RepositorySelection::Selected {
+                    repo_ids = match self.chosen_repositories(&a.actor, slug, &a.repositories).await? {
+                        Ok(ids) => ids,
+                        Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+                    };
+                }
+                workspace_id = Some(id);
             }
-            workspace_id = Some(id);
+            None if selection == RepositorySelection::Selected => {
+                return Ok(Outcome::fail(FailureCode::Invalid, "Choose the workspace whose repositories the token reaches."));
+            }
+            None => {}
         }
-        let grant = Grant { scopes: Some(scopes.clone()) };
-        let mut created = self.mint(Owner::User(&a.user.id), &a.name, Some(a.ttl_seconds), &grant, true).await?;
-        let description = a.description.as_deref().map(str::trim).filter(|text| !text.is_empty()).map(|text| text.chars().take(500).collect::<String>());
+        let grant = Grant { scopes: Some(scopes) };
+        let mut created = self.mint(Owner::User(&a.actor.id), &a.name, a.ttl_seconds, &grant, true).await?;
+        let description = tidy(a.description.as_deref());
         let mut statements = vec![self
             .db
-            .prepare(
-                "UPDATE access_tokens SET kind = ?, owner_workspace_id = ?, repository_selection = ?, permissions = ?,
-                   description = ?, status = ?
-                 WHERE id = ?",
-            )
+            .prepare("UPDATE access_tokens SET owner_workspace_id = ?, repository_selection = ?, description = ?, status = ? WHERE id = ?")
             .bind(&[
-                FINE_GRAINED.into(),
                 text(workspace_id.as_deref()),
                 selection.as_str().into(),
-                permissions_column(&permissions).into(),
                 text(description.as_deref()),
                 status.as_str().into(),
                 created.info.id.as_str().into(),
             ])?];
-        for repo_id in &repo_ids {
-            statements.push(
-                self.db
-                    .prepare("INSERT OR IGNORE INTO token_repositories (token_id, repo_id) VALUES (?, ?)")
-                    .bind(&[created.info.id.as_str().into(), repo_id.as_str().into()])?,
-            );
-        }
+        statements.extend(self.repository_rows(&created.info.id, &repo_ids)?);
         self.db.batch(statements).await?;
-        created.info.kind = TokenKind::FineGrained;
         created.info.description = description;
-        created.info.fine_grained = Some(FineGrainedDetails {
-            workspace: slug.clone(),
-            repository_selection: selection,
-            repositories: if repo_ids.is_empty() { Vec::new() } else { a.repositories.iter().map(|name| qualified(slug.as_deref(), name)).collect() },
-            permissions,
-            status,
-            review_reason: None,
-        });
-        // In the person's security log and their workspaces' audit logs, as
-        // a classic token is (tokens.rs).
-        self.log_security(&a.user.id, "token_created", Some(&created.info.name), None).await;
-        self.audit_account(&a.user, "token.created", &format!("Created fine-grained access token {}", created.info.name)).await;
+        created.info.workspace = slug.clone();
+        created.info.repository_selection = selection;
+        created.info.repositories = qualified_all(slug.as_deref(), &repo_ids, &a.repositories);
+        created.info.status = status;
+        // In the person's security log and their workspaces' audit logs.
+        self.log_security(&a.actor.id, "token_created", Some(&created.info.name), None).await;
+        self.audit_account(&a.actor, "token.created", &format!("Created access token {}", created.info.name)).await;
         if let (Some(slug), TokenStatus::Pending) = (&slug, status) {
-            self.ask_owners(&a.user, slug, &created.info).await?;
+            self.ask_owners(&a.actor, slug, &created.info).await?;
         }
         Ok(Outcome::Ok(created))
     }
 
-    pub async fn update_fine_grained_token(&self, a: UpdateFineGrainedTokenArgs) -> Result<Outcome<AccessToken>> {
-        if !is_person(&a.user) || a.user.token.is_some() {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only you, signed in on g1t.sh, can change your tokens."));
+    /// Statements that set a token's selected repositories.
+    fn repository_rows(&self, token_id: &str, repo_ids: &[String]) -> Result<Vec<worker::D1PreparedStatement>> {
+        repo_ids
+            .iter()
+            .map(|repo_id| {
+                self.db
+                    .prepare("INSERT OR IGNORE INTO token_repositories (token_id, repo_id) VALUES (?, ?)")
+                    .bind(&[token_id.into(), repo_id.as_str().into()])
+            })
+            .collect()
+    }
+
+    pub async fn update_token(&self, a: UpdateTokenArgs) -> Result<Outcome<AccessToken>> {
+        if !is_person(&a.actor) || a.actor.token.is_some() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only a person, signed in on g1t.sh, can change an access token."));
         }
-        let Some(found) = self.owned_token(&a.id).await?.filter(|token| token.user_id.as_deref() == Some(a.user.id.as_str()) && token.kind.as_deref() == Some(FINE_GRAINED)) else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
+        let owner_slug = a.owner.as_deref().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty());
+        let found = self.owned_token(&a.id).await?;
+        let found = match (&owner_slug, found) {
+            (Some(slug), Some(token)) => {
+                let workspace_id = match self.owned_workspace(&a.actor, slug).await? {
+                    Outcome::Ok(id) => id,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                if token.workspace_id.as_deref() != Some(workspace_id.as_str()) {
+                    return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
+                }
+                token
+            }
+            (None, Some(token)) if token.user_id.as_deref() == Some(a.actor.id.as_str()) => token,
+            _ => return Ok(Outcome::fail(FailureCode::NotFound, "No such token.")),
         };
-        let slug = match &found.owner_workspace_id {
+        let personal = found.user_id.is_some();
+        // The workspace a personal token is made for; for a workspace's
+        // token, its own. Its repositories are chosen there.
+        let made_for = match &found.owner_workspace_id {
             Some(id) => self.slug_of(id).await?,
             None => None,
         };
+        let repo_workspace = if personal { made_for.clone() } else { owner_slug.clone() };
         let mut sets: Vec<(&str, JsValue)> = Vec::new();
         if let Some(name) = a.name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
             sets.push(("name", name.chars().take(100).collect::<String>().into()));
         }
         if let Some(description) = &a.description {
-            let description = description.trim();
-            sets.push(("description", if description.is_empty() { JsValue::NULL } else { description.chars().take(500).collect::<String>().into() }));
+            sets.push(("description", text(tidy(Some(description)).as_deref())));
         }
         let mut widened = false;
         if let Some(asked) = &a.permissions {
-            let (permissions, scopes) = match fine_grained::resolve(asked, found.owner_workspace_id.is_some()) {
-                Ok(resolved) => resolved,
+            let scopes = match resolve_permissions(asked, personal) {
+                Ok(scopes) => scopes,
                 Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
             };
-            if permissions.is_empty() {
+            if scopes.is_empty() {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Give the token at least one permission."));
             }
-            sets.push(("permissions", permissions_column(&permissions).into()));
+            if !personal {
+                sets.push(("admin", JsValue::from(u8::from(scopes.contains(&Scope::RepoAdmin)))));
+            }
             sets.push(("scopes", scopes_text(&scopes).into()));
             widened = true;
         }
-        let mut repo_ids: Option<Vec<String>> = None;
-        if let Some(slug) = &slug {
-            let selection = a.repository_selection;
-            if let Some(selection) = selection {
-                sets.push(("repository_selection", selection.as_str().into()));
-                widened = true;
+        if let Some(selection) = a.repository_selection {
+            if selection == RepositorySelection::Selected && repo_workspace.is_none() {
+                return Ok(Outcome::fail(FailureCode::Invalid, "This token is not made for one workspace, so it cannot select repositories."));
             }
-            let selected = selection.unwrap_or_default() == RepositorySelection::Selected || (selection.is_none() && a.repositories.is_some());
+            if selection == RepositorySelection::Public && !personal {
+                return Ok(Outcome::fail(FailureCode::Invalid, "A workspace's token reaches all of its repositories, or the ones you select."));
+            }
+            sets.push(("repository_selection", selection.as_str().into()));
+            widened = true;
+        }
+        let mut repo_ids: Option<Vec<String>> = None;
+        if let Some(slug) = &repo_workspace {
+            let selection = a.repository_selection;
+            let selected = selection == Some(RepositorySelection::Selected) || (selection.is_none() && a.repositories.is_some());
             if selected {
                 let names = a.repositories.clone().unwrap_or_default();
-                repo_ids = Some(match self.chosen_repositories(&a.user, slug, &names).await? {
+                repo_ids = Some(match self.chosen_repositories(&a.actor, slug, &names).await? {
                     Ok(ids) => ids,
                     Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
                 });
@@ -542,9 +645,9 @@ impl Identity {
         }
         // Asking for more, of a workspace that approves tokens, asks again.
         let mut ask = false;
-        if widened && let Some(slug) = &slug {
+        if widened && personal && let Some(slug) = &made_for {
             let policy = self.policy_of(slug).await?.map(|(_, policy)| policy).unwrap_or_default();
-            if policy.require_approval && !Self::owns(&a.user, slug) && found.status.as_deref() != Some("revoked") {
+            if policy.require_approval && !Self::owns(&a.actor, slug) && found.status.as_deref() != Some("revoked") {
                 sets.push(("status", TokenStatus::Pending.as_str().into()));
                 ask = true;
             }
@@ -558,13 +661,7 @@ impl Identity {
         }
         if let Some(ids) = &repo_ids {
             statements.push(self.db.prepare("DELETE FROM token_repositories WHERE token_id = ?").bind(&[a.id.as_str().into()])?);
-            for repo_id in ids {
-                statements.push(
-                    self.db
-                        .prepare("INSERT OR IGNORE INTO token_repositories (token_id, repo_id) VALUES (?, ?)")
-                        .bind(&[a.id.as_str().into(), repo_id.as_str().into()])?,
-                );
-            }
+            statements.extend(self.repository_rows(&a.id, ids)?);
         }
         if !statements.is_empty() {
             self.db.batch(statements).await?;
@@ -572,20 +669,36 @@ impl Identity {
         let Some(mut info) = self.token_info(&a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such token."));
         };
-        self.name_repositories(std::slice::from_mut(&mut info), &Some(a.user.clone())).await?;
+        self.name_repositories(std::slice::from_mut(&mut info), &Some(a.actor.clone())).await?;
         if widened {
-            self.log_security(&a.user.id, "token_rescoped", Some(&info.name), None).await;
-            self.audit_account(&a.user, "token.rescoped", &format!("Changed the permissions of fine-grained access token {}", info.name)).await;
+            if personal {
+                self.log_security(&a.actor.id, "token_rescoped", Some(&info.name), None).await;
+                self.audit_account(&a.actor, "token.rescoped", &format!("Changed the permissions of access token {}", info.name)).await;
+            } else if let Some(slug) = &owner_slug {
+                self.audit_workspace(
+                    &a.actor,
+                    "workspace_token.changed",
+                    slug,
+                    Surface::Web,
+                    format!("Changed the permissions of workspace access token {}", info.name),
+                )
+                .await;
+            }
         }
-        if ask && let Some(slug) = &slug {
-            self.ask_owners(&a.user, slug, &info).await?;
+        if ask && let Some(slug) = &made_for {
+            self.ask_owners(&a.actor, slug, &info).await?;
         }
         Ok(Outcome::Ok(info))
     }
 
+    /// A token a person or workspace made on purpose, by id: never an
+    /// agent's or a workflow job's.
     async fn owned_token(&self, id: &str) -> Result<Option<Owned>> {
         self.db
-            .prepare("SELECT id, user_id, name, kind, owner_workspace_id, status FROM access_tokens WHERE id = ? AND agent_scope IS NULL")
+            .prepare(
+                "SELECT id, user_id, workspace_id, name, owner_workspace_id, status FROM access_tokens
+                 WHERE id = ? AND agent_scope IS NULL AND job_id IS NULL",
+            )
             .bind(&[id.into()])?
             .first::<Owned>(None)
             .await
@@ -613,12 +726,11 @@ impl Identity {
         Ok(row.map(Identity::info))
     }
 
-    /// Names the selected repositories of fine-grained tokens, as `viewer`
-    /// can see them.
+    /// Names the selected repositories of tokens, as `viewer` can see them.
     pub(crate) async fn name_repositories(&self, tokens: &mut [AccessToken], viewer: &Viewer) -> Result<()> {
         let selected: Vec<String> = tokens
             .iter()
-            .filter(|token| token.fine_grained.as_ref().is_some_and(|details| details.repository_selection == RepositorySelection::Selected))
+            .filter(|token| token.repository_selection == RepositorySelection::Selected)
             .map(|token| token.id.clone())
             .collect();
         if selected.is_empty() {
@@ -645,15 +757,13 @@ impl Identity {
             g1t_kit::call(&self.env.service("REPOS")?, "readable", &g1t_contracts::repos::ReadableArgs { ids, viewer: viewer.clone() }).await?
         };
         let names: HashMap<&str, String> = readable.iter().map(|repo| (repo.id.as_str(), format!("{}/{}", repo.namespace, repo.name))).collect();
-        for token in tokens.iter_mut() {
-            if let Some(details) = token.fine_grained.as_mut() {
-                details.repositories = rows
-                    .iter()
-                    .filter(|row| row.token_id == token.id)
-                    .filter_map(|row| names.get(row.repo_id.as_str()).cloned())
-                    .collect();
-                details.repositories.sort();
-            }
+        for token in tokens.iter_mut().filter(|token| token.repository_selection == RepositorySelection::Selected) {
+            token.repositories = rows
+                .iter()
+                .filter(|row| row.token_id == token.id)
+                .filter_map(|row| names.get(row.repo_id.as_str()).cloned())
+                .collect();
+            token.repositories.sort();
         }
         Ok(())
     }
@@ -694,8 +804,8 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Invalid, "The longest lifetime a workspace can set is 3650 days; leave it empty for no limit."));
         }
         let policy = TokenPolicy {
-            allow_classic: a.allow_classic.unwrap_or(current.allow_classic),
-            allow_fine_grained: a.allow_fine_grained.unwrap_or(current.allow_fine_grained),
+            allow_tokens_for_all_workspaces: a.allow_tokens_for_all_workspaces.unwrap_or(current.allow_tokens_for_all_workspaces),
+            allow_tokens_for_this_workspace: a.allow_tokens_for_this_workspace.unwrap_or(current.allow_tokens_for_this_workspace),
             require_approval: a.require_approval.unwrap_or(current.require_approval),
             max_lifetime_days: match a.max_lifetime_days {
                 Some(0) => None,
@@ -716,8 +826,8 @@ impl Identity {
             )
             .bind(&[
                 workspace_id.as_str().into(),
-                JsValue::from(u8::from(policy.allow_classic)),
-                JsValue::from(u8::from(policy.allow_fine_grained)),
+                JsValue::from(u8::from(policy.allow_tokens_for_all_workspaces)),
+                JsValue::from(u8::from(policy.allow_tokens_for_this_workspace)),
                 JsValue::from(u8::from(policy.require_approval)),
                 policy.max_lifetime_days.map_or(JsValue::NULL, JsValue::from),
                 JsValue::from(u8::from(policy.forbid_no_expiry)),
@@ -747,8 +857,8 @@ impl Identity {
             #[serde(flatten)]
             token: crate::tokens::TokenRow,
         }
-        // Fine-grained tokens naming the workspace, and the classic tokens of
-        // its members and outside collaborators that have not expired.
+        // Tokens made for the workspace, and the tokens for every workspace
+        // of its members and outside collaborators, that have not expired.
         let rows = self
             .db
             .prepare(format!(
@@ -761,8 +871,9 @@ impl Identity {
                  WHERE access_tokens.agent_scope IS NULL AND access_tokens.workspace_id IS NULL
                    AND (access_tokens.expires_at IS NULL OR access_tokens.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                    AND (
-                     (access_tokens.kind = 'fine_grained' AND access_tokens.owner_workspace_id = ?1)
-                     OR (access_tokens.kind IS NULL AND (access_tokens.expires_at IS NULL OR access_tokens.listed = 1)
+                     access_tokens.owner_workspace_id = ?1
+                     OR (access_tokens.owner_workspace_id IS NULL AND COALESCE(access_tokens.repository_selection, 'all') <> 'public'
+                       AND (access_tokens.expires_at IS NULL OR access_tokens.listed = 1)
                        AND (access_tokens.user_id IN (SELECT user_id FROM workspace_members WHERE workspace_id = ?1)
                          OR access_tokens.user_id IN (SELECT principal_id FROM repo_grants WHERE workspace_id = ?1 AND principal_kind = 'user')))
                    )
@@ -783,14 +894,12 @@ impl Identity {
         }
         self.name_repositories(&mut infos, &Some(a.actor.clone())).await?;
         for ((owner, revoked), token) in owners.into_iter().zip(infos) {
-            let fine = token.kind == TokenKind::FineGrained;
-            let status = token.fine_grained.as_ref().map_or(TokenStatus::Active, |details| details.status);
-            if a.status.is_some_and(|wanted| wanted != status) || a.kind.is_some_and(|kind| kind != token.kind) {
+            if a.status.is_some_and(|wanted| wanted != token.status) {
                 continue;
             }
             let created = parse_rfc3339(&token.created_at).unwrap_or(0);
             let expires = token.expires_at.as_deref().and_then(parse_rfc3339);
-            let blocked = blocked_by(&policy, fine, status, revoked, created, expires);
+            let blocked = blocked_by(&policy, token.workspace.is_some(), token.status, revoked, created, expires);
             listed.push(MemberToken { owner, token, reaches: blocked.is_none(), blocked_by: blocked.map(str::to_owned) });
         }
         Ok(Outcome::Ok(listed))
@@ -798,9 +907,7 @@ impl Identity {
 
     /// One member token, as `list_member_tokens` shows it.
     async fn member_token(&self, actor: &User, slug: &str, id: &str) -> Result<Option<MemberToken>> {
-        let listed = self
-            .list_member_tokens(ListMemberTokensArgs { actor: actor.clone(), slug: slug.to_owned(), status: None, kind: None })
-            .await?;
+        let listed = self.list_member_tokens(ListMemberTokensArgs { actor: actor.clone(), slug: slug.to_owned(), status: None }).await?;
         Ok(match listed {
             Outcome::Ok(tokens) => tokens.into_iter().find(|member| member.token.id == id),
             Outcome::Fail(_) => None,
@@ -820,7 +927,7 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Conflict, "This token is not waiting for approval."));
         }
         let status = if a.approve { TokenStatus::Active } else { TokenStatus::Denied };
-        let reason = a.reason.as_deref().map(str::trim).filter(|reason| !reason.is_empty()).map(|reason| reason.chars().take(500).collect::<String>());
+        let reason = tidy(a.reason.as_deref());
         self.db
             .prepare("UPDATE access_tokens SET status = ?, reviewed_by = ?, reviewed_at = ?, review_reason = ? WHERE id = ? AND status = 'pending'")
             .bind(&[
@@ -843,7 +950,7 @@ impl Identity {
             &slug,
             a.surface.unwrap_or(Surface::Web),
             format!(
-                "{} the fine-grained token {} of {}{}",
+                "{} the access token {} of {}{}",
                 if a.approve { "Approved" } else { "Denied" },
                 found.name,
                 owner.as_deref().unwrap_or("a former member"),
@@ -864,7 +971,7 @@ impl Identity {
                     body: reason.clone().unwrap_or_else(|| {
                         if a.approve { "It now reaches the workspace.".to_owned() } else { "It reaches public repositories only.".to_owned() }
                     }),
-                    link: "/settings/tokens".to_owned(),
+                    link: format!("/settings/tokens/{}", found.id),
                 },
             )
             .await;
@@ -884,9 +991,10 @@ impl Identity {
         let Some(member) = self.member_token(&a.actor, &slug, &a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No token of a member reaches this workspace with that id."));
         };
-        let reason = a.reason.as_deref().map(str::trim).filter(|reason| !reason.is_empty()).map(|reason| reason.chars().take(500).collect::<String>());
+        let reason = tidy(a.reason.as_deref());
         let now = rfc3339(now_ms());
-        if member.token.kind == TokenKind::FineGrained {
+        let made_for_it = member.token.workspace.is_some();
+        if made_for_it {
             self.db
                 .prepare("UPDATE access_tokens SET status = 'revoked', reviewed_by = ?, reviewed_at = ?, review_reason = ? WHERE id = ? AND owner_workspace_id = ?")
                 .bind(&[a.actor.id.as_str().into(), now.as_str().into(), text(reason.as_deref()), a.id.as_str().into(), workspace_id.as_str().into()])?
@@ -908,9 +1016,8 @@ impl Identity {
             &slug,
             a.surface.unwrap_or(Surface::Web),
             format!(
-                "Revoked {} {} token {} in {slug}{}",
+                "Revoked {}'s access token {} in {slug}{}",
                 member.owner,
-                if member.token.kind == TokenKind::FineGrained { "fine-grained" } else { "classic" },
                 member.token.name,
                 reason.as_deref().map(|reason| format!(": {reason}")).unwrap_or_default()
             ),
@@ -926,7 +1033,7 @@ impl Identity {
                 notify: vec![member.owner.clone()],
                 title: format!("Your token {} was revoked for {slug}", member.token.name),
                 body: reason.unwrap_or_else(|| "An owner of the workspace revoked it there.".to_owned()),
-                link: "/settings/tokens".to_owned(),
+                link: format!("/settings/tokens/{}", a.id),
             },
         )
         .await;
@@ -956,22 +1063,11 @@ impl Identity {
             .into_iter()
             .map(|row| row.username)
             .collect();
-        self.audit_workspace(
-            requester,
-            "token.approval_requested",
-            slug,
-            Surface::Web,
-            format!("Asked for approval of the fine-grained token {}", token.name),
-        )
-        .await;
+        self.audit_workspace(requester, "token.approval_requested", slug, Surface::Web, format!("Asked for approval of the access token {}", token.name)).await;
         if owners.is_empty() {
             return Ok(());
         }
-        let permissions = token
-            .fine_grained
-            .as_ref()
-            .map(|details| details.permissions.iter().map(|(name, access)| format!("{name}: {}", access.as_str())).collect::<Vec<_>>().join(", "))
-            .unwrap_or_default();
+        let permissions = token.permissions.iter().map(|(name, level)| format!("{name}: {level}")).collect::<Vec<_>>().join(", ");
         self.notify(
             "token.approval_requested",
             requester,
@@ -980,7 +1076,7 @@ impl Identity {
                 token_id: &token.id,
                 token_name: &token.name,
                 notify: owners,
-                title: format!("{} asks to use a fine-grained token in {slug}", requester.username),
+                title: format!("{} asks to use an access token in {slug}", requester.username),
                 body: format!("{}: {permissions}", token.name),
                 link: format!("/{slug}/-/personal-access-tokens"),
             },
@@ -1033,13 +1129,24 @@ fn qualified(slug: Option<&str>, name: &str) -> String {
     }
 }
 
+/// The repositories a new token selected, by name, when it selected any.
+fn qualified_all(slug: Option<&str>, repo_ids: &[String], names: &[String]) -> Vec<String> {
+    if repo_ids.is_empty() {
+        return Vec::new();
+    }
+    let mut names: Vec<String> = names.iter().map(|name| qualified(slug, name)).collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// The policy in a sentence, for the audit log.
 fn describe_policy(policy: &TokenPolicy) -> String {
     let yes = |on: bool| if on { "allowed" } else { "not allowed" };
     format!(
-        "Classic tokens {}; fine-grained tokens {}{}; lifetime {}{}",
-        yes(policy.allow_classic),
-        yes(policy.allow_fine_grained),
+        "Tokens for all of a member's workspaces {}; tokens made for this workspace {}{}; lifetime {}{}",
+        yes(policy.allow_tokens_for_all_workspaces),
+        yes(policy.allow_tokens_for_this_workspace),
         if policy.require_approval { ", with approval" } else { ", without approval" },
         policy.max_lifetime_days.map_or_else(|| "unlimited".to_owned(), |days| format!("at most {days} days")),
         if policy.forbid_no_expiry { "; tokens must expire" } else { "" },
@@ -1049,16 +1156,16 @@ fn describe_policy(policy: &TokenPolicy) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use g1t_contracts::scopes::Scope;
+    use std::collections::BTreeMap;
 
     const DAY: u64 = 86_400_000;
 
     #[test]
-    fn classic_tokens_follow_the_workspace_rules() {
+    fn tokens_for_every_workspace_follow_the_workspace_rules() {
         let open = TokenPolicy::default();
         assert_eq!(blocked_by(&open, false, TokenStatus::Active, false, 0, None), None);
-        let closed = TokenPolicy { allow_classic: false, ..TokenPolicy::default() };
-        assert_eq!(blocked_by(&closed, false, TokenStatus::Active, false, 0, Some(DAY)), Some("classic tokens not allowed"));
+        let closed = TokenPolicy { allow_tokens_for_all_workspaces: false, ..TokenPolicy::default() };
+        assert_eq!(blocked_by(&closed, false, TokenStatus::Active, false, 0, Some(DAY)), Some("tokens for all workspaces not allowed"));
         let capped = TokenPolicy { max_lifetime_days: Some(30), ..TokenPolicy::default() };
         assert_eq!(blocked_by(&capped, false, TokenStatus::Active, false, 0, Some(90 * DAY)), Some("lasts too long"));
         assert_eq!(blocked_by(&capped, false, TokenStatus::Active, false, 0, None), Some("never expires"));
@@ -1067,17 +1174,17 @@ mod tests {
     }
 
     #[test]
-    fn fine_grained_tokens_reach_once_active_and_allowed() {
+    fn tokens_made_for_a_workspace_reach_it_once_active_and_allowed() {
         let open = TokenPolicy::default();
         assert_eq!(blocked_by(&open, true, TokenStatus::Pending, false, 0, Some(DAY)), Some("pending approval"));
         assert_eq!(blocked_by(&open, true, TokenStatus::Denied, false, 0, Some(DAY)), Some("denied"));
         assert_eq!(blocked_by(&open, true, TokenStatus::Revoked, false, 0, Some(DAY)), Some("revoked"));
         assert_eq!(blocked_by(&open, true, TokenStatus::Active, false, 0, Some(DAY)), None);
-        let closed = TokenPolicy { allow_fine_grained: false, ..TokenPolicy::default() };
-        assert_eq!(blocked_by(&closed, true, TokenStatus::Active, false, 0, Some(DAY)), Some("fine-grained tokens not allowed"));
-        // Classic tokens being off does not touch fine-grained ones.
-        let no_classic = TokenPolicy { allow_classic: false, ..TokenPolicy::default() };
-        assert_eq!(blocked_by(&no_classic, true, TokenStatus::Active, false, 0, Some(DAY)), None);
+        let closed = TokenPolicy { allow_tokens_for_this_workspace: false, ..TokenPolicy::default() };
+        assert_eq!(blocked_by(&closed, true, TokenStatus::Active, false, 0, Some(DAY)), Some("tokens made for this workspace not allowed"));
+        // Keeping out tokens for every workspace does not touch these.
+        let no_broad = TokenPolicy { allow_tokens_for_all_workspaces: false, ..TokenPolicy::default() };
+        assert_eq!(blocked_by(&no_broad, true, TokenStatus::Active, false, 0, Some(DAY)), None);
     }
 
     #[test]
@@ -1086,46 +1193,77 @@ mod tests {
         assert_eq!(row.policy(), TokenPolicy::default());
         let set = RuleRow { allow_classic: Some(0.0), require_approval: Some(0.0), max_lifetime_days: Some(90.0), forbid_no_expiry: Some(1.0), ..row };
         let policy = set.policy();
-        assert!(!policy.allow_classic && policy.allow_fine_grained && !policy.require_approval && policy.forbid_no_expiry);
+        assert!(!policy.allow_tokens_for_all_workspaces && policy.allow_tokens_for_this_workspace && !policy.require_approval && policy.forbid_no_expiry);
         assert_eq!(policy.max_lifetime_days, Some(90));
     }
 
     #[test]
-    fn a_listed_row_describes_a_fine_grained_token() {
+    fn a_listed_row_describes_its_reach() {
         let more = TokenRowMore {
-            kind: Some(FINE_GRAINED.into()),
             repository_selection: Some("selected".into()),
-            permissions: Some(r#"{"contents":"write","metadata":"read"}"#.into()),
             status: Some("pending".into()),
             owner_workspace: Some("acme".into()),
             ..TokenRowMore::default()
         };
         let mut info = AccessToken::default();
         more.describe(&mut info);
-        assert_eq!(info.kind, TokenKind::FineGrained);
-        let details = info.fine_grained.unwrap();
-        assert_eq!(details.workspace.as_deref(), Some("acme"));
-        assert_eq!(details.repository_selection, RepositorySelection::Selected);
-        assert_eq!(details.status, TokenStatus::Pending);
-        assert_eq!(details.permissions.get("contents"), Some(&Access::Write));
+        assert_eq!(info.workspace.as_deref(), Some("acme"));
+        assert_eq!(info.repository_selection, RepositorySelection::Selected);
+        assert_eq!(info.status, TokenStatus::Pending);
+        assert!(!info.workspace_owned);
+        // A row from before reaches (null) reads as every workspace, active.
+        let mut classic = AccessToken::default();
+        TokenRowMore::default().describe(&mut classic);
+        assert_eq!((classic.workspace.as_deref(), classic.repository_selection, classic.status), (None, RepositorySelection::All, TokenStatus::Active));
         let mut workspace = AccessToken::default();
         TokenRowMore { workspace_id: Some("wsp_1".into()), admin: Some(1.0), ..TokenRowMore::default() }.describe(&mut workspace);
-        assert_eq!(workspace.kind, TokenKind::Workspace);
-        assert!(workspace.admin && workspace.fine_grained.is_none());
+        assert!(workspace.workspace_owned && workspace.admin);
     }
 
     #[test]
-    fn repositories_are_named_in_the_resource_owner() {
+    fn a_rows_reach_is_read_from_its_columns() {
+        let broad = Facts::default();
+        assert!(!broad.made_for_one() && !broad.account_only());
+        let account = Facts { repository_selection: Some("public".into()), ..Facts::default() };
+        assert!(account.account_only());
+        let one = Facts { owner_workspace_id: Some("wsp_1".into()), repository_selection: Some("public".into()), ..Facts::default() };
+        assert!(one.made_for_one() && !one.account_only(), "public in a workspace is that workspace's settings, no private repositories");
+    }
+
+    #[test]
+    fn repositories_are_named_in_the_workspace() {
         assert_eq!(qualified(Some("acme"), "web"), "acme/web");
         assert_eq!(qualified(Some("acme"), "Acme/Web"), "acme/web");
+        assert_eq!(qualified_all(Some("acme"), &["rep_1".into()], &["web".into(), "acme/web".into()]), vec!["acme/web".to_owned()]);
+        assert!(qualified_all(Some("acme"), &[], &["web".into()]).is_empty());
         assert!(describe_policy(&TokenPolicy::default()).contains("with approval"));
     }
 
+    /// Migration 0041 writes full access out as every permission: the
+    /// same lists the code makes.
     #[test]
-    fn scopes_are_kept_for_every_check() {
-        let asked: BTreeMap<String, String> = [("contents".to_owned(), "read".to_owned())].into();
-        let (_, scopes) = fine_grained::resolve(&asked, true).unwrap();
+    fn the_migration_sets_full_access_out_as_every_permission() {
+        use g1t_contracts::scopes::{ResourceGroup, everything};
+        let sql = include_str!("../migrations/0041_one_kind_of_token.sql");
+        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&everything()))));
+        let workspace: Vec<Scope> = everything().into_iter().filter(|scope| scope.resource().group() != ResourceGroup::Account).collect();
+        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&workspace))));
+        let write: Vec<Scope> = workspace
+            .iter()
+            .map(|scope| match scope {
+                Scope::RepoAdmin => Scope::RepoWrite,
+                Scope::AccessAdmin => Scope::AccessRead,
+                other => *other,
+            })
+            .collect();
+        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&write))));
+    }
+
+    #[test]
+    fn permissions_are_stored_as_the_scopes_every_check_reads() {
+        let asked: BTreeMap<String, String> = [("code".to_owned(), "read".to_owned()), ("repo".to_owned(), "read".to_owned())].into();
+        let scopes = resolve_permissions(&asked, true).unwrap();
         assert_eq!(scopes_text(&scopes), "repo:read code:read");
-        assert!(scopes.contains(&Scope::CodeRead));
+        assert_eq!(permissions_of(&scopes), asked);
     }
 }
