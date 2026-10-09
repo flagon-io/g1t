@@ -391,6 +391,50 @@ Containers allow decides how it runs (findings in `docs/PLAN.md`,
   Not yet seen on Cloudflare itself: watch the first runs' logs for the
   `Docker: started` line, and `dockerd.log` if it does not come.
 
+#### Sandbox errors
+
+Each sandbox is a Durable Object of `g1t-runner`, and Cloudflare counts
+each of its invocations: the `run` call that starts it, `halt`,
+`noteBlocked` and `flagAbuse`, and its alarms. The containers library keeps
+an alarm going for as long as the container runs (each one waits up to
+three minutes), and runs `onStop` from the alarm after the container
+exits, so most of a sandbox's invocations are alarms.
+
+To see what the errors are, by namespace and status, and what was thrown:
+
+```sh
+CLOUDFLARE_API_TOKEN=<token> node scripts/ops/runner-errors.mjs            # the last 7 days
+CLOUDFLARE_API_TOKEN=<token> node scripts/ops/runner-errors.mjs --days 30 --json
+```
+
+The token needs Account Analytics: Read and Workers Observability: Read
+(Workers Scripts: Read adds namespace names). The report puts each message
+in a bucket and says whether it is expected:
+
+| Bucket | Expected | What it is |
+| --- | --- | --- |
+| `deploy_reset` | Yes | A runner deploy resets every sandbox's object, failing the alarm or call in flight. The container keeps running and the next alarm picks it up. |
+| `no_capacity` | Yes | No container instance was free (`max_instances`). The work fails to start and says so. |
+| `container_exited`, `caller_gone` | Yes | A container that stopped, or a caller that went away first. |
+| `stop_not_reported` | No | `onStop` could not tell a service that the sandbox stopped after two tries. The five-minute sweep catches the work up. |
+| `alarm_failed`, `not_started`, `storage`, `limits`, `other` | No | Read the message. |
+
+The runner logs these at error level, each with a fixed prefix you can
+search for in Workers Logs:
+
+- `sandbox not started`
+- `sandbox stop not reported`
+- `sandbox alarm failed`
+- `sandbox container error`
+- `sandbox not destroyed`
+
+`onStop` never throws. A throw would fail the alarm, which Cloudflare
+retries and counts as an error each time, running the whole stop again.
+A sandbox's run inside its time cap is not stopped for inactivity. The
+library's `sleepAfter` (100 minutes) would otherwise stop a run whose
+guardrails allow longer, up to 240 minutes, because the runner never
+fetches the container, so to the library every sandbox looks idle.
+
 ## Build speed
 
 Measured on the development machine (Windows, 32 cores, warm Cargo cache),
