@@ -85,6 +85,7 @@ test("the client calls exactly the docs service's folio methods", async () => {
     client.list(ws, viewer, { tab: "all" }),
     client.sidebar(ws, viewer),
     client.folio(ws, viewer, f),
+    client.page(ws, viewer, f),
     client.create(ws, viewer, { kind: "doc" }),
     client.update(ws, viewer, f, { title: "x" }),
     client.move(ws, viewer, f, { space_id: null, parent_id: null }),
