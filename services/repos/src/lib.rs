@@ -77,6 +77,10 @@ const MAX_ANCESTRY: u32 = 1000;
 const MAX_TAGS_READ: usize = 100;
 /// Branch heads measured in one `branch_drift` call.
 const MAX_DRIFT_HEADS: usize = 100;
+/// How long a `last_commits` walk asked without a budget runs before it
+/// stops and keeps its progress for the next call. The site asks from a
+/// waitUntil, which may run 30 s past its response.
+const LAST_COMMITS_WALK_MS: u64 = 20_000;
 
 /// One path segment, percent-encoded for a cache key.
 fn urlencoding_segment(segment: &str) -> String {
@@ -903,9 +907,12 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
     }
 
-    /// Which commit last changed each entry of a directory. Kept in this
-    /// colo's cache by repository, head commit and path: a commit's history
-    /// never changes, so an answer is good for as long as it is kept.
+    /// Which commit last changed each entry of a directory. A finished
+    /// answer is kept in this colo's cache by repository, head commit and
+    /// path: a commit's history never changes, so it is good for as long as
+    /// it is kept. Every walk also keeps its progress by ref and path
+    /// (last_commits.rs), so the next call goes on from it: from where it
+    /// stopped, or for a new head, only back to the old one.
     async fn last_commits(&self, a: g1t_contracts::repos::LastCommitsArgs) -> Result<Outcome<g1t_contracts::repos::LastCommits>> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
@@ -915,8 +922,9 @@ impl<S: GitStore> Repos<S> {
         let Some(head) = git.log(&git_ref, 1).await?.into_iter().next() else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such branch, tag or commit."));
         };
+        // v2: v1 kept walks cut short at 300 commits as if finished.
         let key = format!(
-            "https://last-commits.g1t.internal/{}/{}/{}",
+            "https://last-commits.g1t.internal/v2/{}/{}/{}",
             repo.id,
             head.hash,
             a.tree_path.split('/').map(urlencoding_segment).collect::<Vec<_>>().join("/")
@@ -927,14 +935,21 @@ impl<S: GitStore> Repos<S> {
                 return Ok(Outcome::Ok(found));
             }
         }
-        // Asked with a budget: past it, what was found so far, not kept.
+        let memo = last_commits::Memo::new(&repo.id, &git_ref, &a.tree_path);
+        let shared = self.shared.as_deref();
+        let progress = memo.get(shared).await;
+        // Asked with a budget, the walk stops past it; without one, past
+        // LAST_COMMITS_WALK_MS, well before the caller's waitUntil ends.
         let started = worker::Date::now().as_millis();
-        let budget = a.budget_ms;
-        let out_of_time = move || budget.is_some_and(|budget| worker::Date::now().as_millis().saturating_sub(started) > budget);
-        let (entries, complete) = last_commits::last_commits(&git, &head.hash, &a.tree_path, &out_of_time).await?;
-        let stopped = out_of_time();
-        let found = g1t_contracts::repos::LastCommits { entries, complete };
-        if stopped && !found.complete {
+        let budget = a.budget_ms.unwrap_or(LAST_COMMITS_WALK_MS);
+        let out_of_time = move || worker::Date::now().as_millis().saturating_sub(started) > budget;
+        let walk = last_commits::last_commits(&git, &head.hash, &a.tree_path, progress, &out_of_time, last_commits::MAX_READS).await?;
+        if walk.reads > 0 {
+            memo.keep(shared, &walk.progress).await;
+        }
+        let settled = walk.progress.settled();
+        let found = g1t_contracts::repos::LastCommits { complete: walk.progress.complete(), entries: walk.progress.found };
+        if !settled {
             return Ok(Outcome::Ok(found));
         }
         if let Ok(mut response) = worker::Response::from_json(&found) {
