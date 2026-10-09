@@ -966,7 +966,7 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
 export type AgentScope = { repo: RepoPath; operations: string[]; run?: RunBinding };
 
 /** The most characters each profile field takes. Mirrors `crates/contracts/src/identity.rs`. */
-export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, pronouns: 40 } as const;
+export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, pronouns: 40, timezone: 64 } as const;
 
 /** What anyone may see about a person, at `g1t.sh/u/<username>`. */
 export type Profile = {
@@ -978,6 +978,8 @@ export type Profile = {
   /** Always an `https://` address. */
   website: string | null;
   pronouns: string | null;
+  /** The time zone they are in, an IANA name such as `America/Denver`. */
+  timezone: string | null;
   /** The uploaded avatar's hash, served at `/avatars/<avatar>`. */
   avatar: string | null;
   /** When the account was made. RFC 3339. */
@@ -992,6 +994,8 @@ export type ProfileFields = {
   /** `https://…`; a bare `example.com` is taken as `https://example.com`. */
   website: string;
   pronouns: string;
+  /** An IANA time zone name, such as `America/Denver`; empty clears it. */
+  timezone: string;
 };
 
 /** A workspace on a person's profile. */

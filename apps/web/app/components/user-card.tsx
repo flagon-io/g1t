@@ -1,9 +1,10 @@
-import { Building2, GitCommitHorizontal, MapPin } from "lucide-react";
+import { Building2, Clock, GitCommitHorizontal, MapPin } from "lucide-react";
 import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { type Card, type UserCard as UserCardData, cardHref, committedLabel } from "../lib/hovercard";
 import { G1T_MENTION_HREF } from "../lib/markdown-plugins";
+import { localTime } from "../lib/time-zone";
 import { Avatar } from "./ui";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 import { Skeleton } from "./ui/skeleton";
@@ -86,6 +87,8 @@ function Loading() {
 
 function PersonCard({ card }: { card: UserCardData }) {
   const profile = `/u/${card.username}`;
+  // Cards are only drawn in the browser, so this is the viewer's clock.
+  const time = localTime(card.timezone, Date.now());
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-3">
@@ -107,13 +110,14 @@ function PersonCard({ card }: { card: UserCardData }) {
         </div>
       </div>
       {card.bio && <p className="leading-relaxed text-fg/90 wrap-anywhere">{card.bio}</p>}
-      {(card.location || card.workspaces.length > 0 || card.committed) && (
+      {(card.location || time || card.workspaces.length > 0 || card.committed) && (
         <ul className="space-y-1.5 text-[0.8125rem] text-muted">
           {card.location && (
             <Line icon={<MapPin size={14} />}>
               <span className="wrap-anywhere">{card.location}</span>
             </Line>
           )}
+          {time && <Line icon={<Clock size={14} />}>{time} local time</Line>}
           {card.workspaces.length > 0 && (
             <Line icon={<Building2 size={14} />}>
               Member of{" "}

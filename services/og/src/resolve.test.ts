@@ -52,7 +52,7 @@ function sources(overrides: Partial<Sources> = {}) {
         slug === "acme" ? ({ slug: "acme", name: "Acme", description: "Rockets", id: "w", createdAt: "", memberCount: 3, avatar: null } as Workspace) : null,
       profile: async (username) =>
         username === "ada"
-          ? { username: "ada", name: "Ada Lovelace", bio: "Engines.", location: null, website: null, pronouns: null, avatar: null, createdAt: "" }
+          ? { username: "ada", name: "Ada Lovelace", bio: "Engines.", location: null, website: null, pronouns: null, timezone: null, avatar: null, createdAt: "" }
           : null,
     },
     repos: {

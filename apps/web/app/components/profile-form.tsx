@@ -1,10 +1,12 @@
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Form, Link } from "react-router";
 
 import { PROFILE_LIMITS, type Profile } from "@g1t/contracts";
 
+import { browserTimeZone, timeZoneLabel, timeZoneNames, utcOffset } from "../lib/time-zone";
 import { SubmitButton, usePending } from "./ui";
+import { Combobox } from "./ui/combobox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -26,6 +28,22 @@ export function ProfileSection({
 }) {
   const busy = usePending({ intent: "profile" });
   const [bio, setBio] = useState(profile?.bio ?? "");
+  const [timezone, setTimezone] = useState(profile?.timezone ?? "");
+  // The browser's zone is only known once the page runs in it.
+  const [browserZone, setBrowserZone] = useState<string | null>(null);
+  useEffect(() => setBrowserZone(browserTimeZone()), []);
+  const zones = useMemo(() => {
+    const now = Date.now();
+    return [
+      { value: "", label: "Not shown" },
+      ...timeZoneNames(profile?.timezone).map((zone) => ({
+        value: zone,
+        label: timeZoneLabel(zone),
+        description: utcOffset(zone, now) ?? undefined,
+        keywords: [zone],
+      })),
+    ];
+  }, [profile?.timezone]);
   return (
     <section id="profile" className="scroll-mt-20">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -96,6 +114,34 @@ export function ProfileSection({
             placeholder="https://example.com"
           />
           <FieldDescription>An https:// address.</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="profile-timezone">Time zone</FieldLabel>
+          <Combobox
+            id="profile-timezone"
+            name="timezone"
+            value={timezone}
+            onValueChange={setTimezone}
+            options={zones}
+            placeholder="Not shown"
+            searchPlaceholder="Find a city or region"
+            emptyText="No time zone by that name."
+          />
+          <FieldDescription>
+            The card over your name shows your local time.
+            {browserZone && browserZone !== timezone && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setTimezone(browserZone)}
+                  className="text-accent underline-offset-4 hover:underline"
+                >
+                  Use my browser's time zone ({timeZoneLabel(browserZone)})
+                </button>
+              </>
+            )}
+          </FieldDescription>
         </Field>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
           <SubmitButton pending="Saving…" match={{ intent: "profile" }}>

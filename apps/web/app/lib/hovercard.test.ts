@@ -15,6 +15,7 @@ const ada: Profile = {
   location: "London",
   website: "https://ada.example",
   pronouns: "she/her",
+  timezone: "Europe/London",
   avatar: "cafe",
   createdAt: "2026-01-01T00:00:00Z",
 };
@@ -95,6 +96,13 @@ test("commits to a repository show only to those who may read it", async () => {
   assert.equal(open?.kind === "user" && open.committed, "week");
   const hidden = await buildCard("ada", me, { namespace: "acme", name: "private" }, sources(), NOW);
   assert.equal(hidden?.kind === "user" && hidden.committed, null);
+});
+
+test("the card carries the time zone a profile gives, and none when it gives none", async () => {
+  const card = await buildCard("ada", me, null, sources(), NOW);
+  assert.equal(card?.kind === "user" && card.timezone, "Europe/London");
+  const without = await buildCard("ada", me, null, sources({ profile: async () => ({ ...ada, timezone: null }) }), NOW);
+  assert.equal(without?.kind === "user" && without.timezone, null);
 });
 
 test("a failing service leaves its part out, not the card", async () => {

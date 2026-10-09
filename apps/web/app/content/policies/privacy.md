@@ -10,7 +10,7 @@ The short version: we collect what we need to run a git platform for you and you
 | --- | --- |
 | Username and email address | To identify you, sign you in, and reach you about your account. Your username is public; your email address is not. |
 | Password | To sign you in. We store only a salted hash of it (PBKDF2-SHA256), never the password itself. |
-| Profile: name, bio, location, website and pronouns, if you add them | Shown on your public profile. All optional. |
+| Profile: name, bio, location, website, pronouns and time zone, if you add them | Shown on your public profile, and your local time on the card over your name. All optional. |
 | Avatar, if you upload one | Shown next to your name. Stored by its content's hash and served publicly at `g1t.sh/avatars/…`. |
 | Sessions, access tokens, SSH keys, and apps you've approved through sign-in with g1t | To keep you signed in and let your tools act for you. Session and token secrets are stored only as hashes. |
 | Whether your email address is confirmed | Unconfirmed accounts can't create repositories or push. |

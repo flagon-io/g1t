@@ -672,6 +672,13 @@ link to your profile says. The website must be an `https://` address;
 `example.com` is saved as `https://example.com`. Your email address is
 never shown.
 
+**Time zone.** Pick the time zone you are in, by city or region (such as
+`America/Denver`), and the [card over your name](#the-card-over-a-name)
+shows your local time, so people can tell whether it is a good moment to
+ask you something. If your browser's time zone differs from the one
+saved, the field offers **Use my browser's time zone**. Choose **Not
+shown** to clear it.
+
 **Who sees what.** A profile is public, but the work and workspaces on it
 are filtered for whoever is looking:
 
@@ -695,6 +702,7 @@ glance:
 | --- | --- |
 | Picture, name, username and pronouns | Always |
 | Bio and location | They filled them in |
+| Their local time, such as **3:42 PM local time** | They set a [time zone](#profiles) |
 | **Member of** | The same workspaces their profile shows you, at most three named |
 | **Committed to this repository in the past day**, **week** or **month** | You opened it inside a repository you can read, and their latest commit on its default branch is that recent |
 
