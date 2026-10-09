@@ -333,8 +333,16 @@ async fn start_upload(bucket: &Bucket, services: &Services, job: &str, token: &s
     })
 }
 
-/// `POST /twirp/{service}/{method}`.
-pub async fn twirp(mut request: Request, env: &Env, services: &Services, service: &str, method: &str) -> Result<Response> {
+/// `POST /twirp/{service}/{method}`. A failure inside is logged and
+/// answered as Twirp's `internal`, with its cause.
+pub async fn twirp(request: Request, env: &Env, services: &Services, service: &str, method: &str) -> Result<Response> {
+    match twirp_inner(request, env, services, service, method).await {
+        Ok(response) => Ok(response),
+        Err(error) => twirp_error("internal", &failed(&format!("POST /twirp/{service}/{method}"), &error)),
+    }
+}
+
+async fn twirp_inner(mut request: Request, env: &Env, services: &Services, service: &str, method: &str) -> Result<Response> {
     let token = bearer(&request);
     let Some(job) = runtime_job(&token) else {
         return twirp_error("unauthenticated", "Send the job's ACTIONS_RUNTIME_TOKEN as a bearer token.");
@@ -502,7 +510,11 @@ fn plain_error(status: u16, message: &str) -> Result<Response> {
 }
 
 fn query(request: &Request, name: &str) -> Option<String> {
-    request.url().ok()?.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned())
+    query_in(&request.url().ok()?, name)
+}
+
+fn query_in(url: &worker::Url, name: &str) -> Option<String> {
+    url.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned())
 }
 
 /// The part a chunk of the older protocol is, from its `Content-Range`:
@@ -559,8 +571,44 @@ pub fn byte_range(header: &str, size: u64) -> Option<Option<(u64, u64)>> {
     Some(Some(range))
 }
 
+/// What a lookup of the older protocol answers: 200 with the entry, 204
+/// for a miss (which the toolkit's client and sccache read as "not
+/// cached"), or the refusal's status.
+pub fn lookup_answer(found: Outcome<Option<CacheHit>>, version: &str, api: &str) -> (u16, Option<Value>) {
+    match found {
+        Outcome::Ok(Some(CacheHit { key, blob: Some(blob), created_at, .. })) => (
+            200,
+            Some(json!({
+                "cacheKey": key,
+                "cacheVersion": version,
+                "scope": "",
+                "creationTime": created_at,
+                "archiveLocation": blob_url(api, &blob),
+            })),
+        ),
+        // No entry, or one without a download link (no ACTIONS_KEY): a miss.
+        Outcome::Ok(_) => (204, None),
+        Outcome::Fail(refused) => (refused.code.http_status(), Some(json!({ "message": refused.message, "error": { "message": refused.message } }))),
+    }
+}
+
+/// Logs a toolkit request that failed inside g1t, and says what to tell
+/// its client: the cause, so a job's log shows more than a bare 500.
+fn failed(route: &str, error: &worker::Error) -> String {
+    worker::console_error!("toolkit: {route} failed: {error}");
+    format!("g1t could not answer this: {error}")
+}
+
 /// `{ACTIONS_CACHE_URL}_apis/artifactcache/…`. `rest` is the path after it.
-pub async fn cache_v1(mut request: Request, env: &Env, services: &Services, method: &str, rest: &str) -> Result<Response> {
+/// A failure inside is logged and answered as a 500 with its cause.
+pub async fn cache_v1(request: Request, env: &Env, services: &Services, method: &str, rest: &str) -> Result<Response> {
+    match cache_v1_inner(request, env, services, method, rest).await {
+        Ok(response) => Ok(response),
+        Err(error) => plain_error(500, &failed(&format!("{method} {CACHE_PATH}_apis/artifactcache/{rest}"), &error)),
+    }
+}
+
+async fn cache_v1_inner(mut request: Request, env: &Env, services: &Services, method: &str, rest: &str) -> Result<Response> {
     let token = bearer(&request);
     let Some(job) = runtime_job(&token) else {
         return plain_error(401, "Send the job's ACTIONS_RUNTIME_TOKEN as a bearer token.");
@@ -577,16 +625,9 @@ pub async fn cache_v1(mut request: Request, env: &Env, services: &Services, meth
             let version = query(&request, "version").unwrap_or_default();
             let args = CacheLookupArgs { job, token, key: key.clone(), restore: restore.to_vec(), version: Some(version.clone()) };
             let found: Outcome<Option<CacheHit>> = g1t_kit::call(actions, "cache_lookup", &args).await?;
-            match found {
-                Outcome::Ok(Some(CacheHit { key, blob: Some(blob), created_at, .. })) => Response::from_json(&json!({
-                    "cacheKey": key,
-                    "cacheVersion": version,
-                    "scope": "",
-                    "creationTime": created_at,
-                    "archiveLocation": blob_url(&services.addresses.api, &blob),
-                })),
-                Outcome::Ok(_) => Ok(Response::empty()?.with_status(204)),
-                Outcome::Fail(refused) => plain_error(refused.code.http_status(), &refused.message),
+            match lookup_answer(found, &version, &services.addresses.api) {
+                (status, Some(body)) => Ok(Response::from_json(&body)?.with_status(status)),
+                (status, None) => Ok(Response::empty()?.with_status(status)),
             }
         }
         ("POST", ["caches"]) => {
@@ -736,7 +777,16 @@ fn azure_error(status: u16, code: &str, message: &str) -> Result<Response> {
 }
 
 /// `/actions/toolkit/blobs/{token}`: GET or HEAD a download, PUT an upload.
-pub async fn blob(mut request: Request, env: &Env, services: &Services, method: &str, token: &str) -> Result<Response> {
+/// A failure inside is logged and answered as Azure's `InternalError`.
+pub async fn blob(request: Request, env: &Env, services: &Services, method: &str, token: &str) -> Result<Response> {
+    match blob_inner(request, env, services, method, token).await {
+        Ok(response) => Ok(response),
+        // The token is a credential: the route is logged without it.
+        Err(error) => azure_error(500, "InternalError", &failed(&format!("{method} /actions/toolkit/blobs/…"), &error)),
+    }
+}
+
+async fn blob_inner(mut request: Request, env: &Env, services: &Services, method: &str, token: &str) -> Result<Response> {
     let opened: Outcome<BlobGrant> = g1t_kit::call(&services.actions, "blob_open", &BlobArgs { blob: token.to_owned(), ..BlobArgs::default() }).await?;
     let grant = match opened {
         Outcome::Ok(grant) => grant,
@@ -1084,6 +1134,54 @@ mod tests {
         assert_eq!(runtime_job(&token).as_deref(), Some("job_1"));
         assert_eq!(backend_ids(&token), ("run_1".to_owned(), "job_1".to_owned()));
         assert_eq!(runtime_job("deadbeef"), None);
+    }
+
+    /// sccache 0.18's storage check, at server start: a lookup of
+    /// `sccache/.sccache_check`. The actions service answers a miss with
+    /// `Ok(None)`, `{"ok":true,"value":null}`, which was read back as a
+    /// malformed outcome, and every lookup that missed was a 500
+    /// ("Server startup failed: cache storage failed to read").
+    #[test]
+    fn sccaches_first_lookup_misses_with_a_204() {
+        let url = worker::Url::parse(
+            "https://api.g1t.sh/actions/toolkit/_apis/artifactcache/cache?keys=sccache/.sccache_check&version=sccache-v0.18.0",
+        )
+        .unwrap();
+        assert_eq!(query_in(&url, "keys").as_deref(), Some("sccache/.sccache_check"));
+        assert_eq!(query_in(&url, "version").as_deref(), Some("sccache-v0.18.0"));
+
+        // As the actions service replies (`g1t_kit::reply`), and the API
+        // reads it (`g1t_kit::call`).
+        let wire = serde_json::to_string(&Outcome::<Option<CacheHit>>::Ok(None)).unwrap();
+        assert_eq!(wire, r#"{"ok":true,"value":null}"#);
+        let found: Outcome<Option<CacheHit>> = g1t_kit::read_answer("cache_lookup", &wire).unwrap();
+        assert_eq!(lookup_answer(found, "sccache-v0.18.0", "https://api.g1t.sh"), (204, None));
+
+        // Once saved, the same lookup is a hit with its download link.
+        let hit = CacheHit {
+            key: "sccache/.sccache_check".into(),
+            object: "c/repo_1/cache_1".into(),
+            size: 13,
+            created_at: "2026-10-08T12:00:00.000Z".into(),
+            blob: Some("tok.sig".into()),
+        };
+        let wire = serde_json::to_string(&Outcome::Ok(Some(hit))).unwrap();
+        let found: Outcome<Option<CacheHit>> = g1t_kit::read_answer("cache_lookup", &wire).unwrap();
+        let (status, body) = lookup_answer(found, "sccache-v0.18.0", "https://api.g1t.sh");
+        let body = body.unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body["cacheKey"], "sccache/.sccache_check");
+        assert_eq!(body["cacheVersion"], "sccache-v0.18.0");
+        assert_eq!(body["archiveLocation"], "https://api.g1t.sh/actions/toolkit/blobs/tok.sig");
+
+        // A refusal keeps its status and says why.
+        let refused = Outcome::<Option<CacheHit>>::fail(FailureCode::Unauthenticated, "That job is not running.");
+        let (status, body) = lookup_answer(refused, "v", "https://api.g1t.sh");
+        assert_eq!((status, body.unwrap()["message"].as_str()), (401, Some("That job is not running.")));
+
+        // An answer that does not read names its method and the cause.
+        let unread = g1t_kit::read_answer::<Outcome<CacheHit>>("cache_lookup", r#"{"ok":true,"value":null}"#).unwrap_err();
+        assert!(unread.to_string().contains("cache_lookup answered with what could not be read"), "{unread}");
     }
 
     #[test]

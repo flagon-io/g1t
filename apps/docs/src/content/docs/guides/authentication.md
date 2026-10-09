@@ -12,7 +12,9 @@ on the same page. Usernames are lowercase letters, digits and single
 hyphens, up to 39 characters.
 
 Before you can do anything else, you [confirm your email
-address](#confirming-your-email-address) with the code g1t emails you.
+address](#confirming-your-email-address) with the code g1t emails you,
+unless you signed up from the link in an invite g1t emailed to that address
+(see [invites from your inbox](#invites-from-your-inbox)).
 
 Accounts can only be created in a browser. There is no API for it, by
 design: it keeps passwords out of scripts and agents, and lets g1t protect
@@ -130,13 +132,14 @@ repository, or just making an account), and finishes the job there:
 
 1. **No account yet**: sign up on the page. When the invite was sent to
    your address, the email field is filled in and locked. Choose a
-   username (one is suggested from your address) and a password, then
+   username (one is suggested from your address) and a password. If you
+   opened the page from the invite email itself, the address is already
+   confirmed and you go straight in (see
+   [invites from your inbox](#invites-from-your-inbox)); otherwise
    [confirm the address](#confirming-your-email-address) with the code g1t
-   emails it, even though the invite came there: an invite link can be
-   forwarded, so it does not prove the inbox is yours. Or select
-   **Continue with GitHub**: the invite rides along, and the account uses
-   the invited address when GitHub has verified it too, in which case no
-   confirmation is needed.
+   emails it. Or select **Continue with GitHub**: the invite rides along,
+   and the account uses the invited address when GitHub has verified it
+   too, in which case no confirmation is needed.
 2. **The address already has an account**: select **Sign in to accept**.
    After you sign in, the invite is accepted for you.
 3. **Signed in as someone else**: an invite sent to one address works only
@@ -160,6 +163,27 @@ same page.
 
 An expired, revoked or used invite says which, and who sent it, so you
 can ask them for a new one; or ask for access from the same page.
+
+### Invites from your inbox
+
+When g1t emails an invite to an address (an invite you make for someone,
+an owner's invite into a workspace or a repository, or an approved
+[request for access](#asking-for-access)), the link in that email carries a
+`proof` that only the email has: `g1t.sh/invite/<code>?proof=…`. Opening
+the link shows that you can read that inbox, so:
+
+- the invite page says the address is confirmed because you came from the
+  invite email, and the email field stays locked to it;
+- your new account starts with the address confirmed: no code is sent, and
+  you land in the workspace or repository the invite was for straight
+  away.
+
+Anything else confirms the address the usual way, after you sign up: the
+code typed at [g1t.sh/register](https://g1t.sh/register), an invite link
+copied from **Settings → Invites** (whoever made the invite sees the code,
+never the proof), an invite made for anyone with the link, or an invite
+email sent before this existed. The proof is tied to one invite and its
+address, and stops working when the invite is used, revoked or expires.
 
 ### Invite links for a group
 
@@ -209,8 +233,8 @@ a workspace's token cannot make them.
 An owner can invite an email address straight into a workspace from its
 People page; see [members and roles](/guides/workspaces/#members-and-roles).
 When the address has no g1t account, the invite makes the account, which
-joins the workspace once it confirms its email address, and it uses one
-invite. Inviting someone who is
+joins the workspace once it confirms its email address (at once when it
+was made from the invite email's link), and it uses one invite. Inviting someone who is
 already on g1t costs nothing.
 
 ### Need more invites?
@@ -245,7 +269,8 @@ does not move you down the list.
 ## Confirming your email address
 
 A new account confirms its email address before it can do anything else on
-g1t. Right after you sign up, g1t emails the address from `noreply@g1t.sh`
+g1t, unless it already has (it was made with GitHub, or from the link in
+its invite email). Right after you sign up, g1t emails the address from `noreply@g1t.sh`
 with two ways to confirm it, either one enough:
 
 - a **six-digit code**, shown large in the email (and in its subject, so a
@@ -293,6 +318,13 @@ matter only for an account that made one before this rule existed.
 An account made with **Continue with GitHub** starts confirmed: its address
 is one GitHub has verified, so GitHub has already proved the inbox is
 yours, and no code is sent.
+
+### Addresses an invite email has confirmed
+
+An account made from the link in the invite g1t emailed to its address
+starts confirmed the same way: following that link proved the inbox is
+yours. It works only for the address the invite was sent to, and only from
+the email's own link; see [invites from your inbox](#invites-from-your-inbox).
 
 ### Accounts that never confirmed
 

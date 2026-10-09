@@ -46,6 +46,21 @@ pub fn code_hash(key: &[u8], token_id: &str, code: &str) -> String {
     hex::encode(mac.finalize().into_bytes())
 }
 
+/// The proof an invite email's link carries that whoever follows it reads
+/// that inbox: an HMAC-SHA256 under `key` (IDENTITY_KEY) of the invite's id
+/// and the address it is bound to, trimmed and lowercased. Only the email
+/// has it: the inviter sees the code, never this, and nobody can make one
+/// without the key.
+pub fn invite_proof(key: &[u8], invite_id: &str, email: &str) -> String {
+    use hmac::{Hmac, Mac};
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC takes any key length");
+    mac.update(b"g1t invite email proof\0");
+    mac.update(invite_id.as_bytes());
+    mac.update(b"\0");
+    mac.update(email.trim().to_lowercase().as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
 /// Whether two strings are equal, in time that depends on their length only.
 pub fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
