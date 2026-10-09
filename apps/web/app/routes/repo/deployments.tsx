@@ -16,7 +16,7 @@ import { Form, Link } from "react-router";
 
 import type { DeploymentEnvironment, FeatureState, RepoDeployment } from "@g1t/contracts";
 
-import { host } from "../../components/deploy";
+import { DeployLink, host } from "../../components/deploy";
 import { DeploymentStateBadge, DeploymentStateIcon, sourceLabel } from "../../components/deployments-panel";
 import { FilterMenu } from "../../components/labels";
 
@@ -156,13 +156,13 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
           </p>
         </div>
         {productionUrl && (
-          <a
+          <DeployLink
             href={productionUrl}
             className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-line px-3 py-1.5 font-mono text-xs text-muted hover:border-line-strong hover:text-fg"
           >
             <Globe size={13} className="shrink-0" />
             <span className="truncate">{host(productionUrl)}</span>
-          </a>
+          </DeployLink>
         )}
       </header>
 
@@ -297,10 +297,10 @@ function EnvironmentCard({ env, base }: { env: DeploymentEnvironment; base: stri
         {latest && <DeploymentStateBadge state={latest.state} />}
       </div>
       {url ? (
-        <a href={url} className="mt-2 flex min-w-0 items-center gap-1.5 font-mono text-sm text-accent hover:underline">
+        <DeployLink href={url} className="mt-2 flex min-w-0 items-center gap-1.5 font-mono text-sm text-accent hover:underline">
           <span className="truncate">{host(url)}</span>
           <ExternalLink size={12} className="shrink-0" />
-        </a>
+        </DeployLink>
       ) : (
         <p className="mt-2 text-sm text-faint">No address</p>
       )}
@@ -652,9 +652,9 @@ function PagesOn({ pages, base, can }: { pages: Pages; base: string; can: Loaded
                       </Link>
                     )}
                   </span>
-                  <a href={app.url} className="hidden min-w-0 truncate font-mono text-xs text-muted hover:text-fg sm:block">
+                  <DeployLink href={app.url} className="hidden min-w-0 truncate font-mono text-xs text-muted hover:text-fg sm:block">
                     {host(app.url)}
-                  </a>
+                  </DeployLink>
                   <span className="ml-auto shrink-0">{can.run && <AppActions branch={app.branch} up compact />}</span>
                 </li>
               ))}
@@ -776,10 +776,10 @@ function LiveCard({
       <p className="mt-0.5 text-xs text-faint">{off ? "Off for this repository." : hint}</p>
       {app && href ? (
         <>
-          <a href={href} className="mt-3 flex min-w-0 items-center gap-1.5 font-mono text-sm text-accent hover:underline">
+          <DeployLink href={href} className="mt-3 flex min-w-0 items-center gap-1.5 font-mono text-sm text-accent hover:underline">
             <span className="truncate">{host(href)}</span>
             <ExternalLink size={12} className="shrink-0" />
-          </a>
+          </DeployLink>
           <p className="mt-1 text-xs text-faint">
             <span className="font-mono">{app.commit.slice(0, 8)}</span> · deployed <TimeAgo at={app.deployedAt} />
           </p>

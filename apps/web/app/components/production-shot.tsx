@@ -2,6 +2,7 @@ import { Globe } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "../lib/cn";
+import { DeployLink } from "./deploy";
 
 /**
  * A thumbnail of production as it is now, linking to it. The screenshot is
@@ -58,9 +59,9 @@ export function ProductionShot({
   );
 
   return href ? (
-    <a href={href} className={cn("group block", className)} aria-label={`Visit ${label}`}>
+    <DeployLink href={href} className={cn("group block", className)} aria-label={`Visit ${label}`}>
       {frame}
-    </a>
+    </DeployLink>
   ) : (
     <div className={className}>{frame}</div>
   );

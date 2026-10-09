@@ -39,7 +39,7 @@ import {
 
 import type { Route } from "./+types/overview";
 import { InlineMarkdown } from "../../components/inline-markdown";
-import { host, StatusDot } from "../../components/deploy";
+import { DeployLink, host, StatusDot } from "../../components/deploy";
 import { CheckBadge } from "../../components/checks";
 import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
@@ -822,10 +822,10 @@ function Overview({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-2.5 text-xs sm:px-6">
             <KindMenu project={project} label={kindLabel(project)} canChange={canChange} />
             {stripLinks.map((link) => (
-              <a key={link.key} href={link.url} rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1.5 text-muted hover:text-fg">
+              <DeployLink key={link.key} href={link.url} className="inline-flex min-w-0 items-center gap-1.5 text-muted hover:text-fg">
                 {link.type === "docs" ? <BookOpen size={12} className="shrink-0 text-faint" /> : <Globe size={12} className="shrink-0 text-faint" />}
                 <span className="truncate">{link.type === "docs" ? `Docs · ${bare(link.url)}` : link.label}</span>
-              </a>
+              </DeployLink>
             ))}
           </div>
         )}
@@ -865,13 +865,13 @@ function Overview({
               </p>
               {production ? (
                 <>
-                  <a
+                  <DeployLink
                     href={productionUrl ?? production.url}
                     className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent"
                   >
                     {host(productionUrl ?? production.url)}
                     <ArrowUpRight size={16} className="shrink-0 text-faint" />
-                  </a>
+                  </DeployLink>
                   <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                     {latestProduction && <StatusDot status={latestProduction.status} label={latestProduction.status === "ready" ? "Live" : undefined} />}
                     <span className="inline-flex items-center gap-1 font-mono">
@@ -908,7 +908,7 @@ function Overview({
             {member && (
               <div className="flex shrink-0 items-center gap-2">
                 {production && (
-                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument>
+                  <ButtonLink to={productionUrl ?? production.url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
                     Visit
                     <ArrowUpRight size={14} />
                   </ButtonLink>
@@ -1264,9 +1264,9 @@ function Overview({
                 {previews.map((app) => (
                   <li key={app.url} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                     <span className="min-w-0 grow">
-                      <a href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
+                      <DeployLink href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
                         {host(app.url)}
-                      </a>
+                      </DeployLink>
                       <span className="text-xs text-muted">
                         {app.branch}
                         {app.number != null && (

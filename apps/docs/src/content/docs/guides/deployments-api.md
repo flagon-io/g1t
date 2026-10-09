@@ -436,6 +436,11 @@ fields as the routes.
   g1t.page manage their apps under **On g1t.page** on the same page.
 - **A deployment's page**, `g1t.sh/<owner>/<project>/deployments/<id>`,
   shows its statuses in order, links to its log and run, and its payload.
+  Only the newest status can show as still under way; a `queued` or
+  `in_progress` one that a later status followed shows as over.
+- **Every link to where something runs**, a g1t.page address, an
+  environment's URL, a pull request's preview or a project's homepage,
+  opens in a new tab, wherever on the site it appears.
 - **The repository's code page** and **the project's overview** show a
   **Deployments** panel with how many there are, and each environment's
   latest deployment and when. It links to the Deployments page.
