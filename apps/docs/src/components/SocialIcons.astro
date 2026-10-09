@@ -20,38 +20,63 @@ import { GitBranch } from '@lucide/astro';
 		align-items: center;
 		gap: 0.25rem;
 	}
-	a {
+	/* nav.g1t-nav: the menu's own link rule must not win where these sit
+	   at the foot of the phone menu. */
+	nav.g1t-nav a {
+		display: inline-flex;
+		align-items: center;
+		height: 2rem;
 		border-radius: 0.4rem;
-		padding: 0.3rem 0.6rem;
+		padding: 0 0.6rem;
 		font-size: 0.85rem;
+		white-space: nowrap;
 		color: var(--g1t-muted);
 		text-decoration: none;
 		transition: color 0.15s, background 0.15s;
 	}
-	a:hover {
+	nav.g1t-nav a:hover {
 		background: var(--g1t-raised);
 		color: var(--g1t-fg);
 	}
-	.g1t-nav-cta {
+	nav.g1t-nav .g1t-nav-cta {
 		margin-left: 0.25rem;
 		background: var(--g1t-fg);
 		color: var(--g1t-bg);
 		font-weight: 500;
 	}
-	.g1t-nav-cta:hover {
+	nav.g1t-nav .g1t-nav-cta:hover {
 		background: #fff;
 		color: var(--g1t-bg);
 	}
-	.g1t-nav-icon {
-		display: inline-flex;
-		padding: 0.4rem;
+	nav.g1t-nav .g1t-nav-icon {
+		justify-content: center;
+		width: 2rem;
+		padding: 0;
 	}
 	.g1t-nav-icon :global(svg) {
 		width: 1rem;
 		height: 1rem;
 	}
-	@media (max-width: 50rem) {
-		a:not(.g1t-nav-icon):not(.g1t-nav-cta) {
+	/* Tablets and phones: in the header g1t.sh's link gives way (the menu
+	   keeps it), and the icons grow to a size a finger can hit. */
+	@media (max-width: 49.99rem) {
+		:global(.g1t-header) nav.g1t-nav a:not(.g1t-nav-icon):not(.g1t-nav-cta) {
+			display: none;
+		}
+		nav.g1t-nav .g1t-nav-icon {
+			width: 2.5rem;
+			height: 2.5rem;
+		}
+		:global(.sidebar-content) nav.g1t-nav a {
+			height: 2.5rem;
+		}
+	}
+	/* Phones: Sign up leaves the header for the menu, where it has room. */
+	@media (max-width: 44.99rem) {
+		:global(.g1t-header) .g1t-nav {
+			gap: 0;
+		}
+		:global(.g1t-header) nav.g1t-nav .g1t-nav-cta {
 			display: none;
 		}
 	}

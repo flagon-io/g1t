@@ -1,14 +1,26 @@
 ---
-// Starlight's header, with the tabs that divide the docs beneath it.
-import Default from '@astrojs/starlight/components/Header.astro';
+// The docs header: the wordmark, search in the middle and links on the
+// right, with the tabs that divide the docs beneath it.
+//
+// Its own layout, not Starlight's: Starlight lines the search up with the
+// page's text column, which moves when a page has an "On this page" list
+// and when it does not. Here the row is three columns, the outer two always
+// the same width, so the search sits at the header's centre on every page.
+import Search from '@astrojs/starlight/components/Search.astro';
 
 import { TABS, tabFor } from '../tabs';
+import SiteTitle from './SiteTitle.astro';
+import SocialIcons from './SocialIcons.astro';
 
 const current = tabFor(Astro.locals.starlightRoute.id);
 ---
 
 <div class="g1t-header">
-	<div class="g1t-header-top"><Default /></div>
+	<div class="g1t-header-top">
+		<div class="g1t-header-title"><SiteTitle /></div>
+		<div class="g1t-header-search print:hidden"><Search /></div>
+		<div class="g1t-header-links print:hidden"><SocialIcons /></div>
+	</div>
 	<nav class="g1t-tabs" aria-label="Sections">
 		{
 			TABS.map((tab) => (
@@ -28,16 +40,56 @@ const current = tabFor(Astro.locals.starlightRoute.id);
 	}
 	/* The same bar as the app's: 3.5rem, and a line under it. */
 	.g1t-header-top {
+		/* Each side column is at least as wide as the widest thing that goes
+		   in either, so the two stay equal and the search stays centred. */
+		--g1t-header-side: 13.5rem;
 		box-sizing: border-box;
+		display: grid;
+		grid-template-columns:
+			minmax(var(--g1t-header-side), 1fr)
+			minmax(0, 26rem)
+			minmax(var(--g1t-header-side), 1fr);
+		align-items: center;
+		gap: 1rem;
 		height: 3.5rem;
 		flex-shrink: 0;
 		padding: 0 var(--sl-nav-pad-x);
 		border-bottom: 1px solid var(--g1t-line);
 	}
-	/* On phones the menu button sits at the top row's end: leave it room. */
+	.g1t-header-title {
+		display: flex;
+		min-width: 0;
+		/* Room for the link's focus ring. */
+		padding: 0.25rem;
+		margin: -0.25rem;
+	}
+	.g1t-header-search {
+		display: flex;
+		justify-content: center;
+		min-width: 0;
+	}
+	.g1t-header-links {
+		display: flex;
+		justify-content: flex-end;
+		min-width: 0;
+	}
+	/* Tablets: the sidebar is a menu, and its button (fixed in place by
+	   Starlight) takes the row's end. The right column makes room for it
+	   inside itself, so the two columns stay equal and the search centred. */
 	@media (max-width: 49.99rem) {
-		:global([data-has-sidebar]) .g1t-header-top {
-			padding-inline-end: calc(var(--sl-nav-pad-x) + var(--sl-menu-button-size) + var(--sl-nav-gap));
+		.g1t-header-top {
+			--g1t-header-side: 13rem;
+		}
+		:global([data-has-sidebar]) .g1t-header-links {
+			padding-inline-end: calc(var(--sl-menu-button-size) + 0.5rem);
+		}
+	}
+	/* Phones: the wordmark on the left; search, the links and the menu
+	   button together on the right. */
+	@media (max-width: 44.99rem) {
+		.g1t-header-top {
+			grid-template-columns: minmax(0, 1fr) auto auto;
+			gap: 0.25rem;
 		}
 	}
 	.g1t-tabs {
@@ -46,10 +98,15 @@ const current = tabFor(Astro.locals.starlightRoute.id);
 		height: 2.75rem;
 		padding: 0 var(--sl-nav-pad-x);
 		overflow-x: auto;
+		overscroll-behavior-x: contain;
 		scrollbar-width: none;
+	}
+	.g1t-tabs::-webkit-scrollbar {
+		display: none;
 	}
 	.g1t-tabs a {
 		display: flex;
+		flex-shrink: 0;
 		align-items: center;
 		border-bottom: 1.5px solid transparent;
 		font-size: 0.875rem;
