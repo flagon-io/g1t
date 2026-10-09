@@ -124,6 +124,8 @@ const PUBLIC_STALE_SECONDS = 300;
 function anonymousPage(request: Request, pathname: string): boolean {
   if (request.method !== "GET") return false;
   if (/(?:^|;\s*)g1t_session=/.test(request.headers.get("cookie") ?? "")) return false;
+  // A token signs the request in (app/lib/website-token.ts): never kept, never served a kept page.
+  if (request.headers.has("authorization")) return false;
   return PUBLIC_TOP.test(pathname) || PUBLIC_PROJECT.test(pathname);
 }
 

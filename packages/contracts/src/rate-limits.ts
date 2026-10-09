@@ -56,6 +56,8 @@ export const RATE_LIMITS = {
   WEB_ADDRESS_LIMIT: { worker: "apps/web", namespaceId: 4204, limit: 3000, per: "address, every request that reaches the Worker" },
   GIT_ANONYMOUS_LIMIT: { worker: "apps/web", namespaceId: 4205, limit: 120, per: "address, git requests without credentials" },
   GIT_SIGNED_LIMIT: { worker: "apps/web", namespaceId: 4206, limit: 1200, per: "credential, git requests with credentials" },
+  // The same as API_TOKEN_LIMIT: a token counts alike on the website and the API.
+  WEB_TOKEN_LIMIT: { worker: "apps/web", namespaceId: 4207, limit: 1000, per: "token, pages and data requests with an access token" },
   // services/repos (src/lib.rs): what an anonymous clone can cost a repository's owner.
   PACK_FILL_LIMIT: { worker: "services/repos", namespaceId: 4301, limit: 30, per: "repository, packs written to the pack cache" },
   ANONYMOUS_FETCH_LIMIT: { worker: "services/repos", namespaceId: 4302, limit: 120, per: "repository, anonymous fetches the store answers" },

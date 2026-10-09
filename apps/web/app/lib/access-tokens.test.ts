@@ -165,4 +165,20 @@ test("saving a token sends only what changed", () => {
   assert.deepEqual(changesTo(token, { ...same, repositories: ["acme/web", "acme/api"] }), { repositorySelection: "selected", repositories: ["acme/web", "acme/api"] });
   assert.deepEqual(changesTo(token, { ...same, repositorySelection: "all", repositories: [] }), { repositorySelection: "all" });
   assert.deepEqual(changesTo(token, { ...same, name: "release", description: "ships" }), { name: "release", description: "ships" });
+  assert.deepEqual(changesTo(token, { ...same, website: true }), { website: true });
+  assert.deepEqual(changesTo({ ...token, website: true }, { ...same, website: false }), { website: false });
+  assert.deepEqual(changesTo({ ...token, website: true }, { ...same, website: true }), {});
+});
+
+test("using the website is off unless checked, and never on a workspace's token", () => {
+  const base = { name: "e2e", workspace: "*", expires: "7", "perm.repo": "read" };
+  const off = tokenFromForm(form(base));
+  assert.ok(off.ok);
+  assert.equal(off.value.website, false);
+  const on = tokenFromForm(form({ ...base, website: "on" }));
+  assert.ok(on.ok);
+  assert.equal(on.value.website, true);
+  const workspace = tokenFromForm(form({ ...base, website: "on" }), { workspaceOwned: true, owner: "acme" });
+  assert.ok(workspace.ok);
+  assert.equal(workspace.value.website, false);
 });

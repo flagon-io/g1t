@@ -71,6 +71,7 @@ import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
 import { RELOADED_KEY, reloadFixes } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
+import { isNeedsSignIn } from "./lib/website-token";
 import { LiveNotifications } from "./components/notifications/live-notifications";
 
 
@@ -702,6 +703,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     }
     if (typeof error.data === "string" && error.data) {
       details = error.data;
+    }
+    // A token asked for what needs a real sign-in (lib/website-token.ts).
+    if (isNeedsSignIn(error.data)) {
+      title = "This needs you to sign in";
+      details = error.data.message;
     }
   } else if (import.meta.env.DEV && error instanceof Error) {
     details = error.message;

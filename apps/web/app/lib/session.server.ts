@@ -15,6 +15,8 @@ import { safeNext } from "./next";
 import { WORKSPACE_COOKIE, chosenWorkspace } from "./workspace-choice";
 import { codeGate } from "./workspace-nav";
 import { identity } from "./services.server";
+import { TOKEN_CHALLENGE, bearerToken, tokenVerdict } from "./website-token";
+import { crossOrigin } from "./same-origin";
 
 const SESSION_COOKIE = "g1t_session";
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -22,6 +24,8 @@ const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const viewerContext = createContext<Viewer>(null);
 
 function sessionToken(request: Request): string | null {
+  // A request with a token is the token's alone (lib/website-token.ts).
+  if (bearerToken(request) !== null) return null;
   const cookies = request.headers.get("cookie") ?? "";
   const match = new RegExp(`(?:^|; )${SESSION_COOKIE}=([0-9a-f]{64})`).exec(cookies);
   return match ? match[1] : null;
@@ -40,14 +44,31 @@ function sessionCookie(value: string, maxAge: number): string {
  * Everything on g1t lives in a workspace, so a confirmed account with none
  * is sent to create one, from wherever it was going, and returned there
  * afterwards.
+ *
+ * Automation can send an access token as `Authorization: Bearer` in place
+ * of the cookie, when its owner let it use the website; the rules are in
+ * lib/website-token.ts.
  */
-export const viewerMiddleware: MiddlewareFunction<Response> = async ({
-  request,
-  context,
-}) => {
-  const token = sessionToken(request);
-  if (!token) return;
-  const viewer = await identity.userForSession(token);
+export const viewerMiddleware: MiddlewareFunction<Response> = async ({ request, context }, next) => {
+  const verdict = await tokenVerdict(request, (token) => identity.userForAccessToken(token));
+  if (verdict.kind === "refused") {
+    const headers: HeadersInit = verdict.status === 401 ? { "www-authenticate": TOKEN_CHALLENGE } : {};
+    throw data(verdict.body, { status: verdict.status, headers });
+  }
+  if (verdict.kind === "signed-out") {
+    // The page as anyone signed out sees it, saying the token was not taken.
+    const response = await next();
+    response.headers.set("www-authenticate", TOKEN_CHALLENGE);
+    return response;
+  }
+  let viewer: Viewer;
+  if (verdict.kind === "signed-in") {
+    viewer = verdict.user;
+  } else {
+    const token = sessionToken(request);
+    if (!token) return;
+    viewer = await identity.userForSession(token);
+  }
   context.set(viewerContext, viewer);
 
   const { pathname, search } = new URL(request.url);
@@ -142,8 +163,7 @@ export function clientOf(request: Request): string | null {
 
 /** Rejects cross-site form posts; call at the top of every action. */
 export function assertSameOrigin(request: Request): void {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) {
+  if (crossOrigin(request)) {
     throw new Response("Cross-origin request rejected", { status: 403 });
   }
 }
