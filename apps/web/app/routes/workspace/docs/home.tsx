@@ -50,11 +50,19 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
   const { revalidate } = useRevalidator();
   const general = layout?.sidebar?.spaces.find((s) => s.is_default) ?? layout?.sidebar?.spaces.find((s) => canDo(s.viewer_role, "edit"));
   const spacesById = new Map((home?.spaces ?? []).map((s) => [s.id, s]));
+  // What a new page is being started from ("" for a blank one), while it is.
+  const [starting, setStarting] = useState<string | null>(null);
   const create = async (template?: string) => {
-    if (!general) return;
+    if (!general || starting != null) return;
+    setStarting(template ?? "");
+    setError(null);
     const made = await docsRequest<{ path: string }>(slug, "create_page", { page: { space_id: general.id, template_id: template ?? null } });
-    if (made.ok) navigate(made.value.path);
-    else setError(made.error.message);
+    if (made.ok) {
+      await navigate(made.value.path);
+      return;
+    }
+    setStarting(null);
+    setError(made.error.message);
   };
   if (!home) {
     return (
@@ -89,8 +97,14 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
             <Plus size={15} /> New space
           </ButtonLink>
           {general && (
-            <button type="button" onClick={() => create()} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent-hover">
-              <FilePlus2 size={15} /> New page
+            <button
+              type="button"
+              disabled={starting != null}
+              aria-busy={starting === ""}
+              onClick={() => create()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent-hover disabled:opacity-60"
+            >
+              <FilePlus2 size={15} /> {starting === "" ? "Starting…" : "New page"}
             </button>
           )}
         </div>
@@ -210,8 +224,14 @@ export default function DocsHomePage({ loaderData, params }: Route.ComponentProp
                 key={t.id}
                 template={t}
                 action={
-                  <button type="button" onClick={() => create(t.id)} className="text-xs font-medium text-accent hover:underline">
-                    Use in {general.name}
+                  <button
+                    type="button"
+                    disabled={starting != null}
+                    aria-busy={starting === t.id}
+                    onClick={() => create(t.id)}
+                    className="text-xs font-medium text-accent hover:underline disabled:text-faint disabled:no-underline"
+                  >
+                    {starting === t.id ? "Starting…" : `Use in ${general.name}`}
                   </button>
                 }
               />
