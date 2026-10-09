@@ -7,10 +7,16 @@
 #   typescript  type checks and tests of the apps and TS services, the
 #               deploy and ops scripts, and the deploy manifest
 #   build       the site, sudo and the docs build as they deploy
+#
+# On a push to main only `rust` runs, to keep main's caches current: a pull
+# request's run restores from main's cache, never from another pull
+# request's, so without it each pull request would start from nothing.
 name: CI
 
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -47,11 +53,21 @@ jobs:
             !target/debug/incremental
           key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
           restore-keys: cargo-test-${{ runner.os }}-
+      # The workspace's library crates, which Cargo compiles again on every
+      # checkout, come back from the repository's Actions cache when their
+      # inputs did not change (scripts/sccache.sh). Test harnesses and
+      # Workers' own crates are linked, and still compiled.
+      - name: sccache
+        run: bash scripts/sccache.sh install
       - name: Tests
         run: cargo test --workspace --locked --quiet
+      - name: sccache's hits and misses
+        if: ${{ always() }}
+        run: bash scripts/sccache.sh stats
 
   typescript:
     name: TypeScript
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -71,6 +87,7 @@ jobs:
 
   build:
     name: Build
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

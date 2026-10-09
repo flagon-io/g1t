@@ -48,6 +48,7 @@ gives their values out, so they cannot be copied across.
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
 | `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
 | Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
+| sccache with `SCCACHE_GHA_ENABLED` | The same: its entries go to the repository's cache. See [caching Rust builds](#caching-rust-builds). |
 | `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
 | `docker build`, `push`, `run`, `login`, `compose`, Buildx | The same, with a Docker Engine of the job's own. See [Docker](#docker). |
 | `services:` | The same: each service starts before the steps, health checks are waited for, and it is reached at `localhost` on its port and by its name. |
@@ -603,6 +604,77 @@ repository's cache.
   with its own message. `actions/upload-artifact`,
   `actions/download-artifact` and `actions/upload-artifact/merge` work:
   g1t runs those itself.
+
+## Caching Rust builds
+
+A checkout gives every file a new modification time, so Cargo compiles
+your workspace's own crates again even when `target/` was restored from
+the cache. [sccache](https://github.com/mozilla/sccache) caches each
+compiler call by what it compiles (the source, the flags, the toolchain
+and the dependencies), so a crate that did not change comes back from the
+cache instead. Its GitHub Actions backend works on g1t as it is: it keeps
+its entries in the repository's cache, under [the cache's](#the-cache)
+limits and branch rules.
+
+1. Install sccache, pinned to a release and checked against its checksum.
+2. Set `RUSTC_WRAPPER: sccache` and `SCCACHE_GHA_ENABLED: "true"`. The
+   job's `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_CACHE_URL` are already in
+   every step's environment; no step needs to export them.
+3. Set `CARGO_INCREMENTAL: "0"`: sccache does not cache incremental
+   builds, and a fresh checkout gains nothing from them.
+
+```yaml
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install sccache
+        env:
+          VERSION: v0.18.0
+          SHA256: 45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
+        run: |
+          name="sccache-$VERSION-x86_64-unknown-linux-musl"
+          curl -fsSL -o "$RUNNER_TEMP/sccache.tar.gz" \
+            "https://github.com/mozilla/sccache/releases/download/$VERSION/$name.tar.gz"
+          echo "$SHA256  $RUNNER_TEMP/sccache.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/sccache.tar.gz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/$name/sccache" "$HOME/.cargo/bin/sccache"
+      - run: cargo test --workspace --locked
+      - name: sccache's hits and misses
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          sccache --show-stats | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+```
+
+What to expect:
+
+| | |
+| --- | --- |
+| What is cached | Every library crate (`rlib`): your workspace's crates and their dependencies. |
+| What is compiled each time | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses. |
+| Its entries | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted. |
+| Branches | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache. |
+| Starting over | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself. |
+| If the cache cannot be reached | sccache refuses to start. Set `SCCACHE_IGNORE_SERVER_IO_ERROR: "1"` to have rustc run without it instead. |
+
+sccache adds to `actions/cache` rather than replacing it: keep caching
+`~/.cargo/registry/cache` and `target/` keyed by `Cargo.lock`, so Cargo
+does not call rustc at all for dependencies that did not change, and
+sccache answers the calls it still makes for your own crates.
+`Swatinem/rust-cache` works the same way.
 
 ## OIDC tokens
 

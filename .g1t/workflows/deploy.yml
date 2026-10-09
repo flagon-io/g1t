@@ -180,11 +180,12 @@ jobs:
           key: cargo-crates-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-crates-${{ runner.os }}-
       # The compiled dependencies of this job's units, for wasm32 and the
-      # build scripts and proc macros they run. The workspace's own crates
-      # are compiled again whatever is cached (a checkout's sources are
-      # newer), so an entry is saved only when the dependencies change: a
-      # new Cargo.lock, or a new base image (base.json names its Rust).
-      # Otherwise the nearest earlier entry, of any group, is a start.
+      # build scripts and proc macros they run. Cargo calls rustc again for
+      # the workspace's own crates whatever is cached (a checkout's sources
+      # are newer); sccache, below, answers those calls. So an entry is
+      # saved only when the dependencies change: a new Cargo.lock, or a new
+      # base image (base.json names its Rust). Otherwise the nearest earlier
+      # entry, of any group, is a start.
       - name: Cache the Cargo target
         if: ${{ matrix.rust }}
         uses: actions/cache@v4
@@ -215,6 +216,18 @@ jobs:
             !target/**/incremental
           key: runner-musl-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
           restore-keys: runner-musl-${{ runner.os }}-
+      # Every rustc call that makes a library (the workspace's crates,
+      # which Cargo compiles again on every checkout, and any dependency
+      # not restored above) is looked up by its inputs in the repository's
+      # Actions cache: unchanged crates come back from it instead of being
+      # compiled. A Worker's own crate (a cdylib) and the runner's binary
+      # are still compiled. worker-build runs Cargo, so its wasm32 builds
+      # go through it too; wasm-bindgen and wasm-opt are not rustc.
+      # Pinned by version and sha256 in scripts/sccache.sh; without the
+      # cache, the job builds as before.
+      - name: sccache
+        if: ${{ matrix.rust || matrix.image }}
+        run: bash scripts/sccache.sh install
       - name: Install
         run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
       - name: Deploy ${{ matrix.units }}
@@ -224,6 +237,10 @@ jobs:
           # are not drafted as incidents. Optional: without it, nothing is sent.
           STATUS_DEPLOY_TOKEN: ${{ secrets.STATUS_DEPLOY_TOKEN }}
         run: node scripts/deploy.mjs deploy --only "${{ matrix.units }}" --force --no-migrations --concurrency 2
+      # Hits and misses, on the log and in the run's summary.
+      - name: sccache's hits and misses
+        if: ${{ always() && (matrix.rust || matrix.image) }}
+        run: bash scripts/sccache.sh stats
 
   edge:
     name: edge (${{ matrix.group }})

@@ -173,6 +173,9 @@ export function resolveStack(stack, { cargo, npm }) {
     unit.crate = crate;
     unit.pkg = pkg;
     unit.dependsOn = [...dirs].sort();
+    // The Rust crates it is built from, whose tests, benches and examples
+    // are not.
+    unit.crateDirs = crate ? [unit.path, ...closure(cargo, crate).map((name) => cargo.get(name).dir)].sort() : [];
     unit.inputs = [...new Set([...(unit.inputs ?? []), ...globalInputs(unit.kind)])].sort();
     if (unit.image) {
       const name = unit.image.crate;
@@ -189,6 +192,7 @@ export function resolveStack(stack, { cargo, npm }) {
       };
       for (const dir of unit.image.dirs) if (dir !== unit.path) unit.dependsOn.push(dir);
       unit.dependsOn = [...new Set(unit.dependsOn)].sort();
+      unit.crateDirs = [...new Set([...unit.crateDirs, ...unit.image.dirs])].sort();
       unit.inputs = [...new Set([...unit.inputs, "Cargo.toml", "Cargo.lock", "scripts/build-runner.mjs"])].sort();
     }
   }
@@ -202,11 +206,93 @@ export function resolvedStack(root = ROOT) {
 
 const under = (file, dir) => file === dir || file.startsWith(`${dir}/`);
 
+/** A Rust crate's folders that its library and binaries are never built from. */
+export const CRATE_TEST_DIRS = ["tests", "benches", "examples"];
+
+/**
+ * Whether `file` is in the tests, benches or examples of one of
+ * `crateDirs`: Cargo builds those only for `cargo test`, `cargo bench` and
+ * `--example`, never into what deploys.
+ */
+export function inCrateTests(file, crateDirs = []) {
+  return crateDirs.some((dir) => CRATE_TEST_DIRS.some((sub) => under(file, `${dir}/${sub}`)));
+}
+
+const dirOf = (path) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+const baseOf = (path) => path.slice(path.lastIndexOf("/") + 1);
+
+/**
+ * The `mod name;` declarations in Rust source `text` that `match` (by name,
+ * or by a `#[path]`), each with whether it is under `#[cfg(test)]`.
+ * Only outline modules (`mod x;`); the attributes are those directly above.
+ */
+function declarations(text, match) {
+  const found = [];
+  const pattern = /((?:#\[[^\]]*\]\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+(r#)?(\w+)\s*;/g;
+  for (const [, attrs, , name] of text.matchAll(pattern)) {
+    const path = /#\[\s*path\s*=\s*"([^"]+)"\s*\]/.exec(attrs)?.[1] ?? null;
+    if (!match(name, path)) continue;
+    found.push(/#\[\s*cfg\s*\(\s*test\s*\)\s*\]/.test(attrs));
+  }
+  return found;
+}
+
+/**
+ * Whether Rust source `file`, in the `src/` of one of `crateDirs`, is
+ * compiled only for tests: every module declaration of it found is under
+ * `#[cfg(test)]`, or is in a file that is itself only for tests. A file
+ * nothing is found to declare (a new crate root, a deleted file, a module
+ * declared some way this does not read) counts as built, so a change to it
+ * deploys.
+ *
+ *   read(path):  a file's text at the commit being deployed, "" if absent
+ *   list(dir):   the files directly in a folder at that commit
+ */
+export function testOnlySource(file, crateDirs, { read, list = () => [] }, depth = 0) {
+  if (!file.endsWith(".rs") || depth > 16) return false;
+  const crateDir = crateDirs.find((dir) => file.startsWith(`${dir}/src/`));
+  if (!crateDir) return false;
+  const src = `${crateDir}/src`;
+  const dir = dirOf(file);
+  const base = baseOf(file).slice(0, -".rs".length);
+  // Crate roots and binaries are not declared by anything.
+  if (dir === src && ["lib", "main"].includes(base)) return false;
+  if (dir === `${src}/bin` || (base === "main" && dirOf(dir) === `${src}/bin`)) return false;
+  // Where `mod name;` for this file would be: `a/name.rs` and `a/name/mod.rs`
+  // are declared by `a.rs` or `a/mod.rs` (by `lib.rs` or `main.rs` in src).
+  const name = base === "mod" ? baseOf(dir) : base;
+  const parentDir = base === "mod" ? dirOf(dir) : dir;
+  const parents =
+    parentDir === src ? [`${src}/lib.rs`, `${src}/main.rs`] : [`${parentDir}/mod.rs`, `${dirOf(parentDir)}/${baseOf(parentDir)}.rs`];
+  // One declaration that is built is enough to stop: most changed files
+  // are ordinary modules, settled by reading their parent.
+  let declared = false;
+  const testOnly = (declarer, isTest) => {
+    declared = true;
+    return isTest || testOnlySource(declarer, crateDirs, { read, list }, depth + 1);
+  };
+  for (const parent of parents) {
+    for (const isTest of declarations(read(parent), (found, path) => found === name && path === null)) {
+      if (!testOnly(parent, isTest)) return false;
+    }
+  }
+  // `#[path = "x.rs"] mod y;` in a file beside it names it directly.
+  const fileName = baseOf(file);
+  for (const sibling of list(dir).filter((path) => path.endsWith(".rs") && path !== file)) {
+    for (const isTest of declarations(read(sibling), (_, path) => path === fileName || path === `./${fileName}`)) {
+      if (!testOnly(sibling, isTest)) return false;
+    }
+  }
+  return declared;
+}
+
 /**
  * Why a set of changed files (repository-relative, `/`-separated) touches
  * a unit: the first file that does, and through what. Null if none does.
+ * Its crates' tests, benches and examples do not.
  */
 export function touches(unit, files) {
+  files = files.filter((file) => !inCrateTests(file, unit.crateDirs));
   for (const file of files) {
     if (under(file, unit.path)) return { file, via: "its own folder" };
   }
@@ -221,7 +307,9 @@ export function touches(unit, files) {
 /** Whether changed files touch a unit's Containers image. */
 export function touchesImage(unit, files) {
   if (!unit.image) return false;
-  return files.some((file) => unit.image.files.includes(file) || unit.image.dirs.some((dir) => under(file, dir)));
+  return files.some(
+    (file) => unit.image.files.includes(file) || (unit.image.dirs.some((dir) => under(file, dir)) && !inCrateTests(file, unit.image.dirs)),
+  );
 }
 
 /** Whether changed files touch the folder a unit's base image is built from. */

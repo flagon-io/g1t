@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 
 import { changedNames, lockRoots, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
-import { ROOT, byStage, buildGroups, codeStages, touches, touchesImage } from "./stack.mjs";
+import { ROOT, byStage, buildGroups, codeStages, testOnlySource, touches, touchesImage } from "./stack.mjs";
 
 /** Git, read-only. */
 export const git = {
@@ -21,7 +21,6 @@ export const git = {
       return false;
     }
   },
-  /** Files changed between two commits. */
   /** A file's text at a commit, or "" if it is not there. */
   show: (sha, path) => {
     try {
@@ -30,6 +29,15 @@ export const git = {
       return "";
     }
   },
+  /** The files directly in a folder at a commit (repository-relative). */
+  list: (sha, dir) => {
+    try {
+      return run(["ls-tree", "--name-only", sha, "--", `${dir}/`]).split("\n").filter(Boolean);
+    } catch {
+      return [];
+    }
+  },
+  /** Files changed between two commits. */
   changed: (from, to) => run(["diff", "--name-only", "--no-renames", from, to]).split("\n").filter(Boolean),
   /** Whether `older` is in `newer`'s history (and not the same commit). */
   isAncestor: (older, newer) => {
@@ -82,8 +90,29 @@ export function decide(units, { live, head, force = false, rollback = false, git
     }
     return locks.get(key);
   };
+  // A Rust source compiled only for tests (`#[cfg(test)] mod tests;`) is
+  // not in what deploys. Read at the commit being deployed, each file once.
+  const texts = new Map();
+  const listings = new Map();
+  const atHead = {
+    read: (path) => {
+      if (!texts.has(path)) texts.set(path, gitApi.show(head, path));
+      return texts.get(path);
+    },
+    list: (dir) => {
+      if (!listings.has(dir)) listings.set(dir, gitApi.list?.(head, dir) ?? []);
+      return listings.get(dir);
+    },
+  };
+  const testOnly = new Map();
+  const onlyForTests = (unit, file) => {
+    if (!file.endsWith(".rs") || !unit.crateDirs?.some((dir) => file.startsWith(`${dir}/src/`))) return false;
+    if (!testOnly.has(file)) testOnly.set(file, testOnlySource(file, unit.crateDirs, atHead));
+    return testOnly.get(file);
+  };
   const relevant = (unit, sha, files) =>
     files.filter((file) => {
+      if (onlyForTests(unit, file)) return false;
       if (file !== "Cargo.lock" && file !== "package-lock.json") return true;
       const { after, names } = lockChange(sha, file);
       const roots = lockRoots(unit)[file === "Cargo.lock" ? "cargo" : "npm"];
