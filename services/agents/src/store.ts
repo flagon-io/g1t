@@ -101,15 +101,19 @@ export function toAgent(row: Row, now: Date): WorkspaceAgent {
   };
 }
 
-/** Adds a reply's charge to the agent's month and day. */
-export function spendStatements(db: D1Database, agentId: string, micros: number, now: Date): D1PreparedStatement[] {
+/**
+ * Adds a charge to the paying agent's month and day: a reply's, or a
+ * session step's (`task`), counted as one of each.
+ */
+export function spendStatements(db: D1Database, agentId: string, micros: number, now: Date, task: "reply" | "session" = "reply"): D1PreparedStatement[] {
+  const [replies, sessions] = task === "reply" ? [1, 0] : [0, 1];
   return periods(now).map((period) =>
     db
       .prepare(
-        `INSERT INTO agent_spend (agent_id, period, micros, replies) VALUES (?1, ?2, ?3, 1)
-         ON CONFLICT (agent_id, period) DO UPDATE SET micros = micros + ?3, replies = replies + 1`,
+        `INSERT INTO agent_spend (agent_id, period, micros, replies, sessions) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (agent_id, period) DO UPDATE SET micros = micros + ?3, replies = replies + ?4, sessions = sessions + ?5`,
       )
-      .bind(agentId, period, Math.max(0, Math.ceil(micros))),
+      .bind(agentId, period, Math.max(0, Math.ceil(micros)), replies, sessions),
   );
 }
 

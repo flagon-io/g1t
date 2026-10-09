@@ -43,8 +43,31 @@ export interface ToolPorts {
   consult(handle: string, question: string): Promise<{ ok: true; colleague: string; answer: string } | { ok: false; message: string }>;
 }
 
+/**
+ * What an agent may do, beyond reading: remember, file an issue for the
+ * person who asked, and start or shape work. Each is checked here before it
+ * runs (the audience, the asker, the hop limit) and again by the service
+ * that does it.
+ */
+export interface ActionPorts {
+  remember(body: string, scope: "workspace" | "channel" | "person" | null): Promise<{ ok: boolean; message: string }>;
+  forget(id: string): Promise<{ ok: boolean; message: string }>;
+  /** Opens an issue as the person who asked; they must be able to read the repository. */
+  fileIssue(repo: RepoRef, asker: User, input: { title: string; body: string; labels: string[] }): Promise<{ ok: true; number: number; url: string } | { ok: false; message: string }>;
+  /** From chat: spins off a session for real work. */
+  startSession?(title: string, goal: string): Promise<{ ok: boolean; message: string }>;
+  /** In a session: a short progress note in its thread. */
+  postUpdate?(text: string): Promise<{ ok: boolean; message: string }>;
+  /** In a session: one of the agent's own subagents takes part of the work. */
+  useSubagent?(name: string, brief: string): Promise<{ ok: boolean; message: string }>;
+  /** In a session: a colleague works on part of it, paid from this session's budget. */
+  bringIn?(handle: string, brief: string): Promise<{ ok: boolean; message: string }>;
+}
+
 /** The most tool calls one reply makes. */
 export const MAX_TOOL_CALLS = 8;
+/** The most tool calls one step of a session makes. */
+export const MAX_SESSION_TOOL_CALLS = 24;
 /** The most of a file or result an answer is given, in characters. */
 const MAX_RESULT = 20_000;
 
@@ -142,6 +165,66 @@ const ASK_COLLEAGUE: ToolDef = {
   input_schema: { type: "object", properties: { handle: { type: "string" }, question: { type: "string" } }, required: ["handle", "question"] },
 };
 
+const REMEMBER: ToolDef = {
+  name: "remember",
+  description:
+    "Keep a short fact for later work: a preference, a decision, who owns what, how something works here. One fact per call, in your own words. It is kept where this conversation allows (this person, this conversation, or the workspace from a public channel), with this conversation as its source. Never keep secrets, credentials or customers' personal data.",
+  input_schema: {
+    type: "object",
+    properties: { fact: { type: "string" }, scope: { type: "string", enum: ["workspace", "channel", "person"] } },
+    required: ["fact"],
+  },
+};
+
+const FORGET: ToolDef = {
+  name: "forget",
+  description: "Forget one of the notes under 'What you remember', by its id, when it is wrong or out of date.",
+  input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+};
+
+const FILE_ISSUE: ToolDef = {
+  name: "file_issue",
+  description:
+    "File an issue (a bug report or a feature request) in a repository, as the person who asked, with what you found. Only after you showed them a draft and they said yes. Write it for the team that will fix it: what happens, what should happen, steps or evidence, and where in the code it likely is.",
+  input_schema: {
+    type: "object",
+    properties: {
+      repo: { type: "string" },
+      title: { type: "string" },
+      body: { type: "string" },
+      labels: { type: "array", items: { type: "string" } },
+    },
+    required: ["repo", "title", "body"],
+  },
+};
+
+const START_SESSION: ToolDef = {
+  name: "start_session",
+  description:
+    "Spin off a session for work that needs more than a quick answer: investigating, reading a lot of code, writing something long, or anything that takes several steps. It runs on its own with its own context, shows a live card here, and reports back in this conversation when done. Give it a short title and a complete brief: the goal, what done looks like, and everything it needs from this conversation.",
+  input_schema: { type: "object", properties: { title: { type: "string" }, goal: { type: "string" } }, required: ["title", "goal"] },
+};
+
+const POST_UPDATE: ToolDef = {
+  name: "post_update",
+  description: "Post a short progress note in your session's thread, for the people following it. Use it for real milestones or a question, not for every step.",
+  input_schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+};
+
+const USE_SUBAGENT: ToolDef = {
+  name: "use_subagent",
+  description:
+    "Hand a well-defined part of this session to one of your subagents (listed under Subagents). It works in its own session, paid from this one, and its result comes back to you before you go on. Give a complete brief.",
+  input_schema: { type: "object", properties: { name: { type: "string" }, brief: { type: "string" } }, required: ["name", "brief"] },
+};
+
+const BRING_IN: ToolDef = {
+  name: "bring_in",
+  description:
+    "Bring a colleague in on part of this session when their role owns it. They work in their own session, paid from this one, and their result comes back to you before you go on. Give a complete brief.",
+  input_schema: { type: "object", properties: { handle: { type: "string" }, brief: { type: "string" } }, required: ["handle", "brief"] },
+};
+
 const CODE_NAMES = new Set(CODE_TOOLS.map((tool) => tool.name));
 
 export type ToolContext = {
@@ -152,6 +235,10 @@ export type ToolContext = {
   /** Hops so far: a consult is one more, and none is offered at the limit. */
   hops: number;
   maxHops: number;
+  /** Whether this is a session's step (more calls, session tools) or a reply. */
+  session?: boolean;
+  /** Told of every call as it is made, for a session's transcript. */
+  onCall?: (call: ToolCall) => void;
 };
 
 export class ToolBox {
@@ -161,35 +248,71 @@ export class ToolBox {
   private readonly ports: ToolPorts;
   private readonly context: ToolContext;
 
-  constructor(audience: Audience, ports: ToolPorts, context: ToolContext, calls: ToolCall[] = []) {
+  private readonly actions: ActionPorts | null;
+  /** Updates posted in this step. */
+  private updates = 0;
+
+  constructor(audience: Audience, ports: ToolPorts, context: ToolContext, calls: ToolCall[] = [], actions: ActionPorts | null = null) {
     this.audience = audience;
     this.ports = ports;
     this.context = context;
     this.calls = calls;
+    this.actions = actions;
   }
 
-  /** A colleague's tool box for a consult: the same audience, the same budget, one hop further. */
+  /** A colleague's tool box for a consult: the same audience, the same budget, one hop further, reading only. */
   forColleague(ports: ToolPorts, context: ToolContext): ToolBox {
     return new ToolBox(this.audience, ports, context, this.calls);
   }
 
-  /** The tools this reply is offered: no code tools for an audience that can't read code, no consults at the hop limit. */
+  /** The most calls this box makes. */
+  get maxCalls(): number {
+    return this.context.session ? MAX_SESSION_TOOL_CALLS : MAX_TOOL_CALLS;
+  }
+
+  /** Whether the person who asked can be acted for: resolved, and able to read code here. */
+  private canFile(): boolean {
+    return !!this.actions && !!this.audience.asker && this.audience.codeAllowed();
+  }
+
+  /**
+   * The tools offered: no code tools for an audience that can't read code,
+   * no consults or hand-offs at the hop limit, session tools only in a
+   * session, and a spin-off only from chat.
+   */
   definitions(): ToolDef[] {
+    const roomForHop = this.context.hops + 1 <= this.context.maxHops;
+    const actions = this.actions;
     return [
       ...(this.audience.codeAllowed() ? CODE_TOOLS : []),
       ...CHAT_TOOLS,
-      ...(this.context.hops + 1 <= this.context.maxHops ? [ASK_COLLEAGUE] : []),
+      ...(roomForHop ? [ASK_COLLEAGUE] : []),
+      ...(actions ? [REMEMBER, FORGET] : []),
+      ...(this.canFile() ? [FILE_ISSUE] : []),
+      ...(actions?.startSession && !this.context.session ? [START_SESSION] : []),
+      ...(actions?.postUpdate && this.context.session ? [POST_UPDATE] : []),
+      ...(actions?.useSubagent && this.context.session && roomForHop ? [USE_SUBAGENT] : []),
+      ...(actions?.bringIn && this.context.session && roomForHop ? [BRING_IN] : []),
     ];
   }
 
   /** Whether another call may be made. */
   get spent(): boolean {
-    return this.calls.length >= MAX_TOOL_CALLS;
+    return this.calls.length >= this.maxCalls;
   }
 
   async run(name: string, input: Record<string, unknown>): Promise<ToolResult> {
+    const result = await this.attempt(name, input);
+    const call: ToolCall = { tool: name, args: redact(input), outcome: result.outcome, bytes: result.text.length };
+    this.calls.push(call);
+    this.context.onCall?.(call);
+    return result;
+  }
+
+  private async attempt(name: string, input: Record<string, unknown>): Promise<ToolResult> {
     let result: ToolResult;
-    if (this.spent) result = { text: `No more tool calls in this reply (at most ${MAX_TOOL_CALLS}). Answer with what you have.`, outcome: "refused" };
+    const what = this.context.session ? "step" : "reply";
+    if (this.spent) result = { text: `No more tool calls in this ${what} (at most ${this.maxCalls}). Answer with what you have.`, outcome: "refused" };
     else {
       try {
         result = await this.dispatch(name, input ?? {});
@@ -198,7 +321,6 @@ export class ToolBox {
         result = { text: "That didn't work just now. Answer with what you have.", outcome: "error" };
       }
     }
-    this.calls.push({ tool: name, args: redact(input), outcome: result.outcome, bytes: result.text.length });
     return result;
   }
 
@@ -240,6 +362,68 @@ export class ToolBox {
         const answer = await this.ports.consult(handle, question.slice(0, 2000));
         if (!answer.ok) return { text: answer.message, outcome: "refused" };
         return { text: untrusted(`@${answer.colleague}'s answer`, answer.answer), outcome: "allowed" };
+      }
+      default:
+        return this.act(name, input);
+    }
+  }
+
+  /** Doing, not reading: memory, issues, sessions. Each refused unless offered. */
+  private async act(name: string, input: Record<string, unknown>): Promise<ToolResult> {
+    const actions = this.actions;
+    const offered = this.definitions().some((tool) => tool.name === name);
+    if (!actions || !offered) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
+    const said = (answer: { ok: boolean; message: string }): ToolResult => ({ text: answer.message, outcome: answer.ok ? "allowed" : "refused" });
+    const text = (key: string, max: number) => String(input[key] ?? "").trim().slice(0, max);
+    switch (name) {
+      case "remember": {
+        const fact = text("fact", 2000);
+        if (!fact) return { text: "Say what to remember.", outcome: "refused" };
+        const scope = input.scope === "workspace" || input.scope === "channel" || input.scope === "person" ? input.scope : null;
+        return said(await actions.remember(fact, scope));
+      }
+      case "forget":
+        return said(await actions.forget(text("id", 100)));
+      case "file_issue": {
+        const asker = this.audience.asker;
+        if (!asker || !this.audience.codeAllowed()) return this.withheld();
+        const repo = await this.audience.repo(input.repo);
+        if (!repo) return this.withheld();
+        const title = text("title", 200);
+        const body = text("body", 20_000);
+        if (!title || !body) return { text: "An issue needs a title and a body.", outcome: "refused" };
+        const labels = Array.isArray(input.labels)
+          ? input.labels.filter((l): l is string => typeof l === "string").map((l) => l.trim()).filter(Boolean).slice(0, 5)
+          : [];
+        const filed = await actions.fileIssue(repo, asker, { title, body, labels });
+        if (!filed.ok) return { text: filed.message, outcome: "refused" };
+        return { text: `Filed ${repo.namespace}/${repo.name}#${filed.number}: ${filed.url}`, outcome: "allowed" };
+      }
+      case "start_session": {
+        const title = text("title", 120);
+        const goal = text("goal", 8000);
+        if (!title || !goal) return { text: "A session needs a title and a goal.", outcome: "refused" };
+        return said(await actions.startSession!(title, goal));
+      }
+      case "post_update": {
+        const note = text("text", 2000);
+        if (!note) return { text: "Say what to post.", outcome: "refused" };
+        if (this.updates >= 3) return { text: "You've posted enough updates for this step; carry on with the work.", outcome: "refused" };
+        this.updates++;
+        return said(await actions.postUpdate!(note));
+      }
+      case "use_subagent": {
+        const helper = text("name", 60).toLowerCase();
+        const brief = text("brief", 8000);
+        if (!helper || !brief) return { text: "Name the subagent and give it a brief.", outcome: "refused" };
+        return said(await actions.useSubagent!(helper, brief));
+      }
+      case "bring_in": {
+        const handle = text("handle", 60).replace(/^@/, "").toLowerCase();
+        const brief = text("brief", 8000);
+        if (!handle || !brief) return { text: "Name the colleague and give them a brief.", outcome: "refused" };
+        if (this.context.notConsult.includes(handle)) return { text: `You can't bring in @${handle} here: they sent you this work, or it is you.`, outcome: "refused" };
+        return said(await actions.bringIn!(handle, brief));
       }
       default:
         return { text: `There is no tool called ${name}.`, outcome: "refused" };

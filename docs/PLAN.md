@@ -277,8 +277,9 @@ phone and Claude Code are views of the same session.
 ## For people who do not write code
 
 - **Documents are first-class.** Specs, guides, policies and decisions live
-  in repos as markdown, shown in a Docs view: rendered pages, edited in the
-  browser like a document, with inline comments. "Suggest a change" is an
+  in Docs, its own mode (docs/WORKSPACE.md, "Docs"), not a tab on a
+  project: rendered pages, edited in the browser like a document, with
+  inline comments, and filtered by the project they are about. "Suggest a change" is an
   pull request and "publish" is merge, without git vocabulary.
 - **Document issues.** "Write the onboarding guide for the billing API" is
   an issue. Its Definition of done is a checklist judged by a reviewer agent

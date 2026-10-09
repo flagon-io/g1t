@@ -480,10 +480,16 @@ This is where Docs earns its place:
 
 ### Docs and repository docs
 
+Code is not docs. A project has no Docs tab: Docs is its own mode, and
+pages are found there, by space, by search, and filtered by the project
+they are about. A page can be linked to projects, so "docs about
+`flagon-io/g1t`" is a filter in Docs, never a page inside Code.
+
 Repository docs (README, `docs/`) stay in the repository and change through
-pull requests. Docs mode can show a project's `docs/` folder as a read-only
-space next to the workspace's own spaces. One search and one tree cover
-both. Editing a repository page from Docs opens a pull request.
+pull requests, and Code shows them as files, as it does today. Docs mode
+can also list a project's `docs/` folder as a read-only space next to the
+workspace's own spaces, so one search covers both. Editing a repository
+page from Docs opens a pull request.
 
 ### How it is stored
 
@@ -916,7 +922,14 @@ Inbox, then the account.
   things.
 - Code keeps today's sidebar.
 - A side dock shows the current project's or page's linked channels in Code
-  and Docs, and the linked project and docs in Chat.
+  and Docs, and the linked project and docs in Chat. The dock links out to
+  Docs; Code never grows a Docs tab of its own.
+- g1t's own public pages (a profile at `/u/<name>`, Explore, Search, the
+  trust pages) belong to no workspace: `modeOf` calls them `site`, no mode
+  is lit and no mode's sidebar opens; the page has the width. A visitor
+  sees a profile, Explore and Search in the public frame (top bar and
+  footer, no sidebar; `usesAppShell` in `lib/chrome.ts`). A project page
+  keeps its sidebar for everyone, since its menu is how you move around it.
 
 Concretely:
 

@@ -869,6 +869,7 @@ impl Billing {
             "review" => format!("Review of {}#{}", run.repo, run.number),
             "update" => format!("Catching up {}#{}", run.repo, run.number),
             "reply" => reply_label(&run.repo),
+            "session" => session_label(&run.repo),
             _ => format!("Work on {}#{}", run.repo, run.number),
         };
         description.push_str(&terms_note);
@@ -900,6 +901,16 @@ fn reply_label(repo: &str) -> String {
     match repo.split_once("/@") {
         Some((workspace, handle)) => format!("Chat reply by @{handle} in {workspace}"),
         None => format!("Chat reply in {repo}"),
+    }
+}
+
+/// A workspace agent's session (a piece of work it spun off, a routine's
+/// run, or a colleague's help with one), billed under the agent whose
+/// budget pays for it.
+fn session_label(repo: &str) -> String {
+    match repo.split_once("/@") {
+        Some((workspace, handle)) => format!("Agent session for @{handle} in {workspace}"),
+        None => format!("Agent session in {repo}"),
     }
 }
 

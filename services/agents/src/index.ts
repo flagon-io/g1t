@@ -34,6 +34,11 @@ import type { ReplyEnv } from "./reply.ts";
 import { ensureBuiltin } from "./builtin.ts";
 import { type Row, definitionOf, insertAgent, periods, selectAgents, toAgent, updateAgent, versionStatement } from "./store.ts";
 import { TEMPLATES, TEMPLATE_IDS } from "./templates.ts";
+import { readPolicy } from "./policy.ts";
+import { runDue } from "./routines.ts";
+import { type SessionEnv, sweep } from "./sessions.ts";
+import * as views from "./views.ts";
+import { monthKey } from "./budget.ts";
 
 export { Desk } from "./desk.ts";
 
@@ -74,6 +79,28 @@ class Agents {
     if (!canSee(viewer, workspace)) return fail("not_found", "There is no such workspace.");
     const id = await this.workspaceId(workspace);
     return id ? ok(id) : fail("not_found", "There is no such workspace.");
+  }
+
+  /** What the views need: the workspace, the viewer, and whether they own it. */
+  private async context(workspace: string, viewer: User | null): Promise<Result<views.ViewContext>> {
+    if (viewer && awaitsConfirmation(viewer)) return UNVERIFIED;
+    const seen = await this.seen(workspace, viewer);
+    if (!seen.ok) return seen;
+    return ok({
+      env: this.env as unknown as SessionEnv,
+      db: this.db,
+      slug: workspace.toLowerCase(),
+      workspaceId: seen.value,
+      viewer: viewer!,
+      owner: canManage(viewer, workspace),
+    });
+  }
+
+  /** Runs `view` with the context, or answers why it can't. */
+  async view<T>(a: { workspace: string; viewer: User | null }, view: (ctx: views.ViewContext) => Promise<Result<T>>): Promise<Result<T>> {
+    const ctx = await this.context(a?.workspace ?? "", a?.viewer ?? null);
+    if (!ctx.ok) return ctx;
+    return view(ctx.value);
   }
 
   /** The workspace's id, if the viewer may change its agents. */
@@ -145,7 +172,13 @@ class Agents {
   async create(a: { workspace: string; viewer: User | null; input: NewWorkspaceAgent }): Promise<Result<WorkspaceAgent>> {
     const managed = await this.managed(a.workspace, a.viewer);
     if (!managed.ok) return managed;
-    const checked = applyChanges(null, a.input, TEMPLATE_IDS);
+    // A new agent starts with the workspace's default monthly budget, unless one was given.
+    const policy = await readPolicy(this.db, managed.value, monthKey(new Date()));
+    const input =
+      policy.default_agent_monthly_micros && a.input?.budget?.monthly_micros === undefined
+        ? { ...a.input, budget: { ...(a.input?.budget ?? {}), monthly_micros: policy.default_agent_monthly_micros } }
+        : a.input;
+    const checked = applyChanges(null, input, TEMPLATE_IDS);
     if (!checked.ok) return fail("invalid", checked.message);
     const definition = checked.value;
     const team = await this.teamExists(a.workspace, a.viewer!, definition.team);
@@ -367,6 +400,44 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(TEMPLATES);
     case "deliver":
       return Response.json(await service.deliver(args));
+    case "overview":
+      return Response.json(await service.view(args, (ctx) => views.overview(ctx)));
+    case "sessions":
+      return Response.json(await service.view(args, (ctx) => views.listSessions(ctx, args)));
+    case "session":
+      return Response.json(await service.view(args, (ctx) => views.sessionDetail(ctx, args.id)));
+    case "stop_session":
+      return Response.json(await service.view(args, (ctx) => views.stopSession(ctx, args.id)));
+    case "approve_session":
+      return Response.json(await service.view(args, (ctx) => views.approveSession(ctx, args.id, args.cap_micros)));
+    case "steer_session":
+      return Response.json(await service.view(args, (ctx) => views.steerSession(ctx, args.id, args.body)));
+    case "memories":
+      return Response.json(await service.view(args, (ctx) => views.memories(ctx, args.handle)));
+    case "remember":
+      return Response.json(await service.view(args, (ctx) => views.remember(ctx, args.handle, args.input)));
+    case "update_memory":
+      return Response.json(await service.view(args, (ctx) => views.updateMemory(ctx, args.handle, args.id, args.changes)));
+    case "forget":
+      return Response.json(await service.view(args, (ctx) => views.forget(ctx, args.handle, args.id)));
+    case "routines":
+      return Response.json(await service.view(args, (ctx) => views.routines(ctx, args.handle)));
+    case "save_routine":
+      return Response.json(await service.view(args, (ctx) => views.saveRoutine(ctx, args.handle, args.input, args.id ?? null)));
+    case "delete_routine":
+      return Response.json(await service.view(args, (ctx) => views.deleteRoutine(ctx, args.handle, args.id)));
+    case "run_routine":
+      return Response.json(await service.view(args, (ctx) => views.runRoutineNow(ctx, args.handle, args.id)));
+    case "spend":
+      return Response.json(await service.view(args, (ctx) => views.spend(ctx, args.handle ?? null)));
+    case "activity":
+      return Response.json(await service.view(args, (ctx) => views.activity(ctx, args.handle)));
+    case "versions":
+      return Response.json(await service.view(args, (ctx) => views.versions(ctx, args.handle)));
+    case "policy":
+      return Response.json(await service.view(args, (ctx) => views.policy(ctx)));
+    case "set_policy":
+      return Response.json(await service.view(args, (ctx) => views.setPolicy(ctx, args.policy)));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
@@ -381,5 +452,16 @@ export default {
     const service = new Agents(Object.create(env, { DB: { value: opened.db } }) as Env, (work) => ctx.waitUntil(work));
     const args = (await request.json().catch(() => ({}))) as any;
     return opened.finish(await answer(service, match[1], args));
+  },
+
+  /** Every few minutes: routines that are due, and session steps a desk lost. */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const sessions = env as unknown as SessionEnv;
+    ctx.waitUntil(
+      Promise.all([
+        runDue(sessions).catch((error: unknown) => console.error("agents: routines did not run", String(error))),
+        sweep(sessions).catch((error: unknown) => console.error("agents: the session sweep failed", String(error))),
+      ]),
+    );
   },
 } satisfies ExportedHandler<Env>;

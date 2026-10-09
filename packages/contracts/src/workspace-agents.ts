@@ -269,6 +269,281 @@ export function askerAccess(user: User, workspace: string): AskerAccess {
   };
 }
 
+/**
+ * A session: one bounded piece of work an agent took on (docs/WORKSPACE.md,
+ * "Sessions"). A conversation with an agent is not a session: talking stays
+ * cheap and quick, and when a request needs real work the agent spins off a
+ * session for it, with its own context, transcript, budget and live card in
+ * the conversation. Sessions start other sessions (one of the agent's
+ * subagents, or a colleague brought in), and everything a tree of sessions
+ * spends is charged to the agent at its root, so a chain never escapes the
+ * budget that started it.
+ */
+export type AgentSessionKind =
+  /** Spun off from a conversation: someone asked for work. */
+  | "chat"
+  /** A routine's run. */
+  | "routine"
+  /** A colleague brought in by another session. */
+  | "helper"
+  /** One of the agent's own subagents, inside another session. */
+  | "subagent";
+
+export type AgentSessionStatus =
+  | "queued"
+  | "working"
+  /** Waiting on sessions it started. */
+  | "waiting"
+  /** Stopped at its spend cap: someone who may raise it decides. */
+  | "needs_approval"
+  | "done"
+  | "failed"
+  | "stopped";
+
+/** The statuses of a session that is not over. */
+export const SESSION_LIVE: readonly AgentSessionStatus[] = ["queued", "working", "waiting", "needs_approval"];
+
+export type AgentSession = {
+  id: string;
+  workspace_id: string;
+  agent_id: string;
+  /** The agent's handle, name and face, for lists. */
+  agent_handle: string;
+  agent_name: string;
+  agent_avatar_seed: string;
+  /** The subagent running it, by name, when kind is `subagent`. */
+  subagent: string | null;
+  kind: AgentSessionKind;
+  /** The session that started it, and the root of its tree. */
+  parent_id: string | null;
+  root_id: string;
+  /** Whose budget pays for it: the agent at the root of its tree. */
+  payer_agent_id: string;
+  title: string;
+  goal: string;
+  status: AgentSessionStatus;
+  /** Why it is waiting, stopped or failed, in a line. */
+  status_note: string | null;
+  /** What it found or did, once done: its report. */
+  summary: string | null;
+  /** Where it reports: the conversation it was started from. */
+  channel_id: string;
+  channel_kind: "channel" | "dm";
+  channel_name: string | null;
+  /** Its live card in that conversation; its updates go in the card's thread. */
+  card_message_id: string | null;
+  asked_by: string | null;
+  asked_by_username: string | null;
+  routine_id: string | null;
+  steps: number;
+  tool_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  /** At list price, what it counts against budgets. */
+  charged_micros: number;
+  /** The most it may spend before someone approves more. */
+  cap_micros: number | null;
+  model: string | null;
+  /** What it produced: issues filed, sessions started. */
+  outputs: SessionOutput[];
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+  /**
+   * False when the viewer is not among the people of the conversation it
+   * came from: they see that it ran and what it cost, never its title,
+   * goal, report or transcript.
+   */
+  visible: boolean;
+};
+
+export type SessionOutput =
+  | { kind: "issue"; repo: string; number: number; title: string }
+  | { kind: "session"; id: string; agent_handle: string; title: string }
+  | { kind: "memory"; id: string; body: string };
+
+/** One entry of a session's transcript, as its page shows it. */
+export type SessionEvent = {
+  seq: number;
+  kind: "goal" | "text" | "tool" | "steer" | "update" | "child" | "result" | "note";
+  /** Who: the agent's handle, a person's username (steering), or null for g1t's notes. */
+  by: string | null;
+  body: string;
+  /** For `tool`: the tool, and whether it read, was withheld, refused or failed. */
+  tool: string | null;
+  outcome: string | null;
+  created_at: string;
+};
+
+export type AgentSessionDetail = {
+  session: AgentSession;
+  events: SessionEvent[];
+  /** Every session in its tree, root first. */
+  tree: AgentSession[];
+  /** Whether the viewer may stop it, steer it, or approve more spend. */
+  can_stop: boolean;
+  can_steer: boolean;
+  can_approve: boolean;
+};
+
+/**
+ * What an agent remembers (docs/WORKSPACE.md, "What an agent can and can't
+ * know"). Every fact carries where it came from, and its scope decides, in
+ * code, where it may be recalled and who may see it:
+ *
+ * - `workspace`: anywhere in the workspace. Owners write these, or an agent
+ *   from a public channel, which every member can read already.
+ * - `channel`: only in that channel and its threads.
+ * - `person`: only in a direct message with that one person.
+ */
+export type AgentMemoryScope = "workspace" | "channel" | "person";
+
+export type AgentMemory = {
+  id: string;
+  agent_id: string;
+  scope: AgentMemoryScope;
+  /** The channel's id or the person's user id; empty for `workspace`. */
+  scope_ref: string;
+  /** The channel's name or the person's username, for display. */
+  scope_label: string | null;
+  body: string;
+  source_kind: "message" | "session" | "person";
+  /** A message id, a session id, or the username of who wrote it. */
+  source_ref: string | null;
+  source_label: string | null;
+  /** The channel the source is in, for a link. */
+  source_channel_id: string | null;
+  created_by: string;
+  created_by_kind: "agent" | "user";
+  pinned: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+/** When a routine runs, in UTC. */
+export type RoutineSchedule = {
+  every: "hour" | "day" | "weekday" | "week";
+  /** Minute of the hour, 0 to 59. */
+  minute: number;
+  /** Hour of the day (UTC), 0 to 23; not used for `hour`. */
+  hour: number;
+  /** Day of the week for `week`, 0 (Sunday) to 6. */
+  weekday: number;
+};
+
+/**
+ * A routine: work an agent does on a schedule, such as Izzy's Monday digest
+ * of support themes. Each run is a session posted in the routine's channel,
+ * paid from the agent's budget, and run with the access of the person who
+ * set it up (its sponsor), never more.
+ */
+export type AgentRoutine = {
+  id: string;
+  agent_id: string;
+  name: string;
+  instructions: string;
+  schedule: RoutineSchedule;
+  channel_id: string;
+  channel_name: string | null;
+  sponsor: string;
+  sponsor_username: string | null;
+  enabled: boolean;
+  /** Why g1t paused it, when it did. */
+  paused_note: string | null;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_session_id: string | null;
+  runs: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NewRoutine = {
+  name: string;
+  instructions: string;
+  schedule: RoutineSchedule;
+  /** A channel the agent is in, by id. */
+  channel_id: string;
+  enabled?: boolean;
+};
+
+/**
+ * The workspace's say over all its agents together, set by owners: one
+ * monthly budget across every agent, the budget a new agent starts with,
+ * and the cap a session starts with. The workspace's spend limit and AI
+ * credit (billing) sit above all of it.
+ */
+export type AgentPolicy = {
+  /** Every agent's spend together in a month. Null: only the workspace's spend limit. */
+  monthly_micros: number | null;
+  /** The monthly budget a new agent gets. Null: none. */
+  default_agent_monthly_micros: number | null;
+  /** The cap one session starts with, unless its agent's per-task cap is lower. */
+  default_session_micros: number;
+};
+
+export type SpendSlice = { key: string; label: string; micros: number; count: number };
+
+/** Where an agent's (or every agent's) month went. */
+export type AgentSpendBreakdown = {
+  period: string;
+  total_micros: number;
+  /** Chat replies, sessions, routines, helping colleagues. */
+  by_kind: SpendSlice[];
+  by_model: SpendSlice[];
+  /** Who asked: the work done for each person. */
+  by_person: SpendSlice[];
+  by_agent: SpendSlice[];
+  by_team: SpendSlice[];
+  /** The costliest sessions this month. */
+  top_sessions: AgentSession[];
+  /** Spend by day this month. */
+  days: { day: string; micros: number }[];
+};
+
+/** Agents mode's front page. */
+export type AgentsOverview = {
+  policy: AgentPolicy;
+  /** Every agent's spend this month, against the policy's budget. */
+  spent_month_micros: number;
+  /** The highest alert this month: 75, 90 or 100 (% of the workspace's agent budget). */
+  alert: number | null;
+  agents: WorkspaceAgent[];
+  /** Live sessions, counted by agent id, for the roster. */
+  live_by_agent: Record<string, number>;
+  /** Sessions live now that the viewer can see. */
+  live: AgentSession[];
+  /** Sessions waiting on the viewer: spend they may approve. */
+  waiting_on_you: AgentSession[];
+  /** Recently finished sessions the viewer can see. */
+  recent: AgentSession[];
+  /** The next routines to run. */
+  upcoming: (AgentRoutine & { agent_handle: string; agent_name: string })[];
+  spend: AgentSpendBreakdown;
+  can_manage: boolean;
+};
+
+/** One thing an agent did, for its Activity tab. */
+export type AgentActivity = {
+  id: string;
+  kind: "reply" | "session";
+  status: string;
+  channel_id: string;
+  channel_name: string | null;
+  /** The session's title; null for a reply or one the viewer can't see. */
+  title: string | null;
+  asked_by_username: string | null;
+  model: string | null;
+  tools: number;
+  charged_micros: number;
+  created_at: string;
+  visible: boolean;
+  /** For a reply, the message it posted; for a session, its id. */
+  ref: string | null;
+};
+
+export type AgentVersion = { version: number; changed_by: string; created_at: string; definition: Partial<NewWorkspaceAgent> };
+
 export type WorkspaceAgentsApi = {
   list(workspace: string, viewer: User): Promise<Result<WorkspaceAgent[]>>;
   get(workspace: string, handle: string, viewer: User): Promise<Result<WorkspaceAgent>>;
@@ -291,6 +566,45 @@ export type WorkspaceAgentsApi = {
   builtin(workspace: string, workspaceId: string): Promise<Result<WorkspaceAgent>>;
   /** The chat service hands over a message for an agent to answer. Returns at once. */
   deliver(delivery: AgentDelivery): Promise<Result<null>>;
+  overview(workspace: string, viewer: User): Promise<Result<AgentsOverview>>;
+  sessions(
+    workspace: string,
+    viewer: User,
+    filter?: { handle?: string | null; status?: "live" | "done" | null; limit?: number | null },
+  ): Promise<Result<AgentSession[]>>;
+  session(workspace: string, id: string, viewer: User): Promise<Result<AgentSessionDetail>>;
+  /** Stops a session and every session under it. */
+  stopSession(workspace: string, id: string, viewer: User): Promise<Result<AgentSession>>;
+  /** Raises a stopped session's cap and lets it go on. Owners only. */
+  approveSession(workspace: string, id: string, viewer: User, capMicros: number): Promise<Result<AgentSession>>;
+  /** A person's message to a session, running or finished: it reads it and goes on. */
+  steerSession(workspace: string, id: string, viewer: User, body: string): Promise<Result<AgentSession>>;
+  memories(workspace: string, handle: string, viewer: User): Promise<Result<AgentMemory[]>>;
+  remember(
+    workspace: string,
+    handle: string,
+    viewer: User,
+    input: { body: string; scope: AgentMemoryScope; scope_ref?: string | null },
+  ): Promise<Result<AgentMemory>>;
+  updateMemory(
+    workspace: string,
+    handle: string,
+    viewer: User,
+    id: string,
+    changes: { body?: string; pinned?: boolean },
+  ): Promise<Result<AgentMemory>>;
+  forget(workspace: string, handle: string, viewer: User, id: string): Promise<Result<null>>;
+  routines(workspace: string, handle: string, viewer: User): Promise<Result<AgentRoutine[]>>;
+  saveRoutine(workspace: string, handle: string, viewer: User, input: NewRoutine, id?: string | null): Promise<Result<AgentRoutine>>;
+  deleteRoutine(workspace: string, handle: string, viewer: User, id: string): Promise<Result<null>>;
+  /** Runs a routine now, as a session. */
+  runRoutine(workspace: string, handle: string, viewer: User, id: string): Promise<Result<AgentSession>>;
+  /** Where the month went: one agent's, or every agent's. */
+  spend(workspace: string, viewer: User, handle?: string | null): Promise<Result<AgentSpendBreakdown>>;
+  activity(workspace: string, handle: string, viewer: User): Promise<Result<AgentActivity[]>>;
+  versions(workspace: string, handle: string, viewer: User): Promise<Result<AgentVersion[]>>;
+  policy(workspace: string, viewer: User): Promise<Result<AgentPolicy>>;
+  setPolicy(workspace: string, viewer: User, policy: Partial<AgentPolicy>): Promise<Result<AgentPolicy>>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -317,5 +631,24 @@ export function workspaceAgentsClient(service: ServiceBinding): WorkspaceAgentsA
     templates: () => call("templates", {}),
     builtin: (workspace, workspaceId) => call("builtin", { workspace, workspace_id: workspaceId }),
     deliver: (delivery) => call("deliver", delivery),
+    overview: (workspace, viewer) => call("overview", { workspace, viewer }),
+    sessions: (workspace, viewer, filter) => call("sessions", { workspace, viewer, ...(filter ?? {}) }),
+    session: (workspace, id, viewer) => call("session", { workspace, id, viewer }),
+    stopSession: (workspace, id, viewer) => call("stop_session", { workspace, id, viewer }),
+    approveSession: (workspace, id, viewer, capMicros) => call("approve_session", { workspace, id, viewer, cap_micros: capMicros }),
+    steerSession: (workspace, id, viewer, body) => call("steer_session", { workspace, id, viewer, body }),
+    memories: (workspace, handle, viewer) => call("memories", { workspace, handle, viewer }),
+    remember: (workspace, handle, viewer, input) => call("remember", { workspace, handle, viewer, input }),
+    updateMemory: (workspace, handle, viewer, id, changes) => call("update_memory", { workspace, handle, viewer, id, changes }),
+    forget: (workspace, handle, viewer, id) => call("forget", { workspace, handle, viewer, id }),
+    routines: (workspace, handle, viewer) => call("routines", { workspace, handle, viewer }),
+    saveRoutine: (workspace, handle, viewer, input, id) => call("save_routine", { workspace, handle, viewer, input, id: id ?? null }),
+    deleteRoutine: (workspace, handle, viewer, id) => call("delete_routine", { workspace, handle, viewer, id }),
+    runRoutine: (workspace, handle, viewer, id) => call("run_routine", { workspace, handle, viewer, id }),
+    spend: (workspace, viewer, handle) => call("spend", { workspace, viewer, handle: handle ?? null }),
+    activity: (workspace, handle, viewer) => call("activity", { workspace, handle, viewer }),
+    versions: (workspace, handle, viewer) => call("versions", { workspace, handle, viewer }),
+    policy: (workspace, viewer) => call("policy", { workspace, viewer }),
+    setPolicy: (workspace, viewer, policy) => call("set_policy", { workspace, viewer, policy }),
   };
 }
