@@ -51,6 +51,9 @@ use crate::tokens::{Grant, MAX_TOKENS_PER_WORKSPACE, Owner};
 
 const DAY_SECONDS: u64 = 86_400;
 
+/// Why a workspace's token cannot use the website: it acts as no person.
+const WORKSPACE_TOKEN_NO_WEBSITE: &str = "Only a person's token can use the website: a workspace's token acts as no one who can sign in.";
+
 /// What a token row says about its reach, read with it when it is used.
 /// Numbers arrive from D1 as floats.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -107,6 +110,9 @@ pub(crate) struct TokenRowMore {
     review_reason: Option<String>,
     #[serde(default)]
     owner_workspace: Option<String>,
+    /// 1 when its owner let it use the website (migration 0043).
+    #[serde(default)]
+    website: Option<f64>,
 }
 
 impl TokenRowMore {
@@ -120,6 +126,7 @@ impl TokenRowMore {
         info.repository_selection = self.repository_selection.as_deref().and_then(RepositorySelection::parse).unwrap_or_default();
         info.status = TokenStatus::parse(self.status.as_deref().unwrap_or("active"));
         info.review_reason = self.review_reason.clone();
+        info.website = self.website.is_some_and(|on| on >= 1.0) && self.workspace_id.is_none();
     }
 }
 
@@ -431,6 +438,9 @@ impl Identity {
             Outcome::Ok(id) => id,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
+        if a.website {
+            return Ok(Outcome::fail(FailureCode::Invalid, WORKSPACE_TOKEN_NO_WEBSITE));
+        }
         let scopes = match resolve_permissions(&a.permissions, false) {
             Ok(scopes) => scopes,
             Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
@@ -532,12 +542,13 @@ impl Identity {
         let description = tidy(a.description.as_deref());
         let mut statements = vec![self
             .db
-            .prepare("UPDATE access_tokens SET owner_workspace_id = ?, repository_selection = ?, description = ?, status = ? WHERE id = ?")
+            .prepare("UPDATE access_tokens SET owner_workspace_id = ?, repository_selection = ?, description = ?, status = ?, website = ? WHERE id = ?")
             .bind(&[
                 text(workspace_id.as_deref()),
                 selection.as_str().into(),
                 text(description.as_deref()),
                 status.as_str().into(),
+                JsValue::from(u8::from(a.website)),
                 created.info.id.as_str().into(),
             ])?];
         statements.extend(self.repository_rows(&created.info.id, &repo_ids)?);
@@ -547,9 +558,11 @@ impl Identity {
         created.info.repository_selection = selection;
         created.info.repositories = qualified_all(slug.as_deref(), &repo_ids, &a.repositories);
         created.info.status = status;
+        created.info.website = a.website;
         // In the person's security log and their workspaces' audit logs.
         self.log_security(&a.actor.id, "token_created", Some(&created.info.name), None).await;
-        self.audit_account(&a.actor, "token.created", &format!("Created access token {}", created.info.name)).await;
+        let website = if a.website { " that can use the website" } else { "" };
+        self.audit_account(&a.actor, "token.created", &format!("Created access token {}{website}", created.info.name)).await;
         if let (Some(slug), TokenStatus::Pending) = (&slug, status) {
             self.ask_owners(&a.actor, slug, &created.info).await?;
         }
@@ -617,6 +630,17 @@ impl Identity {
             }
             sets.push(("scopes", scopes_text(&scopes).into()));
             widened = true;
+        }
+        // Using the website: a person's token only. Turning it on is
+        // asking for more; turning it off is not.
+        if let Some(website) = a.website {
+            if website && !personal {
+                return Ok(Outcome::fail(FailureCode::Invalid, WORKSPACE_TOKEN_NO_WEBSITE));
+            }
+            if personal {
+                sets.push(("website", JsValue::from(u8::from(website))));
+                widened |= website;
+            }
         }
         if let Some(selection) = a.repository_selection {
             if selection == RepositorySelection::Selected && repo_workspace.is_none() {
@@ -1240,13 +1264,15 @@ mod tests {
     }
 
     /// Migration 0041 writes full access out as every permission: the
-    /// same lists the code makes.
+    /// same lists the code made then, before Artifacts was offered, so
+    /// tokens from before keep exactly what they had.
     #[test]
     fn the_migration_sets_full_access_out_as_every_permission() {
-        use g1t_contracts::scopes::{ResourceGroup, everything};
+        use g1t_contracts::scopes::{Resource, ResourceGroup, everything};
         let sql = include_str!("../migrations/0041_one_kind_of_token.sql");
-        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&everything()))));
-        let workspace: Vec<Scope> = everything().into_iter().filter(|scope| scope.resource().group() != ResourceGroup::Account).collect();
+        let then: Vec<Scope> = everything().into_iter().filter(|scope| scope.resource() != Resource::Artifacts).collect();
+        assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&then))));
+        let workspace: Vec<Scope> = then.into_iter().filter(|scope| scope.resource().group() != ResourceGroup::Account).collect();
         assert!(sql.contains(&format!("SET scopes = '{}'", scopes_text(&workspace))));
         let write: Vec<Scope> = workspace
             .iter()

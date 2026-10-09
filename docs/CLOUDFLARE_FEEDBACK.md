@@ -147,10 +147,12 @@ for it and sleep at night at a few thousand workspaces".
   Anything holding a write token can push past every policy.
 - **What we built.** `services/repos/src/git_http.rs` `forward` reads the whole push body
   (`request.bytes()`), checks protected branches (`refusal`), then `secret_scan.rs` `scan_push` parses
-  the pack in WebAssembly, resolves delta bases by reading objects back through the binding
-  (`supply_bases`, up to 500 bases), walks trees and scans up to 24 MB (`MAX_SCANNED_PUSH`) before the
+  the pack in WebAssembly, walks trees and scans up to 24 MB (`MAX_SCANNED_PUSH`) before the
   body is copied again and forwarded. Pushes larger than that are let through unscanned, and we say so in
-  the logs. Write tokens handed to sandboxes (`run_access.rs`) bypass all of it, so we keep their life
+  the logs. To check a pack without reading its delta bases back through the binding, g1t adds
+  `no-thin` to the receive-pack advertisement it forwards, so git sends every base in the pack; a
+  client that sends a thin pack anyway has up to 200 bases read for it (`supply_bases`). Write tokens
+  handed to sandboxes (`run_access.rs`) bypass all of it, so we keep their life
   minimal.
 - **What it costs.** A second implementation of git's pack format in our code, memory pressure on every
   push, and a policy that only holds for pushes that come through our proxy.

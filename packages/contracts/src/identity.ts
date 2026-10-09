@@ -79,6 +79,11 @@ export type User = {
     repo?: string;
     /** Set on a workflow job's token (`G1T_TOKEN`): the run and job it was made for. */
     job?: { run_id: string; job_id: string; pull_requests?: boolean };
+    /**
+     * A person's token whose owner let it use the website as them, sent as
+     * `Authorization: Bearer` (apps/web, lib/website-token.ts). Not a scope.
+     */
+    website?: boolean;
   };
   /**
    * Workspaces the person belongs to but cannot use until they meet its
@@ -591,6 +596,8 @@ export type AccessToken = {
   workspaceOwned?: boolean;
   /** A workspace's own token with Repositories: admin, an admin of its repositories. */
   admin?: boolean;
+  /** A personal token its owner let use the website as them. */
+  website?: boolean;
 };
 
 /** Which repositories a token reaches in its workspace: all, the selected ones, or public ones only. */
@@ -617,10 +624,12 @@ export type TokenInput = {
   repositories: string[];
   /** Each resource's level; left out is no access. */
   permissions: Partial<Record<ScopeResource, ScopeLevel>>;
+  /** A personal token: whether it may use the website as you. Off unless set. */
+  website?: boolean;
 };
 
 /** A change to a token; what is left out stays. */
-export type TokenChange = Partial<Pick<TokenInput, "name" | "description" | "repositorySelection" | "repositories" | "permissions">>;
+export type TokenChange = Partial<Pick<TokenInput, "name" | "description" | "repositorySelection" | "repositories" | "permissions" | "website">>;
 
 /** A workspace's rules for personal access tokens. */
 export type TokenPolicy = {

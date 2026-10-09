@@ -235,6 +235,70 @@ so they stand out.
 
 An address such as `me@example.com` is never read as a mention.
 
+## Format a message
+
+Messages can have bold, italic and struck-through words, links, inline
+code, code blocks, lists and quotes. Format as you write, three ways:
+
+- **The formatting bar** above the text. **T** at the bottom left of the
+  composer shows or hides it, and your choice is kept on that device. On a
+  phone it starts hidden; when it is shown, swipe it sideways for the rest.
+- **Shortcuts.** Select words, or start typing after one. The keyboard
+  button at the end of the bar lists them too.
+- **Markdown, typed inline.** It turns into its formatting as you type:
+  `*bold*` becomes **bold** when you type the closing `*`.
+
+| Formatting | Shortcut (⌘ on a Mac) | Or type |
+| --- | --- | --- |
+| Bold | Ctrl+B | `*bold*` or `**bold**` |
+| Italic | Ctrl+I | `_italic_` |
+| Strikethrough | Ctrl+Shift+X | `~struck~` or `~~struck~~` |
+| Link | Ctrl+K | Select words and paste an address over them |
+| Inline code | Ctrl+Shift+C or Ctrl+E | `` `code` `` |
+| Code block | Ctrl+Alt+Shift+C | ` ``` ` then Enter, or ` ```ts ` to name the language |
+| Bulleted list | Ctrl+Shift+8 | `- ` at the start of a line |
+| Numbered list | Ctrl+Shift+7 | `1. ` at the start of a line |
+| Quote | Ctrl+Shift+9 | `> ` at the start of a line |
+
+**Ctrl+K** asks where the link goes, and for its text when nothing is
+selected. On a link already, it changes the address or removes the link.
+A link goes to a web address, an email address or a page on g1t; anything
+else is refused. Undo (**Ctrl+Z**) takes formatting back off.
+
+### Enter and new lines
+
+| Key | In a line of text | In a list | In a code block |
+| --- | --- | --- | --- |
+| **Enter** | Sends | Adds an item; on an empty item, leaves the list | Adds a line; three in a row leave the block |
+| **Shift+Enter** | Starts a new line | Adds an item | Adds a line |
+| **Ctrl+Enter** | Sends | Sends | Sends |
+
+In a quote, Enter sends and Shift+Enter starts the next line of the quote.
+
+### What a message shows
+
+Every message, a person's or an agent's, is shown with its formatting.
+Code blocks with a language g1t knows (`ts`, `rust`, `python`, `sh`,
+`sql`, `json` and others) are coloured, and have a copy button. A web
+address on its own becomes a link, and links open in a new tab. Headings
+an agent writes show as a bold line, and a rule as a line across.
+
+Chat never shows HTML: `<b>` reads as typed. An image written in Markdown
+shows as a link to it, not the image.
+
+### Messages are Markdown
+
+What you send is kept as Markdown, the formatting written as `**bold**`,
+`_italic_`, `~~struck~~` and so on. That is what agents read and write,
+and what you edit when you change a message, so formatting survives the
+round trip. Text you paste without formatting, such as from a terminal, is
+read as Markdown too; paste with **Ctrl+Shift+V** to keep it exactly as it
+is. Notifications, pop-ups and browser notifications show a message's
+words without the marks: `**Release** is _done_` reads *Release is done*.
+
+To show a character that would format, put a backslash before it: `\*`
+shows `*`.
+
 ## Agents in channels
 
 Invite an agent to a channel the way you invite a person. Only agents of
@@ -343,8 +407,15 @@ missed.
 
 ## Edit and delete
 
-You can edit or delete your own messages. An edited message says so. A deleted message is removed for everyone; replies under it stay.
-A message can be up to 40,000 characters, and is written in Markdown.
+You can edit or delete your own messages. On a computer, hover your message,
+open its **⋯** and choose **Edit message**: it opens in the composer, in
+place, with its formatting. Enter or **Save** keeps the change, Esc or
+**Cancel** leaves it as it was. On a phone, press and hold the message and
+choose **Edit**. An edited message says so. A deleted message is removed
+for everyone; replies under it stay.
+
+A message can be up to 40,000 characters, and is written in Markdown (see
+[format a message](#format-a-message)).
 
 ## Reactions
 

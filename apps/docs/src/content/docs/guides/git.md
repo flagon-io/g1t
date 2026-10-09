@@ -293,21 +293,29 @@ GIT_TRACE_CURL=1 git ls-remote https://g1t.sh/<owner>/<repo>.git 2>&1 | grep -i 
 | `upload` | Only for a push: handing it to the git store and its answer |
 | `refs` | Only for a push: recording that the repository's refs changed |
 | `total` | Everything g1t did |
-
-A push's checks run side by side, so each also has its own entry, after
-the steps and not counted in the total: `read` (reading the push's objects
-and fetching what they build on from the repository), `rules`, `scan`
-(secrets and email addresses) and, for an access token, `gate` (workflow
-files).
 | `repos` | The same, measured where your request arrived |
 
-Two entries say how a step went rather than how long it took:
+A push's checks run side by side, so each also has its own entry, after
+the steps and not counted in the total: `read` (reading the push's
+objects), `rules`, `scan` (secrets and email addresses) and, for an access
+token, `gate` (workflow files).
+
+g1t asks git to send each push whole: every object a delta in it builds on
+is in the push too (the `no-thin` capability), so checking a push reads
+nothing from the repository. A push that changes a large file a little
+uploads more than it would otherwise, and stays within the
+[size limits](#size-limits). If your git sends a push that builds on
+objects outside it anyway, g1t reads up to 200 of those from the
+repository to check it, and says `thin;desc=yes`.
+
+Some entries say how a step went rather than how long it took:
 
 | Entry | Values |
 | --- | --- |
 | `refs;desc=` | `hit-colo` or `hit-shared` when the ref listing came from g1t's cache, `miss` when the git store was asked |
 | `pack;desc=` | Only for a fresh clone: `hit` when its pack came from g1t's cache, `miss` when the git store built it |
 | `cred;desc=` | `isolate` or `shared` for a store credential made a moment ago, `mint` for a new one |
+| `thin;desc=` | Only for a push: `no` when it came whole, `yes` when it built on objects outside it |
 
 The ref listing git asks for first on every clone and fetch is kept for up
 to a minute, and only the same question about the same refs gets the same

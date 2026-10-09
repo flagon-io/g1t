@@ -33,6 +33,7 @@ use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
+use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::rules::RulesOp;
@@ -68,6 +69,9 @@ pub struct Services {
     pub deployments: Fetcher,
     /// Packages: their settings, versions, deleting and restoring them.
     pub packages: Fetcher,
+    /// The docs service: Artifacts mode's docs, slides, designs and
+    /// dashboards (folios), for the artifact routes and tool.
+    pub docs: Fetcher,
     /// Where the request came in, for its audit entries.
     pub audit: crate::audit::AuditContext,
     /// Set for a request made with an agent's token: all it may do.
@@ -94,6 +98,7 @@ impl Services {
             projects: env.service("PROJECTS")?,
             deployments: env.service("DEPLOYMENTS")?,
             packages: env.service("PACKAGES")?,
+            docs: env.service("DOCS")?,
             scope: None,
             audit: crate::audit::AuditContext::default(),
             addresses: crate::addresses::Addresses::from_env(env),
@@ -321,6 +326,9 @@ pub enum Op {
     /// A workspace's packages, their versions, deleting and restoring
     /// them, and who may use them: packages.rs.
     Packages(PackagesOp),
+    /// Artifacts mode's docs, slides, designs and dashboards, kept by the
+    /// docs service: folios.rs.
+    Folios(FoliosOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -690,7 +698,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 328] = [
+    pub const ALL: [Op; 345] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1019,6 +1027,23 @@ impl Op {
         Op::Packages(PackagesOp::RestorePackage),
         Op::Packages(PackagesOp::DeleteVersion),
         Op::Packages(PackagesOp::RestoreVersion),
+        Op::Folios(FoliosOp::List),
+        Op::Folios(FoliosOp::Search),
+        Op::Folios(FoliosOp::Get),
+        Op::Folios(FoliosOp::GetContent),
+        Op::Folios(FoliosOp::ListVersions),
+        Op::Folios(FoliosOp::GetAccess),
+        Op::Folios(FoliosOp::ListTemplates),
+        Op::Folios(FoliosOp::ListSpaces),
+        Op::Folios(FoliosOp::QueryDataset),
+        Op::Folios(FoliosOp::Create),
+        Op::Folios(FoliosOp::Update),
+        Op::Folios(FoliosOp::Edit),
+        Op::Folios(FoliosOp::Trash),
+        Op::Folios(FoliosOp::Restore),
+        Op::Folios(FoliosOp::RestoreVersion),
+        Op::Folios(FoliosOp::SetAccess),
+        Op::Folios(FoliosOp::Purge),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1231,6 +1256,7 @@ impl Op {
             Op::DeployKeys(op) => op.name(),
             Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
+            Op::Folios(op) => op.name(),
         }
     }
 
@@ -1787,6 +1813,7 @@ impl Op {
             Op::DeployKeys(op) => op.description(),
             Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
+            Op::Folios(op) => op.description(),
         }
     }
 
@@ -3272,6 +3299,7 @@ impl Op {
             Op::DeployKeys(op) => op.input(),
             Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
+            Op::Folios(op) => op.input(),
         }
     }
 
@@ -3344,6 +3372,10 @@ impl Op {
         // A package belongs to its workspace; its repository is in `repo`
         // only for Manage Actions access, checked by the packages service.
         if let Op::Packages(_) = self {
+            return false;
+        }
+        // An artifact belongs to its workspace.
+        if let Op::Folios(_) = self {
             return false;
         }
         if let Op::About(op) = self {
@@ -5592,6 +5624,7 @@ impl Op {
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
             Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
+            Op::Folios(op) => crate::folios::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

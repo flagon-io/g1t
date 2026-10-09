@@ -582,6 +582,29 @@
         "get_context",
         "import_issue"
       ]
+    },
+    {
+      "name": "Artifacts",
+      "description": "A workspace's docs, slides, designs and dashboards (Artifacts mode): listing and searching the ones you can open, reading and editing their content in Markdown, making, moving, trashing and restoring them, their versions, and who can open them. Each answers for your own role on it. Not workflow runs' artifacts, which are under Actions. Slides, designs and dashboards answer that they are not here yet.",
+      "x-tools": [
+        "list_workspace_artifacts",
+        "search_workspace_artifacts",
+        "get_workspace_artifact",
+        "get_workspace_artifact_content",
+        "list_workspace_artifact_versions",
+        "get_workspace_artifact_access",
+        "list_workspace_artifact_templates",
+        "list_workspace_artifact_spaces",
+        "query_workspace_dataset",
+        "create_workspace_artifact",
+        "update_workspace_artifact",
+        "edit_workspace_artifact",
+        "trash_workspace_artifact",
+        "restore_workspace_artifact",
+        "restore_workspace_artifact_version",
+        "set_workspace_artifact_access",
+        "purge_workspace_artifact"
+      ]
     }
   ],
   "paths": {
@@ -56008,6 +56031,2607 @@
               }
             }
           }
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts": {
+      "get": {
+        "operationId": "list_workspace_artifacts",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "List a workspace's artifacts",
+        "description": "List the artifacts (docs, slides, designs and dashboards) in a workspace that you can open, most recently edited first: each with its id (fol_…), kind, title, icon, space (null in its owner's Private), parent_id, owner, your role (viewer_role: view, comment, edit or manage), general_access, private, excerpt, edited_at and html_url. tab is all (the default), yours (you own them) or shared (shared with you). Narrow with kind, space (its slug or id), project (owner/name), q (words or meaning) and limit (at most 100); next_cursor pages on. With state trashed, the artifacts in the trash you can restore instead. Not workflow runs' artifacts.\n\nOnly artifacts you can open are listed, with `viewer_role` your own role on each. Page on with `cursor` set to `next_cursor` until it is null. With `state=trashed`, what you can restore from the trash. With `q`, the best matches first. These are Artifacts mode's docs, slides, designs and dashboards, not workflow runs' artifacts (`list_artifacts`).",
+        "x-operation": "list_workspace_artifacts",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "list",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "tab",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "yours",
+                "shared"
+              ]
+            },
+            "description": "all (the default), yours (you own them) or shared (shared with you by others)."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "doc",
+                "slides",
+                "design",
+                "dashboard"
+              ]
+            },
+            "description": "doc, slides, design or dashboard."
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A space: its slug (general) or id (spc_…)."
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only artifacts about this repository: owner/name."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only artifacts matching these words or this meaning, best first."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "trashed"
+              ]
+            },
+            "description": "active (the default), or trashed: what you can restore from the trash."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "next_cursor from the page before."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "How many, at most 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "items": [
+                    {
+                      "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                      "kind": "doc",
+                      "title": "Q4 roadmap",
+                      "icon": "🗺️",
+                      "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                      "space": {
+                        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                        "slug": "general",
+                        "name": "General",
+                        "kind": "workspace"
+                      },
+                      "parent_id": null,
+                      "has_children": false,
+                      "owner": {
+                        "type": "user",
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                        "username": "ana",
+                        "display_name": "Ana Lima"
+                      },
+                      "created_by": {
+                        "type": "user",
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                        "username": "ana",
+                        "display_name": "Ana Lima"
+                      },
+                      "created_at": "2026-10-06T09:12:00.000Z",
+                      "updated_at": "2026-10-08T16:40:12.000Z",
+                      "edited_by": {
+                        "type": "user",
+                        "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                        "username": "bo",
+                        "display_name": "Bo Chen"
+                      },
+                      "edited_at": "2026-10-08T16:40:12.000Z",
+                      "trashed_at": null,
+                      "viewer_role": "manage",
+                      "private": false,
+                      "shared_count": 1,
+                      "general_access": "workspace",
+                      "general_role": "view",
+                      "inherit": true,
+                      "agent_mode": "suggest",
+                      "excerpt": "What we ship this quarter, and what we leave for next.",
+                      "source": null,
+                      "stale": false,
+                      "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        },
+        "x-example-query": {
+          "kind": "doc",
+          "space": "general"
+        }
+      },
+      "post": {
+        "operationId": "create_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Create an artifact",
+        "description": "Make an artifact. kind is doc (the default); slides, designs and dashboards answer that they are not here yet. It lands in space (a slug or id you can edit in), under parent_id (a doc you can edit), or, with neither, in your Private, where only you can open it. Start it from markdown, or from a template (template_id), with an optional title and icon. You own it. Returns the artifact.\n\nLeft out `space` and `parent_id`, it lands in your Private, where only you can open it until you share it. `kind` is `doc` until slides, designs and dashboards ship; they answer `422` saying they are not here yet.",
+        "x-operation": "create_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "create",
+        "x-scope": "artifacts:write",
+        "security": [
+          {
+            "token": [
+              "artifacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "kind": "doc",
+                  "title": "Release notes",
+                  "icon": null,
+                  "slug": "release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "space": null,
+                  "parent_id": null,
+                  "has_children": false,
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_by": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_at": "2026-10-09T10:00:00.000Z",
+                  "updated_at": "2026-10-09T10:00:00.000Z",
+                  "edited_by": null,
+                  "edited_at": "2026-10-09T10:00:00.000Z",
+                  "trashed_at": null,
+                  "viewer_role": "manage",
+                  "private": true,
+                  "shared_count": 0,
+                  "general_access": "none",
+                  "general_role": null,
+                  "inherit": true,
+                  "agent_mode": null,
+                  "excerpt": "What changed in 2.4.",
+                  "source": null,
+                  "stale": false,
+                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "doc",
+                      "slides",
+                      "design",
+                      "dashboard"
+                    ],
+                    "description": "doc, slides, design or dashboard."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "At most 200 characters. Left out: the template's, or Untitled."
+                  },
+                  "icon": {
+                    "type": "string",
+                    "description": "An emoji."
+                  },
+                  "space": {
+                    "type": "string",
+                    "description": "A space you can edit in: its slug or id. Left out, with no parent_id: your Private."
+                  },
+                  "parent_id": {
+                    "type": "string",
+                    "description": "A doc to put it under, which you can edit: its id. Its space is the doc's."
+                  },
+                  "markdown": {
+                    "type": "string",
+                    "description": "What a doc starts with, in Markdown."
+                  },
+                  "template_id": {
+                    "type": "string",
+                    "description": "A template to start from (list_workspace_artifact_templates), instead of markdown."
+                  }
+                }
+              },
+              "example": {
+                "kind": "doc",
+                "title": "Release notes",
+                "markdown": "# Release notes\n\nWhat changed in 2.4.\n"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/search": {
+      "get": {
+        "operationId": "search_workspace_artifacts",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Search a workspace's artifacts",
+        "description": "Search the artifacts in a workspace that you can open, by words and by meaning: each hit is the artifact with the passage that matched (snippet, and the heading it is under), its space_name and edited_at. Narrow with kind, space, project and limit (at most 50). Only what you can read now is found.\n\nMatches words and meaning, and is checked again against who can read each artifact now: one shared with you a minute ago is found, one taken away is not.",
+        "x-operation": "search_workspace_artifacts",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "search",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Words or a question."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "doc",
+                "slides",
+                "design",
+                "dashboard"
+              ]
+            },
+            "description": "doc, slides, design or dashboard."
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A space: its slug (general) or id (spc_…)."
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only artifacts about this repository: owner/name."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "description": "How many hits, at most 50."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "kind": "doc",
+                    "title": "Q4 roadmap",
+                    "icon": "🗺️",
+                    "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "space_name": "General",
+                    "snippet": "We ship the merge queue and Artifacts in Q4; dashboards follow.",
+                    "heading": "This quarter",
+                    "matched": "both",
+                    "edited_at": "2026-10-08T16:40:12.000Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        },
+        "x-example-query": {
+          "q": "what ships in Q4"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "get_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Get an artifact",
+        "description": "Get one artifact by its id (fol_…) or its address (`/acme/-/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link.\n\n`artifact_id` is the id, or the artifact's address (`q4-roadmap-fol_…`, or its whole link). Not found when you cannot open it, the same as when it does not exist.",
+        "x-operation": "get_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "get",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                  "kind": "doc",
+                  "title": "Q4 roadmap",
+                  "icon": "🗺️",
+                  "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                  "space": {
+                    "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "slug": "general",
+                    "name": "General",
+                    "kind": "workspace"
+                  },
+                  "parent_id": null,
+                  "has_children": false,
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_by": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_at": "2026-10-06T09:12:00.000Z",
+                  "updated_at": "2026-10-08T16:40:12.000Z",
+                  "edited_by": {
+                    "type": "user",
+                    "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                    "username": "bo",
+                    "display_name": "Bo Chen"
+                  },
+                  "edited_at": "2026-10-08T16:40:12.000Z",
+                  "trashed_at": null,
+                  "viewer_role": "manage",
+                  "private": false,
+                  "shared_count": 1,
+                  "general_access": "workspace",
+                  "general_role": "view",
+                  "inherit": true,
+                  "agent_mode": "suggest",
+                  "excerpt": "What we ship this quarter, and what we leave for next.",
+                  "source": null,
+                  "stale": false,
+                  "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      },
+      "patch": {
+        "operationId": "update_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Update an artifact",
+        "description": "Rename an artifact (title), change its icon (null clears it), or move it: to space (a slug or id; `private` for your Private, yours only), under parent_id (a doc), before before_id among its new siblings. Moving changes who can open it when it follows its space or parent. Takes the edit role on it, and on where it goes. Returns the artifact.\n\nMoving it into a space it follows (`inherit`) gives the space's members its access. `space` set to `private` moves it to the top of your Private, which only its owner can do.",
+        "x-operation": "update_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "update",
+        "x-scope": "artifacts:write",
+        "security": [
+          {
+            "token": [
+              "artifacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "kind": "doc",
+                  "title": "Release notes 2.4",
+                  "icon": null,
+                  "slug": "release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "space": {
+                    "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "slug": "general",
+                    "name": "General",
+                    "kind": "workspace"
+                  },
+                  "parent_id": null,
+                  "has_children": false,
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_by": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_at": "2026-10-09T10:00:00.000Z",
+                  "updated_at": "2026-10-09T10:00:00.000Z",
+                  "edited_by": null,
+                  "edited_at": "2026-10-09T10:00:00.000Z",
+                  "trashed_at": null,
+                  "viewer_role": "manage",
+                  "private": false,
+                  "shared_count": 0,
+                  "general_access": "none",
+                  "general_role": null,
+                  "inherit": true,
+                  "agent_mode": null,
+                  "excerpt": "What changed in 2.4.",
+                  "source": null,
+                  "stale": false,
+                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Its new title."
+                  },
+                  "icon": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "An emoji; null clears it."
+                  },
+                  "space": {
+                    "type": "string",
+                    "description": "Move it to the top of this space (slug or id), or `private` for your Private."
+                  },
+                  "parent_id": {
+                    "type": "string",
+                    "description": "Move it under this doc: its id."
+                  },
+                  "before_id": {
+                    "type": "string",
+                    "description": "Where it goes among its new siblings: before this one. Left out: last."
+                  }
+                }
+              },
+              "example": {
+                "title": "Release notes 2.4",
+                "space": "general"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+        }
+      },
+      "delete": {
+        "operationId": "trash_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Move an artifact to the trash",
+        "description": "Move an artifact, and everything under it, to the trash: nobody can open it until it is restored, and it is deleted for good after 30 days. Takes the edit role. Returns the artifact, with trashed_at.\n\nEverything under it goes to the trash with it. It is deleted for good 30 days later, or with `purge_workspace_artifact`.",
+        "x-operation": "trash_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "trash",
+        "x-scope": "artifacts:write",
+        "security": [
+          {
+            "token": [
+              "artifacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "kind": "doc",
+                  "title": "Release notes",
+                  "icon": null,
+                  "slug": "release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "space": null,
+                  "parent_id": null,
+                  "has_children": false,
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_by": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_at": "2026-10-09T10:00:00.000Z",
+                  "updated_at": "2026-10-09T10:00:00.000Z",
+                  "edited_by": null,
+                  "edited_at": "2026-10-09T10:00:00.000Z",
+                  "trashed_at": "2026-10-09T11:30:00.000Z",
+                  "viewer_role": "manage",
+                  "private": true,
+                  "shared_count": 0,
+                  "general_access": "none",
+                  "general_role": null,
+                  "inherit": true,
+                  "agent_mode": null,
+                  "excerpt": "What changed in 2.4.",
+                  "source": null,
+                  "stale": false,
+                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}/restore": {
+      "post": {
+        "operationId": "restore_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Restore an artifact from the trash",
+        "description": "Bring an artifact back from the trash, with what went to the trash with it, where it was (at the top of its space or your Private when the doc it was under is gone). Takes the edit role. Returns the artifact.",
+        "x-operation": "restore_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "restore",
+        "x-scope": "artifacts:write",
+        "security": [
+          {
+            "token": [
+              "artifacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "kind": "doc",
+                  "title": "Release notes",
+                  "icon": null,
+                  "slug": "release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+                  "space": null,
+                  "parent_id": null,
+                  "has_children": false,
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_by": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "created_at": "2026-10-09T10:00:00.000Z",
+                  "updated_at": "2026-10-09T10:00:00.000Z",
+                  "edited_by": null,
+                  "edited_at": "2026-10-09T10:00:00.000Z",
+                  "trashed_at": null,
+                  "viewer_role": "manage",
+                  "private": true,
+                  "shared_count": 0,
+                  "general_access": "none",
+                  "general_role": null,
+                  "inherit": true,
+                  "agent_mode": null,
+                  "excerpt": "What changed in 2.4.",
+                  "source": null,
+                  "stale": false,
+                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}/purge": {
+      "post": {
+        "operationId": "purge_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Delete an artifact for good",
+        "description": "Delete an artifact in the trash, and everything under it, for good: its content and versions are gone and cannot be restored. Move it to the trash first. Takes full access (manage).\n\nOnly an artifact in the trash can be deleted for good: `trash_workspace_artifact` first.",
+        "x-operation": "purge_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "purge",
+        "x-scope": "artifacts:admin",
+        "security": [
+          {
+            "token": [
+              "artifacts:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}/content": {
+      "get": {
+        "operationId": "get_workspace_artifact_content",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Get an artifact's content",
+        "description": "Get an artifact's content in the form agents read and write: for a doc, its Markdown in content, and its top-level blocks (id, type, level and Markdown) to target an edit at; with can (read, suggest, edit): what you may do to it. Slides, designs and dashboards answer that they are not here yet.\n\nA doc's content is Markdown. `blocks` are its top-level blocks, whose ids an edit with a `blocks` target names. Slides, designs and dashboards answer `422` saying they are not here yet.",
+        "x-operation": "get_workspace_artifact_content",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "read",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "artifact": {
+                    "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "kind": "doc",
+                    "title": "Q4 roadmap",
+                    "icon": "🗺️",
+                    "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "edited_at": "2026-10-08T16:40:12.000Z"
+                  },
+                  "space": {
+                    "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "slug": "general",
+                    "name": "General",
+                    "agent_mode": "suggest"
+                  },
+                  "content": "# Q4 roadmap\n\n## This quarter\n\nWe ship the merge queue and Artifacts.\n",
+                  "blocks": [
+                    {
+                      "id": "b_4f1c",
+                      "type": "heading",
+                      "level": 1,
+                      "markdown": "# Q4 roadmap"
+                    },
+                    {
+                      "id": "b_9a02",
+                      "type": "heading",
+                      "level": 2,
+                      "markdown": "## This quarter"
+                    },
+                    {
+                      "id": "b_77d3",
+                      "type": "paragraph",
+                      "level": null,
+                      "markdown": "We ship the merge queue and Artifacts."
+                    }
+                  ],
+                  "can": {
+                    "read": true,
+                    "suggest": true,
+                    "edit": true
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      },
+      "put": {
+        "operationId": "edit_workspace_artifact",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Edit an artifact's content",
+        "description": "Change an artifact's content. For a doc: markdown with a target: append (add to the end), document (replace it all), section (with heading: that heading and everything under it) or blocks (from_block through to_block, block ids from its content). With the edit role the change is made, as a new version; with the comment role, or suggest_only, it is filed as a suggestion its editors accept or reject. note says why; marks_current says it brings the doc up to date with the code it cites. Returns mode (applied or suggested), version_id or the suggestion, and the artifact.\n\nWith only the comment role, or with `suggest_only`, the change is filed as a suggestion instead: `mode` is `suggested`, with the `suggestion` its editors accept or reject. A target that is not there any more answers `404`: read the content again.",
+        "x-operation": "edit_workspace_artifact",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "edit",
+        "x-scope": "artifacts:write",
+        "security": [
+          {
+            "token": [
+              "artifacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "mode": "applied",
+                  "artifact": {
+                    "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "kind": "doc",
+                    "title": "Q4 roadmap",
+                    "icon": "🗺️",
+                    "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+                  },
+                  "version_id": "ver_01kqa7h9k1n3q5s7u9w1y3a5c",
+                  "summary": "Replaced the section This quarter."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "markdown": {
+                    "type": "string",
+                    "description": "For a doc: the Markdown to add, or to replace the target with."
+                  },
+                  "target": {
+                    "type": [
+                      "object",
+                      "string"
+                    ],
+                    "description": "For a doc: append or document (as a string or { \"kind\": … }), { \"kind\": \"section\", \"heading\": … }, or { \"kind\": \"blocks\", \"from_block\": …, \"to_block\": … }. Left out: append."
+                  },
+                  "ops": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "For slides, designs and dashboards, once they ship: the kind's own ops."
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "doc",
+                      "slides",
+                      "design",
+                      "dashboard"
+                    ],
+                    "description": "The artifact's kind; left out, doc."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Why, in a line: shown with the version or suggestion."
+                  },
+                  "suggest_only": {
+                    "type": "boolean",
+                    "description": "File a suggestion even when you could edit."
+                  },
+                  "marks_current": {
+                    "type": "boolean",
+                    "description": "The edit brings it up to date with the code it cites."
+                  }
+                }
+              },
+              "example": {
+                "target": {
+                  "kind": "section",
+                  "heading": "This quarter"
+                },
+                "markdown": "## This quarter\n\nWe ship the merge queue, Artifacts and the API for both.\n",
+                "note": "Adds the API"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}/access": {
+      "get": {
+        "operationId": "get_workspace_artifact_access",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Get who can open an artifact",
+        "description": "Who can open an artifact and how: its owner, each person, agent and team it is shared with (principal, role, and inherited_from when the access comes from a doc it is under), general_access (none, workspace or link) with general_role, whether it follows its space or parent (inherit), agent_mode, and whether you may change it (can_share).\n\nIts owner always has full access and is not in `shared_with`. `inherited_from` on a row is the doc above it that gives that access; on the whole list, the space or doc it follows while `inherit` is true.",
+        "x-operation": "get_workspace_artifact_access",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "access",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "shared_with": [
+                    {
+                      "principal": "user:usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                      "member": {
+                        "type": "user",
+                        "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                        "username": "bo",
+                        "display_name": "Bo Chen"
+                      },
+                      "role": "edit",
+                      "inherited_from": null
+                    },
+                    {
+                      "principal": "team:design",
+                      "member": {
+                        "type": "team",
+                        "slug": "design",
+                        "display_name": "@acme/design"
+                      },
+                      "role": "comment",
+                      "inherited_from": null
+                    }
+                  ],
+                  "general_access": "workspace",
+                  "general_role": "view",
+                  "inherit": true,
+                  "inherited_from": {
+                    "type": "space",
+                    "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "name": "General"
+                  },
+                  "agent_mode": null,
+                  "can_share": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      },
+      "put": {
+        "operationId": "set_workspace_artifact_access",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Share an artifact",
+        "description": "Change who can open an artifact. Share it with a person (username), a team (team: its slug) or an agent (agent: its id), or a principal from its access list, at role view, comment, edit or manage (full access), with an optional notify message; role none takes theirs away. Set general_access to none (only people invited), workspace (everyone in the workspace) or link (anyone in the workspace with the link), with general_role view, comment or edit. inherit false stops it following its space or parent; true follows again. agent_mode suggest or edit says how agents change it (null follows its space). Takes full access (manage). Returns who can open it now.\n\nOne call can share with one person, team or agent, and change `general_access`, `inherit` and `agent_mode`, in that order. `role` set to `none` takes someone's access away. General access never gives full access. On an artifact that follows the doc it is under, change general access on that doc, or set `inherit` to false first.",
+        "x-operation": "set_workspace_artifact_access",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "share",
+        "x-scope": "artifacts:admin",
+        "security": [
+          {
+            "token": [
+              "artifacts:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                  "owner": {
+                    "type": "user",
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                    "username": "ana",
+                    "display_name": "Ana Lima"
+                  },
+                  "shared_with": [
+                    {
+                      "principal": "user:usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                      "member": {
+                        "type": "user",
+                        "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                        "username": "bo",
+                        "display_name": "Bo Chen"
+                      },
+                      "role": "edit",
+                      "inherited_from": null
+                    },
+                    {
+                      "principal": "team:design",
+                      "member": {
+                        "type": "team",
+                        "slug": "design",
+                        "display_name": "@acme/design"
+                      },
+                      "role": "comment",
+                      "inherited_from": null
+                    }
+                  ],
+                  "general_access": "workspace",
+                  "general_role": "view",
+                  "inherit": true,
+                  "inherited_from": {
+                    "type": "space",
+                    "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "name": "General"
+                  },
+                  "agent_mode": null,
+                  "can_share": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "A member to share it with."
+                  },
+                  "team": {
+                    "type": "string",
+                    "description": "A team of the workspace to share it with: its slug."
+                  },
+                  "agent": {
+                    "type": "string",
+                    "description": "An agent of the workspace to share it with: its id."
+                  },
+                  "principal": {
+                    "type": "string",
+                    "description": "Who, as its access list names them: user:…, agent:… or team:…"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "view",
+                      "comment",
+                      "edit",
+                      "manage",
+                      "none"
+                    ],
+                    "description": "What they may do: view, comment, edit, or manage (full access, sharing included); none takes their access away."
+                  },
+                  "notify": {
+                    "type": "string",
+                    "description": "A message for the person it is shared with."
+                  },
+                  "general_access": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "workspace",
+                      "link"
+                    ],
+                    "description": "none (only people invited), workspace (everyone in the workspace) or link (anyone in the workspace with the link)."
+                  },
+                  "general_role": {
+                    "type": "string",
+                    "enum": [
+                      "view",
+                      "comment",
+                      "edit"
+                    ],
+                    "description": "What general access gives; never full access."
+                  },
+                  "inherit": {
+                    "type": "boolean",
+                    "description": "Whether it follows its space or the doc it is under."
+                  },
+                  "agent_mode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "suggest",
+                      "edit",
+                      null
+                    ],
+                    "description": "How agents change it: suggest or edit; null follows its space."
+                  }
+                }
+              },
+              "example": {
+                "username": "bo",
+                "role": "edit",
+                "notify": "Can you fill in the dates?"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}/versions": {
+      "get": {
+        "operationId": "list_workspace_artifact_versions",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "List an artifact's versions",
+        "description": "List an artifact's saved versions, newest first: each with its id (ver_…), created_at, kind (created, edit, agent, suggestion, proposal or restore), note, and the people and agents who made it.",
+        "x-operation": "list_workspace_artifact_versions",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "versions",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "ver_01kq9e6g8j0m2p4r6t8v0x2z4b",
+                    "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "created_at": "2026-10-08T16:40:12.000Z",
+                    "kind": "edit",
+                    "note": null,
+                    "authors": [
+                      {
+                        "type": "user",
+                        "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+                        "username": "bo",
+                        "display_name": "Bo Chen"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "ver_01kq7c4e6g8j0m2p4r6t8v0x2y",
+                    "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "created_at": "2026-10-06T09:12:00.000Z",
+                    "kind": "created",
+                    "note": null,
+                    "authors": [
+                      {
+                        "type": "user",
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                        "username": "ana",
+                        "display_name": "Ana Lima"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifacts/{artifact_id}/versions/{version_id}/restore": {
+      "post": {
+        "operationId": "restore_workspace_artifact_version",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Restore an artifact version",
+        "description": "Make an earlier version (version_id) an artifact's content again, as a new version: nothing in between is lost. Takes the edit role. Returns the new version.",
+        "x-operation": "restore_workspace_artifact_version",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "restore_version",
+        "x-scope": "artifacts:write",
+        "security": [
+          {
+            "token": [
+              "artifacts:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The version's id (ver_…), from its versions."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ver_01kqb8j0m2p4r6t8v0x2z4b6d",
+                  "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                  "created_at": "2026-10-09T12:00:00.000Z",
+                  "kind": "restore",
+                  "note": null,
+                  "authors": [
+                    {
+                      "type": "user",
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+                      "username": "ana",
+                      "display_name": "Ana Lima"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme",
+          "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+          "version_id": "ver_01kq7c4e6g8j0m2p4r6t8v0x2y"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifact-templates": {
+      "get": {
+        "operationId": "list_workspace_artifact_templates",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "List artifact templates",
+        "description": "The templates an artifact can start from: the built-in ones and those saved in the workspace, each with its id, kind, name, description and body (Markdown, or a JSON spec). Narrow with kind.",
+        "x-operation": "list_workspace_artifact_templates",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "templates",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "doc",
+                "slides",
+                "design",
+                "dashboard"
+              ]
+            },
+            "description": "doc, slides, design or dashboard."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "builtin:doc:meeting-notes",
+                    "kind": "doc",
+                    "name": "Meeting notes",
+                    "description": "Who came, what was decided, and what happens next.",
+                    "icon": "📝",
+                    "builtin": true,
+                    "body": "# Meeting notes\n\n## Attendees\n\n## Decisions\n\n## Next steps\n"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        },
+        "x-example-query": {
+          "kind": "doc"
+        }
+      }
+    },
+    "/workspaces/{workspace}/artifact-spaces": {
+      "get": {
+        "operationId": "list_workspace_artifact_spaces",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "List artifact spaces",
+        "description": "The spaces in your Artifacts sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open.\n\nOpen spaces show once you join them in Artifacts; General always shows. Give a space's `slug` or `id` as `space` to the other artifact calls.",
+        "x-operation": "list_workspace_artifact_spaces",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "spaces",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+                    "slug": "general",
+                    "name": "General",
+                    "description": null,
+                    "icon": null,
+                    "kind": "workspace",
+                    "is_default": true,
+                    "joined": true,
+                    "viewer_role": "edit",
+                    "artifact_count": 14
+                  },
+                  {
+                    "id": "spc_01kq2b4d6f8h0k2m4p6r8t0v2x",
+                    "slug": "design",
+                    "name": "Design",
+                    "description": "The design team's specs.",
+                    "icon": "🎨",
+                    "kind": "team",
+                    "is_default": false,
+                    "joined": true,
+                    "viewer_role": "view",
+                    "artifact_count": 6
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
+        }
+      }
+    },
+    "/workspaces/{workspace}/datasets/query": {
+      "post": {
+        "operationId": "query_workspace_dataset",
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Query a dataset",
+        "description": "Run a dataset query (issues, pull requests, workflow runs, deployments, spend or agent sessions) as you, over what you can read: rows of the measure, grouped and filtered as asked, with truncated when more rows matched, and partial true when some of it was left out because you cannot read it. Answers that dashboards are not here yet until they ship.\n\nRuns as you, over what you can read: `partial` is true when some of it was left out because you cannot read it. Until dashboards ship this answers `422` saying they are not here yet.",
+        "x-operation": "query_workspace_dataset",
+        "x-mcp-tool": "artifact",
+        "x-mcp-action": "query_data",
+        "x-scope": "artifacts:read",
+        "security": [
+          {
+            "token": [
+              "artifacts:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "columns": [
+                    {
+                      "name": "repo",
+                      "type": "string"
+                    },
+                    {
+                      "name": "count",
+                      "type": "number"
+                    }
+                  ],
+                  "rows": [
+                    [
+                      "acme/web",
+                      42
+                    ],
+                    [
+                      "acme/api",
+                      7
+                    ]
+                  ],
+                  "truncated": false,
+                  "partial": false,
+                  "as_of": "2026-10-09T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "object",
+                    "description": "dataset (issues, pull_requests, workflow_runs, deployments, spend or agent_sessions), measure ({ op: count, sum, avg, p50, p95 or rate, field where it takes one }), and optional group_by, interval (day, week or month), time, filters ([{ field, op, value }], at most 10), range (7d, 30d, 90d, or { from, to }, at most 366 days) and limit (at most 100)."
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              },
+              "example": {
+                "query": {
+                  "dataset": "pull_requests",
+                  "measure": {
+                    "op": "count"
+                  },
+                  "group_by": "repo",
+                  "range": {
+                    "from": "2026-09-01",
+                    "to": "2026-09-30"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "acme"
         }
       }
     }

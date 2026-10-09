@@ -111,6 +111,10 @@ pub struct CreateTokenArgs {
     /// out or `none` is no access. See [`crate::scopes::resolve_permissions`].
     #[serde(default)]
     pub permissions: BTreeMap<String, String>,
+    /// Whether it may be used on the website as its owner: a person's token
+    /// only. Never part of its permissions, so full access does not include it.
+    #[serde(default)]
+    pub website: bool,
 }
 
 /// `update_token`: a person changes a token of theirs, or, as an owner,
@@ -137,6 +141,9 @@ pub struct UpdateTokenArgs {
     pub repositories: Option<Vec<String>>,
     #[serde(default)]
     pub permissions: Option<BTreeMap<String, String>>,
+    /// Whether it may be used on the website; a person's token only.
+    #[serde(default)]
+    pub website: Option<bool>,
 }
 
 /// A workspace's rules for personal access tokens.

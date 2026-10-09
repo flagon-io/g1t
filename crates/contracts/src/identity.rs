@@ -78,6 +78,10 @@ pub struct AccessToken {
     /// admin of the workspace's repositories rather than with Write.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub admin: bool,
+    /// A person's token its owner let use the website (g1t.sh) as them,
+    /// with `Authorization: Bearer`. See [`crate::scopes::TokenAccess::website`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub website: bool,
 }
 
 /// `sign_in`: verifies a username, or any confirmed email address of the

@@ -876,3 +876,34 @@ Open for Phase 2:
 - **"Editors can share."** `canShare` supports this per-space setting, but nothing sets it yet.
 - **Access requests.** `request_folio_access` sends to the owner and the people with full access, at most 20, with no limit on how often. Decide whether it needs one.
 - **Self-hosted rooms.** `deploy/self-host/configs.mjs` doesn't copy `durable_objects` into the self-hosted configs. That gap predates this phase and affects `PageRoom` too. Check it before relying on rooms self-hosted.
+
+---
+
+## 13. Decided in Phase 3
+
+Phase 3 shipped the external API in `apps/api` (`src/folios.rs`, the `artifact` tool, 17 routes) over a `DOCS` binding to `g1t-docs-service`, and made the `artifacts:*` scopes real. Where the plan was open, the build settled these:
+
+- **Operation names.** GitHub's names for workflow runs' artifacts (`list_artifacts`, `get_artifact`, `delete_artifact`) are taken, so every artifact operation says `workspace_artifact`: `list_workspace_artifacts`, `get_workspace_artifact_content`, `set_workspace_artifact_access`, and so on. Dataset queries are `query_workspace_dataset`. The OpenAPI section is "Artifacts"; workflow runs' artifacts stay under "Actions".
+- **Scopes.**
+  - Every resource is offered now, so `Resource::offered()` is true for all; the mechanism stays for the next resource built ahead of its API. `UPCOMING_SCOPES` and `UPCOMING_RESOURCES` are empty, and the Artifacts rows are at the end of `SCOPES`, `SCOPE_RESOURCES` and `OPERATION_SCOPES`. `SCOPE_GROUPS` has an Artifacts group.
+  - Read only and Agent get `artifacts:read` (Rust adds it because both take every offered read). No preset writes or shares artifacts.
+  - Read: list, search, get, content, versions, access, templates, spaces, dataset query. Write: create, update (rename and move), edit (applied or suggested), trash, restore, restore a version. Admin: share (grants, general access, inherit, agent mode) and purge.
+  - `set_workspace_artifact_access` and `purge_workspace_artifact` are in `NEVER`: g1t's own agents share only through the agents service, with people already in the conversation.
+- **The tool's actions** are `list`, `search`, `get`, `read`, `versions`, `access`, `templates`, `spaces`, `query_data`, `create`, `update`, `edit`, `trash`, `restore`, `restore_version`, `share` and `purge`. The plan's `get` (metadata and the agent form) is split into `get` (metadata, `GET …/artifacts/{id}`) and `read` (content, `GET …/content`), because each action is one operation and one route. `share` and `purge` make the tool's `destructiveHint` true.
+- **REST.** `DELETE /workspaces/{ws}/artifacts/{id}` moves an artifact to the trash, as `DELETE` of a package does, and `POST …/restore` and `POST …/purge` follow the repository routes. `GET …/artifacts/search` comes before `…/artifacts/{id}` in the table. Templates and spaces are at `/workspaces/{ws}/artifact-templates` and `/workspaces/{ws}/artifact-spaces`. `?state=trashed` on the list is the trash.
+- **Input.**
+  - `artifact_id` is an id, an address segment (`q4-roadmap-fol_…`) or a whole link.
+  - `space` is a slug or an id; a slug is looked up among the spaces in the person's sidebar (`folio_sidebar`), so an open space not yet joined needs its id.
+  - An edit is a doc edit unless `kind` says otherwise. `target` may be a string (`append`, `document`) or the object, and defaults to `append`.
+  - A share names `username` (looked up in identity and sent as `user:<id>`), `team`, `agent` or a raw `principal`. `role: none` revokes. One call can also change general access, `inherit` and `agent_mode`, sent to the service in that order.
+  - Create takes no `share_with`: sharing is the admin scope's, so it is its own call.
+- **Output.** The API shapes every answer itself, in snake_case: people are `{ type, id, username | handle | slug, display_name }`; artifacts drop `workspace_id`, `position` and `preview`, and gain `html_url`; content drops `audience_can_read` (always true for a person); the access list's `rows` are `shared_with`, and `public_link` is left out until public links exist.
+- **Who.** A workspace's own token is refused (`403`): an artifact always has a person as its owner, and the docs service has no person for a workspace. A g1t agent's run token can call only what its run's scope lists, which names no artifact operation today.
+- **Trashed artifacts.** `get` of a trashed artifact answers with `trashed_at` set, to anyone who could open it, as the `folio` read does for the UI's restore banner; its content is refused. That is the service's rule, unchanged here.
+- **Checked** under `wrangler dev` with the API, the docs service and stand-in services: 55 checks over REST and MCP with scoped tokens, including that a Private artifact is not found, listed or searched for another member's admin token, that a revoked share closes it again, that a non-member and a workspace token are refused, and that `tools/list` hides write and admin actions from tokens without those scopes.
+
+Deploy order: the docs service is already deployed (Phase 1); the API's `DOCS` binding needs `g1t-docs-service` to exist before `g1t-api` deploys, which `stage: core` before `edge` already gives.
+
+Open:
+- **llms.txt.** `apps/web/public/llms.txt` should name the `artifact` tool; it is in `apps/web`, which Phase 2 owns, so it is left for that merge.
+- **Unjoined open spaces by slug.** Only sidebar spaces resolve by slug. A `list_spaces`-style RPC that returns every space the person can read would fix it, and the agents service's `list_spaces` tool (Phase 2) needs the same.

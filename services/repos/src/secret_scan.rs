@@ -41,8 +41,12 @@ const SITE: &str = "https://g1t.sh";
 const MAX_PUSH_COMMITS: usize = 300;
 /// Files compared per commit, at most.
 const MAX_FILES_PER_COMMIT: usize = 300;
-/// Bases fetched from the store for a thin pack, at most.
-const MAX_BASES: usize = 500;
+/// Bases fetched from the store for a thin pack, at most, in all rounds
+/// together. Each is one or two store reads, each with a Cache API look.
+const MAX_BASES: usize = 200;
+/// Bases asked for at a time (two reads each when the pack does not say
+/// whether a base is a blob or a tree).
+const BASES_AT_ONCE: usize = 16;
 /// The largest push that is read whole and scanned. A larger one is
 /// declined, since it cannot be checked (git_http.rs `LargePushes`).
 pub const MAX_SCANNED_PUSH: usize = 24 * 1024 * 1024;
@@ -260,50 +264,108 @@ async fn scan_changes<R: GitRepo>(objects: &Objects<'_, R>, commit: &str, change
     Ok(found)
 }
 
-/// Fetches what a thin pack's deltas are based on from the repository,
-/// all at once. A base the pack's own trees name is read as what they say
-/// it is; any other is asked for as a blob and as a tree together, and
-/// whichever it is answers.
-pub(crate) async fn supply_bases<R: GitRepo>(pack: &mut Pack, repo: &R) -> Result<()> {
+/// What [`supply_bases`] did for a pack.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Bases {
+    /// Bases the pack's deltas needed from outside it when it arrived: 0
+    /// for a pack sent whole, as g1t asks for (`no-thin`, git_http.rs).
+    pub missing: usize,
+    /// Bases asked of the store, in every round.
+    pub asked: usize,
+    /// Bases still missing at the end: objects that stay unresolved.
+    pub left: usize,
+}
+
+impl Bases {
+    /// Whether the pack came thin, its deltas based on objects outside it.
+    pub fn thin(&self) -> bool {
+        self.missing > 0
+    }
+}
+
+/// Fetches what a thin pack's deltas are based on from the repository.
+/// A base the pack's own trees name is read as what they say it is; any
+/// other is asked for as a blob and as a tree together, and whichever it
+/// is answers.
+///
+/// g1t asks for packs without outside bases (`no-thin`), so this is for
+/// clients that send thin ones anyway, and it is bounded: [`MAX_BASES`] in
+/// all, over up to three rounds for delta chains, [`BASES_AT_ONCE`] at a
+/// time. Asking for hundreds at once made a large thin push fan out into
+/// as many store reads, and Cache API looks beside them, all in flight
+/// together; the reads that failed were tried again and counted against
+/// the store's breaker (store.rs `invoke`), which then turned every read
+/// after them away, so the push was answered 503. A store that says it is
+/// busy stops the reading here. Bases left missing leave their objects
+/// unresolved, and the checks go on without them, as for any pack the
+/// store cannot complete.
+pub(crate) async fn supply_bases<R: GitRepo>(pack: &mut Pack, repo: &R) -> Result<Bases> {
+    let mut bases = Bases { missing: pack.missing_bases().len(), ..Bases::default() };
+    let mut busy = false;
     for _ in 0..3 {
         let missing = pack.missing_bases();
-        if missing.is_empty() {
-            return Ok(());
+        if missing.is_empty() || busy || bases.asked >= MAX_BASES {
+            break;
         }
         let named = pack.named_kinds();
-        let blob = async |id: &str| repo.read_blob(id).await.ok().flatten().map(|bytes| (ObjectKind::Blob, bytes));
-        let tree = async |id: &str| {
-            repo.read_tree(id).await.ok().flatten().map(|entries| {
-                let items: Vec<TreeItem> = entries
-                    .into_iter()
-                    .map(|entry| TreeItem { mode: mode(entry.kind).to_owned(), name: entry.name, id: entry.hash })
-                    .collect();
-                (ObjectKind::Tree, encode_tree(&items))
-            })
+        // A read that fails is a base not found, unless the store is busy,
+        // which ends the reading.
+        let settle = |read: Result<Option<(ObjectKind, Vec<u8>)>>| match read {
+            Ok(found) => Ok(found),
+            Err(error) if crate::resilience::busy(&error.to_string()).is_some() => Err(()),
+            Err(_) => Ok(None),
         };
-        let found = futures_util::future::join_all(missing.iter().take(MAX_BASES).map(|id| async {
-            match named.get(id.as_str()) {
-                Some(ObjectKind::Tree) => tree(id).await,
-                Some(_) => blob(id).await,
-                None => {
-                    let (as_blob, as_tree) = futures_util::future::join(blob(id), tree(id)).await;
-                    as_blob.or(as_tree)
+        let blob = async |id: &str| settle(repo.read_blob(id).await.map(|found| found.map(|bytes| (ObjectKind::Blob, bytes))));
+        let tree = async |id: &str| {
+            settle(repo.read_tree(id).await.map(|found| {
+                found.map(|entries| {
+                    let items: Vec<TreeItem> = entries
+                        .into_iter()
+                        .map(|entry| TreeItem { mode: mode(entry.kind).to_owned(), name: entry.name, id: entry.hash })
+                        .collect();
+                    (ObjectKind::Tree, encode_tree(&items))
+                })
+            }))
+        };
+        let wanted: Vec<&String> = missing.iter().take(MAX_BASES - bases.asked).collect();
+        let mut progress = false;
+        for batch in wanted.chunks(BASES_AT_ONCE) {
+            let found = futures_util::future::join_all(batch.iter().map(|id| async {
+                match named.get(id.as_str()) {
+                    Some(ObjectKind::Tree) => tree(id).await,
+                    Some(_) => blob(id).await,
+                    None => {
+                        let (as_blob, as_tree) = futures_util::future::join(blob(id), tree(id)).await;
+                        match (as_blob, as_tree) {
+                            (Ok(Some(found)), _) | (_, Ok(Some(found))) => Ok(Some(found)),
+                            (Err(()), _) | (_, Err(())) => Err(()),
+                            _ => Ok(None),
+                        }
+                    }
+                }
+            }))
+            .await;
+            bases.asked += batch.len();
+            for (id, object) in batch.iter().zip(found) {
+                match object {
+                    Ok(Some((kind, data))) => {
+                        pack.supply(id, kind, data);
+                        progress = true;
+                    }
+                    Ok(None) => {}
+                    Err(()) => busy = true,
                 }
             }
-        }))
-        .await;
-        let mut progress = false;
-        for (id, object) in missing.iter().zip(found) {
-            if let Some((kind, data)) = object {
-                pack.supply(id, kind, data);
-                progress = true;
+            if busy {
+                break;
             }
         }
         if !progress {
-            return Ok(());
+            break;
         }
     }
-    Ok(())
+    bases.left = pack.missing_bases().len();
+    Ok(bases)
 }
 
 /// The secrets the commits in a push add, each secret once. A push too
@@ -760,6 +822,53 @@ mod tests {
         blob_reads: Cell<u32>,
         tree_reads: Cell<u32>,
         log_reads: Cell<u32>,
+        /// Each read waits once before it answers, as a store's does, so
+        /// that reads asked for together are in flight together.
+        waits: bool,
+        in_flight: Cell<u32>,
+        most_in_flight: Cell<u32>,
+        /// Every read fails as a busy store's does.
+        busy: bool,
+    }
+
+    impl FakeRepo {
+        async fn reading(&self) -> Result<()> {
+            if self.busy {
+                return Err(crate::resilience::Busy { rate_limited: true, retry_after: 5, read_only: false }.error("readBlob"));
+            }
+            if self.waits {
+                self.in_flight.set(self.in_flight.get() + 1);
+                self.most_in_flight.set(self.most_in_flight.get().max(self.in_flight.get()));
+                YieldOnce(false).await;
+                self.in_flight.set(self.in_flight.get() - 1);
+            }
+            Ok(())
+        }
+    }
+
+    /// Waits once, then is ready.
+    struct YieldOnce(bool);
+
+    impl Future for YieldOnce {
+        type Output = ();
+        fn poll(mut self: std::pin::Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
+            if self.0 {
+                return Poll::Ready(());
+            }
+            self.0 = true;
+            context.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+
+    /// Runs a future to its end, polling it until it is ready.
+    fn run_waiting<F: Future>(future: F) -> F::Output {
+        let mut future = pin!(future);
+        loop {
+            if let Poll::Ready(output) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+                return output;
+            }
+        }
     }
 
     impl GitRepo for FakeRepo {
@@ -778,10 +887,12 @@ mod tests {
         }
         async fn read_tree(&self, tree_hash: &str) -> Result<Option<Vec<TreeEntry>>> {
             self.tree_reads.set(self.tree_reads.get() + 1);
+            self.reading().await?;
             Ok(self.trees.get(tree_hash).cloned())
         }
         async fn read_blob(&self, blob_hash: &str) -> Result<Option<Vec<u8>>> {
             self.blob_reads.set(self.blob_reads.get() + 1);
+            self.reading().await?;
             Ok(self.blobs.get(blob_hash).cloned())
         }
         async fn read_file(&self, _git_ref: &str, _path: &str) -> Result<Option<Vec<u8>>> {
@@ -965,6 +1076,76 @@ mod tests {
         run(supply_bases(&mut pack, &repo)).unwrap();
         assert_eq!(pack.unresolved(), 0);
         assert_eq!((repo.blob_reads.get(), repo.tree_reads.get()), (0, 1));
+    }
+
+    #[test]
+    fn a_pack_sent_whole_is_checked_without_reading_a_base() {
+        // What git sends when told `no-thin`: a delta's base is in the pack
+        // with it. Here the second file is a delta on the first.
+        let first = b"REGION=eu
+".to_vec();
+        let first_id = object_id(ObjectKind::Blob, &first);
+        let added = format!("AWS_KEY={}
+", key()).into_bytes();
+        let second = [first.clone(), added.clone()].concat();
+        let mut delta = vec![first.len() as u8, second.len() as u8, 0x80 | 0x10, first.len() as u8, added.len() as u8];
+        delta.extend_from_slice(&added);
+        let tree = encode_tree(&[
+            TreeItem { mode: "100644".into(), name: "a.env".into(), id: first_id.clone() },
+            TreeItem { mode: "100644".into(), name: "b.env".into(), id: object_id(ObjectKind::Blob, &second) },
+        ]);
+        let tree_id = object_id(ObjectKind::Tree, &tree);
+        let body = push(&[
+            Entry::Whole(ObjectKind::Commit, commit(&tree_id, None)),
+            Entry::Whole(ObjectKind::Tree, tree),
+            Entry::Whole(ObjectKind::Blob, first),
+            Entry::Delta(first_id, delta),
+        ]);
+        let repo = FakeRepo::default();
+        let mut pack = crate::push_checks::read_pack(&body).unwrap();
+        let bases = run(supply_bases(&mut pack, &repo)).unwrap();
+        assert_eq!(bases, Bases::default());
+        assert!(!bases.thin());
+        assert_eq!(pack.unresolved(), 0);
+        let found = run(scan_pack(&repo, body.len(), &Ok(pack), &[])).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].path.as_str(), found[0].line), ("b.env", 2));
+        // Nothing was read from the store: not a base, not a file.
+        assert_eq!((repo.blob_reads.get(), repo.tree_reads.get(), repo.log_reads.get()), (0, 0, 0));
+    }
+
+    /// A pack of `count` deltas, each on a different base outside it.
+    fn thin_pack(count: usize) -> Pack {
+        let entries: Vec<Entry> = (1..=count)
+            .map(|at| Entry::Delta(format!("{at:040x}"), vec![1, 2, 0x02, b'h', b'i']))
+            .collect();
+        crate::push_checks::read_pack(&push(&entries)).unwrap()
+    }
+
+    #[test]
+    fn a_large_thin_push_reads_a_bounded_number_of_bases_a_few_at_a_time() {
+        // 300 bases the store does not have, none named by a tree: before,
+        // each round asked for 500 at once, two reads each, three rounds.
+        let mut pack = thin_pack(300);
+        let repo = FakeRepo { waits: true, ..FakeRepo::default() };
+        let bases = run_waiting(supply_bases(&mut pack, &repo)).unwrap();
+        assert_eq!(bases, Bases { missing: 300, asked: MAX_BASES, left: 300 });
+        assert!(bases.thin());
+        // Asked once each, as a blob and as a tree, and never more at once
+        // than a batch's.
+        assert_eq!((repo.blob_reads.get(), repo.tree_reads.get()), (MAX_BASES as u32, MAX_BASES as u32));
+        assert_eq!(repo.most_in_flight.get(), 2 * BASES_AT_ONCE as u32);
+    }
+
+    #[test]
+    fn a_busy_store_stops_the_reading_of_bases() {
+        let mut pack = thin_pack(100);
+        let repo = FakeRepo { busy: true, ..FakeRepo::default() };
+        let bases = run(supply_bases(&mut pack, &repo)).unwrap();
+        // One batch, then no more: the checks go on, and the store's own
+        // answer to them says it is busy.
+        assert_eq!(bases, Bases { missing: 100, asked: BASES_AT_ONCE, left: 100 });
+        assert_eq!(repo.blob_reads.get(), BASES_AT_ONCE as u32);
     }
 
     #[test]

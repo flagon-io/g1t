@@ -13,7 +13,8 @@
 //! shapes are snake_case; the tests keep field names, RPC methods and
 //! validators the same as the TypeScript (`folios.fixtures.json`).
 //!
-//! Nothing uses this yet: Phase 1 publishes the events, Phase 3 the API.
+//! The API (`apps/api/src/folios.rs`) calls the RPC with these; the docs
+//! service publishes the events.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -16,6 +16,12 @@
   powershell -File scripts/perf/measure.ps1 -Runs 7 -Out before.csv
 
 .EXAMPLE
+  # Signed in with an access token that has "Use the website as you" on:
+  # G1T_TOKEN_FILE names the file holding it. The script never prints it.
+  $env:G1T_TOKEN_FILE = "$HOME\.config\g1t\website-token"
+  powershell -File scripts/perf/measure.ps1 -Runs 7
+
+.EXAMPLE
   # As a browser sees it: React Router streams to browsers and renders the
   # whole page first for anything it takes for a crawler, which curl's own
   # user agent is. Compare the two to see what streaming saves.
@@ -60,6 +66,20 @@ if ($Paths.Count -eq 0) {
 $signedIn = [bool]$env:G1T_SESSION
 $cookieArgs = @()
 if ($signedIn) { $cookieArgs = @("-H", "Cookie: g1t_session=$($env:G1T_SESSION)") }
+# Signed in with an access token that may use the website: G1T_TOKEN_FILE
+# names the file holding it. curl reads the header from a temporary file,
+# so the token is never on a command line or printed. It wins over
+# G1T_SESSION, as on the site.
+$tokenHeaderFile = $null
+if ($env:G1T_TOKEN_FILE) {
+  if (-not (Test-Path -LiteralPath $env:G1T_TOKEN_FILE -PathType Leaf)) { throw "G1T_TOKEN_FILE does not name a file." }
+  $tokenHeaderFile = [System.IO.Path]::GetTempFileName()
+  $header = "Authorization: Bearer " + (Get-Content -Raw -LiteralPath $env:G1T_TOKEN_FILE).Trim()
+  [System.IO.File]::WriteAllText($tokenHeaderFile, $header)
+  Remove-Variable header
+  $cookieArgs = @("-H", "@$tokenHeaderFile")
+  $signedIn = $true
+}
 $agentArgs = @()
 if ($BrowserUA) {
   $agentArgs = @("-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
@@ -116,7 +136,8 @@ function Summarize-Timing([string]$header) {
   return ($shown -join " ")
 }
 
-Write-Host "Measuring $Base, $Runs runs each, $(if ($signedIn) { 'signed in' } else { 'signed out' }), $(if ($BrowserUA) { 'as a browser (streamed)' } else { 'as curl (a crawler: whole page first)' })."
+Write-Host "Measuring $Base, $Runs runs each, $(if ($tokenHeaderFile) { 'signed in with a token' } elseif ($signedIn) { 'signed in' } else { 'signed out' }), $(if ($BrowserUA) { 'as a browser (streamed)' } else { 'as curl (a crawler: whole page first)' })."
+try {
 $rows = foreach ($path in $Paths) {
   $url = "$Base$path"
   $null = Measure-Once $url   # warm the connection and the isolate
@@ -134,6 +155,9 @@ $rows = foreach ($path in $Paths) {
     "Sets g1t_d1" = $last.SetsD1
     "Server-Timing (last run)" = Summarize-Timing $last.Timing
   }
+}
+} finally {
+  if ($tokenHeaderFile) { Remove-Item -LiteralPath $tokenHeaderFile -ErrorAction SilentlyContinue }
 }
 
 $rows | Format-Table -AutoSize -Wrap

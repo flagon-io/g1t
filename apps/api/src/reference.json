@@ -12593,5 +12593,685 @@
       "id": "rmt_01kp4b3c4d5e6f7g8h9j0k1m2n"
     },
     "response": true
+  },
+  "list_workspace_artifacts": {
+    "params": {
+      "workspace": "acme"
+    },
+    "query": {
+      "kind": "doc",
+      "space": "general"
+    },
+    "response": {
+      "items": [
+        {
+          "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+          "kind": "doc",
+          "title": "Q4 roadmap",
+          "icon": "🗺️",
+          "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+          "space": {
+            "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+            "slug": "general",
+            "name": "General",
+            "kind": "workspace"
+          },
+          "parent_id": null,
+          "has_children": false,
+          "owner": {
+            "type": "user",
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+            "username": "ana",
+            "display_name": "Ana Lima"
+          },
+          "created_by": {
+            "type": "user",
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+            "username": "ana",
+            "display_name": "Ana Lima"
+          },
+          "created_at": "2026-10-06T09:12:00.000Z",
+          "updated_at": "2026-10-08T16:40:12.000Z",
+          "edited_by": {
+            "type": "user",
+            "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+            "username": "bo",
+            "display_name": "Bo Chen"
+          },
+          "edited_at": "2026-10-08T16:40:12.000Z",
+          "trashed_at": null,
+          "viewer_role": "manage",
+          "private": false,
+          "shared_count": 1,
+          "general_access": "workspace",
+          "general_role": "view",
+          "inherit": true,
+          "agent_mode": "suggest",
+          "excerpt": "What we ship this quarter, and what we leave for next.",
+          "source": null,
+          "stale": false,
+          "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+        }
+      ],
+      "next_cursor": null
+    },
+    "notes": "Only artifacts you can open are listed, with `viewer_role` your own role on each. Page on with `cursor` set to `next_cursor` until it is null. With `state=trashed`, what you can restore from the trash. With `q`, the best matches first. These are Artifacts mode's docs, slides, designs and dashboards, not workflow runs' artifacts (`list_artifacts`)."
+  },
+  "search_workspace_artifacts": {
+    "params": {
+      "workspace": "acme"
+    },
+    "query": {
+      "q": "what ships in Q4"
+    },
+    "response": [
+      {
+        "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "kind": "doc",
+        "title": "Q4 roadmap",
+        "icon": "🗺️",
+        "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "space_name": "General",
+        "snippet": "We ship the merge queue and Artifacts in Q4; dashboards follow.",
+        "heading": "This quarter",
+        "matched": "both",
+        "edited_at": "2026-10-08T16:40:12.000Z"
+      }
+    ],
+    "notes": "Matches words and meaning, and is checked again against who can read each artifact now: one shared with you a minute ago is found, one taken away is not."
+  },
+  "get_workspace_artifact": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "response": {
+      "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+      "kind": "doc",
+      "title": "Q4 roadmap",
+      "icon": "🗺️",
+      "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+      "space": {
+        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "slug": "general",
+        "name": "General",
+        "kind": "workspace"
+      },
+      "parent_id": null,
+      "has_children": false,
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_by": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_at": "2026-10-06T09:12:00.000Z",
+      "updated_at": "2026-10-08T16:40:12.000Z",
+      "edited_by": {
+        "type": "user",
+        "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+        "username": "bo",
+        "display_name": "Bo Chen"
+      },
+      "edited_at": "2026-10-08T16:40:12.000Z",
+      "trashed_at": null,
+      "viewer_role": "manage",
+      "private": false,
+      "shared_count": 1,
+      "general_access": "workspace",
+      "general_role": "view",
+      "inherit": true,
+      "agent_mode": "suggest",
+      "excerpt": "What we ship this quarter, and what we leave for next.",
+      "source": null,
+      "stale": false,
+      "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "notes": "`artifact_id` is the id, or the artifact's address (`q4-roadmap-fol_…`, or its whole link). Not found when you cannot open it, the same as when it does not exist."
+  },
+  "get_workspace_artifact_content": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "response": {
+      "artifact": {
+        "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "kind": "doc",
+        "title": "Q4 roadmap",
+        "icon": "🗺️",
+        "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "edited_at": "2026-10-08T16:40:12.000Z"
+      },
+      "space": {
+        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "slug": "general",
+        "name": "General",
+        "agent_mode": "suggest"
+      },
+      "content": "# Q4 roadmap\n\n## This quarter\n\nWe ship the merge queue and Artifacts.\n",
+      "blocks": [
+        {
+          "id": "b_4f1c",
+          "type": "heading",
+          "level": 1,
+          "markdown": "# Q4 roadmap"
+        },
+        {
+          "id": "b_9a02",
+          "type": "heading",
+          "level": 2,
+          "markdown": "## This quarter"
+        },
+        {
+          "id": "b_77d3",
+          "type": "paragraph",
+          "level": null,
+          "markdown": "We ship the merge queue and Artifacts."
+        }
+      ],
+      "can": {
+        "read": true,
+        "suggest": true,
+        "edit": true
+      }
+    },
+    "notes": "A doc's content is Markdown. `blocks` are its top-level blocks, whose ids an edit with a `blocks` target names. Slides, designs and dashboards answer `422` saying they are not here yet."
+  },
+  "list_workspace_artifact_versions": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "response": [
+      {
+        "id": "ver_01kq9e6g8j0m2p4r6t8v0x2z4b",
+        "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "created_at": "2026-10-08T16:40:12.000Z",
+        "kind": "edit",
+        "note": null,
+        "authors": [
+          {
+            "type": "user",
+            "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+            "username": "bo",
+            "display_name": "Bo Chen"
+          }
+        ]
+      },
+      {
+        "id": "ver_01kq7c4e6g8j0m2p4r6t8v0x2y",
+        "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "created_at": "2026-10-06T09:12:00.000Z",
+        "kind": "created",
+        "note": null,
+        "authors": [
+          {
+            "type": "user",
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+            "username": "ana",
+            "display_name": "Ana Lima"
+          }
+        ]
+      }
+    ]
+  },
+  "get_workspace_artifact_access": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "response": {
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "shared_with": [
+        {
+          "principal": "user:usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+          "member": {
+            "type": "user",
+            "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+            "username": "bo",
+            "display_name": "Bo Chen"
+          },
+          "role": "edit",
+          "inherited_from": null
+        },
+        {
+          "principal": "team:design",
+          "member": {
+            "type": "team",
+            "slug": "design",
+            "display_name": "@acme/design"
+          },
+          "role": "comment",
+          "inherited_from": null
+        }
+      ],
+      "general_access": "workspace",
+      "general_role": "view",
+      "inherit": true,
+      "inherited_from": {
+        "type": "space",
+        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "name": "General"
+      },
+      "agent_mode": null,
+      "can_share": true
+    },
+    "notes": "Its owner always has full access and is not in `shared_with`. `inherited_from` on a row is the doc above it that gives that access; on the whole list, the space or doc it follows while `inherit` is true."
+  },
+  "list_workspace_artifact_templates": {
+    "params": {
+      "workspace": "acme"
+    },
+    "query": {
+      "kind": "doc"
+    },
+    "response": [
+      {
+        "id": "builtin:doc:meeting-notes",
+        "kind": "doc",
+        "name": "Meeting notes",
+        "description": "Who came, what was decided, and what happens next.",
+        "icon": "📝",
+        "builtin": true,
+        "body": "# Meeting notes\n\n## Attendees\n\n## Decisions\n\n## Next steps\n"
+      }
+    ]
+  },
+  "list_workspace_artifact_spaces": {
+    "params": {
+      "workspace": "acme"
+    },
+    "response": [
+      {
+        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "slug": "general",
+        "name": "General",
+        "description": null,
+        "icon": null,
+        "kind": "workspace",
+        "is_default": true,
+        "joined": true,
+        "viewer_role": "edit",
+        "artifact_count": 14
+      },
+      {
+        "id": "spc_01kq2b4d6f8h0k2m4p6r8t0v2x",
+        "slug": "design",
+        "name": "Design",
+        "description": "The design team's specs.",
+        "icon": "🎨",
+        "kind": "team",
+        "is_default": false,
+        "joined": true,
+        "viewer_role": "view",
+        "artifact_count": 6
+      }
+    ],
+    "notes": "Open spaces show once you join them in Artifacts; General always shows. Give a space's `slug` or `id` as `space` to the other artifact calls."
+  },
+  "query_workspace_dataset": {
+    "params": {
+      "workspace": "acme"
+    },
+    "request": {
+      "query": {
+        "dataset": "pull_requests",
+        "measure": {
+          "op": "count"
+        },
+        "group_by": "repo",
+        "range": {
+          "from": "2026-09-01",
+          "to": "2026-09-30"
+        }
+      }
+    },
+    "response": {
+      "columns": [
+        {
+          "name": "repo",
+          "type": "string"
+        },
+        {
+          "name": "count",
+          "type": "number"
+        }
+      ],
+      "rows": [
+        [
+          "acme/web",
+          42
+        ],
+        [
+          "acme/api",
+          7
+        ]
+      ],
+      "truncated": false,
+      "partial": false,
+      "as_of": "2026-10-09T12:00:00.000Z"
+    },
+    "notes": "Runs as you, over what you can read: `partial` is true when some of it was left out because you cannot read it. Until dashboards ship this answers `422` saying they are not here yet."
+  },
+  "create_workspace_artifact": {
+    "params": {
+      "workspace": "acme"
+    },
+    "request": {
+      "kind": "doc",
+      "title": "Release notes",
+      "markdown": "# Release notes\n\nWhat changed in 2.4.\n"
+    },
+    "response": {
+      "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "kind": "doc",
+      "title": "Release notes",
+      "icon": null,
+      "slug": "release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "space": null,
+      "parent_id": null,
+      "has_children": false,
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_by": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_at": "2026-10-09T10:00:00.000Z",
+      "updated_at": "2026-10-09T10:00:00.000Z",
+      "edited_by": null,
+      "edited_at": "2026-10-09T10:00:00.000Z",
+      "trashed_at": null,
+      "viewer_role": "manage",
+      "private": true,
+      "shared_count": 0,
+      "general_access": "none",
+      "general_role": null,
+      "inherit": true,
+      "agent_mode": null,
+      "excerpt": "What changed in 2.4.",
+      "source": null,
+      "stale": false,
+      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "notes": "Left out `space` and `parent_id`, it lands in your Private, where only you can open it until you share it. `kind` is `doc` until slides, designs and dashboards ship; they answer `422` saying they are not here yet."
+  },
+  "update_workspace_artifact": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "request": {
+      "title": "Release notes 2.4",
+      "space": "general"
+    },
+    "response": {
+      "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "kind": "doc",
+      "title": "Release notes 2.4",
+      "icon": null,
+      "slug": "release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "space": {
+        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "slug": "general",
+        "name": "General",
+        "kind": "workspace"
+      },
+      "parent_id": null,
+      "has_children": false,
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_by": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_at": "2026-10-09T10:00:00.000Z",
+      "updated_at": "2026-10-09T10:00:00.000Z",
+      "edited_by": null,
+      "edited_at": "2026-10-09T10:00:00.000Z",
+      "trashed_at": null,
+      "viewer_role": "manage",
+      "private": false,
+      "shared_count": 0,
+      "general_access": "none",
+      "general_role": null,
+      "inherit": true,
+      "agent_mode": null,
+      "excerpt": "What changed in 2.4.",
+      "source": null,
+      "stale": false,
+      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "notes": "Moving it into a space it follows (`inherit`) gives the space's members its access. `space` set to `private` moves it to the top of your Private, which only its owner can do."
+  },
+  "edit_workspace_artifact": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "request": {
+      "target": {
+        "kind": "section",
+        "heading": "This quarter"
+      },
+      "markdown": "## This quarter\n\nWe ship the merge queue, Artifacts and the API for both.\n",
+      "note": "Adds the API"
+    },
+    "response": {
+      "mode": "applied",
+      "artifact": {
+        "id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "kind": "doc",
+        "title": "Q4 roadmap",
+        "icon": "🗺️",
+        "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+        "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+      },
+      "version_id": "ver_01kqa7h9k1n3q5s7u9w1y3a5c",
+      "summary": "Replaced the section This quarter."
+    },
+    "notes": "With only the comment role, or with `suggest_only`, the change is filed as a suggestion instead: `mode` is `suggested`, with the `suggestion` its editors accept or reject. A target that is not there any more answers `404`: read the content again."
+  },
+  "trash_workspace_artifact": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "response": {
+      "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "kind": "doc",
+      "title": "Release notes",
+      "icon": null,
+      "slug": "release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "space": null,
+      "parent_id": null,
+      "has_children": false,
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_by": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_at": "2026-10-09T10:00:00.000Z",
+      "updated_at": "2026-10-09T10:00:00.000Z",
+      "edited_by": null,
+      "edited_at": "2026-10-09T10:00:00.000Z",
+      "trashed_at": "2026-10-09T11:30:00.000Z",
+      "viewer_role": "manage",
+      "private": true,
+      "shared_count": 0,
+      "general_access": "none",
+      "general_role": null,
+      "inherit": true,
+      "agent_mode": null,
+      "excerpt": "What changed in 2.4.",
+      "source": null,
+      "stale": false,
+      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "notes": "Everything under it goes to the trash with it. It is deleted for good 30 days later, or with `purge_workspace_artifact`."
+  },
+  "restore_workspace_artifact": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "response": {
+      "id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "kind": "doc",
+      "title": "Release notes",
+      "icon": null,
+      "slug": "release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a",
+      "space": null,
+      "parent_id": null,
+      "has_children": false,
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_by": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "created_at": "2026-10-09T10:00:00.000Z",
+      "updated_at": "2026-10-09T10:00:00.000Z",
+      "edited_by": null,
+      "edited_at": "2026-10-09T10:00:00.000Z",
+      "trashed_at": null,
+      "viewer_role": "manage",
+      "private": true,
+      "shared_count": 0,
+      "general_access": "none",
+      "general_role": null,
+      "inherit": true,
+      "agent_mode": null,
+      "excerpt": "What changed in 2.4.",
+      "source": null,
+      "stale": false,
+      "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    }
+  },
+  "restore_workspace_artifact_version": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+      "version_id": "ver_01kq7c4e6g8j0m2p4r6t8v0x2y"
+    },
+    "response": {
+      "id": "ver_01kqb8j0m2p4r6t8v0x2z4b6d",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+      "created_at": "2026-10-09T12:00:00.000Z",
+      "kind": "restore",
+      "note": null,
+      "authors": [
+        {
+          "type": "user",
+          "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+          "username": "ana",
+          "display_name": "Ana Lima"
+        }
+      ]
+    }
+  },
+  "set_workspace_artifact_access": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+    },
+    "request": {
+      "username": "bo",
+      "role": "edit",
+      "notify": "Can you fill in the dates?"
+    },
+    "response": {
+      "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+      "owner": {
+        "type": "user",
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09q",
+        "username": "ana",
+        "display_name": "Ana Lima"
+      },
+      "shared_with": [
+        {
+          "principal": "user:usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+          "member": {
+            "type": "user",
+            "id": "usr_01kmb2d4f6h8k0m2p4r6t8v0x2",
+            "username": "bo",
+            "display_name": "Bo Chen"
+          },
+          "role": "edit",
+          "inherited_from": null
+        },
+        {
+          "principal": "team:design",
+          "member": {
+            "type": "team",
+            "slug": "design",
+            "display_name": "@acme/design"
+          },
+          "role": "comment",
+          "inherited_from": null
+        }
+      ],
+      "general_access": "workspace",
+      "general_role": "view",
+      "inherit": true,
+      "inherited_from": {
+        "type": "space",
+        "id": "spc_01kq1a3c5e7g9j1l3n5q7s9u1w",
+        "name": "General"
+      },
+      "agent_mode": null,
+      "can_share": true
+    },
+    "notes": "One call can share with one person, team or agent, and change `general_access`, `inherit` and `agent_mode`, in that order. `role` set to `none` takes someone's access away. General access never gives full access. On an artifact that follows the doc it is under, change general access on that doc, or set `inherit` to false first."
+  },
+  "purge_workspace_artifact": {
+    "params": {
+      "workspace": "acme",
+      "artifact_id": "fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+    },
+    "response": {
+      "deleted": true
+    },
+    "notes": "Only an artifact in the trash can be deleted for good: `trash_workspace_artifact` first."
   }
 }

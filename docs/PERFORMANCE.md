@@ -455,6 +455,53 @@ lines again in the page's data for hydration. Files over 200,000
 characters (lock files) are not highlighted and still cost about 130 ms
 for a crawler.
 
+## Pushes (2026-10-09)
+
+A push is two requests: `info/refs` (the receive-pack advertisement,
+forwarded to the store) and `receive-pack` (the pack, checked here, then
+uploaded). `receive-pack`'s `Server-Timing` says `recv`, `checks` (with its
+parts `read`, `rules`, `scan`, `gate`), `upload` and `refs`. Measured by
+pushing 5 small files to flagon-io/automation-lab from Denver, several
+times each.
+
+| | Before (Deploy #120) | After (Deploy #121) |
+| --- | --- | --- |
+| `git push`, wall clock | 2.0–2.3 s | not timed; the two requests below add up to 1.25–1.9 s |
+| `info/refs` | 430–680 ms | 316–765 ms (unchanged: the store answers it) |
+| `receive-pack`, total | 1,123–1,523 ms | 931–1,120 ms |
+| reading the pack's bases from the store (`read`) | inside `scan` | 267–318 ms |
+| branch rules (`rules`) | 33–131 ms | 18–75 ms, beside the scan |
+| secret scan (`scan`) | 423–623 ms | 17–79 ms |
+| the store's own receive-pack (`upload`) | 467–620 ms | 460–511 ms |
+| moving refs and recording the push (`refs`) | ~40 ms | ~45 ms |
+
+What changed in #121 (`push_checks.rs`): the pack is read once and shared
+by the rules and the scan, which run side by side; one store handle serves
+the whole push; branch rules, custom patterns and the email guard are asked
+while the pack is parsed; cache writes and rule records wait until after
+the answer (`Deferred`, `store.rs`); the bases a thin pack's deltas need are
+fetched all at once, and their kinds are read from the pack's own trees
+when it names them, so most are one read instead of two.
+
+What is left is the store: `read` (one store read per base, up to three
+rounds for delta chains), `upload`, and `info/refs`. `read` grows with the
+push. A 15-commit push of 437 objects (358 KB) to flagon-io/g1t on
+2026-10-09 answered 503 twice and took 23 s the third time. The next step
+is to stop needing bases: see "Pushes" in docs/ARTIFACTS.md.
+
+Step 1 of that, built and not yet deployed: the receive-pack advertisement
+g1t forwards says `no-thin` (`git_http.rs` `with_no_thin`), so git sends
+every delta's base in the pack and `read` has nothing to fetch: it should
+fall from 267–318 ms to the few milliseconds it takes to parse the pack,
+for every push from a client that honours it (git does; see
+`services/repos/dev/push-check.mjs`), and stop growing with the push. A
+push that changes a large file a little uploads more, so `upload` may grow
+a little for those. A push that arrives thin anyway says `thin;desc=yes` in
+`Server-Timing`, and is logged with its user agent; its bases are read 16
+at a time, at most 200, and not at all once the store says it is busy
+(the 503 above came from all of them at once tripping the store's
+breaker; see docs/ARTIFACTS.md).
+
 ## Client navigation
 
 - `<Link prefetch="intent">` on the sidebar, project tabs, breadcrumbs,
@@ -513,6 +560,10 @@ powershell -File scripts/perf/measure.ps1 -BrowserUA -Runs 7 -Out before.csv
 # Signed in: your g1t_session cookie's value, from DevTools; never printed
 $env:G1T_SESSION = "<64 hex>"
 powershell -File scripts/perf/measure.ps1 -Runs 7 -Pull 12 -Issue 11 -Out before-signed-in.csv
+# Or signed in with an access token that may use the website: the path of
+# the file holding it (the token is never printed or put on a command line)
+$env:G1T_TOKEN_FILE = "$HOME\.config\g1t\website-token"
+powershell -File scripts/perf/measure.ps1 -Runs 7 -Out before-token.csv
 ```
 
 It prints p50 and p90 of the server's share (TLS handshake done to first

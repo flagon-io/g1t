@@ -64,6 +64,7 @@ declare global {
       WEB_HEAVY_LIMIT?: RateLimitBinding;
       WEB_SESSION_LIMIT?: RateLimitBinding;
       WEB_ADDRESS_LIMIT?: RateLimitBinding;
+      WEB_TOKEN_LIMIT?: RateLimitBinding;
       GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
       GIT_SIGNED_LIMIT?: RateLimitBinding;
       /**

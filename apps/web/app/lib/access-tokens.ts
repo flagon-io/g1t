@@ -9,7 +9,8 @@
  * The form posts `name`, `description`, `expires` (days, or `never`),
  * `workspace` (`*` for every workspace you belong to, `-` for none, or a
  * slug), `repository_selection`, one `repo` per chosen repository, and
- * `perm.<resource>` for each resource's level. Every field is a form field,
+ * `perm.<resource>` for each resource's level, and `website` when a personal
+ * token may use the website as you. Every field is a form field,
  * so the form posts the same with or without JavaScript.
  */
 
@@ -180,6 +181,8 @@ export function tokenFromForm(
       repositorySelection,
       repositories: repositorySelection === "selected" ? repositories : [],
       permissions,
+      // A person's token only: a workspace's acts as no one who signs in.
+      website: !workspaceOwned && ["on", "true", "1"].includes(String(form.get("website") ?? "")),
     },
   };
 }
@@ -275,6 +278,7 @@ export function changesTo(token: AccessToken, input: TokenInput): TokenChange {
   if (scopesOfPermissions(input.permissions).join(" ") !== scopesOfPermissions(tokenPermissions(token)).join(" ")) {
     change.permissions = input.permissions;
   }
+  if (!token.workspaceOwned && Boolean(input.website) !== Boolean(token.website)) change.website = Boolean(input.website);
   if (input.repositorySelection !== (token.repositorySelection ?? "all")) change.repositorySelection = input.repositorySelection;
   if (input.repositorySelection === "selected" && (change.repositorySelection || !sameNames(input.repositories, token.repositories))) {
     change.repositorySelection = "selected";

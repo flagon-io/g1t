@@ -793,3 +793,47 @@ body {
   line-height: 1.65;
 }
 
+/* The chat composer (components/chat/editor.tsx): formatting as messages show it. */
+.chat-editor {
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.5rem;
+}
+.chat-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-faint);
+}
+.chat-editor strong {
+  @apply font-semibold text-fg;
+}
+.chat-editor s {
+  @apply text-muted;
+}
+.chat-editor a {
+  @apply text-accent underline underline-offset-2;
+}
+.chat-editor code {
+  @apply rounded-[4px] border border-line bg-raised px-1 py-px font-mono text-[0.84em] text-fg-soft;
+}
+.chat-editor pre {
+  @apply my-1 rounded-md border border-line bg-bg px-3 py-2 font-mono text-[0.8125rem] leading-relaxed text-fg-soft;
+}
+.chat-editor pre code {
+  @apply border-0 bg-transparent p-0 text-[1em];
+}
+.chat-editor ul {
+  @apply list-disc pl-5 marker:text-faint;
+}
+.chat-editor ol {
+  @apply list-decimal pl-5 marker:text-faint;
+}
+.chat-editor li > p {
+  @apply pl-0.5;
+}
+.chat-editor blockquote {
+  @apply my-0.5 border-l-2 border-line-strong pl-3 text-muted;
+}
+

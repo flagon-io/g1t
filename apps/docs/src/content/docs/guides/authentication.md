@@ -577,13 +577,15 @@ are covered in [workspaces](/guides/workspaces/).
 
 ## Access tokens
 
-A token stands in for your password everywhere outside the website:
+A token stands in for your password everywhere outside the website, and on
+the website too when you turn that on for it:
 
 | Where | How to send it |
 | --- | --- |
 | git | As the password, with your username. |
 | API | `Authorization: Bearer g1t_…` |
 | MCP | The same header, set when you add the server. |
+| The website | The same header on every request, from automation that drives a browser. Only a token with **Use the website as you** turned on. See [use a token on the website](#use-a-token-on-the-website). |
 
 A token is shown once, when it is created; g1t stores only a hash of it.
 If you lose one, delete it and create another. Delete a token the moment
@@ -627,7 +629,10 @@ when their creator leaves. See [workspace tokens](#workspace-tokens).
 5. Under **Permissions**, set each resource the token needs to a level.
    **Read only**, **Agent** and **CI** fill in a [preset](#presets);
    **Clear** sets everything back to no access.
-6. Select **Generate token**, and copy it. It is not shown again.
+6. Leave **Use the website as you**, under **Website**, off unless the
+   token is for automation that drives a browser. See
+   [use a token on the website](#use-a-token-on-the-website).
+7. Select **Generate token**, and copy it. It is not shown again.
 
 When you make a token for one workspace that
 [requires approval](#a-workspaces-rules-for-tokens), and you are not one of
@@ -641,13 +646,106 @@ yours. An owner's own token never waits.
 The list under Settings → Access tokens shows each token's name, status
 (pending, denied or revoked, with the owner's note), where it reaches, its
 permissions, and when it was made, last used and expires. Select a token to
-open its page, where you can change its name, description, repositories
-and permissions, and select **Save changes**. The token itself stays the
+open its page, where you can change its name, description, repositories,
+permissions and **Use the website as you**, and select **Save changes**.
+A token that can use the website is marked **Uses the website**. The token
+itself stays the
 same; the change applies from its next request. Widening a token made for
 a workspace that requires approval asks its owners again. Where it reaches
 and when it expires cannot change; make a new token instead.
 
 **Delete token**, at the bottom of its page, stops it working at once.
+
+### Use a token on the website
+
+Automation that drives a browser, such as end-to-end tests or an agent
+checking how a page looks, can use g1t.sh as you with an access token, so it
+never types your password or a two-factor code. Each request it makes
+carries the token in the `Authorization` header; no cookie is set and no
+session is started.
+
+1. Open [Settings → Access tokens](https://g1t.sh/settings/tokens) and
+   select **New token**, or open a token you have.
+2. Give it an expiration, and the permissions it needs for git, the API and
+   MCP, if any.
+3. Under **Website**, tick **Use the website as you**. It is off unless you
+   tick it, and a workspace's own token cannot have it.
+4. Select **Generate token** (or **Save changes**), and keep the token in a
+   file only the automation can read.
+5. Send `Authorization: Bearer g1t_…` on every request to g1t.sh.
+
+With [Playwright](https://playwright.dev), set the header on the browser
+context, reading the token from a file so it is never printed:
+
+```js
+import { readFileSync } from "node:fs";
+import { chromium } from "playwright";
+
+const token = readFileSync(process.env.G1T_TOKEN_FILE, "utf8").trim();
+const browser = await chromium.launch();
+const context = await browser.newContext({
+  extraHTTPHeaders: { authorization: `Bearer ${token}` },
+});
+const page = await context.newPage();
+await page.goto("https://g1t.sh/acme/rocket/pulls");
+await page.screenshot({ path: "pulls.png", fullPage: true });
+await browser.close();
+```
+
+`extraHTTPHeaders` sends the header with every request the page makes,
+including to other addresses it loads files from. To send it to g1t.sh
+only, add it per request instead:
+
+```js
+const context = await browser.newContext();
+await context.route("https://g1t.sh/**", (route) =>
+  route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${token}` } }),
+);
+```
+
+Any HTTP client works the same way:
+
+```sh
+curl -H "Authorization: Bearer $(cat ~/.config/g1t/website-token)" https://g1t.sh/acme/rocket/pulls
+```
+
+On the website, the token acts as you in the workspaces it
+[reaches](#where-a-token-reaches). Its permissions are made for git, the API
+and MCP, and the website does not hold it to them: treat it as able to do
+anything there that you can. Keep it as safe as your password, and give it
+an expiration.
+
+- **Only the header counts.** A token in a query string or a cookie is
+  ignored. A request with the header is the token's, even if it also has a
+  session cookie.
+- **Checked on every request.** Deleting the token, its expiry, or a
+  workspace [revoking it](#a-workspaces-rules-for-tokens) stops it at once.
+- **A token that is not accepted is no one.** One that is not valid, has
+  expired, or does not have **Use the website as you** loads pages as
+  someone signed out, with a `WWW-Authenticate` header saying the token was
+  refused; the data requests and form posts pages make answer `401`.
+- **Form posts need nothing more.** Browsers never send the header by
+  themselves, so a post with it needs no other proof it came from g1t.sh.
+  A post from another site is still refused.
+- **Limits follow the token**: 1,000 requests a minute, as on the API. See
+  [rate limits](/reference/rate-limits/).
+- **The audit log names it.** A change made this way is recorded as yours,
+  with the token's id under **Credential**. See [the audit log](/guides/audit-log/).
+
+Some things always need you to sign in on g1t.sh yourself. With a token,
+these pages answer **This needs you to sign in** (`403`):
+
+| What | Where |
+| --- | --- |
+| Access tokens, yours and a workspace's, and a workspace's rules for and approvals of members' tokens | Settings → Access tokens; a workspace's Settings → Access tokens and Personal access tokens |
+| Two-factor authentication | Settings → Two-factor authentication |
+| Your username, and deleting your account | Settings → Account |
+| Email addresses, which reset your password | Settings → Emails |
+| SSH keys | Settings → SSH keys |
+| Applications you signed in to, and signing in with GitHub | Settings → Connected applications, Settings → GitHub |
+| Letting a device or an application sign in | `g1t.sh/device`, `g1t.sh/oauth/authorize` |
+| Deleting a workspace, and giving it to another owner | A workspace's Settings and People |
+| Payment methods: the billing portal, adding a card, subscribing and buying AI credit | A workspace's Billing |
 
 ### Permissions
 
@@ -684,6 +782,7 @@ Workspace permissions apply to the workspaces the token reaches themselves:
 | Billing | read, read and write | `billing:read`, `billing:write` |
 | Self-hosted runners | read, admin | `runners:read`, `runners:admin` |
 | AI Gateway | read, read and write | `models:read`, `models:write` |
+| Artifacts | read, read and write, admin | `artifacts:read`, `artifacts:write`, `artifacts:admin` |
 
 Account permissions are about you, wherever you are, and only a personal
 token can hold them:
@@ -788,6 +887,9 @@ one.
 | `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
 | `models:read` | See the workspace's [AI Gateway](/guides/ai-gateway/) requests: their models, tokens, cost and status |
 | `models:write` | Send model requests through the [AI Gateway](/guides/ai-gateway/), which uses the workspace's AI credit. Only a workspace's own token can send them. Not in any preset. |
+| `artifacts:read` | List, read and search the [artifacts](/guides/bring-your-own-agent/#artifacts) you can open (docs, and later slides, designs and dashboards), their versions and who can open them. Not workflow runs' artifacts, which are `workflows:read`. |
+| `artifacts:write` | Create, rename, move, edit, trash and restore artifacts, and suggest changes to them |
+| `artifacts:admin` | Share artifacts, change who can open them, and delete them for good. Not in any preset. |
 
 Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page
@@ -904,7 +1006,8 @@ owner makes them in the workspace's **Settings → Access tokens**
 personal token, starting on the CI preset. A workspace token reaches all
 of that workspace's repositories, or the ones chosen, never another
 workspace, and cannot manage people, tokens or workspaces. It holds no
-account permissions.
+account permissions, and cannot use artifacts, which always belong to a
+person.
 
 It has the Write role on the workspace's repositories, as a member does:
 it pushes, merges and works on issues and pull requests, within its
