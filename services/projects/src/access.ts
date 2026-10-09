@@ -1,7 +1,7 @@
 /**
  * Who may do what with a project: each method's capability on the
  * project's repository. Seeing a project takes Read; changing it (its name,
- * root directory and dependencies) takes Maintain (`manage_settings`).
+ * root directory and settings) takes Maintain (`manage_settings`).
  * Types only, so the table is tested apart from the service.
  */
 
@@ -11,8 +11,6 @@ export const NEEDS = {
   get: "read",
   create: "manage_settings",
   update: "manage_settings",
-  addDependency: "manage_settings",
-  removeDependency: "manage_settings",
 } as const satisfies Record<string, Capability>;
 
 /** The repository a stored project's permission comes from. */

@@ -72,7 +72,7 @@ import { assemble, authorsOf, integrationEntities, type EntityDraft, type FileRe
 import { EXTRACT_VERSION, extract, interesting, type FileFacts } from "./extract";
 import { composeRunContext, type ContextNote, type ProjectContext } from "./runcontext";
 import { evaluate } from "./scorecards";
-import { allowedKinds, countVisible, indexFilter, memoryReadable, merge, projectReadable, readable, runMemoryReadable, type IndexMeta, type Reader } from "./visibility";
+import { allowedKinds, countVisible, indexFilter, memoryReadable, merge, readable, runMemoryReadable, type IndexMeta, type Reader } from "./visibility";
 
 type Job =
   | { type: "backfill_project"; workspace: string; slug: string }
@@ -559,17 +559,15 @@ class Context {
     }
 
     // What g1t knows about it besides its files.
-    const [members, deploys, integrations, graph, log] = await Promise.all([
+    const [members, deploys, integrations, log] = await Promise.all([
       cache.memberNames(),
       cache.deployments(),
       cache.integrations(),
-      projectsClient(this.env.PROJECTS).graph(project.id).catch(() => ({ dependsOn: [], usedBy: [] })),
       repos.log(repo, cache.actor, found.head ?? ref, 100).catch(() => null),
     ]);
     const deploy = deploys.find((d) => d.slug === project.slug) ?? null;
     const around: Surroundings = {
       owners: authorsOf(log?.ok ? log.value : [], members),
-      dependsOn: graph.dependsOn.map((dep) => ({ slug: dep.slug, as: dep.as })),
       deploy: deploy
         ? {
             enabled: deploy.enabled,
@@ -1374,7 +1372,6 @@ class Context {
         if (project.source.kind !== "hosted") continue;
         const rows = (await this.db.prepare("SELECT * FROM entities WHERE workspace = ? AND project_id = ?").bind(workspace, project.id).all<EntityRow>()).results.map(toEntity);
         const entry = rows.find((row) => row.kind === "project");
-        const graph = await projectsClient(this.env.PROJECTS).graph(project.id).catch(() => ({ dependsOn: [], usedBy: [] }));
         const deploy = live.get(project.slug);
         contexts.push({
           slug: project.slug,
@@ -1385,10 +1382,6 @@ class Context {
           packages: rows.filter((row) => row.kind === "package").map((row) => row.name).slice(0, 5),
           testCommands: Array.isArray(entry?.data.testCommands) ? (entry!.data.testCommands as string[]) : [],
           owners: Array.isArray(entry?.data.owners) ? (entry!.data.owners as string[]) : [],
-          dependsOn: graph.dependsOn
-            .filter((dep) => projectReadable(dep.slug, reader))
-            .map((dep) => ({ slug: dep.slug, as: dep.as, url: live.get(dep.slug)?.production?.url ?? null })),
-          usedBy: graph.usedBy.filter((dep) => projectReadable(dep.slug, reader)).map((dep) => ({ slug: dep.slug })),
           environments: deploy?.enabled
             ? [{ name: "Production", url: deploy.production?.url ?? null, status: deploy.latest?.kind === "production" ? deploy.latest.status : deploy.production ? "ready" : null }]
             : [],

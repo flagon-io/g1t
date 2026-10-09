@@ -105,7 +105,7 @@ test("AGENTS.md conventions are kept; a README's setup commands wait for review"
 });
 
 test("owners come from project.yml and CODEOWNERS; workflows say whether they test", () => {
-  assert.deepEqual(extract(".g1t/project.yml", "owners:\n  - ana\n  - '@bo'\ndependsOn: [api]\n", ctx).owners, ["ana", "bo"]);
+  assert.deepEqual(extract(".g1t/project.yml", "owners:\n  - ana\n  - '@bo'\n", ctx).owners, ["ana", "bo"]);
   assert.deepEqual(extract("CODEOWNERS", "# owners\n* @ana @acme/platform\n/docs @cy\n", ctx).owners, ["ana", "cy"]);
   assert.equal(extract(".g1t/workflows/ci.yml", "jobs:\n  t:\n    steps:\n      - run: npm test\n", ctx).tests, true);
   assert.equal(extract(".g1t/workflows/deploy.yml", "jobs:\n  d:\n    steps:\n      - run: wrangler deploy\n", ctx).tests, false);

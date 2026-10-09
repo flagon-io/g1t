@@ -101,7 +101,7 @@ Working today:
   and Message, and memory at two levels (project and workspace) that
   agents write and read.
 - Projects with deployments on g1t.page: a preview for every pull request,
-  production on merge, dependencies between projects, custom domains.
+  production on merge, custom domains.
 - GitHub Actions workflows from `.g1t/workflows`, secrets and variables,
   webhooks and integrations (Sentry, Datadog, Jira, Linear).
 - Profiles, workspaces with display names, icons and renameable slugs.
@@ -148,7 +148,7 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `services/integrations` | Model providers, alerts, trackers and the GitHub App. | Rust |
 | `services/webhooks` | Webhook deliveries. | Rust |
 | `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. | TypeScript |
-| `services/projects` | Projects and the dependencies between them. | TypeScript |
+| `services/projects` | Projects: what a workspace builds and runs, and where its code lives. | TypeScript |
 | `services/deployments` | Builds, previews and production on `g1t.page`. | TypeScript |
 | `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. | TypeScript |
 | `services/models` | The model proxy at `models.g1t.sh`. | TypeScript |

@@ -6,9 +6,7 @@
  * repository's projects under a stale path's workspace moves to the
  * workspace the repository is in now, keeping its id (deployments,
  * secrets and the rest are keyed by it) and its slug. Projects elsewhere
- * that build from the repository only learn its new path. Dependencies are
- * within a workspace, so those between a moved project and one that stayed
- * behind are dropped.
+ * that build from the repository only learn its new path.
  *
  * Renamed, the repository's own project (its primary one, named after it)
  * takes the new name as its slug, so its pages at `/<workspace>/<name>`
@@ -67,14 +65,6 @@ export function moveStatements(stale: string[], current: string, repoId: string)
     {
       sql: "UPDATE projects SET repo_namespace = ?, repo_name = ? WHERE repo_id = ?",
       params: [workspace, name, repoId],
-    },
-    {
-      sql: `DELETE FROM dependencies
-            WHERE (project_id IN (SELECT id FROM projects WHERE repo_id = ?)
-                   AND depends_on_id IN (SELECT id FROM projects WHERE workspace <> ?))
-               OR (depends_on_id IN (SELECT id FROM projects WHERE repo_id = ?)
-                   AND project_id IN (SELECT id FROM projects WHERE workspace <> ?))`,
-      params: [repoId, workspace, repoId, workspace],
     },
   ];
 }

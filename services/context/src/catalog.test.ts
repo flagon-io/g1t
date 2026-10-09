@@ -6,7 +6,7 @@ import { extract } from "./extract.ts";
 import { composeRunContext, HEADER } from "./runcontext.ts";
 import { evaluate } from "./scorecards.ts";
 import { granted } from "../../../packages/contracts/src/access.ts";
-import { indexFilter, memoryReadable, merge, readable, allowedKinds, countVisible, projectReadable, runMemoryReadable } from "./visibility.ts";
+import { indexFilter, memoryReadable, merge, readable, allowedKinds, countVisible, runMemoryReadable } from "./visibility.ts";
 
 const project = {
   id: "prj_1",
@@ -31,7 +31,6 @@ test("a project's entities and relations come from its files and surroundings", 
   ];
   const built = assemble(project, files, {
     owners: ["ana"],
-    dependsOn: [{ slug: "api", as: "API_URL" }],
     deploy: { enabled: true, production: { url: "https://web--acme.g1t.page", commit: "abcdef1234", deployedAt: "2026-10-01T00:00:00Z" }, previews: 2, latest: null },
     integrations: [{ id: "int_1", provider: "sentry", name: "Sentry", kind: "alerts", repo: "acme/web" }],
   });
@@ -41,7 +40,6 @@ test("a project's entities and relations come from its files and surroundings", 
   }
   const relations = built.relations.map((r) => `${r.from.kind}:${r.from.key} ${r.kind} ${r.to.kind}:${r.to.key}`);
   for (const relation of [
-    "project:web depends_on project:api",
     "project:web owned_by owner:ana",
     "project:web documented_by doc:web:README.md",
     "project:web exposes package:npm:@acme/web",
@@ -55,13 +53,13 @@ test("a project's entities and relations come from its files and surroundings", 
   }
   assert.equal(built.tests, true);
   const entry = built.entities.find((entity) => entity.kind === "project")!;
-  assert.match(entry.summary!, /The storefront\. Written in JavaScript\. .*Uses api\. Owned by ana\./);
+  assert.match(entry.summary!, /The storefront\. Written in JavaScript\. .*Owned by ana\./);
   assert.equal(entry.data.productionUrl, "https://web--acme.g1t.page");
 });
 
 test("the same inputs build the same catalog", () => {
   const files = [{ path: "go.mod", facts: extract("go.mod", "module x/y\n", ctx) }];
-  const around = { owners: [], dependsOn: [], deploy: null, integrations: [] };
+  const around = { owners: [], deploy: null, integrations: [] };
   assert.deepEqual(assemble(project, files, around), assemble(project, files, around));
   // Without deployments there is no app or environment.
   assert.ok(!assemble(project, files, around).entities.some((entity) => entity.kind === "app" || entity.kind === "environment"));
@@ -111,8 +109,6 @@ test("the run context marks its sources and keeps to its budget", () => {
         packages: ["@acme/web"],
         testCommands: ["npm test"],
         owners: ["ana"],
-        dependsOn: [{ slug: "api", as: "API_URL", url: "https://api--acme.g1t.page" }],
-        usedBy: [],
         environments: [{ name: "Production", url: "https://web--acme.g1t.page", status: "ready" }],
         docs: ["README.md"],
       },
@@ -124,7 +120,6 @@ test("the run context marks its sources and keeps to its budget", () => {
   const { text, sources } = composeRunContext(input);
   assert.ok(text!.startsWith(HEADER));
   assert.match(text!, /Project web \(acme\/web\) \[source: catalog\]:/);
-  assert.match(text!, /Uses: api at https:\/\/api--acme\.g1t\.page \(its address is in API_URL\)/);
   assert.match(text!, /\[gotcha\] Tests need TZ=UTC\. \[source: AGENTS\.md\]/);
   assert.match(text!, /Recent decisions:\n- Decided in #12: keep v1 webhooks\. \[source: #12\]/);
   assert.deepEqual(sources.sort(), ["catalog:web", "memory:mem_1", "memory:mem_2"]);
@@ -189,7 +184,6 @@ test("an agent run is told only what the person it acts for may read", () => {
   const billingMemory = { scope: "project", repo: { namespace: "acme", name: "billing" } };
   // The workspace's own step: everything.
   assert.ok(runMemoryReadable(workspaceMemory, null, "acme/web"));
-  assert.ok(projectReadable("billing", null));
   // A member who reads everything.
   const member = { workspace: "acme", member: true, full: true, visible: new Set<string>() };
   assert.ok(runMemoryReadable(workspaceMemory, member, "acme/web"));
@@ -200,8 +194,6 @@ test("an agent run is told only what the person it acts for may read", () => {
   assert.ok(runMemoryReadable(webMemory, outside, "Acme/Web"), "the project's memory");
   assert.ok(!runMemoryReadable(billingMemory, outside, "acme/web"));
   assert.ok(!runMemoryReadable({ scope: "project", repo: { namespace: "acme", name: "site" } }, outside, "acme/web"), "only the run's own project");
-  assert.ok(projectReadable("site", outside));
-  assert.ok(!projectReadable("billing", outside), "a dependency they cannot read is not named");
 });
 
 test("semantic hits come first, without repeats", () => {

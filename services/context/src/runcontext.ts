@@ -1,7 +1,6 @@
 /**
  * The Context section an agent's prompt starts with: the project's catalog
- * entry (stack, owners, dependencies with their live addresses,
- * environments), the kept memories most relevant to its task, and recent
+ * entry (stack, owners, environments), the kept memories most relevant to its task, and recent
  * decisions, within a size budget, each line saying where it came from.
  * Pure, so it can be tested and budgeted exactly.
  */
@@ -15,8 +14,6 @@ export type ProjectContext = {
   packages: string[];
   testCommands: string[];
   owners: string[];
-  dependsOn: { slug: string; as: string | null; url: string | null }[];
-  usedBy: { slug: string }[];
   environments: { name: string; url: string | null; status: string | null }[];
   docs: string[];
 };
@@ -47,12 +44,6 @@ export function composeRunContext(input: RunContextInput): { text: string | null
       : null);
     add(project.testCommands.length ? `- Tests: ${project.testCommands.map((command) => `\`${command}\``).join(", ")}.` : null);
     add(project.owners.length ? `- Owners: ${project.owners.join(", ")}.` : null);
-    add(project.dependsOn.length
-      ? `- Uses: ${project.dependsOn
-          .map((dep) => `${dep.slug}${dep.url ? ` at ${dep.url}` : ""}${dep.as ? ` (its address is in ${dep.as})` : ""}`)
-          .join("; ")}.`
-      : null);
-    add(project.usedBy.length ? `- Used by: ${project.usedBy.map((dep) => dep.slug).join(", ")}.` : null);
     for (const environment of project.environments) {
       add(`- ${environment.name}: ${environment.url ?? "not live"}${environment.status ? ` (${environment.status})` : ""}.`);
     }

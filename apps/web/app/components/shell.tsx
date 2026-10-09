@@ -1117,9 +1117,6 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
               Domains
             </SidebarLink>
-            <SidebarLink to={`${base}/settings/dependencies`} icon={<Network size={15} />}>
-              Dependencies
-            </SidebarLink>
           </div>
         </>
       )}
@@ -1704,7 +1701,6 @@ const SECTIONS: Record<string, string> = {
   branches: "Branches",
   tags: "Tags",
   compare: "Compare",
-  dependencies: "Dependencies",
   code: "Files",
   secrets: "Secrets and variables",
   settings: "Settings",

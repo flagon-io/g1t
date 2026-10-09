@@ -1094,6 +1094,14 @@ URL `g1t.sh/<workspace>/<project>`.
 
 ### Dependencies: why this gets powerful
 
+> **Removed 2026-10-09.** Project-to-project dependencies (Settings →
+> Dependencies, `dependsOn` in `.g1t/project.yml`, reference variables
+> such as `API_URL`, preview stacks, **Affects** on pull requests, and the
+> lines agents were told about what a project uses and what uses it) were
+> taken out end to end. The owner: "it's doing nothing, wasting space";
+> it may come back in a more meaningful way when the focus turns to DX.
+> The plan below is kept as history, not as work to do.
+
 Declared in the UI, or in the source as `.g1t/project.yml` (which wins
 when present, as `catalog-info.yaml` does in Backstage):
 
@@ -1157,9 +1165,10 @@ What g1t does with them:
 1. **Projects as the home of deployments and secrets**, 1:1 with every
    existing repository: the service, the pages, deployments and secrets
    moved to the project, `<project>--<workspace>.g1t.page`.
-2. **Dependencies:** declared in the UI and `.g1t/project.yml`, reference
-   variables, impact on pull requests and in agents' context, the map.
-3. **Preview stacks** and cross-project change sets.
+2. ~~**Dependencies:** declared in the UI and `.g1t/project.yml`, reference
+   variables, impact on pull requests and in agents' context, the map.~~
+   Removed 2026-10-09; see above.
+3. ~~**Preview stacks** and cross-project change sets.~~ Removed with them.
 4. **Monorepos:** several projects on one repository, each with a root
    directory, building only what a push touched.
 5. **Mirrored sources:** GitHub first, then GitLab and Bitbucket.

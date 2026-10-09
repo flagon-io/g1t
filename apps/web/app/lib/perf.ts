@@ -110,7 +110,7 @@ const READS = new Set(
   (
     "account active_agents all_ids get list queue pulls_for_repos blame blob branches by_author by_repo contributions catalog check_invite check_limit " +
     "check_workspace_deletion check_workspace_rename collaborator_permission compare counts deleted deliveries " +
-    "dependencies domains entitlements entity explore features git_access graph has_feature invoices ledger limit " +
+    "domains entitlements entity explore features git_access has_feature invoices ledger limit " +
     "limit_requests links log logs managed_pulls memories_by_id memory_context my_repo_invitations " +
     "outside_collaborators overview path_by_id prices profile profile_workspaces public_namespaces read_session " +
     "readable ready_issues references registration repo_access resolve resolve_branch resolve_path resolve_slug " +

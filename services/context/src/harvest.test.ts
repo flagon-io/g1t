@@ -72,7 +72,7 @@ test("a doc that reads as feedback or a plan says nothing, whatever its name", (
     { path: "docs/CLOUDFLARE_FEEDBACK.md", facts: extract("docs/CLOUDFLARE_FEEDBACK.md", FEEDBACK, ctx) },
   ];
   const project = { id: "p", workspace: "w", slug: "g1t", name: "g1t", description: null, private: false, repoId: "r", repo: { namespace: "w", name: "g1t" }, rootDir: "", defaultBranch: "main" };
-  const around = { owners: [], dependsOn: [], deploy: null, integrations: [] };
+  const around = { owners: [], deploy: null, integrations: [] };
   assert.deepEqual(assemble(project, files, around).hints, [], "docs/PLAN.md is not a source of memory");
   // Unless project.yml says it is.
   const withConfig = [...files, { path: ".g1t/project.yml", facts: extract(".g1t/project.yml", "memory:\n  docs:\n    - docs/PLAN.md\n", ctx) }];

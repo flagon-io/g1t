@@ -46,8 +46,6 @@ import {
   mentionsClient,
   billingClient,
   can,
-  granted,
-  projectsClient,
   fail,
   identityClient,
   integrationsClient,
@@ -90,7 +88,6 @@ import { hostedOpen } from "./hosted";
 import { delegateInput, noModelMessage, notStarted, queued, started } from "./delegate";
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
-import { type ProjectSurroundings, readableSurroundings } from "./surroundings";
 import { capModelTokens, holdCredentials, pushGrant, remotePath, revokeCredentials, runCredential } from "./credentials";
 import { buildMentionPrompt, describeThread, handleMention, jobTokenRefusal, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
@@ -1586,15 +1583,14 @@ export default class RunnerService
     return [describeOutside(items), projects].filter(Boolean).join("\n\n");
   }
 
-  /** The project's surroundings and what is remembered about it, for an agent. */
+  /** What is remembered about the project, for an agent. */
   private async projectAndMemory(repo: RepoPath, task: string, requester: User): Promise<string | null> {
-    const [projects, memory, hub] = await Promise.all([
-      this.projectContext(repo, requester).catch(() => null),
+    const [memory, hub] = await Promise.all([
       this.memoryContext(repo, requester),
       // The context hub: catalog, relevant memory, recent decisions (hub.ts).
       hubContext(this.env, repo, task, requester),
     ]);
-    return [projects, memory, hub].filter(Boolean).join("\n\n") || null;
+    return [memory, hub].filter(Boolean).join("\n\n") || null;
   }
 
   /**
@@ -1631,52 +1627,6 @@ export default class RunnerService
       console.log("sandbox not destroyed", runId, String(error));
     }
     return ok(stopped.value.run);
-  }
-
-  /**
-   * The projects this repository is the source of, what they use and what
-   * uses them: so an agent changing an interface knows who calls it, and
-   * opens issues there rather than widening its change. Only the projects
-   * `requester`, whom the run acts for, can read are named.
-   */
-  private async projectContext(repo: RepoPath, requester: User): Promise<string | null> {
-    const found = await reposClient(this.env.REPOS).get(repo, null);
-    if (!found.ok) return null;
-    const response = await this.env.PROJECTS.fetch("https://projects/rpc/context_for_repo", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repoId: found.value.id }),
-    });
-    if (!response.ok) return null;
-    const projects = readableSurroundings((await response.json()) as ProjectSurroundings[], await this.readableProjects(repo.namespace, requester));
-    const lines: string[] = [];
-    for (const project of projects) {
-      const { dependsOn, usedBy } = project.dependencies;
-      if (dependsOn.length === 0 && usedBy.length === 0) continue;
-      const named = (list: { slug: string; as: string | null }[]) =>
-        list.map((d) => (d.as ? `${d.slug} (its address is in ${d.as})` : d.slug)).join(", ");
-      if (dependsOn.length > 0) lines.push(`- The ${project.name} project uses: ${named(dependsOn)}.`);
-      if (usedBy.length > 0) lines.push(`- Projects that use ${project.name}: ${named(usedBy)}.`);
-    }
-    if (lines.length === 0) return null;
-    return [
-      "This repository's projects and the projects around them in the workspace:",
-      ...lines,
-      "If your change alters what the projects that use this one rely on (an API, a package's exports, a message's shape), keep it working for them, or open an issue on each with create_issue saying what they need to change, and mention it in your summary. Do not change their code from here.",
-    ].join("\n");
-  }
-
-  /**
-   * The slugs of the projects in `workspace` that `viewer` can read, or null
-   * when they read every repository there (an owner, a member whose base
-   * permission is Read or more).
-   */
-  private async readableProjects(workspace: string, viewer: User): Promise<Set<string> | null> {
-    const slug = workspace.toLowerCase();
-    const member = (viewer.workspaces ?? []).some((membership) => membership.slug.toLowerCase() === slug);
-    if (member && granted(viewer, { id: "", namespace: slug, isPrivate: true }) != null) return null;
-    const listed = await projectsClient(this.env.PROJECTS).list(slug, viewer).catch(() => null);
-    return new Set(listed?.ok ? listed.value.map((project) => project.slug.toLowerCase()) : []);
   }
 
   /** The same, for a step g1t takes by itself: a refusal stops the step. */

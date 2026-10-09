@@ -37701,7 +37701,7 @@
                       "kind": "project",
                       "id": "ent_9b1d6f0a2c3e4b5d6e7f8a9b",
                       "title": "web",
-                      "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+                      "snippet": "The storefront. Written in TypeScript. Packages: @acme/web. Owned by ana.",
                       "project": "web",
                       "url": "/acme/web",
                       "score": 0.71,
@@ -37835,7 +37835,7 @@
                     "kind": "project",
                     "key": "web",
                     "name": "web",
-                    "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Uses api. Owned by ana.",
+                    "summary": "The storefront. Written in TypeScript. Packages: @acme/web. Owned by ana.",
                     "project": "web",
                     "private": true,
                     "data": {
@@ -37860,21 +37860,21 @@
                   },
                   "relations": [
                     {
-                      "kind": "depends_on",
+                      "kind": "exposes",
                       "direction": "out",
                       "entity": {
                         "id": "ent_0a7c3e5b9d1f2a4c6e8b0d2f",
                         "workspace": "acme",
-                        "kind": "project",
-                        "key": "api",
-                        "name": "api",
-                        "summary": "The public API. Written in Rust.",
-                        "project": "api",
+                        "kind": "package",
+                        "key": "npm:@acme/web",
+                        "name": "@acme/web",
+                        "summary": null,
+                        "project": "web",
                         "private": true,
                         "data": {},
                         "source": "scan",
-                        "ref": "/acme/api",
-                        "updated_at": "2026-10-04T20:57:12.000Z"
+                        "ref": "/acme/web/blob/main/package.json",
+                        "updated_at": "2026-10-04T20:58:41.000Z"
                       }
                     },
                     {

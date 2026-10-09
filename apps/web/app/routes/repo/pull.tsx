@@ -19,7 +19,6 @@ import {
   ArrowUpRight,
   MessagesSquare,
   Rocket,
-  Network,
   StickyNote,
   User,
   Users,
@@ -69,7 +68,6 @@ import {
 } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
-import { Loading, SkeletonLine } from "../../components/ui/skeleton";
 import { TabStrip } from "../../components/ui/tab-strip";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
@@ -93,7 +91,7 @@ import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { CATCH_UP_TIMEOUT_MS } from "../../lib/catch-up";
 import { notFound } from "../../lib/not-found.server";
 import { computeNoteFor } from "../../lib/compute.server";
-import { actions, agents, deployments, identity, inbox, projects, repos, work } from "../../lib/services.server";
+import { actions, agents, deployments, identity, inbox, repos, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksBadge } from "../../components/commit-checks";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
@@ -141,9 +139,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const ref = { workspace: params.owner, slug: params.repo };
   const access = accessTo(context, params);
   const pullFound = work.getPull(path, number, viewer);
-  const deps = projects.dependencies(params.owner, params.repo, viewer);
-  // Awaited below, unless the pull request is missing first.
-  deps.catch(() => null);
   // Its labels and milestone, with the repository's to choose from.
   const labelsFound = work.listLabels(path, viewer);
   const milestonesFound = work.listMilestones(path, viewer);
@@ -202,14 +197,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     pull.status === "open" &&
     (found.value.statuses ?? []).length === 0 &&
     (found.value.requiredChecks ?? []).length === 0;
-  const [comparison, used, noChecks] = await Promise.all([
+  const [comparison, noChecks] = await Promise.all([
     // The first screens of it highlighted here, so their colours do not pop in.
     tab === "changes"
       ? repos
           .compare(range.repoId, viewer, range.base, range.head, range.baseBranch)
           .then(async (found) => (found.ok ? { ok: true as const, value: await highlightFirstFiles(found.value) } : found))
       : null,
-    deps,
     unchecked
       ? actions
           .workflows(path, viewer)
@@ -217,7 +211,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
           .catch(() => false)
       : false,
   ]);
-  const affects = used.ok ? used.value.usedBy : [];
   // Every pull request for its issue, to compare: streamed, and read only
   // when there is more than this one.
   const attempts =
@@ -284,9 +277,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Who may choose the required checks.
     canProtect: can.manage_protection,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
-    affects,
-    // Streamed: the conversation shows first, the preview card after.
-    ...deploymentOf(deployed?.ok ? deployed.value : null, number, params.owner, affects, viewer),
+    ...deploymentOf(deployed?.ok ? deployed.value : null, number),
   };
 }
 
@@ -329,37 +320,17 @@ async function attemptsFor(path: RepoPath, viewer: Viewer, pull: Pull, comments:
 
 /**
  * Where this pull request is live: its preview (or its latest build, while
- * one is going or after one failed), and the previews of the projects
- * that use this one, built against it.
+ * one is going or after one failed).
  */
 function deploymentOf(
   list: { deployments: Deployment[]; live: LiveApp[] } | null,
   number: number,
-  owner: string,
-  affects: { slug: string; name: string }[],
-  viewer: Viewer,
-): { preview: LiveApp | null; build: Deployment | null; stacked: Promise<Stacked[]> } {
+): { preview: LiveApp | null; build: Deployment | null } {
   const preview = list?.live.find((app) => app.kind === "preview" && app.number === number) ?? null;
   const build = list?.deployments.find((d) => d.kind === "preview" && d.number === number) ?? null;
-  const branch = preview?.branch ?? build?.branch ?? null;
-  // Streamed: another lookup per project, shown in the card once known.
-  const stacked: Promise<Stacked[]> = branch
-    ? Promise.all(
-        affects.slice(0, 5).map(async (project) => {
-          const theirs = await deployments.list({ workspace: owner, slug: project.slug }, viewer).catch(() => null);
-          const app = theirs?.ok ? theirs.value.live.find((a) => a.kind === "preview" && a.branch === branch) : undefined;
-          return app ? { name: project.name, slug: project.slug, url: app.url } : null;
-        }),
-      ).then((found) => found.filter((entry) => entry != null))
-    : Promise.resolve([]);
-  return { preview, build, stacked };
+  return { preview, build };
 }
-
-/** A project that uses this one, with its preview built against this change. */
-type Stacked = { name: string; slug: string; url: string };
-
 const PULL_NEEDS: Record<string, Capability> = {
-  stack: "run",
   "agent-review": "run",
   "rerun-workflow": "run",
   "rerun-failed": "run",
@@ -389,13 +360,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     // `@acme/backend` is asked as `acme/backend`.
     ...String(form.get("others") ?? "").split(/[\s,]+/).map((name) => name.replace(/^@/, "")),
   ];
-  // The projects that use this one, built against this pull request's preview.
-  if (action === "stack") {
-    const built = await deployments.stack(user, { workspace: params.owner, slug: params.repo }, String(form.get("branch") ?? ""));
-    return built.ok
-      ? { action, notice: `Building ${built.value.join(", ")} against this preview. They appear on their Deployments pages.` }
-      : { action, error: built.error.message };
-  }
   // Asking g1t for its review records the request, then starts it.
   if (action === "agent-review") {
     const asked = await work.updatePull(user, path, number, {
@@ -666,10 +630,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     earlierChecks = [],
     workflowJobs,
     attempts,
-    affects,
     preview,
     build,
-    stacked,
     landing,
     stalled,
     requireUpToDate,
@@ -1149,7 +1111,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
                 />
 
-                {(preview || build) && <DeploymentCard preview={preview} build={build} stacked={stacked} stacking={affects.length > 0} base={base} />}
+                {(preview || build) && <DeploymentCard preview={preview} build={build} base={base} />}
 
                 {pull.status === "draft" && (
                   <StatusBox>
@@ -1452,7 +1414,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "stack", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
+                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "agent-review", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>
@@ -1475,45 +1437,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         >
           {/* Other than a draft, a pull request shows its checks in full in the conversation. */}
           {pull.status === "draft" && <WorkflowStatuses statuses={statuses} />}
-          {affects.length > 0 && (
-            <section>
-              <h3 className="flex items-center gap-1.5 text-sm font-medium">
-                <Network size={14} className="text-faint" />
-                Affects
-              </h3>
-              <p className="mt-1 text-xs text-muted">Projects that use this one, and so may feel this change:</p>
-              <ul className="mt-2 space-y-1 text-sm">
-                {affects.map((project) => (
-                  <li key={project.slug} className="flex items-center justify-between gap-2">
-                    <Link to={`/${params.owner}/${project.slug}`} className="hover:underline">
-                      {project.name}
-                    </Link>
-                    {project.as && <code className="font-mono text-xs text-faint">{project.as}</code>}
-                  </li>
-                ))}
-              </ul>
-              {preview?.branch && canMerge && (
-                <Form method="post" className="mt-3">
-                  <input type="hidden" name="action" value="stack" />
-                  <input type="hidden" name="branch" value={preview.branch} />
-                  <SubmitButton
-                    match={{ action: "stack" }}
-                    pending="Starting the builds…"
-                    className="flex w-full items-center justify-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg disabled:opacity-50"
-                  >
-                    Preview them against this change
-                  </SubmitButton>
-                </Form>
-              )}
-              {actionData?.action === "stack" &&
-                ("notice" in actionData ? (
-                  <p className="mt-2 text-xs text-success">{String(actionData.notice)}</p>
-                ) : (
-                  <ErrorText>{actionData.error}</ErrorText>
-                ))}
-            </section>
-          )}
-
           <section>
             <h3 className="text-sm font-medium">Reviewers</h3>
             <ul className="mt-2 space-y-1.5 text-sm">
@@ -1731,15 +1654,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 function DeploymentCard({
   preview,
   build,
-  stacked,
-  stacking,
   base,
 }: {
   preview: LiveApp | null;
   build: Deployment | null;
-  stacked: Promise<Stacked[]>;
-  /** Projects use this one, so previews built against it may be on their way. */
-  stacking: boolean;
   base: string;
 }) {
   const building = build?.status === "queued" || build?.status === "building";
@@ -1795,37 +1713,6 @@ function DeploymentCard({
           {preview.branch && ` · from ${preview.branch}`}
         </p>
       )}
-      {/* Read after the page: the card's own part shows at once. */}
-      <Suspense
-        fallback={
-          stacking && (
-            <Loading className="border-t border-line px-4 py-2.5 text-xs">
-              <SkeletonLine className="w-40" />
-              <SkeletonLine className="mt-1.5 w-64 max-w-full" />
-            </Loading>
-          )
-        }
-      >
-        <Await resolve={stacked}>
-          {(stacked) =>
-            stacked.length > 0 && (
-              <div className="animate-fade-in border-t border-line px-4 py-2.5">
-                <p className="text-xs text-muted">Built against this change:</p>
-                <ul className="mt-1.5 space-y-1">
-                  {stacked.map((entry) => (
-                    <li key={entry.slug} className="flex items-center gap-2 text-xs">
-                      <span className="font-medium">{entry.name}</span>
-                      <a href={entry.url} className="truncate font-mono text-muted hover:text-accent">
-                        {entry.url.replace(/^https?:[/][/]/, "")}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )
-          }
-        </Await>
-      </Suspense>
     </section>
   );
 }

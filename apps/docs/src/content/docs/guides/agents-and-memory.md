@@ -162,8 +162,7 @@ Review queue on the workspace's [Context](/guides/context-hub/) page. See
 
 Every run is also given a **Context** section from the
 [context hub](/guides/context-hub/#agents-start-with-context): the
-project's stack, owners, environments and the projects it uses with their
-live addresses, the kept memories closest to its task, and recent
+project's stack, owners and environments, the kept memories closest to its task, and recent
 decisions.
 
 Your own agents can use memory too, through the [`memory` tool](/reference/mcp/#memory)

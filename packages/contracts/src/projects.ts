@@ -148,25 +148,6 @@ export type NewProject = {
   rootDir?: string;
 };
 
-/** One end of a dependency, as a page shows it. */
-export type DependencyLink = {
-  slug: string;
-  name: string;
-  /** The variable carrying the other project's address, such as `API_URL`. */
-  as: string | null;
-  /** Declared on the site, or in the project's `.g1t/project.yml`. */
-  source: "ui" | "file";
-};
-
-/** What a project uses, and what uses it. */
-export type Dependencies = { dependsOn: DependencyLink[]; usedBy: DependencyLink[] };
-
-/** A project's dependencies by id, for services. */
-export type ProjectGraph = {
-  dependsOn: { id: string; slug: string; workspace: string; as: string | null }[];
-  usedBy: { id: string; slug: string; workspace: string; as: string | null }[];
-};
-
 /**
  * What a person keeps at hand in a workspace: the projects they pinned, in
  * their order, then the ones they opened last that they have not pinned.
@@ -190,17 +171,6 @@ export interface ProjectsApi {
   update(actor: User, workspace: string, slug: string, changes: ProjectChanges): Promise<Result<Project>>;
   /** For deployments: Deployments were turned on or off for the project. */
   deploymentsChanged(projectId: string, enabled: boolean): Promise<void>;
-  /** What a project uses and what uses it. Whoever may see the project. */
-  dependencies(workspace: string, slug: string, viewer: Viewer): Promise<Result<Dependencies>>;
-  /**
-   * `slug` uses `on`, with `as` the variable that carries `on`'s address.
-   * Members only; refused if it would make a cycle.
-   */
-  addDependency(actor: User, workspace: string, slug: string, on: string, as: string | null): Promise<Result<Dependencies>>;
-  /** Members only. A dependency from `.g1t/project.yml` is changed there. */
-  removeDependency(actor: User, workspace: string, slug: string, on: string): Promise<Result<Dependencies>>;
-  /** For services: a project's dependencies by id. */
-  graph(projectId: string): Promise<ProjectGraph>;
   /** A person's pinned and recent projects in a workspace. Empty for anyone else. */
   shortcuts(workspace: string, viewer: Viewer): Promise<ProjectShortcuts>;
   /**
