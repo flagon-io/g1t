@@ -57,7 +57,18 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
             response.text().await.unwrap_or_default()
         )));
     }
-    response.json().await
+    // Say which call's answer did not read, and why: a bare serde error
+    // ("JSON serialization error") is all a log would otherwise show. The
+    // body is left out, as it may carry a signed link.
+    let text = response.text().await?;
+    read_answer(method, &text)
+}
+
+/// A method's answer, read from its body.
+pub fn read_answer<R: DeserializeOwned>(method: &str, text: &str) -> Result<R> {
+    serde_json::from_str(text).map_err(|error| {
+        worker::Error::RustError(format!("{method} answered with what could not be read: {error}"))
+    })
 }
 
 pub mod d1;
