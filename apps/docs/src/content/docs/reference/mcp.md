@@ -796,7 +796,7 @@ are not here yet. A workspace's own token cannot use this tool. See
 | [`trash`](/reference/api/artifacts/trash-workspace-artifact/) | Move it, and what is under it, to the trash; deleted for good after 30 days. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`restore`](/reference/api/artifacts/restore-workspace-artifact/) | Bring it back from the trash. | `workspace`, `artifact_id` | `artifacts:write` |
 | [`restore_version`](/reference/api/artifacts/restore-workspace-artifact-version/) | Make an earlier version its content again, as a new version. | `workspace`, `artifact_id`, `version_id` | `artifacts:write` |
-| [`share`](/reference/api/artifacts/set-workspace-artifact-access/) | Share it with a `username`, `team` or `agent` at a `role` (`view`, `comment`, `edit`, `manage`, or `none` to take access away); set `general_access` and `general_role`, `inherit` or `agent_mode`. Takes full access to it. | `workspace`, `artifact_id` | `artifacts:admin` |
+| [`share`](/reference/api/artifacts/set-workspace-artifact-access/) | Share it with a `username`, `team` or `agent` at a `role` (`view`, `comment`, `edit`, `manage`, or `none` to take access away); set `general_access` and `general_role`, `inherit` or `agent_mode`. Takes full access to it; where its space lets editors share, edit access shares up to `edit`. | `workspace`, `artifact_id` | `artifacts:admin` |
 | [`purge`](/reference/api/artifacts/purge-workspace-artifact/) | Delete one in the trash for good. Takes full access to it. | `workspace`, `artifact_id` | `artifacts:admin` |
 
 ## What g1t can use

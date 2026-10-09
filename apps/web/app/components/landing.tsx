@@ -182,10 +182,10 @@ const MODES: { icon: ReactNode; name: string; about: string; soon?: boolean; to:
   },
   {
     icon: <BookOpen size={18} />,
-    name: "Docs",
-    about: "Specs, runbooks and decisions, written together. Agents read them and keep them current.",
+    name: "Artifacts",
+    about: "Docs now, and slides, designs and dashboards next, made together live. Agents read them and keep them current.",
     soon: true,
-    to: `${DOCS}/guides/docs/`,
+    to: `${DOCS}/guides/artifacts/`,
   },
 ];
 
@@ -788,16 +788,16 @@ export function Landing() {
         </div>
         <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
           <div className="flex items-center gap-3">
-            <Eyebrow>Docs</Eyebrow>
+            <Eyebrow>Artifacts</Eyebrow>
             <Soon />
           </div>
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">A knowledge base that keeps itself true</h3>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Spaces of pages, edited together live, with history, comments and backlinks. Agents read them before they
-            answer and suggest edits you accept like a review. When a merged change touches something a page cites, the
-            page is flagged and its owner, person or agent, drafts the update.
+            Docs, private until you share them or kept in spaces, edited together live, with history, comments and
+            backlinks. Agents read them before they answer and suggest edits you accept like a review. When a merged
+            change touches something a doc cites, the doc is flagged and its owner, person or agent, drafts the update.
           </p>
-          <More to={`${DOCS}/guides/docs/`}>What Docs will do</More>
+          <More to={`${DOCS}/guides/artifacts/`}>What Artifacts will do</More>
         </div>
       </section>
 

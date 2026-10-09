@@ -292,7 +292,7 @@ free slot" and the work starts by itself when one finishes.
 Every one of these is also on the MCP server. Its tools are resources,
 each with an `action`: `search`, `repository`, `issue`, `pull_request`,
 `agent`, `plan`, `memory`, `workflow`, `secret`, `webhook`, `access`,
-`workspace`, `notifications` and `account`. Call `tools/call` with the tool's name and
+`workspace`, `notifications`, `account` and `artifact`. Call `tools/call` with the tool's name and
 `arguments` holding `action` and its inputs, such as
 `{"name": "issue", "arguments": {"action": "get", "repo": "acme/web", "number": 12}}`.
 The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
@@ -308,7 +308,16 @@ inbox of the person a token acts for: `list` (unread threads, each with a
 `reason` such as `agent` or `review_requested`), `done`, `subscribe`,
 `watch` and more; g1t's own token cannot use it. `search` runs `code`,
 `notifications` runs `list` and `account` runs `whoami` when `action` is
-left out. A call missing a required field says
+left out. `artifact` reads and writes a workspace's artifacts (its docs;
+slides, designs and dashboards later), never a workflow run's build
+artifacts, which are `workflow`'s: `list`, `search`, `get` (metadata),
+`read` (a doc's Markdown and block ids), `create`, `update`, `edit`
+(`markdown` and a `target`), `trash`, `restore`, `versions`,
+`restore_version`, `access`, `share`, `purge`, `templates`, `spaces`;
+name one by `artifact_id` (its `fol_…` id or link). It acts as the token's
+person, so it opens only what they can open; scopes `artifacts:read`,
+`artifacts:write` and `artifacts:admin`. Guide:
+https://docs.g1t.sh/guides/artifacts/. A call missing a required field says
 which, such as "issue.get needs number.". The earlier one-tool-per-operation
 names (`get_issue`, `create_pull_request`, …) still answer for now but are
 no longer listed. Every tool and action, with its required fields and
@@ -323,7 +332,7 @@ as `repo`, written `owner/name`.
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
 `repo`, `code`, `issues`, `pull_requests`, `workflows`, `checks`, `deployments`, `memory`,
-`account`, `notifications`, `access`, `webhooks`, `secrets`, `runners`, `models` (read, write or admin
+`account`, `notifications`, `access`, `webhooks`, `secrets`, `runners`, `models`, `artifacts` (read, write or admin
 as each has them), `agents:run`, `workspace:read` and `workspace:admin`. A higher
 level includes the lower. A token may expire. It reaches every workspace
 and repository its owner can (a workspace's token, that workspace only);
@@ -738,6 +747,7 @@ https://docs.g1t.sh/guides/search/
 - [Outcomes and plans](https://docs.g1t.sh/guides/outcomes/)
 - [Talking to agents](https://docs.g1t.sh/guides/talking-to-agents/)
 - [Bring your own agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
+- [Artifacts](https://docs.g1t.sh/guides/artifacts/)
 - [The merge queue](https://docs.g1t.sh/guides/merge-queue/)
 - [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
 - [Forks and branches](https://docs.g1t.sh/concepts/forks/)

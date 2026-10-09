@@ -77,7 +77,7 @@ rules are enforced in code, never by asking the model to behave.
    | --- | --- |
    | Messages | From a channel or DM every person in the audience is in, or from public channels. |
    | Code, issues and pull requests | From repositories every person in the audience can read, and that the agent's own access allows. None at all if anyone in the audience has no Code access. |
-   | Docs | From spaces every person in the audience can read. |
+   | Artifacts | Only artifacts every person in the audience can open. |
 
 3. **Who asks doesn't widen anything.** What the agent may *do* is capped by
    the asker's access. What it may *say* is capped by the audience, which
@@ -180,10 +180,10 @@ A member without Code access:
 
 | | |
 | --- | --- |
-| **Sees** | Chat, Docs, Agents and the inbox. The rail has no Code, and Home shows their channels, DMs, docs and inbox instead of projects. |
+| **Sees** | Chat, Artifacts, Agents and the inbox. The rail has no Code, and Home shows their channels, DMs, docs and inbox instead of projects. |
 | **Can't open** | Any repository, issue, pull request, check or deploy page. The workspace's base permission and team grants don't apply to them. |
 | **Still sees work reach them** | Cards about issues, pull requests and deploys appear in their channels as summaries: title, state and who is on it. Opening one asks for Code access. |
-| **Can ask agents** | Anything about the product. Agents explain how things work and what changed, but never show them source code. Owners can tighten this so agents answer only from Docs. |
+| **Can ask agents** | Anything about the product. Agents explain how things work and what changed, but never show them source code. Owners can tighten this so agents answer only from the workspace's docs. |
 
 Turning Code access back on restores what their teams and roles give them.
 
