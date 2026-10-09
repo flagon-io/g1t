@@ -26,7 +26,7 @@ under **Your settings**; the sidebar then lists every page.
 
 | Page | Address | What is on it |
 | --- | --- | --- |
-| Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location and website. |
+| Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
 | Invites | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites](#invites). |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
@@ -1042,7 +1042,7 @@ At once, when you delete it:
 | Access tokens, SSH keys and applications | Your personal access tokens (classic and fine-grained), SSH keys, connected applications and sign-ins from a tool stop working and are removed, and so do the deploy keys you added to repositories. A workspace's own tokens are not affected, even ones you made. |
 | Workspaces, teams and repositories | You leave every workspace and team, and lose the roles you were given on single repositories. Repository invitations waiting for you are withdrawn, and invites you made that nobody used are revoked. |
 | Your profile | `g1t.sh/<username>` answers 404, and you drop out of search. Nobody can add you to a workspace, team or repository, and nothing more is emailed to you. |
-| What you wrote | Stays where it is, under your username for now. |
+| What you wrote | Stays where it is, under your username for now. Commits made with your confirmed or noreply addresses show as `ghost`, and as yours again if your account is restored. |
 | Your username | Held for your account. Nobody else can take it. |
 
 Within 30 days, support can restore it: write to support@g1t.sh from one

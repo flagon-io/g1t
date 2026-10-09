@@ -13,6 +13,7 @@
 use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::about::{ABOUT_CONTRIBUTORS, Contributor, Contributors, Freshness, LanguageShare, Languages, License, WeekCommits};
+use g1t_contracts::account_deletion::GHOST_USERNAME;
 use g1t_contracts::accounts::{EmailOwner, EmailOwnersArgs};
 use g1t_contracts::repos::{FileEntry, MAX_LISTED_FILES, Repo};
 use g1t_contracts::time::rfc3339;
@@ -377,6 +378,30 @@ async fn owners(identity: &Fetcher, commits: &[Authored]) -> HashMap<String, Ema
     owners
 }
 
+/// What a kept contributors answer says when it names an account that
+/// `kind` (a `user.deleting` or `user.restored` event with `data`) changes:
+/// a deleted account's username, which is ghost from now on, or ghost's,
+/// which a restored account may be among. `None` for any other event.
+pub fn shown_differently(kind: &str, data: &serde_json::Value) -> Option<String> {
+    let username = match kind {
+        "user.deleting" => data["username"].as_str().filter(|name| !name.is_empty())?.to_owned(),
+        "user.restored" => GHOST_USERNAME.to_owned(),
+        _ => return None,
+    };
+    Some(format!("\"username\":{}", serde_json::Value::String(username)))
+}
+
+/// Marks every repository whose kept contributors contain `needle` (see
+/// [`shown_differently`]) to be worked out again on its next view, as an
+/// older version's would be.
+pub async fn rework_naming(db: &D1Database, needle: &str) -> Result<()> {
+    db.prepare("UPDATE repo_stats SET version = 0 WHERE instr(contributors, ?1) > 0")
+        .bind(&[needle.into()])?
+        .run()
+        .await?;
+    Ok(())
+}
+
 /// Whether the repository is one whose About is worked out: not a pull
 /// request's working copy.
 pub fn has_about(repo: &Repo) -> bool {
@@ -389,6 +414,30 @@ mod tests {
 
     fn file(path: &str) -> FileEntry {
         FileEntry { path: path.into(), hash: Some("h".into()) }
+    }
+
+    #[test]
+    fn deleting_or_restoring_an_account_reworks_the_answers_that_name_it() {
+        let kept = serde_json::to_string(&Contributor {
+            kind: g1t_contracts::about::ContributorKind::User,
+            name: "ana".into(),
+            username: Some("ana".into()),
+            avatar: None,
+            commits: 3,
+            first_at: "2026-10-01T00:00:00Z".into(),
+            last_at: "2026-10-02T00:00:00Z".into(),
+            weeks: Vec::new(),
+        })
+        .unwrap();
+        let deleting = shown_differently("user.deleting", &serde_json::json!({ "userId": "usr_ana", "username": "ana" })).unwrap();
+        assert!(kept.contains(&deleting));
+        // Not a longer name that starts the same.
+        assert!(!kept.replace("\"ana\"", "\"anabel\"").contains(&deleting));
+        // A restored account may be any ghost: those answers are worked out again.
+        let restored = shown_differently("user.restored", &serde_json::json!({ "userId": "usr_ana", "username": "ana" })).unwrap();
+        assert!(kept.replace("\"ana\"", "\"ghost\"").contains(&restored));
+        assert_eq!(shown_differently("user.updated", &serde_json::json!({ "username": "ana" })), None);
+        assert_eq!(shown_differently("user.deleting", &serde_json::json!({})), None);
     }
 
     #[test]

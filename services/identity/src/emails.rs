@@ -982,9 +982,10 @@ impl Identity {
             id: String,
             username: String,
             avatar: Option<String>,
-            /// 1 for a purged account's username (`deleted_users`).
+            /// 1 for an account that is deleted: purged (its username is
+            /// in `deleted_users`) or in its window to be restored.
             #[serde(default)]
-            purged: u8,
+            gone: u8,
         }
         let mut owners = HashMap::new();
         let mut plain: Vec<String> = Vec::new();
@@ -1007,15 +1008,16 @@ impl Identity {
             let rows = self
                 .db
                 .prepare(format!(
-                    "SELECT e.email, u.id, u.username, u.avatar FROM user_emails e JOIN users u ON u.id = e.user_id
-                     WHERE e.verified_at IS NOT NULL AND u.deleted_at IS NULL AND e.email IN ({marks})"
+                    "SELECT e.email, u.id, u.username, u.avatar, u.deleted_at IS NOT NULL AS gone
+                     FROM user_emails e JOIN users u ON u.id = e.user_id
+                     WHERE e.verified_at IS NOT NULL AND e.email IN ({marks})"
                 ))
                 .bind(&bind)?
                 .all()
                 .await?
                 .results::<Row>()?;
             for row in rows {
-                owners.insert(row.email, EmailOwner { id: row.id, username: row.username, avatar: row.avatar });
+                owners.insert(row.email, shown_owner(row.id, row.username, row.avatar, row.gone != 0));
             }
         }
         if !by_name.is_empty() {
@@ -1025,10 +1027,10 @@ impl Identity {
             let rows = self
                 .db
                 .prepare(format!(
-                    "SELECT username AS email, id, username, avatar, 0 AS purged FROM users
-                     WHERE username IN ({marks}) AND deleted_at IS NULL
+                    "SELECT username AS email, id, username, avatar, deleted_at IS NOT NULL AS gone FROM users
+                     WHERE username IN ({marks})
                      UNION ALL
-                     SELECT username AS email, user_id AS id, username, NULL AS avatar, 1 AS purged FROM deleted_users
+                     SELECT username AS email, user_id AS id, username, NULL AS avatar, 1 AS gone FROM deleted_users
                      WHERE username IN ({marks})"
                 ))
                 .bind(&[bind.clone(), bind].concat())?
@@ -1039,13 +1041,7 @@ impl Identity {
                 if let Some(row) = rows.iter().find(|row| row.username == username)
                     && suffix.as_deref().is_none_or(|suffix| id_suffix(&row.id) == suffix)
                 {
-                    // A purged account's commits are ghost's (account_deletion.rs).
-                    let owner = if row.purged != 0 {
-                        EmailOwner { id: GHOST_ID.to_owned(), username: GHOST_USERNAME.to_owned(), avatar: None }
-                    } else {
-                        EmailOwner { id: row.id.clone(), username: row.username.clone(), avatar: row.avatar.clone() }
-                    };
-                    owners.insert(email, owner);
+                    owners.insert(email, shown_owner(row.id.clone(), row.username.clone(), row.avatar.clone(), row.gone != 0));
                 }
             }
         }
@@ -1237,9 +1233,30 @@ pub struct ResetTarget {
     pub display: String,
 }
 
+/// Who an address's commits are shown as: the account, or ghost for a
+/// deleted one. An account in its window to be restored is ghost already,
+/// as it will be once purged (account_deletion.rs), and is itself again if
+/// staff restore it, since nothing about it is changed here.
+fn shown_owner(id: String, username: String, avatar: Option<String>, gone: bool) -> EmailOwner {
+    if gone {
+        EmailOwner { id: GHOST_ID.to_owned(), username: GHOST_USERNAME.to_owned(), avatar: None }
+    } else {
+        EmailOwner { id, username, avatar }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_deleted_account_is_ghost_on_its_commits_until_restored() {
+        let live = shown_owner("usr_ana".into(), "ana".into(), Some("abc".into()), false);
+        assert_eq!((live.id.as_str(), live.username.as_str(), live.avatar.as_deref()), ("usr_ana", "ana", Some("abc")));
+        // Deleted and restorable, or purged: ghost, with nothing of the account.
+        let gone = shown_owner("usr_ana".into(), "ana".into(), Some("abc".into()), true);
+        assert_eq!((gone.id.as_str(), gone.username.as_str(), gone.avatar), (GHOST_ID, GHOST_USERNAME, None));
+    }
 
     fn row(id: &str, email: &str, verified: bool, created: &str) -> EmailRow {
         EmailRow {

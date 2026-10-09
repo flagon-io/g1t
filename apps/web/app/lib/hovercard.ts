@@ -20,6 +20,8 @@ export type UserCard = {
   pronouns: string | null;
   bio: string | null;
   location: string | null;
+  /** The IANA time zone they gave, such as `America/Denver`; the card shows their local time from it. */
+  timezone: string | null;
   avatar: string | null;
   /** Workspaces the viewer may know they belong to, at most `MAX_WORKSPACES`. */
   workspaces: { slug: string; name: string; avatar: string | null }[];
@@ -112,6 +114,7 @@ export async function buildCard(
     pronouns: profile.pronouns,
     bio: profile.bio,
     location: profile.location,
+    timezone: profile.timezone ?? null,
     avatar: profile.avatar,
     workspaces: shown.slice(0, MAX_WORKSPACES).map((one) => ({ slug: one.slug, name: one.name, avatar: one.avatar })),
     more_workspaces: Math.max(0, shown.length - MAX_WORKSPACES),

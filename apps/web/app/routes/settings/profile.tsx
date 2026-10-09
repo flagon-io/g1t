@@ -31,6 +31,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         location: text("location"),
         website: text("website"),
         pronouns: text("pronouns"),
+        timezone: text("timezone"),
       });
       return result.ok ? { profileSaved: true } : { profileError: result.error.message };
     }
