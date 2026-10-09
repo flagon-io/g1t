@@ -142,8 +142,9 @@ Pick the two branches at the top; **Open a pull request** starts one from
 the compared branch.
 
 On **Files**, each file and folder shows the commit that last changed it and
-when, from up to 300 commits of the branch's history; one changed before
-that shows none. The branch menu at the top switches branch and keeps the
+when, from the branch's whole history. On a long history the first view
+can show some of them blank while g1t finishes reading it; a later view
+fills them in, and after a push only the new commits are read. The branch menu at the top switches branch and keeps the
 folder or file you are on.
 
 ## Pull request forks

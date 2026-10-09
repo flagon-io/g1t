@@ -3,8 +3,10 @@
  * answer not yet kept walks history, which can take seconds on a large or
  * busy repository; the page goes out without it then, the column empty,
  * while the walk finishes in the background (waitUntil) so the next view
- * has it from the cache. The page's stream never waits on it past its own
- * timeout.
+ * has it from the cache. A history too long for one walk is read over
+ * several views: the repos service keeps each walk's progress and goes on
+ * from it (services/repos/src/last_commits.rs). The page's stream never
+ * waits on it past its own timeout.
  */
 import { waitUntil } from "cloudflare:workers";
 

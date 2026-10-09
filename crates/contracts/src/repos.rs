@@ -596,8 +596,9 @@ pub struct LastCommitsArgs {
     pub git_ref: Option<String>,
     #[serde(default)]
     pub tree_path: String,
-    /// Answer within this many milliseconds with what was found, not kept;
-    /// absent, the walk runs to the end and is kept.
+    /// Answer within this many milliseconds with what was found; absent,
+    /// within 20 seconds. A walk that stops short keeps its progress, and
+    /// the next call goes on from it.
     #[serde(default)]
     pub budget_ms: Option<u64>,
 }
@@ -609,8 +610,9 @@ pub struct LastCommit {
     pub commit: Commit,
 }
 
-/// The entries' last commits. `complete` is false when the history walked
-/// ran out before every entry was placed; those entries are left out.
+/// The entries' last commits. `complete` is false when the walk stopped
+/// (or the history ran out) before every entry was placed; those entries
+/// are left out, and a later call goes on placing them.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LastCommits {
     pub entries: Vec<LastCommit>,
