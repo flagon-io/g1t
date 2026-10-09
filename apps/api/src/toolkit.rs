@@ -10,15 +10,20 @@
 //!   `FinalizeCacheEntryUpload`, `GetCacheEntryDownloadURL`) and the
 //!   artifacts' (`CreateArtifact`, `FinalizeArtifact`, `ListArtifacts`,
 //!   `GetSignedArtifactURL`, `DeleteArtifact`). JSON, the toolkit's field
-//!   names.
+//!   names; the cache's methods also in protobuf (`application/protobuf`),
+//!   which other clients of the protocol send (sccache, through OpenDAL).
 //! - The cache's older protocol, at `{ACTIONS_CACHE_URL}_apis/artifactcache/…`,
 //!   which the toolkit's client uses whenever the server it runs against is
-//!   not github.com: on g1t, that is the one it uses.
+//!   not github.com: on g1t, that is the one it uses, and sccache's too.
+//!   Its entries are sent in 32 MB chunks, or in one chunk of any size.
 //! - Blobs, at `/actions/toolkit/blobs/{token}`: the signed links those
-//!   hand out. Downloads are a plain GET. Uploads speak the part of Azure
-//!   Blob Storage's protocol the toolkit's client uses (Put Blob, Put
-//!   Block, Put Block List), mapped onto an R2 multipart upload: a block's
-//!   id ends in its index, which is its part's number.
+//!   hand out. Downloads are a GET, of the whole blob or of one byte range
+//!   (`Range`), as the toolkit's client fetches large entries in segments.
+//!   Uploads speak the part of Azure Blob Storage's protocol the toolkit's
+//!   client uses (Put Blob, Put Block, Put Block List), mapped onto an R2
+//!   multipart upload: a block's id ends in its index, which is its part's
+//!   number. An upload link carries a query, as an Azure SAS link does,
+//!   which clients that sign their requests with it need.
 //!
 //! Every call carries the job's runtime token; the actions service checks
 //! it and keeps the entries (cache.rs, artifacts.rs, runtime.rs there).
@@ -85,6 +90,150 @@ pub fn runtime_variables(api: &str, token: &str, id_token: bool) -> Map<String, 
 
 // ── Twirp ───────────────────────────────────────────────────────────────────
 
+/// Twirp's binary encoding.
+const PROTOBUF: &str = "application/protobuf";
+
+/// Whether a request's `Content-Type` is Twirp's protobuf encoding.
+fn is_protobuf(content_type: &str) -> bool {
+    let kind = content_type.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+    kind == PROTOBUF || kind == "application/x-protobuf"
+}
+
+/// The cache service's messages in protobuf, read into and written from the
+/// JSON the handlers use (`results/api/v1/cache.proto`, field numbers as
+/// there). Only what the cache's three methods carry: strings, a repeated
+/// string, an int64 and a bool. `metadata` (field 1 of each request) is
+/// skipped: the runtime token says whose cache it is.
+mod proto {
+    use serde_json::{Map, Value};
+
+    #[derive(Clone, Copy)]
+    enum Kind {
+        Text,
+        Texts,
+        Int,
+        Bool,
+    }
+
+    /// A message's fields: number, JSON name, kind.
+    type Fields = &'static [(u64, &'static str, Kind)];
+
+    fn request_fields(method: &str) -> Option<Fields> {
+        Some(match method {
+            "CreateCacheEntry" => &[(2, "key", Kind::Text), (3, "version", Kind::Text)],
+            "FinalizeCacheEntryUpload" => &[(2, "key", Kind::Text), (3, "size_bytes", Kind::Int), (4, "version", Kind::Text)],
+            "GetCacheEntryDownloadURL" => &[(2, "key", Kind::Text), (3, "restore_keys", Kind::Texts), (4, "version", Kind::Text)],
+            _ => return None,
+        })
+    }
+
+    fn response_fields(method: &str) -> Fields {
+        match method {
+            "CreateCacheEntry" => &[(1, "ok", Kind::Bool), (2, "signed_upload_url", Kind::Text), (3, "message", Kind::Text)],
+            "FinalizeCacheEntryUpload" => &[(1, "ok", Kind::Bool), (2, "entry_id", Kind::Int), (3, "message", Kind::Text)],
+            "GetCacheEntryDownloadURL" => &[(1, "ok", Kind::Bool), (2, "signed_download_url", Kind::Text), (3, "matched_key", Kind::Text)],
+            _ => &[],
+        }
+    }
+
+    fn varint(bytes: &[u8], at: &mut usize) -> Option<u64> {
+        let mut value = 0u64;
+        for shift in (0..64).step_by(7) {
+            let byte = *bytes.get(*at)?;
+            *at += 1;
+            value |= u64::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn put_varint(out: &mut Vec<u8>, mut value: u64) {
+        while value >= 0x80 {
+            out.push((value as u8 & 0x7f) | 0x80);
+            value >>= 7;
+        }
+        out.push(value as u8);
+    }
+
+    /// A request of `method` as JSON, or None when it is not one.
+    pub fn request(method: &str, bytes: &[u8]) -> Option<Value> {
+        let fields = request_fields(method)?;
+        let mut out = Map::new();
+        let mut at = 0;
+        while at < bytes.len() {
+            let tag = varint(bytes, &mut at)?;
+            let (number, wire) = (tag >> 3, tag & 7);
+            let known = fields.iter().find(|(n, _, _)| *n == number);
+            match wire {
+                0 => {
+                    let value = varint(bytes, &mut at)?;
+                    if let Some((_, name, Kind::Int)) = known {
+                        // An int64 is sent as its two's complement.
+                        out.insert((*name).to_owned(), Value::String((value as i64).to_string()));
+                    }
+                }
+                2 => {
+                    let length = usize::try_from(varint(bytes, &mut at)?).ok()?;
+                    let end = at.checked_add(length).filter(|end| *end <= bytes.len())?;
+                    let raw = &bytes[at..end];
+                    at = end;
+                    match known {
+                        Some((_, name, Kind::Text)) => {
+                            out.insert((*name).to_owned(), Value::String(String::from_utf8(raw.to_vec()).ok()?));
+                        }
+                        Some((_, name, Kind::Texts)) => {
+                            let text = Value::String(String::from_utf8(raw.to_vec()).ok()?);
+                            match out.entry((*name).to_owned()).or_insert_with(|| Value::Array(Vec::new())) {
+                                Value::Array(list) => list.push(text),
+                                _ => return None,
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                1 => at = at.checked_add(8).filter(|end| *end <= bytes.len())?,
+                5 => at = at.checked_add(4).filter(|end| *end <= bytes.len())?,
+                _ => return None,
+            }
+        }
+        Some(Value::Object(out))
+    }
+
+    /// A response of `method` from its JSON. Defaults are left out, as
+    /// proto3 does.
+    pub fn response(method: &str, value: &Value) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (number, name, kind) in response_fields(method) {
+            let field = &value[*name];
+            match kind {
+                Kind::Bool if field.as_bool() == Some(true) => {
+                    put_varint(&mut out, number << 3);
+                    put_varint(&mut out, 1);
+                }
+                Kind::Int => {
+                    let n = field.as_i64().or_else(|| field.as_str().and_then(|s| s.parse().ok())).unwrap_or(0);
+                    if n != 0 {
+                        put_varint(&mut out, number << 3);
+                        put_varint(&mut out, n as u64);
+                    }
+                }
+                Kind::Text => {
+                    let text = field.as_str().unwrap_or_default();
+                    if !text.is_empty() {
+                        put_varint(&mut out, (number << 3) | 2);
+                        put_varint(&mut out, text.len() as u64);
+                        out.extend_from_slice(text.as_bytes());
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+}
+
 /// A Twirp error: its code and message, at the status Twirp gives it.
 fn twirp_error(code: &str, message: &str) -> Result<Response> {
     let status = match code {
@@ -92,7 +241,8 @@ fn twirp_error(code: &str, message: &str) -> Result<Response> {
         "permission_denied" => 403,
         "not_found" => 404,
         "already_exists" => 409,
-        "invalid_argument" => 400,
+        "invalid_argument" | "malformed" => 400,
+        "bad_route" => 404,
         "failed_precondition" => 412,
         "resource_exhausted" => 429,
         _ => 500,
@@ -155,6 +305,17 @@ fn listed(artifact: &Artifact) -> Value {
     })
 }
 
+/// The Azure Storage version g1t's blob links answer as.
+const AZURE_VERSION: &str = "2024-11-04";
+
+/// An upload link: the blob's, with a query as an Azure SAS link has one.
+/// A client that treats it as a container, a blob and a SAS token (OpenDAL,
+/// which sccache uses) refuses a link without one; the token in the path
+/// is what g1t checks.
+pub fn upload_url(api: &str, blob: &str) -> String {
+    format!("{}?sv={AZURE_VERSION}", blob_url(api, blob))
+}
+
 /// Starts an R2 upload for an entry the service reserved, and the signed
 /// link the toolkit sends it to.
 async fn start_upload(bucket: &Bucket, services: &Services, job: &str, token: &str, kind: &str, id: &str, object: &str) -> Result<Outcome<String>> {
@@ -167,7 +328,7 @@ async fn start_upload(bucket: &Bucket, services: &Services, job: &str, token: &s
     )
     .await?;
     Ok(match signed {
-        Outcome::Ok(blob) => Outcome::Ok(blob_url(&services.addresses.api, &blob)),
+        Outcome::Ok(blob) => Outcome::Ok(upload_url(&services.addresses.api, &blob)),
         Outcome::Fail(refused) => Outcome::Fail(refused),
     })
 }
@@ -178,7 +339,25 @@ pub async fn twirp(mut request: Request, env: &Env, services: &Services, service
     let Some(job) = runtime_job(&token) else {
         return twirp_error("unauthenticated", "Send the job's ACTIONS_RUNTIME_TOKEN as a bearer token.");
     };
-    let body: Value = request.json().await.unwrap_or(Value::Null);
+    // Twirp clients send JSON or protobuf, and are answered in kind.
+    let binary = is_protobuf(&request.headers().get("content-type")?.unwrap_or_default());
+    let body: Value = if binary {
+        match proto::request(method, &request.bytes().await.unwrap_or_default()) {
+            Some(body) => body,
+            None => return twirp_error("malformed", "That is not a protobuf message this method takes."),
+        }
+    } else {
+        request.json().await.unwrap_or(Value::Null)
+    };
+    let answer = |value: Value| -> Result<Response> {
+        if binary {
+            let mut response = Response::from_bytes(proto::response(method, &value))?;
+            response.headers_mut().set("content-type", PROTOBUF)?;
+            Ok(response)
+        } else {
+            Response::from_json(&value)
+        }
+    };
     let bucket = env.bucket("ACTIONS_CACHE")?;
     let actions = &services.actions;
     let (run, own_job) = backend_ids(&token);
@@ -201,9 +380,9 @@ pub async fn twirp(mut request: Request, env: &Env, services: &Services, service
             let found: Outcome<Option<CacheHit>> = g1t_kit::call(actions, "cache_lookup", &args).await?;
             match found {
                 Outcome::Ok(Some(CacheHit { key, blob: Some(blob), .. })) => {
-                    Response::from_json(&json!({ "ok": true, "signed_download_url": blob_url(&services.addresses.api, &blob), "matched_key": key }))
+                    answer(json!({ "ok": true, "signed_download_url": blob_url(&services.addresses.api, &blob), "matched_key": key }))
                 }
-                Outcome::Ok(_) => Response::from_json(&json!({ "ok": false, "signed_download_url": "", "matched_key": "" })),
+                Outcome::Ok(_) => answer(json!({ "ok": false, "signed_download_url": "", "matched_key": "" })),
                 Outcome::Fail(refused) => twirp_failure(&refused),
             }
         }
@@ -212,13 +391,19 @@ pub async fn twirp(mut request: Request, env: &Env, services: &Services, service
             let reserved: Outcome<CacheReservation> = g1t_kit::call(actions, "cache_reserve", &args).await?;
             let reserved = match reserved {
                 Outcome::Ok(reserved) => reserved,
-                // The client warns with this and goes on, as for a key
-                // another job is saving.
-                Outcome::Fail(refused) => return Response::from_json(&json!({ "ok": false, "signed_upload_url": "", "message": refused.message })),
+                // A key already saved, or being saved by another job, to a
+                // protobuf client (OpenDAL's) is Twirp's `already_exists`
+                // (409), which it takes as "someone else has it": sccache
+                // then still writes. An `ok: false` would read as a broken
+                // cache, and sccache would only read from it.
+                Outcome::Fail(refused) if binary && refused.code == FailureCode::Conflict => return twirp_failure(&refused),
+                // The toolkit's client logs this ("another job may be
+                // creating this cache") and goes on.
+                Outcome::Fail(refused) => return answer(json!({ "ok": false, "signed_upload_url": "", "message": refused.message })),
             };
             match start_upload(&bucket, services, &job, &token, "cache", &reserved.id, &reserved.object).await? {
-                Outcome::Ok(url) => Response::from_json(&json!({ "ok": true, "signed_upload_url": url })),
-                Outcome::Fail(refused) => Response::from_json(&json!({ "ok": false, "signed_upload_url": "", "message": refused.message })),
+                Outcome::Ok(url) => answer(json!({ "ok": true, "signed_upload_url": url })),
+                Outcome::Fail(refused) => answer(json!({ "ok": false, "signed_upload_url": "", "message": refused.message })),
             }
         }
         (CACHE_SERVICE, "FinalizeCacheEntryUpload") => {
@@ -226,14 +411,14 @@ pub async fn twirp(mut request: Request, env: &Env, services: &Services, service
             let pending: Outcome<CacheReservation> = g1t_kit::call(actions, "cache_upload", &args).await?;
             let pending = match pending {
                 Outcome::Ok(pending) => pending,
-                Outcome::Fail(refused) => return Response::from_json(&json!({ "ok": false, "entry_id": "0", "message": refused.message })),
+                Outcome::Fail(refused) => return answer(json!({ "ok": false, "entry_id": "0", "message": refused.message })),
             };
             let Some(object) = bucket.head(&pending.object).await? else {
-                return Response::from_json(&json!({ "ok": false, "entry_id": "0", "message": "Nothing was uploaded for that entry." }));
+                return answer(json!({ "ok": false, "entry_id": "0", "message": "Nothing was uploaded for that entry." }));
             };
             match commit_cache(&bucket, services, &job, &token, &pending.id, object.size()).await? {
-                Outcome::Ok(()) => Response::from_json(&json!({ "ok": true, "entry_id": pending.number.to_string() })),
-                Outcome::Fail(refused) => Response::from_json(&json!({ "ok": false, "entry_id": "0", "message": refused.message })),
+                Outcome::Ok(()) => answer(json!({ "ok": true, "entry_id": pending.number.to_string() })),
+                Outcome::Fail(refused) => answer(json!({ "ok": false, "entry_id": "0", "message": refused.message })),
             }
         }
         (ARTIFACT_SERVICE, "CreateArtifact") => {
@@ -321,16 +506,57 @@ fn query(request: &Request, name: &str) -> Option<String> {
 }
 
 /// The part a chunk of the older protocol is, from its `Content-Range`:
-/// chunks are `CACHE_PART_BYTES` apart, as the toolkit sends them.
+/// chunks are `CACHE_PART_BYTES` apart, as the toolkit sends them. A first
+/// chunk may be larger, up to `MAX_BLOCK_BYTES`: a client that sends an
+/// entry in one request (sccache does) sends a single chunk from 0.
 pub fn chunk_part(range: &str) -> Option<(u16, u64)> {
     let range = range.trim().strip_prefix("bytes ")?;
     let (span, _) = range.split_once('/')?;
     let (start, end) = span.split_once('-')?;
     let (start, end): (u64, u64) = (start.trim().parse().ok()?, end.trim().parse().ok()?);
-    if end < start || start % CACHE_PART_BYTES != 0 || end - start + 1 > CACHE_PART_BYTES {
+    if end < start {
         return None;
     }
-    Some(((start / CACHE_PART_BYTES + 1) as u16, end - start + 1))
+    let length = end - start + 1;
+    if start == 0 && length <= MAX_BLOCK_BYTES {
+        return Some((1, length));
+    }
+    if start % CACHE_PART_BYTES != 0 || length > CACHE_PART_BYTES {
+        return None;
+    }
+    Some(((start / CACHE_PART_BYTES + 1) as u16, length))
+}
+
+/// The bytes a download's `Range` header asks for, out of `size`: first and
+/// last, inclusive. None to send the whole blob (no header, or one this
+/// does not read, such as several ranges); `Some(None)` when the range is
+/// past the end (416).
+pub fn byte_range(header: &str, size: u64) -> Option<Option<(u64, u64)>> {
+    let spec = header.trim().strip_prefix("bytes=")?.trim();
+    if spec.contains(',') {
+        return None;
+    }
+    let (first, last) = spec.split_once('-')?;
+    let (first, last) = (first.trim(), last.trim());
+    let range = if first.is_empty() {
+        // The last `n` bytes.
+        let n: u64 = last.parse().ok()?;
+        if n == 0 || size == 0 {
+            return Some(None);
+        }
+        (size.saturating_sub(n), size - 1)
+    } else {
+        let first: u64 = first.parse().ok()?;
+        let last: u64 = if last.is_empty() { u64::MAX } else { last.parse().ok()? };
+        if last < first {
+            return None;
+        }
+        if first >= size {
+            return Some(None);
+        }
+        (first, last.min(size - 1))
+    };
+    Some(Some(range))
 }
 
 /// `{ACTIONS_CACHE_URL}_apis/artifactcache/…`. `rest` is the path after it.
@@ -527,6 +753,7 @@ pub async fn blob(mut request: Request, env: &Env, services: &Services, method: 
                 headers.set("content-length", &size.to_string())?;
                 headers.set("content-type", grant.content_type.as_deref().unwrap_or("application/octet-stream"))?;
                 headers.set("x-ms-blob-type", "BlockBlob")?;
+                headers.set("accept-ranges", "bytes")?;
                 if let Some(name) = &grant.filename {
                     headers.set("content-disposition", &format!("attachment; filename=\"{}\"", name.replace('"', "")))?;
                 }
@@ -537,6 +764,37 @@ pub async fn blob(mut request: Request, env: &Env, services: &Services, method: 
                 let mut response = Response::empty()?;
                 headers(&mut response, object.size())?;
                 return Ok(response);
+            }
+            // One byte range (`Range`, or Azure's `x-ms-range`): the
+            // toolkit's client fetches a large entry in segments, side by
+            // side, and writes each where its range says.
+            let asked = match request.headers().get("x-ms-range")? {
+                Some(range) => Some(range),
+                None => request.headers().get("range")?,
+            };
+            if let Some(asked) = asked.filter(|r| !r.trim().is_empty()) {
+                let Some(object) = bucket.head(&grant.object).await? else { return azure_error(404, "BlobNotFound", "It is gone.") };
+                let size = object.size();
+                match byte_range(&asked, size) {
+                    Some(Some((first, last))) => {
+                        let length = last - first + 1;
+                        let Some(object) = bucket.get(&grant.object).range(worker::Range::OffsetWithLength { offset: first, length }).execute().await? else {
+                            return azure_error(404, "BlobNotFound", "It is gone.");
+                        };
+                        let Some(body) = object.body() else { return azure_error(404, "BlobNotFound", "It is gone.") };
+                        let mut response = Response::from_body(body.response_body()?)?.with_status(206);
+                        headers(&mut response, length)?;
+                        response.headers_mut().set("content-range", &format!("bytes {first}-{last}/{size}"))?;
+                        return Ok(response);
+                    }
+                    Some(None) => {
+                        let mut response = azure_error(416, "InvalidRange", "The range is past the end of the blob.")?;
+                        response.headers_mut().set("content-range", &format!("bytes */{size}"))?;
+                        return Ok(response);
+                    }
+                    // Not a range this reads: the whole blob.
+                    None => {}
+                }
             }
             let Some(object) = bucket.get(&grant.object).execute().await? else { return azure_error(404, "BlobNotFound", "It is gone.") };
             let size = object.size();
@@ -674,10 +932,122 @@ mod tests {
         let mb32 = CACHE_PART_BYTES;
         assert_eq!(chunk_part(&format!("bytes 0-{}/*", mb32 - 1)), Some((1, mb32)));
         assert_eq!(chunk_part(&format!("bytes {}-{}/*", mb32 * 2, mb32 * 2 + 99)), Some((3, 100)));
-        // Not on a chunk's boundary, too long, or not a range.
+        // A whole entry in one chunk, as sccache (OpenDAL) sends it: its
+        // check file is 13 bytes, a compiled crate can be well over 32 MB.
+        assert_eq!(chunk_part("bytes 0-12/*"), Some((1, 13)));
+        assert_eq!(chunk_part(&format!("bytes 0-{}/*", mb32)), Some((1, mb32 + 1)));
+        assert_eq!(chunk_part(&format!("bytes 0-{}/*", MAX_BLOCK_BYTES - 1)), Some((1, MAX_BLOCK_BYTES)));
+        // Not on a chunk's boundary, too long, backwards, or not a range.
         assert_eq!(chunk_part("bytes 5-10/*"), None);
-        assert_eq!(chunk_part(&format!("bytes 0-{}/*", mb32)), None);
+        assert_eq!(chunk_part(&format!("bytes {mb32}-{}/*", mb32 * 2)), None);
+        assert_eq!(chunk_part(&format!("bytes 0-{}/*", MAX_BLOCK_BYTES)), None);
+        assert_eq!(chunk_part("bytes 10-5/*"), None);
         assert_eq!(chunk_part("0-10"), None);
+    }
+
+    #[test]
+    fn downloads_read_one_byte_range() {
+        // OpenDAL's stat: the first byte.
+        assert_eq!(byte_range("bytes=0-0", 100), Some(Some((0, 0))));
+        // The toolkit's segments, the last one cut at the end.
+        assert_eq!(byte_range("bytes=0-49", 100), Some(Some((0, 49))));
+        assert_eq!(byte_range("bytes=50-999", 100), Some(Some((50, 99))));
+        assert_eq!(byte_range("bytes=90-", 100), Some(Some((90, 99))));
+        assert_eq!(byte_range("bytes=-10", 100), Some(Some((90, 99))));
+        assert_eq!(byte_range("bytes=-1000", 100), Some(Some((0, 99))));
+        // Past the end: 416.
+        assert_eq!(byte_range("bytes=100-200", 100), Some(None));
+        assert_eq!(byte_range("bytes=0-0", 0), Some(None));
+        assert_eq!(byte_range("bytes=-0", 100), Some(None));
+        // Not read: the whole blob.
+        assert_eq!(byte_range("bytes=0-1,5-6", 100), None);
+        assert_eq!(byte_range("bytes=9-3", 100), None);
+        assert_eq!(byte_range("items=0-1", 100), None);
+        assert_eq!(byte_range("bytes=a-b", 100), None);
+    }
+
+    #[test]
+    fn upload_links_carry_a_query_as_sas_links_do() {
+        let url = upload_url("https://api.g1t.sh", "tok.sig");
+        assert_eq!(url, "https://api.g1t.sh/actions/toolkit/blobs/tok.sig?sv=2024-11-04");
+        // How OpenDAL reads a signed upload link: a container, a blob in
+        // it, and a SAS query, all of which must be there.
+        let rest = url.strip_prefix("https://api.g1t.sh/").unwrap();
+        let (path, query) = rest.split_once('?').unwrap();
+        let (container, blob) = path.split_once('/').unwrap();
+        assert_eq!((container, blob, query), ("actions", "toolkit/blobs/tok.sig", "sv=2024-11-04"));
+    }
+
+    /// A protobuf length-delimited field, as prost writes it.
+    fn pb_text(number: u8, text: &str) -> Vec<u8> {
+        let mut out = vec![(number << 3) | 2, text.len() as u8];
+        out.extend_from_slice(text.as_bytes());
+        out
+    }
+
+    /// The requests sccache 0.18 sends (OpenDAL 0.58's `ghac` service, with
+    /// prost): fields in number order, defaults left out, no metadata.
+    #[test]
+    fn twirp_reads_sccaches_protobuf_requests() {
+        assert!(is_protobuf("application/protobuf"));
+        assert!(is_protobuf("Application/Protobuf; charset=utf-8"));
+        assert!(!is_protobuf("application/json"));
+        assert!(!is_protobuf(""));
+
+        let key = "sccache/f/c/b/fcb0a1d2e3";
+        let version = "sccache-v0.18.0";
+        let create = [pb_text(2, key), pb_text(3, version)].concat();
+        let read = proto::request("CreateCacheEntry", &create).unwrap();
+        assert_eq!((text(&read, "key"), text(&read, "version")), (key.to_owned(), version.to_owned()));
+
+        // size_bytes is field 3, a varint: 300 is 0xac 0x02.
+        let finalize = [pb_text(2, key), vec![0x18, 0xac, 0x02], pb_text(4, version)].concat();
+        let read = proto::request("FinalizeCacheEntryUpload", &finalize).unwrap();
+        assert_eq!(number(&read, "size_bytes"), Some(300));
+        assert_eq!(text(&read, "version"), version);
+
+        let lookup = [pb_text(2, key), pb_text(4, version)].concat();
+        let read = proto::request("GetCacheEntryDownloadURL", &lookup).unwrap();
+        assert_eq!(text(&read, "key"), key);
+        assert!(field(&read, "restore_keys").is_null());
+        // The toolkit's own lookup, with metadata (skipped) and restore keys.
+        let metadata = vec![0x0a, 0x02, 0x08, 0x07];
+        let with_restore = [metadata, pb_text(2, "k"), pb_text(3, "k-"), pb_text(3, "x-"), pb_text(4, "v")].concat();
+        let read = proto::request("GetCacheEntryDownloadURL", &with_restore).unwrap();
+        assert_eq!(field(&read, "restore_keys"), &json!(["k-", "x-"]));
+        assert_eq!(text(&read, "version"), "v");
+
+        // The same three, as prost 0.14 encodes them with OpenDAL's
+        // generated types (the `ghac` crate, 0.3.0), byte for byte.
+        let recorded = |hex: &str| -> Vec<u8> { (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect() };
+        let prefix = "1218736363616368652f662f632f622f66636230613164326533";
+        let suffix = "0f736363616368652d76302e31382e30";
+        assert_eq!(recorded(&format!("{prefix}1a{suffix}")), create);
+        assert_eq!(recorded(&format!("{prefix}18ac0222{suffix}")), finalize);
+        assert_eq!(recorded(&format!("{prefix}22{suffix}")), lookup);
+
+        // Cut short, or not a cache method.
+        assert!(proto::request("CreateCacheEntry", &create[..create.len() - 1]).is_none());
+        assert!(proto::request("CreateCacheEntry", &[0x12, 0xff]).is_none());
+        assert!(proto::request("CreateArtifact", &create).is_none());
+        assert_eq!(proto::request("CreateCacheEntry", &[]), Some(json!({})));
+    }
+
+    #[test]
+    fn twirp_answers_in_protobuf_as_prost_reads_it() {
+        let url = "https://api.g1t.sh/actions/toolkit/blobs/t?sv=2024-11-04";
+        let created = proto::response("CreateCacheEntry", &json!({ "ok": true, "signed_upload_url": url }));
+        assert_eq!(created, [vec![0x08, 0x01], pb_text(2, url)].concat());
+        // Refused: ok false is the default, so only the message is sent.
+        let refused = proto::response("CreateCacheEntry", &json!({ "ok": false, "signed_upload_url": "", "message": "no" }));
+        assert_eq!(refused, pb_text(3, "no"));
+        // entry_id is an int64, given as a string in JSON.
+        let finalized = proto::response("FinalizeCacheEntryUpload", &json!({ "ok": true, "entry_id": "300" }));
+        assert_eq!(finalized, vec![0x08, 0x01, 0x10, 0xac, 0x02]);
+        let found = proto::response("GetCacheEntryDownloadURL", &json!({ "ok": true, "signed_download_url": "u", "matched_key": "k" }));
+        assert_eq!(found, [vec![0x08, 0x01], pb_text(2, "u"), pb_text(3, "k")].concat());
+        // A miss is an empty message: ok false.
+        assert!(proto::response("GetCacheEntryDownloadURL", &json!({ "ok": false, "signed_download_url": "", "matched_key": "" })).is_empty());
     }
 
     /// The toolkit's requests, as `@actions/cache` 4 and `@actions/artifact`
