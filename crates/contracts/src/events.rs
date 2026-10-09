@@ -976,6 +976,10 @@ pub struct QueueChanged {
 /// space, so it never reaches a repository's timeline or webhooks.
 pub const DOC_PAGE_EVENTS: [&str; 4] = ["doc.page.created", "doc.page.updated", "doc.page.archived", "doc.page.stale"];
 
+/// The `folio.*` types (Artifacts mode), with their payloads, live in
+/// [`crate::folios`]; nothing publishes or subscribes to them yet.
+pub use crate::folios::FOLIO_EVENTS;
+
 /// What every `doc.page.*` event carries (`DocPageEventData` in
 /// events.ts). `doc.page.updated` adds `versionId`, `kind` and `authors`;
 /// `doc.page.stale` adds `repoId`, `repo`, `commit`, `pull`, `paths` and

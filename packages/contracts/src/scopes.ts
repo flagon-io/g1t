@@ -30,7 +30,8 @@ export type ScopeResource =
   | "webhooks"
   | "secrets"
   | "runners"
-  | "models";
+  | "models"
+  | "artifacts";
 
 export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
 
@@ -80,7 +81,20 @@ export const SCOPES = [
   { scope: "models:write", description: "Send model requests through the AI Gateway, which uses the workspace's AI credit" },
 ] as const;
 
-export type Scope = (typeof SCOPES)[number]["scope"];
+/**
+ * Scopes of resources being built that tokens are not offered yet (Rust:
+ * `Resource::offered`). They parse in Rust and are typed here, but no
+ * preset, full access, OAuth request or token form hands them out, and no
+ * operation needs them. When one ships, its rows move to the end of
+ * `SCOPES` and `SCOPE_RESOURCES`.
+ */
+export const UPCOMING_SCOPES = [
+  { scope: "artifacts:read", description: "List, read and search artifacts you can see, their versions, and the numbers their dashboards show" },
+  { scope: "artifacts:write", description: "Create, rename, move, edit, trash and restore artifacts, and propose changes to them" },
+  { scope: "artifacts:admin", description: "Share artifacts, change who can open them, and delete them for good" },
+] as const;
+
+export type Scope = (typeof SCOPES)[number]["scope"] | (typeof UPCOMING_SCOPES)[number]["scope"];
 
 /** Where a resource sits on the token form; only a person's token may hold account ones. */
 export type ResourceGroup = "repository" | "workspace" | "account";
@@ -110,6 +124,11 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "models", label: "AI Gateway", group: "workspace" },
 ];
 
+/** Resources not offered yet, as `UPCOMING_SCOPES`: settings never show them. */
+export const UPCOMING_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
+  { resource: "artifacts", label: "Artifacts", group: "workspace" },
+];
+
 const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
 
 export function scopeResource(scope: Scope): ScopeResource {
@@ -131,7 +150,7 @@ export function isDangerous(scope: Scope): boolean {
 }
 
 export function describeScope(scope: Scope): string {
-  return SCOPES.find((row) => row.scope === scope)?.description ?? scope;
+  return [...SCOPES, ...UPCOMING_SCOPES].find((row) => row.scope === scope)?.description ?? scope;
 }
 
 /** Whether holding `held` gives `needed`: the same resource, at its level or lower. */

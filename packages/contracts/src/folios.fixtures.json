@@ -1,0 +1,57 @@
+{
+  "about": "Cases both folio validators must agree on: folios.ts (newFolioError, folioAccessChangeError, folioAgentEditError, folioIdFrom) and crates/contracts/src/folios.rs. error null is valid; \"*\" is any error (a malformed input, which each side words its own way).",
+  "new_folio": [
+    { "input": { "kind": "doc" }, "error": null },
+    { "input": { "kind": "slides", "title": "Q4 roadmap", "space_id": "spc_1", "content": { "markdown": "<!-- slide: title -->\n# Q4" } }, "error": null },
+    { "input": { "kind": "dashboard", "content": { "spec": { "tiles": [] } }, "share_with": [{ "principal": "team:platform", "role": "view" }] }, "error": null },
+    { "input": { "kind": "design", "template_id": "tpl_1" }, "error": null },
+    { "input": { "kind": "doc", "content": { "spec": {} } }, "error": "A doc starts from markdown." },
+    { "input": { "kind": "design", "content": { "markdown": "# no" } }, "error": "A design starts from a spec." },
+    { "input": { "kind": "doc", "content": { "markdown": "# Hi" }, "template_id": "tpl_1" }, "error": "Start from a template or from content, not both." },
+    { "input": { "kind": "doc", "share_with": [{ "principal": "everyone", "role": "view" }] }, "error": "everyone is not user:, agent: or team: and an id." },
+    { "input": { "kind": "doc", "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }, "error": "A title is at most 200 characters." },
+    { "input": { "kind": "spreadsheet" }, "error": "*" },
+    { "input": { "kind": "doc", "share_with": [{ "principal": "user:usr_1", "role": "owner" }] }, "error": "*" }
+  ],
+  "access_change": [
+    { "change": { "op": "grant", "principal": "user:usr_1", "role": "edit" }, "error": null },
+    { "change": { "op": "grant", "principal": "agent:agt_1", "role": "comment", "notify": "Have a look" }, "error": null },
+    { "change": { "op": "revoke", "principal": "team:design" }, "error": null },
+    { "change": { "op": "general", "access": "workspace", "role": "view" }, "error": null },
+    { "change": { "op": "general", "access": "none", "role": null }, "error": null },
+    { "change": { "op": "inherit", "inherit": false }, "error": null },
+    { "change": { "op": "agent_mode", "agent_mode": null }, "error": null },
+    { "change": { "op": "grant", "principal": "usr_1", "role": "edit" }, "error": "usr_1 is not user:, agent: or team: and an id." },
+    { "change": { "op": "general", "access": "link", "role": "manage" }, "error": "General access gives view, comment or edit, never full access." },
+    { "change": { "op": "general", "access": "none", "role": "view" }, "error": "Restricted takes no role." },
+    { "change": { "op": "general", "access": "workspace", "role": null }, "error": "Everyone in the workspace needs a role." },
+    { "change": { "op": "publish" }, "error": "*" },
+    { "change": { "op": "agent_mode", "agent_mode": "always" }, "error": "*" }
+  ],
+  "agent_edit": [
+    { "edit": { "kind": "doc", "target": { "kind": "append" }, "markdown": "More." }, "error": null },
+    { "edit": { "kind": "doc", "target": { "kind": "section", "heading": "Pricing" }, "markdown": "## Pricing\n…", "note": "Updated prices", "marks_current": true }, "error": null },
+    { "edit": { "kind": "slides", "ops": [{ "op": "set_theme", "theme": "night", "accent": null }] }, "error": null },
+    { "edit": { "kind": "dashboard", "ops": [{ "op": "delete_tiles", "ids": ["t1"] }], "suggest_only": true }, "error": null },
+    { "edit": "replace everything", "error": "An edit is an object." },
+    { "edit": { "kind": "sheet", "ops": [] }, "error": "There is no kind of artifact called sheet." },
+    { "edit": { "ops": [] }, "error": "There is no kind of artifact called undefined." },
+    { "edit": { "kind": "doc", "target": { "kind": "append" }, "markdown": "x", "note": 5 }, "error": "note is text." },
+    { "edit": { "kind": "doc", "target": { "kind": "append" } }, "error": "A doc edit has markdown." },
+    { "edit": { "kind": "doc", "markdown": "x", "target": { "kind": "append" }, "ops": [] }, "error": "A doc edit has a target and markdown, not ops." },
+    { "edit": { "kind": "doc", "markdown": "x" }, "error": "A doc edit has a target." },
+    { "edit": { "kind": "doc", "markdown": "x", "target": { "kind": "section" } }, "error": "A section target names its heading." },
+    { "edit": { "kind": "doc", "markdown": "x", "target": { "kind": "blocks", "from_block": "a" } }, "error": "A blocks target names from_block and to_block." },
+    { "edit": { "kind": "doc", "markdown": "x", "target": { "kind": "line" } }, "error": "A doc edit's target is append, document, section or blocks." },
+    { "edit": { "kind": "slides", "markdown": "# x" }, "error": "A deck edit has ops, not a target and markdown." },
+    { "edit": { "kind": "design", "ops": [] }, "error": "A design edit has a list of ops." },
+    { "edit": { "kind": "dashboard", "ops": ["delete everything"] }, "error": "Each op is an object with an op." }
+  ],
+  "folio_ids": [
+    { "segment": "q4-roadmap-fol_01jb2k7x9hfq0b3zj0f5s2m8ra", "id": "fol_01jb2k7x9hfq0b3zj0f5s2m8ra" },
+    { "segment": "fol_01jb2k7x9hfq0b3zj0f5s2m8ra", "id": "fol_01jb2k7x9hfq0b3zj0f5s2m8ra" },
+    { "segment": "q4-roadmap-pag_01jb2k7x9hfq0b3zj0f5s2m8ra", "id": null },
+    { "segment": "fol_01jb2k7x9hfq0b3zj0f5s2m8rI", "id": null },
+    { "segment": "templates", "id": null }
+  ]
+}

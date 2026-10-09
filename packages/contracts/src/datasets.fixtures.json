@@ -1,0 +1,44 @@
+{
+  "about": "Dataset queries both validators must agree on: datasetQueryError/parseDatasetQuery (datasets.ts) and DatasetQuery::validate (crates/contracts/src/datasets.rs). error null is valid; \"*\" is any error (a malformed query, which each side words its own way).",
+  "cases": [
+    { "query": { "dataset": "pull_requests", "measure": { "op": "count" }, "interval": "week", "group_by": "repo", "time": "merged_at", "range": "90d" }, "error": null },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "rate", "field": "succeeded" }, "filters": [{ "field": "workflow", "op": "in", "value": ["CI", "Deploy"] }] }, "error": null },
+    { "query": { "dataset": "issues", "measure": { "op": "p95", "field": "time_to_close_hours" }, "range": { "from": "2026-01-01", "to": "2026-04-01T00:00:00Z" }, "limit": 100 }, "error": null },
+    { "query": { "dataset": "deployments", "measure": { "op": "avg", "field": "duration_seconds" }, "filters": [{ "field": "duration_seconds", "op": "gte", "value": 30 }, { "field": "environment", "op": "eq", "value": "production" }] }, "error": null },
+    { "query": { "dataset": "spend", "measure": { "op": "sum", "field": "amount_micros" }, "group_by": "product", "interval": "month" }, "error": null },
+    { "query": { "dataset": "agent_sessions", "measure": { "op": "count" }, "group_by": "agent", "range": { "from": "2024-02-29", "to": "2024-03-01" } }, "error": null },
+
+    { "query": { "dataset": "issues", "measure": { "op": "count", "field": "comments" } }, "error": "count takes no field." },
+    { "query": { "dataset": "issues", "measure": { "op": "rate" } }, "error": "rate needs a field." },
+    { "query": { "dataset": "issues", "measure": { "op": "rate", "field": "comments" } }, "error": "issues has no yes-or-no field comments to take the rate of." },
+    { "query": { "dataset": "issues", "measure": { "op": "sum" } }, "error": "sum needs a field." },
+    { "query": { "dataset": "pull_requests", "measure": { "op": "avg", "field": "merged" } }, "error": "pull_requests has no number field merged." },
+    { "query": { "dataset": "pull_requests", "measure": { "op": "count" }, "group_by": "author" }, "error": "pull_requests can't be grouped by author." },
+    { "query": { "dataset": "pull_requests", "measure": { "op": "count" }, "time": "deployed_at" }, "error": "pull_requests has no time field deployed_at." },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "count" }, "filters": [{ "field": "workflow", "op": "in", "value": [] }] }, "error": "in on workflow takes a list of 1 to 50 values." },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "count" }, "filters": [{ "field": "workflow", "op": "eq", "value": 3 }] }, "error": "eq on workflow takes text." },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "count" }, "filters": [{ "field": "branch", "op": "gte", "value": "main" }] }, "error": "branch is text: filter it with eq, neq or in." },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "count" }, "filters": [{ "field": "duration_seconds", "op": "in", "value": ["1"] }] }, "error": "duration_seconds is a number: filter it with eq, neq, gte or lte." },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "count" }, "filters": [{ "field": "duration_seconds", "op": "lte", "value": "60" }] }, "error": "lte on duration_seconds takes a number." },
+    { "query": { "dataset": "workflow_runs", "measure": { "op": "count" }, "filters": [{ "field": "secret", "op": "eq", "value": "x" }] }, "error": "workflow_runs can't be filtered by secret." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "range": { "from": "2026-02-30", "to": "2026-03-10" } }, "error": "A range's from and to are dates or RFC 3339 UTC times." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "range": { "from": "2026-03-10", "to": "2026-03-10" } }, "error": "A range's from comes before its to." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "range": { "from": "2025-01-01", "to": "2026-01-03" } }, "error": "A range is at most 366 days." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "range": { "from": "yesterday", "to": "today" } }, "error": "A range's from and to are dates or RFC 3339 UTC times." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "limit": 101 }, "error": "limit is between 1 and 100." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "limit": 0 }, "error": "limit is between 1 and 100." },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "filters": [
+      { "field": "repo", "op": "eq", "value": "a" }, { "field": "repo", "op": "eq", "value": "b" }, { "field": "repo", "op": "eq", "value": "c" },
+      { "field": "repo", "op": "eq", "value": "d" }, { "field": "repo", "op": "eq", "value": "e" }, { "field": "repo", "op": "eq", "value": "f" },
+      { "field": "repo", "op": "eq", "value": "g" }, { "field": "repo", "op": "eq", "value": "h" }, { "field": "repo", "op": "eq", "value": "i" },
+      { "field": "repo", "op": "eq", "value": "j" }, { "field": "repo", "op": "eq", "value": "k" }
+    ] }, "error": "A query takes at most 10 filters." },
+
+    { "query": { "dataset": "secrets", "measure": { "op": "count" } }, "error": "*" },
+    { "query": { "dataset": "issues", "measure": { "op": "median" } }, "error": "*" },
+    { "query": { "dataset": "issues" }, "error": "*" },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "range": "1y" }, "error": "*" },
+    { "query": { "dataset": "issues", "measure": { "op": "count" }, "interval": "hour" }, "error": "*" },
+    { "query": "SELECT * FROM issues", "error": "*" }
+  ]
+}

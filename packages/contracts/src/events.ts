@@ -488,6 +488,36 @@ export type EventPayloads = {
    * (`stalePagesForAgent` in docs.ts).
    */
   "doc.page.stale": DocPageEventData & { repoId: string; repo: string; commit: string; pull: number | null; paths: string[]; owners: string[] };
+  /**
+   * Artifacts (folios, services/docs): a folio was made. Like `doc.page.*`,
+   * published with no `repoId`, never offered to webhooks, and readers check
+   * access with the docs service before showing anything of it. Not
+   * published yet: Phase 1 of docs/ARTIFACTS_MODE.md starts them.
+   */
+  "folio.created": FolioEventData;
+  /** A folio's content changed: a version (`versionKind`) with everyone whose changes are in it. */
+  "folio.updated": FolioEventData & { versionId: string; versionKind: "edit" | "agent" | "suggestion" | "proposal" | "restore"; authors: string[] };
+  /** A folio went to the trash (with everything under it; one event for the folio asked about). */
+  "folio.trashed": FolioEventData;
+  "folio.restored": FolioEventData;
+  /** Someone was given access: who (member keys) and the role. Never content. */
+  "folio.shared": FolioEventData & { principals: string[]; role: "view" | "comment" | "edit" | "manage" };
+  /** Code a folio cites changed. The repository is in `data` as `owner/name` only. */
+  "folio.stale": FolioEventData & { repo: string; commit: string; pull: number | null; paths: string[]; owners: string[] };
+};
+
+/**
+ * What every `folio.*` event carries. `title` is null unless every member
+ * of the workspace can read the folio, so a private folio's name never
+ * travels.
+ */
+export type FolioEventData = {
+  workspace: string;
+  workspaceId: string;
+  folioId: string;
+  kind: "doc" | "slides" | "design" | "dashboard";
+  spaceId: string | null;
+  title: string | null;
 };
 
 /** What every `doc.page.*` event carries. */

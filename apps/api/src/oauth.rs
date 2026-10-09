@@ -119,7 +119,7 @@ fn server_metadata(addresses: &Addresses) -> Value {
         "token_endpoint_auth_methods_supported": ["none"],
         // A client may ask for some of these with `scope`; the person
         // approving can trim them. Asking for none gives the agent preset.
-        "scopes_supported": g1t_contracts::scopes::Scope::ALL.map(|scope| scope.as_str()).to_vec(),
+        "scopes_supported": g1t_contracts::scopes::offered_scopes().iter().map(|scope| scope.as_str()).collect::<Vec<_>>(),
         "service_documentation": "https://docs.g1t.sh/guides/authentication/",
     })
 }
@@ -245,7 +245,7 @@ pub async fn handle(
                 "authorization_servers": [services.addresses.api],
                 "bearer_methods_supported": ["header"],
                 "resource_documentation": "https://docs.g1t.sh/guides/bring-your-own-agent/",
-                "scopes_supported": g1t_contracts::scopes::Scope::ALL.map(|scope| scope.as_str()).to_vec(),
+                "scopes_supported": g1t_contracts::scopes::offered_scopes().iter().map(|scope| scope.as_str()).collect::<Vec<_>>(),
             }))?
         }
         ("POST", "/oauth/register") => register(request).await?,

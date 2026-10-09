@@ -796,3 +796,25 @@ Conflict hotspots are kept to one-line registry appends: `kinds/index.ts`, `comp
 - `packages/contracts/src/docs.ts`: the source for the new `folios.ts` and `datasets.ts`.
 - `apps/web/app/routes.ts`, plus `apps/web/app/lib/workspace-nav.ts`, `apps/web/app/components/rail.tsx` and `apps/web/app/components/shell.tsx`: mode wiring.
 - `services/agents/src/tools.ts` and `apps/api/src/tools.rs`: agent and MCP tools.
+
+---
+
+## 10. Decided in Phase 0
+
+Phase 0 shipped the contracts with no runtime change. Where this plan was open, it settled these:
+
+- **Scopes not offered yet.** `artifacts:read|write|admin` are in `Scope::ALL` (at the end) behind `Resource::offered()`, which is false for Artifacts. Presets, full access as a list (`everything()`), OAuth's `scopes_supported`, `parse_scopes` and `resolve_permissions` leave them out, and no operation needs them. The TypeScript mirror keeps them in `UPCOMING_SCOPES` and `UPCOMING_RESOURCES`, so the token form, the OAuth checklist and apps/docs never show them. Phase 3 makes `offered()` true, moves the rows to the end of `SCOPES` and `SCOPE_RESOURCES`, adds `artifacts:read` to the presets and adds the docs scope table.
+- **Dataset catalog.** Section 3.4 named the datasets. Phase 0 fixed their fields (`DATASETS` in `datasets.ts` and `datasets.rs`):
+  - per dataset: `times` (the default first), `dimensions` (text), `measures` (numbers) and `rates` (yes-or-no, for `rate`);
+  - `DatasetQuery.time` picks the time field;
+  - `DatasetResult.partial` drives "Based on what you can see";
+  - limits: 10 filters, 50 values per `in`, 100 rows, and a `{ from, to }` range of at most 366 days, given as dates or RFC 3339 UTC times.
+  The 5a services implement exactly these fields.
+- **Three more RPC methods.** `folio_content` and `edit_folio` are a person's (or their token's) read and edit in the agent form, for REST `/content` and the MCP `get`/`edit` actions. `query_dataset` is a person's query, for `POST /datasets/query` and MCP `query_data`. `FolioAccessChange` also carries `inherit` and `agent_mode` changes. The client sends grants and revokes to `set_folio_grant` and the rest to `set_folio_general_access`.
+- **Events.** Payloads are camelCase, like every event on the bus. `title` is null unless the whole workspace can read the folio. `folio.updated` uses `versionKind`, because `kind` is the folio's kind. `folio.stale` names the repository as `owner/name` only. `FOLIO_EVENTS` and the payload structs are in `folios.rs` (re-exported from `events.rs`). `subscribers.rs` is untouched until Phase 1 publishes them.
+- **Validators.**
+  - They are pure and return an error sentence or null (`Result` in Rust), and the words are the same in both languages.
+  - Shared cases in `datasets.fixtures.json` and `folios.fixtures.json` are run by both test suites.
+  - Contracts files import only types from each other, because Node runs the tests on the files as they are. So `dashboardOpError` takes the query validator (`datasetQueryError`) as an argument.
+- **Ids.** `fol_` for folios and `prp_` for proposals. Versions, templates and files keep `ver_`, `tpl_` and `fil_`.
+- **Slides themes** are a slug plus an optional `#rrggbb` accent. Phase 4 names the themes.

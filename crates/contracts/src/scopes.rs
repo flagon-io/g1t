@@ -43,10 +43,13 @@ pub enum Resource {
     Secrets,
     Runners,
     Models,
+    /// Artifacts mode's docs, slides, designs and dashboards (folios in
+    /// code). Not offered yet: see [`Resource::offered`].
+    Artifacts,
 }
 
 impl Resource {
-    pub const ALL: [Resource; 21] = [
+    pub const ALL: [Resource; 22] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -68,6 +71,7 @@ impl Resource {
         Resource::Secrets,
         Resource::Runners,
         Resource::Models,
+        Resource::Artifacts,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -93,6 +97,7 @@ impl Resource {
             Resource::Secrets => "secrets",
             Resource::Runners => "runners",
             Resource::Models => "models",
+            Resource::Artifacts => "artifacts",
         }
     }
 
@@ -120,7 +125,18 @@ impl Resource {
             Resource::Secrets => "Secrets and variables",
             Resource::Runners => "Self-hosted runners",
             Resource::Models => "AI Gateway",
+            Resource::Artifacts => "Artifacts",
         }
+    }
+
+    /// Whether tokens are offered it yet. A resource that is not is in the
+    /// table (so its scopes parse, and the TypeScript mirror lists it under
+    /// `UPCOMING_RESOURCES`) but nothing hands it out: presets, full
+    /// access, OAuth and the token form leave it out, and no operation
+    /// needs it. Artifacts is offered once its API ships (Phase 3 of
+    /// docs/ARTIFACTS_MODE.md).
+    pub fn offered(self) -> bool {
+        !matches!(self, Resource::Artifacts)
     }
 }
 
@@ -194,11 +210,14 @@ pub enum Scope {
     RunnersAdmin,
     ModelsRead,
     ModelsWrite,
+    ArtifactsRead,
+    ArtifactsWrite,
+    ArtifactsAdmin,
 }
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 42] = [
+    pub const ALL: [Scope; 45] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -241,6 +260,9 @@ impl Scope {
         Scope::RunnersAdmin,
         Scope::ModelsRead,
         Scope::ModelsWrite,
+        Scope::ArtifactsRead,
+        Scope::ArtifactsWrite,
+        Scope::ArtifactsAdmin,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -287,6 +309,9 @@ impl Scope {
             Scope::RunnersAdmin => "runners:admin",
             Scope::ModelsRead => "models:read",
             Scope::ModelsWrite => "models:write",
+            Scope::ArtifactsRead => "artifacts:read",
+            Scope::ArtifactsWrite => "artifacts:write",
+            Scope::ArtifactsAdmin => "artifacts:admin",
         }
     }
 
@@ -370,8 +395,21 @@ impl Scope {
             Scope::RunnersAdmin => "Register and remove self-hosted runners, change their groups and settings",
             Scope::ModelsRead => "See the workspace's AI Gateway requests: their models, tokens, cost and status",
             Scope::ModelsWrite => "Send model requests through the AI Gateway, which uses the workspace's AI credit",
+            Scope::ArtifactsRead => "List, read and search artifacts you can see, their versions, and the numbers their dashboards show",
+            Scope::ArtifactsWrite => "Create, rename, move, edit, trash and restore artifacts, and propose changes to them",
+            Scope::ArtifactsAdmin => "Share artifacts, change who can open them, and delete them for good",
         }
     }
+
+    /// Whether tokens are offered it yet: its resource's [`Resource::offered`].
+    pub fn offered(self) -> bool {
+        self.resource().offered()
+    }
+}
+
+/// Every scope tokens are offered, in table order: what OAuth advertises.
+pub fn offered_scopes() -> Vec<Scope> {
+    Scope::ALL.into_iter().filter(|scope| scope.offered()).collect()
 }
 
 impl Serialize for Scope {
@@ -394,6 +432,7 @@ pub fn parse_scopes(text: &str) -> Vec<Scope> {
     let mut scopes: Vec<Scope> = text
         .split(|c: char| c.is_whitespace() || c == ',')
         .filter_map(Scope::parse)
+        .filter(|scope| scope.offered())
         .collect();
     normalize(&mut scopes);
     scopes
@@ -438,7 +477,7 @@ impl Resource {
     pub fn group(self) -> ResourceGroup {
         match self {
             Resource::Account | Resource::Notifications => ResourceGroup::Account,
-            Resource::Workspace | Resource::Billing | Resource::Runners | Resource::Models => ResourceGroup::Workspace,
+            Resource::Workspace | Resource::Billing | Resource::Runners | Resource::Models | Resource::Artifacts => ResourceGroup::Workspace,
             _ => ResourceGroup::Repository,
         }
     }
@@ -477,7 +516,7 @@ pub fn top_scopes(scopes: &[Scope]) -> Vec<Scope> {
 
 /// Every resource at its highest level: all a token can be given.
 pub fn everything() -> Vec<Scope> {
-    top_scopes(&Scope::ALL)
+    top_scopes(&offered_scopes())
 }
 
 /// Scopes as permissions: each resource held, by name, at its highest
@@ -495,7 +534,7 @@ pub fn permissions_of(scopes: &[Scope]) -> std::collections::BTreeMap<String, St
 pub fn resolve_permissions(asked: &std::collections::BTreeMap<String, String>, personal: bool) -> Result<Vec<Scope>, String> {
     let mut scopes = Vec::new();
     for (name, level) in asked {
-        let Some(resource) = Resource::parse(name) else {
+        let Some(resource) = Resource::parse(name).filter(|resource| resource.offered()) else {
             return Err(format!("There is no permission called {name}."));
         };
         let level = level.trim().to_ascii_lowercase();
@@ -550,7 +589,7 @@ impl Preset {
 
     /// Its scopes; `None` for full access.
     pub fn scopes(self) -> Option<Vec<Scope>> {
-        let reads = || Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read);
+        let reads = || Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read && scope.offered());
         match self {
             Preset::ReadOnly => Some(reads().collect()),
             Preset::Agent => {
@@ -1400,8 +1439,8 @@ mod tests {
         assert!(scopes.contains(&Scope::PullRequestsWrite));
         assert!(scopes.contains(&Scope::AgentsRun));
         assert!(scopes.iter().all(|scope| !scope.dangerous()), "{scopes:?}");
-        for read in Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read) {
-            // Every read but the machines work runs on.
+        for read in Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read && scope.offered()) {
+            // Every read offered but the machines work runs on.
             assert_eq!(scopes.contains(&read), read != Scope::RunnersRead, "{read:?}");
         }
         assert!(Preset::ReadOnly.scopes().unwrap().iter().all(|scope| scope.level() == Level::Read));
@@ -1436,6 +1475,31 @@ mod tests {
         assert!(token(&[Scope::ModelsWrite]).allows(Scope::ModelsWrite));
         assert!(!token(&[Scope::BillingWrite]).allows(Scope::ModelsWrite));
         assert!(TokenAccess::full().allows(Scope::ModelsWrite));
+    }
+
+    #[test]
+    fn artifacts_scopes_exist_but_are_not_offered_yet() {
+        for scope in [Scope::ArtifactsRead, Scope::ArtifactsWrite, Scope::ArtifactsAdmin] {
+            assert_eq!(scope.resource(), Resource::Artifacts);
+            assert!(!scope.offered());
+            assert_eq!(Scope::parse(scope.as_str()), Some(scope));
+            // Nothing hands it out: not presets, full access, OAuth or the form.
+            for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
+                assert!(!preset.scopes().unwrap().contains(&scope), "{}", preset.as_str());
+            }
+            assert!(!everything().contains(&scope));
+            assert!(!offered_scopes().contains(&scope));
+            assert!(!oauth_default().contains(&scope));
+            assert!(parse_scopes(scope.as_str()).is_empty());
+            // And no operation needs it yet.
+            assert!(OPERATIONS.iter().all(|(_, needed)| *needed != scope));
+        }
+        assert!(Scope::ArtifactsAdmin.includes(Scope::ArtifactsWrite));
+        assert!(Scope::ArtifactsAdmin.dangerous());
+        assert_eq!(Resource::Artifacts.group(), ResourceGroup::Workspace);
+        let asked = std::collections::BTreeMap::from([("artifacts".to_owned(), "read".to_owned())]);
+        assert_eq!(resolve_permissions(&asked, true), Err("There is no permission called artifacts.".to_owned()));
+        assert_eq!(offered_scopes().len(), Scope::ALL.len() - 3);
     }
 
     #[test]
@@ -1543,10 +1607,10 @@ mod tests {
         assert!(!back.contains_key("code"));
         // Lower levels held beside a higher one say nothing more.
         assert_eq!(top_scopes(&[Scope::RepoRead, Scope::RepoAdmin, Scope::RepoWrite]), vec![Scope::RepoAdmin]);
-        // Every resource's top, and nothing a level can lose.
+        // Every offered resource's top, and nothing a level can lose.
         let all = everything();
-        assert_eq!(all.len(), Resource::ALL.len());
-        for scope in Scope::ALL {
+        assert_eq!(all.len(), Resource::ALL.into_iter().filter(|resource| resource.offered()).count());
+        for scope in offered_scopes() {
             assert!(all.iter().any(|held| held.includes(scope)), "{scope:?}");
         }
     }
@@ -1688,12 +1752,17 @@ mod tests {
                 .map(|(table, _)| table)
                 .unwrap_or_else(|| panic!("{start} in scopes.ts"))
         };
-        let scopes: Vec<&str> = section("export const SCOPES = [")
-            .lines()
-            .filter_map(|line| line.split_once("scope: \"").and_then(|(_, rest)| rest.split_once('"')).map(|(scope, _)| scope))
-            .collect();
-        let expected: Vec<&str> = Scope::ALL.iter().map(|scope| scope.as_str()).collect();
-        assert_eq!(scopes, expected);
+        let names = |table: &str| -> Vec<String> {
+            section(table)
+                .lines()
+                .filter_map(|line| line.split_once("scope: \"").and_then(|(_, rest)| rest.split_once('"')).map(|(scope, _)| scope.to_owned()))
+                .collect()
+        };
+        // Offered scopes in `SCOPES`, the rest in `UPCOMING_SCOPES`.
+        let offered: Vec<String> = Scope::ALL.iter().filter(|scope| scope.offered()).map(|scope| scope.as_str().to_owned()).collect();
+        let upcoming: Vec<String> = Scope::ALL.iter().filter(|scope| !scope.offered()).map(|scope| scope.as_str().to_owned()).collect();
+        assert_eq!(names("export const SCOPES = ["), offered);
+        assert_eq!(names("export const UPCOMING_SCOPES = ["), upcoming);
         let operations: Vec<(String, String)> = section("export const OPERATION_SCOPES = [")
             .lines()
             .filter_map(|line| {
@@ -1719,18 +1788,22 @@ mod tests {
                 .unwrap_or_else(|| vec!["*"]);
             assert_eq!(mirrored, expected, "{}", preset.as_str());
         }
-        // Each resource with its group, in the same order.
-        let resources = ts
-            .split_once("export const SCOPE_RESOURCES")
-            .and_then(|(_, rest)| rest.split_once("
+        // Each resource with its group, in the same order: offered ones in
+        // `SCOPE_RESOURCES`, the rest in `UPCOMING_RESOURCES`.
+        for (table, offered) in [("export const SCOPE_RESOURCES", true), ("export const UPCOMING_RESOURCES", false)] {
+            let resources = ts
+                .split_once(table)
+                .and_then(|(_, rest)| rest.split_once("
 ];"))
-            .map(|(table, _)| table)
-            .expect("SCOPE_RESOURCES in scopes.ts");
-        let rows: Vec<&str> = resources.lines().filter(|line| line.trim_start().starts_with("{ resource:")).collect();
-        assert_eq!(rows.len(), Resource::ALL.len());
-        for (row, resource) in rows.iter().zip(Resource::ALL) {
-            assert!(row.contains(&format!("resource: \"{}\"", resource.as_str())), "{row}");
-            assert!(row.contains(&format!("group: \"{}\"", resource.group().as_str())), "{row}");
+                .map(|(table, _)| table)
+                .unwrap_or_else(|| panic!("{table} in scopes.ts"));
+            let rows: Vec<&str> = resources.lines().filter(|line| line.trim_start().starts_with("{ resource:")).collect();
+            let expected: Vec<Resource> = Resource::ALL.into_iter().filter(|resource| resource.offered() == offered).collect();
+            assert_eq!(rows.len(), expected.len(), "{table}");
+            for (row, resource) in rows.iter().zip(expected) {
+                assert!(row.contains(&format!("resource: \"{}\"", resource.as_str())), "{row}");
+                assert!(row.contains(&format!("group: \"{}\"", resource.group().as_str())), "{row}");
+            }
         }
     }
 }
