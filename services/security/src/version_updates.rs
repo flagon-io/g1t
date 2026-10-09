@@ -95,7 +95,7 @@ pub fn package_ecosystem(osv: &str) -> Option<&'static str> {
 }
 
 /// A package name as its ecosystem compares names.
-fn normalize(ecosystem: &str, name: &str) -> String {
+pub(crate) fn normalize(ecosystem: &str, name: &str) -> String {
     if ecosystem == "pip" { manifests::python_name(name) } else { name.to_owned() }
 }
 
@@ -899,6 +899,11 @@ impl Security {
                 self.open_update_pull(&repo, &row, after).await?;
                 Ok(true)
             }
+            // No longer needed by the time its sandbox pushed: the branch goes.
+            UpdateState::Superseded if row.pull().is_none() => {
+                self.drop_pushed(repo_id, branch, after).await?;
+                Ok(true)
+            }
             _ => Ok(true),
         }
     }
@@ -978,8 +983,13 @@ impl Security {
                 continue;
             }
             self.store.set_update_pull(&older.id, UpdateState::Superseded, older.pull(), None, None).await?;
-            if let Some(number) = older.pull() {
-                self.close_with(repo, number, format!("Superseded by #{}.", pull.number)).await?;
+            if let Some(number) = older.pull()
+                && let Some(found) = self.get_pull(repo, number).await?
+                && matches!(found.status, PullStatus::Open | PullStatus::Draft)
+                && self.close_with(repo, number, format!("Closed: superseded by #{}.", pull.number)).await?
+                && older.branch != row.branch
+            {
+                self.delete_pull_branch(repo, &Pull { status: PullStatus::Closed, ..found }).await;
             }
         }
         // A grouped security update stands for each package's own.

@@ -284,6 +284,7 @@ impl Work {
             &DeleteBranchArgs {
                 repo_id: row.repo_id.clone(),
                 branch: row.branch(),
+                head: None,
             },
         )
         .await;
