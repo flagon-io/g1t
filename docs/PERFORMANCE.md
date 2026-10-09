@@ -489,7 +489,7 @@ push. A 15-commit push of 437 objects (358 KB) to flagon-io/g1t on
 2026-10-09 answered 503 twice and took 23 s the third time. The next step
 is to stop needing bases: see "Pushes" in docs/ARTIFACTS.md.
 
-Step 1 of that, built and not yet deployed: the receive-pack advertisement
+Step 1 of that, deployed 2026-10-09 22:46 UTC (180b34af): the receive-pack advertisement
 g1t forwards says `no-thin` (`git_http.rs` `with_no_thin`), so git sends
 every delta's base in the pack and `read` has nothing to fetch: it should
 fall from 267–318 ms to the few milliseconds it takes to parse the pack,
@@ -501,6 +501,33 @@ a little for those. A push that arrives thin anyway says `thin;desc=yes` in
 at a time, at most 200, and not at all once the store says it is busy
 (the 503 above came from all of them at once tripping the store's
 breaker; see docs/ARTIFACTS.md).
+
+Measured after it shipped (2026-10-09 ~23:10 UTC, three pushes of 5 small
+files to flagon-io/automation-lab, the first in a cold isolate):
+
+| `receive-pack` step | After step 1 |
+| --- | --- |
+| `thin` | `no` on all three |
+| `read` | 0 ms |
+| `scan` | 329, 737, 954 ms |
+| `rules` | 233 (cold), 43, 47 ms |
+| `upload` | 586, 499, 1,118 ms |
+| `refs` | 56, 1,774, 51 ms |
+| Total | 1,089, 3,223, 2,256 ms |
+
+`read` is gone, and a large push no longer fans out into store reads that
+trip the breaker: a 27-commit push of main sent with `--no-thin` just before
+this deploy took 9 s where the thin one answered 503. A small push is not
+faster yet. The scan diffs each commit against its parent, so it reads the
+parent's tree and every older subtree it walks from the store; a thin pack
+used to bring those trees in as delta bases, so the reads moved from `read`
+into `scan`. The store was also slow during these runs (`upload` up to
+1.1 s, an `info/refs` store step of 1.08 s), so the figures are noisy.
+
+The next step for small pushes: after a push is accepted, keep the trees it
+carried in the data centre's cache under their hashes (the cache
+`read_tree` already looks in), so the next push to the branch finds its
+parent's trees there instead of in the store.
 
 ## Client navigation
 
