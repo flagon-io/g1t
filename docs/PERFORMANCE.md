@@ -513,6 +513,10 @@ powershell -File scripts/perf/measure.ps1 -BrowserUA -Runs 7 -Out before.csv
 # Signed in: your g1t_session cookie's value, from DevTools; never printed
 $env:G1T_SESSION = "<64 hex>"
 powershell -File scripts/perf/measure.ps1 -Runs 7 -Pull 12 -Issue 11 -Out before-signed-in.csv
+# Or signed in with an access token that may use the website: the path of
+# the file holding it (the token is never printed or put on a command line)
+$env:G1T_TOKEN_FILE = "$HOME\.config\g1t\website-token"
+powershell -File scripts/perf/measure.ps1 -Runs 7 -Out before-token.csv
 ```
 
 It prints p50 and p90 of the server's share (TLS handshake done to first

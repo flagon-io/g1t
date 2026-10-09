@@ -58,6 +58,7 @@ next free id in the Worker's block; a new Worker takes the next block.
 | `WEB_ADDRESS_LIMIT` | 4204 | 3,000 | address | web: every request that reaches the Worker; stops made-up cookies getting round the signed-out limit |
 | `GIT_ANONYMOUS_LIMIT` | 4205 | 120 | address | web: git smart HTTP without `Authorization` (~40 clones) |
 | `GIT_SIGNED_LIMIT` | 4206 | 1,200 | `Authorization` hash | web: git smart HTTP with credentials, sandboxes' included |
+| `WEB_TOKEN_LIMIT` | 4207 | 1,000 | token hash | web: pages and data requests with `Authorization: Bearer` (a token used on the website, not checked there); the same limit as `API_TOKEN_LIMIT`, counted apart |
 | `PACK_FILL_LIMIT` | 4301 | 30 | repository id | repos `src/limits.rs`: packs written to `GIT_PACKS`; past it the pack is streamed, not kept |
 | `ANONYMOUS_FETCH_LIMIT` | 4302 | 120 | repository id | repos: anonymous fetches the git store answers (cache hits never count) |
 | `API_ANONYMOUS_LIMIT` | 4401 | 60 | `rest:`/`mcp:` + address | api `src/limits.rs`: no token, or a wrong one |

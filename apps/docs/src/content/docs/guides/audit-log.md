@@ -76,7 +76,7 @@ only ever added: nothing edits or removes one.
 | Actor | Who did it: a person, an agent, or a workspace token. |
 | On behalf of | For an agent, the person it worked for: `g1t on behalf of syntaqx`. |
 | Run | The agent run, with its kind: `implement`, `review`, `update` and so on; or the workflow run whose job's token did it, as `workflow_job`. |
-| Credential | The id of the token used. |
+| Credential | The id of the token used: on the API, the MCP server or git, or on g1t.sh by a token [used on the website](/guides/authentication/#use-a-token-on-the-website). Empty for a person signed in on g1t.sh. |
 | Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
 | Target | The repository, the issue or pull request number, and for git the refs it moved. |
 | Outcome | `allowed` or `denied`. |
