@@ -6,12 +6,14 @@
  */
 import { reposClient } from "@g1t/contracts";
 
-import { MAX_RAW_BYTES, isCommit, parseRawPath, rawHeaders, verifyRaw } from "../app/lib/usercontent";
+import { MAX_RAW_BYTES, PDF_POLICY, USERCONTENT_POLICY, isCommit, parseRawPath, rawHeaders, verifyRaw } from "../app/lib/usercontent";
 
 /** An uploaded avatar, by the SHA-256 of its bytes. */
 export const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
 /** A workspace's custom emoji, by the SHA-256 of its bytes: kept by chat under `emoji/<hash>` in the same namespace. */
 export const EMOJI_PATH = /^\/emoji\/([0-9a-f]{64})$/;
+/** A file put in a Docs page, by its random key: kept by the docs service (services/docs). */
+export const DOCS_FILE_PATH = /^\/docs-files\/([0-9a-f]{64})$/;
 /** The only types identity stores, having checked each image's bytes. */
 const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
@@ -40,6 +42,8 @@ export async function serveUsercontent(env: Env, ctx: ExecutionContext, request:
   if (avatar) return serveAvatar(env, ctx, method, avatar[1]!, new URL(request.url).origin);
   const emoji = EMOJI_PATH.exec(path);
   if (emoji) return serveAvatar(env, ctx, method, `emoji/${emoji[1]!}`, new URL(request.url).origin);
+  const docsFile = DOCS_FILE_PATH.exec(path);
+  if (docsFile) return serveDocsFile(env, method, docsFile[1]!);
   const file = parseRawPath(path);
   if (file) return serveRaw(env, request, method, file);
   return plain(404, "Not found", "public, max-age=300");
@@ -113,4 +117,25 @@ async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, key:
   };
   ctx.waitUntil(cache.put(cacheKey, new Response(value, { headers })));
   return new Response(method === "HEAD" ? null : value, { headers });
+}
+
+/**
+ * A file put in a Docs page. Its key is 256 random bits the docs service
+ * made, so the address is the permission, as a shared link is; the docs
+ * service serves images, media and PDFs as themselves and everything else
+ * as a download, and nothing here can run script.
+ */
+async function serveDocsFile(env: Env, method: string, key: string): Promise<Response> {
+  let answer: Response;
+  try {
+    answer = await env.DOCS.fetch(`https://docs/files/${key}`, { method });
+  } catch {
+    return plain(503, "Docs didn't answer");
+  }
+  if (!answer.ok) return plain(answer.status === 404 ? 404 : 502, "Not found", "public, max-age=60");
+  const headers = new Headers(answer.headers);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("content-security-policy", headers.get("content-type") === "application/pdf" ? PDF_POLICY : USERCONTENT_POLICY);
+  headers.set("cross-origin-resource-policy", "cross-origin");
+  return new Response(method === "HEAD" ? null : answer.body, { status: 200, headers });
 }

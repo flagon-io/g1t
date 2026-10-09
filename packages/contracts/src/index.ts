@@ -13,6 +13,7 @@ export * from "./codeowners";
 export * from "./compute";
 export * from "./context";
 export * from "./d1";
+export * from "./docs";
 export * from "./deploy-keys";
 export * from "./deployments";
 export * from "./events";

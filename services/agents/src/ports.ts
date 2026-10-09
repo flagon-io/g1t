@@ -7,7 +7,9 @@
 import {
   type ServiceBinding,
   type User,
+  type DocPageRef,
   chatClient,
+  docsClient,
   identityClient,
   reposClient,
   searchClient,
@@ -15,7 +17,7 @@ import {
 } from "@g1t/contracts";
 
 import type { AudiencePorts, RepoRef } from "./audience.ts";
-import type { FoundMessage, ToolPorts } from "./tools.ts";
+import type { DocsPorts, FoundMessage, ToolPorts } from "./tools.ts";
 
 export type PortsEnv = {
   DB: D1Database;
@@ -24,6 +26,8 @@ export type PortsEnv = {
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
   SEARCH: ServiceBinding;
+  /** Docs, for agents reading and writing pages; absent on an installation without it. */
+  DOCS?: ServiceBinding;
 };
 
 const refOf = (repo: { id: string; namespace: string; name: string; isPrivate: boolean; defaultBranch: string; forkOf?: string | null }): RepoRef => ({
@@ -64,6 +68,7 @@ export function toolPorts(
   workspaceId: string,
   channelId: string,
   consult: ToolPorts["consult"],
+  agentId: string | null = null,
 ): ToolPorts {
   const repos = reposClient(env.REPOS);
   const work = workClient(env.WORK);
@@ -151,5 +156,56 @@ export function toolPorts(
       return `People:\n${people}${teamLines ? `\n\nTeams:\n${teamLines}` : ""}\n\nAgents:\n${agentLines}`;
     },
     consult,
+    ...(env.DOCS && agentId ? { docs: docsPorts(env.DOCS, workspace, agentId) } : {}),
+  };
+}
+
+/** Docs as an agent reads and writes them: Markdown in, Markdown out, every call checked by the docs service. */
+function docsPorts(binding: ServiceBinding, workspace: string, agentId: string): DocsPorts {
+  const docs = docsClient(binding);
+  const where = (page: DocPageRef) => `${page.title} (${page.path}, id ${page.id})`;
+  return {
+    async spaces(viewer, audience) {
+      const found = await docs.spacesForAgent(workspace, agentId, viewer, audience);
+      if (!found.ok) return null;
+      if (!found.value.length) return "There are no Docs spaces everyone here can read.";
+      return found.value
+        .map((s) => {
+          const can = s.can.edit ? "you can edit" : s.can.suggest ? "you can suggest edits" : "read only";
+          const projects = s.projects?.length ? `; about ${s.projects.join(", ")}` : "";
+          return `- ${s.name} (id ${s.id}, ${s.kind}; ${can}${projects})${s.description ? `: ${s.description}` : ""}`;
+        })
+        .join("\n");
+    },
+    async search(viewer, audience, query, project) {
+      const found = await docs.searchForAgent(workspace, agentId, viewer, { query, project, limit: 10 }, audience);
+      if (!found.ok) return null;
+      if (!found.value.length) return "No pages found.";
+      return found.value.map((hit) => `- ${where(hit)} in ${hit.space_name}, updated ${hit.updated_at.slice(0, 10)}: ${hit.snippet.replace(/\[\[|\]\]/g, "")}`).join("\n");
+    },
+    async read(viewer, audience, pageId) {
+      const found = await docs.pageMarkdown(workspace, agentId, viewer, pageId, audience);
+      if (!found.ok) return null;
+      const p = found.value;
+      const can = p.can.edit ? "you can edit it" : p.can.suggest ? "you can suggest edits" : "you can only read it";
+      const blocks = p.blocks.map((b) => `${b.id} ${b.type}${b.level ? ` ${b.level}` : ""}`).join(", ");
+      return `# ${where(p.page)}\nSpace: ${p.space.name}; ${can}. Updated ${p.page.updated_at.slice(0, 16)}.\nTop-level blocks: ${blocks}\n\n${p.markdown}`;
+    },
+    async edit(viewer, pageId, edit, suggestOnly) {
+      const done = suggestOnly
+        ? await docs.suggestEdit(workspace, agentId, viewer, pageId, edit).then((r) => (r.ok ? { ok: true as const, value: { mode: "suggested" as const, suggestion: r.value, page: null } } : r))
+        : await docs.applyEdit(workspace, agentId, viewer, pageId, edit);
+      if (!done.ok) return { ok: false, message: `That didn't work: ${done.error.message}` };
+      const v = done.value;
+      const page = v.page ? ` on ${where(v.page)}` : "";
+      return v.mode === "applied"
+        ? { ok: true, message: `Changed${page}. It's in the page's history as yours.` }
+        : { ok: true, message: `Suggested${page}: people accept or reject it on the page. Link the page so they can.` };
+    },
+    async create(viewer, input) {
+      const made = await docs.createPageAsAgent(workspace, agentId, viewer, input);
+      if (!made.ok) return { ok: false, message: `The page couldn't be made: ${made.error.message}` };
+      return { ok: true, message: `Wrote ${where(made.value)}. Link it.` };
+    },
   };
 }

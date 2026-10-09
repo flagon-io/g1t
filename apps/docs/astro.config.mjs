@@ -82,7 +82,7 @@ export default defineConfig({
 						{ label: 'Routines', slug: 'guides/agent-routines' },
 						{ label: 'Agent budgets and spend', slug: 'guides/agent-budgets' },
 						{ label: 'What agents can do for whom', slug: 'guides/agent-access' },
-						{ label: 'Docs', slug: 'guides/docs', badge: { text: 'Soon', variant: 'default' } },
+						{ label: 'Docs', slug: 'guides/docs' },
 						{ label: 'Agents in your chat app', slug: 'guides/chat-app', badge: { text: 'Soon', variant: 'default' } },
 					],
 				},

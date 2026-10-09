@@ -257,3 +257,37 @@ test("agents comment and review on issues and pull requests only where the asker
   const noCode = await Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], { cal: [WEB.id] }));
   assert.ok(!new ToolBox(noCode, readPorts, { ...ctx, session: true }, [], ports).definitions().some((t) => t.name === "comment" || t.name === "review_pull"));
 });
+
+// ── Docs, for everyone ───────────────────────────────────────────────────
+
+import { pageId } from "./tools.ts";
+
+test("someone without Code still gets Docs; what they can't read is withheld, never named", async () => {
+  const asked: string[] = [];
+  const docs = {
+    spaces: async () => "- General (id spc_1, workspace; you can suggest edits)",
+    search: async (_v: User, audience: unknown, query: string) => (asked.push(`search:${query}:${JSON.stringify(audience)}`), "- Refunds policy (/acme/-/docs/general/refunds-pag_1, id pag_1)"),
+    read: async (_v: User, _a: unknown, page: string) => (page === "pag_secret" ? null : "# Refunds policy"),
+    edit: async () => ({ ok: true, message: "Suggested" }),
+    create: async () => ({ ok: true, message: "Wrote" }),
+  };
+  const rep = await Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], {}));
+  const box = new ToolBox(rep, { ...readPorts, docs }, ctx, [], actions([]));
+  const names = box.definitions().map((t) => t.name);
+  assert.ok(names.includes("search_docs") && names.includes("read_page") && names.includes("edit_page") && names.includes("create_page"));
+  assert.ok(!names.includes("read_file"), "still no code");
+  await box.run("search_docs", { query: "refund window" });
+  assert.deepEqual(asked, ['search:refund window:{"kind":"people","user_ids":["cal"]}']);
+  assert.equal((await box.run("read_page", { page: "pag_secret" })).text, WITHHELD);
+  assert.match((await box.run("read_page", { page: "/acme/-/docs/general/refunds-pag_1" })).text, /Refunds policy/);
+  assert.equal((await box.run("edit_page", { page: "pag_1", target: "section", markdown: "x" })).outcome, "refused", "a section edit names its heading");
+  // Without a docs service, no docs tools.
+  assert.ok(!new ToolBox(rep, readPorts, ctx, [], actions([])).definitions().some((t) => t.name === "search_docs"));
+});
+
+test("page ids come from ids or links", () => {
+  assert.equal(pageId("pag_01jabc"), "pag_01jabc");
+  assert.equal(pageId("/acme/-/docs/general/refunds-policy-pag_01jabc"), "pag_01jabc");
+  assert.equal(pageId("https://g1t.sh/acme/-/docs/general/refunds-pag_01jabc?x=1"), "pag_01jabc");
+  assert.equal(pageId("   "), null);
+});

@@ -127,6 +127,21 @@
 			],
 			"self_host": "run"
 		},
+		// Docs mode's service. Its Worker is g1t-docs-service: g1t-docs is
+		// the documentation site (apps/docs).
+		"docs-service": {
+			"path": "services/docs",
+			"kind": "ts-worker",
+			"worker": "g1t-docs-service",
+			"d1": { "database": "g1t-docs", "migrations": "migrations" },
+			"stage": "core",
+			"secrets": [],
+			"setup": [
+				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/docs/wrangler.jsonc",
+				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files"
+			],
+			"self_host": "run"
+		},
 		"notify": {
 			"path": "services/notify",
 			"kind": "ts-worker",

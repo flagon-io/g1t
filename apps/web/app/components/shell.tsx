@@ -28,6 +28,7 @@ import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
 import { type ModeKey, SETTINGS_PAGES, modeOf, sidebarCurrent } from "../lib/workspace-nav";
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
+import { DocsSidebar } from "./docs/sidebar";
 import { HelpMenu, Rail } from "./rail";
 import { HomeSidebar } from "./home-sidebar";
 import { G1tMark } from "./orchestrator";
@@ -2056,19 +2057,19 @@ function AskG1tButton({ slug }: { slug: string }) {
 const SIDEBAR_BOX = "h-full border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]";
 
 /**
- * Which sidebar sits beside the rail: each mode's own, or none (Docs, the
- * Inbox, which is a page of its own, and g1t's public pages, such as a
- * profile, which are no workspace's and carry their own left column).
- * Without a workspace (a visitor), the one sidebar there always was.
+ * Which sidebar sits beside the rail: each mode's own, or none (the Inbox,
+ * which is a page of its own, and g1t's public pages, such as a profile,
+ * which are no workspace's and carry their own left column). Without a
+ * workspace (a visitor), the one sidebar there always was.
  */
 function sidebarFor(mode: ModeKey | null): Panel | null {
   if (mode == null) return "code";
-  if (mode === "docs" || mode === "inbox" || mode === "site") return null;
+  if (mode === "inbox" || mode === "site") return null;
   return mode;
 }
 
 /** The sidebars that sit beside the rail, one per mode that has one. */
-type Panel = "home" | "chat" | "agents" | "code" | "workspace" | "account";
+type Panel = "home" | "chat" | "docs" | "agents" | "code" | "workspace" | "account";
 
 /**
  * The app: a sidebar with the workspace, its repositories and the sections
@@ -2144,6 +2145,8 @@ export function AppShell({
         return <HomeSidebar slug={ws.slug} shell={shell} code={code} onFind={find} header={<ModeHeader title="Home" onClose={close} />} />;
       case "chat":
         return <ChatSidebar slug={ws.slug} />;
+      case "docs":
+        return <DocsSidebar slug={ws.slug} onClose={close} />;
       case "agents":
         return <AgentsSidebar slug={ws.slug} shellAgents={shell.agents ?? null} code={code} owner={ws.role === "owner"} />;
       case "workspace":

@@ -156,9 +156,28 @@ export default [
       route("dm/:id", "routes/workspace/chat/channel.tsx", { id: "routes/workspace/chat/dm" }),
       route(":channel", "routes/workspace/chat/channel.tsx"),
     ]),
-    // Docs mode, coming; Home for a member without Code; and what Code's
-    // pages say to them (docs/WORKSPACE.md, "Members without Code").
-    route("-/docs", "routes/workspace/docs.tsx"),
+    // Docs mode (docs/WORKSPACE.md, "Docs"): what its pages call as they
+    // run (a page's live socket, JSON, comments, uploads, export), then
+    // Home, search, templates, the trash, a new space, and each space and
+    // page by its address. A page's address ends in its id, so renaming it
+    // keeps links working.
+    route("-/docs/live", "routes/workspace/docs/live.ts"),
+    route("-/docs/api", "routes/workspace/docs/api.ts"),
+    route("-/docs/threads/:page/*", "routes/workspace/docs/threads.ts"),
+    route("-/docs/upload", "routes/workspace/docs/upload.ts"),
+    route("-/docs/export", "routes/workspace/docs/export.ts"),
+    route("-/docs", "routes/workspace/docs/layout.tsx", [
+      index("routes/workspace/docs/home.tsx"),
+      route("search", "routes/workspace/docs/search.tsx"),
+      route("templates", "routes/workspace/docs/templates.tsx"),
+      route("trash", "routes/workspace/docs/trash.tsx"),
+      route("new", "routes/workspace/docs/new-space.tsx"),
+      route(":space", "routes/workspace/docs/space.tsx"),
+      route(":space/settings", "routes/workspace/docs/space-settings.tsx"),
+      route(":space/:page", "routes/workspace/docs/page.tsx"),
+    ]),
+    // Home for a member without Code, and what Code's pages say to them
+    // (docs/WORKSPACE.md, "Members without Code").
     route("-/home", "routes/workspace/home.tsx"),
     route("-/code-access", "routes/workspace/code-access.tsx"),
     route("-/memory", "routes/workspace/memory.tsx"),

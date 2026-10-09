@@ -18,7 +18,7 @@
  *
  * Pure apart from its ports, so the rules are tested adversarially.
  */
-import type { User } from "@g1t/contracts";
+import type { DocAudience, DocEditTarget, User } from "@g1t/contracts";
 
 import { type Audience, type RepoRef, WITHHELD } from "./audience.ts";
 
@@ -41,6 +41,21 @@ export interface ToolPorts {
   readThread(channelId: string, id: string): Promise<FoundMessage[] | null>;
   roster(viewer: User | null): Promise<string>;
   consult(handle: string, question: string): Promise<{ ok: true; colleague: string; answer: string } | { ok: false; message: string }>;
+  /**
+   * The workspace's Docs, as the docs service lets this agent use them for
+   * the person it acts for and everyone who will read the answer. Absent
+   * where there is no docs service.
+   */
+  docs?: DocsPorts;
+}
+
+/** Docs, as an agent uses them. Every call names the person it acts for and who reads the answer; the docs service checks both. */
+export interface DocsPorts {
+  spaces(viewer: User, audience: DocAudience): Promise<string | null>;
+  search(viewer: User, audience: DocAudience, query: string, project: string | null): Promise<string | null>;
+  read(viewer: User, audience: DocAudience, pageId: string): Promise<string | null>;
+  edit(viewer: User, pageId: string, edit: { target: DocEditTarget; markdown: string; note: string | null }, suggestOnly: boolean): Promise<{ ok: boolean; message: string }>;
+  create(viewer: User, input: { space_id: string | null; parent_id: string | null; title: string; markdown: string; source: { title: string; href: string } | null }): Promise<{ ok: boolean; message: string }>;
 }
 
 /**
@@ -263,6 +278,66 @@ const BRING_IN: ToolDef = {
   input_schema: { type: "object", properties: { handle: { type: "string" }, brief: { type: "string" } }, required: ["handle", "brief"] },
 };
 
+const DOCS_TOOLS: ToolDef[] = [
+  {
+    name: "search_docs",
+    description:
+      "Search the workspace's Docs (specs, runbooks, policies, onboarding, decisions) that everyone in this conversation can read. Optionally only pages about one project (`workspace/name`). Look here first for how things work and what was decided.",
+    input_schema: { type: "object", properties: { query: { type: "string" }, project: { type: "string" } }, required: ["query"] },
+  },
+  {
+    name: "read_page",
+    description: "Read a Docs page as Markdown, with the ids of its top-level blocks (for editing), by its id from search_docs or a link.",
+    input_schema: { type: "object", properties: { page: { type: "string" } }, required: ["page"] },
+  },
+  {
+    name: "list_doc_spaces",
+    description: "The Docs spaces you can read here, with what you may do in each (read, suggest, edit).",
+    input_schema: { type: "object", properties: {} },
+  },
+];
+
+const DOCS_WRITE_TOOLS: ToolDef[] = [
+  {
+    name: "edit_page",
+    description:
+      "Change a Docs page: replace a section (by its heading), a range of top-level blocks (ids from read_page), the whole page, or add to the end. Where the space lets agents edit, it applies at once and shows in the page's history as yours; elsewhere it becomes a suggestion people accept or reject inline. Read the page first. Write Markdown.",
+    input_schema: {
+      type: "object",
+      properties: {
+        page: { type: "string" },
+        target: { type: "string", enum: ["append", "section", "blocks", "document"] },
+        heading: { type: "string", description: "For target section: the heading's text." },
+        from_block: { type: "string" },
+        to_block: { type: "string" },
+        markdown: { type: "string" },
+        note: { type: "string", description: "Why, in a line, for the history or the suggestion." },
+        suggest_only: { type: "boolean", description: "Suggest even where you could edit." },
+      },
+      required: ["page", "target", "markdown"],
+    },
+  },
+  {
+    name: "create_page",
+    description:
+      "Write a new Docs page (\"write this up\"): a title and Markdown, in a space (its id from list_doc_spaces; the General space when left out), optionally under a parent page. Link where it came from when it came from a conversation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        markdown: { type: "string" },
+        space: { type: "string" },
+        parent: { type: "string" },
+        source_title: { type: "string" },
+        source_href: { type: "string" },
+      },
+      required: ["title", "markdown"],
+    },
+  },
+];
+
+const DOCS_NAMES = new Set([...DOCS_TOOLS, ...DOCS_WRITE_TOOLS].map((tool) => tool.name));
+
 const CODE_NAMES = new Set(CODE_TOOLS.map((tool) => tool.name));
 
 export type ToolContext = {
@@ -324,6 +399,9 @@ export class ToolBox {
     return [
       ...(this.audience.codeAllowed() ? CODE_TOOLS : []),
       ...CHAT_TOOLS,
+      // Docs are for everyone, Code or not: the docs service decides what this person and audience can read.
+      ...(this.ports.docs && this.audience.asker ? DOCS_TOOLS : []),
+      ...(this.ports.docs && this.audience.asker && actions ? DOCS_WRITE_TOOLS : []),
       ...(roomForHop ? [ASK_COLLEAGUE] : []),
       ...(actions ? [REMEMBER, FORGET] : []),
       ...(this.canFile() ? [DRAFT_ISSUE] : []),
@@ -370,6 +448,10 @@ export class ToolBox {
 
   private async dispatch(name: string, input: Record<string, unknown>): Promise<ToolResult> {
     const asker = this.audience.asker;
+    if (DOCS_NAMES.has(name)) {
+      if (!this.definitions().some((tool) => tool.name === name) || !asker || !this.ports.docs) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
+      return this.docs(name, input, asker, this.ports.docs);
+    }
     if (CODE_NAMES.has(name)) {
       // Not offered, and refused if asked for anyway: the check is here, not in the prompt.
       if (!this.audience.codeAllowed() || !asker) return this.withheld();
@@ -405,6 +487,67 @@ export class ToolBox {
       }
       default:
         return this.act(name, input);
+    }
+  }
+
+  /** Who reads what an agent says here, as the docs service takes it. */
+  private docAudience(): DocAudience {
+    return this.audience.shared ? { kind: "workspace" } : { kind: "people", user_ids: this.audience.members.map((m) => m.id) };
+  }
+
+  private async docs(name: string, input: Record<string, unknown>, asker: User, docs: DocsPorts): Promise<ToolResult> {
+    const text = (key: string, max: number) => String(input[key] ?? "").trim().slice(0, max);
+    const audience = this.docAudience();
+    const read = (source: string, found: string | null): ToolResult => (found === null ? this.withheld() : { text: untrusted(source, found), outcome: "allowed" });
+    switch (name) {
+      case "list_doc_spaces":
+        return read("list_doc_spaces", await docs.spaces(asker, audience));
+      case "search_docs": {
+        const query = text("query", 200);
+        if (query.length < 2) return { text: "Search for at least two characters.", outcome: "refused" };
+        const project = text("project", 200).toLowerCase() || null;
+        return read(`search_docs "${query}"`, await docs.search(asker, audience, query, project));
+      }
+      case "read_page": {
+        const page = pageId(text("page", 300));
+        if (!page) return { text: "Give the page's id or link.", outcome: "refused" };
+        return read(`read_page ${page}`, await docs.read(asker, audience, page));
+      }
+      case "edit_page": {
+        const page = pageId(text("page", 300));
+        const markdown = String(input.markdown ?? "").slice(0, 100_000);
+        if (!page || !markdown.trim()) return { text: "Give the page and the Markdown.", outcome: "refused" };
+        const kind = text("target", 20);
+        const target: DocEditTarget | null =
+          kind === "append"
+            ? { kind: "append" }
+            : kind === "document"
+              ? { kind: "document" }
+              : kind === "section" && text("heading", 300)
+                ? { kind: "section", heading: text("heading", 300) }
+                : kind === "blocks" && text("from_block", 100) && text("to_block", 100)
+                  ? { kind: "blocks", from_block: text("from_block", 100), to_block: text("to_block", 100) }
+                  : null;
+        if (!target) return { text: "Say what to change: append, a section by its heading, blocks by their ids, or the whole document.", outcome: "refused" };
+        const done = await docs.edit(asker, page, { target, markdown, note: text("note", 300) || null }, input.suggest_only === true);
+        return { text: done.message, outcome: done.ok ? "allowed" : "refused" };
+      }
+      case "create_page": {
+        const title = text("title", 200);
+        const markdown = String(input.markdown ?? "").slice(0, 100_000);
+        if (!title || !markdown.trim()) return { text: "A page needs a title and its Markdown.", outcome: "refused" };
+        const href = text("source_href", 2000);
+        const done = await docs.create(asker, {
+          space_id: text("space", 100) || null,
+          parent_id: pageId(text("parent", 300)),
+          title,
+          markdown,
+          source: href.startsWith("/") ? { title: text("source_title", 200) || "Where this came from", href } : null,
+        });
+        return { text: done.message, outcome: done.ok ? "allowed" : "refused" };
+      }
+      default:
+        return { text: `There is no tool called ${name}.`, outcome: "refused" };
     }
   }
 
@@ -546,6 +689,15 @@ export class ToolBox {
         return { text: `There is no tool called ${name}.`, outcome: "refused" };
     }
   }
+}
+
+/** A page id from an id or a Docs link (`/acme/-/docs/general/runbook-pg_123`); null when there is none. */
+export function pageId(given: string): string | null {
+  const text = given.trim();
+  if (!text) return null;
+  const last = text.split(/[?#]/)[0].split("/").filter(Boolean).at(-1) ?? text;
+  const match = last.match(/(?:^|-)([a-z]{2,4}_[A-Za-z0-9]+)$/);
+  return match ? match[1] : /^[A-Za-z0-9_-]{3,80}$/.test(last) ? last : null;
 }
 
 function messageLine(m: FoundMessage): string {

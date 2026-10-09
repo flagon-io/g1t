@@ -190,7 +190,7 @@ function pillOf(frame: Frame): number {
 
 /** What the line under the frame says about the moment: working today, or a preview. */
 function honesty(frame: Frame): { today: boolean; label: string } {
-  if (frame.scene === "docs") return { today: false, label: "Docs: coming soon" };
+  if (frame.scene === "docs") return { today: false, label: "Docs works today; an agent updating a page after a merge on its own is coming soon" };
   if (frame.scene === "agents") return { today: true, label: "Sessions work today" };
   if (frame.scene === "code") return { today: true, label: "Works today" };
   if (frame.handoff && !frame.shipped) return { today: false, label: "g1t splitting work between colleagues: coming soon" };
@@ -1066,11 +1066,11 @@ function CodeMain({ frame }: { frame: Frame }) {
 
 /* Docs ---------------------------------------------------------------- */
 
-/** Docs is coming: its sidebar is a preview of what it will hold, and says so. */
+/** Docs' sidebar: search, then each space's pages. */
 function DocsSide() {
   return (
     <>
-      <SideHead action={<Plus size={14} />} soon>
+      <SideHead action={<Plus size={14} />}>
         Docs
       </SideHead>
       <div className="px-2 pt-2.5">
@@ -1094,14 +1094,9 @@ function DocsSide() {
   );
 }
 
-function DocsMain({ frame, tag = true }: { frame: Frame; tag?: boolean }) {
+function DocsMain({ frame }: { frame: Frame; tag?: boolean }) {
   return (
     <div className="relative h-full px-10 py-7">
-      {tag && (
-      <span className="absolute top-4 right-5 rounded-full bg-raised px-2.5 py-1 font-mono text-[10px] tracking-wide text-muted uppercase ring-1 ring-line-strong">
-        Coming soon
-      </span>
-      )}
       <p className="text-[11px] text-faint">Product / Exporting data</p>
       <h3 className="mt-2 text-[22px] font-semibold tracking-tight text-fg">Exporting data</h3>
       <p className="mt-1.5 flex items-center gap-2 text-[11px] text-faint">
@@ -1300,7 +1295,6 @@ function Phone({ frame }: { frame: Frame }) {
           <span className="text-faint">{MODE[frame.scene].icon}</span>
           <span className="truncate">{MODE[frame.scene].label}</span>
         </span>
-        {frame.scene === "docs" && <Soon />}
       </div>
       <div className="relative min-h-0 flex-1">
         {scenes.map((scene) => {
@@ -1608,7 +1602,7 @@ export function ProductTour({ className }: { className?: string }) {
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
         Chat, agents and their sessions (colleagues brought in included), pull requests, checks and the merge queue work
-        today. g1t splitting one request between colleagues on its own, and Docs, are coming soon. Otto, Margo and the others are
+        today, and so does Docs. g1t splitting one request between colleagues on its own, and an agent updating a page after a merge by itself, are coming soon. Otto, Margo and the others are
         agents this workspace hired from role templates; only @g1t comes built in.
       </p>
     </div>

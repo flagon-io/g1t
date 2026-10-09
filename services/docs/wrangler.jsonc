@@ -1,0 +1,42 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "g1t-docs-service",
+	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+	"compatibility_date": "2026-09-26",
+	"main": "./src/index.ts",
+	// Reached only through service bindings. The live socket's and uploads'
+	// viewer comes in a header the site sets after checking the session,
+	// which is only safe to trust because nothing else can reach this Worker.
+	"workers_dev": false,
+	"placement": { "mode": "off" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "g1t-docs",
+			// Create it once, then put its id here:
+			//   npx wrangler d1 create g1t-docs
+			//   npx wrangler d1 migrations apply g1t-docs --remote
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Files people put in pages (images, attachments), served from the
+	// usercontent origin at /docs-files/<key> (apps/web/workers/usercontent.ts).
+	// Create it once: npx wrangler r2 bucket create g1t-docs-files
+	"r2_buckets": [{ "binding": "FILES", "bucket_name": "g1t-docs-files" }],
+	"services": [
+		// Workspaces by slug, people's names and avatars, and teams.
+		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// The workspace's agents: who they are, for agents' calls and mentions.
+		{ "binding": "AGENTS", "service": "g1t-agents" },
+		// Mentions and suggestions reach people's inboxes (services/notify).
+		{ "binding": "NOTIFY", "service": "g1t-notify" }
+	],
+	// One room per page: it holds the page's Yjs document and open sockets,
+	// hibernating while nobody types (src/room.ts).
+	"durable_objects": {
+		"bindings": [{ "name": "PAGES", "class_name": "PageRoom" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["PageRoom"] }],
+	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

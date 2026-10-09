@@ -748,7 +748,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
           const sourceLabel = current.channel_kind === "dm" ? "a direct message" : `#${current.channel_name ?? "a channel"}`;
           toolbox = new ToolBox(
             audience,
-            toolPorts(env, slug, agent.workspace_id, current.channel_id, noConsult),
+            toolPorts(env, slug, agent.workspace_id, current.channel_id, noConsult, agent.id),
             {
               agentId: agent.id,
               notConsult: [agent.handle],

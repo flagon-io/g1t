@@ -112,6 +112,7 @@ checks this table names every unit.
 | `services/events` | Rust | Queues (producer and fan-out) | Runs unchanged; the off services' queues are not produced to |
 | `services/projects` | TS | Queue consumer | Runs unchanged |
 | `services/chat` | TS | Durable Objects (one room per channel, WebSocket hibernation), KV `AVATARS` (custom emoji images, under `emoji/`) | Runs unchanged; workerd runs its Durable Objects, and the site serves emoji images from the same KV |
+| `services/docs` | TS | Durable Objects (one room per page: the Yjs document, WebSocket hibernation, SQLite storage, alarms), **R2** (`FILES`, files in pages, behind the `FileStore` interface in `src/files.ts`), D1 with FTS5 | Runs unchanged; workerd runs its Durable Objects, and `FILES` is the local R2 bucket Wrangler keeps on disk (an S3 `FileStore` for RustFS is the next step) |
 | `services/notify` | TS | Durable Objects (one feed per person: WebSocket hibernation, SQLite storage); outbound HTTPS to browsers' push services | Runs unchanged; browser push needs a VAPID key pair (`node scripts/ops/vapid-keys.mjs`), else notifications are live in open tabs only |
 | `services/agents` | TS | Durable Objects (one desk per agent, alarms) | Runs unchanged; replies reach a model through the `MODELS` binding (the model proxy), which is off, so an agent answers with a short apology |
 | `services/search` | Rust | Queues (events and its own jobs); FTS5 | Runs unchanged |

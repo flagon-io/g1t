@@ -464,10 +464,11 @@ This is where Docs earns its place:
 - **Agents read it.** Pages are indexed by `services/context`, so the
   knowledge reaches every reply, session and plan. A space can be pinned to
   an agent as required reading.
-- **Agents write it.** An agent with write access to a space edits pages
-  directly. Without it, the edit becomes a **suggestion**: tracked changes
-  a person accepts or rejects inline, the same review loop as a pull
-  request. Every edit is attributed and in the page history.
+- **Agents write it.** An agent edits pages directly where the space lets
+  agents edit and the person it acts for can edit. Otherwise the edit
+  becomes a **suggestion**: tracked changes a person accepts or rejects
+  inline, the same review loop as a pull request. Every edit is attributed
+  and in the page history.
 - **Pages know what they describe.** A page can cite code: paths, symbols,
   endpoints, environment variables. When a merged pull request changes
   something a page cites, the page is marked possibly stale and its owners
@@ -493,15 +494,47 @@ page from Docs opens a pull request.
 
 ### How it is stored
 
-- **Live editing.** Each open page is a Durable Object holding a CRDT
-  (Yjs), reached over a WebSocket.
-- **Durable storage.** On idle, the page is saved as Markdown. Each space
-  is a git repository in g1t's own git storage, so:
-  - history, blame and export come free;
-  - agents can work on a space with the same tools they use on code;
-  - self-hosted installs keep everything in git.
-- **Metadata** lives in `services/docs`' D1: tree, owners, permissions,
-  citations, staleness, comments.
+Built (`services/docs`, contract `packages/contracts/src/docs.ts`):
+
+- **Live editing.** Each page is a Durable Object (`PageRoom`) that owns
+  the page's Yjs document, reached over a WebSocket through the site
+  (`/<workspace>/-/docs/live?page=<id>`), speaking the y-protocols sync
+  and awareness messages. The editor is BlockNote (MPL-2.0) on that
+  document. The room keeps the document in its own SQLite storage as a
+  snapshot plus the updates since, and enforces the socket's role: a
+  viewer or commenter never changes the document.
+- **Everything else in D1** (`g1t-docs`): spaces, members and roles,
+  linked projects, the page tree, owners, favorites, views, backlinks,
+  versions, suggestions, templates, files' metadata, and a full-text index
+  (FTS5) over titles and Markdown.
+- **Markdown is derived.** A few seconds after a burst of edits the room
+  saves the page's Markdown rendition to D1: what search indexes, agents
+  read, export writes, and the page shows before its editor loads. Agents
+  write Markdown too; it becomes blocks in the same document, so their
+  changes merge with whatever people are typing.
+- **History** is a version (the Yjs state and its Markdown) at most every
+  10 minutes of editing, and for every agent edit, accepted suggestion and
+  restore, with who made it. Restore copies an old version's blocks in as
+  a new change.
+- **Comments** live in the page's document too (a `threads` map, in the
+  shape BlockNote's comment UI reads), written only through the service,
+  which checks the role; a passage's comment is a mark on its text.
+- **Files** go to R2 (`g1t-docs-files`) behind a small store interface and
+  are served from the usercontent origin at `/docs-files/<key>`, 256
+  random bits per file.
+
+Decided: **not git, for now.** Spaces were planned as git repositories.
+D1 + Durable Objects ships live collaboration, comments, suggestions and
+search without a git write per keystroke burst, and Markdown export (a
+page, or a space as a zip in its tree's folders) keeps the content
+portable. Repository-backed spaces (a project's `docs/` as a read-only
+space, edits as pull requests) remain the next step for repository docs.
+For self-hosting, the Durable Object, R2 and D1 sit behind the room,
+`FileStore` and SQL; nothing above them depends on Cloudflare.
+
+Not built yet: citations and staleness, "write this up" from a thread,
+the documenter agent, repository docs as spaces, `doc.page.*` events and
+indexing pages in `services/context`.
 
 ## Chat
 
@@ -1073,7 +1106,7 @@ Following the architecture principles: separate services, interfaces in
 | `services/notify` (new, TS) | One feed per person: live notifications and unread counts over each tab's socket, browser push (VAPID), preferences, presence, status and Do Not Disturb; one presence room per workspace. Durable Object SQLite storage, no D1. |
 | `services/chat` (new, TS) | Channels, members, messages, threads, reactions, read state; one Durable Object per channel for live delivery with WebSocket hibernation. |
 | `services/agents` (new, TS) | Agent definitions and versions, the desk Durable Object per agent, the coordinator Durable Object per workspace (claims), replies (the no-sandbox model loop over g1t MCP). |
-| `services/docs` (new, TS) | Spaces, pages, the page Durable Object (CRDT), suggestions, comments, citations and staleness, git-backed storage. |
+| `services/docs` (new, TS) | Spaces, pages, the page Durable Object (Yjs), history, suggestions, comments, templates, search (FTS5), files (R2); citations and staleness to come. |
 | `services/work` | Tasks and task links beside `agent_runs` (which gains `task_id`); `agent_messages` widened to task addresses. |
 | `services/runner` | Resumable sessions: transcript save and restore in R2, `--resume`, the steer hook reading task threads, claims checked at start and widened from diffs. |
 | `services/context` | Indexes doc pages and channel decisions; serves them to replies and sessions. |
@@ -1138,9 +1171,10 @@ thing that keeps itself true.
   assigning work stays out.
 - **Replies without a sandbox.** Chat answers come from a Worker-side model
   loop, not a container. Recommended for speed and cost.
-- **Docs stored in git.** Each space is a git repository, and live editing
-  is a CRDT saved to it.
-- **Agent edits to docs** are suggestions unless the agent has write access
-  to that space. Recommended default.
+- **Docs stored in git.** Decided against for now: D1 + a Durable Object
+  per page, with Markdown export (see "How it is stored").
+- **Agent edits to docs** are suggestions by default. Built: a space's
+  managers can set "Agents in this space" to edit directly, which applies
+  only where the person the agent acts for can edit.
 - **Default capacity** of 3 concurrent tasks per agent, and a hop limit
   of 6.

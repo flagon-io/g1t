@@ -141,7 +141,9 @@ export const PILLS: { scene: Scene; label: string; start: number; soon: boolean 
   // Sessions, colleagues brought in, spend against a cap: built.
   { scene: "agents", label: "Agents", start: BEAT.agents, soon: false },
   { scene: "code", label: "Code", start: BEAT.code, soon: false },
-  { scene: "docs", label: "Docs", start: BEAT.docs, soon: true },
+  // Docs is built; an agent keeping a page current after a merge on its
+  // own is not yet, and the line under the frame says so.
+  { scene: "docs", label: "Docs", start: BEAT.docs, soon: false },
 ];
 
 /** Which pill a time falls under. Back in chat after the merge is still Code's story. */

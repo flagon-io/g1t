@@ -694,3 +694,98 @@ body {
 .card-md .prose pre {
   @apply p-2.5 text-xs leading-5;
 }
+
+/*
+ * The Docs page editor (components/docs/editor.tsx) is BlockNote with its
+ * shadcn components. Their classes are generated from the package, and
+ * shadcn's token names map onto g1t's. `accent` and `muted` mean
+ * something else in shadcn (a hover fill, a quiet fill), so inside the
+ * editor they are redefined; g1t's own blocks there use the g1t tokens
+ * directly.
+ */
+@source "../../../node_modules/@blocknote/shadcn/dist";
+
+@theme {
+  --color-background: var(--g1t-bg);
+  --color-foreground: var(--g1t-fg);
+  --color-popover: var(--g1t-surface);
+  --color-popover-foreground: var(--g1t-fg);
+  --color-card: var(--g1t-surface);
+  --color-card-foreground: var(--g1t-fg);
+  --color-primary: var(--g1t-accent);
+  --color-primary-foreground: var(--g1t-bg);
+  --color-secondary: var(--g1t-raised);
+  --color-secondary-foreground: var(--g1t-fg);
+  --color-muted-foreground: var(--g1t-muted);
+  --color-accent-foreground: var(--g1t-fg);
+  --color-destructive: var(--g1t-danger);
+  --color-destructive-foreground: var(--g1t-bg);
+  --color-border: var(--g1t-line);
+  --color-input: var(--g1t-line);
+  --color-ring: var(--g1t-accent);
+}
+
+.bn-shadcn {
+  --color-accent: var(--g1t-raised);
+  --color-muted: var(--g1t-raised);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: var(--g1t-fg);
+  --bn-colors-menu-background: var(--g1t-surface);
+  --bn-colors-menu-text: var(--g1t-fg);
+  --bn-colors-hovered-background: var(--g1t-raised);
+  --bn-colors-side-menu: var(--g1t-faint);
+  --bn-colors-border: var(--g1t-line);
+  --bn-border-radius: 8px;
+}
+
+.g1t-editor .bn-editor {
+  font-family: var(--g1t-font-sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  background: transparent;
+  color: var(--g1t-fg);
+}
+
+/* The drag handle and + sit in the margin, so the text lines up with the title. */
+@media (min-width: 768px) {
+  .g1t-editor .bn-container {
+    margin-inline: -54px;
+  }
+}
+
+.g1t-editor .bn-block-content[data-content-type="heading"] h1,
+.g1t-editor .bn-block-content[data-content-type="heading"] h2,
+.g1t-editor .bn-block-content[data-content-type="heading"] h3 {
+  font-family: var(--g1t-font-display);
+  letter-spacing: -0.012em;
+}
+
+.g1t-editor .bn-inline-content code {
+  font-family: var(--g1t-font-mono);
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--g1t-raised);
+}
+
+.g1t-editor .bn-block-content[data-content-type="codeBlock"] {
+  border-radius: 10px;
+  background: var(--g1t-surface);
+  border: 1px solid var(--g1t-line);
+}
+
+.g1t-editor .bn-thread-mark {
+  background: color-mix(in srgb, var(--g1t-warn) 22%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--g1t-warn) 60%, transparent);
+}
+
+.g1t-editor a {
+  color: var(--g1t-accent);
+}
+
+/* A page read before the editor loads: the same measure as the editor. */
+.docs-read .prose {
+  font-size: 1rem;
+  line-height: 1.65;
+}
+

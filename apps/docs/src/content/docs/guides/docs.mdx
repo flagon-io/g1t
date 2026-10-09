@@ -1,60 +1,299 @@
 ---
 title: Docs
-description: Docs is coming to g1t. A workspace's specs, runbooks and decisions, written together, read by agents and kept current by them.
+description: Write a workspace's specs, runbooks, decisions and onboarding together, live, with your agents. Spaces and pages, a block editor with diagrams and math, comments, suggestions from agents you accept or reject, full history, templates, search by project, and Markdown export.
 ---
 
+import { Steps } from '@astrojs/starlight/components';
 import Soon from '../../../components/Soon.astro';
 import Aside from '../../../components/Aside.astro';
 
-<Soon />
+**Docs is the workspace's written knowledge**: specs, runbooks, decisions,
+onboarding and meeting notes, in the same place as the conversations and the
+code they describe. People and agents write it together. Agents read it before
+they answer, and when they change a page, you see exactly what they changed
+and decide whether it stays.
 
-**Docs is the workspace's written knowledge**: specs, runbooks, decisions
-and onboarding, in the same place as the conversations and the code they
-describe. It is not built yet. This page says what it will do, so you can
-plan for it.
+Docs is open to every member of a workspace, on every plan. Open **Docs** in
+the rail on the left, or go to `g1t.sh/<workspace>/-/docs`.
 
-<Aside type="note" title="Until then">
-Keep documentation in your repositories (`README.md`, a `docs/` folder),
-where it changes through pull requests like any code. When Docs ships, a
-project's `docs/` folder can appear as a read-only space beside the
-workspace's own, with one search and one tree over both.
-</Aside>
-
-## What it will be
-
-- **Spaces** hold pages: one per team or project, plus one for the whole
-  workspace.
-- Docs is its own mode in the workspace's rail, not a tab in a project. To
-  see one project's pages, filter Docs by that project.
-- **Pages** are edited together, live, with mentions of people, agents,
-  issues, pull requests, channels and other pages.
-- Every page has **history**, **comments**, **backlinks** and **owners**.
-
-## Agents and docs
-
-This is why Docs belongs next to Chat and Code:
+## How it fits together
 
 | | |
 | --- | --- |
-| **Agents read it** | Pages are indexed with the rest of the workspace's context, so what is written down reaches every answer. A space can be pinned to an agent as required reading. |
-| **Agents write it** | An agent with write access to a space edits pages directly. Without it, its edit is a **suggestion**: tracked changes a person accepts or rejects inline, like a review. Every edit is attributed and in the page's history. |
-| **Pages know what they describe** | A page can cite code: paths, symbols, endpoints, settings. When a merged pull request changes something a page cites, the page is marked possibly stale and its owners are told. If an agent owns the page, it drafts the update. |
-| **Conversations become pages** | "Write this up" in a thread makes a page from it, linked both ways. Decisions made in chat get a home. |
+| **Spaces** | Where pages live: one for the whole workspace, one per team or project, or a private one for a few people. Each space decides who can read and write it, and how agents change it. |
+| **Pages** | A tree inside each space. A page can hold other pages. Every page has an icon, an optional cover, owners, linked projects, history, comments and backlinks. |
+| **The editor** | Blocks you add with `/`: text, headings, lists, to-dos, toggles, callouts, code, tables, images and files, Mermaid diagrams, math, and live cards for issues, pull requests, channels, projects and other pages. |
+| **Agents** | Read the pages the person they work for can read. Suggest changes you accept or reject inline, or edit directly where a space allows it. Every change is attributed in the history. |
 
-The **Technical Writer** [template](/guides/agents/#role-templates) is
-already available: hire Inky from it in a click. Today Inky works in chat;
-with Docs, Inky will keep a space current:
-updating pages after merges, writing release notes and the weekly summary,
-and turning incident threads into postmortems.
+Docs is its own mode, not a tab in a project. To see the pages about one
+project, filter Docs by that project.
 
-## How it will be stored
+## Spaces
 
-Each space is a git repository in g1t's own storage, so history, blame and
-export come with it, agents edit pages with the same tools they use on
-code, and a self-hosted g1t keeps everything in git.
+Every workspace starts with a **General** space for things everyone should
+know. Make more from **New space** on Docs' home, or **+** beside **Spaces**
+in the sidebar.
+
+A space is for one of three audiences:
+
+| Who it's for | Who can open it |
+| --- | --- |
+| **Everyone in the workspace** | Every member, with the space's base role. |
+| **A team** | Members of that team, with the space's base role. |
+| **Only its members** | The people, agents and teams listed in the space, and nobody else. Workspace owners don't see a private space unless they're added. |
+
+Whoever makes a space has full access to it. Owners of the workspace have full
+access to every workspace and team space.
+
+### Roles
+
+Each person's role in a space is the highest that applies to them: the
+space's base role (for everyone, or for the team), and any role they were
+given in the space's **Members**, directly or through a team.
+
+| Role | Can |
+| --- | --- |
+| **Can view** | Read pages, their history and their comments. |
+| **Can comment** | Read, and comment on passages or whole pages. |
+| **Can edit** | Write and organize pages, accept or reject suggestions, restore versions, and move pages to the trash. |
+| **Full access** | Edit, change the space's settings and members, and delete pages from the trash for good. |
+
+Change them in the space's **Settings** (the gear beside the space in the
+sidebar, or **Settings** on the space's page):
+
+- **Members**: add a person, an agent or a team with a role; change or remove
+  it. A private space always keeps at least one person with full access.
+- **Agents in this space**: **Suggest changes** (the default) or **Edit
+  directly**. See [Agents and pages](#agents-and-pages).
+- **Projects**: the repositories the space is about, as `owner/name`. Docs
+  can be filtered by them.
+- **Archive this space** takes it out of the sidebar and search. Its pages and
+  history are kept. The General space can't be archived.
+
+## Pages
+
+Make a page with **New page** on Docs' home or a space's page, **+** beside a
+space or a page in the sidebar (a page inside it), or from a
+[template](#templates). Give it a title, and press **Enter** to start
+writing.
+
+Above the title, **Add icon** gives the page an emoji and **Add cover** a
+banner. Under the title you see who edited it last and when, its owners, the
+projects it's linked to, and how long it takes to read.
+
+### Organize
+
+- **Drag** a page in the sidebar onto another to put it inside, or onto the
+  top edge of one to put it before it. Drop it on a space's name to move it
+  to the top of that space.
+- **⋯ → Move** does the same from the page, including to another space. Pages
+  inside a page move with it.
+- **⋯ → Duplicate** copies a page, content and all, next to it.
+- A page's address ends in its id: `/<workspace>/-/docs/engineering/release-plan-pag_01j…`.
+  Renaming or moving a page keeps every link to it working.
+
+### Favorites and recent
+
+Star a page (the star at the top of it) to keep it under **Favorites** in the
+sidebar. **Recent** lists the pages you opened last.
+
+### Trash
+
+**⋯ → Move to trash** puts a page, and the pages inside it, in the **Trash**
+(in the sidebar). Anyone who can edit the space can restore it from there,
+with what was inside it. Deleting from the trash removes the page, its
+history and its comments for good, and needs full access to the space.
+
+## The editor
+
+Type `/` anywhere for the block menu, and keep typing to filter it.
+
+| Block | How to add it | In Markdown |
+| --- | --- | --- |
+| Text, Heading 1–3 | `/text`, `/h1`, or type `#`, `##`, `###` and a space | `#`, `##`, `###` |
+| Bulleted, numbered and to-do lists | `/bullet`, `/numbered`, `/todo`, or type `-`, `1.`, `[]` | `-`, `1.`, `- [ ]` |
+| Toggle | `/toggle` | `<details>` |
+| Quote | `/quote`, or type `>` | `>` |
+| Callout (info, warning, success) | `/callout`, `/warning`, `/tip`. Click its icon to change its kind. | `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]`, `> [!CAUTION]` |
+| Divider | `/divider`, or type `---` | `---` |
+| Code, with syntax highlighting | `/code`, or type ` ``` ` and a language | fenced code |
+| Table | `/table` | GitHub tables |
+| Image, video, audio, file | `/image`, `/video`, `/audio`, `/file`: upload one, or paste a link | `![]()`, links |
+| Diagram | `/diagram` or `/mermaid`. **Edit source** to change it; it's drawn as you type. | ` ```mermaid ` |
+| Math | `/math` or `/latex`. Click the formula to change it. | `$$ … $$` |
+| Embed from g1t | `/embed`, then paste the address of an issue, pull request, channel, project or page. The card shows its live title and state (open, merged, closed). | a link |
+| Date | `/date` | the date |
+
+Inline:
+
+- **Bold**, *italic*, underline, ~~strikethrough~~, `code` and links from the
+  toolbar that appears when you select text, or with Markdown as you type
+  (`**bold**`, `_italic_`, `` `code` ``) and the usual shortcuts
+  (<kbd>⌘ B</kbd>, <kbd>⌘ I</kbd>, <kbd>⌘ U</kbd>).
+- **`@`** mentions a person or an agent. A person mentioned in a page is
+  told, once, in their notifications.
+- **`[[`** links to another page by title. The page you link to lists yours
+  under **Linked from**.
+
+Every block has a handle on its left when you hover it: drag it to move the
+block, or open its menu to change its type, color or delete it. Press
+<kbd>Tab</kbd> to nest a block under the one above it.
+
+**Pasting Markdown** turns it into blocks. **⋯ → Copy as Markdown** puts the
+whole page on your clipboard as Markdown.
+
+Images and files you add are kept with the workspace and served from
+`g1tusercontent.com`, never from `g1t.sh`. Each can be up to 25 MB.
+Anyone with a file's address can open it, as with any shared link, so don't
+put a page's files where the page itself shouldn't go.
+
+<Aside type="note" title="Who can edit">
+People who can only view or comment see the page live, with everyone's
+changes as they happen, but can't change it. The editor says so under the
+title.
+</Aside>
+
+## Writing together
+
+Pages are live: everyone with a page open sees each other's changes as they
+type, with a cursor and name for each person. The faces at the top of the page
+are who's on it now, agents included while they work on it.
+
+Edits merge however many people type at once, even in the same paragraph, and
+nothing is lost if your connection drops: the page says **Offline** and
+sends your changes when you're back.
+
+## Comments
+
+- **On a passage**: select text and choose **Comment**. The passage is
+  highlighted, and the thread stays attached to it as the page changes.
+- **On the whole page**: write in **Discussion** at the bottom of the page.
+- **All of them**: the comments button at the top of the page opens them
+  beside the text, in the order they appear in it.
+
+Reply in a thread, react to a comment, and **Resolve** a thread when it's
+done (you can reopen it). `@`-mention someone in a comment to tell them; they
+are told only if they can read the page.
+
+Anyone who can comment can start threads, reply, react and resolve. Only a
+comment's author edits it; its author or an editor deletes it; editors delete
+whole threads.
+
+## Agents and pages
+
+Agents work on Docs for a person, never on their own authority. An agent
+asked by you:
+
+- **reads** only pages in spaces you can read. When it answers somewhere
+  others will read the answer (a channel), it uses only pages everyone there
+  can read. See [What agents can do for whom](/guides/agent-access/).
+- **suggests** a change where you can comment or edit. A suggestion is a
+  tracked change: the blocks it replaces are struck through in place, and
+  the card beside them (or above the page on a narrower screen) shows what
+  it would write instead.
+- **edits directly** only where you can edit **and** the space's **Agents in
+  this space** is **Edit directly**. Otherwise its edit becomes a
+  suggestion.
+- **makes new pages** where you can edit, such as "write this up" in a
+  thread. The page is yours: you're its owner, and it links back to where it
+  came from.
+
+### Accept or reject
+
+Each suggestion says which agent made it, who it was for, and why.
+
+- **Accept** applies it to the page, live for everyone on it. The history
+  records it as "Suggested by @inky, accepted by @ana".
+- **Reject** drops it. Nothing on the page changes.
+- **Accept all** applies every open suggestion on the page, oldest first.
+
+Accepting needs edit access to the space. When the part of the page a
+suggestion changes was deleted meanwhile, the suggestion can't be applied and
+is marked stale.
+
+A page's owners are told when an agent suggests a change to it.
+
+<Aside type="tip" title="Ask in chat">
+"@inky the rollout section of the release plan is out of date, fix it" in a
+channel works: Inky reads the page, and suggests or makes the change for
+you, depending on the space.
+</Aside>
+
+## History
+
+**⋯ → History** lists every version of the page: when, who (people and agents),
+and what kind of change it was. Choose a version to see what changed in it,
+line by line.
+
+A new version is recorded:
+
+- after a burst of editing, at most every 10 minutes while people type;
+- for every change an agent makes, and every suggestion accepted;
+- when a version is restored.
+
+**Restore this version** makes the page what it was then, as a new version,
+so nothing after it is lost. Restoring needs edit access.
+
+## Templates
+
+Start a page with its structure already in place: **Templates** in the
+sidebar, the template row on Docs' home, or ask an agent to use one.
+
+g1t's templates:
+
+| Template | For |
+| --- | --- |
+| **Meeting notes** | Attendees, agenda, decisions, action items. |
+| **Spec / RFC** | Problem, goals and non-goals, design with a diagram, alternatives, rollout, open questions. |
+| **Decision record** | Context, the decision, options compared, consequences. |
+| **Runbook** | Symptoms, checks, the fix, when to escalate. |
+| **Onboarding** | A new teammate's first day and week, people to know, links. |
+| **Project brief** | Why, what done looks like, scope, team, milestones, risks. |
+| **Postmortem** | Severity, timeline, root cause, what went well and badly, action items. |
+| **Weekly update** | Shipped, in progress, next, blocked. |
+
+Save any page as one of your workspace's templates with **⋯ → Save as
+template**. Everyone in the workspace can use it. Whoever saved a template,
+or an owner, can delete it.
+
+## Search and projects
+
+The search box at the top of the sidebar, and **Search docs** on Docs' home,
+look through the titles and text of every page you can read. Narrow it to one
+space or one project.
+
+A page belongs to a project when the page, or its space, is linked to the
+project. On Docs' home, **All projects** filters the recently edited pages and
+the spaces to one project.
+
+Agents search the same way, and only find what the people they answer can
+read.
+
+## Export
+
+- **⋯ → Export Markdown** downloads a page as a `.md` file.
+- **Export** on a space's page downloads the whole space as a zip of Markdown
+  files, in folders that follow its page tree.
+
+Diagrams export as ` ```mermaid ` blocks, math as `$$` blocks, callouts as
+GitHub alerts, toggles as `<details>`, and embeds and page links as links, so
+the files read well anywhere Markdown does.
+
+## Coming soon <Soon />
+
+- **Pages that know what they describe.** A page that cites code (a path, an
+  endpoint, a setting) is marked possibly stale when a merged pull request
+  changes it, and its owners are told. When an agent owns the page, it drafts
+  the update.
+- **"Write this up" from a thread** in one click, linked both ways.
+- **A documenter agent** that keeps a space current after merges and writes
+  the weekly summary.
+- **A project's `docs/` folder as a read-only space**, in the same tree and
+  search as your own spaces. Editing one of its pages opens a pull request.
 
 ## Pricing
 
-Docs will be included on every plan, like [Chat](/guides/chat/): pages,
-editing and history, with no seats. Files in pages are on the storage
-meter. See [pricing](https://g1t.sh/pricing).
+Docs is included on every plan: spaces, pages, live editing, comments, history
+and search, with no seats. Files in pages count toward storage. Agents' work
+on pages is charged to the agent, like any of its work; see
+[what an agent costs](/guides/agents/#what-an-agent-costs).

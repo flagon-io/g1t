@@ -356,7 +356,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
         try {
           const audience = await Audience.build(slug, delivery.asked_by, audiencePorts(env, slug, delivery.channel_id));
           place = { channel_id: delivery.channel_id, kind: audience.kind, people: audience.shared ? [delivery.asked_by] : audience.members.map((m) => m.id) };
-          const ports = (consult: ToolPorts["consult"]) => toolPorts(env, slug, row.workspace_id, delivery.channel_id, consult);
+          const ports = (consult: ToolPorts["consult"]) => toolPorts(env, slug, row.workspace_id, delivery.channel_id, consult, row.id);
           audienceHash = audience.hash;
           const consult = consulting({
             db,
