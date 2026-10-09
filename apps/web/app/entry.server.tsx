@@ -3,6 +3,7 @@ import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
 
+import { addresses } from "./lib/addresses.server";
 import { NonceContext } from "./lib/nonce";
 import { makeNonce, pagePolicy } from "./lib/page-headers";
 import { recordHandler } from "./lib/perf.server";
@@ -77,7 +78,7 @@ export default async function handleRequest(
   }
 
   responseHeaders.set("Content-Type", "text/html");
-  if (nonce) responseHeaders.set("Content-Security-Policy", pagePolicy(nonce));
+  if (nonce) responseHeaders.set("Content-Security-Policy", pagePolicy(nonce, addresses().usercontent));
   return new Response(body, {
     headers: responseHeaders,
     status: responseStatusCode,

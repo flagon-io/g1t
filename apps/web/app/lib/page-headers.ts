@@ -18,15 +18,20 @@ export function makeNonce(): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-/** The Content-Security-Policy of a page rendered with `nonce`. */
-export function pagePolicy(nonce: string): string {
+/**
+ * The Content-Security-Policy of a page rendered with `nonce`. `usercontent`
+ * is where repository files and avatars are served (lib/usercontent.ts),
+ * named for an installation that serves them over plain HTTP.
+ */
+export function pagePolicy(nonce: string, usercontent?: string): string {
+  const files = usercontent && /^http:/.test(usercontent) ? ` ${new URL(usercontent).origin}` : "";
   return [
     "default-src 'self'",
     // Cloudflare's Web Analytics beacon, when the zone turns it on.
     `script-src 'self' 'nonce-${nonce}' https://static.cloudflareinsights.com`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' https: data: blob:",
-    "media-src 'self' https:",
+    `img-src 'self' https: data: blob:${files}`,
+    `media-src 'self' https:${files}`,
     "font-src 'self' data:",
     "connect-src 'self' https:",
     "frame-src 'none'",

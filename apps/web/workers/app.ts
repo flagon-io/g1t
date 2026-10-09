@@ -2,22 +2,21 @@ import { createRequestHandler } from "react-router";
 
 import { identityClient, isNamespaceShaped } from "@g1t/contracts";
 
+import { addressesFor } from "../app/lib/addresses";
 import { hardenRegistryHeaders } from "../app/lib/content-safety";
 import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
 import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
+import { usercontentPath } from "../app/lib/usercontent";
+import { serveUsercontent } from "./usercontent";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE,
 );
 
-/** An uploaded avatar, by the SHA-256 of its bytes. */
-const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
-/** The only types identity stores, having checked each image's bytes. */
-const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const DOCS = "https://docs.g1t.sh";
 
 /** Where the documentation pages that used to live under /docs are now. */
@@ -34,6 +33,11 @@ const MOVED_DOCS: Record<string, string> = {
 
 export default {
   async fetch(request, env, ctx) {
+    // Repository files and avatars, on their own origin
+    // (g1tusercontent.com): answered before anything of the site's runs,
+    // so nothing there reads or sets the session cookie.
+    const usercontent = usercontentPath(new URL(request.url), addressesFor(env).usercontent);
+    if (usercontent !== null) return serveUsercontent(env, ctx, request, usercontent);
     // Every answer: no sniffing, a referrer of the origin alone, and no
     // framing of pages (app/lib/page-headers.ts).
     return withSiteHeaders(await site(request, env, ctx));
@@ -63,10 +67,6 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
   }
   if (service === "packages") {
     return proxyPackages(env, request);
-  }
-  const avatar = AVATAR_PATH.exec(pathname);
-  if (avatar) {
-    return serveAvatar(env, ctx, request, avatar[1]);
   }
   // The documentation is its own site.
   if (pathname === "/docs" || pathname.startsWith("/docs/")) {
@@ -203,49 +203,4 @@ async function registryMoved(env: Env, request: Request): Promise<Response | nul
   const get = request.method === "GET" || request.method === "HEAD";
   // 308 keeps a publish a PUT, for the clients that follow it.
   return new Response(null, { status: get ? 301 : 308, headers: { location: named.under(current) + url.search } });
-}
-
-/**
- * An uploaded avatar. Its address is its hash, so it never changes and is
- * kept for good. It is served as nothing but an image: the stored type,
- * no sniffing, and a policy that lets nothing in it run.
- */
-/**
- * An uploaded icon. Its address is its content's hash, so it never changes:
- * each data centre keeps it in its cache after the first view, and storage
- * is read about once per place, not once per visitor.
- */
-async function serveAvatar(env: Env, ctx: ExecutionContext, request: Request, hash: string): Promise<Response> {
-  const method = request.method;
-  if (method !== "GET" && method !== "HEAD") {
-    return new Response("Method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
-  }
-  // The Workers runtime's own cache, which the DOM types do not know.
-  const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(new URL(`/avatars/${hash}`, request.url).toString(), { method: "GET" });
-  const cached = await cache.match(key);
-  if (cached) {
-    return method === "HEAD" ? new Response(null, { headers: cached.headers }) : cached;
-  }
-  const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(hash, {
-    type: "arrayBuffer",
-    cacheTtl: 86400,
-  });
-  const contentType = metadata?.contentType;
-  if (!value || !contentType || !AVATAR_TYPES.has(contentType)) {
-    return new Response("Not found", {
-      status: 404,
-      headers: { "cache-control": "public, max-age=60" },
-    });
-  }
-  const headers = {
-    "content-type": contentType,
-    "content-length": String(value.byteLength),
-    "cache-control": "public, max-age=31536000, immutable",
-    "x-content-type-options": "nosniff",
-    "content-security-policy": "default-src 'none'; sandbox",
-    "cross-origin-resource-policy": "cross-origin",
-  };
-  ctx.waitUntil(cache.put(key, new Response(value, { headers })));
-  return new Response(method === "HEAD" ? null : value, { headers });
 }

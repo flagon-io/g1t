@@ -137,7 +137,10 @@ the hosted address as its default, so hosted g1t sets nothing:
   `MCP_URL` and `OG_URL` (empty: no social card tags). The root loader
   hands them to the page; `meta.ts`, the clone box, agent setup, the
   pull request and merge box remotes, the tokens page and the OAuth
-  consent's `iss` read them.
+  consent's `iss` read them. `USERCONTENT_URL` (raw files and avatars,
+  `apps/web/workers/usercontent.ts`): g1tusercontent.com hosted, else
+  `<SITE_URL>/-/usercontent` unless set to a host of its own;
+  `USERCONTENT_KEY` (made by `start.sh`) signs private files' addresses.
 - The API (`apps/api/src/addresses.rs`): `SITE_URL`, `API_URL` (the OAuth
   issuer) and `MCP_URL` (the protected resource; a path on the API's host
   self-hosted).

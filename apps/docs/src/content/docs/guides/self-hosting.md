@@ -153,6 +153,7 @@ Set these in the environment, or in a `.env` file next to
 | `API_PORT` | `8789` | The port the API and the MCP server are published on |
 | `API_URL` | `PUBLIC_URL`'s host on `API_PORT` | The address of the API, as people and applications reach it. It is also the OAuth issuer. Set it when the API is behind a proxy, for example `https://api.git.example.com`. |
 | `MCP_URL` | `API_URL/mcp` | The address of the MCP server. |
+| `USERCONTENT_URL` | `PUBLIC_URL/-/usercontent` | Where [raw files](/guides/git/#raw-files) and avatars are served. Set it to a host of its own (another domain, not a subdomain of `PUBLIC_URL`'s, for example `https://files.example.net`) that your proxy sends to the same port as `PUBLIC_URL`, keeping the `Host` header, so a file in a repository can never reach the site's session cookie. Unset, they are served under `PUBLIC_URL`, still as plain text or images that cannot run script. |
 | `MAILPIT_PORT` | `8025` | The port of the Mailpit inbox |
 | `MAIL_FROM` | `g1t <noreply@localhost>` | The sender of g1t's email |
 | `MAIL_URL` | `http://mailpit:8025` | The Mailpit server g1t sends mail through |

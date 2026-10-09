@@ -394,6 +394,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
     deleteRelease: (actor, path, id) => call("delete_release", { path, actor, id }),
     listFiles: (repoId, ref, limit) => call("list_files", { repoId, ref, skipDirs: [], limit }),
     rawBlobs: (repoId, hashes, maxBytes) => call("raw_blobs", { repoId, hashes, maxBytes }),
+    rawFile: (repoId, ref, path, maxBytes) => call("raw_file", { repoId, ref, path, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
     compare: (repoId, viewer, base, head, baseBranch) => call("compare", { repoId, viewer, base, head, baseBranch }),

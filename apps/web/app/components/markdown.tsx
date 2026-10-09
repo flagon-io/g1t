@@ -17,6 +17,7 @@ import remarkGfm from "remark-gfm";
 
 import { Checkbox } from "./ui/checkbox";
 import { type AlertKind, G1T_MENTION_HREF, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
+import { imageSource } from "../lib/usercontent";
 import { UserCard } from "./user-card";
 
 /** The text inside a React tree, for anchors and copying. */
@@ -160,12 +161,19 @@ export function Markdown({
   source,
   repo,
   base,
+  rawBase,
 }: {
   source: string;
   /** The repository the text belongs to, for its references. */
   repo?: MarkdownRepo;
   /** Where relative links point, e.g. `/acme/web/blob/main/docs` for a file's own folder. */
   base?: string;
+  /**
+   * Where relative images point: the same folder's raw files, e.g.
+   * `/acme/web/raw/<commit>/docs`, under `/acme/web/raw/<commit>`. An image
+   * path starting with `/` is from the repository's root.
+   */
+  rawBase?: string;
 }) {
   return (
     <div className="prose">
@@ -247,7 +255,8 @@ export function Markdown({
             ) : null;
           },
           img({ src, alt }) {
-            return <img src={typeof src === "string" ? src : undefined} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
+            const at = typeof src === "string" ? imageSource(src, rawBase) : undefined;
+            return <img src={at} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
           },
         }}
       >

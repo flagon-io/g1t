@@ -44,6 +44,14 @@ declare global {
       MCP_URL?: string;
       /** The social-card image service; an empty string for none. Unset on g1t.sh. */
       OG_URL?: string;
+      /**
+       * Where repository files and avatars are served (app/lib/usercontent.ts).
+       * Unset on g1t.sh, which is https://g1tusercontent.com; unset on another
+       * site, `<SITE_URL>/-/usercontent`.
+       */
+      USERCONTENT_URL?: string;
+      /** Signs the short-lived addresses of private repositories' files. A secret. */
+      USERCONTENT_KEY?: string;
     }
   }
   interface Env extends Cloudflare.Env {}

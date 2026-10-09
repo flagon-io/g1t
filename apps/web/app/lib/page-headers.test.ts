@@ -14,7 +14,10 @@ test("a page runs only its own scripts and is never framed", () => {
   assert.match(policy, /object-src 'none'/);
   assert.match(policy, /base-uri 'self'/);
   // Pictures in a README come from anywhere on HTTPS.
-  assert.match(policy, /img-src 'self' https: data: blob:/);
+  assert.match(policy, /img-src 'self' https: data: blob:;/);
+  // An installation serving its files over plain HTTP names that origin.
+  assert.match(pagePolicy(nonce, "http://files.local:8787"), /img-src 'self' https: data: blob: http:\/\/files\.local:8787;/);
+  assert.match(pagePolicy(nonce, "https://g1tusercontent.com"), /img-src 'self' https: data: blob:;/);
 });
 
 test("every answer gains nosniff and a referrer policy; pages are not framed", () => {

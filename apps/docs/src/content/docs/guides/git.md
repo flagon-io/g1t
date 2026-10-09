@@ -80,6 +80,44 @@ commit at `g1t.sh/<workspace>/<repo>/archive/<ref>.zip`. A ZIP holds the
 files, not the history; clone for that. A repository with more than 10,000
 files or over 24 MB is too large to download this way, so clone it instead.
 
+## Raw files
+
+**Raw**, above a file on its page, opens the file as it is, with nothing
+around it. Any file is at:
+
+```text
+https://g1t.sh/<workspace>/<repo>/raw/<branch, tag or commit>/<path>
+```
+
+That address sends you on to the commit the branch or tag names now, on
+g1t's file host:
+
+```text
+https://g1tusercontent.com/<workspace>/<repo>/raw/<commit>/<path>
+```
+
+g1tusercontent.com is a site of its own so that nothing in a repository
+can reach your g1t.sh session: it never receives g1t.sh's cookies, and a
+file opened there cannot run script. Images, video, audio and PDFs are
+served as themselves; any other text, HTML, SVG source, XML and
+JavaScript included, as plain text; anything else as a download. A file
+is served up to 10 MB; clone the repository for larger ones.
+
+- **Public repositories.** The address works for anyone, and an address
+  at a commit can be kept for good.
+- **Private repositories.** The address carries a `token` that g1t.sh
+  makes for someone who can read the repository. It is good for that one
+  file for an hour or two; after that, open the file on g1t.sh again for a
+  new address. Revoking someone's access does not end an address they
+  already have before then.
+
+Images in a file's page show from its raw address, and so do pictures in a
+README that name a file in the repository (`![Diagram](docs/diagram.png)`,
+relative to the README's folder, or `/docs/diagram.png` from the
+repository's root): they show the file at the commit the page shows.
+Uploaded avatars are on the same host, at
+`https://g1tusercontent.com/avatars/<sha256>`.
+
 ## Browsing without an account
 
 Public projects, Explore, Search and profiles are open to everyone, in the

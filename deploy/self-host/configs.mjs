@@ -19,7 +19,8 @@
 //
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
-// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY,
+// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, USERCONTENT_KEY,
+// USERCONTENT_URL,
 // PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, BACKUP_S3_BUCKET, S3_REGION,
 // S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_ENDPOINT, and optionally
 // your own GitHub App: GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_CLIENT_ID,
@@ -76,6 +77,7 @@ const OFF = Object.fromEntries(
 
 /** Sealing keys, by the service that holds each (hosted: Wrangler secrets). */
 const SECRETS = {
+  g1t: "USERCONTENT_KEY",
   "g1t-actions": "ACTIONS_KEY",
   "g1t-integrations": "INTEGRATIONS_KEY",
   "g1t-webhooks": "WEBHOOKS_KEY",
@@ -240,7 +242,11 @@ function selfHosted(service) {
   // shows: the site's clone URLs, meta tags and agent setup, the API's
   // OAuth issuer and MCP server, and identity's mail. No social cards: the
   // card service (services/og) is not run here.
-  if (service.web) Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "" });
+  // Repository files and avatars: USERCONTENT_URL, a host of its own that
+  // reaches this same site, or, empty, a path on it (PUBLIC_URL/-/usercontent).
+  if (service.web) {
+    Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "", USERCONTENT_URL: (process.env.USERCONTENT_URL ?? "").trim() });
+  }
   if (hosted.name === "g1t-api") Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL });
   if (hosted.name === "g1t-identity") config.vars.SITE_URL = PUBLIC_URL;
   // Nightly backups' bundles go to a bucket of their own on the same
