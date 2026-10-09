@@ -22,6 +22,7 @@ import {
   type AgentMemoryScope,
   type NewRoutine,
   type Result,
+  type RoutineSuggestion,
   type SessionEvent,
   type SpendSlice,
   type User,
@@ -37,7 +38,8 @@ import { type MemoryRow, type MemoryViewer, changeableBy, cleanFact, toMemory, v
 import { DEFAULT_POLICY, checkPolicy, readPolicy } from "./policy.ts";
 import { type RoutineRow, MAX_ROUTINES, checkRoutine, newRoutineId, nextRun, runRoutine, toRoutine } from "./routines.ts";
 import { type SessionEnv, type SessionRow, LIVE, approve, sessionRow, steer, stop, toSession } from "./sessions.ts";
-import { type Row, periods, selectAgents, toAgent } from "./store.ts";
+import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
+import { suggestRoutines } from "./suggest.ts";
 
 export type ViewContext = {
   env: SessionEnv;
@@ -267,11 +269,14 @@ export async function forget(ctx: ViewContext, handle: string, id: string): Prom
 
 // ── Routines ──────────────────────────────────────────────────────────────
 
-export async function routines(ctx: ViewContext, handle: string): Promise<Result<AgentRoutine[]>> {
+/** An agent's routines, and routines its responsibilities suggest that it doesn't have yet. */
+export async function routines(ctx: ViewContext, handle: string): Promise<Result<{ routines: AgentRoutine[]; suggestions: RoutineSuggestion[] }>> {
   const agent = await agentByHandle(ctx, handle);
   if (!agent) return fail("not_found", `There is no agent called @${handle}.`);
   const rows = await ctx.db.prepare("SELECT * FROM agent_routines WHERE agent_id = ? ORDER BY created_at").bind(agent.id).all<RoutineRow>();
-  return ok(rows.results.map(toRoutine));
+  const list = rows.results.map(toRoutine);
+  const duties = definitionOf(agent).responsibilities;
+  return ok({ routines: list, suggestions: suggestRoutines(duties, list.map((r) => ({ name: r.name, events: r.events }))) });
 }
 
 /**
@@ -293,16 +298,17 @@ export async function saveRoutine(ctx: ViewContext, handle: string, input: NewRo
   const channels = await chatClient(ctx.env.CHAT).sidebar(ctx.slug, ctx.viewer).catch(() => null);
   const channelName = channels?.ok ? (channelNameIn(channels.value, r.channel_id) ?? null) : null;
   const now = new Date();
-  const next = r.enabled !== false ? nextRun(r.schedule, now).toISOString() : null;
+  const next = r.enabled !== false && r.schedule ? nextRun(r.schedule, now).toISOString() : null;
+  const schedule = r.schedule ? JSON.stringify(r.schedule) : null;
   if (id) {
     const existing = await ctx.db.prepare("SELECT id FROM agent_routines WHERE id = ? AND agent_id = ?").bind(id, agent.id).first();
     if (!existing) return fail("not_found", "There is no such routine.");
     await ctx.db
       .prepare(
-        `UPDATE agent_routines SET name = ?, instructions = ?, schedule = ?, channel_id = ?, channel_name = ?, sponsor = ?, sponsor_username = ?,
+        `UPDATE agent_routines SET name = ?, instructions = ?, schedule = ?, events = ?, repos = ?, channel_id = ?, channel_name = ?, sponsor = ?, sponsor_username = ?,
            enabled = ?, paused_note = NULL, next_run_at = ?, workspace = ?, updated_at = ? WHERE id = ?`,
       )
-      .bind(r.name, r.instructions, JSON.stringify(r.schedule), r.channel_id, channelName, ctx.viewer.id, ctx.viewer.username, r.enabled !== false ? 1 : 0, next, ctx.slug, now.toISOString(), id)
+      .bind(r.name, r.instructions, schedule, JSON.stringify(r.events), JSON.stringify(r.repos), r.channel_id, channelName, ctx.viewer.id, ctx.viewer.username, r.enabled !== false ? 1 : 0, next, ctx.slug, now.toISOString(), id)
       .run();
   } else {
     const count = await ctx.db.prepare("SELECT COUNT(*) AS n FROM agent_routines WHERE agent_id = ?").bind(agent.id).first<{ n: number }>();
@@ -310,10 +316,10 @@ export async function saveRoutine(ctx: ViewContext, handle: string, input: NewRo
     id = newRoutineId();
     await ctx.db
       .prepare(
-        `INSERT INTO agent_routines (id, agent_id, workspace_id, workspace, name, instructions, schedule, channel_id, channel_name, sponsor, sponsor_username, enabled, next_run_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO agent_routines (id, agent_id, workspace_id, workspace, name, instructions, schedule, events, repos, channel_id, channel_name, sponsor, sponsor_username, enabled, next_run_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(id, agent.id, ctx.workspaceId, ctx.slug, r.name, r.instructions, JSON.stringify(r.schedule), r.channel_id, channelName, ctx.viewer.id, ctx.viewer.username, r.enabled !== false ? 1 : 0, next, now.toISOString(), now.toISOString())
+      .bind(id, agent.id, ctx.workspaceId, ctx.slug, r.name, r.instructions, schedule, JSON.stringify(r.events), JSON.stringify(r.repos), r.channel_id, channelName, ctx.viewer.id, ctx.viewer.username, r.enabled !== false ? 1 : 0, next, now.toISOString(), now.toISOString())
       .run();
   }
   const row = await ctx.db.prepare("SELECT * FROM agent_routines WHERE id = ?").bind(id).first<RoutineRow>();

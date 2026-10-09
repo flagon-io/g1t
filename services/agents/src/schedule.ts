@@ -2,7 +2,9 @@
  * When routines run, and what a routine must have: pure, so it is tested
  * on its own (routines.ts runs them).
  */
-import type { NewRoutine, RoutineSchedule } from "@g1t/contracts";
+import type { NewRoutine, RoutineEvent, RoutineSchedule } from "@g1t/contracts";
+
+import { EVENT_KEYS } from "./suggest.ts";
 
 const EVERY = ["hour", "day", "weekday", "week"] as const;
 
@@ -57,15 +59,27 @@ export function describeSchedule(schedule: RoutineSchedule): string {
   }
 }
 
-/** A routine as given, checked: a name, instructions and a schedule. */
-export function checkRoutine(input: NewRoutine): { ok: true; value: NewRoutine & { schedule: RoutineSchedule } } | { ok: false; message: string } {
+export type CheckedRoutine = NewRoutine & { schedule: RoutineSchedule | null; events: RoutineEvent[]; repos: string[] };
+
+/** A routine as given, checked: a name, instructions, and a schedule, events, or both. */
+export function checkRoutine(input: NewRoutine): { ok: true; value: CheckedRoutine } | { ok: false; message: string } {
   const name = typeof input?.name === "string" ? input.name.trim().slice(0, 80) : "";
   const instructions = typeof input?.instructions === "string" ? input.instructions.trim().slice(0, 8000) : "";
   if (!name) return { ok: false, message: "Give the routine a name." };
   if (instructions.length < 10) return { ok: false, message: "Say what the routine does, in a sentence or more." };
   if (typeof input.channel_id !== "string" || !input.channel_id) return { ok: false, message: "Choose the channel it posts in." };
-  const schedule = checkSchedule(input.schedule);
-  if (!schedule.ok) return schedule;
-  return { ok: true, value: { ...input, name, instructions, schedule: schedule.value, enabled: input.enabled !== false } };
+  const given = Array.isArray(input.events) ? input.events : [];
+  if (given.some((e) => !EVENT_KEYS.includes(e))) return { ok: false, message: "That isn't something a routine can run on." };
+  const events = [...new Set(given)];
+  const repos = [...new Set((Array.isArray(input.repos) ? input.repos : []).filter((r): r is string => typeof r === "string").map((r) => r.trim().toLowerCase()).filter(Boolean))];
+  if (repos.some((r) => !/^[a-z0-9._-]+\/[a-z0-9._-]+$/.test(r))) return { ok: false, message: "Name repositories as workspace/name." };
+  if (repos.length > 20) return { ok: false, message: "A routine follows at most 20 repositories; leave it empty for all of them." };
+  let schedule: RoutineSchedule | null = null;
+  if (input.schedule) {
+    const checked = checkSchedule(input.schedule);
+    if (!checked.ok) return checked;
+    schedule = checked.value;
+  }
+  if (!schedule && !events.length) return { ok: false, message: "A routine runs on a schedule, when something happens, or both." };
+  return { ok: true, value: { ...input, name, instructions, schedule, events, repos, enabled: input.enabled !== false } };
 }
-

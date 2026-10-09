@@ -202,3 +202,39 @@ test("updates are limited per step", async () => {
   for (let i = 0; i < 3; i++) assert.equal((await session.run("post_update", { text: `step ${i}` })).outcome, "allowed");
   assert.equal((await session.run("post_update", { text: "again" })).outcome, "refused");
 });
+
+// ── Routines that run when something happens ─────────────────────────────
+
+import { describeEvents, suggestRoutines } from "./suggest.ts";
+import { checkRoutine as checkEventRoutine } from "./schedule.ts";
+
+test("Margo's responsibilities suggest the routines that bind to events", () => {
+  const margo = ["Reviewing pull requests for risk and test coverage", "Test plans for new features", "Chasing flaky checks"];
+  const suggested = suggestRoutines(margo, []);
+  assert.deepEqual(
+    suggested.map((s) => [s.routine.name, s.routine.events]),
+    [
+      ["Review pull requests", ["pull_ready"]],
+      ["Test plans for new work", ["issue_opened"]],
+      ["Chase failing checks", ["checks_failed"]],
+    ],
+  );
+  assert.match(suggested[0].routine.instructions, /risk and test coverage/);
+  // What it already runs on isn't suggested again.
+  assert.deepEqual(
+    suggestRoutines(margo, [{ name: "PR reviews", events: ["pull_ready"] }]).map((s) => s.routine.name),
+    ["Test plans for new work", "Chase failing checks"],
+  );
+  assert.deepEqual(suggestRoutines(["Keep the office plants alive"], []), []);
+});
+
+test("an event routine needs no schedule, but a routine needs one or the other", () => {
+  const base = { name: "Review", instructions: "Review pull requests for risk", channel_id: "chn_qa" };
+  assert.equal(checkEventRoutine({ ...base, schedule: null, events: ["pull_ready"] }).ok, true);
+  assert.equal(checkEventRoutine({ ...base, schedule: null, events: [] }).ok, false);
+  assert.equal(checkEventRoutine({ ...base, schedule: null, events: ["pull_exploded" as never] }).ok, false);
+  assert.equal(checkEventRoutine({ ...base, schedule: null, events: ["pull_ready"], repos: ["not a repo"] }).ok, false);
+  const ok = checkEventRoutine({ ...base, schedule: null, events: ["pull_ready", "pull_ready"], repos: ["Acme/Web"] });
+  assert.ok(ok.ok && ok.value.events.length === 1 && ok.value.repos[0] === "acme/web");
+  assert.equal(describeEvents(["pull_ready", "checks_failed"]), "When a pull request is ready for review or checks fail on a pull request");
+});

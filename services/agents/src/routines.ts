@@ -9,10 +9,11 @@
  * The schedule is in UTC, every hour, day, weekday or week, at a minute
  * (and hour, and day). `nextRun` is pure, so it is tested on its own.
  */
-import { type AgentRoutine, askerAccess, chatClient, identityClient, newId } from "@g1t/contracts";
+import { type AgentRoutine, type RoutineEvent, type RoutineSchedule, askerAccess, chatClient, identityClient, newId } from "@g1t/contracts";
 
 import { type SessionEnv, startSession } from "./sessions.ts";
 import { checkSchedule, describeSchedule, nextRun } from "./schedule.ts";
+import { EVENT_KEYS, describeEvents } from "./suggest.ts";
 
 export { checkRoutine, checkSchedule, describeSchedule, nextRun } from "./schedule.ts";
 import type { Row } from "./store.ts";
@@ -28,7 +29,9 @@ export type RoutineRow = {
   workspace: string;
   name: string;
   instructions: string;
-  schedule: string;
+  schedule: string | null;
+  events: string;
+  repos: string;
   channel_id: string;
   channel_name: string | null;
   sponsor: string;
@@ -43,14 +46,39 @@ export type RoutineRow = {
   updated_at: string;
 };
 
+function list<T>(raw: string | null): T[] {
+  try {
+    const value = JSON.parse(raw || "[]") as unknown;
+    return Array.isArray(value) ? (value as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function scheduleOf(row: Pick<RoutineRow, "schedule">): RoutineSchedule | null {
+  if (!row.schedule) return null;
+  try {
+    const checked = checkSchedule(JSON.parse(row.schedule));
+    return checked.ok ? checked.value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function eventsOf(row: Pick<RoutineRow, "events">): RoutineEvent[] {
+  return list<RoutineEvent>(row.events).filter((e) => EVENT_KEYS.includes(e));
+}
+
 export function toRoutine(row: RoutineRow): AgentRoutine {
-  const schedule = checkSchedule(JSON.parse(row.schedule || "{}"));
+  const schedule = scheduleOf(row);
   return {
     id: row.id,
     agent_id: row.agent_id,
     name: row.name,
     instructions: row.instructions,
-    schedule: schedule.ok ? schedule.value : { every: "day", minute: 0, hour: 9, weekday: 1 },
+    schedule,
+    events: eventsOf(row),
+    repos: list<string>(row.repos),
     channel_id: row.channel_id,
     channel_name: row.channel_name,
     sponsor: row.sponsor,
@@ -76,7 +104,23 @@ async function pause(db: D1Database, id: string, note: string): Promise<void> {
  * channel and that the agent is still in it, then starts the session and
  * moves its next run on. Returns the session's id, or why it couldn't.
  */
-export async function runRoutine(env: SessionEnv, routine: RoutineRow, agent: Row, workspace: string, now = new Date()): Promise<{ ok: true; session: string } | { ok: false; message: string }> {
+export type RoutineOccasion = {
+  /** What happened, in a line, and where: "Pull request acme/web#12 is ready for review: Fix CSV export". */
+  what: string;
+  /** Where to read more, relative to the site. */
+  href: string | null;
+  /** The repository it happened in, by id, which the sponsor must be able to read. */
+  repo_id: string;
+};
+
+export async function runRoutine(
+  env: SessionEnv,
+  routine: RoutineRow,
+  agent: Row,
+  workspace: string,
+  now = new Date(),
+  occasion: RoutineOccasion | null = null,
+): Promise<{ ok: true; session: string } | { ok: false; message: string }> {
   const db = env.DB;
   const [sponsor] = await identityClient(env.IDENTITY)
     .usersForAudience([routine.sponsor])
@@ -95,18 +139,25 @@ export async function runRoutine(env: SessionEnv, routine: RoutineRow, agent: Ro
     await pause(db, routine.id, `Paused: @${sponsor.username} is no longer in its channel.`);
     return { ok: false, message: "Its sponsor is no longer in its channel." };
   }
-  const schedule = checkSchedule(JSON.parse(routine.schedule || "{}"));
-  const next = schedule.ok ? nextRun(schedule.value, now).toISOString() : null;
-  // Moved on first, so a slow start never runs it twice.
+  const schedule = scheduleOf(routine);
+  // A scheduled run moves the clock on first, so a slow start never runs it twice; an event's run leaves it.
+  const next = occasion ? routine.next_run_at : schedule ? nextRun(schedule, now).toISOString() : null;
   await db
     .prepare("UPDATE agent_routines SET next_run_at = ?, last_run_at = ?, runs = runs + 1, updated_at = ? WHERE id = ?")
     .bind(next, now.toISOString(), now.toISOString(), routine.id)
     .run();
+  const when = [schedule ? describeSchedule(schedule) : null, describeEvents(eventsOf(routine)) || null].filter(Boolean).join("; ");
   const session = await startSession(env, {
     agent,
     kind: "routine",
-    title: routine.name,
-    goal: `This is your routine "${routine.name}" (${schedule.ok ? describeSchedule(schedule.value) : "scheduled"}), set up by @${sponsor.username}. Post its report for #${routine.channel_name ?? "the channel"}.\n\n${routine.instructions}`,
+    title: occasion ? `${routine.name}: ${occasion.what}`.slice(0, 120) : routine.name,
+    goal: [
+      `This is your routine "${routine.name}" (${when || "run by hand"}), set up by @${sponsor.username}. Post its report for #${routine.channel_name ?? "the channel"}.`,
+      occasion ? `It runs now because: ${occasion.what}${occasion.href ? ` (${occasion.href})` : ""}. Work on that one thing.` : "",
+      routine.instructions,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     workspace,
     channel_id: routine.channel_id,
     channel_kind: audience.value.kind === "dm" ? "dm" : "channel",

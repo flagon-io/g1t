@@ -432,7 +432,22 @@ export type RoutineSchedule = {
 };
 
 /**
- * A routine: work an agent does on a schedule, such as Izzy's Monday digest
+ * Things that happen in the workspace a routine can run on
+ * (docs/WORKSPACE.md, "Routines"). Each run is one session about the one
+ * thing that happened, in a repository its sponsor can read.
+ */
+export const ROUTINE_EVENTS = [
+  { key: "pull_ready", label: "A pull request is ready for review", hint: "Opened ready, or moved out of draft." },
+  { key: "pull_merged", label: "A pull request is merged", hint: "On any branch it targets." },
+  { key: "checks_failed", label: "Checks fail on a pull request", hint: "Its required checks failed or errored." },
+  { key: "issue_opened", label: "An issue is opened", hint: "By a person or an agent." },
+  { key: "deploy_failed", label: "A deploy fails", hint: "A production or preview deploy." },
+] as const;
+
+export type RoutineEvent = (typeof ROUTINE_EVENTS)[number]["key"];
+
+/**
+ * A routine: work an agent does on a schedule or when something happens, such as Izzy's Monday digest
  * of support themes. Each run is a session posted in the routine's channel,
  * paid from the agent's budget, and run with the access of the person who
  * set it up (its sponsor), never more.
@@ -442,7 +457,12 @@ export type AgentRoutine = {
   agent_id: string;
   name: string;
   instructions: string;
-  schedule: RoutineSchedule;
+  /** When it runs on a clock; null when it runs only on events. */
+  schedule: RoutineSchedule | null;
+  /** What it runs on; empty when it runs only on its schedule. */
+  events: RoutineEvent[];
+  /** Which repositories its events come from, by `workspace/name`; empty: every one its sponsor can read. */
+  repos: string[];
   channel_id: string;
   channel_name: string | null;
   sponsor: string;
@@ -458,10 +478,16 @@ export type AgentRoutine = {
   updated_at: string;
 };
 
+/** A routine suggested from an agent's responsibilities, for an owner to add in one step. */
+export type RoutineSuggestion = { responsibility: string; routine: Omit<NewRoutine, "channel_id"> };
+
 export type NewRoutine = {
   name: string;
   instructions: string;
-  schedule: RoutineSchedule;
+  /** A schedule, events, or both; at least one. */
+  schedule: RoutineSchedule | null;
+  events?: RoutineEvent[];
+  repos?: string[];
   /** A channel the agent is in, by id. */
   channel_id: string;
   enabled?: boolean;
@@ -517,7 +543,7 @@ export type AgentsOverview = {
   waiting_on_you: AgentSession[];
   /** Recently finished sessions the viewer can see. */
   recent: AgentSession[];
-  /** The next routines to run. */
+  /** The next routines to run on a schedule. */
   upcoming: (AgentRoutine & { agent_handle: string; agent_name: string })[];
   spend: AgentSpendBreakdown;
   can_manage: boolean;
@@ -594,7 +620,7 @@ export type WorkspaceAgentsApi = {
     changes: { body?: string; pinned?: boolean },
   ): Promise<Result<AgentMemory>>;
   forget(workspace: string, handle: string, viewer: User, id: string): Promise<Result<null>>;
-  routines(workspace: string, handle: string, viewer: User): Promise<Result<AgentRoutine[]>>;
+  routines(workspace: string, handle: string, viewer: User): Promise<Result<{ routines: AgentRoutine[]; suggestions: RoutineSuggestion[] }>>;
   saveRoutine(workspace: string, handle: string, viewer: User, input: NewRoutine, id?: string | null): Promise<Result<AgentRoutine>>;
   deleteRoutine(workspace: string, handle: string, viewer: User, id: string): Promise<Result<null>>;
   /** Runs a routine now, as a session. */

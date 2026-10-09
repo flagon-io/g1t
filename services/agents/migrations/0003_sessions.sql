@@ -118,7 +118,12 @@ CREATE TABLE agent_routines (
   name TEXT NOT NULL,
   instructions TEXT NOT NULL,
   -- JSON: every (hour, day, weekday, week), minute, hour, weekday. UTC.
-  schedule TEXT NOT NULL,
+  -- Null when it runs only on events.
+  schedule TEXT,
+  -- JSON lists: what it runs on (pull_ready, checks_failed...), and which
+  -- repositories those come from (workspace/name; empty: any its sponsor can read).
+  events TEXT NOT NULL DEFAULT '[]',
+  repos TEXT NOT NULL DEFAULT '[]',
   channel_id TEXT NOT NULL,
   channel_name TEXT,
   sponsor TEXT NOT NULL,
@@ -135,6 +140,18 @@ CREATE TABLE agent_routines (
 
 CREATE INDEX agent_routines_agent ON agent_routines (agent_id);
 CREATE INDEX agent_routines_due ON agent_routines (enabled, next_run_at);
+CREATE INDEX agent_routines_workspace ON agent_routines (workspace_id, enabled);
+
+-- What each routine ran on, so one thing that happened runs it once.
+CREATE TABLE agent_routine_runs (
+  routine_id TEXT NOT NULL,
+  -- The event's kind and what it was about: pull_ready:rep_1:12.
+  run_key TEXT NOT NULL,
+  session_id TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (routine_id, run_key)
+);
+CREATE INDEX agent_routine_runs_recent ON agent_routine_runs (routine_id, created_at);
 
 -- The workspace's say over all its agents together.
 CREATE TABLE agent_policies (

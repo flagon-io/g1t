@@ -10,6 +10,7 @@
  */
 import {
   type AgentDelivery,
+  type G1tEvent,
   type NewWorkspaceAgent,
   type Result,
   type ServiceBinding,
@@ -36,6 +37,7 @@ import { type Row, definitionOf, insertAgent, periods, selectAgents, toAgent, up
 import { TEMPLATES, TEMPLATE_IDS } from "./templates.ts";
 import { readPolicy } from "./policy.ts";
 import { runDue } from "./routines.ts";
+import { onEvents } from "./triggers.ts";
 import { type SessionEnv, sweep } from "./sessions.ts";
 import * as views from "./views.ts";
 import { monthKey } from "./budget.ts";
@@ -452,6 +454,12 @@ export default {
     const service = new Agents(Object.create(env, { DB: { value: opened.db } }) as Env, (work) => ctx.waitUntil(work));
     const args = (await request.json().catch(() => ({}))) as any;
     return opened.finish(await answer(service, match[1], args));
+  },
+
+  /** Events routines run on, from the events service (SUBSCRIBER_AGENTS). */
+  async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
+    await onEvents(env as unknown as SessionEnv, batch.messages.map((message) => message.body as G1tEvent));
+    batch.ackAll();
   },
 
   /** Every few minutes: routines that are due, and session steps a desk lost. */

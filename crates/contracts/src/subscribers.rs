@@ -189,6 +189,20 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "team.deleted",
         ],
     ),
+    // Agents' routines that run on events: a pull request ready for
+    // review or merged, checks or a deploy failing, an issue opened
+    // (agents/src/triggers.ts).
+    (
+        "SUBSCRIBER_AGENTS",
+        &[
+            "pull.opened",
+            "pull.ready",
+            "pull.merged",
+            "checks.completed",
+            "issue.opened",
+            "deployment.failed",
+        ],
+    ),
 ];
 
 /// Whether `pattern` (see the module's notes) matches the type `kind`.
@@ -265,7 +279,7 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), count);
-        assert_eq!(count, 13);
+        assert_eq!(count, 14);
     }
 
     #[test]

@@ -53,6 +53,12 @@
 	// Every five minutes: routines that are due, and session steps a desk
 	// lost (src/routines.ts, src/sessions.ts).
 	"triggers": { "crons": ["*/5 * * * *"] },
+	// Events routines run on: pull requests ready for review or merged,
+	// checks and deploys failing, issues opened (src/triggers.ts). Create it
+	// once: npx wrangler queues create g1t-events-agents
+	"queues": {
+		"consumers": [{ "queue": "g1t-events-agents", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+	},
 	"vars": {
 		// Who may use g1t's hosted models while billing takes no real money:
 		// the same list as the runner's (services/runner/wrangler.jsonc, and
