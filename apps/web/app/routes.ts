@@ -305,7 +305,6 @@ export default [
     route("settings/runners", "routes/repo/settings-runners.tsx"),
     route("settings/deployments", "routes/repo/settings-deployments.tsx"),
     route("settings/domains", "routes/repo/settings-domains.tsx"),
-    route("settings/dependencies", "routes/repo/settings-dependencies.ts"),
     route("settings/guardrails", "routes/repo/settings-guardrails.tsx"),
     route("settings/agents", "routes/repo/settings-agents.tsx"),
     // What the project will have: one page for each Soon in its menu.

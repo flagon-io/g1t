@@ -10,7 +10,6 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@g1t/contracts": "*",
-    "yaml": "^2.9.1"
+    "@g1t/contracts": "*"
   }
 }
