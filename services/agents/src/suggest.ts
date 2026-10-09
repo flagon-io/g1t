@@ -32,10 +32,10 @@ type Rule = { match: RegExp; routine: (duty: string) => Omit<NewRoutine, "channe
 
 const RULES: Rule[] = [
   {
-    match: /\b(docs|documentation|pages|runbooks?)\b.*\b(change|changes|merge|merges|wrong|current|up to date|stale)\b/i,
+    match: /\b(docs|documentation|pages|runbooks?|artifacts?)\b.*\b(change|changes|merge|merges|wrong|current|up to date|stale)\b/i,
     routine: (duty) => ({
       name: "Keep the docs current",
-      instructions: `When a pull request is merged, keep the docs true (${trimmed(duty)}). Find the pages it makes wrong or incomplete: stale_pages for this repository first (pages citing code it changed), then search_docs for what it changed. Update each with edit_page (it becomes a suggestion where you can't edit), citing the pull request, with marks_current when it brings a stale page up to date. Post a short list of what you changed here; say so if nothing needed changing.`,
+      instructions: `When a pull request is merged, keep the docs true (${trimmed(duty)}). Find the docs it makes wrong or incomplete: stale_artifacts for this repository first (docs citing code it changed), then search_artifacts for what it changed. Update each with edit_artifact (it becomes a suggestion where you can't edit), citing the pull request, with marks_current when it brings a stale doc up to date. Post a short list of what you changed here; say so if nothing needed changing.`,
       schedule: null,
       events: ["pull_merged"],
       repos: [],

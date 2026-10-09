@@ -509,12 +509,13 @@ export function actionPorts(
   const { agent, place } = input;
   const session = input.session ?? null;
   const ports: ActionPorts = {
-    async remember(body, wanted) {
+    async remember(body, wanted, onlyForAsker) {
       const fact = cleanFact(body);
       if (!fact) return { ok: false, message: "Say what to remember." };
       const count = await db.prepare("SELECT COUNT(*) AS n FROM agent_memories WHERE agent_id = ?").bind(agent.id).first<{ n: number }>();
       if ((count?.n ?? 0) >= MAX_FACTS) return { ok: false, message: "Your memory is full. Forget something out of date first." };
-      const { scope, ref } = scopeFor(place, wanted);
+      const privately = !!onlyForAsker && !!input.asker.id;
+      const { scope, ref } = scopeFor(place, wanted, privately ? input.asker.id : null);
       const id = newId("mem");
       const now = iso();
       const label = scope === "person" ? input.asker.username : scope === "channel" ? input.source.label : null;
@@ -527,7 +528,11 @@ export function actionPorts(
         .run();
       if (session) await addOutput(db, session.id, { kind: "memory", id, body: fact });
       const where = scope === "workspace" ? "for the whole workspace" : scope === "person" ? "for this person" : "for this conversation";
-      const narrowed = wanted && wanted !== scope ? ` (${wanted} wasn't allowed from here)` : "";
+      const narrowed = privately
+        ? " (only for them: you read an artifact not everyone in the workspace can)"
+        : wanted && wanted !== scope
+          ? ` (${wanted} wasn't allowed from here)`
+          : "";
       return { ok: true, message: `Remembered ${where}${narrowed}: ${fact}` };
     },
     async forget(id) {
@@ -776,7 +781,7 @@ export async function advance(env: SessionEnv, id: string): Promise<void> {
       } catch (error) {
         console.error("agents: no audience for a session step, so no tools", current.id, String(error));
       }
-      // What Docs say about the work: its goal, and whatever arrived for this step.
+      // What the workspace's artifacts say about the work: its goal, and whatever arrived for this step.
       const asked = [current.goal, ...inbox.map((item) => item.body)].reverse();
       const [facts, passages] = await Promise.all([
         recall(db, agent.id, place).catch(() => []),

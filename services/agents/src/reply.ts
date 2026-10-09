@@ -421,7 +421,7 @@ export async function reply(env: ReplyEnv, delivery: DeskWork, now = new Date())
           console.error("agents: no audience for a reply, so no tools", row.id, String(error));
         }
       }
-      // What people said last, for recalling what Docs say about it.
+      // What people said last, for recalling what the workspace's artifacts say about it.
       const said = [...history].reverse().filter((m) => m.author.kind === "user").slice(0, 3).map((m) => m.body);
       const [facts, recent, passages] = delivery.hello
         ? [[], null, []]

@@ -81,8 +81,13 @@ export function recallable(memory: Pick<MemoryRow, "scope" | "scope_ref">, place
  * The scope an agent remembers into from here. `wanted` is what it asked
  * for; it gets that only when the conversation allows it, else the
  * narrowest scope that fits.
+ *
+ * `onlyFor`: the person who asked, when the turn read an artifact the
+ * whole workspace can't read. What it learned there is kept as theirs
+ * alone, wherever it is (docs/ARTIFACTS_MODE.md, section 4.3, rule 7).
  */
-export function scopeFor(place: RecallPlace, wanted: AgentMemoryScope | null): { scope: AgentMemoryScope; ref: string } {
+export function scopeFor(place: RecallPlace, wanted: AgentMemoryScope | null, onlyFor: string | null = null): { scope: AgentMemoryScope; ref: string } {
+  if (onlyFor) return { scope: "person", ref: onlyFor };
   if (wanted === "workspace" && place.kind === "public") return { scope: "workspace", ref: "" };
   const person = soloPerson(place);
   if (person && wanted !== "channel") return { scope: "person", ref: person };

@@ -55,7 +55,7 @@ export type Definition = {
   responsibilities: string[];
   subagents: SubagentDef[];
   faces: AgentFaces;
-  /** Docs spaces it reads first. */
+  /** Spaces whose artifacts it reads first. */
   reading: string[];
 };
 
@@ -307,10 +307,10 @@ export function applyChanges(
     next.subagents = subagents.value;
   }
   if (changes.reading !== undefined) {
-    if (!Array.isArray(changes.reading)) return bad("Required reading is a list of Docs spaces.");
+    if (!Array.isArray(changes.reading)) return bad("Required reading is a list of spaces.");
     const ids = [...new Set(changes.reading.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean))];
     if (ids.length > 10) return bad("An agent has at most 10 spaces of required reading.");
-    if (ids.some((id) => !/^[A-Za-z0-9_-]{1,80}$/.test(id))) return bad("That isn't a Docs space.");
+    if (ids.some((id) => !/^[A-Za-z0-9_-]{1,80}$/.test(id))) return bad("That isn't a space.");
     next.reading = ids;
   }
   if (changes.faces !== undefined) {

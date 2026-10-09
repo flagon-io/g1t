@@ -5,11 +5,12 @@
  * every request.
  */
 import {
+  type Result,
   type ServiceBinding,
   type User,
-  type DocPageRef,
   chatClient,
   docsClient,
+  foliosClient,
   identityClient,
   reposClient,
   searchClient,
@@ -17,8 +18,8 @@ import {
 } from "@g1t/contracts";
 
 import type { AudiencePorts, RepoRef } from "./audience.ts";
-import type { DocsPorts, FoundMessage, ToolPorts } from "./tools.ts";
-import { RECALL_LIMIT } from "./recall.ts";
+import type { FolioDone, FoliosPorts, FoundMessage, ToolPorts } from "./tools.ts";
+import { RECALL_LIMIT, passageSource } from "./recall.ts";
 
 export type PortsEnv = {
   DB: D1Database;
@@ -27,7 +28,7 @@ export type PortsEnv = {
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
   SEARCH: ServiceBinding;
-  /** Docs, for agents reading and writing pages; absent on an installation without it. */
+  /** The docs service, for agents reading and writing artifacts; absent on an installation without it. */
   DOCS?: ServiceBinding;
 };
 
@@ -157,76 +158,84 @@ export function toolPorts(
       return `People:\n${people}${teamLines ? `\n\nTeams:\n${teamLines}` : ""}\n\nAgents:\n${agentLines}`;
     },
     consult,
-    ...(env.DOCS && agentId ? { docs: docsPorts(env.DOCS, workspace, agentId) } : {}),
+    ...(env.DOCS && agentId ? { folios: folioPorts(env.DOCS, env.CHAT, workspace, agentId) } : {}),
   };
 }
 
-/** Docs as an agent reads and writes them: Markdown in, Markdown out, every call checked by the docs service. */
-function docsPorts(binding: ServiceBinding, workspace: string, agentId: string): DocsPorts {
-  const docs = docsClient(binding);
-  const where = (page: DocPageRef) => `${page.title} (${page.path}, id ${page.id})`;
+/** A call's result as the tools take it: the value, or the error's code and sentence. */
+const done = <T>(result: Result<T>): FolioDone<T> => (result.ok ? result : { ok: false, code: result.error.code, message: result.error.message });
+
+/**
+ * Artifacts (folios) as an agent reads and writes them: Markdown in,
+ * Markdown out, every call checked by the docs service. Spaces still come
+ * from the docs service's `spaces_for_agent`: spaces are shared by pages
+ * and folios, and have no folio method of their own.
+ */
+function folioPorts(docs: ServiceBinding, chatBinding: ServiceBinding, workspace: string, agentId: string): FoliosPorts {
+  const folios = foliosClient(docs);
+  const where = (f: { title: string; path: string; id: string }) => `${f.title} (${f.path}, id ${f.id})`;
   return {
     async spaces(viewer, audience) {
-      const found = await docs.spacesForAgent(workspace, agentId, viewer, audience);
+      const found = await docsClient(docs).spacesForAgent(workspace, agentId, viewer, audience);
       if (!found.ok) return null;
-      if (!found.value.length) return "There are no Docs spaces everyone here can read.";
-      return found.value
-        .map((s) => {
-          const can = s.can.edit ? "you can edit" : s.can.suggest ? "you can suggest edits" : "read only";
-          const projects = s.projects?.length ? `; about ${s.projects.join(", ")}` : "";
-          return `- ${s.name} (id ${s.id}, ${s.kind}; ${can}${projects})${s.description ? `: ${s.description}` : ""}`;
-        })
-        .join("\n");
+      return found.value.map((s) => ({ id: s.id, slug: s.slug, name: s.name, description: s.description, kind: s.kind, projects: s.projects ?? [], can: s.can }));
     },
-    async recall(viewer, audience, query, spaces) {
-      const found = await docs.recallForAgent(workspace, agentId, viewer, { query, limit: RECALL_LIMIT, spaces }, audience);
+    async recall(viewer, audience, query, spaces, kinds) {
+      const found = await folios.recallForAgent(workspace, agentId, viewer, { query, limit: RECALL_LIMIT, spaces, kinds: kinds ?? null }, audience);
       return found.ok ? found.value : null;
     },
-    async search(viewer, audience, query, project) {
-      const found = await docs.searchForAgent(workspace, agentId, viewer, { query, project, limit: 10 }, audience);
-      if (!found.ok) return null;
-      if (!found.value.length) return "No pages found.";
-      return found.value.map((hit) => `- ${where(hit)} in ${hit.space_name}, updated ${hit.updated_at.slice(0, 10)}: ${hit.snippet.replace(/\[\[|\]\]/g, "")}`).join("\n");
+    async search(viewer, audience, input) {
+      const kinds = input.kind ? [input.kind] : null;
+      // Passages too, when the search isn't narrowed to a space or project: recall can't be.
+      const [list, passages] = await Promise.all([
+        folios.foliosForAgent(workspace, agentId, viewer, { tab: "all", q: input.query, kinds, space_id: input.space_id, project: input.project, limit: 10 }, audience),
+        input.space_id || input.project ? Promise.resolve(null) : folios.recallForAgent(workspace, agentId, viewer, { query: input.query, limit: 4, kinds }, audience).catch(() => null),
+      ]);
+      if (!list.ok) return null;
+      const lines = list.value.items.map((f) => {
+        const space = f.space ? `in ${f.space.name}` : "not in a space";
+        return `- ${where(f)}: a ${f.kind} ${space}, edited ${f.edited_at.slice(0, 10)}${f.stale ? ", possibly out of date" : ""}${f.excerpt ? `: ${f.excerpt.replace(/\s+/g, " ").slice(0, 300)}` : ""}`;
+      });
+      const found = passages?.ok ? passages.value.map((p) => `### ${passageSource(p)}\n${p.text.trim().slice(0, 800)}`) : [];
+      if (!lines.length && !found.length) return "No artifacts found.";
+      return [lines.length ? lines.join("\n") : "No artifacts matched by title or words.", ...(found.length ? ["", "Passages that match:", "", found.join("\n\n")] : [])].join("\n");
     },
-    async read(viewer, audience, pageId) {
-      const found = await docs.pageMarkdown(workspace, agentId, viewer, pageId, audience);
-      if (!found.ok) return null;
-      const p = found.value;
-      const can = p.can.edit ? "you can edit it" : p.can.suggest ? "you can suggest edits" : "you can only read it";
-      const blocks = p.blocks.map((b) => `${b.id} ${b.type}${b.level ? ` ${b.level}` : ""}`).join(", ");
-      return `# ${where(p.page)}\nSpace: ${p.space.name}; ${can}. Updated ${p.page.updated_at.slice(0, 16)}.\nTop-level blocks: ${blocks}\n\n${p.markdown}`;
-    },
+    read: async (viewer, audience, folioId) => done(await folios.readForAgent(workspace, agentId, viewer, folioId, audience)),
     async stale(viewer, audience, repo) {
-      const found = await docs.stalePagesForAgent(workspace, agentId, viewer, { repo }, audience);
+      const found = await folios.staleForAgent(workspace, agentId, viewer, { repo }, audience);
       if (!found.ok) return null;
-      if (!found.value.length) return "No pages are marked possibly out of date.";
+      if (!found.value.length) return "No artifacts are marked possibly out of date.";
       return found.value
-        .map((s) => {
-          const changes = s.changes
-            .filter((c) => c.visible)
-            .slice(0, 3)
-            .map((c) => `${c.repo}${c.pull ? `#${c.pull.number}${c.pull.title ? ` (${c.pull.title})` : ""}` : `@${String(c.commit ?? "").slice(0, 8)}`} changed ${c.paths.slice(0, 5).join(", ")}`)
-            .join("; ");
-          const can = s.can.edit ? "you can edit" : s.can.suggest ? "you can suggest" : "read only";
-          return `- ${where(s.page)} (${can}), since ${s.since.slice(0, 10)}: ${changes}`;
+        .map((f) => {
+          const can = f.viewer_role === "edit" || f.viewer_role === "manage" ? (f.agent_mode === "edit" ? "you can edit" : "you can suggest") : f.viewer_role === "comment" ? "you can suggest" : "read only";
+          return `- ${where(f)}, a ${f.kind} ${f.space ? `in ${f.space.name}` : "not in a space"} (${can}), edited ${f.edited_at.slice(0, 10)}`;
         })
         .join("\n");
     },
-    async edit(viewer, pageId, edit, suggestOnly) {
-      const done = suggestOnly
-        ? await docs.suggestEdit(workspace, agentId, viewer, pageId, edit).then((r) => (r.ok ? { ok: true as const, value: { mode: "suggested" as const, suggestion: r.value, page: null } } : r))
-        : await docs.applyEdit(workspace, agentId, viewer, pageId, edit);
-      if (!done.ok) return { ok: false, message: `That didn't work: ${done.error.message}` };
-      const v = done.value;
-      const page = v.page ? ` on ${where(v.page)}` : "";
-      return v.mode === "applied"
-        ? { ok: true, message: `Changed${page}. It's in the page's history as yours.` }
-        : { ok: true, message: `Suggested${page}: people accept or reject it on the page. Link the page so they can.` };
-    },
     async create(viewer, input) {
-      const made = await docs.createPageAsAgent(workspace, agentId, viewer, input);
-      if (!made.ok) return { ok: false, message: `The page couldn't be made: ${made.error.message}` };
-      return { ok: true, message: `Wrote ${where(made.value)}. Link it.` };
+      const made = await folios.createAsAgent(workspace, agentId, viewer, {
+        kind: input.kind,
+        title: input.title,
+        content: input.markdown === null ? null : { markdown: input.markdown },
+        template_id: input.template_id,
+        where: input.where,
+        parent_id: input.parent_id,
+        source: input.source,
+      });
+      return done(made);
+    },
+    edit: async (viewer, folioId, edit) => done(await folios.editAsAgent(workspace, agentId, viewer, folioId, edit)),
+    async share(viewer, audience, folioId, userIds, role) {
+      const shared = await folios.shareAsAgent(workspace, agentId, viewer, folioId, { user_ids: userIds, role }, audience);
+      return shared.ok ? { ok: true, value: null } : done(shared);
+    },
+    async sendLink(asker, link, note) {
+      const chat = chatClient(chatBinding);
+      const dm = await chat.openDm(workspace, asker, [{ kind: "agent", id: agentId }]);
+      if (!dm.ok) return false;
+      // No mention, so it wakes nobody.
+      const posted = await chat.postAsAgent(workspace, dm.value.id, agentId, { body: `${note} [${link.title.replace(/[[\]]/g, "")}](${link.path})`, asked_by: asker.id });
+      return posted.ok;
     },
   };
 }

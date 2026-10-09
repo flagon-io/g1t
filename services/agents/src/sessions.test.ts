@@ -40,6 +40,9 @@ test("an agent remembers into the narrowest scope the conversation allows", () =
   assert.deepEqual(scopeFor(groupDm, "person"), { scope: "channel", ref: "chn_dm_group" });
   assert.deepEqual(scopeFor(publicGeneral, "workspace"), { scope: "workspace", ref: "" });
   assert.deepEqual(scopeFor(publicGeneral, null), { scope: "channel", ref: "chn_general" });
+  // After reading an artifact the whole workspace can't: the asker's alone, wherever it is.
+  assert.deepEqual(scopeFor(publicGeneral, "workspace", "ann"), { scope: "person", ref: "ann" });
+  assert.deepEqual(scopeFor(privateOps, null, "ann"), { scope: "person", ref: "ann" });
 });
 
 test("people see what could be recalled for them; owners don't read others' facts", () => {
@@ -258,38 +261,187 @@ test("agents comment and review on issues and pull requests only where the asker
   assert.ok(!new ToolBox(noCode, readPorts, { ...ctx, session: true }, [], ports).definitions().some((t) => t.name === "comment" || t.name === "review_pull"));
 });
 
-// ── Docs, for everyone ───────────────────────────────────────────────────
+/// ── Artifacts, for everyone ──────────────────────────────────────────────
 
-import { pageId } from "./tools.ts";
+import type { FolioAgentRead, FolioRef } from "@g1t/contracts";
 
-test("someone without Code still gets Docs; what they can't read is withheld, never named", async () => {
-  const asked: string[] = [];
-  const docs = {
-    spaces: async () => "- General (id spc_1, workspace; you can suggest edits)",
-    search: async (_v: User, audience: unknown, query: string) => (asked.push(`search:${query}:${JSON.stringify(audience)}`), "- Refunds policy (/acme/-/docs/general/refunds-pag_1, id pag_1)"),
-    read: async (_v: User, _a: unknown, page: string) => (page === "pag_secret" ? null : "# Refunds policy"),
-    edit: async () => ({ ok: true, message: "Suggested" }),
-    create: async () => ({ ok: true, message: "Wrote" }),
-  };
-  const rep = await Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], {}));
-  const box = new ToolBox(rep, { ...readPorts, docs }, ctx, [], actions([]));
-  const names = box.definitions().map((t) => t.name);
-  assert.ok(names.includes("search_docs") && names.includes("read_page") && names.includes("edit_page") && names.includes("create_page"));
-  assert.ok(!names.includes("read_file"), "still no code");
-  await box.run("search_docs", { query: "refund window" });
-  assert.deepEqual(asked, ['search:refund window:{"kind":"people","user_ids":["cal"]}']);
-  assert.equal((await box.run("read_page", { page: "pag_secret" })).text, WITHHELD);
-  assert.match((await box.run("read_page", { page: "/acme/-/docs/general/refunds-pag_1" })).text, /Refunds policy/);
-  assert.equal((await box.run("edit_page", { page: "pag_1", target: "section", markdown: "x" })).outcome, "refused", "a section edit names its heading");
-  // Without a docs service, no docs tools.
-  assert.ok(!new ToolBox(rep, readPorts, ctx, [], actions([])).definitions().some((t) => t.name === "search_docs"));
+import { type FoliosPorts, folioReadText, folioRef, sourceLink } from "./tools.ts";
+
+const FOL = "fol_01jabcdefghjkmnpqrstvwxyz0";
+const SECRET = "fol_01jabcdefghjkmnpqrstvwxyz1";
+const NEW = "fol_01jabcdefghjkmnpqrstvwxyz2";
+
+const ref = (id: string, title: string): FolioRef => ({ id, kind: "doc", title, icon: null, slug: `x-${id}`, path: `/acme/-/artifacts/x-${id}` });
+
+const agentRead = (id: string, title: string, content: string, audience_can_read: boolean): FolioAgentRead => ({
+  folio: { ...ref(id, title), edited_at: "2026-10-01T10:00:00Z" },
+  space: { id: "spc_general", slug: "general", name: "General", agent_mode: "suggest" },
+  content,
+  blocks: [{ id: "b1", type: "heading", level: 1, markdown: `# ${title}` }],
+  can: { read: true, suggest: true, edit: false },
+  audience_can_read,
 });
 
-test("page ids come from ids or links", () => {
-  assert.equal(pageId("pag_01jabc"), "pag_01jabc");
-  assert.equal(pageId("/acme/-/docs/general/refunds-policy-pag_01jabc"), "pag_01jabc");
-  assert.equal(pageId("https://g1t.sh/acme/-/docs/general/refunds-pag_01jabc?x=1"), "pag_01jabc");
-  assert.equal(pageId("   "), null);
+/** A docs service with one readable doc, one secret one, and whatever is made (readable here unless `hidden` says so). */
+function folioWorld(log: string[], options: { hidden?: Set<string>; forbidden?: string } = {}): FoliosPorts {
+  const hidden = options.hidden ?? new Set<string>();
+  return {
+    spaces: async () => [
+      { id: "spc_general", slug: "general", name: "General", description: null, kind: "workspace", projects: [], can: { read: true, suggest: true, edit: false } },
+      { id: "spc_eng", slug: "engineering", name: "Engineering", description: "How we build", kind: "team", projects: ["acme/web"], can: { read: true, suggest: true, edit: true } },
+    ],
+    recall: async () => [],
+    search: async (_v, audience, input) => (log.push(`search:${input.query}:${JSON.stringify(audience)}:${input.space_id}:${input.kind}`), `- Refunds policy (/acme/-/artifacts/x-${FOL}, id ${FOL})`),
+    read: async (_v, _a, id) => {
+      if (id === FOL) return { ok: true, value: agentRead(FOL, "Refunds policy", "# Refunds policy\n\n30 days.", true) };
+      if (id === SECRET) return { ok: true, value: agentRead(SECRET, "Salary bands", "Bands: 1, 2, 3", false) };
+      if (id === NEW) return { ok: true, value: agentRead(NEW, "Made", "x", !hidden.has("new")) };
+      return { ok: false, code: "not_found", message: "No such artifact." };
+    },
+    stale: async () => "No artifacts are marked possibly out of date.",
+    async create(_v, input) {
+      log.push(`create:${input.kind}:${JSON.stringify(input.where)}:${input.source?.href ?? ""}`);
+      const where = input.where;
+      if (options.forbidden && typeof where === "object" && "space_id" in where && where.space_id === options.forbidden) return { ok: false, code: "forbidden", message: "ann can't add there." };
+      return { ok: true, value: ref(NEW, input.title) };
+    },
+    edit: async (_v, id, edit) => (log.push(`edit:${id}:${edit.kind}`), { ok: true, value: { mode: "suggested", suggestion: {} as never, folio: id === SECRET ? ref(SECRET, "Salary bands") : ref(id, "Refunds policy") } }),
+    share: async (_v, _a, id, users, role) => (log.push(`share:${id}:${users.join(",")}:${role}`), { ok: true, value: null }),
+    sendLink: async (asker, link) => (log.push(`dm:${asker.username}:${link.path}`), true),
+  };
+}
+
+const dmWithCal = () => Audience.build("acme", "cal", audienceWorld({ kind: "dm", member_user_ids: ["cal"], member_count: 1 }, [member("cal", false)], {}));
+const annAndBob = () => Audience.build("acme", "ann", audienceWorld({ kind: "private", member_user_ids: ["ann", "bob"], member_count: 2 }, [member("ann"), member("bob")], {}));
+const publicChannel = () => Audience.build("acme", "ann", audienceWorld({ kind: "public", member_user_ids: ["ann"], member_count: 30 }, [member("ann")], {}));
+
+test("someone without Code still gets artifacts; what they can't read is withheld, never named", async () => {
+  const log: string[] = [];
+  const box = new ToolBox(await dmWithCal(), { ...readPorts, folios: folioWorld(log) }, ctx, [], actions([]));
+  const names = box.definitions().map((t) => t.name);
+  for (const name of ["search_artifacts", "read_artifact", "list_spaces", "stale_artifacts", "create_artifact", "edit_artifact", "share_artifact"]) assert.ok(names.includes(name), name);
+  assert.ok(!names.includes("read_file"), "still no code");
+  assert.ok(!names.includes("query_data"), "not until dashboards");
+  assert.ok(box.definitions().filter((t) => t.name.endsWith("_artifact") || t.name.endsWith("_artifacts")).every((t) => /not a workflow run's build artifacts/.test(t.description)));
+  await box.run("search_artifacts", { query: "refund window", kind: "doc", space: "engineering" });
+  assert.deepEqual(log, ['search:refund window:{"kind":"people","user_ids":["cal"]}:spc_eng:doc']);
+  assert.equal((await box.run("search_artifacts", { query: "refunds", space: "Secret space" })).text, WITHHELD);
+  assert.equal((await box.run("search_artifacts", { query: "refunds", kind: "spreadsheet" })).outcome, "refused");
+  assert.equal((await box.run("read_artifact", { id: "fol_01jabcdefghjkmnpqrstvwxyz9" })).text, WITHHELD);
+  const read = (await box.run("read_artifact", { id: `https://g1t.sh/acme/-/artifacts/refunds-policy-${FOL}?v=2` })).text;
+  assert.match(read, /Refunds policy/);
+  assert.match(read, /Top-level blocks: b1 heading 1/);
+  assert.match(read, /you can suggest edits/);
+  assert.match((await box.run("list_spaces", {})).text, /- Engineering \(id spc_eng, team; you can edit; about acme\/web\): How we build/);
+  assert.equal((await box.run("edit_artifact", { id: FOL, target: "section", markdown: "x" })).outcome, "refused", "a section edit names its heading");
+  // The old Docs tools are gone.
+  assert.equal((await box.run("search_docs", { query: "refunds" })).outcome, "refused");
+  // Without a docs service, no artifact tools.
+  assert.ok(!new ToolBox(await dmWithCal(), readPorts, ctx, [], actions([])).definitions().some((t) => t.name === "search_artifacts"));
+});
+
+test("artifact ids come from ids or any artifact link", () => {
+  assert.equal(folioRef(FOL), FOL);
+  assert.equal(folioRef(`/acme/-/artifacts/refunds-policy-${FOL}`), FOL);
+  assert.equal(folioRef(`https://g1t.sh/acme/-/artifacts/refunds-policy-${FOL}?x=1#h`), FOL);
+  assert.equal(folioRef(`/acme/-/artifacts/${FOL}/`), FOL);
+  assert.equal(folioRef("/acme/-/docs/general/refunds-pag_01jabc"), null, "an old Docs page is not an artifact");
+  assert.equal(folioRef("fol_short"), null);
+  assert.equal(folioRef("   "), null);
+  assert.deepEqual(sourceLink("https://g1t.sh/acme/-/chat/c/general?thread=msg_1"), { title: "A conversation", href: "/acme/-/chat/c/general?thread=msg_1" });
+  assert.deepEqual(sourceLink("/acme/-/chat/c/general?thread=msg_1"), { title: "A conversation", href: "/acme/-/chat/c/general?thread=msg_1" });
+  assert.equal(sourceLink("//evil.example/x"), null);
+  assert.equal(sourceLink("javascript:alert(1)"), null);
+  assert.equal(sourceLink(""), null);
+});
+
+test("only docs can be made for now: other kinds answer plainly and make nothing", async () => {
+  const log: string[] = [];
+  const box = new ToolBox(await dmWithCal(), { ...readPorts, folios: folioWorld(log) }, ctx, [], actions([]));
+  for (const kind of ["slides", "design", "dashboard"]) {
+    const made = await box.run("create_artifact", { kind, title: "Q4 roadmap", content: "# Q4" });
+    assert.equal(made.outcome, "refused");
+    assert.match(made.text, /Slides, designs and dashboards aren't available yet: only docs can be made for now/);
+  }
+  assert.equal((await box.run("create_artifact", { kind: "spreadsheet", title: "x", content: "x" })).outcome, "refused");
+  assert.deepEqual(log, [], "nothing was made");
+  assert.equal((await box.run("create_artifact", { kind: "doc", title: "Q4 roadmap", content: "# Q4" })).outcome, "allowed");
+  assert.deepEqual(log, ['create:doc:"private":'], "a DM with one person: their Private");
+});
+
+test("where a written-up doc goes: the conversation, a space, Private, or the General space in public", async () => {
+  const log: string[] = [];
+  const box = new ToolBox(await annAndBob(), { ...readPorts, folios: folioWorld(log) }, ctx, [], actions([]));
+  const make = (where: unknown, source?: string) => box.run("create_artifact", { kind: "doc", title: "Decision", content: "We ship Thursday.", where, source });
+  assert.match((await make(undefined)).text, new RegExp(`Wrote Decision \\(/acme/-/artifacts/x-${NEW}, id ${NEW}\\)`));
+  await make("conversation", "https://g1t.sh/acme/-/chat/c/ops?thread=msg_9");
+  await make("private");
+  await make({ space: "Engineering" });
+  await make("engineering");
+  assert.deepEqual(log, [
+    'create:doc:{"conversation":["ann","bob"]}:',
+    'create:doc:{"conversation":["ann","bob"]}:/acme/-/chat/c/ops?thread=msg_9',
+    'create:doc:"private":',
+    'create:doc:{"space_id":"spc_eng"}:',
+    'create:doc:{"space_id":"spc_eng"}:',
+  ]);
+  assert.equal((await make({ space: "Nowhere" })).outcome, "refused");
+
+  // In a public channel there is no list of people: the General space, else Private.
+  const pub: string[] = [];
+  const open = new ToolBox(await publicChannel(), { ...readPorts, folios: folioWorld(pub) }, ctx, [], actions([]));
+  await open.run("create_artifact", { kind: "doc", title: "Decision", content: "x" });
+  await open.run("create_artifact", { kind: "doc", title: "Decision", content: "x", where: "conversation" });
+  assert.deepEqual(pub, ['create:doc:{"space_id":"spc_general"}:', 'create:doc:{"space_id":"spc_general"}:']);
+  const barred: string[] = [];
+  const noGeneral = new ToolBox(await publicChannel(), { ...readPorts, folios: folioWorld(barred, { forbidden: "spc_general", hidden: new Set(["new"]) }) }, ctx, [], actions([]));
+  const made = await noGeneral.run("create_artifact", { kind: "doc", title: "Decision", content: "x" });
+  assert.deepEqual(barred, ['create:doc:{"space_id":"spc_general"}:', 'create:doc:"private":', `dm:ann:/acme/-/artifacts/x-${NEW}`]);
+  assert.ok(!made.text.includes("Decision"), "a private doc made in public isn't named there");
+  assert.match(made.text, /sent the link to @ann directly/);
+});
+
+test("an artifact someone here can't read is never quoted: the link goes to the asker, and what is remembered stays theirs", async () => {
+  const log: string[] = [];
+  const remembered: boolean[] = [];
+  const acts: ActionPorts = { ...actions([]), remember: async (_body, _scope, onlyForAsker) => (remembered.push(!!onlyForAsker), { ok: true, message: "ok" }) };
+  const box = new ToolBox(await annAndBob(), { ...readPorts, folios: folioWorld(log) }, ctx, [], acts);
+  await box.run("remember", { fact: "Before reading anything" });
+  const read = await box.run("read_artifact", { id: `/acme/-/artifacts/salary-bands-${SECRET}` });
+  assert.equal(read.outcome, "withheld");
+  assert.ok(!read.text.includes("Bands") && !read.text.includes("Salary"), "neither its content nor its title");
+  assert.match(read.text, /say you found it and that you've sent the link to @ann directly/);
+  assert.deepEqual(log, [`dm:ann:/acme/-/artifacts/x-${SECRET}`]);
+  await box.run("remember", { fact: "Bands are reviewed in March" });
+  assert.deepEqual(remembered, [false, true]);
+  const edited = await box.run("edit_artifact", { id: SECRET, target: "append", markdown: "x" });
+  assert.equal(edited.text, "Suggested: people accept or reject it there.", "an edit there isn't named here either");
+
+  // In a public channel, even a doc everyone can read counts as the workspace's.
+  const pub: boolean[] = [];
+  const open = new ToolBox(await publicChannel(), { ...readPorts, folios: folioWorld([]) }, ctx, [], { ...actions([]), remember: async (_b, _s, only) => (pub.push(!!only), { ok: true, message: "ok" }) });
+  await open.run("read_artifact", { id: FOL });
+  await open.run("remember", { fact: "Refunds are 30 days" });
+  assert.deepEqual(pub, [false]);
+});
+
+test("an agent shares only in a private conversation, only with people in it, to view or comment", async () => {
+  const log: string[] = [];
+  const box = new ToolBox(await annAndBob(), { ...readPorts, folios: folioWorld(log) }, ctx, [], actions([]));
+  assert.equal((await box.run("share_artifact", { id: FOL, people: ["@bob"], role: "comment" })).outcome, "allowed");
+  assert.match((await box.run("share_artifact", { id: FOL, people: ["carol"], role: "view" })).text, /@carol isn't in this conversation/);
+  assert.equal((await box.run("share_artifact", { id: FOL, people: ["bob"], role: "edit" })).outcome, "refused");
+  assert.deepEqual(log, [`share:${FOL}:bob:comment`]);
+  const open = new ToolBox(await publicChannel(), { ...readPorts, folios: folioWorld(log) }, ctx, [], actions([]));
+  assert.match((await open.run("share_artifact", { id: FOL, people: ["bob"], role: "view" })).text, /only in a direct message or a private channel/);
+});
+
+test("a doc reads as Markdown with where it is, what the agent may do, and its block ids", () => {
+  const text = folioReadText(agentRead(FOL, "Refunds policy", "# Refunds policy\n\n30 days.", true));
+  assert.equal(
+    text,
+    `# Refunds policy (/acme/-/artifacts/x-${FOL}, id ${FOL})\nA doc, in the General space; you can suggest edits. Edited 2026-10-01T10:00.\nTop-level blocks: b1 heading 1\n\n# Refunds policy\n\n30 days.`,
+  );
 });
 
 test("a technical writer's duties suggest keeping the docs current when a pull request merges", () => {

@@ -18,8 +18,9 @@
  *
  * Pure apart from its ports, so the rules are tested adversarially.
  */
-import type { DocAudience, DocEditTarget, DocPassage, User } from "@g1t/contracts";
+import type { DocEditTarget, FolioAgentEdit, FolioAgentEditResult, FolioAgentRead, FolioAudience, FolioKind, FolioPassage, FolioRef, User } from "@g1t/contracts";
 
+import { FOLIO_KINDS, folioIdFrom, isFolioKind } from "../../../packages/contracts/src/folios.ts";
 import { type Audience, type RepoRef, WITHHELD } from "./audience.ts";
 
 /** One tool, as the Messages API takes it. */
@@ -42,24 +43,54 @@ export interface ToolPorts {
   roster(viewer: User | null): Promise<string>;
   consult(handle: string, question: string): Promise<{ ok: true; colleague: string; answer: string } | { ok: false; message: string }>;
   /**
-   * The workspace's Docs, as the docs service lets this agent use them for
-   * the person it acts for and everyone who will read the answer. Absent
-   * where there is no docs service.
+   * The workspace's artifacts (Artifacts mode), as the docs service lets
+   * this agent use them for the person it acts for and everyone who will
+   * read the answer. Absent where there is no docs service.
    */
-  docs?: DocsPorts;
+  folios?: FoliosPorts;
 }
 
-/** Docs, as an agent uses them. Every call names the person it acts for and who reads the answer; the docs service checks both. */
-export interface DocsPorts {
-  spaces(viewer: User, audience: DocAudience): Promise<string | null>;
-  /** Passages closest in meaning to `query`; `spaces` (required reading) first. Null when Docs couldn't answer. */
-  recall(viewer: User, audience: DocAudience, query: string, spaces: string[]): Promise<DocPassage[] | null>;
-  search(viewer: User, audience: DocAudience, query: string, project: string | null): Promise<string | null>;
-  read(viewer: User, audience: DocAudience, pageId: string): Promise<string | null>;
-  /** Pages possibly out of date since code they cite changed, with the change. */
-  stale(viewer: User, audience: DocAudience, repo: string | null): Promise<string | null>;
-  edit(viewer: User, pageId: string, edit: { target: DocEditTarget; markdown: string; note: string | null; marks_current: boolean }, suggestOnly: boolean): Promise<{ ok: boolean; message: string }>;
-  create(viewer: User, input: { space_id: string | null; parent_id: string | null; title: string; markdown: string; source: { title: string; href: string } | null }): Promise<{ ok: boolean; message: string }>;
+/** A space as an agent sees it, with what it may do there for the person it acts for. */
+export type FolioSpaceLine = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  kind: string;
+  projects: string[];
+  can: { read: boolean; suggest: boolean; edit: boolean };
+};
+
+/** Where a new artifact goes: a space, its asker's Private, or Private shared with the conversation's people. */
+export type FolioWhere = { space_id: string } | "private" | { conversation: string[] };
+
+/** A call's answer: the value, or the docs service's error code and sentence. */
+export type FolioDone<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
+
+/**
+ * Artifacts, as an agent uses them. Every call names the person it acts
+ * for, and the reads also who reads the answer; the docs service checks
+ * both.
+ */
+export interface FoliosPorts {
+  /** Spaces everyone here can read; null when the docs service couldn't answer. */
+  spaces(viewer: User, audience: FolioAudience): Promise<FolioSpaceLine[] | null>;
+  /** Passages closest in meaning to `query`; `spaces` (required reading) first. Null when the docs service couldn't answer. */
+  recall(viewer: User, audience: FolioAudience, query: string, spaces: string[], kinds?: FolioKind[]): Promise<FolioPassage[] | null>;
+  /** Artifacts matching `query` (words and meaning), as lines with links. */
+  search(viewer: User, audience: FolioAudience, input: { query: string; kind: FolioKind | null; space_id: string | null; project: string | null }): Promise<string | null>;
+  read(viewer: User, audience: FolioAudience, folioId: string): Promise<FolioDone<FolioAgentRead>>;
+  /** Artifacts possibly out of date since code they cite changed. */
+  stale(viewer: User, audience: FolioAudience, repo: string | null): Promise<string | null>;
+  create(
+    viewer: User,
+    input: { kind: FolioKind; title: string; markdown: string | null; template_id: string | null; where: FolioWhere; parent_id: string | null; source: { title: string; href: string } | null },
+  ): Promise<FolioDone<FolioRef>>;
+  edit(viewer: User, folioId: string, edit: FolioAgentEdit): Promise<FolioDone<FolioAgentEditResult>>;
+  /** `view` or `comment` for people already in this conversation. */
+  share(viewer: User, audience: FolioAudience, folioId: string, userIds: string[], role: "view" | "comment"): Promise<FolioDone<null>>;
+  /** Sends the asker a link directly, as a message from the agent in their DM with it; false when it couldn't. */
+  sendLink(asker: User, link: { title: string; path: string }, note: string): Promise<boolean>;
 }
 
 /**
@@ -69,7 +100,11 @@ export interface DocsPorts {
  * that does it.
  */
 export interface ActionPorts {
-  remember(body: string, scope: "workspace" | "channel" | "person" | null): Promise<{ ok: boolean; message: string }>;
+  /**
+   * `onlyForAsker`: this turn read an artifact the whole workspace can't
+   * read, so the fact is kept for the person who asked alone.
+   */
+  remember(body: string, scope: "workspace" | "channel" | "person" | null, onlyForAsker?: boolean): Promise<{ ok: boolean; message: string }>;
   forget(id: string): Promise<{ ok: boolean; message: string }>;
   /**
    * Posts a draft issue as a card in the conversation, with File issue and
@@ -282,72 +317,101 @@ const BRING_IN: ToolDef = {
   input_schema: { type: "object", properties: { handle: { type: "string" }, brief: { type: "string" } }, required: ["handle", "brief"] },
 };
 
-const DOCS_TOOLS: ToolDef[] = [
-  {
-    name: "search_docs",
-    description:
-      "Search the workspace's Docs (specs, runbooks, policies, onboarding, decisions) that everyone in this conversation can read. Optionally only pages about one project (`workspace/name`). Look here first for how things work and what was decided.",
-    input_schema: { type: "object", properties: { query: { type: "string" }, project: { type: "string" } }, required: ["query"] },
-  },
-  {
-    name: "read_page",
-    description: "Read a Docs page as Markdown, with the ids of its top-level blocks (for editing), by its id from search_docs or a link.",
-    input_schema: { type: "object", properties: { page: { type: "string" } }, required: ["page"] },
-  },
-  {
-    name: "stale_pages",
-    description:
-      "Docs pages possibly out of date because code they cite changed, each with the change (pull request or commit) and the paths. Optionally only for one repository (`workspace/name`). Start here when keeping the docs current.",
-    input_schema: { type: "object", properties: { repo: { type: "string" } } },
-  },
-  {
-    name: "list_doc_spaces",
-    description: "The Docs spaces you can read here, with what you may do in each (read, suggest, edit).",
-    input_schema: { type: "object", properties: {} },
-  },
-];
+/** What every artifact tool's description starts from, so the model never mixes them up with workflow run artifacts. */
+const ARTIFACTS =
+  "Artifacts are the workspace's own documents, made and shared in its Artifacts section: docs now, and later slides, designs and dashboards. They are not a workflow run's build artifacts.";
 
-const DOCS_WRITE_TOOLS: ToolDef[] = [
+const FOLIO_TOOLS: ToolDef[] = [
   {
-    name: "edit_page",
-    description:
-      "Change a Docs page: replace a section (by its heading), a range of top-level blocks (ids from read_page), the whole page, or add to the end. Where the space lets agents edit, it applies at once and shows in the page's history as yours; elsewhere it becomes a suggestion people accept or reject inline. Read the page first. Write Markdown.",
+    name: "search_artifacts",
+    description: `${ARTIFACTS} Search the artifacts everyone in this conversation can read (specs, runbooks, policies, onboarding, decisions), by words and meaning, plus projects' docs. Optionally only one kind, one space (its name or id from list_spaces) or one project (\`workspace/name\`). Each result has its link and id. Look here first for how things work and what was decided.`,
     input_schema: {
       type: "object",
       properties: {
-        page: { type: "string" },
+        query: { type: "string" },
+        kind: { type: "string", enum: [...FOLIO_KINDS] },
+        space: { type: "string", description: "A space's name or id." },
+        project: { type: "string", description: "A repository, `workspace/name`." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "read_artifact",
+    description: `${ARTIFACTS} Read one artifact by its id (fol_…) or its link (…/-/artifacts/<name>-fol_…). A doc comes back as Markdown with the ids of its top-level blocks (for edit_artifact), and says what you may do with it.`,
+    input_schema: { type: "object", properties: { id: { type: "string", description: "Its id or link." } }, required: ["id"] },
+  },
+  {
+    name: "list_spaces",
+    description: `${ARTIFACTS} The spaces whose artifacts everyone in this conversation can read, with what you may do in each (read, suggest, edit).`,
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "stale_artifacts",
+    description: `${ARTIFACTS} Artifacts possibly out of date because code they cite changed. Optionally only for one repository (\`workspace/name\`). Start here when keeping the docs current: read each, then bring it up to date with edit_artifact and marks_current.`,
+    input_schema: { type: "object", properties: { repo: { type: "string" } } },
+  },
+];
+
+const FOLIO_WRITE_TOOLS: ToolDef[] = [
+  {
+    name: "create_artifact",
+    description: `${ARTIFACTS} Make a new artifact ("write this up"). Only kind "doc" can be made for now. Give a title and its content as Markdown (or a template id). where: a space (its name or id from list_spaces) as { "space": "..." }, "private" for the person who asked alone, or "conversation" for them plus view access for this conversation's people. Left out: shared with this conversation in a direct message or private channel, the General space in a public channel. It belongs to the person who asked, and you can keep editing it. When it comes from a conversation, set source to that thread's link.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: [...FOLIO_KINDS] },
+        title: { type: "string" },
+        content: { type: "string", description: "Markdown." },
+        template: { type: "string", description: "A template id, instead of content." },
+        where: {
+          description: '{ "space": "<name or id>" }, "private" or "conversation".',
+          anyOf: [
+            { type: "string", enum: ["private", "conversation"] },
+            { type: "object", properties: { space: { type: "string" } }, required: ["space"] },
+          ],
+        },
+        parent: { type: "string", description: "A doc to put it under: its id or link." },
+        source: { type: "string", description: "The link of the thread it was written up from." },
+      },
+      required: ["kind", "title"],
+    },
+  },
+  {
+    name: "edit_artifact",
+    description: `${ARTIFACTS} Change a doc: replace a section (by its heading), a range of top-level blocks (ids from read_artifact), the whole doc, or add to the end. Where you may edit, it applies at once and shows in its history as yours; elsewhere it becomes a suggestion people accept or reject inline. Read it first. Write Markdown. Only docs can be changed this way for now.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Its id or link." },
         target: { type: "string", enum: ["append", "section", "blocks", "document"] },
         heading: { type: "string", description: "For target section: the heading's text." },
         from_block: { type: "string" },
         to_block: { type: "string" },
         markdown: { type: "string" },
         note: { type: "string", description: "Why, in a line, for the history or the suggestion." },
-        marks_current: { type: "boolean", description: "This edit brings a page marked possibly out of date up to date: it clears the mark when it applies or is accepted." },
+        marks_current: { type: "boolean", description: "This edit brings a doc marked possibly out of date up to date: it clears the mark when it applies or is accepted." },
         suggest_only: { type: "boolean", description: "Suggest even where you could edit." },
       },
-      required: ["page", "target", "markdown"],
+      required: ["id", "target", "markdown"],
     },
   },
   {
-    name: "create_page",
-    description:
-      "Write a new Docs page (\"write this up\"): a title and Markdown, in a space (its id from list_doc_spaces; the General space when left out), optionally under a parent page. Link where it came from when it came from a conversation.",
+    name: "share_artifact",
+    description: `${ARTIFACTS} Let people in this conversation view or comment on an artifact, when the person who asked has full access to it. Only in a direct message or a private channel, and only with people already in it. You can't give edit or full access, or change who else can open it: for that, ask the person to use Share.`,
     input_schema: {
       type: "object",
       properties: {
-        title: { type: "string" },
-        markdown: { type: "string" },
-        space: { type: "string" },
-        parent: { type: "string" },
-        source_title: { type: "string" },
-        source_href: { type: "string" },
+        id: { type: "string", description: "Its id or link." },
+        people: { type: "array", items: { type: "string" }, description: "Usernames of people in this conversation." },
+        role: { type: "string", enum: ["view", "comment"] },
       },
-      required: ["title", "markdown"],
+      required: ["id", "people", "role"],
     },
   },
 ];
 
-const DOCS_NAMES = new Set([...DOCS_TOOLS, ...DOCS_WRITE_TOOLS].map((tool) => tool.name));
+const FOLIO_NAMES = new Set([...FOLIO_TOOLS, ...FOLIO_WRITE_TOOLS].map((tool) => tool.name));
 
 const CODE_NAMES = new Set(CODE_TOOLS.map((tool) => tool.name));
 
@@ -375,6 +439,14 @@ export class ToolBox {
   private readonly actions: ActionPorts | null;
   /** Updates posted in this step. */
   private updates = 0;
+  /** Artifacts read or made in this turn that not everyone here can read: never named here. */
+  private readonly notHere = new Set<string>();
+  /**
+   * Whether this turn read an artifact the whole workspace can't: then what
+   * it remembers is kept for the person who asked alone
+   * (docs/ARTIFACTS_MODE.md, section 4.3, rule 7).
+   */
+  private privateRead = false;
 
   constructor(audience: Audience, ports: ToolPorts, context: ToolContext, calls: ToolCall[] = [], actions: ActionPorts | null = null) {
     this.audience = audience;
@@ -410,9 +482,9 @@ export class ToolBox {
     return [
       ...(this.audience.codeAllowed() ? CODE_TOOLS : []),
       ...CHAT_TOOLS,
-      // Docs are for everyone, Code or not: the docs service decides what this person and audience can read.
-      ...(this.ports.docs && this.audience.asker ? DOCS_TOOLS : []),
-      ...(this.ports.docs && this.audience.asker && actions ? DOCS_WRITE_TOOLS : []),
+      // Artifacts are for everyone, Code or not: the docs service decides what this person and audience can read.
+      ...(this.ports.folios && this.audience.asker ? FOLIO_TOOLS : []),
+      ...(this.ports.folios && this.audience.asker && actions ? FOLIO_WRITE_TOOLS : []),
       ...(roomForHop ? [ASK_COLLEAGUE] : []),
       ...(actions ? [REMEMBER, FORGET] : []),
       ...(this.canFile() ? [DRAFT_ISSUE] : []),
@@ -459,9 +531,9 @@ export class ToolBox {
 
   private async dispatch(name: string, input: Record<string, unknown>): Promise<ToolResult> {
     const asker = this.audience.asker;
-    if (DOCS_NAMES.has(name)) {
-      if (!this.definitions().some((tool) => tool.name === name) || !asker || !this.ports.docs) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
-      return this.docs(name, input, asker, this.ports.docs);
+    if (FOLIO_NAMES.has(name)) {
+      if (!this.definitions().some((tool) => tool.name === name) || !asker || !this.ports.folios) return { text: `There is no tool called ${name} here.`, outcome: "refused" };
+      return this.folios(name, input, asker, this.ports.folios);
     }
     if (CODE_NAMES.has(name)) {
       // Not offered, and refused if asked for anyway: the check is here, not in the prompt.
@@ -502,51 +574,104 @@ export class ToolBox {
   }
 
   /**
-   * What Docs say about `query`, for this person and this audience, before
-   * the agent answers: no tool call, nothing counted against its tools.
-   * Empty when there is no docs service or nothing relevant.
+   * What the workspace's artifacts say about `query`, for this person and
+   * this audience, before the agent answers: no tool call, nothing counted
+   * against its tools. Empty when there is no docs service or nothing
+   * relevant.
    */
-  async recall(query: string | null, spaces: string[]): Promise<DocPassage[]> {
-    const docs = this.ports.docs;
+  async recall(query: string | null, spaces: string[]): Promise<FolioPassage[]> {
+    const folios = this.ports.folios;
     const asker = this.audience.asker;
-    if (!docs || !asker || !query) return [];
+    if (!folios || !asker || !query) return [];
     try {
-      return (await docs.recall(asker, this.docAudience(), query, spaces)) ?? [];
+      return (await folios.recall(asker, this.folioAudience(), query, spaces)) ?? [];
     } catch (error) {
-      console.error("agents: docs recall failed", String(error));
+      console.error("agents: artifacts recall failed", String(error));
       return [];
     }
   }
 
   /** Who reads what an agent says here, as the docs service takes it. */
-  private docAudience(): DocAudience {
+  private folioAudience(): FolioAudience {
     return this.audience.shared ? { kind: "workspace" } : { kind: "people", user_ids: this.audience.members.map((m) => m.id) };
   }
 
-  private async docs(name: string, input: Record<string, unknown>, asker: User, docs: DocsPorts): Promise<ToolResult> {
+  /** Whether anyone besides the person who asked reads what is said here. */
+  private othersHere(asker: User): boolean {
+    return this.audience.shared || this.audience.members.some((m) => m.id !== asker.id);
+  }
+
+  private async folios(name: string, input: Record<string, unknown>, asker: User, folios: FoliosPorts): Promise<ToolResult> {
     const text = (key: string, max: number) => String(input[key] ?? "").trim().slice(0, max);
-    const audience = this.docAudience();
-    const read = (source: string, found: string | null): ToolResult => (found === null ? this.withheld() : { text: untrusted(source, found), outcome: "allowed" });
+    const audience = this.folioAudience();
     switch (name) {
-      case "list_doc_spaces":
-        return read("list_doc_spaces", await docs.spaces(asker, audience));
-      case "search_docs": {
+      case "list_spaces": {
+        const spaces = await folios.spaces(asker, audience);
+        if (spaces === null) return { text: "Spaces couldn't be listed just now.", outcome: "error" };
+        if (!spaces.length) return { text: "There are no spaces everyone here can read.", outcome: "allowed" };
+        return { text: untrusted("list_spaces", spaces.map(spaceLine).join("\n")), outcome: "allowed" };
+      }
+      case "search_artifacts": {
         const query = text("query", 200);
         if (query.length < 2) return { text: "Search for at least two characters.", outcome: "refused" };
-        const project = text("project", 200).toLowerCase() || null;
-        return read(`search_docs "${query}"`, await docs.search(asker, audience, query, project));
+        const kind = text("kind", 20) || null;
+        if (kind && !isFolioKind(kind)) return { text: `There is no kind of artifact called ${kind}: it is doc, slides, design or dashboard.`, outcome: "refused" };
+        let spaceId: string | null = null;
+        if (text("space", 200)) {
+          const space = findSpace((await folios.spaces(asker, audience)) ?? [], text("space", 200));
+          if (!space) return this.withheld();
+          spaceId = space.id;
+        }
+        const found = await folios.search(asker, audience, { query, kind: kind as FolioKind | null, space_id: spaceId, project: text("project", 200).toLowerCase() || null });
+        if (found === null) return { text: "Search didn't work just now.", outcome: "error" };
+        return { text: untrusted(`search_artifacts "${query}"`, found), outcome: "allowed" };
       }
-      case "stale_pages":
-        return read("stale_pages", await docs.stale(asker, audience, text("repo", 200).toLowerCase() || null));
-      case "read_page": {
-        const page = pageId(text("page", 300));
-        if (!page) return { text: "Give the page's id or link.", outcome: "refused" };
-        return read(`read_page ${page}`, await docs.read(asker, audience, page));
+      case "stale_artifacts": {
+        const found = await folios.stale(asker, audience, text("repo", 200).toLowerCase() || null);
+        if (found === null) return { text: "Out-of-date artifacts couldn't be listed just now.", outcome: "error" };
+        return { text: untrusted("stale_artifacts", found), outcome: "allowed" };
       }
-      case "edit_page": {
-        const page = pageId(text("page", 300));
+      case "read_artifact": {
+        const id = folioRef(text("id", 500));
+        if (!id) return { text: "Give the artifact's id (fol_…) or its link.", outcome: "refused" };
+        const found = await folios.read(asker, audience, id);
+        if (!found.ok) return found.code === "not_found" || found.code === "forbidden" ? this.withheld() : { text: found.message, outcome: "refused" };
+        const read = found.value;
+        if (!this.audience.shared || !read.audience_can_read) this.privateRead = true;
+        if (!read.audience_can_read) return this.notForEveryone(asker, read.folio, folios, "found");
+        return { text: untrusted(`read_artifact ${id}`, folioReadText(read)), outcome: "allowed" };
+      }
+      case "create_artifact": {
+        const kind = text("kind", 20) || "doc";
+        if (!isFolioKind(kind)) return { text: `There is no kind of artifact called ${kind}.`, outcome: "refused" };
+        if (kind !== "doc") return { text: NOT_YET, outcome: "refused" };
+        const title = text("title", 200);
+        const template = text("template", 100) || null;
+        const markdown = String(input.content ?? "").slice(0, 100_000);
+        if (!title) return { text: "An artifact needs a title.", outcome: "refused" };
+        if (!markdown.trim() && !template) return { text: "Give its content as Markdown, or a template.", outcome: "refused" };
+        const parentGiven = text("parent", 500);
+        const parent = parentGiven ? folioRef(parentGiven) : null;
+        if (parentGiven && !parent) return { text: "Give the parent doc's id or link.", outcome: "refused" };
+        const place = await this.whereFor(input.where, asker, folios);
+        if (!place.ok) return { text: place.message, outcome: "refused" };
+        const make = (where: FolioWhere) =>
+          folios.create(asker, { kind, title, markdown: template ? null : markdown, template_id: template, where, parent_id: parent, source: sourceLink(text("source", 2000)) });
+        let made = await make(place.where);
+        // The General space by default, unless the person who asked can't add there: then their Private.
+        if (!made.ok && place.fallback && made.code === "forbidden") made = await make("private");
+        if (!made.ok) return { text: `It couldn't be made: ${made.message}`, outcome: "refused" };
+        const ref = made.value;
+        if (this.othersHere(asker)) {
+          const check = await folios.read(asker, audience, ref.id).catch(() => null);
+          if (!check?.ok || !check.value.audience_can_read) return this.notForEveryone(asker, ref, folios, "made");
+        }
+        return { text: `Wrote ${ref.title} (${ref.path}, id ${ref.id}). Link it.`, outcome: "allowed" };
+      }
+      case "edit_artifact": {
+        const id = folioRef(text("id", 500));
         const markdown = String(input.markdown ?? "").slice(0, 100_000);
-        if (!page || !markdown.trim()) return { text: "Give the page and the Markdown.", outcome: "refused" };
+        if (!id || !markdown.trim()) return { text: "Give the artifact's id or link, and the Markdown.", outcome: "refused" };
         const kind = text("target", 20);
         const target: DocEditTarget | null =
           kind === "append"
@@ -559,26 +684,83 @@ export class ToolBox {
                   ? { kind: "blocks", from_block: text("from_block", 100), to_block: text("to_block", 100) }
                   : null;
         if (!target) return { text: "Say what to change: append, a section by its heading, blocks by their ids, or the whole document.", outcome: "refused" };
-        const done = await docs.edit(asker, page, { target, markdown, note: text("note", 300) || null, marks_current: input.marks_current === true }, input.suggest_only === true);
-        return { text: done.message, outcome: done.ok ? "allowed" : "refused" };
+        const edit: FolioAgentEdit = { kind: "doc", target, markdown, note: text("note", 300) || null, suggest_only: input.suggest_only === true, marks_current: input.marks_current === true };
+        const done = await folios.edit(asker, id, edit);
+        if (!done.ok) return { text: `That didn't work: ${done.message}`, outcome: "refused" };
+        return { text: editMessage(done.value, !this.notHere.has(done.value.folio.id)), outcome: "allowed" };
       }
-      case "create_page": {
-        const title = text("title", 200);
-        const markdown = String(input.markdown ?? "").slice(0, 100_000);
-        if (!title || !markdown.trim()) return { text: "A page needs a title and its Markdown.", outcome: "refused" };
-        const href = text("source_href", 2000);
-        const done = await docs.create(asker, {
-          space_id: text("space", 100) || null,
-          parent_id: pageId(text("parent", 300)),
-          title,
-          markdown,
-          source: href.startsWith("/") ? { title: text("source_title", 200) || "Where this came from", href } : null,
-        });
-        return { text: done.message, outcome: done.ok ? "allowed" : "refused" };
+      case "share_artifact": {
+        if (this.audience.shared) return { text: "You can share only in a direct message or a private channel. Ask the person to use Share on the artifact instead.", outcome: "refused" };
+        const id = folioRef(text("id", 500));
+        if (!id) return { text: "Give the artifact's id (fol_…) or its link.", outcome: "refused" };
+        const role = input.role === "view" || input.role === "comment" ? input.role : null;
+        if (!role) return { text: "You can share to view or comment only. For more, ask the person to use Share.", outcome: "refused" };
+        const named = (Array.isArray(input.people) ? input.people : []).filter((p): p is string => typeof p === "string").map((p) => p.trim().replace(/^@/, "").toLowerCase()).filter(Boolean).slice(0, 50);
+        const people = named.map((n) => this.audience.members.find((m) => m.username.toLowerCase() === n || m.id === n) ?? n);
+        const outside = people.filter((p): p is string => typeof p === "string");
+        if (outside.length) return { text: `${outside.map((n) => `@${n}`).join(", ")} ${outside.length === 1 ? "isn't" : "aren't"} in this conversation: you can share only with people in it.`, outcome: "refused" };
+        const users = [...new Map((people as User[]).filter((u) => u.id !== asker.id).map((u) => [u.id, u])).values()];
+        if (!users.length) return { text: "Name who to share it with: people in this conversation besides the person who asked.", outcome: "refused" };
+        const done = await folios.share(asker, audience, id, users.map((u) => u.id), role);
+        if (!done.ok) return { text: `It couldn't be shared: ${done.message}`, outcome: "refused" };
+        return { text: `Shared with ${users.map((u) => `@${u.username}`).join(", ")}: they can ${role} it.`, outcome: "allowed" };
       }
       default:
         return { text: `There is no tool called ${name}.`, outcome: "refused" };
     }
+  }
+
+  /**
+   * Where a new artifact goes (docs/ARTIFACTS_MODE.md, section 4.1):
+   * - a space named by its name or id, among those everyone here can read;
+   * - "private": the asker's Private;
+   * - "conversation": Private, plus `view` for this conversation's people;
+   * - nothing: the conversation in a DM or private channel, and in a public
+   *   channel the General space if the asker can add there (`fallback`:
+   *   their Private if the docs service says they can't).
+   */
+  private async whereFor(given: unknown, asker: User, folios: FoliosPorts): Promise<{ ok: true; where: FolioWhere; fallback: boolean } | { ok: false; message: string }> {
+    const named = typeof given === "object" && given !== null ? (given as { space?: unknown }).space : given;
+    const wanted = typeof named === "string" ? named.trim().slice(0, 200) : "";
+    const others = this.audience.members.filter((m) => m.id !== asker.id).map((m) => m.id);
+    const byDefault = async (): Promise<{ ok: true; where: FolioWhere; fallback: boolean }> => {
+      if (!this.audience.shared) return { ok: true, where: others.length ? { conversation: this.audience.members.map((m) => m.id) } : "private", fallback: false };
+      const spaces = (await folios.spaces(asker, this.folioAudience())) ?? [];
+      const general = spaces.find((s) => s.slug === "general") ?? spaces.find((s) => s.name.toLowerCase() === "general");
+      return general && general.can.suggest ? { ok: true, where: { space_id: general.id }, fallback: true } : { ok: true, where: "private", fallback: false };
+    };
+    if (!wanted) return byDefault();
+    const lower = wanted.toLowerCase();
+    if (typeof given === "string" && lower === "private") return { ok: true, where: "private", fallback: false };
+    // A public channel has no list of people to share with: its default instead.
+    if (typeof given === "string" && lower === "conversation") return byDefault();
+    const space = findSpace((await folios.spaces(asker, this.folioAudience())) ?? [], wanted);
+    if (space) return { ok: true, where: { space_id: space.id }, fallback: false };
+    // An id the asker gave, for a space not everyone here can read: the docs service checks it.
+    if (/^spc_[A-Za-z0-9]+$/.test(wanted)) return { ok: true, where: { space_id: wanted }, fallback: false };
+    return { ok: false, message: `There's no space called ${wanted} that everyone here can read. Use list_spaces, or put it in "private" or "conversation".` };
+  }
+
+  /**
+   * An artifact someone here can't read (docs/ARTIFACTS_MODE.md, section
+   * 4.3, rule 2): the link goes to the asker directly, and the agent says
+   * only that it found or made something, never what.
+   */
+  private async notForEveryone(asker: User, folio: FolioRef, folios: FoliosPorts, what: "found" | "made"): Promise<ToolResult> {
+    this.notHere.add(folio.id);
+    const who = `@${asker.username}`;
+    const note =
+      what === "made"
+        ? "I made this for you. Not everyone in the conversation you asked from can open it, so here is the link:"
+        : "Here is what you asked about. Not everyone in the conversation you asked from can open it, so here is the link:";
+    const sent = await folios.sendLink(asker, { title: folio.title, path: folio.path }, note).catch(() => false);
+    const lead = `Not everyone in this conversation can read this artifact, so ${what === "made" ? "it" : "its content"} isn't shown here. Don't quote it, name it or describe it here;`;
+    const text = sent
+      ? `${lead} say you ${what} it and that you've sent the link to ${who} directly.`
+      : what === "made"
+        ? `${lead} say you made it and that ${who} will find it under Artifacts, in their Private or shared with them.`
+        : `${lead} say you found it but can't share it here, and ask ${who} to message you directly.`;
+    return { text, outcome: what === "made" ? "allowed" : "withheld" };
   }
 
   /** Doing, not reading: memory, issues, sessions. Each refused unless offered. */
@@ -593,7 +775,7 @@ export class ToolBox {
         const fact = text("fact", 2000);
         if (!fact) return { text: "Say what to remember.", outcome: "refused" };
         const scope = input.scope === "workspace" || input.scope === "channel" || input.scope === "person" ? input.scope : null;
-        return said(await actions.remember(fact, scope));
+        return said(await actions.remember(fact, scope, this.privateRead));
       }
       case "forget":
         return said(await actions.forget(text("id", 100)));
@@ -721,13 +903,65 @@ export class ToolBox {
   }
 }
 
-/** A page id from an id or a Docs link (`/acme/-/docs/general/runbook-pg_123`); null when there is none. */
-export function pageId(given: string): string | null {
-  const text = given.trim();
-  if (!text) return null;
-  const last = text.split(/[?#]/)[0].split("/").filter(Boolean).at(-1) ?? text;
-  const match = last.match(/(?:^|-)([a-z]{2,4}_[A-Za-z0-9]+)$/);
-  return match ? match[1] : /^[A-Za-z0-9_-]{3,80}$/.test(last) ? last : null;
+/** What an agent hears when it asks for a kind that isn't built yet. */
+const NOT_YET = "Slides, designs and dashboards aren't available yet: only docs can be made for now. Say so, and offer to write it as a doc instead.";
+
+/**
+ * A folio id from an id or any artifact link (`/acme/-/artifacts/runbook-fol_…`,
+ * with or without the site and a query); null when there is none.
+ */
+export function folioRef(given: string): string | null {
+  const last = given.trim().split(/[?#]/)[0].split("/").filter(Boolean).at(-1) ?? "";
+  return folioIdFrom(last);
+}
+
+/** Where an artifact was written up from: a thread's link, cut to the site path the docs service keeps; null when it isn't one. */
+export function sourceLink(given: string): { title: string; href: string } | null {
+  let href = given.trim();
+  if (!href) return null;
+  if (/^https?:\/\//i.test(href)) {
+    try {
+      const url = new URL(href);
+      href = `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      return null;
+    }
+  }
+  return href.startsWith("/") && !href.startsWith("//") ? { title: "A conversation", href } : null;
+}
+
+/** A space by its id, address or name (any case), among those given. */
+function findSpace(spaces: FolioSpaceLine[], given: string): FolioSpaceLine | null {
+  const wanted = given.trim().toLowerCase();
+  return spaces.find((s) => s.id === given.trim()) ?? spaces.find((s) => s.slug.toLowerCase() === wanted) ?? spaces.find((s) => s.name.toLowerCase() === wanted) ?? null;
+}
+
+function spaceLine(s: FolioSpaceLine): string {
+  const can = s.can.edit ? "you can edit" : s.can.suggest ? "you can suggest edits" : "read only";
+  const projects = s.projects.length ? `; about ${s.projects.join(", ")}` : "";
+  return `- ${s.name} (id ${s.id}, ${s.kind}; ${can}${projects})${s.description ? `: ${s.description}` : ""}`;
+}
+
+/** An artifact as the agent reads it: where it is, what it may do, and its content (a doc's Markdown, with its top-level block ids). */
+export function folioReadText(read: FolioAgentRead): string {
+  const f = read.folio;
+  const can = read.can.edit ? "you can edit it" : read.can.suggest ? "you can suggest edits" : "you can only read it";
+  const where = read.space ? `in the ${read.space.name} space` : "not in a space";
+  const blocks = read.blocks?.length ? `\nTop-level blocks: ${read.blocks.map((b) => `${b.id} ${b.type}${b.level ? ` ${b.level}` : ""}`).join(", ")}` : "";
+  return `# ${f.title} (${f.path}, id ${f.id})\nA ${f.kind}, ${where}; ${can}. Edited ${f.edited_at.slice(0, 16)}.${blocks}\n\n${read.content}`;
+}
+
+/** What an edit did, naming the artifact only where everyone here can read it. */
+function editMessage(result: FolioAgentEditResult, name: boolean): string {
+  const on = name ? ` on ${result.folio.title} (${result.folio.path})` : "";
+  switch (result.mode) {
+    case "applied":
+      return `Changed${on}. It's in its history as yours.`;
+    case "suggested":
+      return `Suggested${on}: people accept or reject it there.${name ? " Link it so they can." : ""}`;
+    case "proposed":
+      return `Proposed a change${on}: a person previews and applies it.`;
+  }
 }
 
 function messageLine(m: FoundMessage): string {

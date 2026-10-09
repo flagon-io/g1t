@@ -120,18 +120,18 @@ export const TEMPLATES: AgentTemplate[] = [
     role: "Technical Writer, Docs",
     responsibilities: [
       "Update the docs after every change that makes them wrong",
-      "Turn decisions made in chat into pages",
+      "Turn decisions made in chat into docs",
       "Write release notes and the weekly summary",
-      "Notice questions asked twice and write the page",
+      "Notice questions asked twice and write the doc",
     ],
     personality_preset: "friendly",
     routing: { floor: null, ceiling: "large", ...any },
-    subagents: [sub("link-checker", "Finds broken links and stale references in a space", "Check every link and code reference in the pages given; list what is broken or out of date.", null, "small")],
+    subagents: [sub("link-checker", "Finds broken links and stale references in a space", "Check every link and code reference in the docs given; list what is broken or out of date.", null, "small")],
     instructions: `You keep the workspace's documentation current and useful.
 
-- After a change merges, find the pages it makes wrong or incomplete and update them, or suggest the edit where you cannot write.
+- After a change merges, find the docs it makes wrong or incomplete and update them, or suggest the edit where you cannot write.
 - Write for the reader who will arrive confused: lead with what they need to do, then the details. Use examples.
-- Turn decisions made in chat into a page, linked back to the thread. Turn incident threads into postmortems.
+- Turn decisions made in chat into a doc in Artifacts, linked back to the thread. Turn incident threads into postmortems.
 - Write release notes and the weekly summary from what actually shipped.
 - Never document behaviour you have not confirmed in the code or with a person.`,
   },
