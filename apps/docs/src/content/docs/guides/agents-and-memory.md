@@ -149,8 +149,10 @@ memory.
 
 Memory also fills itself. At the end of every run that changes code, the
 agent is asked what it learned; a person's correction in a review, a merged
-pull request's decision, and what a project's `AGENTS.md`, README and
-manifests say are captured too. These arrive as **candidates**, which no
+pull request's decision, and what a project's `AGENTS.md`, README,
+CONTRIBUTING, docs on how to work in it and manifests say are captured
+too ([which docs](/guides/context-hub/#which-docs-are-read-for-memory)).
+These arrive as **candidates**, which no
 agent is given until they are kept: at once when two independent sources
 say the same thing or a project's `AGENTS.md` or manifests state it,
 otherwise by a member in the **Review** list on **Agents → Memory** or the
@@ -190,7 +192,7 @@ repository can, and on **Workspace memory**, members can:
 - **edit** one that has drifted, or change its kind;
 - **forget** one that no longer holds;
 - **keep**, **edit** or **dismiss** a candidate waiting for review. A
-  dismissed candidate is never suggested again in the same words.
+  dismissed candidate is never suggested again, in the same words or near enough to them.
 
 Each shows who added it, when, and when it was last given to an agent. A
 memory that has not been given to an agent for a long time is a good one to

@@ -75,6 +75,42 @@ pub fn fingerprint(text: &str) -> String {
         .join(" ")
 }
 
+/// How alike two memories' words must be (shared over all, as sets) to be
+/// one memory.
+pub const SAME_WORDS: f64 = 0.85;
+/// The fewest distinct words a memory needs before it can be found inside
+/// another: shorter ones are too general to be the same thing.
+const CONTAINED_MIN_WORDS: usize = 6;
+
+/// Whether two memories say the same thing: the same words once folded
+/// ([`fingerprint`]); one's words, in order, inside the other's; all of a
+/// memory's words (at least six of them) among the other's; or most of
+/// their words shared (Jaccard at or above [`SAME_WORDS`]). "g1t is a
+/// Cargo workspace (apps/*, crates/*)" and the same sentence listing every
+/// crate are one memory.
+pub fn same_memory(a: &str, b: &str) -> bool {
+    let (a, b) = (fingerprint(a), fingerprint(b));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    let (short, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
+    let short_words: std::collections::HashSet<&str> = short.split(' ').collect();
+    let long_words: std::collections::HashSet<&str> = long.split(' ').collect();
+    // Contiguous: the shorter one's words, in order, inside the longer one's.
+    if short.split(' ').count() >= 4 && format!(" {long} ").contains(&format!(" {short} ")) {
+        return true;
+    }
+    if short_words.len() >= CONTAINED_MIN_WORDS && short_words.is_subset(&long_words) {
+        return true;
+    }
+    let shared = short_words.intersection(&long_words).count();
+    let all = short_words.union(&long_words).count();
+    all > 0 && shared as f64 / all as f64 >= SAME_WORDS
+}
+
 /// One thing learned, as a source reports it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -229,6 +265,26 @@ pub struct SeedFromPullsArgs {
     pub limit: Option<u32>,
 }
 
+/// `prune_doc_candidates`: after the context service has read every file
+/// of a project, removes the project's candidates that came only from its
+/// docs and manifests and are still waiting, unless one of `texts` (what
+/// they suggest now) is the same memory ([`same_memory`]). Kept and
+/// dismissed memory is never touched. Services only. Returns `Pruned`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PruneDocCandidatesArgs {
+    pub workspace: String,
+    pub repo_id: String,
+    #[serde(default)]
+    pub texts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pruned {
+    /// Candidates removed.
+    pub removed: u32,
+}
+
 /// Memories, newest first, for listing a review queue.
 pub type Candidates = Vec<Memory>;
 
@@ -271,5 +327,25 @@ mod tests {
         assert_eq!(fingerprint("Use  pnpm, never npm!"), "use pnpm never npm");
         assert_eq!(fingerprint("use pnpm never NPM"), fingerprint("Use pnpm; never npm."));
         assert_ne!(fingerprint("use pnpm"), fingerprint("use npm"));
+    }
+
+    #[test]
+    fn near_duplicates_are_one_memory() {
+        assert!(same_memory("Use pnpm, never npm.", "use pnpm never NPM"));
+        // A crate list that grew, and the same fact without the list.
+        let before = "g1t is a Cargo workspace (apps/api, crates/*, services/actions, services/billing); `cargo test` runs its tests.";
+        let after = "g1t is a Cargo workspace (apps/api, crates/*, services/actions, services/billing, services/work); `cargo test` runs its tests.";
+        assert!(same_memory(before, after));
+        assert!(same_memory(before, "g1t is a Cargo workspace (apps/*, crates/*, services/*); `cargo test` runs its tests."));
+        // One cut short, inside the whole of it.
+        assert!(same_memory(
+            "Roles. Viewer, commenter, planner and approver map onto",
+            "Roles. Viewer, commenter, planner and approver map onto the five repository roles."
+        ));
+        // Different facts that share words are not.
+        assert!(!same_memory("Use pnpm to install.", "Use npm to install."));
+        assert!(!same_memory("Run cargo test in the crate you changed.", "Run npm test in the app you changed."));
+        assert!(!same_memory("use pnpm", "use pnpm in the web app and npm in the docs, which predates it"));
+        assert!(!same_memory("", "anything"));
     }
 }

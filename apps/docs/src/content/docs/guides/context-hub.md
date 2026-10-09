@@ -36,6 +36,7 @@ contents changed since the last push:
 | `README`, `AGENTS.md` (or `CLAUDE.md`), `CONTRIBUTING`, `docs/*.md`, `runbooks/*.md` | **Docs**, split into sections for search |
 | `.g1t/workflows/*`, `.github/workflows/*` | Whether the project's tests run in checks |
 | `owners:` in `.g1t/project.yml`, and `CODEOWNERS` | **Owners** |
+| `memory:` in `.g1t/project.yml` | Which docs are [read for memory](#which-docs-are-read-for-memory) |
 
 and joins them with what g1t already knows:
 
@@ -76,7 +77,7 @@ project and its workspace. Besides what agents save with the `memory` tool's
 | **Agent runs** | At the end of every run that changes code, the agent is asked what it learned that the next agent would need, with what showed it | fact, convention, decision or gotcha |
 | **Reviews** | A person's request for changes, or a comment that corrects the agent ("we use the shared client instead"), on a pull request | convention, quoting the comment |
 | **Merges** | A merged pull request's title, why (the first paragraph of its description) and the files it changed | decision |
-| **Docs and manifests** | Bullets in `AGENTS.md`; commands under a README's setup and testing sections; conventions sections; the package manager and test commands from manifests | fact, convention or gotcha |
+| **Docs and manifests** | Bullets in `AGENTS.md`; commands and bullets under the setup, testing and conventions sections of docs on how to work in the project; the package manager and test commands from manifests | fact, convention or gotcha |
 
 What is captured arrives as a **candidate**. No agent is given a candidate
 until it is **kept**:
@@ -87,8 +88,60 @@ until it is **kept**:
 - **by a person**, in the Review queue.
 
 The same thing said again in different case, punctuation or spacing counts
-as the same memory, seen once more. A memory seen again from the same
+as the same memory, seen once more. So does the same thing in slightly
+different words: a sentence that grew (a list with one more item), or one
+that holds all of another's words. A memory seen again from the same
 source (the same run, the same file) is not counted twice.
+
+### Which docs are read for memory
+
+Memory is for how to work in a project, so only docs that say how are
+read for it:
+
+| Read for memory | Not read for memory |
+| --- | --- |
+| `README`, `AGENTS.md` (or `CLAUDE.md`), `CONTRIBUTING`, `runbooks/*.md` | Plans and roadmaps (`PLAN.md`, `roadmap.md`) |
+| A doc in `docs/` whose name says how to work: `DEPLOYING.md`, `testing.md`, `architecture.md`, `setup.md`, `conventions.md`, `getting-started.md` | Changelogs, release notes, history, incidents, demos, research, notes, feedback |
+
+Within those docs:
+
+- Only the **setup, testing and conventions** sections are read (in
+  `AGENTS.md`, every section). A section about plans, a roadmap, asks or
+  feedback is skipped with everything under it, wherever it is.
+- A doc that reads as a plan or a report (most of its headings are plans,
+  or its bullets are labelled "What we tried", "Ask" and the like) gives
+  nothing, whatever its name.
+- A line that says what someone wants rather than how things are ("g1t
+  will", "should", "TODO") is left out. In `AGENTS.md`, "should" states a
+  rule, and is kept.
+- A bullet is taken whole, with the lines it wraps onto. A long one is cut
+  only between sentences, to 300 characters; one whose first sentence is
+  longer is left out rather than cut.
+- A bullet that tells you to do or never do something is a convention or
+  a gotcha; anything else is a fact. Outside `AGENTS.md`, a bullet waits
+  for review at 50 to 60% sure.
+
+To read another doc for memory, or never read one, say so in the
+project's `.g1t/project.yml`, by path or a whole folder:
+
+```yaml
+memory:
+  docs:
+    - docs/PERFORMANCE.md
+  skip:
+    - README.md
+    - docs/legacy/*
+```
+
+`skip` wins over `docs`. A change to these lists applies to each doc the
+next time it changes, or for every doc at once with **Rebuild**.
+
+Once g1t has read every file of a project as these rules read it, a
+candidate from its docs that is still waiting and that its docs no longer
+suggest (the doc changed, or the rules leave the line out) is removed from
+the queue. A candidate another source saw too, and every kept or dismissed
+memory, stays. A waiting candidate its doc now says in other words takes
+the new words.
 
 ### Review
 
@@ -99,8 +152,8 @@ evidence quoted, how sure its source was and how often it has been seen.
 
 - **Keep** gives it to every agent from their next run on.
 - **Edit** rewords it, or changes its kind, and keeps it.
-- **Dismiss** throws it away, and the same wording is never suggested
-  again.
+- **Dismiss** throws it away, and the same thing, in the same words or
+  near enough to them, is never suggested again.
 
 ### Never a secret
 

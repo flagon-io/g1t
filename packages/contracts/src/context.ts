@@ -237,6 +237,12 @@ export interface MemoryReviewApi {
   ): Promise<Result<Memory>>;
   /** For services: candidates from docs and backfills. */
   captureMemories(workspace: string, items: CaptureItem[], by?: string): Promise<Captured>;
+  /**
+   * For services: removes a project's candidates that came only from its
+   * docs and are still waiting, unless one of `texts` (what its docs suggest
+   * now) says the same thing. Kept and dismissed memory is never touched.
+   */
+  pruneDocCandidates(workspace: string, repoId: string, texts: string[]): Promise<{ removed: number }>;
   /** For services: memories by id, in any status. */
   memoriesById(workspace: string, ids: string[]): Promise<Memory[]>;
   /** For services: kept memories with every word of `query`; the caller has checked the viewer may read them. */
@@ -252,6 +258,7 @@ export function memoryReviewClient(service: ServiceBinding): MemoryReviewApi {
     listCandidates: (viewer, workspace, repo) => call("list_candidates", { viewer, workspace, repo: repo ?? null }),
     reviewMemory: (actor, workspace, id, decision, change = {}) => call("review_memory", { actor, workspace, id, decision, ...change }),
     captureMemories: (workspace, items, by) => call("capture_memories", { workspace, items, by: by ?? null }),
+    pruneDocCandidates: (workspace, repoId, texts) => call("prune_doc_candidates", { workspace, repoId, texts }),
     memoriesById: (workspace, ids) => call("memories_by_id", { workspace, ids }),
     searchMemories: (workspace, query, options = {}) =>
       call("search_memories", { workspace, query, repoIds: options.repoIds ?? null, limit: options.limit ?? 20 }),

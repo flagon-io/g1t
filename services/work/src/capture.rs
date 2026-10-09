@@ -11,12 +11,17 @@
 //!   decision candidate. No model is asked: the pull request's own words
 //!   are the decision, and a candidate waits for review anyway.
 //! - **Docs.** The context service reads a project's README, AGENTS.md,
-//!   docs and manifests and sends what they say (`capture_memories`).
+//!   CONTRIBUTING, docs on how to work in it, and manifests, and sends
+//!   what they say (`capture_memories`). Once it has read every file, the
+//!   waiting candidates its docs no longer suggest are let go
+//!   (`prune_doc_candidates`).
 //!
 //! The same thing said again, by an independent source, is one memory seen
-//! twice, which keeps it (`promotes`). A dismissed memory stays dismissed,
-//! so the same wording is never suggested again. Nothing that looks like a
-//! secret is stored, in the text or in its evidence.
+//! twice, which keeps it (`promotes`). The same thing in other words (a
+//! sentence that grew, one cut short) is the memory already there
+//! (`same_memory`). A dismissed memory stays dismissed, so the same thing
+//! is never suggested again. Nothing that looks like a secret is stored, in
+//! the text or in its evidence.
 
 use std::collections::HashMap;
 
@@ -76,12 +81,49 @@ const CORRECTIVE: [&str; 20] = [
     "the right way",
 ];
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Existing {
     id: String,
     status: String,
     sources: String,
     confidence: Option<f64>,
+    text: String,
+}
+
+/// The most memories of one scope compared with a new one for being the
+/// same thing in other words: every kept and waiting one (at most 500) and
+/// the most recently dismissed.
+const MAX_COMPARED: u32 = 2000;
+
+/// The memory in `among` that says the same thing as `text`, if any.
+fn same_as<'a>(among: &'a [Existing], text: &str) -> Option<&'a Existing> {
+    among.iter().find(|existing| same_memory(&existing.text, text))
+}
+
+/// Whether `existing` is a waiting candidate that the source `reference`
+/// said before and now says in other words (`print`).
+fn reworded_by(existing: &Existing, reference: &str, print: &str) -> bool {
+    let sources: Vec<String> = serde_json::from_str(&existing.sources).unwrap_or_default();
+    existing.status == MemoryStatus::Candidate.as_str()
+        && fingerprint(&existing.text) != print
+        && sources.iter().any(|source| source == reference)
+}
+
+/// Whether a candidate came from docs and manifests alone.
+fn only_from_docs(sources: &str) -> bool {
+    let list: Vec<String> = serde_json::from_str(sources).unwrap_or_default();
+    !list.is_empty() && list.iter().all(|source| source.starts_with("doc:"))
+}
+
+/// Of a project's waiting doc candidates, the ids its docs no longer
+/// suggest: none of `texts` is the same memory.
+fn unsuggested(candidates: &[Existing], texts: &[String]) -> Vec<String> {
+    candidates
+        .iter()
+        .filter(|candidate| only_from_docs(&candidate.sources))
+        .filter(|candidate| !texts.iter().any(|text| same_memory(&candidate.text, text)))
+        .map(|candidate| candidate.id.clone())
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -281,6 +323,8 @@ impl Work {
         let workspace = workspace.to_lowercase();
         let mut done = Captured::default();
         let mut paths = HashMap::new();
+        // Each scope's memories, read once a capture, for near-duplicates.
+        let mut scopes: HashMap<(&'static str, String), Vec<Existing>> = HashMap::new();
         for item in items.iter().take(MAX_CAPTURE) {
             let Ok((text, evidence)) = checked(item) else {
                 done.refused += 1;
@@ -307,22 +351,48 @@ impl Work {
             }
             let print = fingerprint(&text);
             let now = rfc3339(now_ms());
-            let existing = self
+            let mut existing = self
                 .db
                 .prepare(
-                    "SELECT id, status, sources, confidence FROM memories
+                    "SELECT id, status, sources, confidence, text FROM memories
                      WHERE scope = ? AND scope_key = ? AND (fingerprint = ? OR text = ?) LIMIT 1",
                 )
                 .bind(&[item.scope.as_str().into(), key.as_str().into(), print.as_str().into(), text.as_str().into()])?
                 .first::<Existing>(None)
                 .await?;
+            // The same thing in other words: a sentence that grew, or one
+            // cut short, is the memory already there, kept, waiting or
+            // dismissed.
+            let scope_key = (item.scope.as_str(), key.clone());
+            if existing.is_none() {
+                if !scopes.contains_key(&scope_key) {
+                    let rows = self
+                        .db
+                        .prepare(
+                            "SELECT id, status, sources, confidence, text FROM memories
+                             WHERE scope = ? AND scope_key = ?
+                             ORDER BY status = 'dismissed', updated_at DESC LIMIT ?",
+                        )
+                        .bind(&[item.scope.as_str().into(), key.as_str().into(), MAX_COMPARED.into()])?
+                        .all()
+                        .await?
+                        .results::<Existing>()?;
+                    scopes.insert(scope_key.clone(), rows);
+                }
+                existing = scopes.get(&scope_key).and_then(|among| same_as(among, &text)).cloned();
+            }
             if let Some(existing) = existing {
                 done.merged += 1;
                 if existing.status == MemoryStatus::Dismissed.as_str() {
                     continue;
                 }
                 let sources = with_source(&existing.sources, &item.reference);
+                // A waiting candidate its own source now says in other words
+                // (a doc's line read whole, or edited) takes the new words,
+                // kind and confidence. Kept memory keeps its words.
+                let reworded = reworded_by(&existing, &item.reference, &print);
                 let confidence = match (existing.confidence, item.confidence) {
+                    _ if reworded => item.confidence,
                     (Some(a), Some(b)) => Some(a.max(b)),
                     (a, b) => a.or(b),
                 };
@@ -332,16 +402,22 @@ impl Work {
                     done.kept += 1;
                 }
                 let status = if keep { MemoryStatus::Kept.as_str() } else { existing.status.as_str() };
+                let (new_text, new_print) =
+                    if reworded { (text.clone(), print.clone()) } else { (existing.text.clone(), fingerprint(&existing.text)) };
                 self.db
                     .prepare(
-                        "UPDATE memories SET sources = ?, confidence = ?, status = ?, fingerprint = ?, updated_at = ?
+                        "UPDATE memories SET sources = ?, confidence = ?, status = ?, text = ?, fingerprint = ?,
+                           kind = COALESCE(?, kind), evidence = COALESCE(?, evidence), updated_at = ?
                          WHERE id = ?",
                     )
                     .bind(&[
                         serde_json::to_string(&sources)?.into(),
                         confidence.map_or(JsValue::NULL, JsValue::from),
                         status.into(),
-                        print.as_str().into(),
+                        new_text.as_str().into(),
+                        new_print.as_str().into(),
+                        if reworded { item.kind.as_str().into() } else { JsValue::NULL },
+                        if reworded { evidence.clone().map_or(JsValue::NULL, JsValue::from) } else { JsValue::NULL },
                         now.as_str().into(),
                         existing.id.as_str().into(),
                     ])?
@@ -403,9 +479,55 @@ impl Work {
             if keep {
                 done.kept += 1;
             }
+            // The same thing twice in one capture is one memory.
+            if let Some(among) = scopes.get_mut(&scope_key) {
+                among.push(Existing {
+                    id: id.clone(),
+                    status: status.as_str().to_owned(),
+                    sources: serde_json::to_string(&[&item.reference])?,
+                    confidence: item.confidence,
+                    text: text.clone(),
+                });
+            }
             self.memory_changed(&id, &workspace, status.as_str(), repo.as_deref()).await;
         }
         Ok(done)
+    }
+
+    /// Removes a project's waiting candidates that came from its docs alone
+    /// and that its docs, as read now, no longer suggest. Kept and dismissed
+    /// memory is never touched, nor a candidate another source saw too.
+    pub(crate) async fn prune_doc_candidates(&self, a: PruneDocCandidatesArgs) -> Result<Pruned> {
+        let workspace = a.workspace.to_lowercase();
+        let candidates = self
+            .db
+            .prepare(
+                "SELECT id, status, sources, confidence, text FROM memories
+                 WHERE workspace = ? AND scope = 'project' AND scope_key = ? AND status = 'candidate'
+                   AND source_kind = 'doc'
+                 LIMIT ?",
+            )
+            .bind(&[workspace.as_str().into(), a.repo_id.as_str().into(), MAX_COMPARED.into()])?
+            .all()
+            .await?
+            .results::<Existing>()?;
+        let gone = unsuggested(&candidates, &a.texts);
+        if gone.is_empty() {
+            return Ok(Pruned::default());
+        }
+        let removed = self
+            .db
+            .prepare(
+                "DELETE FROM memories WHERE workspace = ? AND scope_key = ? AND status = 'candidate'
+                   AND id IN (SELECT value FROM json_each(?)) RETURNING id",
+            )
+            .bind(&[workspace.as_str().into(), a.repo_id.as_str().into(), serde_json::to_string(&gone)?.into()])?
+            .all()
+            .await?
+            .results::<serde_json::Value>()?
+            .len();
+        worker::console_log!("pruned {removed} doc candidates of {} in {workspace}", a.repo_id);
+        Ok(Pruned { removed: removed as u32 })
     }
 
     pub(crate) async fn capture_memories(&self, a: CaptureMemoriesArgs) -> Result<Captured> {
@@ -744,8 +866,9 @@ impl Work {
 }
 
 /// The methods this module serves at `POST /rpc/<method>`.
-pub(crate) const METHODS: [&str; 7] = [
+pub(crate) const METHODS: [&str; 8] = [
     "capture_memories",
+    "prune_doc_candidates",
     "report_learned",
     "list_candidates",
     "review_memory",
@@ -758,6 +881,7 @@ pub(crate) async fn dispatch(work: &Work, method: &str, body: serde_json::Value)
     use g1t_kit::{args, reply};
     match method {
         "capture_memories" => reply(&work.capture_memories(args(body)?).await?),
+        "prune_doc_candidates" => reply(&work.prune_doc_candidates(args(body)?).await?),
         "report_learned" => reply(&work.report_learned(args(body)?).await?),
         "list_candidates" => reply(&work.list_candidates(args(body)?).await?),
         "review_memory" => reply(&work.review_memory(args(body)?).await?),
@@ -832,6 +956,60 @@ mod tests {
         assert_eq!(with_source("[\"run:a\"]", "run:a"), ["run:a"]);
         assert_eq!(with_source("[\"run:a\"]", "comment:b"), ["run:a", "comment:b"]);
         assert_eq!(with_source("not json", "doc:x"), ["doc:x"]);
+    }
+
+    fn existing(id: &str, text: &str, sources: &str) -> Existing {
+        Existing { id: id.into(), status: "candidate".into(), sources: sources.into(), confidence: Some(0.7), text: text.into() }
+    }
+
+    #[test]
+    fn the_same_thing_in_other_words_is_found() {
+        let among = [
+            existing("a", "Run cargo test in the crate you changed.", "[]"),
+            existing("b", "g1t is a Cargo workspace (apps/api, crates/*, services/actions); `cargo test` runs its tests.", "[]"),
+        ];
+        assert_eq!(same_as(&among, "run cargo test in the crate you changed").map(|e| e.id.as_str()), Some("a"));
+        assert_eq!(
+            same_as(&among, "g1t is a Cargo workspace (apps/*, crates/*, services/*); `cargo test` runs its tests.").map(|e| e.id.as_str()),
+            Some("b")
+        );
+        assert!(same_as(&among, "Use pnpm, never npm.").is_none());
+    }
+
+    #[test]
+    fn a_candidate_cut_short_takes_its_doc_s_whole_words() {
+        let cut = existing("a", "Work started by an automation cannot retrigger the", "[\"doc:r:CONTRIBUTING.md\"]");
+        let whole = fingerprint("Work started by an automation cannot retrigger the same automation.");
+        assert!(reworded_by(&cut, "doc:r:CONTRIBUTING.md", &whole));
+        // Another source saying it is a sighting, not new words.
+        assert!(!reworded_by(&cut, "run:x", &whole));
+        // Kept memory keeps the words someone kept.
+        let kept = Existing { status: "kept".into(), ..cut.clone() };
+        assert!(!reworded_by(&kept, "doc:r:CONTRIBUTING.md", &whole));
+        // The same words are not new ones.
+        assert!(!reworded_by(&cut, "doc:r:CONTRIBUTING.md", &fingerprint(&cut.text)));
+    }
+
+    #[test]
+    fn waiting_doc_candidates_the_docs_no_longer_suggest_are_let_go() {
+        let candidates = [
+            // Cut mid-sentence by the old reader; the docs now say it whole.
+            existing("cut", "Run the whole suite before you push, every", "[\"doc:r:CONTRIBUTING.md\"]"),
+            // From a plan, which is no longer read for memory.
+            existing("plan", "Loop protection. Work started by an automation cannot retrigger the", "[\"doc:r:docs/PLAN.md\"]"),
+            // Still suggested.
+            existing("still", "`cargo test` in the crate or service you changed.", "[\"doc:r:CONTRIBUTING.md\"]"),
+            // Seen by a run too: not the docs' alone to take back.
+            existing("run", "Deduplication. The same Sentry issue firing 500 times maps to one", "[\"doc:r:docs/PLAN.md\",\"run:x\"]"),
+        ];
+        let texts = [
+            "Run the whole suite before you push, every time, on every branch.".to_owned(),
+            "`cargo test` in the crate or service you changed.".to_owned(),
+        ];
+        assert_eq!(unsuggested(&candidates, &texts), ["plan"]);
+        assert!(only_from_docs("[\"doc:a\",\"doc:b\"]"));
+        assert!(!only_from_docs("[]"));
+        assert!(!only_from_docs("[\"doc:a\",\"review:b\"]"));
     }
 
     fn item(text: &str, evidence: Option<&str>) -> CaptureItem {
