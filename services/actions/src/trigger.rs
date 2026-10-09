@@ -526,6 +526,12 @@ impl Actions {
         if pushed_default {
             self.sync(&repo, &ws).await?;
         }
+        // A mirror runs only what its state says (mirrored.rs).
+        let copied_in = event.kind == "git.push" && event.data["mirrored"].as_bool() == Some(true);
+        let policy = crate::mirrored::policy(repo.mirror.as_ref(), copied_in);
+        if !policy.runs {
+            return Ok(());
+        }
         // What a workflow job's own token did starts no workflows, as on
         // GitHub, so a workflow cannot set itself off; only
         // `workflow_dispatch` and `repository_dispatch` do.
@@ -548,7 +554,26 @@ impl Actions {
             let Some(mut subject) = self.subject(event, event_name, action, &repo, &ws, &sender).await? else {
                 continue;
             };
-            let read = self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?;
+            // A change to workflows made on the remote, by someone g1t
+            // knows nothing of, waits before it may use this repository's
+            // secrets.
+            if copied_in && matches!(event_name, "push" | "create") {
+                if subject.paths.is_none() {
+                    let (base, head) = subject.compare.clone().unwrap_or((None, subject.sha.clone()));
+                    subject.paths = Some(self.changed_paths(&repo, &ws, base, head).await?);
+                }
+                if crate::mirrored::touches_workflows(subject.paths.as_deref().unwrap_or_default())
+                    && let Some(mirror) = &repo.mirror
+                {
+                    subject.approval = subject.approval.take().or_else(|| Some(crate::mirrored::copied_workflows(&mirror.remote)));
+                }
+            }
+            // A pull request from a fork reads the fork's files.
+            let read = if subject.source == Self::repo_path(&repo) {
+                self.read_for(&repo, &ws, subject.source_ref.as_deref(), policy.github).await?
+            } else {
+                self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?
+            };
             // A pull request's head runs each workflow once, however many
             // events say it is there (marked ready, and pushed).
             let key = match subject.pull {
@@ -611,6 +636,12 @@ impl Actions {
             if self.disabled(&repo.id, &file.path).await? {
                 continue;
             }
+            // On a mirror the remote may deploy too: a workflow that deploys
+            // waits for approval (mirrored.rs).
+            let held = crate::mirrored::policy(repo.mirror.as_ref(), false)
+                .hold
+                .zip(crate::mirrored::deploys_to(&workflow))
+                .map(|(remote, environment)| crate::mirrored::held(&remote, &environment));
             self.create_run(NewRun {
                 repo: repo.clone(),
                 path: file.path,
@@ -625,7 +656,7 @@ impl Actions {
                 actor_id: actor_id.map(str::to_owned),
                 actor: Some(sender.to_owned()),
                 trusted: subject.trusted,
-                approval: subject.approval.clone(),
+                approval: subject.approval.clone().or(held),
             })
             .await?;
         }
@@ -731,8 +762,15 @@ impl Actions {
                 continue;
             };
             let Ok(workflow) = workflow::parse(&row.source) else { continue };
-            // Schedules wait while a repository is archived; a deleted one is not found.
-            let Some((repo, _ws)) = self.repo_by_id(&row.repo_id).await?.filter(|(repo, _)| !repo.archived()) else { continue };
+            // Schedules wait while a repository is archived, or a mirror runs
+            // nothing; a deleted one is not found.
+            let Some((repo, _ws)) = self
+                .repo_by_id(&row.repo_id)
+                .await?
+                .filter(|(repo, _)| !repo.archived() && crate::mirrored::policy(repo.mirror.as_ref(), false).runs)
+            else {
+                continue;
+            };
             let Some(sha) = self.default_head(&repo).await? else { continue };
             let payload = json!({ "schedule": cron, "repository": payload::repository(&repo), "workflow": row.path });
             let mut subject = Subject {
@@ -802,7 +840,11 @@ impl Actions {
             format!("refs/{}/{git_ref}", if is_branch { "heads" } else { "tags" })
         };
         let short = full_ref.trim_start_matches("refs/heads/").trim_start_matches("refs/tags/").to_owned();
-        let read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&short)).await?;
+        let policy = crate::mirrored::policy(repo.mirror.as_ref(), false);
+        if let Some(mirror) = repo.mirror.as_ref().filter(|_| !policy.runs) {
+            return Ok(fail(FailureCode::Forbidden, crate::mirrored::refused(&repo.namespace, &repo.name, mirror)));
+        }
+        let read = self.read_for(&repo, &ws, Some(&short), policy.github).await?;
         let Some(sha) = read.head.clone() else {
             return Ok(fail(FailureCode::NotFound, format!("There is no branch or tag called {short}.")));
         };
@@ -906,7 +948,11 @@ impl Actions {
         let Some(ws) = self.workspace_actor(&repo.namespace).await? else {
             return Ok(fail(FailureCode::NotFound, "There is no such workspace."));
         };
-        let read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&repo.default_branch)).await?;
+        let policy = crate::mirrored::policy(repo.mirror.as_ref(), false);
+        if let Some(mirror) = repo.mirror.as_ref().filter(|_| !policy.runs) {
+            return Ok(fail(FailureCode::Forbidden, crate::mirrored::refused(&repo.namespace, &repo.name, mirror)));
+        }
+        let read = self.read_for(&repo, &ws, Some(&repo.default_branch), policy.github).await?;
         let Some(sha) = read.head.clone() else {
             return Ok(fail(FailureCode::NotFound, "The repository has no default branch to run on yet."));
         };

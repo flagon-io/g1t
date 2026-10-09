@@ -117,6 +117,10 @@ pub const EVENT_TYPES: [&str; 101] = [
     "vulnerability_alert.fixed",
     "vulnerability_alert.dismissed",
     "vulnerability_alert.reopened",
+    "mirror.unreachable",
+    "mirror.reachable",
+    "mirror.state_changed",
+    "mirror.moved_in",
 ];
 
 /// What a webhook belongs to.
