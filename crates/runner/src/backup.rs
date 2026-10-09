@@ -387,7 +387,7 @@ mod tests {
         std::fs::create_dir_all(&origin).unwrap();
         git_in(&origin, &["init", "--quiet", "--initial-branch=main"], None).unwrap();
         commit(&origin, "a.txt", "one");
-        git_in(&origin, &["tag", "-a", "v1", "-m", "v1"], None).unwrap();
+        git_in(&origin, &["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "tag.gpgsign=false", "tag", "-a", "v1", "-m", "v1"], None).unwrap();
         let mirror = root.join("mirror.git");
 
         // Full.

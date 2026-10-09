@@ -158,7 +158,23 @@ fn run_until(
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // A group of its own, so a cancellation reaches what the step started.
     #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+        // A shell cannot trap a signal it was started with ignored, and a
+        // runner started in the background (as a service, or under `&`)
+        // passes SIGINT on ignored. Back to the defaults, so a cancelled
+        // step hears SIGINT and its own trap runs.
+        // SAFETY: only signal(), which is async-signal-safe, between fork and exec.
+        unsafe {
+            command.pre_exec(|| {
+                for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGQUIT] {
+                    libc::signal(signal, libc::SIG_DFL);
+                }
+                Ok(())
+            });
+        }
+    }
     let mut child = command.spawn()?;
     let (sender, lines) = mpsc::channel::<String>();
     let mut readers = Vec::new();
