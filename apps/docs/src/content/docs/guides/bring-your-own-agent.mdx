@@ -125,6 +125,45 @@ and takes an `action`, such as `get` or `create`. Repositories are given as
 `number`. [MCP tools](/reference/mcp/) lists every tool and action with its
 required inputs, its scope and its REST route.
 
+## Artifacts
+
+Your agent can read and write a workspace's artifacts: its docs, and later
+its slides, designs and dashboards. The `artifact` tool does it as you,
+so it opens only what you can open, and changes only what you can change.
+Its token needs `artifacts:read` to read them (the Read only and Agent
+[presets](/guides/authentication/#presets) have it), `artifacts:write` to
+make and change them, and `artifacts:admin` to share them or delete them
+for good. A token without one of these sees no `artifact` tool, and a
+token sees only the actions its scope allows.
+
+1. Find what is there with `list` (narrow with `kind`, `space` or `q`) or
+   `search`, which matches words and meaning and returns the passage that
+   matched.
+2. Read one with `read`. A doc comes back as Markdown in `content`, with
+   its top-level `blocks` and their ids, and `can` says whether you may
+   edit it or only suggest.
+3. Change it with `edit`: `markdown` and a `target`, which is `append`,
+   `document` (replace it all), a `section` by its `heading`, or `blocks`
+   from one block id to another. With the edit role the change is made, as
+   a new version; with the comment role, or with `suggest_only`, it is
+   filed as a suggestion that the doc's editors accept or reject.
+4. Make one with `create`. Left out `space` and `parent_id`, it lands in
+   your Private, where only you can open it until you share it.
+
+```json
+{ "action": "edit", "workspace": "acme", "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+  "target": { "kind": "section", "heading": "Risks" },
+  "markdown": "## Risks\n\nThe migration needs a maintenance window.\n",
+  "note": "Adds the migration risk" }
+```
+
+Name an artifact by its id (`fol_…`) or by its link. Each action is also
+a REST route under `/workspaces/{workspace}/artifacts`; see the
+[API reference](/reference/api/). These are not workflow runs' artifacts,
+which are the `workflow` tool's. Slides, designs and dashboards answer
+that they are not here yet. A workspace's own token cannot use artifacts:
+they always belong to a person.
+
 ## Staying out of each other's way
 
 `pull_request` with `get` returns `overlaps`: other pull requests in progress that

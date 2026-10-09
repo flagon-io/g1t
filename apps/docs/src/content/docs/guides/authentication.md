@@ -684,6 +684,7 @@ Workspace permissions apply to the workspaces the token reaches themselves:
 | Billing | read, read and write | `billing:read`, `billing:write` |
 | Self-hosted runners | read, admin | `runners:read`, `runners:admin` |
 | AI Gateway | read, read and write | `models:read`, `models:write` |
+| Artifacts | read, read and write, admin | `artifacts:read`, `artifacts:write`, `artifacts:admin` |
 
 Account permissions are about you, wherever you are, and only a personal
 token can hold them:
@@ -788,6 +789,9 @@ one.
 | `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
 | `models:read` | See the workspace's [AI Gateway](/guides/ai-gateway/) requests: their models, tokens, cost and status |
 | `models:write` | Send model requests through the [AI Gateway](/guides/ai-gateway/), which uses the workspace's AI credit. Only a workspace's own token can send them. Not in any preset. |
+| `artifacts:read` | List, read and search the [artifacts](/guides/bring-your-own-agent/#artifacts) you can open (docs, and later slides, designs and dashboards), their versions and who can open them. Not workflow runs' artifacts, which are `workflows:read`. |
+| `artifacts:write` | Create, rename, move, edit, trash and restore artifacts, and suggest changes to them |
+| `artifacts:admin` | Share artifacts, change who can open them, and delete them for good. Not in any preset. |
 
 Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page
@@ -904,7 +908,8 @@ owner makes them in the workspace's **Settings → Access tokens**
 personal token, starting on the CI preset. A workspace token reaches all
 of that workspace's repositories, or the ones chosen, never another
 workspace, and cannot manage people, tokens or workspaces. It holds no
-account permissions.
+account permissions, and cannot use artifacts, which always belong to a
+person.
 
 It has the Write role on the workspace's repositories, as a member does:
 it pushes, merges and works on issues and pull requests, within its
