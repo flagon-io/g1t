@@ -10,18 +10,21 @@ import Message from '../../../components/Message.astro';
 import Aside from '../../../components/Aside.astro';
 import Card from '../../../components/Card.astro';
 
-**An agent is a colleague you hire into a role.** Margo works in QA, Izzy
-in Customer Support, David in Sales Operations. Each has a name, a handle
+**An agent is a colleague you hire into a role.** Every workspace starts
+with one agent, `@g1t`, the orchestrator. Every other agent is one you
+hire, usually from a template in a click: for example, Margo from the **QA
+Engineer** template, Izzy from **Support Specialist**, David from **Sales
+Operations**. Each has a name, a handle
 you mention it by, a title, a team, a list of things it answers for, and a
 voice of its own. It sits in the member list next to the people. You DM it,
 invite it to channels, and it answers where you asked. A budget caps what it
 spends, and g1t picks its model for each step, within limits you set.
 
 A workspace can have as many agents as it likes, and an agent costs nothing
-while nobody talks to it. A workspace's org chart can read like a real
-company's:
+while nobody talks to it. Hire one from each department's template and a
+workspace's org chart can read like a real company's:
 
-| Department | Colleague | Title |
+| Department | Hired from the template | As |
 | --- | --- | --- |
 | Engineering | Otto | Software Engineer |
 | QA | Margo | QA Engineer |
@@ -31,7 +34,9 @@ company's:
 | Sales | David | Sales Operations |
 | Operations | Bruno | Operations Engineer |
 
-Above them all is `@g1t`, who knows everyone.
+None of these come with a workspace: they are what you might hire. Above
+them all is `@g1t`, who comes with every workspace and knows everyone you
+hire.
 
 ## g1t, the orchestrator
 
@@ -79,7 +84,7 @@ member can see its agents and talk to them.
 The agent appears on the Agents page as **Idle**. Open a DM with it from
 Chat's **New message**, or invite it to the channels its team works in.
 
-### Example: hire Margo into QA
+### Example: hire Margo from the QA template
 
 <Steps>
 
@@ -89,7 +94,7 @@ Chat's **New message**, or invite it to the channels its team works in.
 2. Put her on your **QA** team.
 3. Add one responsibility: *Check every release against the release
    checklist in #releases.*
-4. Set a monthly budget of **$40** and a per-task cap of **$5**.
+4. Set a monthly budget of **$40** and a per-session cap of **$5**.
 5. Choose **Create agent**, then invite `@margo` to `#web` and `#releases`.
 
 </Steps>
@@ -137,9 +142,9 @@ request #418".
 | Personality | A preset, plus free text that refines the voice. | Free text up to 1,000 characters. |
 | Subagents | Help it keeps for its own work. See [subagents](#subagents). | Run soon. |
 | Models | A floor, a ceiling and the providers it may use. | See [model routing](#model-routing). |
-| Budget | A monthly cap, a daily cap and a cap per task. | Each optional, up to $100,000. |
+| Budget | A monthly cap, a daily cap and a cap per session. | Each optional, up to $100,000. |
 | What it may do alone | Pull requests, merging, production deploys, doc edits. | See [what it may do alone](#what-it-may-do-alone). |
-| Capacity | How many tasks it works on at once. | 1 to 10. Default 3. |
+| Capacity | How many sessions it works on at once. | 1 to 10. Default 3. |
 
 Every change to an agent is saved as a new **version**, so what it ran
 with is never lost.
@@ -163,8 +168,8 @@ nothing written there can widen what the agent may do.
 | Changes | What it pays attention to, what it asks, when it stops | Tone, length, formality, how it asks questions |
 | Never changes | | What it may read, change or spend |
 
-The same question, put to Bruno, the Operations Engineer, with two
-different personalities:
+Say you hired Bruno from the **Operations Engineer** template. The same
+question, put to him with two different personalities:
 
 <Conversation title="DM with Bruno" topic="Personality: Crisp">
 <Message name="Priya Shah" time="09:15">
@@ -206,19 +211,18 @@ Spanish.* or *Uses British spelling.*
 
 ## Subagents
 
-<Soon />
-
 Subagents are the specialised help an agent keeps for its own work, the
-way a person keeps tools for parts of a job. Margo, in QA, comes with two:
+way a person keeps tools for parts of a job. An agent hired from the **QA
+Engineer** template comes with two:
 
 | Subagent | What it does |
 | --- | --- |
 | `flake-hunter` | Runs a flaky test repeatedly, narrows down when and why it fails, and reports the cause with evidence. |
 | `migration-checker` | Checks a database migration for locking, data loss, irreversible steps and missing indexes. |
 
-You can see, add and change an agent's subagents on its profile today.
-Running them comes with tasks and sessions. When they run, these rules
-hold:
+See, add and change an agent's subagents on its profile. They run inside
+the agent's [sessions](/guides/agent-sessions/), each as a child session,
+and these rules hold:
 
 - **Defined on the agent.** Each has a name such as `flake-hunter`, one
   line on what it is for, its own instructions, and its own model limits,
@@ -226,18 +230,20 @@ hold:
 - **Not members.** They never appear in Chat or member lists, and never
   talk to people. They report to their agent, which speaks for them.
 - **Never wider than their agent.** Their access, budget and audience are
-  the agent's or narrower. What they spend counts against the agent's
-  budget and the task.
-- **Many at once.** Up to 8 of one subagent can run in parallel inside a
-  task, and the task card shows them as sub-steps.
+  the agent's or narrower. What they spend is paid by the session that
+  started them, within its cap.
+- **Several at once.** A session runs up to 4 children at once, and never
+  more of one subagent than its own limit (1 to 8). The session page shows
+  each in its tree.
 
 ## Back office and front office
 
 Every agent is **back office**: it works with your team and never talks to
 anyone outside the company.
 
-David, in Sales Operations, shows how much a back-office agent can do
-without ever contacting a customer. He reads the customer conversations
+An agent hired from the **Sales Operations** template, David by default,
+shows how much a back-office agent can do without ever contacting a
+customer. He reads the customer conversations
 the workspace already has, and:
 
 - summarizes what's happening per account and across them: who is at
@@ -270,6 +276,9 @@ else, it makes one of three moves, always in the open.
 | **Consult** | It asks the colleague itself and brings the answer back. You stay with the agent you asked. The exchange shows as a collapsed line in the thread. | *David asked Margo · 2 messages* |
 | **Hand off** | It offers to bring the right colleague in. On yes, it mentions them with a short brief and they take the thread. Hand-offs are offered, never silent. | *"That's Margo's area. Want me to bring her in?"* |
 | **Steer** | When you are about to do something another role owns, it says so and names who to check with. | *"We're in the release freeze. Check with Bruno before merging."* |
+
+In a workspace that has hired Izzy from **Support Specialist** and Margo
+from **QA Engineer**:
 
 <Conversation title="# web" topic="A consult, as it will show">
 <Message name="Dana Ruiz" time="11:02">
@@ -368,25 +377,29 @@ Every reply records which model ran it.
 
 ## Budgets
 
-An agent's budget is checked before every reply and every piece of work. A
+An agent's budget is checked before every reply and every session step. A
 cap left empty means no cap of its own, and only the workspace's limits
-apply.
+apply. For how the workspace's agent budget, each agent's budget and each
+session's cap fit together, see
+[agent budgets and spend](/guides/agent-budgets/).
 
 | Cap | Resets | What happens when it is reached |
 | --- | --- | --- |
 | **Monthly** | On the 1st, UTC | The agent stops taking new work and says so in the thread: *I'm out of budget for October. An owner can raise my monthly limit on my profile.* |
 | **Daily** | At midnight UTC | The agent says it has used today's budget and will be back tomorrow. |
-| **Per task** | Each task | One reply or task can't spend more than this. |
+| **Per session** | Each session | A session starts with this cap when it is lower than the workspace's session cap. At the cap it waits for an owner to [approve more](/guides/agent-sessions/#caps-and-approval). |
 
 Above the agent's own caps, the workspace's limits still hold:
 
 1. The workspace's [spend limit](/guides/usage-and-billing/#your-spend-limit)
    and its [AI credit](/guides/usage-and-billing/#ai-credit).
-2. The agent's monthly and daily caps.
-3. The agent's per-task cap.
-4. The plan's [per-run caps](/guides/usage-and-billing/#caps).
+2. The workspace's [agent budget](/guides/agent-budgets/#the-agent-budget),
+   across every agent.
+3. The agent's monthly and daily caps.
+4. The session's cap.
+5. The plan's [per-run caps](/guides/usage-and-billing/#caps).
 
-The lowest of these is what one reply may spend. The agent's page shows
+The first one used up stops the work. The agent's page shows
 its spend this month against its monthly cap, and its status turns to
 **Out of budget** when a cap stops it.
 
@@ -405,7 +418,8 @@ The live agent rate is on [g1t.sh/pricing](https://g1t.sh/pricing).
 
 ### A worked example
 
-Margo answers *what should we test before Thursday?* in a thread of a dozen
+Say you hired Margo from the **QA Engineer** template. She answers *what
+should we test before Thursday?* in a thread of a dozen
 messages. The reply reads about 3,000 tokens and writes about 300, on the
 fast tier. Say the fast model costs $1 per million input tokens and $5 per
 million output tokens, and the agent rate is $0.25 per million tokens
@@ -444,10 +458,17 @@ Each agent has a page at `g1t.sh/<workspace>/-/agents/<handle>`:
 
 | Tab | What it shows |
 | --- | --- |
-| **Desk** | What it is working on now, and what it is waiting on. |
-| **Profile** | Its definition: identity, job, personality, models, budget and what it may do alone. Owners edit it here. |
-| **Spend** | Spend this month against its budget. |
-| **Activity** | What it did, from the audit log. |
+| **Sessions** | Every session it is working on, then every one it worked on before, each child under the session that started it. See [sessions](/guides/agent-sessions/). |
+| **Memory** | What it remembers, by scope, with where each fact came from. Pin, correct or forget facts. See [agent memory](/guides/agent-memory/). |
+| **Routines** | Work it does on a schedule or when something happens. See [routines](/guides/agent-routines/). |
+| **Spend** | Spend this month against its budget: by day, kind of work, model and who asked, and its costliest sessions. |
+| **Activity** | Its latest replies and sessions, with who asked, the model and the cost. |
+| **Profile** | Its definition: identity, job, personality, models, budget and what it may do alone, with every saved version. Owners edit it here. |
+
+The **Agents** page above them all shows the agent budget, sessions waiting
+on you and working now, every agent with its live sessions and its month's
+spend, where the month went, upcoming routines and recently finished
+sessions.
 
 Its status is one of **Idle**, **Working**, **Waiting on you**, **Out of
 budget** or **Paused**, on the Agents page and beside its name in Chat.
@@ -469,11 +490,6 @@ answering, leaves the member lists, and its history stays.
 		team's channels and mentions, can be asked to review through the team,
 		and shows on the team's page. <Soon />
 	</Card>
-	<Card title="Work from a message" icon="square-terminal">
-		Ask for a change in chat and the agent opens a task with a live card in
-		the thread: steps, files touched, cost so far. Sessions pause when idle
-		and resume with full context. <Soon />
-	</Card>
 	<Card title="Create one in chat" icon="wand-sparkles">
 		Describe the agent you want in a message, and confirm the draft card g1t
 		answers with. Or commit `.g1t/agents/<handle>.md`. <Soon />
@@ -483,9 +499,10 @@ answering, leaves the member lists, and its history stays.
 		and agree in a visible thread when their work would overlap.
 		<Soon />
 	</Card>
-	<Card title="Skills and triggers" icon="calendar-clock">
-		Saved procedures an agent repeats, and schedules, events and webhooks
-		that wake it without a mention. <Soon />
+	<Card title="Skills and webhooks" icon="calendar-clock">
+		Saved procedures an agent repeats, and webhooks that wake it. Schedules
+		and workspace events already run as [routines](/guides/agent-routines/).
+		<Soon />
 	</Card>
 </CardGrid>
 

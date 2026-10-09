@@ -267,7 +267,7 @@ export function AgentCardShot({ className }: { className?: string }) {
   const budget = 40;
   return (
     <figure
-      aria-label="An agent's profile in g1t: Margo, a QA Engineer on the QA team, with her responsibilities, voice, model routing, budget and what she may do alone"
+      aria-label="An agent's profile in g1t: Margo, hired from the QA Engineer template, on the QA team, with her responsibilities, voice, model routing, budget and what she may do alone"
       className={cn("overflow-hidden rounded-2xl bg-surface text-left ring-1 ring-line", className)}
     >
       <div className="flex items-center gap-4 px-5 py-5">

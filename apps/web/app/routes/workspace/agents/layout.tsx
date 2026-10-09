@@ -8,20 +8,31 @@ import type { Route } from "./+types/layout";
 import { workspaceAgents } from "../../../lib/services.server";
 import { getViewer, roleIn } from "../../../lib/session.server";
 
-/** Agents mode: the workspace's agents, for its sidebar; null when the agents service does not answer. */
-export type AgentsLayoutData = { slug: string; agents: WorkspaceAgent[] | null };
+/**
+ * Agents mode: the workspace's agents, for its sidebar, and how many live
+ * sessions each has (by agent id); null when the agents service does not answer.
+ */
+export type AgentsLayoutData = { slug: string; agents: WorkspaceAgent[] | null; live: Record<string, number> };
 
 export async function loader({ params, context }: Route.LoaderArgs): Promise<AgentsLayoutData> {
   const viewer = getViewer(context);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const listed = await workspaceAgents.list(params.owner.toLowerCase(), viewer!).catch(() => null);
+  const slug = params.owner.toLowerCase();
+  const [listed, live] = await Promise.all([
+    workspaceAgents.list(slug, viewer!).catch(() => null),
+    // Every live session counts, private ones too: a count says nothing about what it is.
+    workspaceAgents.sessions(slug, viewer!, { status: "live", limit: 200 }).catch(() => null),
+  ]);
+  const counts: Record<string, number> = {};
+  for (const session of live?.ok ? live.value : []) counts[session.agent_id] = (counts[session.agent_id] ?? 0) + 1;
   return {
-    slug: params.owner.toLowerCase(),
+    slug,
+    live: counts,
     agents: listed?.ok ? listed.value.filter((agent) => !agent.archived_at).sort((a, b) => a.display_name.localeCompare(b.display_name)) : null,
   };
 }
 
-/** The list changes when an agent is made or changed, not when moving between them. */
+/** The list changes when an agent is made or changed, or work is stopped or started; not when moving between them. */
 export function shouldRevalidate({ currentParams, nextParams, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
   return currentParams.owner !== nextParams.owner;

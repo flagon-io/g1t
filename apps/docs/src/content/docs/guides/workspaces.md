@@ -541,7 +541,7 @@ belong to. Below it, under the workspace's name, is the workspace:
 
 1. **Overview**, the [workspace's page](#the-workspaces-page).
 2. Its [projects](#pinned-and-recent-projects), ending with **All projects**.
-3. The places work happens across them: **Agent fleet**, **Context**,
+3. The places work happens across them: **Agents**, **Context**,
    **Memory**, **Security** and [**Packages**](/guides/packages/), with
    **Insights**, **Boards** and **Roadmap** soon.
 4. **People**, [**Teams**](/guides/teams/), **Usage**, what g1t's runs have

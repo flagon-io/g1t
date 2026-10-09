@@ -14,7 +14,7 @@ export const WORKSPACE_PAGES = ["projects", "packages", "teams", "people", "insi
 
 /**
  * Which of those pages a path is, under `/<workspace>`: null for the
- * workspace's other pages (settings, Agent fleet, Usage and the rest), for
+ * workspace's other pages (settings, Usage and the rest), for
  * one package's or one team's page, and for anything else.
  */
 export function workspacePage(pathname: string, slug: string): WorkspacePageKey | null {

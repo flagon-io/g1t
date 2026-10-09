@@ -84,8 +84,8 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit and caps, prepaying, and every charge." },
   agents: {
-    title: "Agent fleet",
-    about: "Every agent at work across the workspace's projects: what each holds, what it is doing now, and what it has cost.",
+    title: "Agents",
+    about: "The workspace's agents together: what they are working on now, what waits on you, and where this month's agent budget went.",
   },
   memory: {
     title: "Workspace memory",

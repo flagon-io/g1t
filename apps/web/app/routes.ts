@@ -122,16 +122,20 @@ export default [
     // What members may do in chat: channels, emoji, default channels.
     route("-/settings/chat", "routes/workspace/chat-settings.tsx"),
     route("-/repositories", "routes/workspace/repositories.tsx"),
-    // Agents mode: the fleet's runs first, then each of the workspace's own
-    // agents (docs/WORKSPACE.md). `new` is no agent's handle.
+    // Agents mode: the overview (budget, sessions, roster, spend) first, then
+    // each of the workspace's own agents and its sessions (docs/WORKSPACE.md).
+    // `new` is no agent's handle.
     route("-/agents", "routes/workspace/agents/layout.tsx", [
       index("routes/workspace/agents.tsx"),
       route("new", "routes/workspace/agents/new.tsx"),
       route(":handle", "routes/workspace/agents/agent.tsx", [
-        index("routes/workspace/agents/desk.tsx"),
-        route("profile", "routes/workspace/agents/profile.tsx"),
+        index("routes/workspace/agents/sessions.tsx"),
+        route("sessions/:id", "routes/workspace/agents/session.tsx"),
+        route("memory", "routes/workspace/agents/memory.tsx"),
+        route("routines", "routes/workspace/agents/routines.tsx"),
         route("spend", "routes/workspace/agents/spend.tsx"),
         route("activity", "routes/workspace/agents/activity.tsx"),
+        route("profile", "routes/workspace/agents/profile.tsx"),
       ]),
     ]),
     // Chat mode: channels by name, direct messages by id, and what the page

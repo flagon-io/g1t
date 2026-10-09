@@ -300,7 +300,7 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] = 
   },
 ];
 
-/** A workspace's org chart, read like a company's: g1t knows everyone; each department has its colleague. */
+/** An example org chart, read like a company's: g1t comes with the workspace; each department's colleague was hired from a template. */
 const ORG: { team: string; who: string }[] = [
   { team: "Engineering", who: "Otto" },
   { team: "QA", who: "Margo" },
@@ -313,7 +313,7 @@ const ORG: { team: string; who: string }[] = [
 
 function OrgChart() {
   return (
-    <figure aria-label="An example org chart: g1t at the top, and one agent in each department" className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+    <figure aria-label="An example org chart: g1t at the top, and one agent hired from a template in each department" className="rounded-2xl bg-surface p-5 ring-1 ring-line">
       <div className="flex items-center gap-3">
         <AgentAvatar agent={{ handle: "g1t", name: "g1t" }} size={28} />
         <p className="text-sm">
@@ -498,9 +498,10 @@ export function Landing() {
             Hire agents into roles, like colleagues
           </h2>
           <p className="mt-4 max-w-xl leading-7 text-muted">
-            Hire Margo into QA. She gets a title, a team and broad responsibilities: review pull requests for risk,
-            write test plans, chase flaky checks. Role templates come by department, each with a name you can shuffle,
-            a voice and sensible limits. Her job decides what she does; her personality only changes how she sounds.
+            Pick a role template, grouped by department, and hire in a click. For example, hire Margo from the QA
+            Engineer template. She gets a title, a team and broad responsibilities: review pull requests for risk,
+            write test plans, chase flaky checks. Every template comes with a name you can shuffle, a voice and
+            sensible limits. Her job decides what she does; her personality only changes how she sounds.
           </p>
           <p className="mt-4 max-w-xl leading-7 text-muted">
             Nobody picks a model. <span className="text-fg-soft">Auto</span> routes each step to the cheapest model

@@ -30,7 +30,8 @@ import { hostedOpen } from "../../runner/src/hosted.ts";
 import { type AgentRouting as Policy, routingReader } from "../../runner/src/model-env.ts";
 import { type Spent, type Tokens, budgetBlock, chargedMicros, replyCapMicros, totalTokens } from "./budget.ts";
 import { BUILTIN_NO_MODEL } from "./orchestrator.ts";
-import { type PolicyRow, policyBlock, readPolicy, workspaceSpendStatements } from "./policy.ts";
+import { type PolicyRow, alertDue, markAlerted, policyBlock, readPolicy, workspaceSpendStatements } from "./policy.ts";
+import { dollars } from "./money.ts";
 import { type ReplyModel, allowedProviders, replyModel } from "./routing.ts";
 import { type Row, definitionOf, periods, spendStatements } from "./store.ts";
 import type { ModelAnswer, Send } from "./turn.ts";
@@ -44,6 +45,8 @@ export type MeterEnv = {
   MODELS_URL?: string;
   HOSTED_AGENT_WORKSPACES: string;
   AGENT_ROUTING: string;
+  /** Notifications: the workspace's agent budget crossing 75, 90 or 100%. */
+  NOTIFY?: ServiceBinding;
 };
 
 /** The longest one model answer may take. */
@@ -302,6 +305,9 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
     }
     if (charged > 0) {
       await db.batch([...spendStatements(db, payer.id, charged, now, input.task), ...workspaceSpendStatements(db, row.workspace_id, charged, now)]);
+      await budgetAlert(env, slug, row.workspace_id, { ...policy, spent: policy.spent + charged }, month).catch((error: unknown) =>
+        console.error("agents: a budget alert was not sent", slug, String(error)),
+      );
     }
     return { ok: true, value: result, model: model.modelName, tier: named ? null : model.tier, tokens: result.tokens, cost: result.cost, charged };
   } finally {
@@ -310,6 +316,41 @@ export async function metered<T extends WorkUsage>(env: MeterEnv, input: MeterIn
     if (reservation && !settled) await gate.settle(reservation, 0);
     await integrations.closeModelSessions([await sha256Hex(session.token)]).catch(() => 0);
   }
+}
+
+/**
+ * Tells the owner who set the workspace's agent budget, once per level a
+ * month, when every agent's spend together crosses 75, 90 or 100% of it.
+ */
+async function budgetAlert(env: MeterEnv, slug: string, workspaceId: string, policy: PolicyRow, month: string): Promise<void> {
+  const level = alertDue(policy);
+  if (!level || !env.NOTIFY || !policy.monthly_micros) return;
+  if (!(await markAlerted(env.DB, workspaceId, month, level))) return;
+  const setBy = await env.DB.prepare("SELECT updated_by FROM agent_policies WHERE workspace_id = ?").bind(workspaceId).first<{ updated_by: string | null }>();
+  if (!setBy?.updated_by) return;
+  const title = level >= 100 ? "Your agents have used this month's budget" : `Your agents have used ${level}% of this month's budget`;
+  const body =
+    level >= 100
+      ? `${dollars(policy.spent)} of ${dollars(policy.monthly_micros)}. They won't start new work until it's raised or the month turns.`
+      : `${dollars(policy.spent)} of ${dollars(policy.monthly_micros)} so far this month.`;
+  await env.NOTIFY.fetch("https://service/rpc/notify", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      target: { username: setBy.updated_by },
+      notification: {
+        id: `agent-budget:${workspaceId}:${month}:${level}`,
+        kind: "approval",
+        workspace: slug,
+        title,
+        body,
+        href: `/${slug}/-/agents`,
+        actor: { kind: "system", id: "g1t", name: "g1t" },
+        channel_id: null,
+        created_at: new Date().toISOString(),
+      },
+    }),
+  });
 }
 
 export type { PolicyRow };

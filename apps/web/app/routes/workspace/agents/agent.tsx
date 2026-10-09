@@ -101,17 +101,23 @@ export default function AgentPage({ loaderData, params }: Route.ComponentProps) 
         <MessageAgent slug={params.owner} agent={agent} variant="accent" />
       </header>
       <nav aria-label={`${agent.display_name}'s pages`} className="mt-8 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
-        <TabLink to={base} end icon={null}>
-          Desk
+        <TabLink to={base} end also={`${base}/sessions`} icon={null}>
+          Sessions
         </TabLink>
-        <TabLink to={`${base}/profile`} icon={null}>
-          Profile
+        <TabLink to={`${base}/memory`} icon={null}>
+          Memory
+        </TabLink>
+        <TabLink to={`${base}/routines`} icon={null}>
+          Routines
         </TabLink>
         <TabLink to={`${base}/spend`} icon={null}>
           Spend
         </TabLink>
         <TabLink to={`${base}/activity`} icon={null}>
           Activity
+        </TabLink>
+        <TabLink to={`${base}/profile`} icon={null}>
+          Profile
         </TabLink>
       </nav>
       <div className="pt-8">

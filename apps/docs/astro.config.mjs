@@ -56,7 +56,10 @@ export default defineConfig({
 			head: [
 				{ tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
 				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icon-192.png' } },
-				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '512x512', href: '/icon-512.png' } },
+				{ tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
+				{ tag: 'link', attrs: { rel: 'manifest', href: '/site.webmanifest' } },
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0f0f11' } },
 			],
 			sidebar: [
 				{
@@ -74,6 +77,10 @@ export default defineConfig({
 					items: [
 						{ label: 'Chat', slug: 'guides/chat' },
 						{ label: 'Agents', slug: 'guides/agents' },
+						{ label: 'Sessions', slug: 'guides/agent-sessions' },
+						{ label: 'Agent memory', slug: 'guides/agent-memory' },
+						{ label: 'Routines', slug: 'guides/agent-routines' },
+						{ label: 'Agent budgets and spend', slug: 'guides/agent-budgets' },
 						{ label: 'What agents can do for whom', slug: 'guides/agent-access' },
 						{ label: 'Docs', slug: 'guides/docs', badge: { text: 'Soon', variant: 'default' } },
 						{ label: 'Agents in your chat app', slug: 'guides/chat-app', badge: { text: 'Soon', variant: 'default' } },

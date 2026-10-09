@@ -83,6 +83,7 @@ export function AgentsSidebar({
 }) {
   const data = useAgentsData();
   const agents: Listed[] | null = data?.agents ?? shellAgents;
+  const live = data?.live ?? {};
   const orchestrator = agents?.find((agent) => isOrchestrator(agent)) ?? null;
   const specialists = (agents ?? []).filter((agent) => !isOrchestrator(agent));
   const row = (agent: Listed) => (
@@ -106,6 +107,15 @@ export function AgentsSidebar({
             {isOrchestrator(agent) ? "Orchestrator" : agent.status === "idle" ? agent.title || agent.role : `${statusLabel(agent.status)} · ${agent.title || agent.role}`}
           </span>
         </span>
+        {(live[agent.id] ?? 0) > 0 && (
+          <Hint label={`${live[agent.id]} live ${live[agent.id] === 1 ? "session" : "sessions"}`}>
+            <span className="flex h-5 min-w-5 shrink-0 items-center justify-center gap-1 rounded-full bg-accent/15 px-1.5 text-[0.6875rem] font-medium text-accent tabular-nums">
+              <span className="size-1.5 animate-pulse rounded-full bg-accent motion-reduce:animate-none" aria-hidden="true" />
+              {live[agent.id]}
+              <span className="sr-only"> live sessions</span>
+            </span>
+          </Hint>
+        )}
       </NavLink>
     </li>
   );
@@ -125,7 +135,7 @@ export function AgentsSidebar({
         <div className="space-y-px">
           {!phone && (
             <SideLink to={`/${slug}/-/agents`} end icon={<Activity size={15} className="text-faint" />}>
-              Agent fleet
+              Overview
             </SideLink>
           )}
           {code && (
@@ -679,7 +689,7 @@ export function AgentForm({
         <div className="grid gap-5 sm:grid-cols-3">
           <Money name="monthly" label="Monthly" hint="Per calendar month" value={draft.budget.monthly_micros} error={e.monthly} />
           <Money name="daily" label="Daily" hint="Optional" value={draft.budget.daily_micros} error={e.daily} />
-          <Money name="task" label="Per task" hint="Going over asks" value={draft.budget.task_micros} error={e.task} />
+          <Money name="task" label="Per session" hint="Going over asks an owner" value={draft.budget.task_micros} error={e.task} />
         </div>
       </FormSection>
 
@@ -705,10 +715,10 @@ export function AgentForm({
         </div>
       </FormSection>
 
-      <FormSection title="Capacity" about="How many tasks it works at once. More wait on its desk, each showing its place in line.">
+      <FormSection title="Capacity" about="How many sessions it works on at once. More wait in line, queued.">
         <div className="max-w-40">
           <Label htmlFor="capacity" error={e.capacity}>
-            Tasks at once
+            Sessions at once
           </Label>
           <input id="capacity" name="capacity" type="number" min={1} max={20} defaultValue={draft.capacity} className={`${FIELD} tabular-nums`} />
         </div>

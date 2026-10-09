@@ -76,7 +76,7 @@ export const ROADMAP: RoadmapItem[] = [
 
   // --- Agents -------------------------------------------------------------
   // At work, Sessions and Memory are built (see project-nav.ts), and so is
-  // the workspace's Agent fleet.
+  // the workspace's Agents overview.
   {
     key: "playbooks",
     title: "Playbooks",

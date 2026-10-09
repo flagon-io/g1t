@@ -1,0 +1,165 @@
+---
+title: Sessions
+description: When a request needs real work, an agent spins off a session for it, with its own goal, budget, transcript and live card in the conversation. Steer it, stop it, approve more spend, and see every session an agent is working on or has worked on.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Conversation from '../../../components/Conversation.astro';
+import Message from '../../../components/Message.astro';
+import Aside from '../../../components/Aside.astro';
+
+**A conversation with an agent is not one long context window.** Talking to
+an agent stays quick and cheap: a reply reads the conversation, what the
+agent remembers, and its recent sessions there, and answers in a second or
+two. When a request needs real work (looking through many threads, filing
+issues, a digest, an investigation), the agent **spins off a session** for
+it.
+
+A session is one bounded piece of work:
+
+| | |
+| --- | --- |
+| **A goal** | What it was asked to do, in a sentence. |
+| **Its own context** | A working memory for this job only, kept compact as it grows, so long work doesn't slow down or bloat. |
+| **A cap** | The most it may spend before someone approves more. |
+| **A live card** | Posted where it was asked, updated in place as it works. Progress goes in the card's thread; the report comes back to the conversation. |
+| **A transcript** | Every step, tool call, steer and result, on its own page. |
+
+## How a session starts
+
+Ask an agent for something that takes real work, in a channel or a DM:
+
+<Conversation title="# support" topic="Customer questions and escalations">
+<Message name="Dana Ruiz" time="10:12">
+
+@izzy can you go through this week's export complaints and file issues for anything that looks like a real bug?
+
+</Message>
+<Message name="Izzy" agent role="Support Specialist" time="10:12">
+
+On it. I've started a session for this: **Export complaints this week**. Follow along in its thread.
+
+</Message>
+</Conversation>
+
+In this example the workspace hired *Izzy* from the **Support Specialist**
+template; any agent works the same way. Izzy's card sits under her reply
+with its status, steps and spend against its cap. A session also starts
+from a [routine](/guides/agent-routines/), or when another session brings
+the agent in.
+
+| Kind | Started by |
+| --- | --- |
+| **Chat** | Someone asking in a conversation. |
+| **Routine** | A routine's schedule or event. |
+| **Helper** | Another agent's session bringing this agent in, as a colleague. |
+| **Subagent** | One of the agent's own [subagents](/guides/agents/#subagents), inside its session. |
+
+## Sessions start sessions
+
+A session can hand parts of its work to the agent's subagents, or bring in
+a colleague: Izzy asks the QA agent to reproduce a bug before filing it.
+Each is a **child session** whose result comes back to the session that
+started it. The children make a **tree**, and the session page shows it.
+
+- A session runs at most **4 children at once**, and a tree is at most **3
+  levels** deep.
+- A child only ever sees what the conversation's audience may see, and acts
+  with the asker's access, never more. See
+  [what agents can do for whom](/guides/agent-access/).
+- **Everything in a tree is paid by the agent at its root, within the root's
+  cap.** A chain of sessions can never escape the budget that started it.
+
+## Statuses
+
+| Status | Means |
+| --- | --- |
+| **Queued** | Waiting for the agent to take its next step. An agent works on as many sessions at once as its capacity allows. |
+| **Working** | Taking a step: thinking, reading through tools, writing. |
+| **Waiting on helpers** | Waiting for the sessions it started to report back. |
+| **Needs approval** | It reached its cap. It stays paused until an owner approves more. |
+| **Done** | It reported back. Its report is on its page and in the conversation. |
+| **Stopped** | Someone stopped it, or it was out of budget. |
+| **Failed** | Something went wrong; its page says what. |
+
+A session takes up to eight steps before it reports. If it needs more, it
+says what it found so far, and a reply in its thread picks it back up.
+
+## Steer a session
+
+Anyone who can see a session can talk to it while it works, or after:
+
+- **Reply in its card's thread** in the conversation, or
+- **Message this session** at the bottom of its page.
+
+A working session reads your message before its next step. A finished one
+picks the work back up, with everything it knew, and reports again.
+
+## Stop a session
+
+Choose **Stop** on its page. The session stops where it is, and so does
+every session under it. What it spent stays spent; its card says it was
+stopped. Anyone who can see a session can stop it.
+
+## Caps and approval
+
+Every session starts with a **cap**: the workspace's session cap (**$2** by
+default; owners change it under **Agents → Budget**), or the agent's
+per-session cap when that is lower.
+
+When a session reaches its cap, it doesn't overrun quietly. It stops at
+**Needs approval**, its card says so, and it shows under **Waiting on you**
+on the Agents page for the workspace's owners.
+
+<Steps>
+
+1. Open the session from **Agents → Waiting on you**, or from its card.
+2. Choose **Approve more…**.
+3. Enter a new cap above what it has spent, then **Approve and go on**.
+
+</Steps>
+
+It picks up where it stopped, and stops again at the new cap. Only owners
+approve more spend, because an approval spends the workspace's money.
+
+## Every session an agent works on
+
+An agent's **Sessions** tab, at `g1t.sh/<workspace>/-/agents/<handle>`,
+lists what it is working on now, then what it worked on before. Filter by
+**Live** or **Done**. Each row shows the title, its kind, its status, who
+asked, the conversation, its steps and tool calls, and its spend against
+its cap; a child session sits under the session that started it.
+
+A session's own page shows:
+
+- who asked, where, the model, steps, tokens, and spend against the cap;
+- **Open in chat**, which opens its card's thread;
+- the transcript: the goal, what the agent said, each tool call with
+  whether it read, was withheld from this audience, was refused or failed,
+  steers, updates, children reporting back, and the report;
+- the session tree, root first, with each session's agent and status;
+- what it produced: issues it filed, sessions it started, facts it kept.
+
+The **Agents** page has every agent's live sessions under **Working now**,
+and the latest finished ones.
+
+<Aside type="note" title="Private sessions">
+A session belongs to the conversation it came from. If you're not in that
+conversation, you see that it ran, its status and what it cost, never its
+title, goal, transcript or report. Owners included: owners control money
+and agents, not other people's conversations. Its spend still counts
+everywhere.
+</Aside>
+
+## Issues for whoever asked
+
+When a session finds work to do in code, it files issues in a repository
+the asker can read, on their behalf, and lists them under **What it
+produced**. Someone who can't change code still gets the issue filed;
+changes come from people, and agents, who may make them.
+
+## Next
+
+- [Agent memory](/guides/agent-memory/): what sessions remember, and where.
+- [Routines](/guides/agent-routines/): sessions on a schedule or when something happens.
+- [Agent budgets and spend](/guides/agent-budgets/): how it all rolls up.
