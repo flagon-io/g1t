@@ -95,6 +95,7 @@ import { capModelTokens, holdCredentials, pushGrant, remotePath, revokeCredentia
 import { buildMentionPrompt, describeThread, handleMention, jobTokenRefusal, planMention } from "./mentions";
 import { instructionsFor, repoInstructions, withBlock } from "./repo-instructions";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
+import { answered, describeError, tellStopped, withinTimeCap } from "./lifecycle";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -412,8 +413,9 @@ const MERGECHECK_TOKEN_TTL_SECONDS = 10 * 60;
  * it and cleans up if it dies without reporting.
  */
 export class AttemptSandbox extends Container<RunnerEnv> {
-  // Past the longest time cap (implement, 90 minutes) and its alarm, so a
-  // long run is never put to sleep before its own cap ends it. A finished
+  // Past the longest default time cap (implement, 90 minutes) and its
+  // alarm. A run whose guardrails allow longer (up to 240 minutes) is kept
+  // past it by `onActivityExpired`, so only its own cap ends it. A finished
   // run's process exits and stops the sandbox well before this.
   sleepAfter = "100m";
   // A guarded sandbox's HTTPS goes through `egress` too (guard.ts).
@@ -439,6 +441,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
           ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId, build.job, build.hosts), limits)
           : null;
     } catch (error) {
+      // Thrown to the caller, which says why the work did not start; logged
+      // here too, so a sandbox that never started is traceable on its own.
+      console.error("sandbox not started", run.kind, describeError(error));
       await this.settle(0);
       throw error;
     }
@@ -501,6 +506,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         await this.schedule(cap * 60 + ALARM_GRACE_SECONDS, "timeUp");
       }
     } catch (error) {
+      console.error("sandbox not started", run.kind, describeError(error));
       await revokeCredentials(this.env.IDENTITY, this.ctx.storage, this.env.INTEGRATIONS);
       if (tracked) await this.closeRun("failed", `The sandbox could not start: ${String(error)}`);
       await this.settle(0);
@@ -632,7 +638,46 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       await this.remoteEnded(1, reason);
       return;
     }
-    await this.destroy();
+    // A container already gone has nothing to stop; one that will not stop
+    // is logged, and its time cap still ends it.
+    await this.destroy().catch((error: unknown) => console.error("sandbox not destroyed", reason, describeError(error)));
+  }
+
+  /**
+   * The library's `sleepAfter` has passed. The runner never fetches its
+   * container, so to the library every sandbox looks idle: a run inside its
+   * time cap keeps going, and the cap's own alarm (`timeUp`) ends it. Only
+   * a sandbox with no cap is stopped for inactivity.
+   */
+  override async onActivityExpired(): Promise<void> {
+    const started = await this.ctx.storage.get<number>("started");
+    const cap = await this.ctx.storage.get<number>("timeCap");
+    if (withinTimeCap(started, cap, Date.now(), ALARM_GRACE_SECONDS)) return;
+    await super.onActivityExpired();
+  }
+
+  /**
+   * A container that crashed or could not be reached, as the library tells
+   * it. Logged at error level with the sandbox, never thrown: the library
+   * ignores what this throws, and the stop that follows is handled by
+   * `onStop` or by `run`, which says why the work did not start.
+   */
+  override onError(error: unknown): void {
+    console.error("sandbox container error", this.ctx.id.toString(), describeError(error));
+  }
+
+  /**
+   * The library's alarm: scheduled callbacks, the container's keep-alive,
+   * and `onStop` once it has stopped. A failure is logged with the retry it
+   * was, then thrown so Cloudflare tries the alarm again.
+   */
+  override async alarm(alarmProps?: AlarmInvocationInfo): Promise<void> {
+    try {
+      await super.alarm(alarmProps);
+    } catch (error) {
+      console.error("sandbox alarm failed", this.ctx.id.toString(), `retry ${alarmProps?.retryCount ?? 0}`, describeError(error));
+      throw error;
+    }
   }
 
   /**
@@ -713,9 +758,21 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (ended === "stopped" && run && STOP_ENDS.has(run.kind)) return;
     console.log("sandbox stopped", run?.kind, "exit", exitCode, reason);
     if (!run) return;
+    // Never thrown: this runs in the sandbox's alarm, which a throw would
+    // fail, retry and count as an error, running all of the above again.
+    // What could not be told is logged, and the sweep catches it up.
+    await tellStopped(run.kind, () => this.reportStopped(run, why, exitCode));
+  }
+
+  /**
+   * Tells whoever is waiting on the sandbox's work that it stopped without
+   * finishing it. Each is refused harmlessly when the sandbox reported its
+   * end before it stopped. Throws when the service could not be reached.
+   */
+  private async reportStopped(run: Run, why: string | null, exitCode: number): Promise<void> {
     if (run.kind === "actions") {
       // Refused harmlessly if the job reported its end before it stopped.
-      await this.env.ACTIONS.fetch("https://actions/rpc/job_report", {
+      const response = await this.env.ACTIONS.fetch("https://actions/rpc/job_report", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -724,6 +781,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
           report: { kind: "done", conclusion: "failure", reason: why ?? "The runner stopped before the job finished." },
         }),
       });
+      await answered("job_report", response);
       return;
     }
     // Nothing was pushed, so no pull request opens; why is in its log.
@@ -731,18 +789,17 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (run.kind === "backup") {
       // Refused harmlessly if the sandbox reported before it stopped; the
       // job is otherwise tried again later tonight.
-      await reposClient(this.env.REPOS)
-        .failBackup(run.jobId, run.token, why ?? `The sandbox exited with ${exitCode}.`)
-        .catch((error: unknown) => console.log("backup failure not reported", run.jobId, String(error)));
+      await reposClient(this.env.REPOS).failBackup(run.jobId, run.token, why ?? `The sandbox exited with ${exitCode}.`);
       return;
     }
     if (run.kind === "deploy") {
       // Refused harmlessly if the build reported its end before it stopped.
-      await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
+      const response = await this.env.DEPLOYMENTS.fetch(`https://deployments/jobs/${run.deployId}/fail`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: run.token, message: why ?? "The build stopped before it finished." }),
       });
+      await answered("deploy fail", response);
       return;
     }
     const work = workClient(this.env.WORK);
