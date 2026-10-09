@@ -9,8 +9,10 @@ import { Link } from "react-router";
 
 import type { User } from "@g1t/contracts";
 
+import { useAsksFirst } from "./analytics-consent";
 import { Mark } from "./logo";
-import { COMPANY, MAKER_PRODUCTS, copyright, listed } from "../lib/legal";
+import { choose } from "../lib/analytics-consent";
+import { COMPANY, MAKER_PRODUCTS, SOCIAL, copyright, listed } from "../lib/legal";
 import { type OverallState, STATUS_JSON_URL, STATUS_URL, STATUS_WORDS, type StatusReport, dotClass } from "../lib/status";
 
 /** How long one fetched report is reused across the pages of one visit. */
@@ -94,6 +96,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Company",
     links: [
       ["Flagon, Inc.", COMPANY.url],
+      ...SOCIAL.map((account): [string, string] => [account.label, account.url]),
       ["Support", "/support"],
       ["Security", "/security"],
       ["Status", STATUS_URL],
@@ -167,7 +170,7 @@ export function MakerLine() {
         <FlagonMark className="mr-1 inline-block size-[0.95em] -translate-y-px align-middle" />
         {COMPANY.name}
       </a>
-      {products.length > 0 ? `, the people behind ${listed(products)}.` : `, ${COMPANY.about}.`}
+      {products.length > 0 ? `, the people behind ${listed(products)}.` : `, ${COMPANY.about} founded by ${COMPANY.founder}.`}
     </p>
   );
 }
@@ -180,6 +183,7 @@ const ROW_LINK = "rounded-sm transition-colors hover:text-fg";
  */
 export function LegalRow({ user }: { user: User | null | undefined }) {
   const status = useSiteStatus();
+  const asksFirst = useAsksFirst();
   const links = [
     <a key="status" href={STATUS_URL} className={`inline-flex items-center gap-1.5 ${ROW_LINK}`}>
       <StatusDot state={status?.overall.state ?? null} />
@@ -190,6 +194,14 @@ export function LegalRow({ user }: { user: User | null | undefined }) {
         {label}
       </Link>
     )),
+    // Where the visitor was asked about the analytics cookie: ask again.
+    ...(asksFirst
+      ? [
+          <button key="consent" type="button" onClick={() => choose(null)} className={ROW_LINK}>
+            Cookie choices
+          </button>,
+        ]
+      : []),
   ];
   const account = [
     user ? (

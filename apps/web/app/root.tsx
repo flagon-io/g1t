@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -51,6 +51,9 @@ import { AppShell, Progress, type ShellData, useLeaving } from "./components/she
 import { SiteFooter } from "./components/footer";
 import { SpikeBanner } from "./components/spike-banner";
 import { PolicyNotice } from "./components/policy-notice";
+import { identify } from "./lib/analytics.client";
+import { visitorAsksFirst } from "./lib/analytics-consent";
+import { AnalyticsConsent } from "./components/analytics-consent";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
@@ -109,7 +112,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     registrationMode(),
   ]);
   // Where this g1t lives, for clone lines, agent setup and link previews.
-  return { user, shell, inviteOnly: mode !== "open", addresses: addresses() };
+  return {
+    user,
+    shell,
+    inviteOnly: mode !== "open",
+    addresses: addresses(),
+    // Visitors from where the law asks first are asked before analytics runs.
+    analyticsConsent: visitorAsksFirst(request),
+  };
 }
 
 /**
@@ -593,6 +603,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* The stylesheet before everything React Router preloads, so a slow
             connection paints sooner (docs/research/css-shipping.md). */}
         <link rel="stylesheet" href={appCss} precedence="default" />
+        {root?.analyticsConsent && <meta name="g1t-analytics" content="consent" />}
         <Meta />
         <Links nonce={nonce} />
       </head>
@@ -623,6 +634,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {user && !awaitsConfirmation(user) && (
           <LiveNotifications workspace={root?.shell?.workspace?.slug ?? null} inbox={root?.shell?.inbox?.unread ?? null} />
         )}
+        <AnalyticsConsent />
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />
       </body>
@@ -631,6 +643,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const userId = useRouteLoaderData<typeof loader>("root")?.user?.id ?? null;
+  // Tell analytics who is signed in, once per change; signing out forgets them.
+  const lastUserId = useRef<string | null>(null);
+  useEffect(() => {
+    identify(userId, lastUserId.current);
+    lastUserId.current = userId;
+  }, [userId]);
   return <Outlet />;
 }
 

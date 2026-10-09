@@ -78,6 +78,9 @@ export default [
   route("status", "routes/status.tsx"),
   route("status.json", "routes/status-json.ts"),
   route(".well-known/security.txt", "routes/security-txt.ts"),
+  // For search engines: what may be crawled, and a map of the public pages.
+  route("robots.txt", "routes/robots-txt.ts"),
+  route("sitemap.xml", "routes/sitemap-xml.ts"),
   // Releases of the self-hosted runner and the g1t CLI, from R2.
   route("downloads/:tool/*", "routes/downloads-runner.ts"),
   // A workspace's own pages sit under `-`, which no repository can be named.

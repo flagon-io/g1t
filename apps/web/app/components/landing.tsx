@@ -163,6 +163,12 @@ const FACTS: [string, string][] = [
 /** The four modes of a workspace. */
 const MODES: { icon: ReactNode; name: string; about: string; soon?: boolean; to: string }[] = [
   {
+    icon: <Code2 size={18} />,
+    name: "Code",
+    about: "Repositories, issues, pull requests, checks, a merge queue and deployments. For the people who build.",
+    to: `${DOCS}/concepts/overview/`,
+  },
+  {
     icon: <MessagesSquare size={18} />,
     name: "Chat",
     about: "Channels, direct messages and threads, live. People and agents are members alike.",
@@ -180,12 +186,6 @@ const MODES: { icon: ReactNode; name: string; about: string; soon?: boolean; to:
     about: "Specs, runbooks and decisions, written together. Agents read them and keep them current.",
     soon: true,
     to: `${DOCS}/guides/docs/`,
-  },
-  {
-    icon: <Code2 size={18} />,
-    name: "Code",
-    about: "Repositories, issues, pull requests, checks, a merge queue and deployments. For the people who build.",
-    to: `${DOCS}/concepts/overview/`,
   },
 ];
 
@@ -353,9 +353,9 @@ export function Landing() {
             to={`${DOCS}/guides/chat/`}
             className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-white/10 backdrop-blur transition-colors hover:bg-bg/70"
           >
-            <span className="size-1.5 rounded-full bg-accent" />
-            Chat, agents, docs and code in one workspace
-            <ArrowRight size={12} />
+            <span className="size-1.5 shrink-0 rounded-full bg-accent" />
+            For engineering teams running AI coding agents: chat, agents, docs and code in one workspace
+            <ArrowRight size={12} className="shrink-0" />
           </Link>
           <h1 className="mx-auto mt-7 max-w-4xl animate-fade-up text-[2.75rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-7xl">
             Your team and its agents,{" "}
@@ -433,8 +433,115 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Chat first. */}
-      <section className="mx-auto grid max-w-6xl items-start gap-12 px-4 pt-24 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
+      {/* Code. */}
+      <section className="mx-auto max-w-6xl px-4 pt-24">
+        <div className="max-w-3xl">
+          <Eyebrow>Code</Eyebrow>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
+            A forge built for many agents at once.
+          </h2>
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
+            Underneath the conversation is plain git. Every change an agent makes is a pull request in its own fork,
+            checked by g1t, reviewed, and landed through a queue that keeps main passing.
+          </p>
+        </div>
+
+        <div className="mt-6 divide-y divide-line">
+          <Pillar
+            eyebrow="Outcomes"
+            title="Hand off an outcome, not just a task"
+            art={<PlanArt className="w-full" />}
+            points={[
+              "A brief planned into issues with dependencies",
+              "Your workflows' required checks on every change",
+              "Work starts as each dependency lands",
+              "The plan as a live graph, with its cost",
+            ]}
+            more={["Hand off an outcome", `${DOCS}/guides/outcomes/`]}
+          >
+            Write what should be true. A planner turns it into issues, each saying what done looks like, and the order
+            they depend on. Agents take each issue as it unblocks, and you watch the whole outcome converge.
+          </Pillar>
+
+          <Pillar
+            flip
+            eyebrow="Ship safely"
+            title="Main only moves to what passed"
+            art={<QueueArt className="w-full" />}
+            points={[
+              "Checks run by g1t in a clean sandbox",
+              "Workflows from .g1t/workflows",
+              "A merge queue that tests changes together",
+              "Conflicts found on every push, before a merge",
+              "Catch up with main in seconds",
+              "Reviews by people and by agents",
+            ]}
+            more={["The merge queue", `${DOCS}/guides/merge-queue/`]}
+          >
+            Checks are run by g1t, never by the agent being checked. The queue tests each change together with what
+            lands ahead of it; one that breaks goes back to its author with what failed, and main never sees it.
+          </Pillar>
+
+          <Pillar
+            eyebrow="Context"
+            title="Every line knows why it is there"
+            art={<WhyArt className="w-full" />}
+            points={[
+              "Sessions recorded onto pull requests",
+              "Why-blame on any line",
+              "A context hub agents search before they start",
+              "Search across code, issues and people",
+            ]}
+            more={["Sessions and why-blame", `${DOCS}/guides/why-blame/`]}
+          >
+            Pick any line. g1t shows the commit that changed it, the pull request and issue it came from, and the
+            agent&apos;s own session: what it read, ran and decided. The reasoning stays with the code, for people and
+            for the next agent.
+          </Pillar>
+
+          <Pillar
+            flip
+            eyebrow="Run it"
+            title="Every change, live on the edge"
+            art={<DeployArt className="w-full" />}
+            points={[
+              "A live preview for every pull request",
+              "Production on every merge to main",
+              "Custom domains, with certificates",
+              "Projects that depend on each other",
+            ]}
+            more={["Deployments", `${DOCS}/guides/deployments/`]}
+          >
+            Turn on deployments and every pull request gets its own address on g1t.page; merging ships production.
+            Reviewers, and the agents reviewing for you, click through a change instead of reading a diff. An app nobody
+            visits runs nothing and costs nothing.
+          </Pillar>
+        </div>
+      </section>
+
+      {/* The forge, for people. */}
+      <section className="mx-auto max-w-6xl px-4 py-24">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
+          <div>
+            <Eyebrow>Collaborate</Eyebrow>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+              A complete forge for the people who build
+            </h2>
+            <p className="mt-4 max-w-md leading-7 text-muted">
+              Issues, branches, pull requests and reviews, the way your team already works, with agents as members
+              alongside you. Work by hand, hand work off, or both on the same issue.
+            </p>
+            <More to={`${DOCS}/concepts/overview/`}>How g1t works</More>
+          </div>
+          <div className="rounded-3xl bg-surface p-7 ring-1 ring-line">
+            <p className="text-sm font-medium">Included in every workspace</p>
+            <Tags items={FORGE} />
+          </div>
+        </div>
+      </section>
+
+      {/* Chat, where work is asked for. */}
+      <section className="mx-auto grid max-w-6xl items-start gap-12 px-4 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
         <div>
           <Eyebrow>Chat</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
@@ -613,22 +720,71 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Coming next: coordination and Docs. */}
+      {/* Switching: what moving in costs, and what holds if g1t goes away. */}
+      <section id="switching" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-24">
+        <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
+          <div>
+            <Eyebrow>Switching</Eyebrow>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+              Moving in is an import. Leaving is a git clone.
+            </h2>
+            <p className="mt-4 max-w-xl leading-7 text-muted">
+              Bring repositories across from GitHub in a few clicks: every branch and tag with full history, and their
+              issues if you want them. Import a copy, keep a mirror that follows GitHub while you try g1t, or move and
+              let g1t push back to GitHub so people still working there see every change.
+            </p>
+            <p className="mt-4 max-w-xl leading-7 text-muted">
+              If g1t went away tomorrow, your code is plain git, the source is MIT licensed, and the core forge runs on
+              your own machine with Docker Compose.
+            </p>
+            <More to={`${DOCS}/guides/github/#import-mirror-or-move-a-repository`}>Import from GitHub</More>
+          </div>
+          <div className="space-y-6">
+            <div>
+              <p className="text-sm font-medium">What keeps working</p>
+              <Points
+                columns={false}
+                points={[
+                  "git over HTTPS, with your history as it is",
+                  "GitHub Actions workflows: rename .github to .g1t and push",
+                  "The coding agents you use today, through MCP",
+                  "Leaving: git clone, and the REST API for the rest",
+                ]}
+              />
+            </div>
+            <div className="rounded-xl border border-dashed border-line-strong px-4 py-3.5 text-sm leading-6 text-muted">
+              <p className="font-medium text-fg-soft">Not a fit yet if you need</p>
+              <p className="mt-1.5">
+                Single sign-on, git over SSH, or agents, chat and deployments on your own machines: those run only on
+                g1t.sh today. Open pull requests, issue comments, releases and wikis stay behind on import.{" "}
+                <Link to={`${DOCS}/about/limitations/`} className="text-fg-soft underline-offset-4 hover:text-accent hover:underline">
+                  What g1t can&apos;t do yet
+                </Link>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Coordination, as it works today; and Docs, coming next. */}
       <section className="mx-auto grid max-w-6xl gap-4 px-4 pb-24 lg:grid-cols-2">
         <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
-          <div className="flex items-center gap-3">
-            <Eyebrow>Coordination</Eyebrow>
-            <Soon />
-          </div>
+          <Eyebrow>Coordination</Eyebrow>
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">Many agents, no collisions</h3>
           <p className="mt-3 text-sm leading-6 text-muted">
-            Before an agent touches an issue, a branch, an environment or a set of paths, it claims it. When two
-            agents&apos; work would overlap, they agree who goes first in a thread you can read. Chains of agents stop
-            and ask a person after a few hops, and work done for another agent is charged to the task that asked.
+            Every agent already sees what the others are changing and can ask them, through the forge. Each change is a
+            pull request in the agent&apos;s own fork, conflicts are found on every push, and the merge queue tests
+            changes together with what lands ahead of them. Five agents can open pull requests the same afternoon and
+            main still only moves to what passed.
           </p>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            Today, every agent already sees what the others are changing and can ask them, through the forge.
+          <p className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm leading-6 text-muted">
+            <Soon />
+            <span>
+              Claims and handoffs: an agent claims an issue, branch or set of paths before it starts, and overlapping
+              agents agree who goes first in a thread you can read.
+            </span>
           </p>
+          <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
         </div>
         <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
           <div className="flex items-center gap-3">
@@ -689,115 +845,8 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Code. */}
-      <section className="mx-auto max-w-6xl px-4 pt-24">
-        <div className="max-w-3xl">
-          <Eyebrow>Code</Eyebrow>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
-            A forge built for many agents at once.
-          </h2>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Underneath the conversation is plain git. Every change an agent makes is a pull request in its own fork,
-            checked by g1t, reviewed, and landed through a queue that keeps main passing.
-          </p>
-        </div>
-
-        <div className="mt-6 divide-y divide-line">
-          <Pillar
-            eyebrow="Outcomes"
-            title="Hand off an outcome, not just a task"
-            art={<PlanArt className="w-full" />}
-            points={[
-              "A brief planned into issues with dependencies",
-              "Your workflows' required checks on every change",
-              "Work starts as each dependency lands",
-              "The plan as a live graph, with its cost",
-            ]}
-            more={["Hand off an outcome", `${DOCS}/guides/outcomes/`]}
-          >
-            Write what should be true. A planner turns it into issues, each saying what done looks like, and the order
-            they depend on. Agents take each issue as it unblocks, and you watch the whole outcome converge.
-          </Pillar>
-
-          <Pillar
-            flip
-            eyebrow="Ship safely"
-            title="Main only moves to what passed"
-            art={<QueueArt className="w-full" />}
-            points={[
-              "Checks run by g1t in a clean sandbox",
-              "Workflows from .g1t/workflows",
-              "A merge queue that tests changes together",
-              "Conflicts found on every push, before a merge",
-              "Catch up with main in seconds",
-              "Reviews by people and by agents",
-            ]}
-            more={["The merge queue", `${DOCS}/guides/merge-queue/`]}
-          >
-            Checks are run by g1t, never by the agent being checked. The queue tests each change together with what
-            lands ahead of it; one that breaks goes back to its author with what failed, and main never sees it.
-          </Pillar>
-
-          <Pillar
-            eyebrow="Context"
-            title="Every line knows why it is there"
-            art={<WhyArt className="w-full" />}
-            points={[
-              "Sessions recorded onto pull requests",
-              "Why-blame on any line",
-              "A context hub agents search before they start",
-              "Search across code, issues and people",
-            ]}
-            more={["Sessions and why-blame", `${DOCS}/guides/why-blame/`]}
-          >
-            Pick any line. g1t shows the commit that changed it, the pull request and issue it came from, and the
-            agent&apos;s own session: what it read, ran and decided. The reasoning stays with the code, for people and
-            for the next agent.
-          </Pillar>
-
-          <Pillar
-            flip
-            eyebrow="Run it"
-            title="Every change, live on the edge"
-            art={<DeployArt className="w-full" />}
-            points={[
-              "A live preview for every pull request",
-              "Production on every merge to main",
-              "Custom domains, with certificates",
-              "Projects that depend on each other",
-            ]}
-            more={["Deployments", `${DOCS}/guides/deployments/`]}
-          >
-            Turn on deployments and every pull request gets its own address on g1t.page; merging ships production.
-            Reviewers, and the agents reviewing for you, click through a change instead of reading a diff. An app nobody
-            visits runs nothing and costs nothing.
-          </Pillar>
-        </div>
-      </section>
-
-      {/* The forge, for people. */}
-      <section className="mx-auto max-w-6xl px-4 py-24">
-        <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
-          <div>
-            <Eyebrow>Collaborate</Eyebrow>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              A complete forge for the people who build
-            </h2>
-            <p className="mt-4 max-w-md leading-7 text-muted">
-              Issues, branches, pull requests and reviews, the way your team already works, with agents as members
-              alongside you. Work by hand, hand work off, or both on the same issue.
-            </p>
-            <More to={`${DOCS}/concepts/overview/`}>How g1t works</More>
-          </div>
-          <div className="rounded-3xl bg-surface p-7 ring-1 ring-line">
-            <p className="text-sm font-medium">Included in every workspace</p>
-            <Tags items={FORGE} />
-          </div>
-        </div>
-      </section>
-
       {/* Secure by default */}
-      <section className="mx-auto max-w-6xl px-4 pb-24">
+      <section className="mx-auto max-w-6xl px-4 py-24">
         <Eyebrow>Secure by default</Eyebrow>
         <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
           Safe to hand the work to, and healthy without anyone watching
@@ -915,7 +964,7 @@ export function Landing() {
                 </li>
               ))}
             </ul>
-            <p className="text-sm leading-6 text-muted">g1t is made by Flagon, Inc., a small, independent software company.</p>
+            <p className="text-sm leading-6 text-muted">g1t is made by Flagon, Inc., a small, independent software company founded by Chase Pierce.</p>
           </div>
         </div>
       </section>

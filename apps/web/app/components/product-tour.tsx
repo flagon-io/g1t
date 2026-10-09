@@ -1,8 +1,9 @@
 /**
  * The landing page's product tour: g1t browsing itself. A faithful app
  * frame (rail, sidebars, the real colours) plays one story on a loop, with
- * a soft cursor that moves, clicks and types: a request in #web, an agent's
- * desk, the pull request going green, the ship note, the docs page.
+ * a soft cursor that moves and clicks: the pull request going green and
+ * merging, the request in #web it came from and the ship note, the agent's
+ * sessions, the docs page.
  *
  * The frame is a pure function of time (lib/tour.ts). One rAF loop drives
  * the clock and re-renders only when the frame changes; the step pills'
@@ -182,10 +183,7 @@ function useTourClock(): Clock {
 
 /** The pill a frame belongs to, from what it shows (the clock's time is not React state). */
 function pillOf(frame: Frame): number {
-  if (frame.scene === "docs") return 3;
-  if (frame.scene === "code" || frame.merged) return 2;
-  if (frame.scene === "agents") return 1;
-  return 0;
+  return Math.max(0, PILLS.findIndex((pill) => pill.scene === frame.scene));
 }
 
 /** What the line under the frame says about the moment: working today, or a preview. */
@@ -1221,7 +1219,7 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const scenes: Scene[] = ["chat", "agents", "code", "docs"];
+  const scenes: Scene[] = ["code", "chat", "agents", "docs"];
   const mains: Record<Scene, ReactNode> = {
     chat: <ChatMain frame={frame} />,
     agents: <AgentsMain frame={frame} />,
@@ -1286,7 +1284,7 @@ const TABS: { scene: Scene | null; icon: ReactNode; label: string }[] = [
 ];
 
 function Phone({ frame }: { frame: Frame }) {
-  const scenes: Scene[] = ["chat", "agents", "code", "docs"];
+  const scenes: Scene[] = ["code", "chat", "agents", "docs"];
   return (
     <div className="relative flex h-[34rem] w-full flex-col overflow-hidden rounded-2xl bg-bg text-left shadow-2xl shadow-black/50 ring-1 ring-line">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
@@ -1410,7 +1408,7 @@ function PhoneAgents({ frame }: { frame: Frame }) {
           <p className="flex items-center gap-2 text-sm font-semibold text-fg">
             Otto <AgentTag />
           </p>
-          <p className="text-[11px] text-muted">Working · ${cost.toFixed(2)} of $5</p>
+          <p className="text-[11px] text-muted">{frame.merged ? "Shipped #431" : "Working"} · ${cost.toFixed(2)} of $5</p>
         </div>
       </div>
       <div className="rounded-xl border border-line bg-surface">

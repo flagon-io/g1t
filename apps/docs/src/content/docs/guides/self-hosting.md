@@ -31,6 +31,7 @@ a private network, not yet for an installation on the open internet.
 | Context hub search | Off |
 | Deployments on `g1t.page` | Off |
 | Billing | Off. Nothing is charged, and no usage limit stops work. |
+| Site analytics | Off. Only g1t.sh sends page analytics (to HeyCatch, as its [privacy policy](https://g1t.sh/policies/privacy#how-the-site-is-used) describes); your installation sends none. |
 | Git over SSH and the `g1t` CLI | Not available yet |
 | Scheduled jobs | Run on their schedules inside the g1t container: webhook retries, purging deleted repositories, the packages sweep, security sweeps, audit log retention and access request summaries. Actions schedules (`on: schedule`) are not run. |
 

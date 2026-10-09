@@ -19,6 +19,7 @@
     "@blocknote/shadcn": "^0.55.0",
     "@g1t/contracts": "*",
     "@g1t/theme": "*",
+    "@heycatch/sdk": "0.8.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

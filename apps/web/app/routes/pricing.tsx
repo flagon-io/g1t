@@ -5,15 +5,21 @@ import { type FeaturePlan, type FreeTier, MICROS_PER_DOLLAR, type Price } from "
 import type { Route } from "./+types/pricing";
 import { wholeDollars } from "../lib/billing";
 import { page } from "../lib/meta";
+import { application, faqPage } from "../lib/structured-data";
 import { TimeAgo } from "../components/ui";
 import { billing } from "../lib/services.server";
 
 export function meta(args: Route.MetaArgs) {
-  return page(args, {
-    title: "Pricing · g1t",
-    description:
-      "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Agents pay the model's price plus a flat agent rate, from each agent's budget. No seats, ever.",
-  });
+  const plan = args.loaderData?.book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
+  return [
+    ...page(args, {
+      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, cost-plus AI`,
+      description:
+        "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Agents pay the model's price plus a flat agent rate, from each agent's budget. No seats, ever.",
+    }),
+    application(plan.monthlyCents / 100),
+    faqPage(FAQ),
+  ];
 }
 
 export async function loader() {
@@ -146,6 +152,10 @@ const FAQ: { q: string; a: string }[] = [
   {
     q: "Does adding the whole company cost more?",
     a: "No. There are no seats. People who only chat, and ask agents questions, cost nothing until their questions use an agent; then the agent's reply is charged like any other.",
+  },
+  {
+    q: "What does moving from GitHub cost, and can we leave again?",
+    a: "Moving in is an import: bring repositories across from GitHub with every branch, tag and their issues, or keep a mirror that follows GitHub while you try g1t. Your code is plain git and g1t is MIT licensed, so leaving is a git clone, and the core forge runs on your own machine with Docker Compose.",
   },
   {
     q: "Is Docs included?",
@@ -312,7 +322,10 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
 
       <section className="mt-10 rounded-xl border border-accent/40 bg-surface p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-xl font-semibold tracking-tight">{plan.title}</h2>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
+            {plan.title}
+            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium tracking-normal text-accent">Recommended</span>
+          </h2>
           <p>
             <span className="text-3xl font-semibold tabular-nums">${price}</span>{" "}
             <span className="text-sm text-muted">a month per workspace</span>
@@ -321,6 +334,13 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             </span>
           </p>
         </div>
+        <p className="mt-2 text-sm text-muted">
+          The plan for a team whose agents do real work: unlimited members, agents, checks, the merge queue and
+          deployments.
+        </p>
+        <p className="mt-3 text-sm text-fg-soft">
+          One price for the whole team: a 10-person team pays ${price} a month, not ${price} a person.
+        </p>
         <ul className="mt-4 space-y-1.5 text-sm text-muted">
           {plan.includes.map((line) => (
             <li key={line} className="flex gap-2">

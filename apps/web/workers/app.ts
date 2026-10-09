@@ -3,6 +3,7 @@ import { createRequestHandler } from "react-router";
 import { identityClient, isNamespaceShaped } from "@g1t/contracts";
 
 import { addressesFor } from "../app/lib/addresses";
+import { visitorAsksFirst } from "../app/lib/analytics-consent";
 import { hardenRegistryHeaders } from "../app/lib/content-safety";
 import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
@@ -128,7 +129,10 @@ function anonymousPage(request: Request, pathname: string): boolean {
 
 async function servePublic(env: Env, request: Request, ctx: ExecutionContext, render: () => Promise<Response>): Promise<Response> {
   const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(request.url, { method: "GET" });
+  // Visitors asked about analytics first get a page that says so, kept apart.
+  const keyUrl = new URL(request.url);
+  if (visitorAsksFirst(request)) keyUrl.searchParams.set("_g1t_consent", "1");
+  const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;
   // Asked alongside the cache, so a hit waits for one indexed read at most.
   const [cached, visible] = await Promise.all([cache.match(key), repository ? isStillPublic(env, repository) : Promise.resolve(true)]);

@@ -14,7 +14,7 @@ const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it
 <div class="g1t-page-title">
 	<div class="g1t-page-title-row">
 		<h1 id="_top">{title}</h1>
-		<div class="g1t-copy not-content">
+		<div class="g1t-copy not-content" data-pagefind-ignore>
 			<button type="button" class="g1t-copy-main" data-markdown={markdown}>
 				<Copy />
 				<span>Copy page</span>
@@ -224,9 +224,44 @@ const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it
 		font-size: 0.75rem;
 		color: var(--g1t-faint);
 	}
+	/* Phones: the group keeps its place beside the title, as two square
+	   buttons a finger can hit; the copy button shows only its icon, and
+	   its label stays for screen readers. */
 	@media (max-width: 40rem) {
+		.g1t-page-title-row {
+			gap: 0.75rem;
+		}
+		h1 {
+			min-width: 0;
+			font-size: 1.75rem;
+			overflow-wrap: anywhere;
+		}
 		.g1t-copy {
-			display: none;
+			height: 2.5rem;
+			margin-top: 0;
+		}
+		.g1t-copy-main span {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		.g1t-copy-main,
+		.g1t-copy-more summary {
+			width: 2.5rem;
+			padding: 0;
+		}
+		.g1t-copy :global(svg) {
+			width: 1rem;
+			height: 1rem;
+		}
+		.g1t-copy-menu {
+			width: min(16.5rem, calc(100vw - 2rem));
+		}
+		.g1t-copy-menu a {
+			padding-block: 0.65rem;
 		}
 	}
 </style>
