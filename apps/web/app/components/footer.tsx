@@ -10,7 +10,7 @@ import { Link } from "react-router";
 import type { User } from "@g1t/contracts";
 
 import { Mark } from "./logo";
-import { COMPANY, MAKER_PRODUCTS, copyright, listed } from "../lib/legal";
+import { COMPANY, MAKER_PRODUCTS, SOCIAL, copyright, listed } from "../lib/legal";
 import { type OverallState, STATUS_JSON_URL, STATUS_URL, STATUS_WORDS, type StatusReport, dotClass } from "../lib/status";
 
 /** How long one fetched report is reused across the pages of one visit. */
@@ -94,6 +94,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
     title: "Company",
     links: [
       ["Flagon, Inc.", COMPANY.url],
+      ...SOCIAL.map((account): [string, string] => [account.label, account.url]),
       ["Support", "/support"],
       ["Security", "/security"],
       ["Status", STATUS_URL],

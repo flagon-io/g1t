@@ -5,7 +5,7 @@
  */
 import type { MetaDescriptor } from "react-router";
 
-import { COMPANY } from "./legal";
+import { COMPANY, SOCIAL } from "./legal";
 import { DESCRIPTION, SITE } from "./meta";
 
 export function organization(): MetaDescriptor {
@@ -16,7 +16,7 @@ export function organization(): MetaDescriptor {
       name: COMPANY.name,
       url: COMPANY.url,
       founder: { "@type": "Person", name: COMPANY.founder },
-      brand: { "@type": "Brand", name: "g1t", url: SITE },
+      brand: { "@type": "Brand", name: "g1t", url: SITE, sameAs: SOCIAL.map((account) => account.url) },
     },
   };
 }

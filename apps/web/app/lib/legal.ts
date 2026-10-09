@@ -14,6 +14,9 @@ export const COMPANY = {
   founder: "Chase Pierce",
 };
 
+/** g1t's own accounts elsewhere. */
+export const SOCIAL: { label: string; url: string }[] = [{ label: "X", url: "https://x.com/g1t_sh" }];
+
 /**
  * Flagon's other launched products, which the footer's maker line names
  * ("…, the people behind X and Y"). None yet: add each here when it ships.

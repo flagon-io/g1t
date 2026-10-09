@@ -1,11 +1,14 @@
 ---
-// The header's right side: where people go from the docs, then the source.
+// The header's right side: where people go from the docs, then g1t on X and the source.
 import { GitBranch } from '@lucide/astro';
 ---
 
 <nav class="g1t-nav" aria-label="g1t">
 	<a href="https://g1t.sh/">g1t.sh</a>
 	<a href="https://g1t.sh/register" class="g1t-nav-cta">Sign up</a>
+	<a href="https://x.com/g1t_sh" aria-label="g1t on X" title="g1t on X" class="g1t-nav-icon">
+		<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z" /></svg>
+	</a>
 	<a href="https://g1t.sh/flagon-io/g1t" aria-label="Source on g1t" title="Source on g1t" class="g1t-nav-icon">
 		<GitBranch />
 	</a>
