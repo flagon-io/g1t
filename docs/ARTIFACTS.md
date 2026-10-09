@@ -217,6 +217,44 @@ Observations:
 - `wrangler tail g1t-repos` for 75 s: 87 events, all `ok`, no exceptions or error logs. The slowest were a
   blame RPC (6.6 s wall, 178 ms CPU) and an `info/refs` miss with a mint (2.6 s).
 
+### Pushes (2026-10-09)
+
+Five small files pushed to `flagon-io/automation-lab` from Denver, several times each, before and after
+the push speed-up (Deploy #121; what changed is in docs/PERFORMANCE.md, "Pushes").
+
+| `receive-pack` step | Before (#120) | After (#121) | Who |
+| --- | --- | --- | --- |
+| Total | 1,123–1,523 ms | 931–1,120 ms | |
+| `read`: the bases a thin pack's deltas need, read from the store | inside `scan` | 267–318 ms | Artifacts reads |
+| `rules` and `scan` | 33–131 and 423–623 ms, one after the other | 18–75 and 17–79 ms, side by side | g1t |
+| `upload`: the store's receive-pack | 467–620 ms | 460–511 ms | Artifacts |
+| `refs` | ~40 ms | ~45 ms | g1t |
+| `info/refs` (its own request) | 430–680 ms | 316–765 ms | Artifacts |
+
+g1t's own work is now under 100 ms. The rest is Artifacts, and `read` grows with the push: a
+binding read per base (two when the pack doesn't say whether it is a blob or a tree), all at once,
+up to three rounds for delta chains. A 437-object push (358 KB, 15 commits) to `flagon-io/g1t`
+answered 503 twice and took 23 s the third time.
+
+**Next step, in this order:**
+
+1. **Ask for packs without outside bases.** Add `no-thin` to the receive-pack advertisement g1t
+   forwards, so git sends every delta's base in the pack (git's `send-pack` turns thin packs off
+   when it sees it). `read` goes to 0 for every client that honours it, and big pushes no longer
+   make hundreds of reads. The cost is a larger upload when a push changes a big file a little;
+   pushes stay capped by `MAX_SCANNED_PUSH`. `supply_bases` stays for clients that send thin packs
+   anyway.
+2. **Upload while checking.** Stream the pack to Artifacts while the checks run, holding back the
+   last 20 bytes (the checksum) until they pass, so a declined push is never stored. A push then
+   takes about the larger of `checks` and `upload`, not their sum. Whether Artifacts waits for a
+   held-back trailer without timing out has to be tried first.
+3. **Keep the receive-pack advertisement.** Serve `info/refs?service=git-receive-pack` from
+   `refs_cache` by `refs_version`, as for fetches. `refs_cache`'s test forbids it today: with a
+   stale advertisement git builds its pack against old tips and the push fails its old-value
+   check. Ref moves through g1t bump `refs_version`, so a kept copy keyed by it is not stale,
+   with the same rule as fetches: never while a handed-out push credential is live. The test
+   changes with the code.
+
 ## 4. Where we and the docs disagree
 
 | # | Topic | Documented | What g1t does or assumes | Risk | Fix |
