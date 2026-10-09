@@ -42,6 +42,8 @@ use worker::wasm_bindgen::JsValue;
 use crate::shared_invites::{SharedAdmits, shared_admits, wrong_domain};
 use crate::{Identity, crypto};
 
+mod invitations;
+
 /// Crockford base32, as ids use: no i, l, o or u.
 const ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
 /// 32 characters of 5 bits: 160 random bits.
@@ -175,11 +177,37 @@ pub fn status_of(
     }
 }
 
+/// Where an invite stands once the workspace invitation in it is counted:
+/// `base` from [`status_of`]. A declined one is declined; an account
+/// invite whose account is confirmed but has not answered the workspace it
+/// names (`names_workspace`: one that still exists) awaits that answer
+/// until it expires.
+pub fn answered_status(
+    base: InviteStatus,
+    kind: &str,
+    names_workspace: bool,
+    accepted_at: Option<&str>,
+    declined_at: Option<&str>,
+    expires_at: &str,
+    now: &str,
+) -> InviteStatus {
+    if declined_at.is_some() && base != InviteStatus::Revoked {
+        return InviteStatus::Declined;
+    }
+    if base == InviteStatus::Redeemed && kind == "account" && names_workspace && accepted_at.is_none() {
+        return if expires_at <= now { InviteStatus::Expired } else { InviteStatus::AwaitingAnswer };
+    }
+    base
+}
+
 /// Whether an invite in this state uses up one of an allowance: pending
 /// and used ones do; a revoked or expired one never used gives it back.
 #[cfg(test)]
 pub fn counts_against_allowance(status: InviteStatus) -> bool {
-    matches!(status, InviteStatus::Pending | InviteStatus::AwaitingConfirmation | InviteStatus::Redeemed)
+    matches!(
+        status,
+        InviteStatus::Pending | InviteStatus::AwaitingConfirmation | InviteStatus::AwaitingAnswer | InviteStatus::Redeemed
+    )
 }
 
 /// The SQL condition that matches [`counts_against_allowance`] for rows of
@@ -237,8 +265,9 @@ pub fn admits(invite: Option<&Admits>, email: &str, for_account: bool) -> std::r
 /// address.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AwaitingJoin {
-    /// Join this workspace.
-    Join { workspace_id: String, slug: String },
+    /// It invites the account to this workspace: a workspace invitation
+    /// now waits for its answer. Nothing is joined without one.
+    Invited { workspace_id: String, slug: String },
     /// It names no workspace; repository invitations sent with it are
     /// accepted.
     Nothing,
@@ -247,11 +276,11 @@ pub enum AwaitingJoin {
 }
 
 /// [`AwaitingJoin`] for an invite's row at `now`. `row.workspace` is the
-/// workspace's slug, None once it was deleted; `free`: it is on the free
-/// plan, which adds no members (paid.rs).
-pub fn awaiting_join(row: &InviteRow, now: &str, free: bool) -> AwaitingJoin {
+/// workspace's slug, None once it was deleted. A workspace on the free
+/// plan still invites: accepting waits until it starts the plan (paid.rs).
+pub fn awaiting_join(row: &InviteRow, now: &str) -> AwaitingJoin {
     let what = match &row.workspace {
-        Some(slug) => format!("did not join you to {slug}"),
+        Some(slug) => format!("no longer invites you to {slug}"),
         None => "no longer applies".to_owned(),
     };
     if row.revoked_at.is_some() {
@@ -261,7 +290,7 @@ pub fn awaiting_join(row: &InviteRow, now: &str, free: bool) -> AwaitingJoin {
     }
     if row.expires_at.as_str() <= now {
         return AwaitingJoin::Lapsed(format!(
-            "Your email address is confirmed. The invite you signed up with expired before you confirmed it, so it {what}. Ask whoever invited you to add you again."
+            "Your email address is confirmed. The invite you signed up with expired before you confirmed it, so it {what}. Ask whoever invited you to invite you again."
         ));
     }
     match (&row.workspace_id, &row.workspace) {
@@ -269,10 +298,7 @@ pub fn awaiting_join(row: &InviteRow, now: &str, free: bool) -> AwaitingJoin {
         (Some(_), None) => AwaitingJoin::Lapsed(
             "Your email address is confirmed. The workspace your invite was for has been deleted, so the invite no longer applies.".to_owned(),
         ),
-        (Some(_), Some(slug)) if free => AwaitingJoin::Lapsed(format!(
-            "Your email address is confirmed. {slug} is on the free plan, which adds no members, so the invite did not join you to it. Ask its owners to add you once it starts the g1t plan."
-        )),
-        (Some(workspace_id), Some(slug)) => AwaitingJoin::Join { workspace_id: workspace_id.clone(), slug: slug.clone() },
+        (Some(workspace_id), Some(slug)) => AwaitingJoin::Invited { workspace_id: workspace_id.clone(), slug: slug.clone() },
     }
 }
 
@@ -313,11 +339,13 @@ pub fn summary_due(last: Option<&str>, since: &str) -> bool {
 
 const COLUMNS: &str = "i.id, i.hint, i.sealed_code, i.email, i.kind, i.workspace_id, w.slug AS workspace,
   i.inviter_id, iu.username AS inviter, i.staff, i.charged_to, i.charged_workspace_id, i.created_at, i.expires_at,
-  i.revoked_at, i.redeemed_by, ru.username AS redeemer, i.redeemed_at, i.applied_at
+  i.revoked_at, i.redeemed_by, ru.username AS redeemer, i.redeemed_at, i.applied_at,
+  i.invitee_id, vu.username AS invitee, i.role, i.accepted_at, i.declined_at
   FROM invites i
   LEFT JOIN workspaces w ON w.id = i.workspace_id AND w.deleted_at IS NULL
   LEFT JOIN users iu ON iu.id = i.inviter_id
-  LEFT JOIN users ru ON ru.id = i.redeemed_by";
+  LEFT JOIN users ru ON ru.id = i.redeemed_by
+  LEFT JOIN users vu ON vu.id = i.invitee_id";
 
 #[derive(Debug, Deserialize)]
 pub struct InviteRow {
@@ -339,17 +367,42 @@ pub struct InviteRow {
     pub redeemed_at: Option<String>,
     #[serde(default)]
     pub applied_at: Option<String>,
+    /// The account a workspace invitation is for (invitations.rs).
+    #[serde(default)]
+    pub invitee_id: Option<String>,
+    #[serde(default)]
+    pub invitee: Option<String>,
+    /// `owner` or `member`; null is member.
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub accepted_at: Option<String>,
+    #[serde(default)]
+    pub declined_at: Option<String>,
 }
 
 impl InviteRow {
     pub fn status(&self, now: &str) -> InviteStatus {
-        status_of(
-            self.revoked_at.as_deref(),
-            self.redeemed_at.as_deref(),
-            self.applied_at.as_deref(),
+        answered_status(
+            status_of(
+                self.revoked_at.as_deref(),
+                self.redeemed_at.as_deref(),
+                self.applied_at.as_deref(),
+                &self.expires_at,
+                now,
+            ),
+            &self.kind,
+            self.workspace.is_some(),
+            self.accepted_at.as_deref(),
+            self.declined_at.as_deref(),
             &self.expires_at,
             now,
         )
+    }
+
+    /// The role accepting it joins with.
+    pub fn joins_as(&self) -> Role {
+        if self.role.as_deref() == Some("owner") { Role::Owner } else { Role::Member }
     }
 
     fn admits(&self, now: &str) -> Admits<'_> {
@@ -456,6 +509,10 @@ struct Draft<'a> {
     charged_to: &'a str,
     charged_workspace_id: Option<&'a str>,
     limit: Option<u32>,
+    /// The account a workspace invitation is for, when it has one already.
+    invitee_id: Option<&'a str>,
+    /// The role joining `workspace_id` gives: `member` or `owner`.
+    role: Option<&'a str>,
 }
 
 impl Identity {
@@ -578,6 +635,10 @@ impl Identity {
     fn shown(&self, row: InviteRow, reveal: bool, staff_view: bool) -> Invite {
         let now = rfc3339(now_ms());
         let status = row.status(&now);
+        let role = row.workspace_id.is_some().then(|| row.joins_as());
+        // An invite sent to an address never says which account has it,
+        // until that account uses it.
+        let invitee = row.invitee.clone().filter(|_| row.email.is_none() || row.redeemed_at.is_some());
         let code = if reveal && status == InviteStatus::Pending {
             row.sealed_code
                 .as_deref()
@@ -600,6 +661,8 @@ impl Identity {
             expires_at: row.expires_at,
             redeemed_at: row.redeemed_at,
             revoked_at: row.revoked_at,
+            invitee,
+            role,
             staff: if staff_view { row.staff } else { None },
         }
     }
@@ -786,8 +849,8 @@ impl Identity {
                     .batch(vec![
                         self.db
                             .prepare(format!(
-                                "UPDATE invites SET redeemed_by = ?, redeemed_at = {SQL_NOW}, sealed_code = NULL
-                                 WHERE id = ? AND kind = 'account' AND redeemed_at IS NULL AND revoked_at IS NULL
+                                "UPDATE invites SET redeemed_by = ?1, invitee_id = ?1, redeemed_at = {SQL_NOW}, sealed_code = NULL
+                                 WHERE id = ?2 AND kind = 'account' AND redeemed_at IS NULL AND revoked_at IS NULL
                                    AND expires_at > {SQL_NOW}"
                             ))
                             .bind(&[user.id.as_str().into(), row.id.as_str().into()])?,
@@ -823,6 +886,9 @@ impl Identity {
             self.count_failure(new.client).await?;
             return Ok(Outcome::fail(FailureCode::Forbidden, INVALID));
         }
+        // Nobody is left without a workspace: one of its own, unless its
+        // invite brings it into one (invitations.rs).
+        self.give_own_workspace(&user, invite.as_ref()).await;
         // Confirmed already (GitHub): what the invite gives, now. Otherwise
         // it waits, spent, for the address to be confirmed.
         if let Some(row) = invite
@@ -849,25 +915,39 @@ impl Identity {
         Ok(Outcome::Ok(user))
     }
 
-    /// Joins the invite's workspace, and tells the event log and audit log.
+    /// What using an invite gives, once its account is confirmed, and tells
+    /// the event log and audit log. A new account (`created_account`) is
+    /// invited to the workspace the invite names, to accept or decline
+    /// (invitations.rs): nobody joins a workspace without saying yes. An
+    /// existing account that opened the invite and accepted it
+    /// (`accept_invite`) joins now, with the role it names.
     async fn after_redeemed(&self, row: &InviteRow, user: &User, created_account: bool) -> Result<()> {
         let mut joined = None;
-        // A free workspace adds no one (paid.rs): a sign-up with an invite
-        // from one sent before still makes the account, without joining.
-        let free = match &row.workspace {
-            Some(slug) => self.is_free_workspace(slug).await,
-            None => false,
-        };
-        if let (Some(workspace_id), Some(slug), false) = (&row.workspace_id, &row.workspace, free) {
-            self.db
-                .prepare(
-                    "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
-                     VALUES (?, ?, 'member', ?)",
-                )
-                .bind(&[workspace_id.as_str().into(), user.id.as_str().into(), rfc3339(now_ms()).into()])?
-                .run()
-                .await?;
-            joined = Some(slug.clone());
+        if let (Some(workspace_id), Some(slug)) = (&row.workspace_id, &row.workspace) {
+            if created_account {
+                self.db
+                    .prepare("UPDATE invites SET expires_at = max(expires_at, ?) WHERE id = ? AND accepted_at IS NULL")
+                    .bind(&[self.answer_by().into(), row.id.as_str().into()])?
+                    .run()
+                    .await?;
+                self.invitation_sent(row, &user.username).await;
+            } else {
+                let role = if row.joins_as() == Role::Owner { "owner" } else { "member" };
+                self.db
+                    .batch(vec![
+                        self.db
+                            .prepare(
+                                "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
+                                 VALUES (?, ?, ?, ?)",
+                            )
+                            .bind(&[workspace_id.as_str().into(), user.id.as_str().into(), role.into(), rfc3339(now_ms()).into()])?,
+                        self.db
+                            .prepare(format!("UPDATE invites SET accepted_at = {SQL_NOW} WHERE id = ? AND accepted_at IS NULL"))
+                            .bind(&[row.id.as_str().into()])?,
+                    ])
+                    .await?;
+                joined = Some(slug.clone());
+            }
         }
         self.db
             .prepare(format!("UPDATE invites SET applied_at = {SQL_NOW} WHERE id = ? AND applied_at IS NULL"))
@@ -878,10 +958,16 @@ impl Identity {
         Ok(())
     }
 
+    /// When a workspace invitation made now, or handed to a new account
+    /// now, stops working: the invite TTL from now, RFC 3339.
+    pub(crate) fn answer_by(&self) -> String {
+        rfc3339(now_ms() + self.invite_ttl_days() * 24 * HOUR_MS)
+    }
+
     /// What follows an invite's workspace being joined (`joined`, by slug)
     /// or not: repository invitations sent with its code are accepted, and
     /// the event log and the workspace's audit log are told.
-    async fn settled(&self, row: &InviteRow, user: &User, created_account: bool, joined: Option<String>) {
+    pub(crate) async fn settled(&self, row: &InviteRow, user: &User, created_account: bool, joined: Option<String>) {
         // A code sent with an invitation to collaborate on a repository:
         // using it accepts (access.rs).
         if let Err(error) = self.accept_invitations_of_code(&row.id, user).await {
@@ -904,8 +990,9 @@ impl Identity {
                 Some(inviter) => format!("Joined with an invite from {inviter}"),
                 None => "Joined with an invite from g1t".to_owned(),
             };
+            let role = if row.joins_as() == Role::Owner { "an owner" } else { "a member" };
             self.audit_invites(user, "invite.redeemed", vec![slug.clone()], Surface::Web, message).await;
-            self.audit_invites(user, "member.added", vec![slug], Surface::Web, format!("{} joined as a member", user.username)).await;
+            self.audit_invites(user, "member.added", vec![slug], Surface::Web, format!("{} joined as {role}", user.username)).await;
         }
     }
 
@@ -927,19 +1014,15 @@ impl Identity {
     /// confirmed, worked out before the batch that confirms it (which
     /// checks the same again).
     pub(crate) async fn awaiting_join(&self, row: &InviteRow) -> AwaitingJoin {
-        // A free workspace adds no one (paid.rs).
-        let free = match &row.workspace {
-            Some(slug) => self.is_free_workspace(slug).await,
-            None => false,
-        };
-        awaiting_join(row, &rfc3339(now_ms()), free)
+        awaiting_join(row, &rfc3339(now_ms()))
     }
 
     /// The statements that apply an awaiting invite, for the batch that
     /// confirms `user_id`'s address, after the statement that marks the
-    /// account confirmed: join the workspace, only if the account is
-    /// confirmed now and the invite and workspace are still good; then mark
-    /// the invite settled, whatever it gave.
+    /// account confirmed: give a workspace invitation the invite TTL from
+    /// now to be answered in, only if the account is confirmed now; then
+    /// mark the invite settled, whatever it gave. Nothing is joined here:
+    /// the person accepts the invitation (invitations.rs).
     pub(crate) fn apply_invite_statements(
         &self,
         user_id: &str,
@@ -948,18 +1031,14 @@ impl Identity {
     ) -> Result<Vec<worker::D1PreparedStatement>> {
         let confirmed = "EXISTS (SELECT 1 FROM users WHERE id = ?1 AND email_verified_at IS NOT NULL)";
         let mut statements = Vec::new();
-        if let AwaitingJoin::Join { workspace_id, .. } = join {
+        if let AwaitingJoin::Invited { .. } = join {
             statements.push(
                 self.db
                     .prepare(format!(
-                        "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
-                         SELECT ?3, ?1, 'member', {SQL_NOW}
-                         WHERE {confirmed}
-                           AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?3 AND deleted_at IS NULL)
-                           AND EXISTS (SELECT 1 FROM invites WHERE id = ?2 AND redeemed_by = ?1
-                             AND applied_at IS NULL AND revoked_at IS NULL AND expires_at > {SQL_NOW})"
+                        "UPDATE invites SET expires_at = max(expires_at, ?3)
+                         WHERE id = ?2 AND redeemed_by = ?1 AND applied_at IS NULL AND revoked_at IS NULL AND {confirmed}"
                     ))
-                    .bind(&[user_id.into(), row.id.as_str().into(), workspace_id.as_str().into()])?,
+                    .bind(&[user_id.into(), row.id.as_str().into(), self.answer_by().into()])?,
             );
         }
         statements.push(
@@ -973,24 +1052,31 @@ impl Identity {
         Ok(statements)
     }
 
-    /// After the batch: the workspace joined, by slug, if the account is in
-    /// it now; and, unless the invite lapsed, the repository invitations,
-    /// event and audit entries that follow using it.
+    /// After the batch: the workspace the account is invited to, by slug,
+    /// if the invitation still waits for its answer (and it is told in
+    /// its inbox); and, unless the invite lapsed, the repository
+    /// invitations, event and audit entries that follow using it.
     pub(crate) async fn after_applied(&self, row: &InviteRow, user: &User, join: &AwaitingJoin) -> Result<Option<String>> {
-        let joined = match join {
-            AwaitingJoin::Join { workspace_id, slug } => self
+        let invited = match join {
+            AwaitingJoin::Invited { slug, .. } => self
                 .db
-                .prepare("SELECT 1 AS n FROM workspace_members WHERE workspace_id = ? AND user_id = ?")
-                .bind(&[workspace_id.as_str().into(), user.id.as_str().into()])?
+                .prepare(format!(
+                    "SELECT 1 AS n FROM invites WHERE id = ? AND applied_at IS NOT NULL AND revoked_at IS NULL
+                       AND accepted_at IS NULL AND declined_at IS NULL AND expires_at > {SQL_NOW}"
+                ))
+                .bind(&[row.id.as_str().into()])?
                 .first::<Count>(None)
                 .await?
                 .map(|_| slug.clone()),
             _ => None,
         };
-        if !matches!(join, AwaitingJoin::Lapsed(_)) {
-            self.settled(row, user, true, joined.clone()).await;
+        if invited.is_some() {
+            self.invitation_sent(row, &user.username).await;
         }
-        Ok(joined)
+        if !matches!(join, AwaitingJoin::Lapsed(_)) {
+            self.settled(row, user, true, None).await;
+        }
+        Ok(invited)
     }
 
     // --- People's invites ---
@@ -1030,6 +1116,8 @@ impl Identity {
             opt(draft.charged_workspace_id),
             created_at.as_str().into(),
             expires_at.as_str().into(),
+            opt(draft.invitee_id),
+            opt(draft.role),
         ];
         // The allowance is checked in the insert itself, so two invites made
         // at once cannot both take the last one.
@@ -1054,8 +1142,8 @@ impl Identity {
             .db
             .prepare(format!(
                 "INSERT INTO invites (id, code_hash, hint, sealed_code, email, kind, workspace_id, inviter_id,
-                   staff, charged_to, charged_workspace_id, created_at, expires_at)
-                 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? {guard}
+                   staff, charged_to, charged_workspace_id, created_at, expires_at, invitee_id, role)
+                 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? {guard}
                  RETURNING id"
             ))
             .bind(&binds)?
@@ -1154,24 +1242,38 @@ impl Identity {
                 (None, "user", allowance.limit)
             }
         };
+        // The workspace it brings them into, if any (invitations.rs).
+        let joins = match self.joinable_workspace(&a.user, a.join.as_deref()).await? {
+            Outcome::Ok(joins) => joins,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
         let draft = Draft {
             email: email.as_deref(),
             kind: "account",
-            workspace_id: None,
+            workspace_id: joins.as_ref().map(|(id, _)| id.as_str()),
             inviter: Some(&a.user),
             staff: None,
             charged_to,
             charged_workspace_id: workspace_id.as_deref(),
             limit,
+            invitee_id: None,
+            role: joins.as_ref().map(|_| "member"),
         };
         let Some(invite) = self.insert_invite(draft).await? else {
             return Ok(Self::out_of_invites());
         };
         if let (Some(email), Some(code)) = (&email, &invite.code) {
             let from = self.display_name(&a.user).await;
-            self.send_invite_email(email, Some(&from), None, false, code, None).await;
+            let workspace = match &joins {
+                Some((id, slug)) => Some(self.workspace_name(id, slug).await),
+                None => None,
+            };
+            self.send_invite_email(email, Some(&from), workspace.as_deref(), false, code, None).await;
         }
-        let logs: Vec<String> = a.user.workspaces.iter().map(|membership| membership.slug.clone()).collect();
+        let mut logs: Vec<String> = a.user.workspaces.iter().map(|membership| membership.slug.clone()).collect();
+        if let Some((_, slug)) = &joins {
+            logs = vec![slug.clone()];
+        }
         self.audit_invites(&a.user, "invite.created", logs, a.surface.unwrap_or(Surface::Web), format!("Created invite {}", invite.hint))
             .await;
         Ok(Outcome::Ok(invite))
@@ -1280,7 +1382,10 @@ impl Identity {
             .db
             .prepare(format!(
                 "UPDATE invites SET revoked_at = {SQL_NOW}, sealed_code = NULL
-                 WHERE id = ?2 AND (redeemed_at IS NULL OR applied_at IS NULL) AND revoked_at IS NULL
+                 WHERE id = ?2 AND revoked_at IS NULL AND declined_at IS NULL
+                   AND (redeemed_at IS NULL OR applied_at IS NULL
+                     -- A workspace invitation not yet answered.
+                     OR (workspace_id IS NOT NULL AND accepted_at IS NULL))
                    AND (inviter_id = ?1
                      OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner')
                      OR charged_workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner'))
@@ -1300,6 +1405,7 @@ impl Identity {
             None => a.user.workspaces.iter().map(|membership| membership.slug.clone()).collect(),
         };
         self.audit_invites(&a.user, "invite.revoked", logs, Surface::Web, format!("Revoked invite {}", row.hint)).await;
+        self.invitation_revoked(&a.user, &row).await;
         Ok(Outcome::Ok(self.shown(row, false, false)))
     }
 
@@ -1340,7 +1446,8 @@ impl Identity {
                     let mine = self.verified_emails(&viewer.id).await?;
                     Some(mine.iter().any(|address| address.eq_ignore_ascii_case(bound.trim())))
                 }
-                (None, _) => None,
+                // An invitation to someone by username is theirs alone.
+                (None, _) => row.invitee_id.as_ref().map(|invitee| *invitee == viewer.id),
             },
             _ => None,
         };
@@ -1432,6 +1539,13 @@ impl Identity {
                 "You already have a g1t account, so this invite has nothing more to give you. Pass it on to someone who needs it.",
             ));
         };
+        // An invitation to one account works for that account only.
+        if row.invitee_id.as_deref().is_some_and(|invitee| invitee != a.user.id) {
+            return Ok(Outcome::fail(
+                FailureCode::Forbidden,
+                "This invitation is for a different g1t account. Sign in as the account it was sent to.",
+            ));
+        }
         // What the workspace asks of its members (security.rs); nothing yet.
         if let Some(slug) = row.workspace.as_deref()
             && let Some(why) = self.policy_refusal(&a.user.id, slug).await?
@@ -1451,8 +1565,8 @@ impl Identity {
         let claimed = self
             .db
             .prepare(format!(
-                "UPDATE invites SET redeemed_by = ?, redeemed_at = {SQL_NOW}, sealed_code = NULL
-                 WHERE id = ? AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > {SQL_NOW}
+                "UPDATE invites SET redeemed_by = ?1, invitee_id = COALESCE(invitee_id, ?1), redeemed_at = {SQL_NOW}, sealed_code = NULL
+                 WHERE id = ?2 AND redeemed_at IS NULL AND revoked_at IS NULL AND declined_at IS NULL AND expires_at > {SQL_NOW}
                  RETURNING id"
             ))
             .bind(&[a.user.id.as_str().into(), row.id.as_str().into()])?
@@ -1480,9 +1594,20 @@ impl Identity {
         if a.actor.role_in(&slug) != Some(Role::Owner) {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner can invite people to a workspace."));
         }
-        let Some(email) = normalize_email(&a.email) else {
-            return Ok(Outcome::fail(FailureCode::Invalid, BAD_EMAIL));
+        // A username, or an address; an address typed in the username's
+        // place is an address.
+        let username = a
+            .username
+            .as_deref()
+            .map(|name| name.trim().trim_start_matches('@').to_lowercase())
+            .filter(|name| !name.is_empty() && !name.contains('@'));
+        let email = match (&username, normalize_email(a.username.as_deref().unwrap_or(&a.email))) {
+            (Some(_), _) => None,
+            (None, Some(email)) => Some(email),
+            (None, None) => return Ok(Outcome::fail(FailureCode::Invalid, "Enter a g1t username or a valid email address.")),
         };
+        let role = a.role.unwrap_or(Role::Member);
+        let role_name = if role == Role::Owner { "owner" } else { "member" };
         let Some(workspace_id) = self.workspace_id(&slug).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
         };
@@ -1490,6 +1615,13 @@ impl Identity {
         if let Some(refused) = self.free_workspace_refusal(&slug).await? {
             return Ok(refused);
         }
+        let surface = a.surface.unwrap_or(Surface::Web);
+        // Someone on g1t, by username: an invitation to accept or decline
+        // (invites/invitations.rs).
+        let Some(email) = email else {
+            let username = username.unwrap_or_default();
+            return self.invite_account(&a.actor, &slug, &workspace_id, &username, role, surface).await;
+        };
         if !self.hit(&format!("invite.create:{}", a.actor.id), CREATES_PER_HOUR).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, TOO_MANY));
         }
@@ -1497,7 +1629,7 @@ impl Identity {
             .rows(
                 &format!(
                     "WHERE i.workspace_id = ? AND i.email = ?
-                       AND i.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > {SQL_NOW}"
+                       AND i.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.declined_at IS NULL AND i.expires_at > {SQL_NOW}"
                 ),
                 &[workspace_id.as_str().into(), email.as_str().into()],
                 1,
@@ -1510,6 +1642,10 @@ impl Identity {
             ));
         }
         let has_account = self.email_has_account(&email).await?;
+        // The account that has confirmed the address, which the invitation
+        // is for. Never shown to the inviter: the answer does not say
+        // whether the address has an account.
+        let invitee = self.user_with_verified_email(&email).await?;
         let draft = if has_account {
             // Costs nothing: the person is on g1t already.
             Draft {
@@ -1521,6 +1657,8 @@ impl Identity {
                 charged_to: "none",
                 charged_workspace_id: None,
                 limit: None,
+                invitee_id: invitee.as_deref(),
+                role: Some(role_name),
             }
         } else {
             let shared = self.workspace_allowance(&workspace_id).await?;
@@ -1542,6 +1680,8 @@ impl Identity {
                 charged_to,
                 charged_workspace_id,
                 limit,
+                invitee_id: None,
+                role: Some(role_name),
             }
         };
         let Some(invite) = self.insert_invite(draft).await? else {
@@ -1552,14 +1692,15 @@ impl Identity {
             let workspace = self.workspace_name(&workspace_id, &slug).await;
             self.send_invite_email(&email, Some(&from), Some(&workspace), has_account, code, None).await;
         }
-        self.audit_invites(
-            &a.actor,
-            "invite.created",
-            vec![slug.clone()],
-            a.surface.unwrap_or(Surface::Web),
-            format!("Invited {email} to {slug}"),
-        )
-        .await;
+        // Someone on g1t hears of it in their inbox too.
+        if invitee.is_some()
+            && let Some(row) = self.invite_by_id(&invite.id).await?
+            && let Some(username) = row.invitee.clone()
+        {
+            self.invitation_sent(&row, &username).await;
+        }
+        self.audit_invites(&a.actor, "invite.created", vec![slug.clone()], surface, format!("Invited {email} to {slug} as {role_name}"))
+            .await;
         Ok(Outcome::Ok(invite))
     }
 
@@ -1594,6 +1735,8 @@ impl Identity {
             charged_to,
             charged_workspace_id,
             limit,
+            invitee_id: None,
+            role: None,
         };
         Ok(match self.insert_invite(draft).await? {
             Some(invite) => Outcome::Ok(invite),
@@ -1948,6 +2091,8 @@ impl Identity {
             charged_to: "none",
             charged_workspace_id: None,
             limit: None,
+            invitee_id: None,
+            role: None,
         };
         let Some(mut invite) = self.insert_invite(draft).await? else {
             return Ok(Outcome::fail(FailureCode::Conflict, "The invite could not be made. Try again."));
@@ -2294,18 +2439,29 @@ mod tests {
             redeemer: Some("ada".into()),
             redeemed_at: Some(EARLIER.into()),
             applied_at: None,
+            invitee_id: Some("usr_ada".into()),
+            invitee: Some("ada".into()),
+            role: None,
+            accepted_at: None,
+            declined_at: None,
         }
     }
 
     #[test]
     fn confirming_joins_the_workspace_the_invite_named_while_it_still_applies() {
+        // Confirming no longer joins anything by itself: the workspace the
+        // invite named becomes an invitation the person accepts or declines
+        // (invites/invitations.rs), and accepting joins it.
         let good = row(Some(("wsp_1", Some("acme"))), false, LATER);
-        assert_eq!(
-            awaiting_join(&good, NOW, false),
-            AwaitingJoin::Join { workspace_id: "wsp_1".into(), slug: "acme".into() }
-        );
+        assert_eq!(awaiting_join(&good, NOW), AwaitingJoin::Invited { workspace_id: "wsp_1".into(), slug: "acme".into() });
         // No workspace: nothing to join, and what came with it is accepted.
-        assert_eq!(awaiting_join(&row(None, false, LATER), NOW, false), AwaitingJoin::Nothing);
+        assert_eq!(awaiting_join(&row(None, false, LATER), NOW), AwaitingJoin::Nothing);
+        // Confirmed and not yet answered: awaiting the answer.
+        let confirmed = InviteRow { applied_at: Some(NOW.into()), ..good };
+        assert_eq!(confirmed.status(NOW), InviteStatus::AwaitingAnswer);
+        // Accepted: used.
+        let accepted = InviteRow { accepted_at: Some(NOW.into()), ..confirmed };
+        assert_eq!(accepted.status(NOW), InviteStatus::Redeemed);
     }
 
     #[test]
@@ -2314,19 +2470,19 @@ mod tests {
             AwaitingJoin::Lapsed(why) => why,
             other => panic!("expected a lapse, got {other:?}"),
         };
-        let revoked = lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), true, LATER), NOW, false));
+        let revoked = lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), true, LATER), NOW));
         assert!(revoked.starts_with("Your email address is confirmed."));
-        assert!(revoked.contains("was revoked") && revoked.contains("did not join you to acme"));
-        let expired = lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, EARLIER), NOW, false));
+        assert!(revoked.contains("was revoked") && revoked.contains("no longer invites you to acme"));
+        let expired = lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, EARLIER), NOW));
         assert!(expired.contains("expired before you confirmed it"));
-        assert!(lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, NOW), NOW, false)).contains("expired"));
+        assert!(lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, NOW), NOW)).contains("expired"));
         // The workspace was deleted: its row no longer joins a slug.
-        let deleted = lapsed(awaiting_join(&row(Some(("wsp_1", None)), false, LATER), NOW, false));
+        let deleted = lapsed(awaiting_join(&row(Some(("wsp_1", None)), false, LATER), NOW));
         assert!(deleted.contains("has been deleted"));
-        let free = lapsed(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, LATER), NOW, true));
-        assert!(free.contains("free plan"));
+        // A free workspace still invites; accepting waits for its plan.
+        assert!(matches!(awaiting_join(&row(Some(("wsp_1", Some("acme"))), false, LATER), NOW), AwaitingJoin::Invited { .. }));
         // Revoked beats expired; an invite without a workspace lapses too.
-        assert!(lapsed(awaiting_join(&row(None, true, EARLIER), NOW, false)).contains("no longer applies"));
+        assert!(lapsed(awaiting_join(&row(None, true, EARLIER), NOW)).contains("no longer applies"));
     }
 
     #[test]
