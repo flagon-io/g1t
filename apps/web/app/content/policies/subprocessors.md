@@ -6,12 +6,14 @@ These are the companies that process information for g1t on our behalf, what eac
 | --- | --- | --- | --- |
 | **Cloudflare, Inc.** | Hosting and the network g1t runs on (Workers), databases (D1), storage for repositories, avatars and screenshots (Artifacts, KV and R2), queues, the sandboxes agents and checks run in (Containers), sending email (Email Service), search embeddings (Workers AI and Vectorize), the gateway hosted agents reach their model through (AI Gateway), and screenshots of deployed apps (Browser Rendering) | Everything stored on g1t, and every request to it | Global |
 | **Stripe, Inc.** | Payments, cards, invoices and receipts | Workspace owners' billing details, card details (entered on Stripe's page, never on g1t), and what each invoice charges | United States |
-| **HeyCatch** | Product analytics on g1t.sh: page views and clicks | The page's address (names replaced outside the public pages), the text of what is clicked on the public pages, browser and device type, IP address, the referring site, an analytics id, and a signed-in person's internal account id. Never repository content, chat, page titles inside the app, what you type, or recordings of your session | To confirm |
+| **HeyCatch, Inc.** | Product analytics on g1t.sh: page views and clicks. Visitors in the EU, EEA, UK and Switzerland are asked first | The page's address (names replaced outside the public pages), the text of what is clicked on the public pages, browser and device type, IP address, the referring site, an analytics id, and a signed-in person's internal account id. Never repository content, chat, page titles inside the app, what you type, or recordings of your session | United States |
 | **Anthropic, PBC** | The AI model behind g1t's hosted agents | What an agent run needs: the issue or request, the relevant code and files, the conversation so far, and tool results. Not your account details. Only when a hosted agent runs | United States |
 
 **AI Gateway logs.** Each hosted agent's model request passes through Cloudflare AI Gateway, which records it with the workspace, repository and pull request it was for, so we can bill it accurately.
 
 **Training.** Anthropic does not train its models on what g1t sends through its commercial API.
+
+**HeyCatch** stores analytics events with PostHog (United States) and lists its own subprocessors at [heycatch.ai/subprocessors](https://heycatch.ai/subprocessors). Its [data processing addendum](https://heycatch.ai/dpa) covers what it does for g1t, including the EU Standard Contractual Clauses for transfers to the United States.
 
 ## Other services g1t calls
 

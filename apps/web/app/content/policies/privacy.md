@@ -40,7 +40,7 @@ Payments are handled by Stripe. **Card numbers never reach g1t.** From Stripe we
 
 ### How the site is used
 
-On g1t.sh, our analytics provider HeyCatch records page views, clicks and the page each happened on, with your browser and device type, your IP address (which it uses to estimate your country and city) and the site that sent you. We use it to learn which pages help people and where they get stuck.
+On g1t.sh, our analytics provider HeyCatch, Inc. records page views, clicks and the page each happened on, with your browser and device type, your IP address (which it uses to estimate your country and city) and the site that sent you. We use it to learn which pages help people and where they get stuck.
 
 - **On the public pages** (the home page, pricing, Explore, signing up and signing in, support, security and these policies) it receives the page's address and the text of what you click.
 - **Everywhere else** your browser removes names before anything is sent: an address such as `g1t.sh/acme/web/pull/12` is sent as `/:name/:name/pull/:n`, and page titles and the text, links and attributes of what you click are left out. Nothing from your repositories, issues, pull requests or chat is sent.
@@ -48,7 +48,9 @@ On g1t.sh, our analytics provider HeyCatch records page views, clicks and the pa
 - **Never**: recordings of your screen or session, what you type, or error reports.
 - **Query strings** are removed, except campaign tags (`utm_…`).
 
-If your browser sends Do Not Track, nothing is recorded. A g1t you run yourself sends nothing to HeyCatch.
+**If you're in the EU, the EEA, the UK or Switzerland, we ask first.** Until you choose **Allow**, nothing is loaded from HeyCatch, no analytics cookie is set and nothing is sent. Your answer is kept in your browser's local storage (`g1t_analytics`), and **Cookie choices** at the foot of any page asks again. Elsewhere, analytics runs without asking. If your browser sends Do Not Track, nothing is recorded anywhere. A g1t you run yourself sends nothing to HeyCatch.
+
+HeyCatch stores these events with PostHog in the United States, under its [data processing addendum](https://heycatch.ai/dpa), which includes the EU Standard Contractual Clauses.
 
 ### When you write to us
 
@@ -68,7 +70,7 @@ g1t uses the cookies it needs to work, and one analytics cookie. There are **no 
 | `g1t_ws` | Remembers which workspace you last chose, so the sidebar opens on it. | 1 year |
 | `g1t_seen` | Remembers when you last looked at mission control, so it can show what's new since. | 1 year |
 | `g1t_tz` | Your browser's time zone, so mission control's greeting and days fit your day. | 1 year |
-| `ph_…_posthog` | Set by HeyCatch's analytics on g1t.sh: a random id for your browser, so its visits count as one visitor ([above](#how-the-site-is-used)). | 1 year |
+| `ph_…_posthog` | Set by HeyCatch's analytics on g1t.sh: a random id for your browser, so its visits count as one visitor ([above](#how-the-site-is-used)). In the EU, the EEA, the UK and Switzerland, only after you allow it. | 1 year |
 
 Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack.
 

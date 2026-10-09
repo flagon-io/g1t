@@ -96,7 +96,7 @@ export const POLICY_HISTORY: { date: string; change: string }[] = [
   {
     date: "2026-10-09",
     change:
-      "Privacy Policy: g1t.sh uses HeyCatch for site analytics, with names removed outside the public pages, and one analytics cookie. Subprocessors: HeyCatch added.",
+      "Privacy Policy: g1t.sh uses HeyCatch for site analytics, with names removed outside the public pages, and one analytics cookie, set in the EU, EEA, UK and Switzerland only after you allow it. Subprocessors: HeyCatch, Inc. added.",
   },
   {
     date: "2026-10-06",
