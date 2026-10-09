@@ -47,7 +47,7 @@ use g1t_contracts::packages::*;
 use g1t_contracts::repos::{GetArgs, Repo, RepoPath};
 use g1t_contracts::{FailureCode, Outcome, User, Viewer, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
-use worker::{Context, Env, Fetcher, MessageBatch, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
+use worker::{Context, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
 use access::{Action, LinkedTo, Target};
 use db::{Db, PackageRow};
@@ -944,8 +944,16 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let packages = Packages::from_env(&env)?;
+    // Each event is acknowledged or retried on its own, so one that fails
+    // does not run the rest of its batch again.
     for message in batch.messages()? {
-        packages.on_event(&env, message.body()).await?;
+        match packages.on_event(&env, message.body()).await {
+            Ok(_) => message.ack(),
+            Err(error) => {
+                worker::console_error!("packages: event {} failed: {error}", message.body().id);
+                message.retry();
+            }
+        }
     }
     Ok(())
 }

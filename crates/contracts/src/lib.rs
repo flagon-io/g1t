@@ -39,6 +39,7 @@ pub mod search;
 pub mod security;
 pub mod teams;
 pub mod security_suite;
+pub mod subscribers;
 pub mod time;
 pub mod tokens;
 pub mod updates;

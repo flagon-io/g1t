@@ -26,7 +26,7 @@
 	],
 	// A repository created is given its own project.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"observability": { "enabled": true }
 }

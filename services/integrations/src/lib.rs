@@ -1580,6 +1580,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let service = Integrations::new(&env)?;
+    let mut pushed = std::collections::HashSet::new();
     for message in batch.messages()? {
         // A workspace renamed: its rows move to the slug it has now.
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), rename::STATEMENTS).await? {
@@ -1598,7 +1599,9 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
         // A repository purged: what was kept for it goes.
         rename::on_purged(&env.d1("DB")?, message.body()).await?;
-        github::on_event(&env, message.body()).await?;
+        if github::first_push_in_batch(&mut pushed, message.body()) {
+            github::on_event(&env, message.body()).await?;
+        }
         service.on_event(message.body()).await?;
         message.ack();
     }

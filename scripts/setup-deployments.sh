@@ -33,6 +33,8 @@ fi
 echo "== Dispatch namespace and event queue"
 w dispatch-namespace list 2>/dev/null | grep -q "$NAMESPACE" || w dispatch-namespace create "$NAMESPACE"
 w queues list 2>/dev/null | grep -q g1t-events-deployments || w queues create g1t-events-deployments
+# Where every consumer sends what it gave up on (docs/DEPLOYING.md).
+w queues list 2>/dev/null | grep -q g1t-events-dlq || w queues create g1t-events-dlq
 
 echo "== DNS record and the service's token"
 if [ -n "${CLOUDFLARE_API_KEY:-}" ] && [ -n "${CLOUDFLARE_EMAIL:-}" ]; then

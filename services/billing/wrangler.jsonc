@@ -33,7 +33,7 @@
 	// Events from the bus: a workspace renamed moves its billing to the
 	// new slug (src/rename.rs).
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"vars": {
 		// What is added to a model run's cost, in percent: g1t's overhead for

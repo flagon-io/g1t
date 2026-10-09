@@ -34,7 +34,7 @@
 	// Pull requests opened, pushed to, closed and merged; pushes to the
 	// default branch.
 	"queues": {
-		"consumers": [{ "queue": "g1t-events-deployments", "max_batch_size": 20, "max_batch_timeout": 1 }]
+		"consumers": [{ "queue": "g1t-events-deployments", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	// Builds that died, usage counts, idle previews, apps of ended plans,
 	// and charging a month that is over.

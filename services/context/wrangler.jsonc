@@ -37,8 +37,8 @@
 		// jobs, one project of a backfill each, so no request does them all.
 		"producers": [{ "binding": "JOBS", "queue": "g1t-context-jobs" }],
 		"consumers": [
-			{ "queue": "g1t-events-context", "max_batch_size": 20, "max_batch_timeout": 2 },
-			{ "queue": "g1t-context-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 2 }
+			{ "queue": "g1t-events-context", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" },
+			{ "queue": "g1t-context-jobs", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 2, "dead_letter_queue": "g1t-events-dlq" }
 		]
 	},
 	"observability": { "enabled": true }

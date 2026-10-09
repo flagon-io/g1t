@@ -1114,6 +1114,18 @@ fn dispatch_inputs(trigger: &Trigger, given: &Map<String, Value>) -> Outcome<Map
 mod tests {
     use super::*;
     use g1t_contracts::work::{Pull, g1t_author};
+
+    #[test]
+    fn every_event_a_workflow_runs_on_is_sent_to_this_queue() {
+        for kind in g1t_contracts::webhooks::EVENT_TYPES {
+            if !github_events(kind).is_empty() {
+                assert!(
+                    g1t_contracts::subscribers::routed("SUBSCRIBER_ACTIONS", kind),
+                    "{kind} starts workflows but is not routed to actions (g1t_contracts::subscribers)"
+                );
+            }
+        }
+    }
     use g1t_contracts::{Membership, PrincipalKind};
 
     fn repo() -> Repo {
