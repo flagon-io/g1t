@@ -33,6 +33,7 @@ import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
 import { Duration, LogText, Notes, StatusIcon, shortRef, standingWord, useJobLog } from "../../components/actions";
 import { Markdown } from "../../components/markdown";
+import { DetailsDisclosure } from "../../components/details-disclosure";
 import { Button, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
@@ -141,7 +142,7 @@ function StepRow({
 }) {
   return (
     <details className="group border-t border-line first:border-t-0" open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2 text-sm hover:bg-raised/40">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2.5 px-3 py-2 text-sm hover:bg-raised/40 sm:min-h-0 sm:px-4">
         <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-open:rotate-90" />
         <StatusIcon status={step.status} conclusion={step.conclusion} size={14} />
         <span className={`min-w-0 truncate ${step.conclusion === "skipped" ? "text-faint" : ""}`}>{step.name}</span>
@@ -698,9 +699,11 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
           {run.name}
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <h2 className="flex min-w-0 items-center gap-2.5 text-xl font-semibold tracking-tight">
-            <StatusIcon status={run.status} conclusion={run.conclusion} size={20} />
-            <span className="min-w-0 truncate">{run.title || run.name}</span>
+          <h2 className="flex min-w-0 items-start gap-2.5 text-xl font-semibold tracking-tight sm:items-center">
+            <span className="mt-1 shrink-0 sm:mt-0">
+              <StatusIcon status={run.status} conclusion={run.conclusion} size={20} />
+            </span>
+            <span className="min-w-0 wrap-break-word sm:truncate">{run.title || run.name}</span>
             <span className="font-normal text-muted">#{run.number}</span>
           </h2>
           <div className="flex flex-wrap items-center gap-2">
@@ -764,10 +767,13 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
         </div>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
           <span>{runWord(run.status, deployments) ?? (cancelling ? "Cancelling" : standingWord(run))}</span>
-          <span className="inline-flex items-center gap-1 font-mono text-xs">
-            <GitBranch size={12} />
-            {shortRef(run.ref)}
-          </span>
+          {/* A pull request's ref is its number, which the link beside it already shows. */}
+          {!(run.pull != null && /^refs\/pull\//.test(run.ref)) && (
+            <span className="inline-flex items-center gap-1 font-mono text-xs">
+              <GitBranch size={12} />
+              {shortRef(run.ref)}
+            </span>
+          )}
           <Link to={`${base}/commit/${run.sha}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
             <GitCommitHorizontal size={12} />
             {run.sha.slice(0, 7)}
@@ -861,13 +867,18 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
 
       {jobs.length > 0 && (
         <div className="grid gap-6 lg:grid-cols-[15rem_1fr]">
+          <DetailsDisclosure
+            label="Jobs"
+            summary={selected ? `${jobs.length} · ${selected.name}` : String(jobs.length)}
+            bodyClassName="space-y-0.5"
+          >
           <nav aria-label="Jobs" className="space-y-0.5 text-sm">
             {jobs.map((job) => (
               <Link
                 key={job.id}
                 to={latest ? `?job=${job.id}` : `?attempt=${run.attempt}&job=${job.id}`}
                 preventScrollReset
-                className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${
+                className={`flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 sm:min-h-0 ${
                   job.id === selected?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"
                 }`}
               >
@@ -877,6 +888,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
               </Link>
             ))}
           </nav>
+          </DetailsDisclosure>
           {/* Run again, a job keeps its id but its log starts afresh. */}
           {selected && (
             <JobView

@@ -17,6 +17,8 @@ import { EMAIL_REASONS, WATCH_CHOICES, WATCH_EVENT_LABEL, emailReasonsFromForm }
 import { page } from "../../lib/meta";
 import { inbox } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
+// Live notifications: pop-ups, browser notifications, sound (services/notify).
+import { LiveNotificationSettings } from "../../components/notifications/settings";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Notifications · Settings · g1t" });
@@ -28,7 +30,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     inbox.settings(user.username).catch(() => null),
     inbox.watched(user.username).catch(() => null),
   ]);
-  return { settings, watched };
+  return { settings, watched, workspaces: user.workspaces ?? [] };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -69,7 +71,7 @@ const LEVEL_LABEL: Record<WatchLevel, string> = Object.fromEntries(WATCH_CHOICES
 >;
 
 export default function NotificationSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { settings, watched } = loaderData;
+  const { settings, watched, workspaces } = loaderData;
   const navigation = useNavigation();
   const said = (intent: string) => (actionData?.intent === intent && navigation.state === "idle" ? actionData : null);
   if (!settings) {
@@ -77,6 +79,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
   }
   return (
     <div className="space-y-10">
+      <LiveNotificationSettings workspaces={workspaces} />
       <section aria-labelledby="email-heading">
         <h2 id="email-heading" className="text-sm font-semibold">
           Email

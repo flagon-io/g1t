@@ -41,6 +41,7 @@ import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/sess
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
 import { useRefreshWhile } from "../../lib/refresh";
+import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -303,9 +304,11 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
   );
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_19rem]">
-      <div className="min-w-0">
-        <h2 className="text-2xl font-semibold tracking-tight text-balance">
+    // On a phone: the title, then the sidebar as a Details disclosure, then
+    // the issue; beside it from lg up.
+    <div className="grid gap-x-8 gap-y-5 lg:grid-cols-[1fr_19rem] lg:grid-rows-[auto_1fr] lg:gap-y-0">
+      <header className="min-w-0 lg:col-start-1">
+        <h2 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
           {issue.title} <span className="font-normal text-faint">#{issue.number}</span>
         </h2>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
@@ -328,11 +331,14 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           ))}
           {open && issue.agent && <Assignee agent={issue.agent} />}
         </div>
+      </header>
+
+      <div className="min-w-0 max-lg:order-1 lg:col-start-1">
 
         {issue.resolvedBy != null && (
           <Link
             to={`${base}/pull/${issue.resolvedBy}`}
-            className="mt-5 flex items-center gap-3 rounded-xl border border-merged/40 bg-merged/5 px-4 py-3 text-sm transition-colors hover:border-merged/70"
+            className="flex lg:mt-5 items-center gap-3 rounded-xl border border-merged/40 bg-merged/5 px-4 py-3 text-sm transition-colors hover:border-merged/70"
           >
             <GitMerge size={18} className="shrink-0 text-merged" />
             <span>
@@ -351,7 +357,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         )}
 
         {issue.body && (
-          <div className="mt-5 rounded-xl border border-line bg-surface p-5">
+          <div className={`${issue.resolvedBy != null ? "mt-5" : "lg:mt-5"} rounded-xl border border-line bg-surface p-4 sm:p-5`}>
             <Markdown source={issue.body} repo={{ namespace: params.owner, name: params.repo }} />
           </div>
         )}
@@ -418,7 +424,14 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         </div>
       </div>
 
-      <aside className="space-y-6">
+      <DetailsDisclosure
+        className="lg:col-start-2 lg:row-span-2 lg:row-start-1"
+        summary={detailsSummary([
+          [issue.assignees.length, "assignee", "assignees"],
+          [issue.labels.length, "label", "labels"],
+          [issue.milestone ? 1 : 0, "milestone", "milestones"],
+        ])}
+      >
         {loaderData.links.length > 0 && (
           <section>
             <h3 className="text-sm font-medium">From outside g1t</h3>
@@ -675,7 +688,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         {viewer && (
           <SubscriptionBox action={`${base}/notifications`} number={issue.number} kind="issue" subscription={loaderData.subscription} />
         )}
-      </aside>
+      </DetailsDisclosure>
     </div>
   );
 }

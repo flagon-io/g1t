@@ -5,10 +5,10 @@ import type { AgentTemplate } from "@g1t/contracts";
 
 import type { Route } from "./+types/new";
 import { AgentForm, TemplateGallery } from "../../../components/agents-mode";
-import { type AgentDraft, BLANK_DRAFT, readAgentForm } from "../../../lib/agent-form";
+import { type AgentDraft, BLANK_DRAFT, cleanHandle, readAgentForm } from "../../../lib/agent-form";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
-import { chat, workspaceAgents } from "../../../lib/services.server";
+import { chat, identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -18,8 +18,11 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const templates = await workspaceAgents.templates().catch(() => null);
-  return { templates };
+  const [templates, teams] = await Promise.all([
+    workspaceAgents.templates().catch(() => null),
+    identity.listTeams(viewer, params.owner).catch(() => null),
+  ]);
+  return { templates, teams: teams?.ok ? teams.value.map((team) => ({ slug: team.slug, name: team.name })) : [] };
 }
 
 /**
@@ -43,11 +46,23 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   throw redirect(dm?.ok ? channelPath(slug, dm.value) : `/${slug}/-/agents/${made.value.handle}`);
 }
 
+/** A template's suggested names (`name_ideas`), when the agents service sends them. */
+function ideasOf(template: AgentTemplate | undefined): string[] {
+  if (!template) return [];
+  return [template.display_name, ...(template.name_ideas ?? []).filter((name) => name !== template.display_name)];
+}
+
 function draftFrom(template: AgentTemplate): AgentDraft {
+  // A name to enjoy first, its handle after it; the template's own name when it has none.
+  const name = ideasOf(template)[0] ?? template.display_name;
   return {
     ...BLANK_DRAFT,
-    handle: template.handle,
-    display_name: template.display_name,
+    handle: cleanHandle(name),
+    display_name: name,
+    title: template.title,
+    department: template.department,
+    responsibilities: template.responsibilities,
+    subagents: template.subagents,
     role: template.role,
     instructions: template.instructions,
     personality_preset: template.personality_preset,
@@ -72,7 +87,7 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
       <header className="mt-4 mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">New agent</h1>
         <p className="mt-1.5 max-w-2xl text-sm text-muted">
-          A teammate with a name, a job, a voice and a budget. Start from one of g1t's roles and make it yours, or from nothing. Once it's made, you'll be in a direct message with it.
+          Hire a colleague into a role: a name, a title, a team and what it is responsible for. Start from one of these roles and make it yours, or from nothing. Once it is hired, you will be in a direct message with it.
         </p>
       </header>
       {loaderData.templates == null && (
@@ -88,7 +103,7 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
       {draft ? (
         <div className="mt-10 border-t border-line pt-10">
           {errors?.form && <p className="mb-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{errors.form}</p>}
-          <AgentForm draft={draft} errors={errors} submit="Create agent" intent="create" formKey={chosen ?? "blank"} />
+          <AgentForm draft={draft} errors={errors} submit="Create agent" intent="create" formKey={chosen ?? "blank"} nameIdeas={ideasOf(template)} teams={loaderData.teams} />
         </div>
       ) : (
         <p className="mt-6 text-sm text-faint">Choose a starting point to see its settings.</p>

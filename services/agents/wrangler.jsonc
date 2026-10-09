@@ -26,8 +26,14 @@
 	"services": [
 		// Reading the conversation, typing, and posting replies as the agent.
 		{ "binding": "CHAT", "service": "g1t-chat" },
-		// Workspaces by slug.
+		// Workspaces by slug; for read tools, the audience's people with
+		// their access (users_for_audience), members and teams.
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
+		// Read tools, always after the audience check (src/audience.ts):
+		// files, issues and pull requests, and code search.
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		{ "binding": "WORK", "service": "g1t-work" },
+		{ "binding": "SEARCH", "service": "g1t-search" },
 		// The compute gate (reserve, settle), runs (start_run, finish_run),
 		// the price book and staff's model defaults.
 		{ "binding": "BILLING", "service": "g1t-billing" },

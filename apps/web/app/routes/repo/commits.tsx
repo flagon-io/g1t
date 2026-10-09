@@ -77,8 +77,8 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                     <CommitAvatars commit={commit} size={24} />
                   </span>
                   <div className="min-w-0 grow">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <Link to={to} prefetch="intent" className="truncate font-medium after:absolute after:inset-0 group-hover:text-accent">
+                    <div className="flex min-w-0 items-start gap-1.5 sm:items-center">
+                      <Link to={to} prefetch="intent" className="line-clamp-2 font-medium wrap-break-word after:absolute after:inset-0 group-hover:text-accent sm:line-clamp-1">
                         {subject}
                       </Link>
                       <CommitChecksBadge checks={checks} sha={commit.hash} />

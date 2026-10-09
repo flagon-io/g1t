@@ -45,7 +45,7 @@ export function NotFound({ data }: { data?: unknown }) {
         ) : workspace ? (
           <ButtonLink to={`/${workspace.slug}`}>Go to {workspace.name?.trim() || workspace.slug}</ButtonLink>
         ) : user ? (
-          <ButtonLink to="/">Go to Mission control</ButtonLink>
+          <ButtonLink to="/">Go home</ButtonLink>
         ) : null}
         <ButtonLink to="/explore" variant="quiet">
           {user ? "Explore" : "Explore public projects"}

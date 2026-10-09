@@ -1,5 +1,8 @@
 import {
-  ArrowLeft,
+  ChevronLeft,
+  Copy,
+  Pencil,
+  Trash2,
   BellOff,
   CircleDot,
   GitPullRequest,
@@ -25,12 +28,22 @@ import { useChatData, useChatSend, useChatSidebar } from "./actions";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
 import { AgentPill, MemberAvatar } from "./marks";
+import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
+import { Avatar } from "../ui";
+import { localTime } from "../../lib/time-zone";
+import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Hint } from "../ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { type Mentionable, type ShownMessage, mergeMessages, shownName, timeline } from "../../lib/chat";
 import { codeAccessPath } from "../../lib/workspace-nav";
+import { conversationCache } from "./conversation-cache";
+// Reactions and the workspace's own emoji (components/emoji).
+import { EmojiProvider, useCustomEmoji } from "../emoji/context";
+import { AddReaction, QuickReactions, ReactionBar } from "../emoji/reaction-bar";
+import { useAddresses } from "../../lib/addresses";
+import { applyReactionEvent, keepMine, toggleReaction } from "../../lib/emoji";
 import type { ChannelData } from "../../routes/workspace/chat/channel";
 
 type Loaded = Extract<ChannelData, { unavailable: false }>;
@@ -84,7 +97,36 @@ export function ChannelView({ data }: { data: Loaded }) {
   const [typing, setTyping] = useState<Map<string, { member: MemberProfile; until: number }>>(new Map());
   const [joined, setJoined] = useState(data.joined);
   const [members, setMembers] = useState<ChannelMember[]>(data.members);
+  // The server's answer behind a cached draw: merged in by id.
+  useEffect(() => {
+    const onFresh = (event: Event) => {
+      const { key, value } = (event as CustomEvent<{ key: string; value: ChannelData }>).detail;
+      if (key !== window.location.pathname || value.unavailable || value.channel.id !== data.channel.id) return;
+      setMessages((now) => mergeMessages(now, value.messages));
+      setMembers(value.members);
+      setJoined(value.joined);
+    };
+    window.addEventListener("g1t:chat-fresh", onFresh);
+    return () => window.removeEventListener("g1t:chat-fresh", onFresh);
+  }, [data.channel.id]);
+  // The cache follows what is on screen, so coming back shows the latest.
+  useEffect(() => {
+    const path = window.location.pathname;
+    const timer = setTimeout(
+      () => conversationCache.set(path, { ...data, messages: messages.filter((m) => !m.pending).slice(-80), members, joined }),
+      400,
+    );
+    return () => clearTimeout(timer);
+  }, [data, messages, members, joined]);
   const [info, setInfo] = useState(false);
+  // A phone: back to the list, by the chevron or a swipe from the edge;
+  // and a long-pressed message's actions.
+  const back = useBack(`/${chatData?.slug ?? ""}/-/chat`);
+  const swipe = useSwipeBack(back);
+  const [actions, setActions] = useState<ShownMessage | null>(null);
+  // Someone's profile, opened from their card, beside the conversation.
+  const [profile, setProfile] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -200,11 +242,11 @@ export function ChannelView({ data }: { data: Loaded }) {
         const message = event.message;
         if (message.channel_id !== data.channel.id) return;
         if (message.thread_root) {
-          if (message.thread_root === threadId) setThread((now) => (now ? mergeMessages(now, [message]) : now));
+          if (message.thread_root === threadId) setThread((now) => (now ? mergeMessages(now, [keepMine(now, message)]) : now));
           if (event.type === "message.created") countReply(message.thread_root, message.id, message.created_at);
         } else {
           if (event.type === "message.updated") serverCounted.current.add(message.id);
-          setMessages((now) => mergeMessages(now, [message]));
+          setMessages((now) => mergeMessages(now, [keepMine(now, message)]));
         }
         // Whoever just spoke is no longer typing.
         setTyping((now) => {
@@ -219,6 +261,10 @@ export function ChannelView({ data }: { data: Loaded }) {
         const gone = (m: ShownMessage) => (m.id === event.id ? { ...m, deleted_at: new Date().toISOString() } : m);
         setMessages((now) => now.map(gone));
         setThread((now) => now?.map(gone) ?? now);
+      } else if (event.type === "reaction.added" || event.type === "reaction.removed") {
+        if (event.channel_id !== data.channel.id) return;
+        setMessages((now) => applyReactionEvent(now, event, me?.id ?? null));
+        setThread((now) => (now ? applyReactionEvent(now, event, me?.id ?? null) : now));
       } else if (event.type === "typing") {
         if (event.channel_id !== data.channel.id) return;
         if (event.member.kind === "user" && event.member.id === me?.id) return;
@@ -319,6 +365,44 @@ export function ChannelView({ data }: { data: Loaded }) {
     },
     [me, send, data.channel.id, countReply],
   );
+  // ── Reactions (components/emoji): shown at once, then as the service counts them.
+  const customs = useCustomEmoji(slug);
+  const { usercontent } = useAddresses();
+  const meProfile = useMemo<MemberProfile | null>(
+    () => (me ? { kind: "user", id: me.id, name: me.username, display_name: me.username, avatar: me.avatar, role: null } : null),
+    [me],
+  );
+  const react = useCallback(
+    async (messageId: string, emoji: string, on: boolean) => {
+      if (!meProfile) return;
+      const change = (to: boolean) => (list: ShownMessage[]) =>
+        list.map((m) => (m.id === messageId ? { ...m, reactions: toggleReaction(m.reactions ?? [], emoji, to, meProfile) } : m));
+      setMessages(change(on));
+      setThread((now) => (now ? change(on)(now) : now));
+      try {
+        const response = await fetch(`/${slug}/-/chat/api`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ intent: on ? "react" : "unreact", channel_id: data.channel.id, message_id: messageId, emoji }),
+        });
+        const result = (await response.json()) as Result<ChatMessage["reactions"]>;
+        if (!result.ok) throw new Error(result.error.message);
+        const settle = (list: ShownMessage[]) => list.map((m) => (m.id === messageId ? { ...m, reactions: result.value } : m));
+        setMessages(settle);
+        setThread((now) => (now ? settle(now) : now));
+      } catch {
+        // Not saved: back as it was.
+        setMessages(change(!on));
+        setThread((now) => (now ? change(!on)(now) : now));
+      }
+    },
+    [meProfile, slug, data.channel.id],
+  );
+  const emojiContext = useMemo(
+    () => ({ customs, usercontent, me: meProfile, react: (id: string, emoji: string, on: boolean) => void react(id, emoji, on), manageHref: `/${slug}/-/emoji` }),
+    [customs, usercontent, meProfile, react, slug],
+  );
+
   const retry = (message: ShownMessage) => {
     const drop = (list: ShownMessage[]) => list.filter((m) => m.client_id !== message.client_id);
     if (message.thread_root) setThread((now) => (now ? drop(now) : now));
@@ -387,11 +471,31 @@ export function ChannelView({ data }: { data: Loaded }) {
     ? `Message ${others.map(shownName).join(", ") || "yourself"}`
     : `Message #${name}. @ a teammate or an agent`;
   const rootMessage = threadId ? messages.find((m) => m.id === threadId) ?? null : null;
+  const cardContext = useMemo(
+    () => ({
+      slug,
+      agents: chatData?.agents ?? [],
+      onViewProfile: (username: string) => {
+        if (threadId) openThread(null);
+        setProfile(username);
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slug, chatData?.agents, threadId],
+  );
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 lg:h-dvh">
+    // On a phone the conversation is the whole screen, as tall as what the
+    // keyboard leaves (components/mobile.tsx), so the composer sits on it.
+    <EmojiProvider value={emojiContext}>
+    <CardContext.Provider value={cardContext}>
+    <div
+      {...swipe}
+      className="flex h-[calc(100dvh-3.5rem)] min-h-0 lg:h-dvh max-md:fixed max-md:inset-x-0 max-md:top-(--vv-top,0px) max-md:z-30 max-md:h-(--vv-height,100dvh) max-md:bg-bg"
+    >
       <section aria-label={data.title} className="flex min-w-0 grow flex-col">
         <ChannelHeader
+          onBack={back}
           data={data}
           others={others}
           starred={starred}
@@ -438,13 +542,14 @@ export function ChannelView({ data }: { data: Loaded }) {
                   slug={slug}
                   onThread={() => openThread(row.message.id)}
                   onRetry={() => retry(row.message)}
+                  onLongPress={() => setActions(row.message)}
                   threadOpen={row.message.id === threadId}
                 />
               ),
             )}
           </div>
         </div>
-        <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4">
+        <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
           <div className="mx-auto max-w-[56rem]">
             <TypingLine members={typers} />
             {joined ? (
@@ -482,6 +587,10 @@ export function ChannelView({ data }: { data: Loaded }) {
             draftKey={`${data.channel.id}:${threadId}`}
           />
         </SidePanel>
+      ) : profile ? (
+        <SidePanel title="Profile" onClose={() => setProfile(null)}>
+          <ProfilePanel slug={slug} username={profile} messages={messages} zone={zone} context={context} />
+        </SidePanel>
       ) : (
         info && (
           <SidePanel title={isDm ? "Details" : "About this channel"} onClose={toggleInfo}>
@@ -489,12 +598,64 @@ export function ChannelView({ data }: { data: Loaded }) {
           </SidePanel>
         )
       )}
+      <MessageActions
+        message={actions}
+        mine={actions != null && actions.author.kind === "user" && actions.author.id === me?.id}
+        onClose={() => setActions(null)}
+        onThread={(id) => openThread(id)}
+        onEdit={(message) => setEditing({ id: message.id, body: message.body })}
+        onDelete={async (message) => {
+          // Gone at once; back if the service refuses.
+          setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: new Date().toISOString() } : m)));
+          const done = await send({ intent: "remove", channel_id: data.channel.id, id: message.id });
+          if (!done.ok) setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: null } : m)));
+        }}
+      />
+      <BottomSheet open={editing != null} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
+        {editing && (
+          <form
+            className="space-y-3 px-1 pt-1"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const body = editing.body.trim();
+              if (!body) return;
+              // Shown edited at once; put back if the service refuses.
+              const before = messages.find((m) => m.id === editing.id);
+              setMessages((now) => now.map((m) => (m.id === editing.id ? { ...m, body, edited_at: new Date().toISOString() } : m)));
+              setEditing(null);
+              const saved = await send<ChatMessage>({ intent: "edit", channel_id: data.channel.id, id: editing.id, body });
+              if (saved.ok) setMessages((now) => mergeMessages(now, [saved.value]));
+              else if (before) setMessages((now) => now.map((m) => (m.id === before.id ? before : m)));
+            }}
+          >
+            <h2 className="px-2 text-base font-semibold">Edit message</h2>
+            <textarea
+              autoFocus
+              value={editing.body}
+              onChange={(event) => setEditing({ ...editing, body: event.target.value })}
+              rows={4}
+              className="block w-full resize-none rounded-xl border border-line-strong bg-bg px-3.5 py-3 text-base text-fg outline-none focus:border-accent/40"
+            />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setEditing(null)} className="h-11 grow rounded-xl border border-line text-[0.9375rem] font-medium active:bg-raised">
+                Cancel
+              </button>
+              <button type="submit" className="h-11 grow rounded-xl bg-accent text-[0.9375rem] font-medium text-bg active:bg-accent-hover">
+                Save
+              </button>
+            </div>
+          </form>
+        )}
+      </BottomSheet>
     </div>
+    </CardContext.Provider>
+    </EmojiProvider>
   );
 }
 
 /** The top of a conversation: what it is, and its controls. */
 function ChannelHeader({
+  onBack,
   data,
   others,
   starred,
@@ -505,6 +666,8 @@ function ChannelHeader({
   onStar,
   onInfo,
 }: {
+  /** A phone: back to the list of conversations. */
+  onBack: () => void;
   data: Loaded;
   others: MemberProfile[];
   starred: boolean;
@@ -518,7 +681,15 @@ function ChannelHeader({
   const channel = data.channel;
   const agentDm = channel.kind === "dm" && others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Back to conversations"
+        className="flex size-10 shrink-0 items-center justify-center rounded-full text-muted active:bg-raised md:hidden"
+      >
+        <ChevronLeft size={22} />
+      </button>
       <div className="flex min-w-0 grow items-center gap-2.5">
         {channel.kind === "channel" ? (
           <>
@@ -555,7 +726,9 @@ function ChannelHeader({
                 <span className="truncate">{others.map(shownName).join(", ") || "Just you"}</span>
                 {agentDm && <AgentPill />}
               </h1>
-              {agentDm?.role && <p className="truncate text-xs leading-tight text-muted">{agentDm.role}</p>}
+              {agentDm && (titleOf(agentDm) ?? agentDm.role) && (
+                <p className="truncate text-xs leading-tight text-muted">{titleOf(agentDm) ?? agentDm.role}</p>
+              )}
             </div>
             <StarButton starred={starred} onClick={onStar} />
           </>
@@ -726,6 +899,192 @@ function cardHref(card: MessageCard, slug: string, code: boolean): string | null
 }
 
 /** One message: with its author's name and avatar when it starts a group. */
+/**
+ * Someone's profile beside the conversation, opened from their card: who
+ * they are, their teams and local time, and what they said here lately.
+ * The conversation stays where it was.
+ */
+function ProfilePanel({
+  slug,
+  username,
+  messages,
+  zone,
+  context,
+}: {
+  slug: string;
+  username: string;
+  messages: ShownMessage[];
+  zone: string | undefined;
+  context: TextContext;
+}) {
+  const [card, setCard] = useState<PersonCard | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    setCard(undefined);
+    void personCard(slug, username).then((value) => {
+      if (live) setCard(value);
+    });
+    return () => {
+      live = false;
+    };
+  }, [slug, username]);
+  const theirs = messages
+    .filter((m) => m.author.kind === "user" && m.author.name === username && !m.deleted_at && m.body)
+    .slice(-5)
+    .reverse();
+  const time = card ? localTime(card.timezone, Date.now()) : null;
+  return (
+    <div className="min-h-0 grow overflow-y-auto p-5 [scrollbar-width:thin]">
+      <Avatar name={username} image={card?.avatar ?? null} size={88} />
+      <h3 className="mt-3 text-xl font-semibold tracking-tight">{card?.name?.trim() || username}</h3>
+      <p className="font-mono text-sm text-muted">
+        @{username}
+        {card?.pronouns ? <span className="font-sans"> · {card.pronouns}</span> : null}
+      </p>
+      {card?.bio && <p className="mt-3 text-sm leading-relaxed text-fg-soft">{card.bio}</p>}
+      <dl className="mt-4 space-y-2 text-sm">
+        {card && card.teams.length > 0 && (
+          <div className="flex gap-3">
+            <dt className="w-20 shrink-0 text-faint">Teams</dt>
+            <dd className="text-fg-soft">{card.teams.map((team) => team.name).join(", ")}</dd>
+          </div>
+        )}
+        {time && (
+          <div className="flex gap-3">
+            <dt className="w-20 shrink-0 text-faint">Local time</dt>
+            <dd className="text-fg-soft" suppressHydrationWarning>
+              {time}
+            </dd>
+          </div>
+        )}
+        {card?.location && (
+          <div className="flex gap-3">
+            <dt className="w-20 shrink-0 text-faint">Location</dt>
+            <dd className="text-fg-soft">{card.location}</dd>
+          </div>
+        )}
+        {card && card.workspaces.length > 0 && (
+          <div className="flex gap-3">
+            <dt className="w-20 shrink-0 text-faint">Workspaces</dt>
+            <dd className="text-fg-soft">{card.workspaces.map((w) => w.name).join(", ")}</dd>
+          </div>
+        )}
+      </dl>
+      <h4 className="mt-6 mb-2 text-xs font-medium text-faint">Lately in this conversation</h4>
+      {theirs.length === 0 ? (
+        <p className="text-sm text-muted">Nothing here yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {theirs.map((m) => (
+            <li key={m.id} className="rounded-lg border border-line bg-surface px-3 py-2.5">
+              <p className="mb-1 text-[0.6875rem] text-faint" suppressHydrationWarning>
+                {clock(m.created_at, zone)}
+              </p>
+              <div className="line-clamp-4 text-sm">
+                <MessageText body={m.body} context={context} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Link to={`/u/${username}`} className="mt-6 inline-block text-sm text-accent hover:underline">
+        Open their full profile
+      </Link>
+    </div>
+  );
+}
+
+/** An agent's title ("QA Engineer"), when the chat service sends it with the member. */
+function titleOf(member: MemberProfile): string | null {
+  return (member as MemberProfile & { title?: string | null }).title ?? null;
+}
+
+/** A long press (half a second, without moving) on a touch screen. */
+function useLongPress(onLongPress?: () => void) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  if (!onLongPress) return {};
+  return {
+    onTouchStart: () => {
+      cancel();
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(8);
+        onLongPress();
+      }, 480);
+    },
+    onTouchMove: cancel,
+    onTouchEnd: cancel,
+    onTouchCancel: cancel,
+    onContextMenu: (event: React.MouseEvent) => {
+      // A phone's own long-press menu (copy, look up) would cover ours.
+      if (window.matchMedia("(pointer: coarse)").matches) event.preventDefault();
+    },
+  };
+}
+
+/** A long-pressed message's actions, in a sheet from the bottom: reply, copy, and for your own, edit and delete. */
+function MessageActions({
+  message,
+  mine,
+  onClose,
+  onThread,
+  onEdit,
+  onDelete,
+}: {
+  message: ShownMessage | null;
+  mine: boolean;
+  onClose: () => void;
+  onThread: (id: string) => void;
+  onEdit: (message: ShownMessage) => void;
+  onDelete: (message: ShownMessage) => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  useEffect(() => setConfirm(false), [message]);
+  const act = (run: () => void) => () => {
+    run();
+    onClose();
+  };
+  return (
+    <BottomSheet open={message != null} onOpenChange={(open) => !open && onClose()} title="Message actions">
+      {message && (
+        <>
+          <p className="mt-1 mb-2 line-clamp-2 px-3 text-sm text-muted">
+            <span className="font-medium text-fg-soft">{shownName(message.author)}:</span> {message.body || message.card?.title}
+          </p>
+          {!message.pending && <QuickReactions messageId={message.id} onDone={onClose} />}
+          {!message.thread_root && (
+            <SheetRow icon={<MessageSquareText />} onClick={act(() => onThread(message.id))}>
+              Reply in thread
+            </SheetRow>
+          )}
+          <SheetRow icon={<Copy />} onClick={act(() => void navigator.clipboard?.writeText(message.body || message.card?.title || ""))}>
+            Copy text
+          </SheetRow>
+          {mine && message.kind === "text" && (
+            <SheetRow icon={<Pencil />} onClick={act(() => onEdit(message))}>
+              Edit
+            </SheetRow>
+          )}
+          {mine &&
+            (confirm ? (
+              <SheetRow icon={<Trash2 className="text-danger" />} onClick={act(() => onDelete(message))}>
+                <span className="text-danger">Delete for everyone</span>
+              </SheetRow>
+            ) : (
+              <SheetRow icon={<Trash2 />} onClick={() => setConfirm(true)}>
+                Delete
+              </SheetRow>
+            ))}
+        </>
+      )}
+    </BottomSheet>
+  );
+}
+
 function MessageRow({
   message,
   head,
@@ -735,9 +1094,12 @@ function MessageRow({
   slug,
   onThread,
   onRetry,
+  onLongPress,
   threadOpen,
   inThread,
 }: {
+  /** A phone: a long press opens the message's actions. */
+  onLongPress?: () => void;
   message: ShownMessage;
   head: boolean;
   zone: string | undefined;
@@ -751,19 +1113,20 @@ function MessageRow({
 }) {
   const author = message.author;
   const time = clock(message.created_at, zone);
-  const profile = author.kind === "agent" ? `/${slug}/-/agents/${author.name}` : `/u/${author.name}`;
+  const press = useLongPress(onLongPress);
   return (
     <article
+      {...press}
       aria-label={`${shownName(author)}, ${time}`}
-      className={`group/message relative flex gap-3 rounded-lg px-2 transition-colors hover:bg-surface/70 sm:px-3 ${head ? "mt-3 pt-1 pb-1" : "py-0.5"} ${
+      className={`group/message relative flex gap-3 rounded-lg px-2 transition-colors hover:bg-surface/70 sm:px-3 max-md:min-h-11 max-md:[-webkit-touch-callout:none] max-md:active:bg-surface/70 ${head ? "mt-3 pt-1 pb-1" : "py-0.5"} ${
         threadOpen ? "bg-accent/[0.06] hover:bg-accent/[0.08]" : ""
       }`}
     >
       <div className="w-9 shrink-0">
         {head ? (
-          <Link to={profile} tabIndex={-1} aria-hidden="true" className="mt-0.5 block">
+          <MemberCard member={author} className="mt-0.5 block rounded-full" label={`${shownName(author)}'s card`}>
             <MemberAvatar member={author} size={36} />
-          </Link>
+          </MemberCard>
         ) : (
           <time
             dateTime={message.created_at}
@@ -777,9 +1140,9 @@ function MessageRow({
       <div className="min-w-0 grow">
         {head && (
           <div className="flex items-baseline gap-2">
-            <Link to={profile} className="truncate text-[0.9375rem] font-semibold text-fg hover:underline">
+            <MemberCard member={author} className="truncate text-[0.9375rem] font-semibold text-fg hover:underline">
               {shownName(author)}
-            </Link>
+            </MemberCard>
             {author.kind === "agent" && <AgentPill className="self-center" />}
             <time dateTime={message.created_at} suppressHydrationWarning className="shrink-0 text-xs text-faint tabular-nums">
               {time}
@@ -791,6 +1154,7 @@ function MessageRow({
           {message.card && <CardBox card={message.card} href={cardHref(message.card, slug, code)} />}
           {message.edited_at && <span className="text-[0.6875rem] text-faint"> (edited)</span>}
         </div>
+        {!message.pending && !message.deleted_at && <ReactionBar messageId={message.id} reactions={message.reactions} />}
         {message.failed && (
           <p className="mt-0.5 text-xs text-danger">
             Not sent.{" "}
@@ -816,7 +1180,8 @@ function MessageRow({
         )}
       </div>
       {!inThread && onThread && !message.pending && (
-        <div className="absolute -top-3 right-3 hidden rounded-lg border border-line bg-surface p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex">
+        <div className="absolute -top-3 right-3 hidden rounded-lg border border-line bg-surface p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-[[data-state=open]]:flex">
+          <AddReaction messageId={message.id} />
           <Hint label="Reply in thread">
             <button
               type="button"
@@ -834,6 +1199,15 @@ function MessageRow({
 }
 
 /** "reviewer is typing…", for whoever is. */
+/** What an agent working on a reply says it is doing: one phrase per agent, so each sounds like itself. */
+const AGENT_DOING = ["is reading the thread", "is thinking it through", "is looking into it", "is reading the diff", "is checking the details", "is drafting a reply"];
+
+function agentDoing(id: string): string {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return AGENT_DOING[Math.abs(hash) % AGENT_DOING.length]!;
+}
+
 function TypingLine({ members }: { members: MemberProfile[] }) {
   const names = members.map(shownName);
   const who = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : names.length > 2 ? "Several people" : "";
@@ -847,7 +1221,8 @@ function TypingLine({ members }: { members: MemberProfile[] }) {
             ))}
           </span>
           <span>
-            <span className="font-medium text-fg-soft">{who}</span> {names.length === 1 ? "is" : "are"} typing…
+            <span className="font-medium text-fg-soft">{who}</span>{" "}
+            {names.length === 1 ? (members[0]!.kind === "agent" ? agentDoing(members[0]!.id) : "is typing") : "are typing"}…
           </span>
         </>
       )}
@@ -855,16 +1230,22 @@ function TypingLine({ members }: { members: MemberProfile[] }) {
   );
 }
 
-/** A panel beside the conversation: a thread, or the details. Over everything on a phone. */
+/**
+ * A panel beside the conversation: a thread, or the details. On a phone it
+ * is a screen of its own, pushed over the conversation, as tall as what
+ * the keyboard leaves.
+ */
 function SidePanel({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode }) {
+  const swipe = useSwipeBack(onClose);
   return (
     <aside
+      {...swipe}
       aria-label={title}
-      className="fixed inset-0 z-40 flex flex-col bg-bg lg:static lg:z-auto lg:w-[22rem] lg:shrink-0 lg:border-l lg:border-line xl:w-[24rem]"
+      className="fixed inset-0 z-40 flex flex-col bg-bg lg:static lg:z-auto lg:w-[22rem] lg:shrink-0 lg:border-l lg:border-line xl:w-[24rem] max-md:top-(--vv-top,0px) max-md:bottom-auto max-md:h-(--vv-height,100dvh) max-md:pb-[env(safe-area-inset-bottom)]"
     >
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4">
-        <button type="button" onClick={onClose} aria-label="Back" className="-ml-1 rounded-md p-1 text-muted hover:bg-raised hover:text-fg lg:hidden">
-          <ArrowLeft size={16} />
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
+        <button type="button" onClick={onClose} aria-label="Back" className="flex size-10 items-center justify-center rounded-full text-muted active:bg-raised lg:hidden">
+          <ChevronLeft size={22} />
         </button>
         <h2 className="text-[0.9375rem] font-semibold">{title}</h2>
         {subtitle && <span className="truncate text-sm text-faint">{subtitle}</span>}
@@ -977,13 +1358,13 @@ function InfoPanel({
           <div className="flex flex-wrap gap-1.5">
             {agents.map(({ member }) => (
               <Hint key={member.id} label={member.role ?? undefined}>
-                <Link
-                  to={`/${slug}/-/agents/${member.name}`}
+                <MemberCard
+                  member={member}
                   className="flex h-7 items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 pr-2.5 pl-1 text-[0.8125rem] font-medium text-accent transition-colors hover:bg-accent/15"
                 >
                   <MemberAvatar member={member} size={20} />
                   {shownName(member)}
-                </Link>
+                </MemberCard>
               </Hint>
             ))}
           </div>
@@ -997,14 +1378,14 @@ function InfoPanel({
         <ul className="space-y-px">
           {humans.map(({ member, role }) => (
             <li key={member.id}>
-              <Link to={`/u/${member.name}`} className="flex items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-raised/60">
+              <MemberCard member={member} className="flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-raised/60 max-md:min-h-11">
                 <MemberAvatar member={member} size={26} />
                 <span className="min-w-0 grow truncate text-sm">
                   {shownName(member)}
                   {member.display_name !== member.name && <span className="ml-1.5 text-faint">@{member.name}</span>}
                 </span>
                 {role === "owner" && <span className="text-[0.6875rem] text-faint">Owner</span>}
-              </Link>
+              </MemberCard>
             </li>
           ))}
         </ul>

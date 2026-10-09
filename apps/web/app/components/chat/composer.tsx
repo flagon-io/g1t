@@ -1,8 +1,11 @@
-import { ArrowUp, AtSign } from "lucide-react";
+import { ArrowUp, AtSign, Smile } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { AgentPill, MemberAvatar } from "./marks";
 import { Hint } from "../ui/hint";
+// `:shortcode` completion and the emoji picker (components/emoji).
+import { useEmojiAutocomplete } from "../emoji/autocomplete";
+import { EmojiPickerPopover } from "../emoji/picker";
 import { type MentionQuery, type Mentionable, mentionQuery } from "../../lib/chat";
 
 /** How tall the box grows before it scrolls. */
@@ -38,6 +41,7 @@ export function Composer({
   const [match, setMatch] = useState<MentionQuery | null>(null);
   const [active, setActive] = useState(0);
   const list = useId();
+  const emoji = useEmojiAutocomplete({ box, setText });
 
   // The draft for this conversation, if one was left.
   useEffect(() => {
@@ -67,6 +71,7 @@ export function Composer({
   const look = () => {
     const element = box.current;
     if (!element) return;
+    emoji.look();
     setMatch(element.selectionStart === element.selectionEnd ? mentionQuery(element.value, element.selectionStart, people) : null);
     setActive(0);
   };
@@ -94,6 +99,7 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (emoji.onKeyDown(event)) return;
     if (match) {
       const count = match.options.length;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -122,6 +128,7 @@ export function Composer({
   const open = match != null;
   return (
     <div className="relative">
+      {emoji.menu}
       {match && (
         <ul
           id={list}
@@ -176,7 +183,12 @@ export function Composer({
           onInput={look}
           onClick={look}
           onKeyDown={onKeyDown}
-          onBlur={() => setTimeout(() => setMatch(null), 150)}
+          onBlur={() =>
+            setTimeout(() => {
+              setMatch(null);
+              emoji.dismiss();
+            }, 150)
+          }
           className={`block w-full resize-none bg-transparent px-3.5 text-[0.9375rem] leading-6 text-fg outline-none placeholder:text-faint ${compact ? "pt-2.5 pb-1" : "pt-3 pb-1.5"}`}
         />
         <div className="flex items-center gap-1 px-2 pb-2">
@@ -204,6 +216,32 @@ export function Composer({
               <AtSign size={15} />
             </button>
           </Hint>
+          <EmojiPickerPopover
+            side="top"
+            align="start"
+            onPick={(picked) => {
+              const element = box.current;
+              const at = element?.selectionStart ?? text.length;
+              const end = element?.selectionEnd ?? at;
+              const next = `${text.slice(0, at)}${picked}${text.slice(end)}`;
+              setText(next);
+              requestAnimationFrame(() => {
+                element?.focus();
+                element?.setSelectionRange(at + picked.length, at + picked.length);
+              });
+            }}
+          >
+            <Hint label="Add an emoji">
+              <button
+                type="button"
+                aria-label="Add an emoji"
+                disabled={disabled}
+                className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+              >
+                <Smile size={15} />
+              </button>
+            </Hint>
+          </EmojiPickerPopover>
           <span className="ml-1 hidden text-[0.6875rem] text-faint sm:inline">
             <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for a new line
           </span>

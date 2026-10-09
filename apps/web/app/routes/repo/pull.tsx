@@ -49,6 +49,7 @@ import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
+import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 import { LifecyclePanel } from "../../components/lifecycle";
 import { AgentPanel } from "../../components/agents";
 import { BaseBranch } from "../../components/base-branch";
@@ -524,7 +525,7 @@ function TabLink({
       preventScrollReset
       aria-current={active ? "page" : undefined}
       className={
-        "-mb-px flex items-center gap-2 border-b-2 px-3 pb-2.5 text-sm whitespace-nowrap transition-colors " +
+        "-mb-px flex min-h-11 items-center gap-2 border-b-2 px-2.5 pb-2.5 text-sm whitespace-nowrap transition-colors sm:min-h-0 sm:px-3 [&>svg]:hidden sm:[&>svg]:block " +
         (active
           ? "border-accent font-medium text-fg"
           : "border-transparent text-muted hover:text-fg")
@@ -811,7 +812,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       {/* The title and the tabs run the full width; what is happening on
           the pull request sits at the top of Conversation. */}
       <header>
-        <h2 className="text-2xl font-semibold tracking-tight text-balance">
+        <h2 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
           {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
         </h2>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
@@ -902,7 +903,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           )}
         </TabStrip>
       </header>
-      <div className={`mt-6 grid gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
+      <div className={`mt-6 grid gap-6 lg:gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
         <div className="min-w-0">
           {/* What is happening on it now: its stage, its agent, what people told
               the agent, and what else touches the same files. On the conversation,
@@ -1390,7 +1391,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                             labelClassName="text-xs text-muted"
                           />
                         )}
-                        <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 *:w-full sm:*:w-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:justify-center sm:[&_button]:min-h-0 sm:[&_button]:w-auto">
                           <Hint label={mergeBlocked} disabled={mergeBlocked != null}>
                             <SubmitButton
                               variant="accent"
@@ -1457,7 +1458,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           </div>
         </div>
 
-        <aside className={tab === "changes" ? "hidden" : "space-y-6"}>
+        <DetailsDisclosure
+          className={tab === "changes" ? "hidden" : "order-first lg:order-none"}
+          summary={detailsSummary([
+            [reviewerNames.length + teamReviewers.length, "reviewer", "reviewers"],
+            [pull.assignees.length, "assignee", "assignees"],
+            [(pull.labels ?? []).length, "label", "labels"],
+          ])}
+        >
           {/* Other than a draft, a pull request shows its checks in full in the conversation. */}
           {pull.status === "draft" && <WorkflowStatuses statuses={statuses} />}
           {affects.length > 0 && (
@@ -1706,7 +1714,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           {loaderData.viewer && (
             <SubscriptionBox action={`${base}/notifications`} number={pull.number} kind="pull" subscription={loaderData.subscription} />
           )}
-        </aside>
+        </DetailsDisclosure>
       </div>
     </div>
   );

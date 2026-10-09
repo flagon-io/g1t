@@ -4,13 +4,16 @@ import { useFetcher, useNavigate, useRouteLoaderData } from "react-router";
 
 import type { ChatSidebar, Result } from "@g1t/contracts";
 
-import { AgentMark, AgentPill } from "./marks";
+import { AgentPill } from "./marks";
+import { AgentAvatar } from "../agent-avatar";
 import { Avatar } from "../ui";
 import { Hint } from "../ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Switch } from "../ui/switch";
 import { channelName } from "../../lib/chat";
 import type { ChatLayoutData } from "../../routes/workspace/chat/layout";
+import { useLiveCounts } from "../../lib/notify-client";
+import { overlayEntries, unlisted } from "../../lib/notify-store";
 
 /** Chat mode's data, while a chat page is open; undefined elsewhere. */
 export function useChatData(): ChatLayoutData | undefined {
@@ -39,14 +42,20 @@ export function useChatSidebar(): { sidebar: ChatSidebar | null; refresh: () => 
     window.addEventListener("g1t:chat-read", onRead);
     return () => window.removeEventListener("g1t:chat-read", onRead);
   }, []);
-  useEffect(() => setRead(new Set()), [sidebar]);
-  const shown = useMemo(
-    () =>
-      sidebar && read.size > 0
-        ? { ...sidebar, entries: sidebar.entries.map((e) => (read.has(e.channel.id) ? { ...e, unread: 0, mentions: 0 } : e)) }
-        : sidebar,
-    [sidebar, read],
-  );
+  // Notify: the feed socket's counts (lib/notify-client.ts) over the sidebar as read, live.
+  const live = useLiveCounts(slug);
+  useEffect(() => setRead(new Set()), [sidebar, live]);
+  const shown = useMemo(() => {
+    const counted = sidebar && live ? { ...sidebar, entries: overlayEntries(sidebar.entries, live) } : sidebar;
+    return counted && read.size > 0
+      ? { ...counted, entries: counted.entries.map((e) => (read.has(e.channel.id) ? { ...e, unread: 0, mentions: 0 } : e)) }
+      : counted;
+  }, [sidebar, read, live]);
+  // A conversation the feed counts that the sidebar does not list (a new DM): read the sidebar again.
+  const missing = sidebar ? unlisted(sidebar.entries, live).join(",") : "";
+  useEffect(() => {
+    if (missing) refresh();
+  }, [missing, refresh]);
   return { sidebar: shown, refresh };
 }
 
@@ -197,11 +206,21 @@ type Pickable = { key: string; kind: "user" | "agent"; name: string; display: st
  * A new direct message: choose people, agents or both, then open the
  * conversation between you (the same one each time for the same people).
  */
-export function NewMessageButton({ slug, variant = "icon", children }: { slug: string; variant?: "icon" | "button"; children?: ReactNode }) {
+export function NewMessageButton({ slug, variant = "icon", children }: { slug: string; variant?: "icon" | "button" | "fab"; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      {variant === "icon" ? (
+      {variant === "fab" ? (
+        // A phone's list: the round button above the tab bar.
+        <button
+          type="button"
+          aria-label="New message"
+          onClick={() => setOpen(true)}
+          className="flex size-14 items-center justify-center rounded-2xl bg-accent text-bg shadow-lg shadow-black/50 transition-transform active:scale-95"
+        >
+          <SquarePen size={22} />
+        </button>
+      ) : variant === "icon" ? (
         <Hint label="New message">
           <button type="button" aria-label="New message" onClick={() => setOpen(true)} className={ICON_BUTTON.replace("size-7", "size-8")}>
             <SquarePen size={15} />
@@ -278,7 +297,7 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
           <span className="pl-1 text-sm text-faint">To:</span>
           {chosen.map((person) => (
             <span key={person.key} className="flex h-6 items-center gap-1.5 rounded-md bg-raised pr-1 pl-1 text-[0.8125rem]">
-              {person.kind === "agent" ? <AgentMark size={16} /> : <Avatar name={person.name} image={person.avatar} size={16} />}
+              {person.kind === "agent" ? <AgentAvatar agent={{ id: person.key.slice(6), handle: person.name, avatar: person.avatar }} size={16} /> : <Avatar name={person.name} image={person.avatar} size={16} />}
               {person.display}
               <button
                 type="button"
@@ -336,7 +355,7 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
             onClick={() => take(person)}
             className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 ${index === active ? "bg-raised" : ""}`}
           >
-            {person.kind === "agent" ? <AgentMark size={28} /> : <Avatar name={person.name} image={person.avatar} size={28} />}
+            {person.kind === "agent" ? <AgentAvatar agent={{ id: person.key.slice(6), handle: person.name, avatar: person.avatar }} size={28} /> : <Avatar name={person.name} image={person.avatar} size={28} />}
             <span className="min-w-0 grow">
               <span className="flex items-center gap-1.5 text-sm font-medium">
                 <span className="truncate">{person.display}</span>

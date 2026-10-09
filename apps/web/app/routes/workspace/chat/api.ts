@@ -22,6 +22,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const channel = url.searchParams.get("channel");
   const answer = await safely<unknown>(() => {
+    // The workspace's own emoji, for the picker and for drawing :name: (components/emoji).
+    if (url.searchParams.get("emoji")) return chat.listEmoji(slug, viewer);
     if (!channel) return chat.sidebar(slug, viewer);
     return chat.messages(slug, channel, viewer, {
       thread_root: url.searchParams.get("thread"),
@@ -46,6 +48,8 @@ type Sent = {
   private?: boolean;
   members?: string[];
   member?: string;
+  message_id?: string;
+  emoji?: string;
 };
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -68,6 +72,10 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return chat.remove(slug, channel, viewer, sent.id ?? "");
       case "read":
         return chat.markRead(slug, channel, viewer, sent.id ?? "");
+      case "react":
+        return chat.react(slug, channel, viewer, sent.message_id ?? "", sent.emoji ?? "");
+      case "unreact":
+        return chat.unreact(slug, channel, viewer, sent.message_id ?? "", sent.emoji ?? "");
       case "preferences":
         return chat.setPreferences(slug, channel, viewer, { starred: sent.starred, muted: sent.muted });
       case "join":

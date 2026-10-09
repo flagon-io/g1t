@@ -16,7 +16,9 @@ import {
   type User,
   type WorkspaceAgent,
   UNVERIFIED,
+  askerAccess,
   awaitsConfirmation,
+  chatClient,
   fail,
   identityClient,
   newId,
@@ -26,9 +28,11 @@ import {
 
 import { MANAGE_REFUSAL, canManage, canSee } from "./access.ts";
 import { type Definition, applyChanges } from "./definition.ts";
+import { builtinChanges } from "./orchestrator.ts";
 import type { Desk } from "./desk.ts";
 import type { ReplyEnv } from "./reply.ts";
-import { type Row, definitionOf, periods, selectAgents, toAgent } from "./store.ts";
+import { ensureBuiltin } from "./builtin.ts";
+import { type Row, definitionOf, insertAgent, periods, selectAgents, toAgent, updateAgent, versionStatement } from "./store.ts";
 import { TEMPLATES, TEMPLATE_IDS } from "./templates.ts";
 
 export { Desk } from "./desk.ts";
@@ -89,6 +93,15 @@ class Agents {
       .first<Row>();
   }
 
+  /** Whether `team` (a slug, or none) is one of the workspace's teams, as the person changing the agent sees them. */
+  private async teamExists(workspace: string, viewer: User, team: string | null): Promise<Result<null>> {
+    if (!team) return ok(null);
+    const found = await identityClient(this.env.IDENTITY)
+      .getTeam(viewer, workspace.toLowerCase(), team)
+      .catch(() => null);
+    return found?.ok ? ok(null) : fail("invalid", `${workspace} has no team called ${team}.`);
+  }
+
   private async handleTaken(workspaceId: string, handle: string, except: string | null): Promise<boolean> {
     const found = await this.db
       .prepare("SELECT id FROM agents WHERE workspace_id = ? AND handle = ? AND archived_at IS NULL")
@@ -101,8 +114,9 @@ class Agents {
     const seen = await this.seen(a.workspace, a.viewer);
     if (!seen.ok) return seen;
     const now = new Date();
+    await this.ensureBuiltin(seen.value);
     const rows = await this.db
-      .prepare(`${selectAgents("a.workspace_id = ?3 AND a.archived_at IS NULL")} ORDER BY a.handle`)
+      .prepare(`${selectAgents("a.workspace_id = ?3 AND a.archived_at IS NULL")} ORDER BY a.builtin DESC, a.handle`)
       .bind(...periods(now), seen.value)
       .all<Row>();
     return ok(rows.results.map((row) => toAgent(row, now)));
@@ -111,6 +125,7 @@ class Agents {
   async get(a: { workspace: string; handle: string; viewer: User | null }): Promise<Result<WorkspaceAgent>> {
     const seen = await this.seen(a.workspace, a.viewer);
     if (!seen.ok) return seen;
+    await this.ensureBuiltin(seen.value);
     const row = await this.row(seen.value, a.handle);
     return row ? ok(toAgent(row, new Date())) : fail("not_found", `There is no agent called @${a.handle}.`);
   }
@@ -133,6 +148,8 @@ class Agents {
     const checked = applyChanges(null, a.input, TEMPLATE_IDS);
     if (!checked.ok) return fail("invalid", checked.message);
     const definition = checked.value;
+    const team = await this.teamExists(a.workspace, a.viewer!, definition.team);
+    if (!team.ok) return team;
     if (await this.handleTaken(managed.value, definition.handle, null)) {
       return fail("conflict", `${a.workspace} already has an agent called @${definition.handle}.`);
     }
@@ -141,13 +158,7 @@ class Agents {
     const by = a.viewer!.username;
     try {
       await this.db.batch([
-        this.db
-          .prepare(
-            `INSERT INTO agents (id, workspace_id, handle, display_name, avatar, role, instructions, personality_preset, personality,
-               routing, budget, autonomy, capacity, template, version, created_by, created_at, updated_at)
-             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-          )
-          .bind(...this.columns(id, managed.value, definition), by, now, now),
+        insertAgent(this.db, id, managed.value, definition, { version: 1, created_by: by, created_at: now, updated_at: now }),
         this.versionStatement(id, 1, definition, by, now),
       ]);
     } catch (error) {
@@ -155,8 +166,41 @@ class Agents {
       throw error;
     }
     this.audit(a.viewer!, a.workspace, "create_agent", definition.handle, `Created @${definition.handle} (version 1)`);
+    this.defer(this.hello(a.workspace, managed.value, id, a.viewer!));
     const row = await this.row(managed.value, definition.handle);
     return ok(toAgent(row!, new Date()));
+  }
+
+  /**
+   * A new agent's first words: the DM with the person who made it is
+   * opened, and the agent says hello there in its own voice, as a reply
+   * billed like any other (a fixed hello when no model can be used).
+   * After the answer; a failure only logs.
+   */
+  private async hello(workspace: string, workspaceId: string, agentId: string, creator: User): Promise<void> {
+    if ((creator.kind ?? "user") !== "user") return;
+    try {
+      const dm = await chatClient(this.env.CHAT).openDm(workspace, creator, [{ kind: "agent", id: agentId }]);
+      if (!dm.ok) throw new Error(dm.error.message);
+      const desk = this.env.DESKS.get(this.env.DESKS.idFromName(agentId));
+      await desk.take({
+        workspace,
+        workspace_id: workspaceId,
+        channel_id: dm.value.id,
+        channel_kind: "dm",
+        channel_name: null,
+        agent_id: agentId,
+        // One hello per agent, however often this runs.
+        message_id: `hello:${agentId}`,
+        thread_root: null,
+        asked_by: creator.id,
+        hops: 0,
+        asker: askerAccess(creator, workspace),
+        hello: true,
+      });
+    } catch (error) {
+      console.error("agents: a new agent's hello was not sent", agentId, String(error));
+    }
   }
 
   async update(a: { workspace: string; handle: string; viewer: User | null; changes: Partial<NewWorkspaceAgent> }): Promise<Result<WorkspaceAgent>> {
@@ -165,10 +209,17 @@ class Agents {
     const row = await this.row(managed.value, a.handle);
     if (!row) return fail("not_found", `There is no agent called @${a.handle}.`);
     const before = definitionOf(row);
-    const checked = applyChanges(before, a.changes, TEMPLATE_IDS);
+    // The built-in @g1t keeps who it is and its job; the rest is the workspace's.
+    const allowed = row.builtin ? builtinChanges(before, a.changes) : { ok: true as const, value: a.changes };
+    if (!allowed.ok) return fail("invalid", allowed.message);
+    const checked = applyChanges(before, allowed.value, TEMPLATE_IDS, { builtin: !!row.builtin });
     if (!checked.ok) return fail("invalid", checked.message);
     const definition = checked.value;
     if (JSON.stringify(definition) === JSON.stringify(before)) return ok(toAgent(row, new Date()));
+    if (definition.team !== before.team) {
+      const team = await this.teamExists(a.workspace, a.viewer!, definition.team);
+      if (!team.ok) return team;
+    }
     if (definition.handle !== before.handle && (await this.handleTaken(managed.value, definition.handle, row.id))) {
       return fail("conflict", `${a.workspace} already has an agent called @${definition.handle}.`);
     }
@@ -179,13 +230,7 @@ class Agents {
       const [updated] = await this.db.batch([
         // Only from the version read: two owners saving at once never lose
         // one's change silently; the second is told to look again.
-        this.db
-          .prepare(
-            `UPDATE agents SET handle = ?, display_name = ?, role = ?, instructions = ?, personality_preset = ?, personality = ?,
-               routing = ?, budget = ?, autonomy = ?, capacity = ?, template = ?, version = ?, updated_at = ?
-             WHERE id = ? AND version = ?`,
-          )
-          .bind(...this.columns(null, null, definition), version, now, row.id, row.version),
+        updateAgent(this.db, row.id, row.version, definition, { version, updated_at: now }),
         this.db
           .prepare(
             `INSERT INTO agent_versions (agent_id, version, definition, changed_by, created_at)
@@ -209,10 +254,32 @@ class Agents {
     if (!managed.ok) return managed;
     const row = await this.row(managed.value, a.handle);
     if (!row) return fail("not_found", `There is no agent called @${a.handle}.`);
+    if (row.builtin) return fail("invalid", "@g1t is every workspace's orchestrator and can't be archived. You can set its budget to limit it.");
     const now = new Date().toISOString();
     await this.db.prepare("UPDATE agents SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL").bind(now, now, row.id).run();
     this.audit(a.viewer!, a.workspace, "archive_agent", row.handle, `Archived @${row.handle}`);
     return ok(null);
+  }
+
+  /**
+   * Makes the workspace's built-in @g1t if it does not exist yet: an
+   * ordinary agent row, marked builtin, at version 1. Safe to call on
+   * every request; once seen, an isolate does not write again.
+   */
+  private async ensureBuiltin(workspaceId: string): Promise<void> {
+    await ensureBuiltin(this.db, workspaceId);
+  }
+
+  /** Internal: the workspace's @g1t, made if need be, for the chat service. */
+  async builtin(a: { workspace: string; workspace_id: string }): Promise<Result<WorkspaceAgent>> {
+    if (typeof a?.workspace_id !== "string" || !a.workspace_id) return fail("invalid", "Name the workspace by id.");
+    await this.ensureBuiltin(a.workspace_id);
+    const now = new Date();
+    const row = await this.db
+      .prepare(selectAgents("a.workspace_id = ?3 AND a.builtin = 1"))
+      .bind(...periods(now), a.workspace_id)
+      .first<Row>();
+    return row ? ok(toAgent(row, now)) : fail("not_found", "This workspace's @g1t could not be made.");
   }
 
   /**
@@ -225,34 +292,14 @@ class Agents {
       return fail("invalid", "A delivery names the workspace, channel, agent, message and who asked.");
     }
     if (delivery.channel_kind !== "channel" && delivery.channel_kind !== "dm") return fail("invalid", "channel_kind is channel or dm.");
+    await this.ensureBuiltin(delivery.workspace_id);
     const desk = this.env.DESKS.get(this.env.DESKS.idFromName(delivery.agent_id));
     await desk.take({ ...delivery, hops: Math.max(0, Math.floor(Number(delivery.hops) || 0)), thread_root: delivery.thread_root ?? null });
     return ok(null);
   }
 
-  /** A definition's columns, in the order the statements above take them. */
-  private columns(id: string | null, workspaceId: string | null, d: Definition): (string | number | null)[] {
-    const head = id && workspaceId ? [id, workspaceId] : [];
-    return [
-      ...head,
-      d.handle,
-      d.display_name,
-      d.role,
-      d.instructions,
-      d.personality_preset,
-      d.personality,
-      JSON.stringify(d.routing),
-      JSON.stringify(d.budget),
-      JSON.stringify(d.autonomy),
-      d.capacity,
-      d.template,
-    ];
-  }
-
   private versionStatement(agentId: string, version: number, d: Definition, by: string, at: string): D1PreparedStatement {
-    return this.db
-      .prepare("INSERT INTO agent_versions (agent_id, version, definition, changed_by, created_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(agentId, version, JSON.stringify(d), by, at);
+    return versionStatement(this.db, agentId, version, d, by, at);
   }
 
   /**
@@ -314,6 +361,8 @@ async function answer(service: Agents, method: string, args: any): Promise<Respo
       return Response.json(await service.update(args));
     case "archive":
       return Response.json(await service.archive(args));
+    case "builtin":
+      return Response.json(await service.builtin(args));
     case "templates":
       return Response.json(TEMPLATES);
     case "deliver":

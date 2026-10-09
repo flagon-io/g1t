@@ -613,6 +613,30 @@ impl Identity {
         Ok(names)
     }
 
+    /// `users_for_audience`: the people behind these ids (at most 50), each
+    /// with their workspaces, roles, base permissions and repository grants,
+    /// under each workspace's policy, as a signed-in viewer would have them.
+    /// For the agents service, which answers only with what every person
+    /// who will read the answer may see (docs/WORKSPACE.md, "What an agent
+    /// can and can't know"). Ids of no live account are left out, so the
+    /// caller can tell someone it could not resolve. Reached only by service
+    /// binding.
+    async fn users_for_audience(&self, a: UsernamesArgs) -> Result<Vec<User>> {
+        let mut found = Vec::new();
+        for id in a.ids.iter().take(50) {
+            let user = self
+                .find_user(
+                    "SELECT id, username, email_verified_at IS NOT NULL AS verified FROM users WHERE id = ? AND deleted_at IS NULL",
+                    id,
+                )
+                .await?;
+            if let Some(user) = user {
+                found.push(user);
+            }
+        }
+        Ok(found)
+    }
+
     /// `accounts`: the accounts behind these ids (at most 200), each with
     /// its username and avatar, for lists that keep ids, such as who
     /// starred a repository. Ids of no account are left out.
@@ -908,6 +932,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
         "accounts" => reply(&identity.accounts(args(body)?).await?),
+        "users_for_audience" => reply(&identity.users_for_audience(args(body)?).await?),
         "notify_by_email" => reply(&identity.notify_by_email(args(body)?).await?),
         "profile" => reply(&identity.profile(args(body)?).await?),
         "update_profile" => {

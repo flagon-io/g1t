@@ -49,7 +49,8 @@ test("one sidebar row is current wherever you are in the workspace", () => {
 
 test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/-/members"), "/acme/-/people");
-  assert.equal(workspaceRedirect("/acme/-/overview"), "/acme");
+  // Code's Overview lives at -/overview now: not an old address.
+  assert.equal(workspaceRedirect("/acme/-/overview"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/teams"), "/acme/-/teams");
   assert.equal(workspaceRedirect("/acme/-/soon/insights", "?x=1"), "/acme/-/insights?x=1");
   assert.equal(workspaceRedirect("/acme/-/soon/board"), null);
@@ -90,21 +91,38 @@ test("a click's data request for an alias leads to the page, not its data", () =
 });
 
 test("the rail's mode follows the address", async () => {
-  const { modeOf, modeHome } = await import("./workspace-nav.ts");
+  const { modeOf, modeHome, homePath } = await import("./workspace-nav.ts");
   assert.equal(modeOf("/", "acme"), "home");
+  assert.equal(modeOf("/acme", "acme"), "home");
+  assert.equal(modeOf("/acme/-/home", "acme"), "home");
+  assert.equal(modeOf("/explore", "acme"), "home");
   assert.equal(modeOf("/inbox", "acme"), "inbox");
+  assert.equal(modeOf("/settings/emails", "acme"), "account");
   assert.equal(modeOf("/acme/-/chat/general", "acme"), "chat");
   assert.equal(modeOf("/acme/-/chat/dm/c1.data", "acme"), "chat");
   assert.equal(modeOf("/acme/-/agents", "acme"), "agents");
   assert.equal(modeOf("/acme/-/agents/ship/profile", "acme"), "agents");
+  assert.equal(modeOf("/acme/-/context", "acme"), "agents");
+  assert.equal(modeOf("/acme/-/memory", "acme"), "agents");
   assert.equal(modeOf("/acme/-/docs", "acme"), "docs");
-  assert.equal(modeOf("/acme/-/home", "acme"), "home");
-  assert.equal(modeOf("/acme", "acme"), "code");
+  assert.equal(modeOf("/acme/-/overview", "acme"), "code");
+  assert.equal(modeOf("/acme/-/projects", "acme"), "code");
+  assert.equal(modeOf("/acme/-/security", "acme"), "code");
+  assert.equal(modeOf("/acme/-/security/settings", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/people", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/billing", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/tokens", "acme"), "workspace");
+  assert.equal(modeOf("/acme/-/workspace", "acme"), "workspace");
   assert.equal(modeOf("/acme/web/pulls", "acme"), "code");
-  // Another workspace's chat is not this one's mode.
+  assert.equal(modeOf("/new", "acme"), "code");
+  // Another workspace's chat is not this one's mode; its repositories are Code's.
   assert.equal(modeOf("/other/-/chat", "acme"), "code");
-  assert.equal(modeHome("home", "acme", false), "/acme/-/home");
-  assert.equal(modeHome("chat", "acme"), "/acme/-/chat");
+  assert.equal(modeHome("home", "acme"), "/acme/-/home");
+  assert.equal(modeHome("code", "acme"), "/acme/-/overview");
+  assert.equal(modeHome("workspace", "acme"), "/acme/-/workspace");
+  assert.equal(homePath("acme"), "/acme/-/home");
+  assert.equal(homePath("acme", "?agent=new"), "/acme/-/overview?agent=new");
+  assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
 });
 
 test("a member without Code access is sent around Code's pages", async () => {

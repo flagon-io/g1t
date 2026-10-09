@@ -21,7 +21,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
 import { DeployArt, Live, PlanArt, QueueArt, WhyArt } from "./art";
-import { AgentCardShot, ChatShot } from "./chat-shot";
+import { AgentAvatar } from "./agent-avatar";
+import { AgentCardShot } from "./chat-shot";
+import { ProductTour } from "./product-tour";
 import { ButtonLink, CopyLine } from "./ui";
 
 const DOCS = "https://docs.g1t.sh";
@@ -169,7 +171,7 @@ const MODES: { icon: ReactNode; name: string; about: string; soon?: boolean; to:
   {
     icon: <Bot size={18} />,
     name: "Agents",
-    about: "Named teammates with a job, a personality, a budget and limits on what they may do alone.",
+    about: "Colleagues hired into roles: a name, a title, a team, a voice and a budget. g1t orchestrates.",
     to: `${DOCS}/guides/agents/`,
   },
   {
@@ -298,6 +300,41 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] = 
   },
 ];
 
+/** A workspace's org chart, read like a company's: g1t knows everyone; each department has its colleague. */
+const ORG: { team: string; who: string }[] = [
+  { team: "Engineering", who: "Otto" },
+  { team: "QA", who: "Margo" },
+  { team: "Docs", who: "Inky" },
+  { team: "Product", who: "Dot" },
+  { team: "Support", who: "Izzy" },
+  { team: "Sales", who: "David" },
+  { team: "Operations", who: "Bruno" },
+];
+
+function OrgChart() {
+  return (
+    <figure aria-label="An example org chart: g1t at the top, and one agent in each department" className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+      <div className="flex items-center gap-3">
+        <AgentAvatar agent={{ handle: "g1t", name: "g1t" }} size={28} />
+        <p className="text-sm">
+          <span className="font-semibold text-fg">g1t</span> <span className="text-muted">· Orchestrator, knows everyone</span>
+        </p>
+      </div>
+      <ul className="mt-4 grid grid-cols-2 gap-2 border-t border-line pt-4 sm:grid-cols-3">
+        {ORG.map((member) => (
+          <li key={member.who} className="flex items-center gap-2.5 rounded-lg bg-bg px-2.5 py-2 ring-1 ring-line">
+            <AgentAvatar agent={{ handle: member.who.toLowerCase(), name: member.who }} size={24} />
+            <span className="min-w-0 text-xs leading-tight">
+              <span className="block font-medium text-fg">{member.who}</span>
+              <span className="block truncate text-faint">{member.team}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </figure>
+  );
+}
+
 /**
  * The signed-out home page: what g1t is, what it does, and how to start.
  * It lists no one's repositories; those are a click away under Explore.
@@ -349,7 +386,7 @@ export function Landing() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-10 top-10 bottom-0 rounded-[3rem] bg-[radial-gradient(60%_60%_at_50%_40%,rgb(182_168_255/0.14),transparent)] blur-2xl"
           />
-          <ChatShot className="relative" />
+          <ProductTour className="relative" />
         </div>
         <div aria-hidden="true" className="h-16 bg-gradient-to-b from-transparent to-bg" />
       </section>
@@ -458,36 +495,38 @@ export function Landing() {
         <div className="lg:order-2">
           <Eyebrow>Agents</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            Agents are teammates, with a job and a budget
+            Hire agents into roles, like colleagues
           </h2>
           <p className="mt-4 max-w-xl leading-7 text-muted">
-            Give an agent a name, a role and a job, and pick how it talks. DM it or invite it to a channel. It
-            answers where it was asked, in its own voice. Its job decides what it does; its
-            personality only changes its voice.
+            Hire Margo into QA. She gets a title, a team and broad responsibilities: review pull requests for risk,
+            write test plans, chase flaky checks. Role templates come by department, each with a name you can shuffle,
+            a voice and sensible limits. Her job decides what she does; her personality only changes how she sounds.
           </p>
           <p className="mt-4 max-w-xl leading-7 text-muted">
             Nobody picks a model. <span className="text-fg-soft">Auto</span> routes each step to the cheapest model
-            that can do it. You set a floor and a ceiling, and which providers it may use: g1t&apos;s models, your
-            workspace&apos;s own provider keys, or both.
+            that can do it, between a floor and a ceiling you set, on g1t&apos;s models, your workspace&apos;s own
+            provider keys, or both. And every workspace has <span className="text-fg-soft">@g1t</span>, the
+            orchestrator, for when you don&apos;t know who to ask.
           </p>
           <Points
             points={[
-              "Start from a template or from scratch",
-              "Role, job and personality",
-              "Model routing with a floor and a ceiling",
-              "Your own providers, or g1t's",
+              "Role templates by department, with names to shuffle",
+              "Title, team and responsibilities",
+              "Personality that changes the voice, never the rules",
+              "Model routing with a floor, a ceiling and your own providers",
               "Monthly, daily and per-task budgets",
               "What it may do alone, and what needs you",
+              { text: "g1t hands each request to the right colleague", soon: true },
+              { text: "Agents consult each other and hand off in the open", soon: true },
+              { text: "Subagents that run inside an agent's work", soon: true },
               { text: "Updates on their own: progress, shipped, stuck", soon: true },
-              { text: "Members of teams, like anyone else", soon: true },
-              { text: "Sessions that pause and resume with full context", soon: true },
-              { text: "Describe an agent in chat and confirm the draft", soon: true },
             ]}
           />
-          <More to={`${DOCS}/guides/agents/`}>Create an agent</More>
+          <More to={`${DOCS}/guides/agents/#hire-an-agent`}>Hire an agent</More>
         </div>
-        <div className="lg:order-1">
+        <div className="space-y-4 lg:order-1">
           <AgentCardShot />
+          <OrgChart />
         </div>
       </section>
 

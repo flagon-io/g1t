@@ -1,14 +1,17 @@
-import { Activity, ChevronRight, Plus, Route as RouteIcon, Sparkles } from "lucide-react";
+import { Activity, Brain, ChevronRight, Dices, Network, Plus, Route as RouteIcon, Sparkles } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, NavLink, useLocation, useNavigation, useRouteLoaderData } from "react-router";
 
 import type { AgentTemplate, ModelTier, WorkspaceAgent } from "@g1t/contracts";
 
-import { AgentMark, StatusDot, statusLabel } from "./chat/marks";
-import { Avatar } from "./ui";
+import { type AgentLike, AgentAvatar, PixelCreature } from "./agent-avatar";
+import { StatusDot, statusLabel } from "./chat/marks";
+import { isOrchestrator } from "./orchestrator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
-import { AUTONOMY, type AgentDraft, PRESETS, TIER_LABELS, dollarsField } from "../lib/agent-form";
+import { AUTONOMY, type AgentDraft, PRESETS, TIER_LABELS, cleanHandle, dollarsField } from "../lib/agent-form";
+import { Hint } from "./ui/hint";
+import { DEPARTMENTS, RoleFields, SubagentsField } from "./agent-role";
 import type { AgentsLayoutData } from "../routes/workspace/agents/layout";
 
 /** The workspace's agents while an Agents page is open; undefined elsewhere. */
@@ -17,8 +20,8 @@ export function useAgentsData(): AgentsLayoutData | undefined {
 }
 
 /** An agent's face: its picture, or the sparkle mark. */
-export function AgentFace({ agent, size = 20 }: { agent: Pick<WorkspaceAgent, "handle" | "avatar">; size?: number }) {
-  return agent.avatar ? <Avatar name={agent.handle} image={agent.avatar} size={size} square /> : <AgentMark size={size} />;
+export function AgentFace({ agent, size = 20 }: { agent: AgentLike; size?: number }) {
+  return <AgentAvatar agent={agent} size={size} />;
 }
 
 function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boolean; icon: ReactNode; children: ReactNode; trailing?: ReactNode }) {
@@ -40,15 +43,49 @@ function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boo
   );
 }
 
+/** An agent as the sidebar lists it: from the Agents pages' own data, or the shell's on any other page. */
+type Listed = Pick<WorkspaceAgent, "id" | "handle" | "display_name" | "avatar" | "role" | "status" | "title" | "team" | "department"> & {
+  builtin?: boolean;
+  avatar_seed?: string | null;
+};
+
+/** Where an agent sits in the org chart: its team, else its department. */
+export function placeOf(agent: Pick<WorkspaceAgent, "team" | "department">): string {
+  if (agent.team) return agent.team.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return agent.department?.trim() || "Unplaced";
+}
+
+/** "Margo · QA Engineer": how an agent reads wherever it shows. */
+export function nameAndTitle(agent: Pick<WorkspaceAgent, "display_name" | "title">): string {
+  return agent.title ? `${agent.display_name} · ${agent.title}` : agent.display_name;
+}
+
 /**
- * Agents mode's sidebar: who is working, who is waiting on you, and every
- * agent, each with its status; and the way to make a new one.
+ * Agents mode's sidebar: the fleet's runs, context and memory; g1t, the
+ * orchestrator, pinned at the top; then the specialists, each with its
+ * role and status; and the way to make a new one.
  */
-export function AgentsSidebar({ slug }: { slug: string }) {
+export function AgentsSidebar({
+  slug,
+  shellAgents,
+  code,
+  owner,
+  phone = false,
+}: {
+  slug: string;
+  /** A phone's Agents tab: the list as the page, with no heading of its own and no fleet row (the fleet is under it). */
+  phone?: boolean;
+  /** The shell's list, for pages outside `-/agents` (context, memory). */
+  shellAgents: Listed[] | null;
+  /** Context and memory are about the code: only with Code access. */
+  code: boolean;
+  owner: boolean;
+}) {
   const data = useAgentsData();
-  const agents = data?.agents ?? [];
-  const busy = agents.filter((a) => a.status === "working" || a.status === "waiting");
-  const row = (agent: WorkspaceAgent) => (
+  const agents: Listed[] | null = data?.agents ?? shellAgents;
+  const orchestrator = agents?.find((agent) => isOrchestrator(agent)) ?? null;
+  const specialists = (agents ?? []).filter((agent) => !isOrchestrator(agent));
+  const row = (agent: Listed) => (
     <li key={agent.id}>
       <NavLink
         to={`/${slug}/-/agents/${agent.handle}`}
@@ -58,13 +95,15 @@ export function AgentsSidebar({ slug }: { slug: string }) {
         }
       >
         <span className="relative shrink-0">
-          <AgentFace agent={agent} size={26} />
-          <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]" />
+          <AgentFace agent={{ ...agent, builtin: isOrchestrator(agent) }} size={26} />
+          {!isOrchestrator(agent) && (
+            <StatusDot status={agent.status} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]" />
+          )}
         </span>
         <span className="min-w-0 grow leading-tight">
           <span className="block truncate text-[0.8125rem] font-medium text-fg">{agent.display_name}</span>
           <span className="block truncate text-[0.6875rem] text-faint">
-            {agent.status === "idle" ? `@${agent.handle}` : statusLabel(agent.status)}
+            {isOrchestrator(agent) ? "Orchestrator" : agent.status === "idle" ? agent.title || agent.role : `${statusLabel(agent.status)} · ${agent.title || agent.role}`}
           </span>
         </span>
       </NavLink>
@@ -72,7 +111,7 @@ export function AgentsSidebar({ slug }: { slug: string }) {
   );
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-line pr-2.5 pl-4">
+      <div className={`flex h-14 shrink-0 items-center justify-between border-b border-line pr-2.5 pl-4 ${phone ? "hidden" : ""}`}>
         <h2 className="text-[0.9375rem] font-semibold">Agents</h2>
         <NavLink
           to={`/${slug}/-/agents/new`}
@@ -82,55 +121,102 @@ export function AgentsSidebar({ slug }: { slug: string }) {
           <Plus size={16} />
         </NavLink>
       </div>
-      <nav aria-label="Agents" className="min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 [scrollbar-width:thin]">
+      <nav aria-label="Agents" className={`min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 [scrollbar-width:thin] ${phone ? "[&_a]:min-h-11" : ""}`}>
         <div className="space-y-px">
-          <SideLink to={`/${slug}/-/agents`} end icon={<Activity size={15} className="text-faint" />}>
-            Fleet and runs
-          </SideLink>
+          {!phone && (
+            <SideLink to={`/${slug}/-/agents`} end icon={<Activity size={15} className="text-faint" />}>
+              Agent fleet
+            </SideLink>
+          )}
+          {code && (
+            <>
+              <SideLink to={`/${slug}/-/context`} icon={<Network size={15} className="text-faint" />}>
+                Context
+              </SideLink>
+              <SideLink to={`/${slug}/-/memory`} icon={<Brain size={15} className="text-faint" />}>
+                Memory
+              </SideLink>
+            </>
+          )}
         </div>
-        {!data ? (
-          <div className="mt-5 space-y-3 px-2" aria-busy="true">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-2.5">
-                <Skeleton className="size-6 rounded-md" />
-                <Skeleton className="h-3 w-28" />
-              </div>
-            ))}
-          </div>
-        ) : data.agents == null ? (
-          <p className="mt-4 px-2 text-xs leading-relaxed text-faint">The agents service didn't answer. Your agents will show here once it does.</p>
+        {agents == null ? (
+          data === undefined && shellAgents === null ? (
+            <p className="mt-4 px-2 text-xs leading-relaxed text-faint">The agents service didn&apos;t answer. Your agents will show here once it does.</p>
+          ) : (
+            <div className="mt-5 space-y-3 px-2" aria-busy="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-2.5">
+                  <Skeleton className="size-6 rounded-md" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           <>
-            {busy.length > 0 && (
-              <Group title="At work">
-                {busy.map(row)}
+            {orchestrator && <Group title="Orchestrator">{row(orchestrator)}</Group>}
+            <p className="mt-4 px-2 text-[0.6875rem] leading-snug text-faint">Specialists are colleagues hired into a role. g1t hands them work.</p>
+            {[...orgChart(specialists)].map(([place, members]) => (
+              <Group key={place} title={`${place} · ${members.length}`} collapsible>
+                {members.map(row)}
               </Group>
-            )}
-            <Group title={`All agents · ${agents.length}`}>
-              {agents.map(row)}
-              {agents.length === 0 && <li className="px-2 py-1 text-xs text-faint">None yet. Make one from a template.</li>}
-            </Group>
+            ))}
+            {specialists.length === 0 && <p className="px-2 py-1 text-xs text-faint">No specialists yet. Hire one into a role.</p>}
           </>
         )}
-        <NavLink
-          to={`/${slug}/-/agents/new`}
-          className={({ isActive }) =>
-            `mt-2 flex h-9 items-center gap-2.5 rounded-md border border-dashed px-2 text-[0.8125rem] transition-colors ${
-              isActive ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg"
-            }`
-          }
-        >
-          <span className="flex w-5 justify-center">
-            <Plus size={15} />
-          </span>
-          New agent
-        </NavLink>
+        {owner && (
+          <NavLink
+            to={`/${slug}/-/agents/new`}
+            className={({ isActive }) =>
+              `mt-2 flex h-9 items-center gap-2.5 rounded-md border border-dashed px-2 text-[0.8125rem] transition-colors ${
+                isActive ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg"
+              }`
+            }
+          >
+            <span className="flex w-5 justify-center">
+              <Plus size={15} />
+            </span>
+            New agent
+          </NavLink>
+        )}
       </nav>
     </div>
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+/** Specialists by team or department, each group by name, the groups in the gallery's order. */
+function orgChart(agents: Listed[]): Map<string, Listed[]> {
+  const groups = new Map<string, Listed[]>();
+  for (const agent of agents) groups.set(placeOf(agent), [...(groups.get(placeOf(agent)) ?? []), agent]);
+  const rank = (place: string) => {
+    const at = DEPARTMENTS.indexOf(place);
+    return at < 0 ? DEPARTMENTS.length : at;
+  };
+  return new Map(
+    [...groups]
+      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+      .map(([place, list]) => [place, list.sort((x, y) => x.display_name.localeCompare(y.display_name))]),
+  );
+}
+
+function Group({ title, children, collapsible }: { title: string; children: ReactNode; collapsible?: boolean }) {
+  const [open, setOpen] = useState(true);
+  if (collapsible) {
+    return (
+      <section className="mt-3">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className="mb-1 flex w-full items-center gap-1 rounded px-1 text-xs font-medium text-faint transition-colors hover:text-muted"
+        >
+          <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+          {title}
+        </button>
+        {open && <ul className="space-y-px border-l border-line pl-1.5 ml-2.5">{children}</ul>}
+      </section>
+    );
+  }
   return (
     <section className="mt-4">
       <h3 className="mb-1 px-2 text-xs font-medium text-faint">{title}</h3>
@@ -141,34 +227,70 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 /** The templates g1t ships, and a blank one, to start a new agent from. */
 export function TemplateGallery({ templates, chosen, onChoose }: { templates: AgentTemplate[]; chosen: string | null; onChoose: (id: string | null) => void }) {
+  // By department, in the order the departments are listed; any other after them.
+  const order = (department: string) => {
+    const at = DEPARTMENTS.indexOf(department);
+    return at < 0 ? DEPARTMENTS.length : at;
+  };
+  const groups = new Map<string, AgentTemplate[]>();
+  for (const template of [...templates].sort((a, b) => order(a.department) - order(b.department))) {
+    const key = template.department || "Other";
+    groups.set(key, [...(groups.get(key) ?? []), template]);
+  }
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {templates.map((template) => (
-        <TemplateCard key={template.id} selected={chosen === template.id} onClick={() => onChoose(template.id)} title={template.display_name} handle={template.handle}>
-          {template.role}
-        </TemplateCard>
+    <div className="space-y-8">
+      {[...groups].map(([department, list]) => (
+        <section key={department}>
+          <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">{department}</h2>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {list.map((template) => (
+              <TemplateCard
+                key={template.id}
+                selected={chosen === template.id}
+                onClick={() => onChoose(template.id)}
+                name={template.display_name}
+                title={template.title}
+                seed={template.handle}
+                duties={template.responsibilities.slice(0, 3)}
+              />
+            ))}
+          </div>
+        </section>
       ))}
-      <TemplateCard selected={chosen === "blank"} onClick={() => onChoose("blank")} title="Blank agent" blank>
-        Start from nothing: give it a name, a job and a voice.
-      </TemplateCard>
+      <section>
+        <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">Your own</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <TemplateCard
+            selected={chosen === "blank"}
+            onClick={() => onChoose("blank")}
+            name="A new role"
+            title="Start from nothing"
+            blank
+            duties={["Give it a name, a title and a team", "Say what it is responsible for"]}
+          />
+        </div>
+      </section>
     </div>
   );
 }
 
+/** A role to hire into: its face, a name it suggests, its title and what it does. */
 function TemplateCard({
   selected,
   onClick,
+  name,
   title,
-  handle,
+  seed,
+  duties,
   blank,
-  children,
 }: {
   selected: boolean;
   onClick: () => void;
+  name: string;
   title: string;
-  handle?: string;
+  seed?: string;
+  duties: string[];
   blank?: boolean;
-  children: ReactNode;
 }) {
   return (
     <button
@@ -181,21 +303,28 @@ function TemplateCard({
           : "border-line bg-surface hover:-translate-y-px hover:border-line-strong hover:bg-raised/40"
       }`}
     >
-      <span className="flex w-full items-center gap-2.5">
+      <span className="flex w-full items-center gap-3">
         {blank ? (
-          <span className="flex size-9 items-center justify-center rounded-[10px] border border-dashed border-line-strong text-muted">
+          <span className="flex size-10 items-center justify-center rounded-[11px] border border-dashed border-line-strong text-muted">
             <Plus size={16} />
           </span>
         ) : (
-          <AgentMark size={36} />
+          <PixelCreature seed={seed ?? name} size={40} />
         )}
         <span className="min-w-0 grow">
-          <span className="block truncate text-sm font-semibold">{title}</span>
-          {handle && <span className="block truncate font-mono text-xs text-faint">@{handle}</span>}
+          <span className="block truncate text-sm font-semibold">{name}</span>
+          <span className="block truncate text-xs text-muted">{title}</span>
         </span>
         <ChevronRight size={15} className={`shrink-0 transition-colors ${selected ? "text-accent" : "text-faint group-hover:text-muted"}`} />
       </span>
-      <span className="mt-3 line-clamp-2 text-[0.8125rem] leading-snug text-muted">{children}</span>
+      <ul className="mt-3 space-y-1">
+        {duties.map((duty) => (
+          <li key={duty} className="flex gap-2 text-[0.8125rem] leading-snug text-muted">
+            <span className="mt-[0.45rem] size-1 shrink-0 rounded-full bg-line-strong" aria-hidden="true" />
+            <span className="line-clamp-1">{duty}</span>
+          </li>
+        ))}
+      </ul>
     </button>
   );
 }
@@ -267,6 +396,9 @@ function Money({ name, value, label, hint, error }: { name: string; value: numbe
   );
 }
 
+/** Names to shuffle through when a template has none of its own. */
+const FALLBACK_NAMES = ["Margo", "Juniper", "Otto", "Wren", "Basil", "Nova", "Clementine", "Fig", "Rook", "Pip"];
+
 /**
  * Everything that defines an agent, for making one and for its Profile:
  * who it is, its job, its voice, the limits on routing, its budget, what it
@@ -278,14 +410,41 @@ export function AgentForm({
   submit,
   intent,
   formKey,
+  nameIdeas = [],
+  locked = false,
+  seed,
+  teams = [],
 }: {
+  /** The workspace's teams, to put it on one. */
+  teams?: { slug: string; name: string }[];
   draft: AgentDraft;
   errors?: Record<string, string>;
   submit: string;
   intent: string;
   formKey?: string;
+  /** Names to shuffle through (a template's `name_ideas`); the dice offers them. */
+  nameIdeas?: string[];
+  /** g1t, the orchestrator: its identity and job are fixed; the rest is editable. */
+  locked?: boolean;
+  /** The agent's own `avatar_seed`, once it has one; a new agent's face follows its handle. */
+  seed?: string | null;
 }) {
   const navigation = useNavigation();
+  // The handle follows the name until someone edits it.
+  const [name, setName] = useState(draft.display_name);
+  const [handle, setHandle] = useState(draft.handle);
+  const [handleEdited, setHandleEdited] = useState(Boolean(draft.handle) && cleanHandle(draft.display_name) !== draft.handle);
+  const ideas = nameIdeas.length > 0 ? nameIdeas : FALLBACK_NAMES;
+  const [idea, setIdea] = useState(() => Math.max(0, ideas.indexOf(draft.display_name)));
+  const rename = (next: string) => {
+    setName(next);
+    if (!handleEdited) setHandle(cleanHandle(next));
+  };
+  const shuffle = () => {
+    const at = (idea + 1) % ideas.length;
+    setIdea(at);
+    rename(ideas[at]!);
+  };
   const { pathname } = useLocation();
   const busy = navigation.state === "submitting" && navigation.formAction === pathname;
   const [preset, setPreset] = useState(draft.personality_preset);
@@ -296,13 +455,51 @@ export function AgentForm({
     <Form method="post" key={formKey} className="pb-24">
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="template" value={draft.template ?? ""} />
-      <FormSection title="Identity" about="How it shows in chat, mentions, assignees and the audit log.">
+      <FormSection
+        title="Identity"
+        about={
+          locked
+            ? "g1t is the workspace's orchestrator: its name, handle and role are the same everywhere, and it can't be archived."
+            : "How it shows in chat, mentions, assignees and the audit log. Give it a name people will enjoy saying."
+        }
+      >
+        <div className="flex items-center gap-3">
+          <AgentAvatar agent={{ handle: handle || "agent", avatar_seed: seed ?? handle, builtin: locked }} size={44} />
+          <div className="min-w-0 text-sm">
+            <p className="truncate font-semibold">{name || "Your new agent"}</p>
+            <p className="truncate text-xs text-muted">{handle ? `@${handle}` : "@handle"}</p>
+          </div>
+        </div>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <Label htmlFor="display_name" error={e.display_name}>
-              Display name
+              Name
             </Label>
-            <input id="display_name" name="display_name" defaultValue={draft.display_name} placeholder="Ship" className={FIELD} autoComplete="off" data-1p-ignore />
+            <div className="flex gap-2">
+              <input
+                id="display_name"
+                name="display_name"
+                value={name}
+                onChange={(event) => rename(event.target.value)}
+                readOnly={locked}
+                placeholder="Margo"
+                className={`${FIELD} ${locked ? "cursor-not-allowed text-muted" : ""}`}
+                autoComplete="off"
+                data-1p-ignore
+              />
+              {!locked && (
+                <Hint label="Another name">
+                  <button
+                    type="button"
+                    aria-label="Another name"
+                    onClick={shuffle}
+                    className="flex size-[38px] shrink-0 items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:bg-raised hover:text-fg active:rotate-12"
+                  >
+                    <Dices size={17} />
+                  </button>
+                </Hint>
+              )}
+            </div>
           </div>
           <div>
             <Label htmlFor="handle" error={e.handle} hint="Mentioned as @handle">
@@ -313,8 +510,13 @@ export function AgentForm({
               <input
                 id="handle"
                 name="handle"
-                defaultValue={draft.handle}
-                placeholder="ship"
+                value={handle}
+                onChange={(event) => {
+                  setHandle(event.target.value);
+                  setHandleEdited(true);
+                }}
+                readOnly={locked}
+                placeholder="margo"
                 autoComplete="off"
                 data-1p-ignore
                 className="min-w-0 grow bg-transparent py-2 pr-3 pl-0.5 font-mono text-sm outline-none placeholder:text-faint"
@@ -322,18 +524,36 @@ export function AgentForm({
             </div>
           </div>
         </div>
-        <div>
-          <Label htmlFor="role" error={e.role} hint="One line">
-            Role
-          </Label>
-          <input id="role" name="role" defaultValue={draft.role} placeholder="Release manager for g1t" className={FIELD} autoComplete="off" data-1p-ignore />
-        </div>
       </FormSection>
 
-      <FormSection title="Job" about="What it is responsible for, how it works, and what good looks like. It reads this before every reply and task.">
+      {!locked && (
+      <FormSection
+        title="Role"
+        about="Hired into a role, not a task: a title, a team, and what it is responsible for. Shown as its name and title everywhere."
+      >
+        <RoleFields
+          title={draft.title}
+          team={draft.team}
+          department={draft.department}
+          responsibilities={draft.responsibilities}
+          teams={teams}
+          errors={e}
+          locked={locked}
+        />
+      </FormSection>
+      )}
+
+      <FormSection
+        title="Job"
+        about={
+          locked
+            ? "Its job is fixed: know the team, hand work to the right specialist, do it itself when nobody fits, and report. Add your own instructions on top."
+            : "What it is responsible for, how it works, and what good looks like. It reads this before every reply and task."
+        }
+      >
         <div>
           <Label htmlFor="instructions" error={e.instructions}>
-            Instructions
+            {locked ? "Extra instructions" : "Instructions"}
           </Label>
           <textarea
             id="instructions"
@@ -345,6 +565,13 @@ export function AgentForm({
           />
         </div>
       </FormSection>
+
+      {!locked && (
+        <FormSection title="Subagents" about="Help it calls on for one kind of work inside its own tasks. Never members of the workspace, and never wider than the agent itself.">
+          <SubagentsField initial={draft.subagents} routing={draft.routing} />
+          {e.subagents && <p className="text-sm text-danger">{e.subagents}</p>}
+        </FormSection>
+      )}
 
       <FormSection title="Personality" about="Its voice only: tone, length, how it asks. A personality never changes what it may do.">
         <div>

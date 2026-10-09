@@ -2,7 +2,7 @@
  * Agents as stored in D1, and their spend. Shared by the RPC methods and
  * the desk.
  */
-import type { WorkspaceAgent } from "@g1t/contracts";
+import type { SubagentDef, WorkspaceAgent } from "@g1t/contracts";
 
 import { agentStatus, budgetBlock, dayKey, monthKey } from "./budget.ts";
 import { type Definition, DEFAULT_AUTONOMY, DEFAULT_BUDGET, DEFAULT_ROUTING, PRESETS, readJson } from "./definition.ts";
@@ -22,7 +22,16 @@ export type Row = {
   autonomy: string;
   capacity: number;
   template: string | null;
+  avatar_seed: string | null;
+  title: string | null;
+  team: string | null;
+  department: string | null;
+  responsibilities: string | null;
+  subagents: string | null;
+  faces: string | null;
   version: number;
+  /** 1 for the workspace's built-in @g1t. */
+  builtin: number;
   busy_until: string | null;
   created_by: string;
   created_at: string;
@@ -63,6 +72,13 @@ export function definitionOf(row: Row): Definition {
     autonomy: readJson(row.autonomy, DEFAULT_AUTONOMY),
     capacity: row.capacity,
     template: row.template,
+    avatar_seed: row.avatar_seed || row.handle,
+    title: row.title ?? "",
+    team: row.team ?? null,
+    department: row.department ?? "",
+    responsibilities: readList<string>(row.responsibilities),
+    subagents: readList<SubagentDef>(row.subagents),
+    faces: "internal",
   };
 }
 
@@ -74,6 +90,7 @@ export function toAgent(row: Row, now: Date): WorkspaceAgent {
     workspace_id: row.workspace_id,
     avatar: row.avatar,
     ...definition,
+    builtin: !!row.builtin,
     version: row.version,
     status: row.archived_at ? "paused" : agentStatus({ busyUntil: row.busy_until, now, blocked: budgetBlock(definition.budget, spent, now) !== null }),
     spent_month_micros: spent.month,
@@ -94,4 +111,92 @@ export function spendStatements(db: D1Database, agentId: string, micros: number,
       )
       .bind(agentId, period, Math.max(0, Math.ceil(micros))),
   );
+}
+
+/** A stored JSON list, read defensively: anything else is empty. */
+function readList<T>(raw: string | null): T[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The agents table's definition columns, in the order `definitionColumns`
+ * gives their values. Statements are built from this one list, so a new
+ * field is added in one place.
+ */
+export const DEFINITION_COLUMNS = [
+  "handle",
+  "display_name",
+  "role",
+  "instructions",
+  "personality_preset",
+  "personality",
+  "routing",
+  "budget",
+  "autonomy",
+  "capacity",
+  "template",
+  "avatar_seed",
+  "title",
+  "team",
+  "department",
+  "responsibilities",
+  "subagents",
+  "faces",
+] as const;
+
+/** A definition's values, in `DEFINITION_COLUMNS` order. */
+export function definitionColumns(d: Definition): (string | number | null)[] {
+  return [
+    d.handle,
+    d.display_name,
+    d.role,
+    d.instructions,
+    d.personality_preset,
+    d.personality,
+    JSON.stringify(d.routing),
+    JSON.stringify(d.budget),
+    JSON.stringify(d.autonomy),
+    d.capacity,
+    d.template,
+    d.avatar_seed,
+    d.title,
+    d.team,
+    d.department,
+    JSON.stringify(d.responsibilities),
+    JSON.stringify(d.subagents),
+    d.faces,
+  ];
+}
+
+/**
+ * A new agent row: `id`, `workspace_id`, the definition, then `extra`
+ * columns (version, builtin, who made it, when), all bound in order.
+ */
+export function insertAgent(db: D1Database, id: string, workspaceId: string, d: Definition, extra: Record<string, string | number>, orIgnore = false): D1PreparedStatement {
+  const names = ["id", "workspace_id", ...DEFINITION_COLUMNS, ...Object.keys(extra)];
+  const values = [id, workspaceId, ...definitionColumns(d), ...Object.values(extra)];
+  return db
+    .prepare(`INSERT ${orIgnore ? "OR IGNORE " : ""}INTO agents (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`)
+    .bind(...values);
+}
+
+/** Sets a row's definition, from the version read only, with `extra` columns. */
+export function updateAgent(db: D1Database, id: string, readVersion: number, d: Definition, extra: Record<string, string | number>): D1PreparedStatement {
+  const names = [...DEFINITION_COLUMNS, ...Object.keys(extra)];
+  return db
+    .prepare(`UPDATE agents SET ${names.map((name) => `${name} = ?`).join(", ")} WHERE id = ? AND version = ?`)
+    .bind(...definitionColumns(d), ...Object.values(extra), id, readVersion);
+}
+
+/** A version of a definition, as saved. */
+export function versionStatement(db: D1Database, agentId: string, version: number, d: Definition, by: string, at: string): D1PreparedStatement {
+  return db
+    .prepare("INSERT INTO agent_versions (agent_id, version, definition, changed_by, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(agentId, version, JSON.stringify(d), by, at);
 }

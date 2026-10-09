@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: Create agents that are members of your workspace, with a role, a job, a personality, limits on which models they use, and a budget. DM them, invite them to channels, and see what they cost.
+description: Hire agents into roles, like colleagues. Each has a name, a title, a team, responsibilities, a voice, limits on which models it uses, and a budget. g1t, in every workspace, is the orchestrator who knows them all.
 ---
 
 import { Steps, CardGrid } from '@astrojs/starlight/components';
@@ -10,27 +10,50 @@ import Message from '../../../components/Message.astro';
 import Aside from '../../../components/Aside.astro';
 import Card from '../../../components/Card.astro';
 
-**An agent is a teammate your workspace creates.** It has a name, a handle
-you mention it by, a one-line role, a job it is responsible for, and a voice
-of its own. It sits in the member list next to the people, you DM it and
-invite it to channels, and it answers where you asked. Its spending is
-capped by a budget you set, and its model is chosen for each step by g1t,
-within limits you give it.
+**An agent is a colleague you hire into a role.** Margo works in QA, Izzy
+in Customer Support, David in Sales Operations. Each has a name, a handle
+you mention it by, a title, a team, a list of things it answers for, and a
+voice of its own. It sits in the member list next to the people. You DM it,
+invite it to channels, and it answers where you asked. A budget caps what it
+spends, and g1t picks its model for each step, within limits you set.
 
-A workspace can have as many agents as it likes. An agent costs nothing
-while nobody talks to it.
+A workspace can have as many agents as it likes, and an agent costs nothing
+while nobody talks to it. A workspace's org chart can read like a real
+company's:
 
-<Aside type="note" title="Workspace agents and @g1t">
-`@g1t` is g1t's own agent: it is in every workspace with no setup, and
-works on issues and pull requests (see [g1t's agent](/guides/working-with-g1t/)).
-The agents on this page are your workspace's own. You name them, decide
-what they do, and they belong only to your workspace. `g1t` is never a
-workspace agent's handle.
-</Aside>
+| Department | Colleague | Title |
+| --- | --- | --- |
+| Engineering | Otto | Software Engineer |
+| QA | Margo | QA Engineer |
+| Docs | Inky | Technical Writer |
+| Product | Dot | Product Manager |
+| Customer Support | Izzy | Support Specialist |
+| Sales | David | Sales Operations |
+| Operations | Bruno | Operations Engineer |
 
-## Create an agent
+Above them all is `@g1t`, who knows everyone.
 
-Only a workspace's **owners** can create, change or archive its agents,
+## g1t, the orchestrator
+
+Every workspace has `@g1t` from the start. You don't create it and can't
+archive it. It is pinned at the top of the Agents list, marked
+**Orchestrator**, and it is the one to talk to when you don't know who
+should do something.
+
+| | |
+| --- | --- |
+| **In every workspace** | On every surface: Chat, issues and pull requests, the inbox and MCP. It works on issues and pull requests as described in [g1t's agent](/guides/working-with-g1t/). |
+| **Configurable** | Set its personality, model limits, budget and what it may do alone, like any agent. Its job is fixed, and you can add instructions to it. |
+| **Knows the team** <Soon /> | Every colleague's role, what they are working on and their budget, and which teams own what. |
+| **Delegates** <Soon /> | "Get the export timeout fixed and tell support when it ships" becomes three visible @mentions: the fix to `@otto`, the review to `@margo`, and a word to `#support` from `@izzy`. |
+| **Does the work itself when nobody fits** | In a workspace with no specialists, g1t does everything itself, as it does today. |
+| **Reports** <Soon /> | A daily or weekly summary of what the team's agents did, and answers to "what's everyone working on?" |
+
+`g1t` is never another agent's handle.
+
+## Hire an agent
+
+Only a workspace's **owners** can hire, change or archive its agents,
 because an agent spends the workspace's money and speaks in its name. Every
 member can see its agents and talk to them.
 
@@ -38,32 +61,81 @@ member can see its agents and talk to them.
 
 1. Open **Agents** in the rail, then choose **New agent**, or go to
    `g1t.sh/<workspace>/-/agents/new`.
-2. **Start from a template**, or from a blank agent. A template fills in
-   every field below; you can change any of them. See [templates](#templates).
-3. Give it an **identity**: a display name (*Ship*), a handle (`ship`,
-   mentioned as `@ship`) and a role (*Release manager for the web app*).
-4. Write its **job**: what it is responsible for, how it works and what
-   good looks like. See [job and personality](#job-and-personality).
+2. **Pick a role** from the templates, grouped by department, or choose
+   **Start from nothing**. A role fills in every field below, and you can
+   change any of them. See [role templates](#role-templates).
+3. **Name it.** Each role suggests a name, such as *Margo* for QA. Choose
+   **Another name** to shuffle through others that suit the role, or type
+   your own. The handle follows the name: `margo`, mentioned as `@margo`.
+4. Check its **title**, **team** and **responsibilities**. See
+   [title, team and responsibilities](#title-team-and-responsibilities).
 5. Pick its **personality**, and add a line of your own if you like.
-6. Set its **model limits** and **budget**, or keep the defaults: Auto with
-   no limits, and only the workspace's spend limit. See
+6. Set its **model limits** and **budget**, or keep the role's defaults. See
    [model routing](#model-routing) and [budgets](#budgets).
 7. Choose **Create agent**.
 
 </Steps>
 
 The agent appears on the Agents page as **Idle**. Open a DM with it from
-Chat's **New message**, or invite it to the channels it works in.
+Chat's **New message**, or invite it to the channels its team works in.
 
-### The fields
+### Example: hire Margo into QA
+
+<Steps>
+
+1. On **New agent**, pick **QA** under the departments. The name is
+   *Margo*, the title is *QA Engineer*, the personality is *Crisp*, and her
+   models never go below Standard, because review must be careful.
+2. Put her on your **QA** team.
+3. Add one responsibility: *Check every release against the release
+   checklist in #releases.*
+4. Set a monthly budget of **$40** and a per-task cap of **$5**.
+5. Choose **Create agent**, then invite `@margo` to `#web` and `#releases`.
+
+</Steps>
+
+Now anyone in those channels can write `@margo what should we test before
+Thursday?` and get an answer in the thread.
+
+## Role templates
+
+Roles are ordinary agents you adopt, rename and change, grouped by
+department. Each starts with a fun name (and more to shuffle through), a
+title, broad responsibilities, a voice, sensible model limits, and a
+subagent or two for its own work.
+
+| Department | Suggested name | Title | Answers for | Voice | Models |
+| --- | --- | --- | --- | --- | --- |
+| Engineering | Otto, or Pixel, Bolt, Tinker… | Software Engineer | Implementing issues; fixing bugs with a test that proves the fix; healthy dependencies and builds | Crisp | Auto |
+| QA | Margo, or Wren, Hawk, Edna… | QA Engineer | Reviewing pull requests for risk and test coverage; test plans; flaky checks; reproducing bug reports | Crisp | Never below Standard |
+| Operations | Bruno, or Skipper, Patch, Scout… | Operations Engineer | Cutting releases; watching deploys; first response to incidents; postmortems | Terse operator | Never below Standard |
+| Docs | Inky, or Quill, Folio, Rosie… | Technical Writer | Docs that are true after every change; decisions turned into pages; release notes | Friendly | Never above Standard |
+| Product | Dot, or Clover, Mabel, Penny… | Product Manager | Requests turned into intake; triage and duplicates; roadmap notes; telling people when it ships | Friendly | Never above Standard |
+| Customer Support | Izzy, or Biscuit, Sunny, Poppy… | Support Specialist | Product questions from the support team; customer bugs turned into intake; word when a fix ships | Friendly | Never above Standard |
+| Sales | David | Sales Operations | Account summaries, the voice-of-the-customer digest, notes before calls | Crisp | Never above Standard |
+
+Planning isn't a role: it is `@g1t`'s own job.
+
+Model limits follow the work. Careful review never runs on the fast tier;
+high-volume intake and summaries never run on the most capable one. Change
+either if your team works differently.
+
+## Title, team and responsibilities
+
+A role is broad on purpose. You hire Margo into QA, not into "review pull
+request #418".
 
 | Field | What it is | Limits |
 | --- | --- | --- |
-| Display name | What people see: *Ship*, *Lint*. | Up to 64 characters. |
-| Handle | How it is mentioned: `@ship`. | 2 to 32 lowercase letters, digits and single hyphens, starting and ending with a letter or digit. Unique in the workspace. Never `g1t` or another reserved name. |
-| Role | One line under its name: *Release manager for the web app*. | Up to 120 characters. |
-| Job | Its instructions. | Up to 8,000 characters. |
+| Name | What people see: *Margo*. | Up to 64 characters. |
+| Handle | How it is mentioned: `@margo`. | 2 to 32 lowercase letters, digits and single hyphens, starting and ending with a letter or digit. Unique in the workspace. Never `g1t` or another reserved name. |
+| Title | *QA Engineer*. | Up to 60 characters. |
+| Team | One of the workspace's [teams](/guides/teams/), or a department label such as *QA* when it is on no team. | A department label is up to 40 characters. |
+| Role | The line lists show: *QA Engineer on the QA team*. Made from the title and team unless you write it. | Up to 120 characters. |
+| Responsibilities | What it answers for, one per line. | 2 to 8, each up to 160 characters, or none yet. |
+| Job | Its instructions: how it works and what good looks like. | Up to 8,000 characters. |
 | Personality | A preset, plus free text that refines the voice. | Free text up to 1,000 characters. |
+| Subagents | Help it keeps for its own work. See [subagents](#subagents). | Run soon. |
 | Models | A floor, a ceiling and the providers it may use. | See [model routing](#model-routing). |
 | Budget | A monthly cap, a daily cap and a cap per task. | Each optional, up to $100,000. |
 | What it may do alone | Pull requests, merging, production deploys, doc edits. | See [what it may do alone](#what-it-may-do-alone). |
@@ -72,41 +144,11 @@ Chat's **New message**, or invite it to the channels it works in.
 Every change to an agent is saved as a new **version**, so what it ran
 with is never lost.
 
-## Templates
-
-Templates are ordinary agents you adopt, rename and change. Each comes with
-a job, a personality and model limits that suit it.
-
-| Template | Handle | Role | Personality | Models |
-| --- | --- | --- | --- | --- |
-| Planner | `@planner` | Turns goals into planned, sized issues | Socratic | Never below Standard |
-| Implementer | `@builder` | Implements issues and opens pull requests | Crisp | Auto |
-| Reviewer | `@reviewer` | Reviews pull requests for correctness and risk | Crisp | Never below Standard |
-| Triage | `@triage` | Sorts new issues and requests to the right team | Friendly | Never above Standard |
-| Documenter | `@scribe` | Keeps the docs true after every change | Friendly | Never above Standard |
-| Release manager | `@ship` | Cuts releases and keeps deploys safe | Terse operator | Never below Standard |
-| On-call | `@oncall` | First responder for alerts and incidents | Terse operator | Never below Standard |
-
-A reviewer is careful, so it never runs on the fast tier. Triage is high
-volume and simple, so it never runs on the most capable one. Change either
-if your team works differently.
-
-### Example: a release manager from a template
-
-<Steps>
-
-1. On **New agent**, choose **Release manager**. The handle is `ship`, the
-   personality is *Terse operator*, and its models never go below Standard.
-2. Change the role to *Release manager for acme/web*.
-3. Add one line to its job: *We release on Thursdays at 15:00 UTC. Post the
-   release notes in #releases.*
-4. Set a monthly budget of **$40** and a per-task cap of **$5**.
-5. Choose **Create agent**, then invite `@ship` to `#web` and `#releases`.
-
-</Steps>
-
-Now anyone in those channels can write `@ship what is going out on
-Thursday?` and get an answer in the thread.
+<Aside type="note" title="Teams">
+An agent's team says where it belongs and how lists group it. Getting the
+team's channels, mentions and review requests, the way a person on the
+team does, comes next. <Soon />
+</Aside>
 
 ## Job and personality
 
@@ -121,29 +163,29 @@ nothing written there can widen what the agent may do.
 | Changes | What it pays attention to, what it asks, when it stops | Tone, length, formality, how it asks questions |
 | Never changes | | What it may read, change or spend |
 
-The same question, answered by two agents with the same job and different
-personalities:
+The same question, put to Bruno, the Operations Engineer, with two
+different personalities:
 
-<Conversation title="DM with Ship" topic="Personality: Crisp">
+<Conversation title="DM with Bruno" topic="Personality: Crisp">
 <Message name="Priya Shah" time="09:15">
 
 Can we release on a Friday?
 
 </Message>
-<Message name="Ship" agent role="Release manager" time="09:15">
+<Message name="Bruno" agent role="Operations Engineer" time="09:15">
 
 We can, but I'd rather not. If something breaks, fewer people are around to fix it. Thursday gives us a day to watch it.
 
 </Message>
 </Conversation>
 
-<Conversation title="DM with Ship" topic="Personality: Terse operator">
+<Conversation title="DM with Bruno" topic="Personality: Terse operator">
 <Message name="Priya Shah" time="09:15">
 
 Can we release on a Friday?
 
 </Message>
-<Message name="Ship" agent role="Release manager" time="09:15">
+<Message name="Bruno" agent role="Operations Engineer" time="09:15">
 
 Possible. Not advised: thin weekend cover. Prefer Thursday.
 
@@ -162,12 +204,106 @@ Possible. Not advised: thin weekend cover. Prefer Thursday.
 Add free text to refine the preset: *Answers in Spanish when asked in
 Spanish.* or *Uses British spelling.*
 
+## Subagents
+
+<Soon />
+
+Subagents are the specialised help an agent keeps for its own work, the
+way a person keeps tools for parts of a job. Margo, in QA, comes with two:
+
+| Subagent | What it does |
+| --- | --- |
+| `flake-hunter` | Runs a flaky test repeatedly, narrows down when and why it fails, and reports the cause with evidence. |
+| `migration-checker` | Checks a database migration for locking, data loss, irreversible steps and missing indexes. |
+
+You can see, add and change an agent's subagents on its profile today.
+Running them comes with tasks and sessions. When they run, these rules
+hold:
+
+- **Defined on the agent.** Each has a name such as `flake-hunter`, one
+  line on what it is for, its own instructions, and its own model limits,
+  which always sit inside its agent's.
+- **Not members.** They never appear in Chat or member lists, and never
+  talk to people. They report to their agent, which speaks for them.
+- **Never wider than their agent.** Their access, budget and audience are
+  the agent's or narrower. What they spend counts against the agent's
+  budget and the task.
+- **Many at once.** Up to 8 of one subagent can run in parallel inside a
+  task, and the task card shows them as sub-steps.
+
+## Back office and front office
+
+Every agent is **back office**: it works with your team and never talks to
+anyone outside the company.
+
+David, in Sales Operations, shows how much a back-office agent can do
+without ever contacting a customer. He reads the customer conversations
+the workspace already has, and:
+
+- summarizes what's happening per account and across them: who is at
+  risk, what keeps being asked for, and what was promised;
+- posts a weekly voice-of-the-customer digest;
+- prepares account notes before a call;
+- links feature requests to the accounts asking for them, so Product sees
+  the demand.
+
+Customer-data rules apply to everything he reads. See
+[what agents can do for whom](/guides/agent-access/).
+
+**Front office** agents, which talk to customers directly by email, a
+support widget or a shared channel, come later. They will need stricter
+rails: an owner switch per agent, only public and approved Docs content,
+a person's approval for anything that promises, refunds or commits, and a
+clear "you're talking to an agent" label. Until then, a workspace can't
+set an agent to face customers.
+
+## Agents know each other
+
+<Soon />
+
+Every agent, not only g1t, knows the team: each colleague's name, title,
+team, responsibilities and status. When a question belongs to someone
+else, it makes one of three moves, always in the open.
+
+| Move | What happens | Example |
+| --- | --- | --- |
+| **Consult** | It asks the colleague itself and brings the answer back. You stay with the agent you asked. The exchange shows as a collapsed line in the thread. | *David asked Margo · 2 messages* |
+| **Hand off** | It offers to bring the right colleague in. On yes, it mentions them with a short brief and they take the thread. Hand-offs are offered, never silent. | *"That's Margo's area. Want me to bring her in?"* |
+| **Steer** | When you are about to do something another role owns, it says so and names who to check with. | *"We're in the release freeze. Check with Bruno before merging."* |
+
+<Conversation title="# web" topic="A consult, as it will show">
+<Message name="Dana Ruiz" time="11:02">
+
+@izzy a customer says exports skip archived rows. Is that expected?
+
+</Message>
+<Message name="Izzy" agent role="Support Specialist" time="11:03">
+
+It's expected: archived rows are left out unless the customer turns on **Include archived** before exporting. I checked with Margo, who confirmed it's covered by the export tests.
+
+*Izzy asked Margo · 2 messages*
+
+</Message>
+</Conversation>
+
+The same rails hold along every chain:
+
+- **The audience.** A colleague can only contribute what the
+  conversation's audience may see.
+- **The asker's access.** Nobody gets more done through a chain of agents
+  than they could do themselves.
+- **The bill.** Spend is charged to whoever started the chain.
+- **No ping-pong.** An agent can't send work back to the agent that sent
+  it, in the same chain, without a person stepping in.
+- **The hop limit.** A chain stops after six hops and hands back to a
+  person. This part works today in Chat.
+
 ## Talk to an agent
 
 There are two ways to reach an agent in [Chat](/guides/chat/):
 
 - **DM it.** In a direct message, it answers every message you send.
-- **Mention it** in a channel it is a member of: `@ship …`. In a channel,
+- **Mention it** in a channel it is a member of: `@margo …`. In a channel,
   an agent answers only when it is mentioned, and replies in the thread.
 
 Agents can mention each other too. Each agent-to-agent mention is a *hop*,
@@ -269,7 +405,7 @@ The live agent rate is on [g1t.sh/pricing](https://g1t.sh/pricing).
 
 ### A worked example
 
-Ship answers *what is going out on Thursday?* in a thread of a dozen
+Margo answers *what should we test before Thursday?* in a thread of a dozen
 messages. The reply reads about 3,000 tokens and writes about 300, on the
 fast tier. Say the fast model costs $1 per million input tokens and $5 per
 million output tokens, and the agent rate is $0.25 per million tokens

@@ -1,8 +1,8 @@
-import { Activity, BarChart3, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Sparkles, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bot, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, GanttChart, Gauge, GitBranch, GitPullRequest, Globe, History, House, Inbox, KanbanSquare, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTree, Lock, LogIn, LogOut, Mail, Menu, Network, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, ShieldCheck, Scale, Smile, Sparkles, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type InboxCounts, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams } from "@g1t/contracts";
+import { type Abilities, type ChatSidebarEntry, type InboxCounts, type WorkspaceAgent, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -28,7 +28,10 @@ import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
 import { type ModeKey, SETTINGS_PAGES, modeOf, sidebarCurrent } from "../lib/workspace-nav";
 import { AgentsSidebar } from "./agents-mode";
 import { ChatSidebar } from "./chat/sidebar";
-import { Rail } from "./rail";
+import { HelpMenu, Rail } from "./rail";
+import { HomeSidebar } from "./home-sidebar";
+import { G1tMark } from "./orchestrator";
+import { AvatarSheetButton, MobileTabBar, isConversation, useVisualViewport } from "./mobile";
 import { useChatSidebar } from "./chat/actions";
 import { unreadTotals } from "../lib/chat";
 import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
@@ -40,6 +43,7 @@ import { useSignUpCopy } from "../lib/registration";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
+import { useLiveBadges } from "../lib/notify-client";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -81,9 +85,20 @@ export type ShellData = {
   compute?: { paused: string | null; spike: Spike | null; owner: boolean } | null;
   /** What is unread in their inbox, for the bell. Absent for a visitor. */
   inbox?: InboxCounts | null;
-  /** What is unread in chat, for the rail's badge; null when chat did not answer. */
-  chat?: { unread: number; mentions: number } | null;
+  /**
+   * Chat, for the rail's badge and Home's sidebar: what is unread, and the
+   * starred and latest conversations. Null when chat did not answer in time.
+   */
+  chat?: { unread: number; mentions: number; starred?: ChatSidebarEntry[]; recent?: ChatSidebarEntry[] } | null;
+  /** The workspace's agents, g1t first, for Home's and Agents' sidebars; null when not known. */
+  agents?: ShellAgent[] | null;
 };
+
+/** An agent as the shell lists it. */
+export type ShellAgent = Pick<
+  WorkspaceAgent,
+  "id" | "handle" | "display_name" | "avatar" | "avatar_seed" | "role" | "status" | "title" | "team" | "department" | "builtin"
+>;
 
 function SidebarLink({
   to,
@@ -1272,6 +1287,7 @@ function Sidebar({
   missing = false,
   onFind,
   onClose,
+  rail = false,
 }: {
   user: User | null;
   shell: ShellData;
@@ -1280,6 +1296,11 @@ function Sidebar({
   onFind: () => void;
   /** In the sheet on a small screen: closing it, at the end of the top row. */
   onClose?: () => void;
+  /**
+   * Beside the rail, as Code's sidebar: code only, under a Code heading.
+   * The workspace, its settings and the account are the rail's.
+   */
+  rail?: boolean;
 }) {
   const ws = shell.workspace;
   const { pathname } = useLocation();
@@ -1327,10 +1348,12 @@ function Sidebar({
       : guessed;
 
   // The way from the main list to the one shown.
-  const trail: Level[] = [{ key: "main", node: <MainMenu user={user} shell={shell} /> }];
-  if (user && inAccount) {
+  const trail: Level[] = [{ key: "main", node: rail && user && ws ? <CodeMenu shell={shell} slug={ws.slug} /> : <MainMenu user={user} shell={shell} /> }];
+  if (rail && !menuRepo) {
+    // Code's own list: nothing to drill into but a project.
+  } else if (user && inAccount && !rail) {
     trail.push({ key: "account", node: <AccountSettingsMenu username={user.username} /> });
-  } else if (ws && inSettings) {
+  } else if (ws && inSettings && !rail) {
     trail.push({ key: `settings:${ws.slug}`, node: <SettingsMenu slug={ws.slug} owner={ws.role === "owner"} /> });
   } else if (menuRepo) {
     const key = `repo:${menuRepo.namespace}/${menuRepo.name}`.toLowerCase();
@@ -1340,7 +1363,7 @@ function Sidebar({
       ? { to: "/explore", label: "Explore" }
       : home
         ? { to: `/${home.slug}/-/projects`, label: "All projects" }
-        : { to: "/", label: "Mission control" };
+        : { to: "/", label: "Home" };
     trail.push({
       key,
       node: (
@@ -1357,6 +1380,9 @@ function Sidebar({
   return (
     <div className="flex h-full flex-col">
       {/* The same height and rule as the top bar, so the two read as one line. */}
+      {rail ? (
+        <ModeHeader title="Code" onClose={onClose} />
+      ) : (
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2 pl-2.5">
         {user ? (
           <>
@@ -1386,6 +1412,7 @@ function Sidebar({
           </button>
         )}
       </div>
+      )}
       <div className="px-2 pt-3">
         <button
           type="button"
@@ -1398,13 +1425,229 @@ function Sidebar({
         </button>
       </div>
       <Drill trail={trail} />
-      {/* The account, or signing in, as one row at the very bottom. */}
-      <div className="shrink-0 border-t border-line p-2">
-        {user ? <AccountMenu user={user} /> : <VisitorPanel />}
+      {/* The account, or signing in, as one row at the very bottom; beside the rail, the rail has it. */}
+      {!rail && (
+        <div className="shrink-0 border-t border-line p-2">
+          {user ? <AccountMenu user={user} /> : <VisitorPanel />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A mode's sidebar heading: the same height and rule as the top bar, with a way to close the phone's sheet. */
+export function ModeHeader({ title, action, onClose }: { title: ReactNode; action?: ReactNode; onClose?: () => void }) {
+  return (
+    <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line pr-2.5 pl-4">
+      <h2 className="min-w-0 grow truncate text-[0.9375rem] font-semibold">{title}</h2>
+      {action}
+      {onClose && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-fg"
+        >
+          <X size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Code's sidebar (beside the rail): only code. Its Overview (Mission
+ * control's code panels), the projects, what spans them, and what is
+ * coming. The workspace's people, money and settings are Workspace's;
+ * agents, context and memory are Agents'.
+ */
+function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
+  const { pathname } = useLocation();
+  const going = useNavigation().location?.pathname;
+  const path = going ?? pathname;
+  const at = (page: string) => path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
+  const shared = shell.shared ?? [];
+  return (
+    <nav aria-label="Code" className={PANEL}>
+      <div className="mt-3 space-y-px">
+        <SidebarLink to={`/${slug}/-/overview`} icon={<LayoutDashboard size={15} />} current={at("overview")}>
+          Overview
+        </SidebarLink>
+      </div>
+      <div className="mt-3">
+        <SidebarProjects slug={slug} shell={shell} current={at("projects")} />
+      </div>
+      <Rule />
+      <div className="space-y-px">
+        <SidebarLink to={`/${slug}/-/security`} icon={<ShieldCheck size={15} />} current={at("security") && !at("security/settings")}>
+          Security
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/packages`} icon={<Package size={15} />} current={at("packages")}>
+          Packages
+        </SidebarLink>
+        {INSIGHTS && (
+          <SidebarSoonLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} about={INSIGHTS.summary} current={at("insights")}>
+            {INSIGHTS.title}
+          </SidebarSoonLink>
+        )}
+        {roadmapIn("Workspace")
+          .filter((item) => item.key !== "insights" && item.key !== "teams" && item.key !== "fleet")
+          .map((item) => (
+            <SidebarSoonLink key={item.key} to={`/${slug}/-/soon/${item.key}`} icon={WORKSPACE_ICONS[item.key] ?? <Sparkles size={15} />} about={item.summary}>
+              {item.title === "Board" ? "Boards" : item.title}
+            </SidebarSoonLink>
+          ))}
+      </div>
+      {shared.length > 0 && (
+        <>
+          <Rule />
+          <SidebarGroup title="Shared with you">
+            {shared.map((repo) => (
+              <SidebarLink
+                key={`${repo.namespace}/${repo.name}`}
+                to={`/${repo.namespace}/${repo.name}`}
+                icon={repo.isPrivate ? <Lock size={15} /> : <Box size={15} />}
+                drill="hover"
+              >
+                <span className="font-mono text-faint">{repo.namespace}/</span>
+                {repo.name}
+              </SidebarLink>
+            ))}
+          </SidebarGroup>
+        </>
+      )}
+    </nav>
+  );
+}
+
+/** Workspace pages that sit in its Settings list, drilled into from the Workspace sidebar. */
+const WORKSPACE_SETTINGS = ["settings", "repositories", "tokens", "personal-access-tokens", "secrets", "actions", "runners", "webhooks", "emoji"];
+
+/**
+ * The Workspace mode's sidebar: the workspace itself, for every member.
+ * Its overview, people, money, connections, policies and record, then its
+ * settings as a list of their own. Owner-only pages stay owner-only.
+ */
+export function WorkspaceSidebar({ slug, owner, onClose }: { slug: string; owner: boolean; onClose?: () => void }) {
+  const { pathname } = useLocation();
+  const going = useNavigation().location?.pathname;
+  const path = going ?? pathname;
+  const page = path.startsWith(`/${slug}/-/`) ? path.slice(`/${slug}/-/`.length) : "";
+  const top = page.split("/")[0] ?? "";
+  const at = (...pages: string[]) => pages.some((p) => page === p || page.startsWith(`${p}/`));
+  const inSettings = WORKSPACE_SETTINGS.includes(top);
+  const main = (
+    <nav aria-label="Workspace" className={PANEL}>
+      <div className="mt-3 space-y-px">
+        <SidebarLink to={`/${slug}/-/workspace`} icon={<LayoutGrid size={15} />} current={at("workspace")}>
+          Overview
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/people`} icon={<Users size={15} />} current={at("people")}>
+          People
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/teams`} icon={<UsersRound size={15} />} current={at("teams")}>
+          Teams
+        </SidebarLink>
+      </div>
+      <SidebarGroup title="Usage and billing" className="mt-3">
+        <SidebarLink to={`/${slug}/-/usage`} icon={<BarChart3 size={15} />} current={at("usage", "gateway")}>
+          Usage
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/billing`} icon={<CreditCard size={15} />} current={at("billing")}>
+          Billing and plans
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Connections" className="mt-3">
+        <SidebarLink to={`/${slug}/-/integrations`} icon={<Plug size={15} />} current={at("integrations")}>
+          Integrations
+        </SidebarLink>
+      </SidebarGroup>
+      <SidebarGroup title="Security policies" className="mt-3">
+        <SidebarLink to={`/${slug}/-/security/settings`} icon={<ShieldCheck size={15} />} current={at("security/settings")}>
+          Security settings
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/guardrails`} icon={<Gauge size={15} />} current={at("guardrails")}>
+          Guardrails
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/rules`} icon={<Scale size={15} />} current={at("rules")}>
+          Rules
+        </SidebarLink>
+      </SidebarGroup>
+      <Rule />
+      <div className="space-y-px">
+        <SidebarLink to={`/${slug}/-/audit`} icon={<History size={15} />} current={at("audit")}>
+          Audit log
+        </SidebarLink>
+        <SidebarLink to={owner ? `/${slug}/-/settings` : `/${slug}/-/repositories`} icon={<Settings size={15} />} drill current={inSettings}>
+          Settings
+        </SidebarLink>
+      </div>
+    </nav>
+  );
+  const settings = (
+    <nav aria-label="Workspace settings" className={PANEL}>
+      <BackRow to={`/${slug}/-/workspace`} label="Settings" context={slug} />
+      <div className="mt-2 space-y-px">
+        {owner && (
+          <SidebarLink to={`/${slug}/-/settings`} icon={<Settings size={15} />}>
+            General
+          </SidebarLink>
+        )}
+        <SidebarLink to={`/${slug}/-/repositories`} icon={<BookMarked size={15} />}>
+          Repositories
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/tokens`} icon={<KeyRound size={15} />}>
+          Access tokens
+        </SidebarLink>
+        {owner && (
+          <SidebarLink to={`/${slug}/-/personal-access-tokens`} icon={<UserRoundKey size={15} />}>
+            Personal access tokens
+          </SidebarLink>
+        )}
+        <SidebarLink to={`/${slug}/-/webhooks`} icon={<Webhook size={15} />}>
+          Webhooks
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/emoji`} icon={<Smile size={15} />}>
+          Emoji
+        </SidebarLink>
+      </div>
+      <SidebarGroup title="Runs" className="mt-3">
+        <SidebarLink to={`/${slug}/-/secrets`} icon={<Lock size={15} />}>
+          Secrets and variables
+        </SidebarLink>
+        <SidebarLink to={`/${slug}/-/actions`} icon={<PlayCircle size={15} />}>
+          Actions
+        </SidebarLink>
+        {owner && (
+          <SidebarLink to={`/${slug}/-/runners`} icon={<ServerCog size={15} />}>
+            Runners
+          </SidebarLink>
+        )}
+      </SidebarGroup>
+    </nav>
+  );
+  const trail: Level[] = [{ key: "workspace", node: main }];
+  if (inSettings) trail.push({ key: "workspace:settings", node: settings });
+  return (
+    <div className="flex h-full flex-col">
+      <ModeHeader title="Workspace" onClose={onClose} />
+      <Drill trail={trail} />
+    </div>
+  );
+}
+
+/** Your own settings, beside the rail: under the account menu, not any workspace's. */
+export function AccountSidebar({ username, onClose }: { username: string; onClose?: () => void }) {
+  return (
+    <div className="flex h-full flex-col">
+      <ModeHeader title="Your account" onClose={onClose} />
+      <div className="min-h-0 grow">
+        <AccountSettingsMenu username={username} />
       </div>
     </div>
   );
 }
+
 
 /** Words for the sections a path can end in. */
 const SECTIONS: Record<string, string> = {
@@ -1439,6 +1682,7 @@ const SECTIONS: Record<string, string> = {
   billing: "Billing and plans",
   integrations: "Integrations",
   webhooks: "Webhooks",
+  emoji: "Emoji",
   domains: "Domains",
   guardrails: "Guardrails",
   rules: "Rules",
@@ -1460,6 +1704,8 @@ const SECTIONS: Record<string, string> = {
   docs: "Docs",
   home: "Home",
   "code-access": "Code access",
+  overview: "Overview",
+  workspace: "Workspace",
 };
 
 /** Settings pages whose name differs from the section's of the same word. */
@@ -1475,7 +1721,7 @@ function Breadcrumbs({ pathname, missing, repo }: { pathname: string; missing?: 
   }
   const parts = pathname.split("/").filter(Boolean);
   const reserved = ["settings", "explore", "new", "search", "workspaces", "policies", "security", "support", "status", "invite", "inbox"];
-  if (parts.length === 0) return <span className="text-sm font-medium">Mission control</span>;
+  if (parts.length === 0) return <span className="text-sm font-medium">Home</span>;
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
     const page = accountSettingsPage(pathname);
@@ -1534,7 +1780,8 @@ type Crumb = { label: string; to: string; mono?: boolean; short?: string };
  * with a way back to where it sits; the whole trail from a wider screen up.
  */
 function Trail({ trail }: { trail: Crumb[] }) {
-  const up = trail.length > 1 ? trail[trail.length - 2]! : null;
+  // Up on a phone, unless up is the workspace itself: its pages are the tabs.
+  const up = trail.length > 1 && !/^\/[^/]+$/.test(trail[trail.length - 2]!.to) ? trail[trail.length - 2]! : null;
   return (
     <nav aria-label="Where you are" className="flex min-w-0 items-center gap-1.5 text-sm">
       {up && (
@@ -1582,7 +1829,15 @@ type Command = PaletteCommand;
 function commandsFor(user: User | null, shell: ShellData, here: string, signUpLabel = "Sign up"): Command[] {
   if (!user) return visitorCommands(shell, here, signUpLabel);
   const commands: Command[] = [
-    { label: "Mission control", to: "/", icon: <House size={15} /> },
+    { label: "Home", to: "/", icon: <House size={15} /> },
+    ...(shell.workspace
+      ? [
+          { label: "Chat", to: `/${shell.workspace.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
+          { label: "Agents", to: `/${shell.workspace.slug}/-/agents`, icon: <Sparkles size={15} /> },
+          ...(hasCodeAccess(shell.workspace) ? [{ label: "Code overview", to: `/${shell.workspace.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
+          { label: "Workspace", hint: "People, billing, policies, settings", to: `/${shell.workspace.slug}/-/workspace`, icon: <Building2 size={15} /> },
+        ]
+      : []),
     ...(shell.repos.length > 0
       ? [{ label: "Put an agent on it", hint: "Open an issue and assign g1t", to: "/?agent=new", icon: <Sparkles size={15} /> }]
       : []),
@@ -1737,23 +1992,38 @@ export function Progress() {
   );
 }
 
+/** The top bar's way to g1t: the direct message with the workspace's orchestrator, opened or made. */
+function AskG1tButton({ slug }: { slug: string }) {
+  return (
+    <Hint label="Ask g1t">
+      <Link
+        to={`/${slug}/-/chat?agent=g1t`}
+        aria-label="Ask g1t"
+        className="flex h-9 items-center gap-1.5 rounded-md border border-line px-2 text-sm text-fg/90 transition-colors hover:border-line-strong hover:bg-raised hover:text-fg sm:px-2.5"
+      >
+        <G1tMark size={18} />
+        <span className="hidden sm:inline">Ask g1t</span>
+      </Link>
+    </Hint>
+  );
+}
+
 /** The mode's sidebar beside the rail: a shade lighter than the page. */
 const SIDEBAR_BOX = "h-full border-r border-line bg-[color-mix(in_srgb,var(--color-surface)_70%,var(--color-bg))]";
 
 /**
- * Which sidebar sits beside the rail: Chat's and Agents' own, Code's (the
- * one with projects, also on Mission control and the inbox for someone with
- * Code), or none (Docs, and Home or the inbox without Code).
+ * Which sidebar sits beside the rail: each mode's own, or none (Docs, and
+ * the Inbox, which is a page of its own). Without a workspace (a visitor),
+ * the one sidebar there always was.
  */
-function sidebarFor(mode: ModeKey | null, code: boolean, pathname: string): "code" | "chat" | "agents" | null {
+function sidebarFor(mode: ModeKey | null): Panel | null {
   if (mode == null) return "code";
-  if (mode === "chat") return "chat";
-  if (mode === "agents") return "agents";
-  if (mode === "docs") return null;
-  if (mode === "code") return "code";
-  if (!code) return null;
-  return mode === "inbox" || pathname === "/" ? "code" : null;
+  if (mode === "docs" || mode === "inbox") return null;
+  return mode;
 }
+
+/** The sidebars that sit beside the rail, one per mode that has one. */
+type Panel = "home" | "chat" | "agents" | "code" | "workspace" | "account";
 
 /**
  * The app: a sidebar with the workspace, its repositories and the sections
@@ -1796,6 +2066,7 @@ export function AppShell({
   }, [user]);
   usePaletteShortcut(() => setPalette((open) => !open));
   const leaving = useLeaving();
+  useVisualViewport();
 
   // The rail and the mode's sidebar (docs/WORKSPACE.md, "Shell"), for
   // someone in a workspace. A visitor, or someone with none, keeps the one
@@ -1803,42 +2074,61 @@ export function AppShell({
   const going = useNavigation().location?.pathname;
   const ws = user ? shell.workspace : null;
   const mode: ModeKey | null = ws ? modeOf(going ?? pathname, ws.slug) : null;
-  const panel = sidebarFor(mode, ws ? hasCodeAccess(ws) : true, going ?? pathname);
+  const panel = ws ? sidebarFor(mode) : "code";
+  const code = ws ? hasCodeAccess(ws) : true;
   const { sidebar: chatSidebar } = useChatSidebar();
-  const chatUnread = chatSidebar ? unreadTotals(chatSidebar.entries) : (shell.chat ?? { unread: 0, mentions: 0 });
-  const sidebarNode = (inSheet: boolean) =>
-    panel === "chat" && ws ? (
-      <ChatSidebar slug={ws.slug} />
-    ) : panel === "agents" && ws ? (
-      <AgentsSidebar slug={ws.slug} />
-    ) : panel === "code" ? (
-      <Sidebar
-        user={user}
-        shell={shell}
-        missing={missing}
-        onFind={() => {
-          if (inSheet) setDrawer(false);
-          setPalette(true);
-        }}
-        onClose={inSheet ? () => setDrawer(false) : undefined}
-      />
-    ) : null;
+  // Notify: the feed socket's live counts (lib/notify-client.ts) once it has them; the page's until then.
+  const live = useLiveBadges(ws?.slug);
+  const chatUnread = chatSidebar
+    ? unreadTotals(chatSidebar.entries)
+    : live?.chat != null
+      ? { unread: live.chat, mentions: live.mentions ?? 0 }
+      : (shell.chat ?? { unread: 0, mentions: 0 });
+  const inboxUnread = live?.inbox ?? shell.inbox?.unread ?? 0;
+  const sidebarNode = (inSheet: boolean) => {
+    const close = inSheet ? () => setDrawer(false) : undefined;
+    const find = () => {
+      if (inSheet) setDrawer(false);
+      setPalette(true);
+    };
+    if (!ws || !user || panel === "code") {
+      return <Sidebar user={user} shell={shell} missing={missing} onFind={find} onClose={close} rail={Boolean(ws && user)} />;
+    }
+    switch (panel) {
+      case "home":
+        return <HomeSidebar slug={ws.slug} shell={shell} code={code} onFind={find} header={<ModeHeader title="Home" onClose={close} />} />;
+      case "chat":
+        return <ChatSidebar slug={ws.slug} />;
+      case "agents":
+        return <AgentsSidebar slug={ws.slug} shellAgents={shell.agents ?? null} code={code} owner={ws.role === "owner"} />;
+      case "workspace":
+        return <WorkspaceSidebar slug={ws.slug} owner={ws.role === "owner"} onClose={close} />;
+      case "account":
+        return <AccountSidebar username={user.username} onClose={close} />;
+      default:
+        return null;
+    }
+  };
   const rail =
     user && ws ? (
       <Rail
         user={user}
         workspace={ws}
-        unread={{ inbox: shell.inbox?.unread ?? 0, chat: chatUnread.unread, mentions: chatUnread.mentions }}
+        unread={{ inbox: inboxUnread, chat: chatUnread.unread, mentions: chatUnread.mentions }}
+        help={<HelpMenu />}
         account={<AccountMenu user={user} rail />}
       />
     ) : null;
   const pad = rail ? (panel ? "lg:pl-[21rem]" : "lg:pl-20") : "lg:pl-64";
+  // On a phone (below 768px): the tab bar, and a conversation full screen.
+  const conversation = isConversation(going ?? pathname);
+  const tabs = Boolean(user && ws) && !conversation;
 
   return (
     // The phone's menu is a sheet: a dialog that holds focus, closes on
     // Escape or a tap outside, and gives focus back to the menu button.
     <Sheet open={drawer} onOpenChange={setDrawer}>
-    <div className="min-h-screen">
+    <div className="min-h-dvh">
       <Progress />
       <aside className="fixed inset-y-0 left-0 z-40 hidden lg:flex">
         {rail}
@@ -1848,6 +2138,12 @@ export function AppShell({
         side="left"
         showClose={false}
         aria-describedby={undefined}
+        // Focus would land on the workspace's avatar and open its hint over
+        // the sidebar's heading; the sheet itself takes it instead.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
         className={`lg:hidden ${rail ? `flex flex-row ${panel ? "w-[21rem] max-w-[92vw] sm:max-w-[21rem]" : "w-20 sm:max-w-20"}` : "w-72 max-w-[85vw] sm:max-w-72"}`}
       >
         <SheetTitle className="sr-only">Menu</SheetTitle>
@@ -1855,13 +2151,15 @@ export function AppShell({
         {panel && <div className={`min-w-0 grow ${rail ? SIDEBAR_BOX : ""}`}>{sidebarNode(true)}</div>}
       </SheetContent>
 
-      <div className={`flex min-h-screen min-w-0 flex-col ${pad}`}>
+      <div className={`flex min-h-dvh min-w-0 flex-col ${pad} ${tabs ? "pb-(--tabbar-h)" : ""}`}>
         <header
-          className={`sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6 ${mode === "chat" ? "lg:hidden" : ""}`}
+          className={`sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/85 pt-[env(safe-area-inset-top)] pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] backdrop-blur sm:px-6 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] ${mode === "chat" ? "lg:hidden" : ""} ${conversation ? "max-md:hidden" : ""}`}
         >
+          {/* A phone: the workspace's avatar opens everything else (components/mobile.tsx). */}
+          {user && ws && <AvatarSheetButton user={user} workspace={ws} />}
           <SheetTrigger
             aria-label="Open menu"
-            className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg lg:hidden"
+            className={`rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg lg:hidden ${user && ws ? "max-md:hidden" : ""}`}
           >
             <Menu size={18} />
           </SheetTrigger>
@@ -1882,7 +2180,7 @@ export function AppShell({
               prefetch="intent"
               aria-label="Explore"
               className={({ isActive }) =>
-                `flex h-9 items-center gap-1.5 rounded-md px-2 text-sm transition-colors hover:bg-raised hover:text-fg sm:px-2.5 ${isActive ? "text-fg" : "text-muted"}`
+                `flex h-9 items-center gap-1.5 rounded-md px-2 text-sm transition-colors hover:bg-raised hover:text-fg sm:px-2.5 ${user ? "max-md:hidden" : ""} ${isActive ? "text-fg" : "text-muted"}`
               }
             >
               <Compass size={16} className="sm:hidden" />
@@ -1896,8 +2194,11 @@ export function AppShell({
             </a>
             {user && (
               <>
-                <AgentButton />
-                <InboxBell counts={shell.inbox ?? null} />
+                {shell.workspace ? <AskG1tButton slug={shell.workspace.slug} /> : <AgentButton />}
+                {/* On a phone the Inbox is a tab. */}
+                <span className={shell.workspace ? "max-md:hidden" : undefined}>
+                  <InboxBell counts={shell.inbox ? { ...shell.inbox, unread: inboxUnread } : null} />
+                </span>
               </>
             )}
             {!user ? (
@@ -1998,6 +2299,7 @@ export function AppShell({
           <InMain.Provider value={true}>{children}</InMain.Provider>
         </main>
       </div>
+      {user && ws && <MobileTabBar workspace={ws} unread={{ inbox: inboxUnread, chat: chatUnread.unread, mentions: chatUnread.mentions }} />}
       <CommandPalette
         open={palette}
         onOpenChange={setPalette}

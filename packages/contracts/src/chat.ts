@@ -36,6 +36,13 @@ export type MemberProfile = Principal & {
   avatar: string | null;
   /** An agent's one-line role ("Release manager for g1t"). */
   role: string | null;
+  /**
+   * An agent's title ("QA Engineer"); null for a person. Chat always sets
+   * it; optional so profiles a page makes for itself need not.
+   */
+  title?: string | null;
+  /** What an agent's pixel creature is drawn from; null for a person. Always set by chat. */
+  avatar_seed?: string | null;
 };
 
 export type ChannelKind = "channel" | "dm";
@@ -92,7 +99,64 @@ export type ChatMessage = {
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
+  /**
+   * Its reactions, one per emoji in the order each was first used. Chat
+   * always sets it; optional so messages a page makes for itself need not.
+   */
+  reactions?: ChatReaction[];
 };
+
+/**
+ * One emoji's reactions on a message. `emoji` is a Unicode emoji or
+ * `:name:` for one of the workspace's own (`CustomEmoji`).
+ */
+export type ChatReaction = {
+  emoji: string;
+  /** Everyone who reacted with it, people and agents alike. */
+  count: number;
+  /**
+   * Whether the viewer did. In live `message.*` events, which everyone in
+   * the room gets, it is always false: keep your own from what you know.
+   */
+  me: boolean;
+  /** The first ten who reacted with it, for the hover list. */
+  by: MemberProfile[];
+};
+
+/** Who may add a workspace's emoji: every member (the default), or only its owners. */
+export type EmojiUpload = "members" | "admins";
+
+/**
+ * One of a workspace's own emoji, used as `:name:`. Its image is served
+ * from the usercontent origin at `/emoji/<file>` (never from the site).
+ */
+export type CustomEmoji = {
+  name: string;
+  /** For an alias, the emoji it is another name for; it shows that one's image. */
+  alias_of: string | null;
+  /** The SHA-256 of the image's bytes. */
+  file: string;
+  content_type: "image/png" | "image/gif" | "image/webp";
+  bytes: number;
+  created_by: MemberProfile;
+  created_at: string;
+};
+
+export type EmojiList = {
+  emoji: CustomEmoji[];
+  emoji_upload: EmojiUpload;
+  /** Whether the viewer may add emoji and aliases. */
+  can_upload: boolean;
+  /** Whether the viewer is an owner: may remove any emoji and change `emoji_upload`. */
+  can_manage: boolean;
+};
+
+/** An image for a new emoji, as base64. Its type is read from its bytes, never taken from here. */
+export type EmojiFile = { data: string };
+
+/** The largest custom emoji image, in bytes, and the widest or tallest, in pixels. */
+export const MAX_EMOJI_BYTES = 256 * 1024;
+export const MAX_EMOJI_SIDE = 512;
 
 /** One row of the Chat sidebar. */
 export type ChatSidebarEntry = {
@@ -128,6 +192,27 @@ export type NewChannel = { name: string; topic?: string | null; private?: boolea
 
 export type PostMessage = { body: string; thread_root?: string | null };
 
+/**
+ * Who will read what is said in a conversation (docs/WORKSPACE.md, "What
+ * an agent can and can't know"): a direct message's or private channel's
+ * people, or, for a public channel, the whole workspace. An agent answers
+ * there only with what every one of them may see.
+ */
+export type ChatAudience = {
+  kind: "dm" | "private" | "public";
+  /** The people in it (agents left out). For a public channel, its current members, for reference only. */
+  member_user_ids: string[];
+  member_count: number;
+};
+
+/** A message an agent found by searching, with the conversation it is in. */
+export type AgentFoundMessage = {
+  channel_id: string;
+  /** The channel's name, or null for a direct message. */
+  channel: string | null;
+  message: ChatMessage;
+};
+
 /** The most agent-to-agent hops one person's request may start (docs/WORKSPACE.md, "Hop limit"). */
 export const CHAT_MAX_HOPS = 6;
 
@@ -144,6 +229,12 @@ export type AgentPostMessage = PostMessage & {
   asked_by?: string | null;
   /** The delivery's `asker`, handed on to agents this message wakes. Absent: none (they treat the asker as unable to change code). */
   asker?: AskerAccess | null;
+  /**
+   * The delivery's `chain`: the agents that handled this request before
+   * the one posting, oldest first. Chat adds the poster, and never hands
+   * the message to the agent that sent the work to it (no ping-pong).
+   */
+  chain?: string[];
 };
 
 /**
@@ -156,7 +247,8 @@ export type ChatLiveEvent =
   | { type: "message.updated"; message: ChatMessage }
   | { type: "message.deleted"; channel_id: string; id: string }
   | { type: "typing"; channel_id: string; member: MemberProfile; until: string }
-  | { type: "read"; channel_id: string; principal: Principal; last_read_id: string };
+  | { type: "read"; channel_id: string; principal: Principal; last_read_id: string }
+  | { type: "reaction.added" | "reaction.removed"; channel_id: string; message_id: string; emoji: string; member: MemberProfile };
 
 /**
  * Header the site sets on a forwarded live socket: the viewer, as JSON.
@@ -242,6 +334,50 @@ export type ChatApi = {
     agentId: string,
     page?: { thread_root?: string | null; limit?: number },
   ): Promise<Result<ChatMessage[]>>;
+  /** Internal: who reads a conversation. */
+  audience(workspace: string, channelId: string): Promise<Result<ChatAudience>>;
+  /**
+   * Internal, for an agent replying in `channelId`: messages matching
+   * `query` (newest first, at most 20) from conversations every person in
+   * that conversation's audience is in, and from public channels. Never
+   * another direct message unless it has exactly the same people. The
+   * audience is worked out here from `channelId`, never taken from the
+   * caller.
+   */
+  searchForAgent(workspace: string, channelId: string, query: string, limit?: number): Promise<Result<AgentFoundMessage[]>>;
+  /**
+   * Internal, for an agent replying in `channelId`: a thread (`id`, its
+   * root or any reply) in `targetChannelId`, oldest first, under the same
+   * rule. A conversation the audience may not read is not found, exactly
+   * as one that does not exist.
+   */
+  threadForAgent(workspace: string, channelId: string, targetChannelId: string, id: string): Promise<Result<AgentFoundMessage[]>>;
+  /**
+   * Reacts to a message with `emoji` (one Unicode emoji, or `:name:` for
+   * one of the workspace's own). Once per member per emoji; at most 50
+   * different emoji on a message. Answers the message's reactions now.
+   */
+  react(workspace: string, channelId: string, viewer: User, messageId: string, emoji: string): Promise<Result<ChatReaction[]>>;
+  unreact(workspace: string, channelId: string, viewer: User, messageId: string, emoji: string): Promise<Result<ChatReaction[]>>;
+  /** Internal, for the agents service: an agent reacts (or, with `remove`, takes it back). It must be in the channel. */
+  reactAsAgent(
+    workspace: string,
+    channelId: string,
+    agentId: string,
+    messageId: string,
+    emoji: string,
+    remove?: boolean,
+  ): Promise<Result<ChatReaction[]>>;
+  /** The workspace's own emoji, by name, and who may add them. */
+  listEmoji(workspace: string, viewer: User): Promise<Result<EmojiList>>;
+  /** Adds an emoji: a PNG, GIF or WebP of at most 256 KB and 512×512. */
+  addEmoji(workspace: string, viewer: User, name: string, file: EmojiFile): Promise<Result<CustomEmoji>>;
+  /** Gives an existing emoji (`target`) another name. */
+  aliasEmoji(workspace: string, viewer: User, name: string, target: string): Promise<Result<CustomEmoji>>;
+  /** Removes an emoji, and its aliases with it. Its creator or an owner may. */
+  removeEmoji(workspace: string, viewer: User, name: string): Promise<Result<null>>;
+  /** Owners only: who may add emoji. */
+  setEmojiUpload(workspace: string, viewer: User, value: EmojiUpload): Promise<Result<EmojiUpload>>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -289,6 +425,22 @@ export function chatClient(service: ServiceBinding): ChatApi {
       call("post_as_agent", { workspace, channel_id: channelId, agent_id: agentId, message }),
     agentTyping: (workspace, channelId, agentId) =>
       call("agent_typing", { workspace, channel_id: channelId, agent_id: agentId }),
+    audience: (workspace, channelId) => call("audience", { workspace, channel_id: channelId }),
+    searchForAgent: (workspace, channelId, query, limit) =>
+      call("search_for_agent", { workspace, channel_id: channelId, query, limit: limit ?? null }),
+    threadForAgent: (workspace, channelId, targetChannelId, id) =>
+      call("thread_for_agent", { workspace, channel_id: channelId, target_channel_id: targetChannelId, id }),
+    react: (workspace, channelId, viewer, messageId, emoji) =>
+      call("react", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
+    unreact: (workspace, channelId, viewer, messageId, emoji) =>
+      call("unreact", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
+    reactAsAgent: (workspace, channelId, agentId, messageId, emoji, remove) =>
+      call("react_as_agent", { workspace, channel_id: channelId, agent_id: agentId, message_id: messageId, emoji, remove: remove ?? false }),
+    listEmoji: (workspace, viewer) => call("list_emoji", { workspace, viewer }),
+    addEmoji: (workspace, viewer, name, file) => call("add_emoji", { workspace, viewer, name, file }),
+    aliasEmoji: (workspace, viewer, name, target) => call("alias_emoji", { workspace, viewer, name, target }),
+    removeEmoji: (workspace, viewer, name) => call("remove_emoji", { workspace, viewer, name }),
+    setEmojiUpload: (workspace, viewer, value) => call("set_emoji_upload", { workspace, viewer, value }),
     historyForAgent: (workspace, channelId, agentId, page) =>
       call("history_for_agent", {
         workspace,

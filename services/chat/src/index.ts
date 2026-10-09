@@ -24,12 +24,19 @@ import {
   principalKey,
   workspaceAgentsClient,
   type AgentDelivery,
+  type AgentFoundMessage,
   type AgentPostMessage,
   type AskerAccess,
   type Channel,
   type ChannelMember,
+  type ChatAudience,
   type ChatLiveEvent,
   type ChatMessage,
+  type ChatReaction,
+  type CustomEmoji,
+  type EmojiFile,
+  type EmojiList,
+  type EmojiUpload,
   type ChatSidebar,
   type ChatSidebarEntry,
 
@@ -48,12 +55,28 @@ import {
   type WorkspaceAgent,
 } from "@g1t/contracts";
 
-import { MAX_HOPS, deliveries, delivery, type Chain } from "./delivery.ts";
+import { audienceKind, isShared, likePattern, readableBy } from "./audience.ts";
+import { MAX_HOPS, addsOrchestrator, chainFor, deliveries, delivery, sender, type Chain } from "./delivery.ts";
+import {
+  MAX_REACTIONS_PER_MESSAGE,
+  emojiImage,
+  emojiName,
+  fromBase64,
+  mayRemove,
+  mayUpload,
+  reactionEmoji,
+  roomForReaction,
+  tallyReactions,
+  type ReactionRow,
+  type ReactionTally,
+} from "./emoji.ts";
 import { mentionedHandles, mentionsColumn } from "./mentions.ts";
 import { AGENT_TYPING_MS, historyOf, historySize, messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
 import { ROOM_MEMBER_HEADER, type ChannelRoom, type RoomMember } from "./room.ts";
 import { dmTitle, sidebarOrder, tally, type UnreadRow } from "./unread.ts";
+// Live notifications and counts (services/notify).
+import { notifyMessage, notifyMuted, notifyRead } from "./notify.ts";
 
 export { ChannelRoom } from "./room.ts";
 
@@ -66,7 +89,33 @@ type Env = {
   IDENTITY: ServiceBinding;
   AGENTS: ServiceBinding;
   ROOMS: DurableObjectNamespace<ChannelRoom>;
+  /** The avatars namespace: custom emoji images, under `emoji/<sha256>`, which the usercontent origin serves. */
+  AVATARS: KVNamespace;
+  /** Live notifications and unread counts (services/notify); absent, nobody is told. */
+  NOTIFY?: ServiceBinding;
 };
+
+type EmojiRow = {
+  workspace_id: string;
+  name: string;
+  alias_of: string | null;
+  file: string;
+  content_type: CustomEmoji["content_type"];
+  bytes: number;
+  created_by: string;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+/** The viewer's role in a workspace, or null when they are not in it. */
+function roleOf(viewer: Viewer, workspace: string): "owner" | "member" | null {
+  return viewer?.workspaces?.find((m) => m.slug === workspace.toLowerCase())?.role ?? null;
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 type ChannelRow = {
   id: string;
@@ -274,6 +323,8 @@ class Chat {
           display_name: person?.name || username || "Former member",
           avatar: person?.avatar ?? null,
           role: null,
+          title: null,
+          avatar_seed: null,
         });
       } else {
         const agent = agents.get(p.id) ?? null;
@@ -283,6 +334,8 @@ class Chat {
           display_name: agent?.display_name ?? "Former agent",
           avatar: agent?.avatar ?? null,
           role: agent?.role ?? null,
+          title: agent?.title || null,
+          avatar_seed: agent?.avatar_seed ?? null,
         });
       }
     }
@@ -360,11 +413,21 @@ class Chat {
     );
   }
 
-  private async toMessages(slug: string, workspace: Workspace, rows: MessageRow[]): Promise<ChatMessage[]> {
-    const profiles = await this.profiles(slug, workspace, rows.map((r) => r.author));
+  /**
+   * Messages as they go out, with their reactions. `me` (a member key) is
+   * the viewer an answer is for; null for what everyone in a room gets,
+   * where no reaction is anyone's own.
+   */
+  private async toMessages(slug: string, workspace: Workspace, rows: MessageRow[], me: string | null = null): Promise<ChatMessage[]> {
+    const reactions = await this.reactionsOf(rows.filter((r) => !r.deleted_at).map((r) => r.id), me);
+    const reactors = [...reactions.values()].flatMap((list) => list.flatMap((r) => r.by));
+    const profiles = await this.profiles(slug, workspace, [...rows.map((r) => r.author), ...reactors]);
     return rows.map((row) => {
       const gone = !!row.deleted_at;
       return {
+        reactions: gone
+          ? []
+          : (reactions.get(row.id) ?? []).map((r) => ({ ...r, by: r.by.map((key) => profiles.get(key)!).filter(Boolean) })),
         id: row.id,
         channel_id: row.channel_id,
         author: profiles.get(row.author)!,
@@ -379,6 +442,18 @@ class Chat {
         deleted_at: row.deleted_at,
       };
     });
+  }
+
+  /** Reactions on these messages, counted (src/emoji.ts). One read, by the reactions table's key. */
+  private async reactionsOf(ids: string[], me: string | null): Promise<Map<string, ReactionTally[]>> {
+    if (!ids.length) return new Map();
+    const rows = await this.db
+      .prepare(
+        "SELECT message_id, emoji, principal, created_at FROM reactions WHERE message_id IN (SELECT value FROM json_each(?))",
+      )
+      .bind(JSON.stringify(ids))
+      .all<ReactionRow>();
+    return tallyReactions(rows.results, me);
   }
 
   private async messageRow(channelId: string, id: string): Promise<MessageRow | null> {
@@ -725,6 +800,14 @@ class Chat {
       )
       .bind(starred, muted, found.value.channel.id, userKey(a.viewer!))
       .run();
+    // Notify: the badge counts the conversation again, or leaves it out, in every tab.
+    if (muted !== null) {
+      this.defer(
+        notifyMuted(this.env.NOTIFY, { slug: found.value.slug, channel_id: found.value.channel.id, user_id: a.viewer!.id, muted: !!muted }).catch((error) =>
+          console.error("chat could not notify a mute", error),
+        ),
+      );
+    }
     return ok(null);
   }
 
@@ -767,7 +850,7 @@ class Chat {
             .bind(channel.id, a.after, size + 1)
             .all<MessageRow>();
       const page = pageOf(newer.results, size);
-      return ok({ messages: await this.toMessages(slug, workspace, page.rows), older: null, newer: page.older });
+      return ok({ messages: await this.toMessages(slug, workspace, page.rows, userKey(a.viewer!)), older: null, newer: page.older });
     }
     const rows = root
       ? await this.db
@@ -792,7 +875,7 @@ class Chat {
       const first = await this.messageRow(channel.id, root);
       if (first) list = [...list, first];
     }
-    return ok({ messages: await this.toMessages(slug, workspace, list), older: page.older });
+    return ok({ messages: await this.toMessages(slug, workspace, list, userKey(a.viewer!)), older: page.older });
   }
 
   /**
@@ -866,6 +949,12 @@ class Chat {
     this.defer(
       this.wake(place, row, handles, chain).catch((error) => console.error("chat could not hand", row.id, "to agents", error)),
     );
+    // Notify: counts for everyone in the conversation, a notification for those it is for.
+    this.defer(
+      notifyMessage(this.db, this.env.NOTIFY, (keys) => this.profiles(place.slug, workspace, keys), { slug: place.slug, channel, row, handles }).catch(
+        (error) => console.error("chat could not notify about", row.id, error),
+      ),
+    );
     return ok(message);
   }
 
@@ -880,8 +969,24 @@ class Chat {
       .bind(channel.id)
       .all<{ principal: string }>();
     const ids = members.results.map((m) => m.principal.slice("agent:".length));
+    let found = await this.agentsById(ids);
+    const orchestratorIsMember = [...found.values()].some((agent) => !!agent?.builtin && agent.workspace_id === workspace.id && !agent.archived_at);
+    if (addsOrchestrator({ channelKind: channel.kind, mentioned: handles, orchestratorIsMember })) {
+      // Mentioning @g1t brings it in: every workspace has it, nobody invites it.
+      const builtin = await workspaceAgentsClient(this.env.AGENTS)
+        .builtin(place.slug, workspace.id)
+        .catch((error: unknown) => {
+          console.error("chat could not find @g1t for", place.slug, error);
+          return null;
+        });
+      if (builtin?.ok) {
+        await this.joinStatement(channel.id, `agent:${builtin.value.id}`, "member", now()).run();
+        this.agents.set(builtin.value.id, builtin.value);
+        ids.push(builtin.value.id);
+        found = await this.agentsById(ids);
+      }
+    }
     if (!ids.length) return;
-    const found = await this.agentsById(ids);
     const agents = [...found.values()].filter(
       (agent): agent is WorkspaceAgent => !!agent && agent.workspace_id === workspace.id && !agent.archived_at,
     );
@@ -891,6 +996,7 @@ class Chat {
       channelKind: channel.kind,
       agents: agents.map((agent) => ({ id: agent.id, handle: agent.handle })),
       mentioned: handles,
+      notTo: sender(chain.chain),
     });
     const client = workspaceAgentsClient(this.env.AGENTS);
     await Promise.all(
@@ -936,7 +1042,7 @@ class Chat {
       me,
       { body: body.body, card: null, thread_root: a.message?.thread_root ?? null },
       // A person's message starts a chain.
-      { hops: 0, asked_by: a.viewer!.id, asker: askerAccess(a.viewer!, a.workspace) },
+      { hops: 0, asked_by: a.viewer!.id, asker: askerAccess(a.viewer!, a.workspace), chain: [] },
     );
   }
 
@@ -1008,6 +1114,12 @@ class Chat {
         principal: { kind: "user", id: a.viewer!.id },
         last_read_id: id,
       });
+      // Notify: the read drops the counts in every tab of theirs.
+      this.defer(
+        notifyRead(this.db, this.env.NOTIFY, { slug: found.value.slug, channel_id: channel.id, user_id: a.viewer!.id, username: a.viewer!.username, last_read_id: id }).catch(
+          (error) => console.error("chat could not notify a read", error),
+        ),
+      );
     }
     return ok(null);
   }
@@ -1049,7 +1161,7 @@ class Chat {
       { body: body.body, card, thread_root: a.message?.thread_root ?? null },
       // The asker carries on from the delivery the agent is answering;
       // without one, agents it wakes treat the asker as unable to change code.
-      { hops, asked_by: askedBy, asker: cleanAsker(a.message?.asker) },
+      { hops, asked_by: askedBy, asker: cleanAsker(a.message?.asker), chain: chainFor(a.message?.chain, agent.id) },
     );
   }
 
@@ -1093,6 +1205,119 @@ class Chat {
     return ok(await this.toMessages(place.slug, place.workspace, historyOf(rows.results)));
   }
 
+  // ── What an agent may read (src/audience.ts) ───────────────────────────
+
+  /** The people in a conversation, by user id. */
+  private async peopleIn(channelId: string): Promise<string[]> {
+    const rows = await this.db
+      .prepare("SELECT principal FROM channel_members WHERE channel_id = ? AND principal LIKE 'user:%'")
+      .bind(channelId)
+      .all<{ principal: string }>();
+    return rows.results.map((row) => row.principal.slice("user:".length));
+  }
+
+  /** A conversation of this workspace and who reads it, worked out here, never taken from a caller. */
+  private async audienceOf(slug: string, channelId: string): Promise<Result<{ workspace: Workspace; channel: ChannelRow; audience: ChatAudience }>> {
+    const workspace = await this.workspace(String(slug ?? "").toLowerCase());
+    if (!workspace) return fail("not_found", "No such workspace.");
+    const channel = await this.db
+      .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
+      .bind(String(channelId ?? ""), workspace.id)
+      .first<ChannelRow>();
+    if (!channel) return fail("not_found", "No such conversation.");
+    const people = await this.peopleIn(channel.id);
+    return ok({ workspace, channel, audience: { kind: audienceKind(channel), member_user_ids: people, member_count: people.length } });
+  }
+
+  async audience(a: { workspace: string; channel_id: string }): Promise<Result<ChatAudience>> {
+    const found = await this.audienceOf(a.workspace, a.channel_id);
+    return found.ok ? ok(found.value.audience) : found;
+  }
+
+  /**
+   * The conversations of the workspace the audience of `channelId` may all
+   * read: public channels, and the ones every person in it is in (a DM only
+   * with exactly them). At most 500, most recently active first.
+   */
+  private async readableFor(workspace: Workspace, audience: ChatAudience): Promise<Map<string, ChannelRow>> {
+    const people = audience.member_user_ids;
+    const rows = isShared({ kind: audience.kind, user_ids: people }) || !people.length
+      ? await this.db
+          .prepare("SELECT * FROM channels WHERE workspace_id = ? AND kind = 'channel' AND private = 0 ORDER BY last_message_at DESC LIMIT 500")
+          .bind(workspace.id)
+          .all<ChannelRow>()
+      : await this.db
+          .prepare(
+            `SELECT * FROM channels WHERE workspace_id = ?1 AND (
+               (kind = 'channel' AND private = 0)
+               OR id IN (SELECT channel_id FROM channel_members WHERE principal IN (${people.map((_, i) => `?${i + 2}`).join(", ")})
+                         GROUP BY channel_id HAVING COUNT(DISTINCT principal) = ${people.length})
+             ) ORDER BY last_message_at DESC LIMIT 500`,
+          )
+          .bind(workspace.id, ...people.map((id) => `user:${id}`))
+          .all<ChannelRow>();
+    const out = new Map<string, ChannelRow>();
+    for (const channel of rows.results) {
+      // The query finds candidates; the rule decides, a DM's people included.
+      const target = { kind: channel.kind, private: channel.private, user_ids: channel.kind === "channel" && !channel.private ? [] : await this.peopleIn(channel.id) };
+      if (readableBy(target, { kind: audience.kind, user_ids: people })) out.set(channel.id, channel);
+    }
+    return out;
+  }
+
+  private async found(slug: string, workspace: Workspace, channels: Map<string, ChannelRow>, rows: MessageRow[]): Promise<AgentFoundMessage[]> {
+    const messages = await this.toMessages(slug, workspace, rows);
+    return messages.map((message) => {
+      const channel = channels.get(message.channel_id)!;
+      return { channel_id: channel.id, channel: channel.kind === "dm" ? null : channel.name, message };
+    });
+  }
+
+  async searchForAgent(a: { workspace: string; channel_id: string; query: string; limit?: number | null }): Promise<Result<AgentFoundMessage[]>> {
+    const found = await this.audienceOf(a.workspace, a.channel_id);
+    if (!found.ok) return found;
+    const pattern = likePattern(a.query);
+    if (!pattern) return fail("invalid", "Search for at least two characters.");
+    const { workspace, audience } = found.value;
+    const channels = await this.readableFor(workspace, audience);
+    if (!channels.size) return ok([]);
+    const ids = [...channels.keys()];
+    const limit = Math.min(20, Math.max(1, Math.floor(Number(a.limit) || 20)));
+    const rows = await this.db
+      .prepare(
+        `SELECT * FROM messages WHERE channel_id IN (${ids.map(() => "?").join(", ")}) AND deleted_at IS NULL AND body LIKE ? ESCAPE '\\'
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .bind(...ids, pattern, limit)
+      .all<MessageRow>();
+    return ok(await this.found(a.workspace.toLowerCase(), workspace, channels, rows.results));
+  }
+
+  async threadForAgent(a: { workspace: string; channel_id: string; target_channel_id: string; id: string }): Promise<Result<AgentFoundMessage[]>> {
+    const found = await this.audienceOf(a.workspace, a.channel_id);
+    if (!found.ok) return found;
+    const { workspace, audience } = found.value;
+    // The same answer for a conversation that is not there and one the audience may not read.
+    const hidden = fail("not_found", "Not available in this conversation.");
+    const target = await this.db
+      .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
+      .bind(String(a.target_channel_id ?? ""), workspace.id)
+      .first<ChannelRow>();
+    if (!target) return hidden;
+    const people = target.kind === "channel" && !target.private ? [] : await this.peopleIn(target.id);
+    if (!readableBy({ kind: target.kind, private: target.private, user_ids: people }, { kind: audience.kind, user_ids: audience.member_user_ids })) return hidden;
+    const asked = await this.messageRow(target.id, String(a.id ?? ""));
+    if (!asked) return hidden;
+    const root = asked.thread_root ? await this.messageRow(target.id, asked.thread_root) : asked;
+    if (!root) return hidden;
+    const replies = await this.db
+      .prepare("SELECT * FROM messages WHERE thread_root = ? AND channel_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 49")
+      .bind(root.id, target.id)
+      .all<MessageRow>();
+    const rows = historyOf(replies.results, root).filter((row) => !row.deleted_at);
+    return ok(await this.found(a.workspace.toLowerCase(), workspace, new Map([[target.id, target]]), rows));
+  }
+
   async agentTyping(a: { workspace: string; channel_id: string; agent_id: string }): Promise<Result<null>> {
     const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
     if (!found.ok) return found;
@@ -1106,6 +1331,256 @@ class Chat {
       until: new Date(Date.now() + AGENT_TYPING_MS).toISOString(),
     });
     return ok(null);
+  }
+
+  // ── Reactions (src/emoji.ts) ────────────────────────────────────────────
+
+  /** One message's reactions now, as `me` sees them. */
+  private async reactionsFor(place: Place, messageId: string, me: string): Promise<ChatReaction[]> {
+    const list = (await this.reactionsOf([messageId], me)).get(messageId) ?? [];
+    const profiles = await this.profiles(place.slug, place.workspace, list.flatMap((r) => r.by));
+    return list.map((r) => ({ ...r, by: r.by.map((key) => profiles.get(key)!).filter(Boolean) }));
+  }
+
+  /**
+   * Adds or takes back `who`'s reaction. Each member reacts once with each
+   * emoji, a message holds at most 50 different ones, and a workspace's own
+   * emoji must exist to be used (taking one back never needs it to). The
+   * room hears of each change.
+   */
+  private async reactTo(place: Place, who: string, messageId: unknown, input: unknown, remove: boolean): Promise<Result<ChatReaction[]>> {
+    const parsed = reactionEmoji(input);
+    if (!parsed.ok) return fail("invalid", parsed.message);
+    const row = await this.messageRow(place.channel.id, String(messageId ?? ""));
+    if (!row || row.deleted_at) return fail("not_found", "No such message.");
+    let changed = 0;
+    if (remove) {
+      const done = await this.db
+        .prepare("DELETE FROM reactions WHERE message_id = ? AND principal = ? AND emoji = ?")
+        .bind(row.id, who, parsed.emoji)
+        .run();
+      changed = done.meta.changes;
+    } else {
+      if (parsed.custom) {
+        const known = await this.db
+          .prepare("SELECT 1 FROM custom_emoji WHERE workspace_id = ? AND name = ? AND deleted_at IS NULL")
+          .bind(place.workspace.id, parsed.custom)
+          .first();
+        if (!known) return fail("not_found", `This workspace has no :${parsed.custom}: emoji.`);
+      }
+      const kinds = await this.db.prepare("SELECT DISTINCT emoji FROM reactions WHERE message_id = ?").bind(row.id).all<{ emoji: string }>();
+      if (!roomForReaction(new Set(kinds.results.map((k) => k.emoji)), parsed.emoji)) {
+        return fail("invalid", `A message can have at most ${MAX_REACTIONS_PER_MESSAGE} different reactions.`);
+      }
+      const done = await this.db
+        .prepare("INSERT OR IGNORE INTO reactions (message_id, principal, emoji, created_at) VALUES (?, ?, ?, ?)")
+        .bind(row.id, who, parsed.emoji, now())
+        .run();
+      changed = done.meta.changes;
+    }
+    if (changed) {
+      const member = await this.profile(place.slug, place.workspace, who);
+      this.broadcast(place.channel.id, {
+        type: remove ? "reaction.removed" : "reaction.added",
+        channel_id: place.channel.id,
+        message_id: row.id,
+        emoji: parsed.emoji,
+        member,
+      });
+    }
+    return ok(await this.reactionsFor(place, row.id, who));
+  }
+
+  async react(a: { workspace: string; channel_id: string; viewer: Viewer; message_id: string; emoji: string }): Promise<Result<ChatReaction[]>> {
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
+    if (!found.ok) return found;
+    return this.reactTo(found.value, userKey(a.viewer!), a.message_id, a.emoji, false);
+  }
+
+  async unreact(a: { workspace: string; channel_id: string; viewer: Viewer; message_id: string; emoji: string }): Promise<Result<ChatReaction[]>> {
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
+    if (!found.ok) return found;
+    return this.reactTo(found.value, userKey(a.viewer!), a.message_id, a.emoji, true);
+  }
+
+  /** An agent's reaction counts like anyone's; it must be in the channel. */
+  async reactAsAgent(a: {
+    workspace: string;
+    channel_id: string;
+    agent_id: string;
+    message_id: string;
+    emoji: string;
+    remove?: boolean;
+  }): Promise<Result<ChatReaction[]>> {
+    const found = await this.agentPlace(a.workspace, a.channel_id, a.agent_id);
+    if (!found.ok) return found;
+    const { place, agent } = found.value;
+    return this.reactTo(place, principalKey({ kind: "agent", id: agent.id }), a.message_id, a.emoji, a.remove === true);
+  }
+
+  // ── A workspace's own emoji (src/emoji.ts) ──────────────────────────────
+
+  private async emojiUpload(workspace: Workspace): Promise<EmojiUpload> {
+    const row = await this.db.prepare("SELECT emoji_upload FROM chat_settings WHERE workspace_id = ?").bind(workspace.id).first<{ emoji_upload: EmojiUpload }>();
+    return row?.emoji_upload === "admins" ? "admins" : "members";
+  }
+
+  private async toEmoji(slug: string, workspace: Workspace, rows: EmojiRow[]): Promise<CustomEmoji[]> {
+    const profiles = await this.profiles(slug, workspace, rows.map((r) => r.created_by));
+    return rows.map((row) => ({
+      name: row.name,
+      alias_of: row.alias_of,
+      file: row.file,
+      content_type: row.content_type,
+      bytes: row.bytes,
+      created_by: profiles.get(row.created_by)!,
+      created_at: row.created_at,
+    }));
+  }
+
+  private liveEmoji(workspace: Workspace, name: string): Promise<EmojiRow | null> {
+    return this.db
+      .prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND name = ? AND deleted_at IS NULL")
+      .bind(workspace.id, name)
+      .first<EmojiRow>();
+  }
+
+  async listEmoji(a: { workspace: string; viewer: Viewer }): Promise<Result<EmojiList>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const [rows, setting] = await Promise.all([
+      this.db
+        .prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name")
+        .bind(workspace.id)
+        .all<EmojiRow>(),
+      this.emojiUpload(workspace),
+    ]);
+    const role = roleOf(a.viewer, a.workspace);
+    return ok({
+      emoji: await this.toEmoji(a.workspace.toLowerCase(), workspace, rows.results),
+      emoji_upload: setting,
+      can_upload: mayUpload(setting, role),
+      can_manage: role === "owner",
+    });
+  }
+
+  /** Who may add one: checked against the workspace's setting. */
+  private async mayAdd(workspace: Workspace, viewer: Viewer, slug: string): Promise<Result<null>> {
+    const setting = await this.emojiUpload(workspace);
+    if (!mayUpload(setting, roleOf(viewer, slug))) return fail("forbidden", "Only owners can add emoji in this workspace.");
+    return ok(null);
+  }
+
+  async addEmoji(a: { workspace: string; viewer: Viewer; name: string; file: EmojiFile }): Promise<Result<CustomEmoji>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const allowed = await this.mayAdd(workspace, a.viewer, a.workspace);
+    if (!allowed.ok) return allowed;
+    const named = emojiName(a.name);
+    if (!named.ok) return fail("invalid", named.message);
+    if (await this.liveEmoji(workspace, named.name)) return fail("conflict", `:${named.name}: is already taken.`);
+    const bytes = fromBase64(a.file?.data);
+    if (!bytes) return fail("invalid", "Choose a PNG, GIF or WebP image of at most 256 KB.");
+    const checked = emojiImage(bytes);
+    if (!checked.ok) return fail("invalid", checked.message);
+    const file = await sha256(bytes);
+    // Kept by its hash, so the same image stored twice is one file; its
+    // type is the one read from its bytes (usercontent serves only that).
+    await this.env.AVATARS.put(`emoji/${file}`, bytes, { metadata: { contentType: checked.image.content_type } });
+    const row: EmojiRow = {
+      workspace_id: workspace.id,
+      name: named.name,
+      alias_of: null,
+      file,
+      content_type: checked.image.content_type,
+      bytes: bytes.length,
+      created_by: userKey(a.viewer!),
+      created_at: now(),
+      deleted_at: null,
+    };
+    const added = await this.insertEmoji(row);
+    if (!added.ok) return added;
+    const [emoji] = await this.toEmoji(a.workspace.toLowerCase(), workspace, [row]);
+    return ok(emoji!);
+  }
+
+  private async insertEmoji(row: EmojiRow): Promise<Result<null>> {
+    try {
+      await this.db
+        .prepare(
+          "INSERT INTO custom_emoji (workspace_id, name, alias_of, file, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(row.workspace_id, row.name, row.alias_of, row.file, row.content_type, row.bytes, row.created_by, row.created_at)
+        .run();
+      return ok(null);
+    } catch (error) {
+      if (String(error).includes("UNIQUE")) return fail("conflict", `:${row.name}: is already taken.`);
+      throw error;
+    }
+  }
+
+  async aliasEmoji(a: { workspace: string; viewer: Viewer; name: string; target: string }): Promise<Result<CustomEmoji>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const allowed = await this.mayAdd(workspace, a.viewer, a.workspace);
+    if (!allowed.ok) return allowed;
+    const named = emojiName(a.name);
+    if (!named.ok) return fail("invalid", named.message);
+    const targetName = String(a.target ?? "").trim().replace(/^:+|:+$/g, "").toLowerCase();
+    let target = await this.liveEmoji(workspace, targetName);
+    // An alias of an alias names the emoji itself, so removing one never strands another.
+    if (target?.alias_of) target = await this.liveEmoji(workspace, target.alias_of);
+    if (!target) return fail("not_found", `This workspace has no :${targetName}: emoji.`);
+    if (await this.liveEmoji(workspace, named.name)) return fail("conflict", `:${named.name}: is already taken.`);
+    const row: EmojiRow = { ...target, name: named.name, alias_of: target.name, created_by: userKey(a.viewer!), created_at: now(), deleted_at: null };
+    const added = await this.insertEmoji(row);
+    if (!added.ok) return added;
+    const [emoji] = await this.toEmoji(a.workspace.toLowerCase(), workspace, [row]);
+    return ok(emoji!);
+  }
+
+  async removeEmoji(a: { workspace: string; viewer: Viewer; name: string }): Promise<Result<null>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const workspace = found.value;
+    const name = String(a.name ?? "").trim().replace(/^:+|:+$/g, "").toLowerCase();
+    const row = await this.liveEmoji(workspace, name);
+    if (!row) return fail("not_found", `This workspace has no :${name}: emoji.`);
+    if (!mayRemove(row.created_by, userKey(a.viewer!), roleOf(a.viewer, a.workspace))) {
+      return fail("forbidden", "Only whoever added an emoji, or an owner, can remove it.");
+    }
+    // An emoji goes with its aliases; an alias goes alone.
+    await this.db
+      .prepare(
+        "UPDATE custom_emoji SET deleted_at = ?1 WHERE workspace_id = ?2 AND deleted_at IS NULL AND (name = ?3 OR (?4 = 0 AND alias_of = ?3))",
+      )
+      .bind(now(), workspace.id, row.name, row.alias_of ? 1 : 0)
+      .run();
+    // Its image goes once nothing live shows it, in any workspace.
+    this.defer(
+      (async () => {
+        const used = await this.db.prepare("SELECT 1 FROM custom_emoji WHERE file = ? AND deleted_at IS NULL LIMIT 1").bind(row.file).first();
+        if (!used) await this.env.AVATARS.delete(`emoji/${row.file}`);
+      })().catch((error) => console.error("chat could not forget emoji", row.file, error)),
+    );
+    return ok(null);
+  }
+
+  async setEmojiUpload(a: { workspace: string; viewer: Viewer; value: EmojiUpload }): Promise<Result<EmojiUpload>> {
+    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    if (roleOf(a.viewer, a.workspace) !== "owner") return fail("forbidden", "Only owners can change who adds emoji.");
+    if (a.value !== "members" && a.value !== "admins") return fail("invalid", "Choose members or owners.");
+    await this.db
+      .prepare(
+        "INSERT INTO chat_settings (workspace_id, emoji_upload) VALUES (?1, ?2) ON CONFLICT (workspace_id) DO UPDATE SET emoji_upload = ?2",
+      )
+      .bind(found.value.id, a.value)
+      .run();
+    return ok(a.value);
   }
 
   // ── The live socket ─────────────────────────────────────────────────────
@@ -1189,6 +1664,28 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.agentTyping(args));
     case "history_for_agent":
       return Response.json(await service.historyForAgent(args));
+    case "audience":
+      return Response.json(await service.audience(args));
+    case "search_for_agent":
+      return Response.json(await service.searchForAgent(args));
+    case "thread_for_agent":
+      return Response.json(await service.threadForAgent(args));
+    case "react":
+      return Response.json(await service.react(args));
+    case "unreact":
+      return Response.json(await service.unreact(args));
+    case "react_as_agent":
+      return Response.json(await service.reactAsAgent(args));
+    case "list_emoji":
+      return Response.json(await service.listEmoji(args));
+    case "add_emoji":
+      return Response.json(await service.addEmoji(args));
+    case "alias_emoji":
+      return Response.json(await service.aliasEmoji(args));
+    case "remove_emoji":
+      return Response.json(await service.removeEmoji(args));
+    case "set_emoji_upload":
+      return Response.json(await service.setEmojiUpload(args));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }

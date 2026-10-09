@@ -10,6 +10,8 @@ import { MAX_RAW_BYTES, isCommit, parseRawPath, rawHeaders, verifyRaw } from "..
 
 /** An uploaded avatar, by the SHA-256 of its bytes. */
 export const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
+/** A workspace's custom emoji, by the SHA-256 of its bytes: kept by chat under `emoji/<hash>` in the same namespace. */
+export const EMOJI_PATH = /^\/emoji\/([0-9a-f]{64})$/;
 /** The only types identity stores, having checked each image's bytes. */
 const AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
@@ -36,6 +38,8 @@ export async function serveUsercontent(env: Env, ctx: ExecutionContext, request:
   }
   const avatar = AVATAR_PATH.exec(path);
   if (avatar) return serveAvatar(env, ctx, method, avatar[1]!, new URL(request.url).origin);
+  const emoji = EMOJI_PATH.exec(path);
+  if (emoji) return serveAvatar(env, ctx, method, `emoji/${emoji[1]!}`, new URL(request.url).origin);
   const file = parseRawPath(path);
   if (file) return serveRaw(env, request, method, file);
   return plain(404, "Not found", "public, max-age=300");
@@ -76,21 +80,22 @@ async function serveRaw(env: Env, request: Request, method: string, file: NonNul
 }
 
 /**
- * An uploaded avatar. Its address is its hash, so it never changes and is
+ * An uploaded avatar, or a custom emoji (`key` is then `emoji/<hash>`). Its
+ * address is its hash, so it never changes and is
  * kept for good: each data centre keeps it in its cache after the first
  * view, and storage is read about once per place, not once per visitor.
  * It is served as nothing but an image: the stored type, no sniffing, and
  * a policy that lets nothing in it run.
  */
-async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, hash: string, origin: string): Promise<Response> {
+async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, key: string, origin: string): Promise<Response> {
   // The Workers runtime's own cache, which the DOM types do not know.
   const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(`${origin}/avatars/${hash}`, { method: "GET" });
-  const cached = await cache.match(key);
+  const cacheKey = new Request(`${origin}/${key.startsWith("emoji/") ? key : `avatars/${key}`}`, { method: "GET" });
+  const cached = await cache.match(cacheKey);
   if (cached) {
     return method === "HEAD" ? new Response(null, { headers: cached.headers }) : cached;
   }
-  const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(hash, {
+  const { value, metadata } = await env.AVATARS.getWithMetadata<{ contentType?: string }>(key, {
     type: "arrayBuffer",
     cacheTtl: 86400,
   });
@@ -106,6 +111,6 @@ async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, hash
     "content-security-policy": "default-src 'none'; sandbox",
     "cross-origin-resource-policy": "cross-origin",
   };
-  ctx.waitUntil(cache.put(key, new Response(value, { headers })));
+  ctx.waitUntil(cache.put(cacheKey, new Response(value, { headers })));
   return new Response(method === "HEAD" ? null : value, { headers });
 }

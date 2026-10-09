@@ -49,6 +49,10 @@ export default [
   // The card that opens over a person's name or avatar (lib/hovercard.ts).
   // `-` is no workspace's name, so nothing else is ever found here.
   route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
+  // Live notifications: each tab's feed socket, and the person's
+  // notification settings as JSON (services/notify).
+  route("-/live", "routes/notify/live.ts"),
+  route("-/notify", "routes/notify/api.ts"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/search.tsx"),
@@ -80,7 +84,10 @@ export default [
     route("-/pins", "routes/workspace/pins.ts"),
     // Pages that moved: Members is People, and the overview is the workspace.
     route("-/members", "routes/workspace/moved.ts", { id: "routes/workspace/moved-members" }),
-    route("-/overview", "routes/workspace/moved.ts", { id: "routes/workspace/moved-overview" }),
+    // Code's Overview: Mission control's code panels, for this workspace.
+    route("-/overview", "routes/workspace/code-overview.tsx"),
+    // The workspace itself, at a glance: members, plan and spend.
+    route("-/workspace", "routes/workspace/workspace-overview.tsx"),
     // Teams: the list, a new one, and each team's pages.
     route("-/teams", "routes/workspace/teams.tsx"),
     route("-/teams/new", "routes/workspace/team-new.tsx"),
@@ -100,6 +107,8 @@ export default [
     route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
     route("-/integrations", "routes/workspace/integrations.tsx"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
+    // The workspace's own emoji, for chat (components/emoji).
+    route("-/emoji", "routes/workspace/emoji.tsx"),
     route("-/secrets", "routes/workspace/secrets.tsx"),
     route("-/runners", "routes/workspace/runners.tsx"),
     route("-/actions", "routes/workspace/actions-settings.tsx"),
@@ -123,6 +132,8 @@ export default [
     // calls as it runs: the live socket and the JSON for sending and reading.
     route("-/chat/live", "routes/workspace/chat/live.ts"),
     route("-/chat/api", "routes/workspace/chat/api.ts"),
+    // A person's card in Chat: their profile and teams here.
+    route("-/chat/person/:username", "routes/workspace/chat/person.ts"),
     route("-/chat", "routes/workspace/chat/layout.tsx", [
       index("routes/workspace/chat/index.tsx"),
       route("browse", "routes/workspace/chat/browse.tsx"),

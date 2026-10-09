@@ -151,7 +151,7 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <div className="flex flex-wrap items-start gap-x-4 gap-y-3 p-5">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-3 p-4 sm:p-5">
           <span className="mt-1">
             <CheckStateIcon state={shownState} size={22} />
           </span>
@@ -162,7 +162,7 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
               </Link>{" "}
               · {run.app.name}
             </p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight">{run.name}</h2>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight wrap-break-word">{run.name}</h2>
             <p className="mt-1 text-sm text-muted">
               {detail}
               {run.conclusion && run.conclusion !== "success" && run.conclusion !== "failure" && (
@@ -194,7 +194,7 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
             )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line bg-bg/40 px-5 py-3 text-sm text-muted">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line bg-bg/40 px-4 py-3 text-sm text-muted sm:px-5">
           <span className="flex items-center gap-1.5">
             <GitCommitHorizontal size={14} className="text-faint" />
             <Link to={`${base}/commit/${run.headSha}`} className="font-mono text-xs text-fg/80 hover:text-accent hover:underline">
@@ -207,7 +207,7 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
             </span>
           )}
           {run.completedAt && took(run.startedAt, run.completedAt) && <span>Took {took(run.startedAt, run.completedAt)}</span>}
-          {run.externalId && <span className="font-mono text-xs text-faint">{run.externalId}</span>}
+          {run.externalId && <span className="min-w-0 font-mono text-xs break-all text-faint">{run.externalId}</span>}
         </div>
         {run.actions.length > 0 && canReport && (
           <div className="flex flex-wrap items-center gap-2 border-t border-line px-5 py-3">
@@ -231,7 +231,7 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
       </section>
 
       {title || summary || text ? (
-        <section className="rounded-xl border border-line p-6">
+        <section className="rounded-xl border border-line p-4 sm:p-6">
           {title && <h3 className="mb-3 text-lg font-semibold">{title}</h3>}
           {summary && <Markdown source={summary} repo={{ namespace: params.owner, name: params.repo }} />}
           {text && (

@@ -738,6 +738,8 @@ pub struct Sources<'a> {
     pub work: &'a Fetcher,
     pub repos: &'a Fetcher,
     pub identity: &'a Fetcher,
+    /// The notify service, told of each new item for live toasts and pushes; None, nobody is.
+    pub notify: Option<&'a Fetcher>,
 }
 
 /// One notice written, and whether it was news (not a redelivery): what
@@ -746,6 +748,7 @@ struct Written {
     notice: Notice,
     repo_id: String,
     url: String,
+    event_id: String,
 }
 
 /// Writes the items a batch from the bus calls for. Never fails the batch:
@@ -758,6 +761,15 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
     for event in events.iter().filter(|event| WORKSPACE_EVENTS.contains(&event.kind.as_str())) {
         if let Err(error) = deliver_workspace(db, event).await {
             worker::console_error!("inbox: {} {} not delivered: {error}", event.kind, event.id);
+        } else if let Some(notify) = sources.notify {
+            // Notify: the feed tells each person once per event, redelivered or not.
+            let (_, told) = workspace_notices(event, None);
+            let link = event.data["link"].as_str().filter(|link| link.starts_with('/')).unwrap_or("/inbox");
+            let live = told.iter().map(|notice| (notice.username.clone(), live_notification(&event.id, notice, link, &event.time))).collect();
+            tell_live(notify, live).await;
+            for notice in &told {
+                tell_inbox_count(db, notify, &notice.username).await;
+            }
         }
     }
     let wanted: Vec<(&Event, Wanted)> = events
@@ -800,6 +812,18 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
         match deliver_one(db, sources, &names, &mut paths, &mut watchers, event, wanted).await {
             Ok(mut news) => written.append(&mut news),
             Err(error) => worker::console_error!("inbox: {} {} not delivered: {error}", event.kind, event.id),
+        }
+    }
+    // Notify: every item that was news, live in the person's tabs (services/notify).
+    if let Some(notify) = sources.notify {
+        let live = written
+            .iter()
+            .map(|item| (item.notice.username.clone(), live_notification(&item.event_id, &item.notice, &item.url, &rfc3339(now_ms()))))
+            .collect::<Vec<_>>();
+        tell_live(notify, live).await;
+        let people: HashSet<&str> = written.iter().map(|item| item.notice.username.as_str()).collect();
+        for username in people {
+            tell_inbox_count(db, notify, username).await;
         }
     }
     if let Err(error) = email(db, sources.identity, written).await {
@@ -1089,6 +1113,7 @@ async fn deliver_one(
             notice,
             repo_id: wanted.repo_id.clone(),
             url: item_url.clone(),
+            event_id: event.id.clone(),
         })
         .collect())
 }
@@ -1127,6 +1152,70 @@ const BUMP: &str = "INSERT INTO inbox_items (id, username, thread, event_id, eve
    activity = inbox_items.activity + 1,
    read_at = NULL,
    done_at = NULL";
+
+/// What the notify service is told of an inbox item (`FeedNotification` in
+/// @g1t/contracts): its kind from why the person was told, the workspace
+/// from where it links, and the item's title and first line.
+pub fn live_notification(event_id: &str, notice: &Notice, url: &str, at: &str) -> serde_json::Value {
+    let kind = match notice.reason {
+        Reason::Agent => "agent_waiting",
+        Reason::ReviewRequested => "approval",
+        Reason::Mention | Reason::TeamMention => "mention",
+        _ => "inbox",
+    };
+    let path = url.split(['?', '#']).next().unwrap_or_default();
+    let mut segments = path.trim_start_matches('/').split('/');
+    let workspace = segments.next().unwrap_or_default().to_lowercase();
+    let repo = segments.next().map(|name| format!("{workspace}/{name}"));
+    let name = repo.unwrap_or_else(|| if workspace.is_empty() { "g1t".to_owned() } else { workspace.clone() });
+    serde_json::json!({
+        "id": format!("inbox:{event_id}"),
+        "kind": kind,
+        "workspace": workspace,
+        "title": notice.title,
+        "body": clip(&notice.body, 140),
+        "href": if url.starts_with('/') { url } else { "/inbox" },
+        "actor": { "kind": "system", "id": name, "name": name },
+        "created_at": at,
+    })
+}
+
+/// What the notify service is told when a person's inbox count changes
+/// (its `set_inbox`): the count as it now is, never a difference, so a
+/// call repeated or out of order still ends right.
+pub fn inbox_count_update(username: &str, unread: u32) -> serde_json::Value {
+    serde_json::json!({ "username": username.to_lowercase(), "unread": unread })
+}
+
+/// Tells the notify service a person's unread count as it now is, so every
+/// tab of theirs shows it at once: after items arrive, and after marks made
+/// anywhere (the site, the API, MCP). Logged and left when it fails.
+pub async fn tell_inbox_count(db: &D1Database, notify: &Fetcher, username: &str) {
+    let counted = counts(db, InboxCountsArgs { username: username.to_owned() }).await;
+    let told: Result<serde_json::Value> = match counted {
+        Ok(counts) => g1t_kit::call(notify, "set_inbox", &inbox_count_update(username, counts.unread)).await,
+        Err(error) => Err(error),
+    };
+    if let Err(error) = told {
+        worker::console_error!("inbox: live count not sent: {error}");
+    }
+}
+
+/// Hands items to the notify service, one call each. Logged and left when it
+/// cannot be reached: the inbox and email do not wait on it.
+async fn tell_live(notify: &Fetcher, items: Vec<(String, serde_json::Value)>) {
+    #[derive(serde::Serialize)]
+    struct NotifyArgs {
+        username: String,
+        notification: serde_json::Value,
+    }
+    for (username, notification) in items {
+        let told: Result<serde_json::Value> = g1t_kit::call(notify, "notify", &NotifyArgs { username, notification }).await;
+        if let Err(error) = told {
+            worker::console_error!("inbox: live notification not sent: {error}");
+        }
+    }
+}
 
 /// Emails what was news to people who asked to be emailed for its reason.
 /// Identity sends each, only to a confirmed address and only if the person
@@ -2280,6 +2369,32 @@ mod tests {
             assert!(BUMP.contains(&format!("?{at}")), "?{at}");
         }
         assert!(!BUMP.contains("?20"));
+    }
+
+    #[test]
+    fn live_notifications_say_what_and_where() {
+        let notice = Notice {
+            username: "ana".into(),
+            reason: Reason::Agent,
+            severity: Severity::Warning,
+            title: "g1t needs you on acme/api#4".into(),
+            body: "Which database?".into(),
+        };
+        let live = live_notification("evt_1", &notice, "/Acme/api/pull/4#c1", "2026-10-08T00:00:00Z");
+        assert_eq!(live["id"], "inbox:evt_1");
+        assert_eq!(live["kind"], "agent_waiting");
+        assert_eq!(live["workspace"], "acme");
+        assert_eq!(live["href"], "/Acme/api/pull/4#c1");
+        assert_eq!(live["actor"]["name"], "acme/api");
+        let mention = Notice { reason: Reason::TeamMention, ..notice };
+        assert_eq!(live_notification("evt_2", &mention, "https://elsewhere", "t")["href"], "/inbox");
+        assert_eq!(live_notification("evt_2", &mention, "/x", "t")["kind"], "mention");
+    }
+
+    #[test]
+    fn inbox_counts_are_told_as_they_are_by_username() {
+        assert_eq!(inbox_count_update("Ana", 3), serde_json::json!({ "username": "ana", "unread": 3 }));
+        assert_eq!(inbox_count_update("bo", 0)["unread"], 0);
     }
 
     #[test]

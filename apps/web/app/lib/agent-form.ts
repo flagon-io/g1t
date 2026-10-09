@@ -3,7 +3,7 @@
  * it: what each field means, and the checks made before it is sent. Pure,
  * so it is tested on its own.
  */
-import type { ModelTier, NewWorkspaceAgent, PersonalityPreset, WorkspaceAgent } from "@g1t/contracts";
+import type { ModelTier, NewWorkspaceAgent, PersonalityPreset, SubagentDef, WorkspaceAgent } from "@g1t/contracts";
 
 /** The tiers, cheapest first: `MODEL_TIERS` in the contracts. */
 const MODEL_TIERS: ModelTier[] = ["small", "large", "frontier"];
@@ -57,17 +57,28 @@ function pick<T extends string>(value: FormDataEntryValue | null, allowed: reado
 export type AgentFormResult = { ok: true; input: NewWorkspaceAgent } | { ok: false; errors: Record<string, string> };
 
 /** The form, checked: the agent to make or the changes to save, or what to fix, by field. */
-export function readAgentForm(form: FormData): AgentFormResult {
+export function readAgentForm(form: FormData, options: { orchestrator?: boolean } = {}): AgentFormResult {
   const errors: Record<string, string> = {};
   const display_name = String(form.get("display_name") ?? "").trim();
   const handle = cleanHandle(String(form.get("handle") ?? "") || display_name);
-  const role = String(form.get("role") ?? "").trim();
+  const title = String(form.get("title") ?? "").trim();
+  // A team from the workspace's, or else a department label.
+  const team = String(form.get("team") ?? "").trim();
+  const department = String(form.get("department") ?? "").trim();
+  const responsibilities = form
+    .getAll("responsibility")
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .slice(0, MAX_RESPONSIBILITIES);
+  const subagents = readSubagents(form.get("subagents"));
   const instructions = String(form.get("instructions") ?? "").trim();
   if (!display_name) errors.display_name = "Give it a name.";
   if (!handle) errors.handle = "Give it a handle, like @ship.";
-  else if (RESERVED_HANDLES.has(handle)) errors.handle = `@${handle} is taken by g1t.`;
-  if (!role) errors.role = "Say in a line what it does.";
-  if (!instructions) errors.instructions = "Tell it what it's responsible for.";
+  else if (RESERVED_HANDLES.has(handle) && !(options.orchestrator && handle === "g1t")) errors.handle = `@${handle} is taken by g1t.`;
+  if (!title && !options.orchestrator) errors.title = "Give it a title, like QA Engineer.";
+  if (subagents == null) errors.subagents = "The subagents couldn't be read. Edit one and save again.";
+  // g1t's job is fixed; what is written here is added to it, and may be nothing.
+  if (!instructions && !options.orchestrator) errors.instructions = "Tell it what it's responsible for.";
   const floor = tier(form.get("floor"));
   const ceiling = tier(form.get("ceiling"));
   if (floor && ceiling && MODEL_TIERS.indexOf(floor) > MODEL_TIERS.indexOf(ceiling)) errors.ceiling = "The ceiling can't be below the floor.";
@@ -90,7 +101,13 @@ export function readAgentForm(form: FormData): AgentFormResult {
     input: {
       handle,
       display_name,
-      role,
+      // Made from the title and team by the agents service.
+      role: "",
+      title,
+      team: team && team !== "none" ? team : null,
+      department,
+      responsibilities,
+      subagents: subagents ?? [],
       instructions,
       personality_preset: pick(form.get("personality_preset"), PRESETS.map((p) => [p.value, p.label] as const), "crisp"),
       personality: String(form.get("personality") ?? "").trim(),
@@ -113,13 +130,78 @@ export function readAgentForm(form: FormData): AgentFormResult {
   };
 }
 
+/** Most responsibilities an agent lists. */
+export const MAX_RESPONSIBILITIES = 8;
+
+/** The subagents, as the form sends them (JSON); null when they are not valid. */
+function readSubagents(value: FormDataEntryValue | null): SubagentDef[] | null {
+  const text = String(value ?? "").trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(
+      (item): item is SubagentDef =>
+        item != null && typeof item === "object" && typeof (item as SubagentDef).name === "string" && typeof (item as SubagentDef).description === "string",
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** A subagent's name: lowercase letters, digits and hyphens. */
+export function cleanSubagentName(typed: string): string {
+  return cleanHandle(typed).slice(0, 40);
+}
+
+/**
+ * A subagent's routing limits, kept within its agent's: a floor below the
+ * agent's is raised to it, a ceiling above the agent's is lowered to it,
+ * and a floor above the ceiling comes down to it.
+ */
+export function clampRouting(
+  sub: { floor: ModelTier | null; ceiling: ModelTier | null },
+  agent: { floor: ModelTier | null; ceiling: ModelTier | null },
+): { floor: ModelTier | null; ceiling: ModelTier | null } {
+  const rank = (tier: ModelTier) => MODEL_TIERS.indexOf(tier);
+  let floor = sub.floor;
+  let ceiling = sub.ceiling;
+  if (agent.floor && (!floor || rank(floor) < rank(agent.floor))) floor = agent.floor;
+  if (agent.ceiling && (!ceiling || rank(ceiling) > rank(agent.ceiling))) ceiling = agent.ceiling;
+  if (floor && ceiling && rank(floor) > rank(ceiling)) floor = ceiling;
+  return { floor, ceiling };
+}
+
 /** What the form starts from: an agent being edited, a template, or nothing. */
-export type AgentDraft = Pick<WorkspaceAgent, "handle" | "display_name" | "role" | "instructions" | "personality_preset" | "personality" | "routing" | "budget" | "autonomy" | "capacity" | "template">;
+export type AgentDraft = Pick<
+  WorkspaceAgent,
+  | "handle"
+  | "display_name"
+  | "role"
+  | "title"
+  | "team"
+  | "department"
+  | "responsibilities"
+  | "subagents"
+  | "instructions"
+  | "personality_preset"
+  | "personality"
+  | "routing"
+  | "budget"
+  | "autonomy"
+  | "capacity"
+  | "template"
+>;
 
 export const BLANK_DRAFT: AgentDraft = {
   handle: "",
   display_name: "",
   role: "",
+  title: "",
+  team: null,
+  department: "",
+  responsibilities: [],
+  subagents: [],
   instructions: "",
   personality_preset: "crisp",
   personality: "",

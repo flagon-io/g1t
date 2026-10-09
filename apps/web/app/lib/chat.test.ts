@@ -147,10 +147,12 @@ test("the sidebar: sections, filters and the rail's count", () => {
     entry("d2", { kind: "dm", title: "ana", others: [ana], last: "2026-10-05T00:00:00Z" }),
     entry("noisy", { muted: true, unread: 9 }),
   ];
-  const { starred, channels, dms } = sections(all);
-  assert.deepEqual(starred.map((e) => e.title), ["general"]);
+  const { pinned, channels, agentDms, dms } = sections(all);
+  assert.deepEqual(pinned.map((e) => e.title), ["general"]);
   assert.deepEqual(channels.map((e) => e.title), ["noisy", "random"]);
-  assert.deepEqual(dms.map((e) => e.title), ["ana", "reviewer"]);
+  // A direct message with one agent is the agent's, under Agents.
+  assert.deepEqual(dms.map((e) => e.title), ["ana"]);
+  assert.equal(agentDms.get("a1")?.title, "reviewer");
   assert.deepEqual(filterEntries(all, "unread", "").map((e) => e.title), ["general", "reviewer", "noisy"]);
   assert.deepEqual(filterEntries(all, "mentions", "").map((e) => e.title), ["reviewer"]);
   assert.deepEqual(filterEntries(all, "all", "@Review").map((e) => e.title), ["reviewer"]);

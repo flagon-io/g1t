@@ -17,6 +17,7 @@ const delivery: AgentDelivery = {
   asked_by: "usr_dana",
   hops: 2,
   asker: { username: "dana", role: "member", can_write: false },
+  chain: ["agt_g1t"],
   surface: "g1t",
 };
 
@@ -43,10 +44,12 @@ test("the g1t adapter posts in the thread, handing on hops, asked_by and the ask
   assert.equal(call.body.channel_id, "chn_1");
   assert.deepEqual(call.body.message, {
     body: "Tagged 1.4.",
+    card: null,
     thread_root: "msg_0",
     hops: 2,
     asked_by: "usr_dana",
     asker: { username: "dana", role: "member", can_write: false },
+    chain: ["agt_g1t"],
   });
 });
 
@@ -77,4 +80,57 @@ test("a failed post is an error the reply loop records; typing never throws", as
   await assert.rejects(g1tSurface(chat.binding, delivery).post("x"), /not a member/);
   const broken = { fetch: async () => new Response("down", { status: 500 }) } as any;
   await g1tSurface(broken, delivery).typing();
+});
+
+test("reactions: in channels and group DMs, never a one-person DM", async () => {
+  const { reactsIn } = await import("./surface.ts");
+  assert.equal(reactsIn("channel", 1), true);
+  assert.equal(reactsIn("dm", 2), true);
+  assert.equal(reactsIn("dm", 1), false);
+});
+
+test("👀 when the desk picks it up, then ✅ when it answered", async () => {
+  const chat = fakeChat({ react_as_agent: { ok: true, value: [] } });
+  const surface = g1tSurface(chat.binding, delivery);
+  await surface.acknowledge();
+  await surface.settle("done");
+  const reacts = chat.calls.filter((c) => c.method === "react_as_agent").map((c) => [c.body.emoji, c.body.remove, c.body.message_id]);
+  assert.deepEqual(reacts, [
+    ["👀", false, "msg_1"],
+    ["👀", true, "msg_1"],
+    ["✅", false, "msg_1"],
+  ]);
+});
+
+test("👀 is taken back after a notice or an apology", async () => {
+  const chat = fakeChat({ react_as_agent: { ok: true, value: [] } });
+  const surface = g1tSurface(chat.binding, delivery);
+  await surface.acknowledge();
+  await surface.settle("withdrawn");
+  assert.deepEqual(chat.calls.map((c) => [c.body.emoji, c.body.remove]), [["👀", false], ["👀", true]]);
+});
+
+test("a one-person DM gets no reactions; a group DM does", async () => {
+  const dm = { ...delivery, channel_kind: "dm" as const, channel_name: null };
+  const alone = fakeChat({ audience: { ok: true, value: { kind: "dm", member_user_ids: ["usr_dana"], member_count: 1 } } });
+  const quiet = g1tSurface(alone.binding, dm);
+  await quiet.acknowledge();
+  await quiet.settle("done");
+  assert.deepEqual(alone.calls.map((c) => c.method), ["audience"]);
+  const group = fakeChat({ audience: { ok: true, value: { kind: "dm", member_user_ids: ["usr_dana", "usr_bo"], member_count: 2 } }, react_as_agent: { ok: true, value: [] } });
+  const loud = g1tSurface(group.binding, dm);
+  await loud.acknowledge();
+  assert.deepEqual(group.calls.map((c) => c.method), ["audience", "react_as_agent"]);
+});
+
+test("reacting that fails never throws, and nothing is taken back that never went on", async () => {
+  const broken = { fetch: async () => new Response("down", { status: 500 }) } as any;
+  const surface = g1tSurface(broken, delivery);
+  await surface.acknowledge();
+  await surface.settle("done");
+  const refused = fakeChat({ react_as_agent: { ok: false, error: { code: "forbidden", message: "not a member" } } });
+  const s2 = g1tSurface(refused.binding, delivery);
+  await s2.acknowledge();
+  await s2.settle("done");
+  assert.equal(refused.calls.length, 1, "no ✅ or removal after a refused 👀");
 });

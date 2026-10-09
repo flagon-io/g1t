@@ -244,10 +244,13 @@ impl Events {
             self.env.service("REPOS")?,
             self.env.service("IDENTITY")?,
         );
+        // Optional: without it the inbox still fills, nobody is told live.
+        let notify = self.env.service("NOTIFY").ok();
         let sources = inbox::Sources {
             work: &work,
             repos: &repos,
             identity: &identity,
+            notify: notify.as_ref(),
         };
         inbox::deliver(&self.db, &sources, events).await;
         Ok(())
@@ -304,7 +307,18 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
             reply(&inbox::list(&events.db, &repos, args(body)?).await?)
         }
         "inbox_counts" => reply(&inbox::counts(&events.db, args(body)?).await?),
-        "inbox_mark" => reply(&inbox::mark(&events.db, args(body)?).await?),
+        "inbox_mark" => {
+            let marked: g1t_contracts::inbox::MarkInboxArgs = args(body)?;
+            let username = marked.username.clone();
+            let changed = inbox::mark(&events.db, marked).await?;
+            // Notify: the new count in every open tab, whoever marked (the site, the API, MCP).
+            if changed > 0
+                && let Ok(notify) = events.env.service("NOTIFY")
+            {
+                inbox::tell_inbox_count(&events.db, &notify, &username).await;
+            }
+            reply(&changed)
+        }
         "inbox_thread" => {
             let (repos, work) = (events.env.service("REPOS")?, events.env.service("WORK")?);
             reply(&inbox::thread(&events.db, &repos, &work, args(body)?).await?)

@@ -1,6 +1,6 @@
 ---
 title: Chat
-description: Talk to your team and your agents in channels, direct messages and threads, live. Mention an agent and it answers in the thread.
+description: Talk to your team and your agents in channels, direct messages and threads, live. Mention an agent and it answers in the thread. React, add your workspace's own emoji, and choose what notifies you.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -28,15 +28,15 @@ Open **Chat** in the rail on the left, or go to
 ## A conversation
 
 Here is a morning in `#web`, a channel with three people and two agents
-in it, `@ship` (a release manager) and `@lint` (a reviewer):
+in it: Bruno (`@bruno`, Operations Engineer) and Margo (`@margo`, QA Engineer):
 
 <Conversation title="# web" topic="The web app, its releases and its bugs">
 <Message name="Priya Shah" time="10:42">
 
-@ship draft the note for Thursday's release. In it: #412 invite emails use the team name, #415 the CSV export is faster, #417 charts are fixed in dark mode.
+@bruno draft the note for Thursday's release. In it: #412 invite emails use the team name, #415 the CSV export is faster, #417 charts are fixed in dark mode.
 
 </Message>
-<Message name="Ship" agent role="Release manager" time="10:42">
+<Message name="Bruno" agent role="Operations Engineer" time="10:42">
 
 **Thursday release**
 
@@ -44,7 +44,7 @@ in it, `@ship` (a release manager) and `@lint` (a reviewer):
 - CSV exports are faster. (#415)
 - Charts read correctly in dark mode. (#417)
 
-#412 changes what customers receive. Want @lint to look at it first?
+#412 changes what customers receive. Want @margo to look at it first?
 
 </Message>
 <Message name="Priya Shah" time="10:43">
@@ -52,21 +52,21 @@ in it, `@ship` (a release manager) and `@lint` (a reviewer):
 Yes please.
 
 </Message>
-<Message name="Ship" agent role="Release manager" time="10:43">
+<Message name="Bruno" agent role="Operations Engineer" time="10:43">
 
-@lint can you review #412 today? Thursday's release waits on it.
+@margo can you review #412 today? Thursday's release waits on it.
 
 </Message>
 </Conversation>
 
 Three things happened there:
 
-- Priya **mentioned** `@ship`, so Ship answered. In a channel, an agent
+- Priya **mentioned** `@bruno`, so Bruno answered. In a channel, an agent
   answers only when it is mentioned. Nobody else's message woke it.
-- Ship answered **in its own voice**: short and to the point, because its
+- Bruno answered **in his own voice**: short and to the point, because his
   personality is *Terse operator*. See
   [job and personality](/guides/agents/#job-and-personality).
-- Ship **mentioned another agent**. `@lint` is woken the same way, as one
+- Bruno **mentioned a colleague**. `@margo` is woken the same way, as one
   more hop in a chain that Priya started. Chains stop after six hops and
   hand back to a person, so two agents can't talk to each other forever.
 
@@ -148,7 +148,7 @@ always has the context it needs.
 ## Mentions
 
 Type `@` and a name to mention a person by username or an agent by handle:
-`@priya`, `@ship`. The sidebar counts mentions of you separately from other
+`@priya`, `@margo`. The sidebar counts mentions of you separately from other
 unread messages, so they stand out.
 
 | You mention | What happens |
@@ -192,6 +192,115 @@ missed.
 You can edit or delete your own messages. An edited message says so. A deleted message is removed for everyone; replies under it stay.
 A message can be up to 40,000 characters, and is written in Markdown.
 
+## Reactions
+
+A reaction says *seen*, *agreed* or *done* without another message.
+
+| Where you are | How to react |
+| --- | --- |
+| On a computer | Hover a message and choose **React** in the toolbar that appears, then pick an emoji. |
+| On a phone | Long-press a message, then pick one of the quick reactions in the sheet, or open the picker. |
+| On an existing reaction | Click its pill to add yours. Click it again to take yours back. |
+
+The picker has a search box, **Recently used**, the standard emoji by group,
+a skin tone, and a **This workspace** tab for your
+[custom emoji](#custom-emoji). Arrow keys move through it and Enter picks.
+
+Hover a reaction's pill to see who reacted, such as *Priya, Otto and 3
+more*. Your own reactions are highlighted.
+
+| Limit | |
+| --- | --- |
+| Different emoji on one message | 50. More of an emoji already there always fits. |
+| What you can react with | One emoji: a standard one, or one of the workspace's own, written `:name:`. |
+
+### Agents react too
+
+An agent says it has your message before it answers. In a channel, or a
+direct message with more than one person, it reacts with 👀 when it starts
+working on a reply, and swaps it for ✅ when it is done. In a one-to-one DM
+it simply answers, since the typing indicator says the same thing.
+
+## Custom emoji
+
+A workspace can add its own emoji: the team's logo, a mascot, an inside
+joke. Everyone in the workspace can use them in messages and reactions.
+
+### Add an emoji
+
+<Steps>
+
+1. Open the workspace's **Emoji** page: `g1t.sh/<workspace>/-/emoji`.
+2. Under **Add an emoji**, choose an image. It shows in a preview at the
+   size it appears in messages.
+3. Give it a **name**, such as `shipit`. People type it as `:shipit:`.
+4. Choose **Add emoji**.
+
+</Steps>
+
+| | Rules |
+| --- | --- |
+| File | A PNG, GIF or WebP, up to 256 KB and 512×512 pixels. Animated GIFs and WebPs stay animated. The file's type is read from its contents, not its name. |
+| Name | 2 to 32 characters: lowercase letters, digits, `-`, `_` and `+`. Unique in the workspace, and never the name of a standard emoji, such as `:thumbsup:`. |
+
+Custom emoji images are served from `g1tusercontent.com`, apart from the
+site, like avatars.
+
+### Aliases
+
+An **alias** is another name for an emoji you already have: both show the
+same image. Under **Add an alias**, pick the emoji and type the new name.
+Aliases follow the same name rules.
+
+### Who can add emoji
+
+Owners choose, on the same page:
+
+| Setting | Means |
+| --- | --- |
+| **Every member** (the default) | Anyone in the workspace can add emoji and aliases. |
+| **Owners only** | Members use the workspace's emoji; only owners add them. |
+
+### Remove an emoji
+
+Whoever added an emoji, and the workspace's owners, can remove it with
+**Remove** beside it. Removing an emoji removes its aliases too.
+
+### Use one
+
+Type `:` and a couple of letters in the composer, and a list of matching
+emoji appears, the workspace's own marked **This workspace**. Up and Down
+move through it, Enter or Tab puts the emoji in, and Escape closes it. A whole
+`:shortcode:` you type yourself works too.
+
+## Notifications
+
+g1t tells you when something is for you, wherever you are in the app.
+
+| | |
+| --- | --- |
+| **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, an agent waiting on you, a review requested. Reply from the pop-up without leaving the page, or open the conversation. |
+| **Sound** | A soft chime with each pop-up, in this browser, if you turn it on. |
+| **Counts** | The rail's Chat badge and each conversation's unread and mention counts update live, in every open tab. |
+| **Browser notifications** <Soon /> | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. |
+
+### Choose what you hear about
+
+Open **Settings → Notifications** (`g1t.sh/settings/notifications`):
+
+| Notify me about | You hear about |
+| --- | --- |
+| **DMs and mentions** (the default) | Direct messages, mentions, replies in your threads, agents waiting on you, and approvals. |
+| **Everything** | Every message in conversations you're in, and everything in your inbox. |
+| **Nothing** | No pop-ups or browser notifications. Counts still update. |
+
+Under **For a workspace**, you can give one workspace a different level,
+such as **Everything** for a small team and **DMs and mentions** for a big
+one. **Send a test notification** shows you what one looks like.
+
+[Your inbox](/guides/inbox/) is separate: it keeps every item until you
+deal with it, whatever these settings say.
+
 ## Coming soon
 
 These are planned and not built yet:
@@ -205,9 +314,9 @@ These are planned and not built yet:
 		Mentions and approvals as items in [your inbox](/guides/inbox/), so
 		acting in either place settles both. <Soon />
 	</Card>
-	<Card title="Reactions and files" icon="paperclip">
-		Reactions on messages, and files uploaded to a conversation, under the
-		workspace's file rules. <Soon />
+	<Card title="Files" icon="paperclip">
+		Files uploaded to a conversation, under the workspace's file rules.
+		<Soon />
 	</Card>
 	<Card title="Your chat app" icon="messages-square">
 		Keep the chat app your company already lives in and use your agents

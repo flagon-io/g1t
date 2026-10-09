@@ -56,7 +56,7 @@ export function CodeLines({
 
   return (
     <div className="overflow-x-auto py-3">
-      <table className="w-full border-collapse font-mono text-sm leading-6">
+      <table className="w-full border-collapse font-mono text-[0.8125rem] leading-6 sm:text-sm">
         <tbody>
           {lines.map((text, i) => (
             <Line
@@ -97,7 +97,7 @@ const Line = memo(function Line({
           href={`#L${n}`}
           tabIndex={-1}
           onClick={(event) => onPick(event, n)}
-          className={`block min-w-14 pr-5 pl-4 transition-colors ${
+          className={`block min-w-10 pr-3 pl-2 transition-colors sm:min-w-14 sm:pr-5 sm:pl-4 ${
             selected ? "text-accent" : marked ? "text-danger" : "text-faint hover:text-fg"
           }`}
         >

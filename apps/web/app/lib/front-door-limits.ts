@@ -94,10 +94,10 @@ export async function pageLimited(env: FrontDoorLimits, request: Request, pathna
  * The 429 for a repository file on the usercontent origin past its limit,
  * or null to go on. Nothing there is signed in (it never sees the session
  * cookie), so a file counts as a signed-out page from its address. Avatars
- * are answered from cache and are not limited.
+ * and custom emoji are answered from cache and are not limited.
  */
 export async function usercontentLimited(env: FrontDoorLimits, request: Request, path: string): Promise<Response | null> {
-  if (path.startsWith("/avatars/")) return null;
+  if (path.startsWith("/avatars/") || path.startsWith("/emoji/")) return null;
   const verdict = await checkLimit(env.WEB_ANONYMOUS_LIMIT, `ip:${clientAddress(request)}`);
   return verdict === "limited" ? tooManyRequests(PAGE_MESSAGE) : null;
 }

@@ -22,6 +22,7 @@ import {
 import type { ReactNode } from "react";
 
 import { cn } from "../lib/cn";
+import { AgentAvatar } from "./agent-avatar";
 
 /** A round letter avatar: lavender for agents, gray for people. */
 function Face({ letter, agent, size = "md" }: { letter: string; agent?: boolean; size?: "sm" | "md" | "lg" }) {
@@ -260,22 +261,22 @@ function Field({ label, children, soon }: { label: string; children: ReactNode; 
   );
 }
 
-/** An agent's profile: who it is, how it talks, what it may use and spend. */
+/** An agent's profile: who it is, what it answers for, how it talks, what it may use and spend. */
 export function AgentCardShot({ className }: { className?: string }) {
   const spent = 12.4;
   const budget = 40;
   return (
     <figure
-      aria-label="An agent's profile in g1t: its role, job, personality, model routing, budget and what it may do alone"
+      aria-label="An agent's profile in g1t: Margo, a QA Engineer on the QA team, with her responsibilities, voice, model routing, budget and what she may do alone"
       className={cn("overflow-hidden rounded-2xl bg-surface text-left ring-1 ring-line", className)}
     >
       <div className="flex items-center gap-4 px-5 py-5">
-        <Face letter="S" agent size="lg" />
+        <AgentAvatar agent={{ handle: "margo", name: "Margo" }} size={48} />
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-semibold text-fg">
-            Ship <AgentTag />
+            Margo <AgentTag />
           </p>
-          <p className="text-sm text-muted">@ship · Release manager for the web app</p>
+          <p className="text-sm text-muted">@margo · QA Engineer on the QA team</p>
         </div>
         <span className="ml-auto hidden items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs text-success sm:flex">
           <span className="size-1.5 rounded-full bg-success" />
@@ -283,15 +284,28 @@ export function AgentCardShot({ className }: { className?: string }) {
         </span>
       </div>
       <dl>
-        <Field label="Job">Cuts releases of acme/web on Thursdays, writes the notes, and asks before tagging.</Field>
+        <Field label="Answers for">
+          <ul className="space-y-0.5">
+            <li>Reviewing pull requests for risk and test coverage</li>
+            <li>Test plans for new features</li>
+            <li>Chasing flaky checks</li>
+          </ul>
+        </Field>
         <Field label="Personality">
-          <span className="text-fg">Crisp.</span> Short answers, no emoji, says what it is waiting on.
+          <span className="text-fg">Crisp.</span> Short answers, points at the exact line, proposes the fix.
         </Field>
         <Field label="Models">
           <span className="text-fg">Auto</span>, never below Standard
           <span className="mt-1.5 flex flex-wrap gap-1.5">
             <span className="rounded-md bg-raised px-1.5 py-0.5 text-xs text-muted ring-1 ring-line">g1t&apos;s models</span>
             <span className="rounded-md bg-raised px-1.5 py-0.5 text-xs text-muted ring-1 ring-line">Your own provider</span>
+          </span>
+        </Field>
+        <Field label="Subagents">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-md bg-raised px-1.5 py-0.5 font-mono text-xs text-muted ring-1 ring-line">flake-hunter</span>
+            <span className="rounded-md bg-raised px-1.5 py-0.5 font-mono text-xs text-muted ring-1 ring-line">migration-checker</span>
+            <span className="text-xs text-faint">run soon</span>
           </span>
         </Field>
         <Field label="Budget">
@@ -303,7 +317,6 @@ export function AgentCardShot({ className }: { className?: string }) {
           </span>
           <span className="mt-1.5 block text-xs text-faint">$5 a task</span>
         </Field>
-        <Field label="Alone">Open pull requests</Field>
         <Field label="Asks first">Merge · Deploy to production</Field>
       </dl>
     </figure>

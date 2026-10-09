@@ -202,7 +202,8 @@ export function Markdown({
   rawBase?: string;
 }) {
   return (
-    <div className="prose">
+    // A long word or address breaks rather than widening the page.
+    <div className="prose wrap-break-word">
       {renderMarkdownTree(treeOf(source, repo), {
         h1: ({ children }) => <Heading level={1}>{children}</Heading>,
         h2: ({ children }) => <Heading level={2}>{children}</Heading>,
@@ -266,6 +267,12 @@ export function Markdown({
           }
           return <pre>{children}</pre>;
         },
+        // A wide table scrolls on its own, inside the text, not the page.
+        table: ({ children }) => (
+          <div className="overflow-x-auto">
+            <table className="max-sm:[&_td]:min-w-32 max-sm:[&_th]:whitespace-nowrap">{children}</table>
+          </div>
+        ),
         input({ type, checked, disabled }) {
           // Task list boxes: shown, not editable.
           return type === "checkbox" ? (

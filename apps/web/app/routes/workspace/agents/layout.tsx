@@ -1,6 +1,8 @@
-import { Outlet, data, type ShouldRevalidateFunctionArgs } from "react-router";
+import { Outlet, data, type ShouldRevalidateFunctionArgs, useMatch, useRouteLoaderData } from "react-router";
 
-import type { WorkspaceAgent } from "@g1t/contracts";
+import { type WorkspaceAgent, hasCodeAccess } from "@g1t/contracts";
+
+import { AgentsSidebar } from "../../../components/agents-mode";
 
 import type { Route } from "./+types/layout";
 import { workspaceAgents } from "../../../lib/services.server";
@@ -25,6 +27,19 @@ export function shouldRevalidate({ currentParams, nextParams, formMethod, defaul
   return currentParams.owner !== nextParams.owner;
 }
 
-export default function AgentsLayout() {
-  return <Outlet />;
+export default function AgentsLayout({ loaderData }: Route.ComponentProps) {
+  const root = useRouteLoaderData("root") as { user?: { workspaces?: { slug: string; role: string; code_access?: boolean }[] } | null } | undefined;
+  const membership = root?.user?.workspaces?.find((m) => m.slug === loaderData.slug) ?? null;
+  // A phone: the agents first, as a list; the fleet's numbers under it.
+  const index = useMatch("/:owner/-/agents");
+  return (
+    <>
+      {index && (
+        <div className="-mx-4 -mt-6 mb-8 md:hidden">
+          <AgentsSidebar slug={loaderData.slug} shellAgents={null} code={hasCodeAccess(membership)} owner={membership?.role === "owner"} phone />
+        </div>
+      )}
+      <Outlet />
+    </>
+  );
 }
