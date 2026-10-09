@@ -167,7 +167,8 @@ export function ChannelView({ data }: { data: Loaded }) {
   const [actions, setActions] = useState<ShownMessage | null>(null);
   // Someone's profile, opened from their card, beside the conversation.
   const [profile, setProfile] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  // A message being edited: in its place on a computer (`inline`), in a sheet on a phone.
+  const [editing, setEditing] = useState<{ id: string; body: string; inline?: boolean } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -555,6 +556,28 @@ export function ChannelView({ data }: { data: Loaded }) {
   };
 
   const rows = useMemo(() => timeline(messages, new Date(), zone), [messages, zone]);
+  const mine = (message: ShownMessage) => message.author.kind === "user" && message.author.id === me?.id && !message.pending && !message.deleted_at;
+  // Editing uses the composer, started from the message's Markdown.
+  const editor = (target: { id: string; body: string }) => (
+    <Composer
+      initial={target.body}
+      placeholder="Edit message"
+      people={people}
+      autoFocus
+      compact
+      onCancel={() => setEditing(null)}
+      onSend={async (body) => {
+        setEditing(null);
+        if (body === target.body) return;
+        // Shown edited at once; put back if the service refuses.
+        const before = messages.find((m) => m.id === target.id);
+        setMessages((now) => now.map((m) => (m.id === target.id ? { ...m, body, edited_at: new Date().toISOString() } : m)));
+        const saved = await send<ChatMessage>({ intent: "edit", channel_id: data.channel.id, id: target.id, body });
+        if (saved.ok) setMessages((now) => mergeMessages(now, [saved.value]));
+        else if (before) setMessages((now) => now.map((m) => (m.id === before.id ? before : m)));
+      }}
+    />
+  );
   const typers = [...typing.values()].map((t) => t.member);
   const name = channel.name ?? "";
   const archived = channel.kind === "channel" && !!channel.archived_at;
@@ -637,6 +660,8 @@ export function ChannelView({ data }: { data: Loaded }) {
                   onRetry={() => retry(row.message)}
                   onLongPress={() => setActions(row.message)}
                   onCopyLink={() => copyThreadLink(row.message.id)}
+                  onEdit={mine(row.message) ? () => setEditing({ id: row.message.id, body: row.message.body, inline: true }) : undefined}
+                  editor={editing?.inline && editing.id === row.message.id ? editor(editing) : undefined}
                   onWriteUp={joined && !archived ? () => setWriteUp(row.message.id) : undefined}
                   threadOpen={row.message.id === threadId}
                 />
@@ -750,40 +775,12 @@ export function ChannelView({ data }: { data: Loaded }) {
         link={writeUp && typeof window !== "undefined" ? linkToThread(writeUp) : ""}
         onSend={askForWriteUp}
       />
-      <BottomSheet open={editing != null} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
-        {editing && (
-          <form
-            className="space-y-3 px-1 pt-1"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              const body = editing.body.trim();
-              if (!body) return;
-              // Shown edited at once; put back if the service refuses.
-              const before = messages.find((m) => m.id === editing.id);
-              setMessages((now) => now.map((m) => (m.id === editing.id ? { ...m, body, edited_at: new Date().toISOString() } : m)));
-              setEditing(null);
-              const saved = await send<ChatMessage>({ intent: "edit", channel_id: data.channel.id, id: editing.id, body });
-              if (saved.ok) setMessages((now) => mergeMessages(now, [saved.value]));
-              else if (before) setMessages((now) => now.map((m) => (m.id === before.id ? before : m)));
-            }}
-          >
+      <BottomSheet open={editing != null && !editing.inline} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
+        {editing && !editing.inline && (
+          <div className="space-y-3 px-1 pt-1">
             <h2 className="px-2 text-base font-semibold">Edit message</h2>
-            <textarea
-              autoFocus
-              value={editing.body}
-              onChange={(event) => setEditing({ ...editing, body: event.target.value })}
-              rows={4}
-              className="block w-full resize-none rounded-xl border border-line-strong bg-bg px-3.5 py-3 text-base text-fg outline-none focus:border-accent/40"
-            />
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setEditing(null)} className="h-11 grow rounded-xl border border-line text-[0.9375rem] font-medium active:bg-raised">
-                Cancel
-              </button>
-              <button type="submit" className="h-11 grow rounded-xl bg-accent text-[0.9375rem] font-medium text-bg active:bg-accent-hover">
-                Save
-              </button>
-            </div>
-          </form>
+            {editor(editing)}
+          </div>
         )}
       </BottomSheet>
     </div>
@@ -1219,7 +1216,12 @@ function MessageRow({
   onWriteUp,
   threadOpen,
   inThread,
+  onEdit,
+  editor,
 }: {
+  /** Your own message: "Edit message" in the "⋯", and the composer in its place while editing. */
+  onEdit?: () => void;
+  editor?: ReactNode;
   /** A phone: a long press opens the message's actions. */
   onLongPress?: () => void;
   /** The hover toolbar's "⋯": copy the link to its thread, write it up in Docs. */
@@ -1276,7 +1278,7 @@ function MessageRow({
           </div>
         )}
         <div className={message.pending && !message.failed ? "opacity-60" : undefined}>
-          {message.body && <MessageText body={message.body} context={context} />}
+          {editor ? <div className="py-1">{editor}</div> : message.body && <MessageText body={message.body} context={context} />}
           {message.card && (
             <CardBox
               card={message.card}
@@ -1327,7 +1329,7 @@ function MessageRow({
               <MessageSquareText size={15} />
             </button>
           </Hint>
-          {onCopyLink && <MoreActions onCopyLink={onCopyLink} onWriteUp={onWriteUp} />}
+          {onCopyLink && <MoreActions onCopyLink={onCopyLink} onWriteUp={onWriteUp} onEdit={onEdit} />}
         </div>
       )}
     </article>
@@ -1335,7 +1337,7 @@ function MessageRow({
 }
 
 /** A message's "⋯" in its hover toolbar. */
-function MoreActions({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWriteUp?: () => void }) {
+function MoreActions({ onCopyLink, onWriteUp, onEdit }: { onCopyLink: () => void; onWriteUp?: () => void; onEdit?: () => void }) {
   return (
     <DropdownMenu>
       <Hint label="More actions">
@@ -1347,6 +1349,12 @@ function MoreActions({ onCopyLink, onWriteUp }: { onCopyLink: () => void; onWrit
         </DropdownMenuTrigger>
       </Hint>
       <DropdownMenuContent align="end">
+        {onEdit && (
+          <DropdownMenuItem onSelect={onEdit}>
+            <Pencil />
+            Edit message
+          </DropdownMenuItem>
+        )}
         <ThreadMenuItems onCopyLink={onCopyLink} onWriteUp={onWriteUp} />
       </DropdownMenuContent>
     </DropdownMenu>

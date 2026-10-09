@@ -21,6 +21,8 @@
  */
 import type { CardAction, FeedDelivery, FeedNotification, MemberProfile, NotificationCard, NotificationKind } from "@g1t/contracts";
 
+import { plainText } from "@g1t/contracts/chat-markdown";
+
 import { tally, type UnreadRow } from "./unread.ts";
 
 export type Person = { key: string; user_id: string; username: string; muted: boolean };
@@ -55,17 +57,9 @@ export function recipients(input: {
   return out;
 }
 
-/** A message's text as a notification shows it: one line, no markup, short. */
+/** A message's text as a notification shows it: one line, the Markdown's marks gone, short. */
 export function preview(body: string, max = 140): string {
-  const text = String(body ?? "")
-    .replace(/```[\s\S]*?```/g, " [code] ")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "[image]")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_~>#]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+  return plainText(String(body ?? ""), max);
 }
 
 /** At most this many of a card's actions ride on a notification. */
