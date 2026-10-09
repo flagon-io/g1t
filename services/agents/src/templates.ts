@@ -162,9 +162,9 @@ export const TEMPLATES: AgentTemplate[] = [
   },
   {
     id: "support",
-    display_name: "Izzy",
-    handle: "izzy",
-    name_ideas: ["Izzy", "Biscuit", "Sunny", "Waffles", "Poppy", "Moss", "Daisy", "Nugget"],
+    display_name: "Sam",
+    handle: "sam",
+    name_ideas: ["Sam", "Robin", "Jamie", "Biscuit", "Sunny", "Waffles", "Poppy", "Moss", "Daisy", "Nugget"],
     title: "Support Specialist",
     department: "Customer Support",
     role: "Support Specialist, Customer Support",

@@ -218,7 +218,7 @@ function HonestyNote({ frame, className }: { frame: Frame; className?: string })
 /* ------------------------------------------------------------------ */
 
 /** The people in the story; everyone else is an agent. */
-const PEOPLE: Record<string, string> = { Priya: "Priya Shah", Dana: "Dana Ruiz", Sam: "Sam Lee" };
+const PEOPLE: Record<string, string> = { Priya: "Priya Shah", Dana: "Dana Ruiz", Alex: "Alex Lee" };
 
 /** The agents in the story: a human name, a title, and a pixel creature of their own. */
 const AGENTS: Record<string, { title: string; team: string }> = {
@@ -226,7 +226,7 @@ const AGENTS: Record<string, { title: string; team: string }> = {
   Otto: { title: "Software Engineer", team: "Engineering" },
   Margo: { title: "QA Engineer", team: "QA" },
   Inky: { title: "Technical Writer", team: "Docs" },
-  Izzy: { title: "Support Specialist", team: "Customer Support" },
+  Sam: { title: "Support Specialist", team: "Customer Support" },
   Dot: { title: "Product Manager", team: "Product" },
   David: { title: "Sales Operations", team: "Sales" },
   Bruno: { title: "Operations Engineer", team: "Operations" },
@@ -492,12 +492,18 @@ function ChatSide({ frame }: { frame: Frame }) {
   // Otto works from the handoff until the merge; everyone else is idle.
   const ottoBusy = frame.handoff && !frame.merged;
   const margoBusy = frame.consult && !frame.approved;
-  const agents: { who: string; working: boolean }[] = [
-    { who: "g1t", working: frame.g1tTyping },
-    { who: "Otto", working: ottoBusy },
+  // As the app has it: direct messages with people and agents alike, the
+  // latest first; then the agents not talked to yet.
+  const dms: { who: string; away?: boolean; status?: string; working?: boolean }[] = [
+    { who: "g1t" },
+    { who: "Dana" },
     { who: "Margo", working: margoBusy },
+    { who: "Alex", away: true, status: "🗓️" },
+  ];
+  const agents: { who: string; working: boolean }[] = [
+    { who: "Otto", working: ottoBusy },
     { who: "Inky", working: frame.docUpdated },
-    { who: "Izzy", working: frame.shipped && !frame.izzy },
+    { who: "Sam", working: frame.shipped && !frame.sam },
   ];
   return (
     <>
@@ -524,38 +530,42 @@ function ChatSide({ frame }: { frame: Frame }) {
             {name === "support" && <span className="min-w-4 rounded-full bg-line-strong px-1 text-center text-[9.5px] font-semibold text-fg">3</span>}
           </SideRow>
         ))}
+        <div className="flex h-7 items-center gap-2 px-2 text-[12px] text-faint">
+          <Compass size={12} />
+          <span className="flex-1">Browse channels</span>
+          <span className="text-[10.5px]">3</span>
+        </div>
+        <SideLabel>Direct messages</SideLabel>
+        {dms.map((dm) => {
+          const agent = dm.who in AGENTS;
+          return (
+            <SideRow key={dm.who}>
+              <span className="relative flex">
+                <Face who={dm.who} size={16} />
+                {!agent && <PresenceDot away={dm.away} />}
+                {agent && dm.working && <PresenceDot />}
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {agent ? dm.who : PEOPLE[dm.who]}
+                {agent && <span className="text-faint"> · {dm.who === "g1t" ? "orchestrator" : AGENTS[dm.who].title}</span>}
+                {dm.status && <span className="ml-1.5 text-[11px]">{dm.status}</span>}
+              </span>
+            </SideRow>
+          );
+        })}
         <SideLabel>Agents</SideLabel>
         {agents.map((agent) => (
           <SideRow key={agent.who}>
-            <Face who={agent.who} size={16} />
+            <span className="relative flex">
+              <Face who={agent.who} size={16} />
+              {agent.working && <PresenceDot />}
+            </span>
             <span className="min-w-0 flex-1 truncate">
               {agent.who}
               <span className="text-faint"> · {AGENTS[agent.who].title}</span>
             </span>
-            {agent.who !== "g1t" && <AgentDot working={agent.working} />}
           </SideRow>
         ))}
-        <SideLabel>Direct messages</SideLabel>
-        {[
-          { who: "Dana", away: false, status: null },
-          { who: "Sam", away: true, status: "🗓️" },
-        ].map((person) => (
-          <SideRow key={person.who}>
-            <span className="relative flex">
-              <Face who={person.who} size={16} />
-              <PresenceDot away={person.away} />
-            </span>
-            <span className="flex-1 truncate">
-              {PEOPLE[person.who]}
-              {person.status && <span className="ml-1.5 text-[11px]">{person.status}</span>}
-            </span>
-          </SideRow>
-        ))}
-        <div className="mt-2 flex h-7 items-center gap-2 px-2 text-[12px] text-muted">
-          <Compass size={13} className="text-faint" />
-          <span className="flex-1">Browse all channels</span>
-          <span className="text-[10.5px] text-faint">6</span>
-        </div>
       </div>
     </>
   );
@@ -615,12 +625,12 @@ function ChatMain({ frame }: { frame: Frame }) {
         {frame.shipped && (
           <Message who="g1t" time="09:41" enter>
             <p>
-              <Rich text="Shipped. A 200,000-row export now finishes in about 3 s. @izzy, can you let #support know?" />
+              <Rich text="Shipped. A 200,000-row export now finishes in about 3 s. @sam, can you let #support know?" />
             </p>
           </Message>
         )}
-        {frame.izzy && (
-          <Message who="Izzy" time="09:42" enter>
+        {frame.sam && (
+          <Message who="Sam" time="09:42" enter>
             <p>
               <Rich text="Done. Told #support, and Dana's two customers can export again." />
             </p>
@@ -669,7 +679,7 @@ const SPECIALISTS: { who: string; working?: boolean }[] = [
   { who: "Otto", working: true },
   { who: "Margo" },
   { who: "Inky" },
-  { who: "Izzy" },
+  { who: "Sam" },
   { who: "Dot" },
 ];
 
@@ -1367,12 +1377,12 @@ function PhoneChat({ frame }: { frame: Frame }) {
         {frame.shipped && (
           <Message who="g1t" time="09:41" enter>
             <p>
-              <Rich text="Shipped. @izzy, can you tell #support?" />
+              <Rich text="Shipped. @sam, can you tell #support?" />
             </p>
           </Message>
         )}
-        {frame.izzy && (
-          <Message who="Izzy" time="09:42" enter>
+        {frame.sam && (
+          <Message who="Sam" time="09:42" enter>
             <p>
               <Rich text="Done. Told #support." />
             </p>

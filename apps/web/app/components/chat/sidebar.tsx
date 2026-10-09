@@ -1,4 +1,4 @@
-import { BellOff, ChevronDown, Compass, Hash, Lock, Pin, PinOff, Plus, Search } from "lucide-react";
+import { BellOff, Bot, ChevronDown, Compass, Hash, Lock, Pin, PinOff, Plus, Search } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, useFetcher, useLocation, useNavigate } from "react-router";
@@ -40,11 +40,13 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 }
 
 /**
- * Chat mode's sidebar: what you pinned, the channels, the workspace's
- * agents (g1t first, each opening your conversation with it), then direct
- * messages with people. All, Unread and Mentions filter every section. It
- * refreshes itself while the tab is shown, so unread counts move without
- * a reload.
+ * Chat mode's sidebar: what you pinned, the channels (and a way to browse
+ * the rest), then direct messages, the latest first, with people and
+ * agents alike. Last, the agents you have not talked to yet, g1t first:
+ * one click opens a conversation with any of them. Sections fold, and
+ * stay folded on this device. All, Unread and Mentions filter every
+ * section. It refreshes itself while the tab is shown, so unread counts
+ * move without a reload.
  */
 export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: boolean }) {
   const data = useChatData();
@@ -80,16 +82,33 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   const loading = !data;
   const owner = data?.role === "owner";
 
-  // Every agent, g1t first; filtered as the conversations are.
+  // The agents you have not talked to yet, g1t first: one click opens a
+  // conversation, which then lists under Direct messages like anyone's.
+  // Nothing of theirs is unread, so Unread and Mentions leave them out.
   const q = query.trim().toLowerCase().replace(/^@/, "");
-  const agents = [...(data?.agents ?? [])]
-    .sort((a, b) => Number(isOrchestrator(b)) - Number(isOrchestrator(a)) || a.display_name.localeCompare(b.display_name))
-    .filter((agent) => {
-      const dm = agentDms.get(agent.id);
-      if (filter === "unread" && !(dm && !dm.muted && (dm.unread > 0 || dm.mentions > 0))) return false;
-      if (filter === "mentions" && !(dm && dm.mentions > 0)) return false;
-      return !q || agent.handle.includes(q) || agent.display_name.toLowerCase().includes(q) || agent.role.toLowerCase().includes(q);
+  const agents =
+    filter !== "all"
+      ? []
+      : [...(data?.agents ?? [])]
+          .filter((agent) => !agentDms.has(agent.id))
+          .sort((a, b) => Number(isOrchestrator(b)) - Number(isOrchestrator(a)) || a.display_name.localeCompare(b.display_name))
+          .filter((agent) => !q || agent.handle.includes(q) || agent.display_name.toLowerCase().includes(q) || agent.role.toLowerCase().includes(q));
+
+  // Folded sections, remembered per workspace on this device. A folded
+  // section still shows what is unread and the conversation open now.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => setFolded(readFolded(slug)), [slug]);
+  const fold = (id: string) =>
+    setFolded((now) => {
+      const next = new Set(now);
+      if (!next.delete(id)) next.add(id);
+      writeFolded(slug, next);
+      return next;
     });
+  const keepShown = (entry: ChatSidebarEntry) => {
+    const to = channelPath(slug, entry.channel);
+    return pathname === to || pathname.startsWith(`${to}/`) || (!entry.muted && (entry.unread > 0 || entry.mentions > 0));
+  };
 
   /** The direct message with an agent: opened, or made on first use. */
   const openAgent = async (agent: WorkspaceAgent, pin = false) => {
@@ -177,60 +196,77 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
           <p className="px-2 py-3 text-xs leading-relaxed text-faint">Chat didn&apos;t answer. Your conversations will show here once it does.</p>
         ) : (
           <>
-            {pinned.length > 0 && <Section title="Pinned">{pinned.map(conversation)}</Section>}
-            <Section title="Channels" action={<CreateChannelButton slug={slug} />}>
+            {pinned.length > 0 && (
+              <Section id="pinned" title="Pinned" folded={folded} onFold={fold} keep={pinned.filter(keepShown).map(conversation)}>
+                {pinned.map(conversation)}
+              </Section>
+            )}
+            <Section
+              id="channels"
+              title="Channels"
+              folded={folded}
+              onFold={fold}
+              action={<CreateChannelButton slug={slug} />}
+              keep={channels.filter(keepShown).map(conversation)}
+            >
               {channels.map(conversation)}
               {channels.length === 0 && filter === "all" && !query && <Empty>No channels yet.</Empty>}
+              {filter === "all" && !query && (
+                <ExtraRow to={`/${slug}/-/chat/browse`} icon={<Compass size={15} />} count={sidebar.browsable > 0 ? sidebar.browsable : undefined} countLabel="to join">
+                  Browse channels
+                </ExtraRow>
+              )}
             </Section>
             <Section
-              title="Agents"
-              action={
-                owner ? (
-                  <Hint label="New agent">
-                    <Link
-                      to={`/${slug}/-/agents/new`}
-                      aria-label="New agent"
-                      className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
-                    >
-                      <Plus size={14} />
-                    </Link>
-                  </Hint>
-                ) : null
-              }
+              id="dms"
+              title="Direct messages"
+              folded={folded}
+              onFold={fold}
+              action={<NewMessageButton slug={slug} />}
+              keep={dms.filter(keepShown).map(conversation)}
             >
-              {agents.map((agent) => (
-                <AgentRow
-                  key={agent.id}
-                  agent={agent}
-                  dm={agentDms.get(agent.id)}
-                  current={(() => {
-                    const dm = agentDms.get(agent.id);
-                    return dm != null && pathname === channelPath(slug, dm.channel);
-                  })()}
-                  busy={opening === agent.id}
-                  onOpen={() => void openAgent(agent)}
-                  onPin={() => void openAgent(agent, true)}
-                />
-              ))}
-              {agents.length === 0 && filter === "all" && !query && <Empty>No agents yet.</Empty>}
-            </Section>
-            <Section title="Direct messages" action={<NewMessageButton slug={slug} />}>
               {dms.map(conversation)}
-              {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
+              {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate or an agent.</Empty>}
             </Section>
+            {(agents.length > 0 || (filter === "all" && !query)) && (
+              <Section
+                id="agents"
+                title="Agents"
+                folded={folded}
+                onFold={fold}
+                action={
+                  owner ? (
+                    <Hint label="New agent">
+                      <Link
+                        to={`/${slug}/-/agents/new`}
+                        aria-label="New agent"
+                        className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-raised hover:text-fg"
+                      >
+                        <Plus size={14} />
+                      </Link>
+                    </Hint>
+                  ) : null
+                }
+              >
+                {agents.map((agent) => (
+                  <AgentRow
+                    key={agent.id}
+                    agent={agent}
+                    busy={opening === agent.id}
+                    onOpen={() => void openAgent(agent)}
+                    onPin={() => void openAgent(agent, true)}
+                  />
+                ))}
+                {filter === "all" && !query && (
+                  <ExtraRow to={`/${slug}/-/agents`} icon={<Bot size={15} />}>
+                    {(data?.agents ?? []).length === 0 ? (owner ? "Hire an agent" : "No agents yet") : "All agents"}
+                  </ExtraRow>
+                )}
+              </Section>
+            )}
             {shown.length === 0 && agents.length === 0 && (filter !== "all" || query) && (
               <p className="px-2 py-2 text-xs text-faint">{query ? "Nothing matches." : filter === "unread" ? "You're all caught up." : "No mentions."}</p>
             )}
-            <NavLink
-              to={`/${slug}/-/chat/browse`}
-              className={({ isActive }) =>
-                `mt-3 flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors ${isActive ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`
-              }
-            >
-              <Compass size={15} className="text-faint" />
-              Browse all channels
-              <span className="ml-auto text-xs text-faint tabular-nums">{(sidebar.browsable ?? 0) + entries.filter((e) => e.channel.kind === "channel").length}</span>
-            </NavLink>
           </>
         )}
       </nav>
@@ -238,24 +274,93 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
   );
 }
 
-function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
-  const [open, setOpen] = useState(true);
+const FOLDED_KEY = (slug: string) => `g1t:chat-folded:${slug}`;
+
+/** The sections folded in this workspace, as last left; none if storage is not there. */
+function readFolded(slug: string): ReadonlySet<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FOLDED_KEY(slug)) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeFolded(slug: string, folded: ReadonlySet<string>) {
+  try {
+    if (folded.size === 0) localStorage.removeItem(FOLDED_KEY(slug));
+    else localStorage.setItem(FOLDED_KEY(slug), JSON.stringify([...folded]));
+  } catch {
+    // Private windows and blocked storage: folding still works until a reload.
+  }
+}
+
+/**
+ * A titled part of the sidebar that folds away. Folded, it keeps `keep`
+ * showing: the unread conversations and the open one.
+ */
+function Section({
+  id,
+  title,
+  folded,
+  onFold,
+  action,
+  keep,
+  children,
+}: {
+  id: string;
+  title: string;
+  folded: ReadonlySet<string>;
+  onFold: (id: string) => void;
+  action?: ReactNode;
+  keep?: ReactNode[];
+  children: ReactNode;
+}) {
+  const open = !folded.has(id);
+  const list = `chat-section-${id}`;
   return (
     <section className="mb-3">
       <div className="group/head flex h-7 items-center justify-between pr-0.5 pl-1">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={() => onFold(id)}
           aria-expanded={open}
-          className="flex items-center gap-1 rounded px-1 text-xs font-medium text-faint transition-colors hover:text-muted"
+          aria-controls={list}
+          className="flex min-w-0 grow items-center gap-1 rounded px-1 py-1 text-left text-xs font-medium text-faint transition-colors hover:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none max-md:text-[0.8125rem]"
         >
-          <ChevronDown size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
+          <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
           {title}
         </button>
-        <span className="opacity-70 transition-opacity group-hover/head:opacity-100">{action}</span>
+        <span className="opacity-70 transition-opacity group-hover/head:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">{action}</span>
       </div>
-      {open && <ul className="space-y-px">{children}</ul>}
+      {(open || (keep && keep.length > 0)) && (
+        <ul id={list} className="space-y-px">
+          {open ? children : keep}
+        </ul>
+      )}
     </section>
+  );
+}
+
+/** A quieter row at the end of a section: somewhere to go rather than a conversation. */
+function ExtraRow({ to, icon, count, countLabel, children }: { to: string; icon: ReactNode; count?: number; countLabel?: string; children: ReactNode }) {
+  return (
+    <li>
+      <NavLink
+        to={to}
+        end
+        className={({ isActive }) => `${ROW} ${isActive ? "bg-raised text-fg" : "text-faint hover:bg-raised/60 hover:text-muted"}`}
+      >
+        <span className="flex w-4.5 shrink-0 justify-center">{icon}</span>
+        <span className="min-w-0 grow truncate">{children}</span>
+        {count != null && (
+          <span className="shrink-0 text-xs tabular-nums">
+            {count}
+            {countLabel && <span className="sr-only"> {countLabel}</span>}
+          </span>
+        )}
+      </NavLink>
+    </li>
   );
 }
 
@@ -342,8 +447,9 @@ function ConversationRow({
   const agentId = agentDmOf(entry);
   const agent = agentId ? agents.find((a) => a.id === agentId) : null;
   const other = entry.others[0];
+  const g1t = agent ? isOrchestrator(agent) : false;
   const icon = agent ? (
-    <AgentAvatar agent={{ ...agent, builtin: isOrchestrator(agent) }} size={18} />
+    <AgentFace agent={agent} g1t={g1t} />
   ) : entry.channel.kind === "dm" && other ? (
     // One person: their dot, cut out of the sidebar behind it.
     <MemberAvatar member={other} size={18} presence={entry.others.length === 1} ring="var(--chat-sidebar-bg)" />
@@ -363,9 +469,10 @@ function ConversationRow({
             current ? "bg-raised text-fg" : unread ? "text-fg hover:bg-raised/60" : entry.muted ? "text-faint hover:bg-raised/60 hover:text-muted" : "text-muted hover:bg-raised/60 hover:text-fg"
           }`}
         >
-          <span className={`flex w-[18px] shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
+          <span className={`flex w-4.5 shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"}`}>{icon}</span>
           <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>
-            {entry.title}
+            {agent ? agent.display_name : entry.title}
+            {agent && <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{g1t ? "orchestrator" : agent.title}</span>}
             {entry.channel.kind === "dm" && other?.kind === "user" && entry.others.length === 1 && (
               <PersonStatusEmoji person={{ id: other.id, username: other.name }} size={13} className="ml-1.5 align-[-2px]" inert />
             )}
@@ -379,52 +486,43 @@ function ConversationRow({
   );
 }
 
-/** One agent: its face, its name and status, and unread from your conversation with it. */
-function AgentRow({
-  agent,
-  dm,
-  current,
-  busy,
-  onOpen,
-  onPin,
-}: {
-  agent: WorkspaceAgent;
-  dm: ChatSidebarEntry | undefined;
-  current: boolean;
-  busy: boolean;
-  onOpen: () => void;
-  onPin: () => void;
-}) {
+/** An agent's face in a row; any but g1t carries its status, cut out of the sidebar behind it. */
+function AgentFace({ agent, g1t }: { agent: WorkspaceAgent; g1t: boolean }) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      <AgentAvatar agent={{ ...agent, builtin: g1t }} size={18} />
+      {!g1t && agent.status !== "idle" && (
+        <span className="absolute -right-1 -bottom-1 flex rounded-full p-[2px]" style={{ background: "var(--chat-sidebar-bg)" }}>
+          <StatusDot status={agent.status} className="size-[7px] shadow-none" />
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** An agent you have not talked to yet: its face, name and title. Opening it starts your conversation. */
+function AgentRow({ agent, busy, onOpen, onPin }: { agent: WorkspaceAgent; busy: boolean; onOpen: () => void; onPin: () => void }) {
   const g1t = isOrchestrator(agent);
-  const unread = dm != null && !dm.muted && (dm.unread > 0 || dm.mentions > 0);
   return (
     <li className="group/row relative">
-      <RowMenu pinned={dm?.starred ?? false} onPin={onPin}>
+      <RowMenu pinned={false} onPin={onPin}>
         <button
           type="button"
           onClick={onOpen}
-          aria-current={current ? "page" : undefined}
           aria-busy={busy || undefined}
-          className={`${ROW} w-full text-left ${current ? "bg-raised text-fg" : unread ? "text-fg hover:bg-raised/60" : "text-muted hover:bg-raised/60 hover:text-fg"} ${busy ? "opacity-60" : ""}`}
+          aria-label={`Message ${agent.display_name}, ${g1t ? "orchestrator" : agent.title}${g1t ? "" : `, ${statusLabel(agent.status).toLowerCase()}`}`}
+          className={`${ROW} w-full text-left text-muted hover:bg-raised/60 hover:text-fg ${busy ? "opacity-60" : ""}`}
         >
-          <span className="relative flex w-[18px] shrink-0 justify-center">
-            <AgentAvatar agent={{ ...agent, builtin: g1t }} size={18} />
+          <span className="flex w-4.5 shrink-0 justify-center">
+            <AgentFace agent={agent} g1t={g1t} />
           </span>
-          <span className={`min-w-0 grow truncate ${unread ? "font-semibold" : current ? "font-medium" : ""}`}>
+          <span className="min-w-0 grow truncate">
             {agent.display_name}
-            <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{g1t ? "orchestrator" : agent.title}</span>
+            <span className="ml-1.5 text-[0.6875rem] text-faint">{g1t ? "orchestrator" : agent.title}</span>
           </span>
-          {!g1t && (
-            <Hint label={statusLabel(agent.status)}>
-              <span className="flex size-4 shrink-0 items-center justify-center">
-                <StatusDot status={agent.status} />
-              </span>
-            </Hint>
-          )}
-          <Count entry={dm} />
         </button>
       </RowMenu>
-      <PinButton pinned={dm?.starred ?? false} onPin={onPin} label={agent.display_name} />
+      <PinButton pinned={false} onPin={onPin} label={agent.display_name} />
     </li>
   );
 }

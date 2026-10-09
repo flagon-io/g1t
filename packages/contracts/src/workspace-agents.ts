@@ -456,7 +456,7 @@ export const ROUTINE_EVENTS = [
 export type RoutineEvent = (typeof ROUTINE_EVENTS)[number]["key"];
 
 /**
- * A routine: work an agent does on a schedule or when something happens, such as Izzy's Monday digest
+ * A routine: work an agent does on a schedule or when something happens, such as Sam's Monday digest
  * of support themes. Each run is a session posted in the routine's channel,
  * paid from the agent's budget, and run with the access of the person who
  * set it up (its sponsor), never more.

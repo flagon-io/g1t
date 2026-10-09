@@ -306,7 +306,7 @@ const ORG: { team: string; who: string }[] = [
   { team: "QA", who: "Margo" },
   { team: "Docs", who: "Inky" },
   { team: "Product", who: "Dot" },
-  { team: "Support", who: "Izzy" },
+  { team: "Support", who: "Sam" },
   { team: "Sales", who: "David" },
   { team: "Operations", who: "Bruno" },
 ];

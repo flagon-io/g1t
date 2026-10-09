@@ -6,9 +6,9 @@
  *
  * The story opens on the code: Otto's pull request #431 runs its checks,
  * is approved and is merged by the queue. Then where it came from: the
- * ask in #web, handed to @otto by g1t, now merged, and Izzy telling
+ * ask in #web, handed to @otto by g1t, now merged, and Sam telling
  * #support. Then Otto's sessions, the record of what he did and spent, and
- * last Inky's docs page picking up the change. Otto, Margo, Izzy and Inky
+ * last Inky's docs page picking up the change. Otto, Margo, Sam and Inky
  * are agents this workspace hired from role templates; only g1t is built in.
  */
 
@@ -49,8 +49,8 @@ export type Frame = {
   cardMerged: boolean;
   /** g1t posted that it shipped. */
   shipped: boolean;
-  /** Izzy says she told #support. */
-  izzy: boolean;
+  /** Sam says the support team has been told, in #support. */
+  sam: boolean;
   /** Otto consulted Margo, shown as a collapsed line on the task. */
   consult: boolean;
   /** The docs page shows the changed line. */
@@ -87,7 +87,7 @@ export const BEAT = {
   chat: 6450,
   cardMerged: 7100,
   shipped: 8400,
-  izzy: 9600,
+  sam: 9600,
   railAgentsClick: 11000,
   agents: 11150,
   railDocsClick: 15000,
@@ -137,7 +137,7 @@ function cursorAt(t: number): { cursor: CursorTarget; click: boolean } {
   const press = (at: number) => t >= at && t < at + 180;
   const moves: [number, CursorTarget][] = [
     [BEAT.merged + 300, "rail-chat"],
-    [BEAT.izzy + 500, "rail-agents"],
+    [BEAT.sam + 500, "rail-agents"],
     [BEAT.agents + 2600, "rail-docs"],
     [BEAT.docs + 500, "idle"],
   ];
@@ -169,7 +169,7 @@ export function frameAt(time: number): Frame {
     merged: t >= BEAT.merged,
     cardMerged: t >= BEAT.cardMerged,
     shipped: t >= BEAT.shipped,
-    izzy: t >= BEAT.izzy,
+    sam: t >= BEAT.sam,
     consult: true,
     docUpdated: t >= BEAT.docUpdated,
     cursor,
@@ -181,7 +181,7 @@ export function frameAt(time: number): Frame {
 /** A still frame for each pill, for reduced motion: the moment the step makes its point. */
 export const STILLS: Record<Scene, number> = {
   code: BEAT.approved + 200,
-  chat: BEAT.izzy + 400,
+  chat: BEAT.sam + 400,
   agents: BEAT.agents + 400,
   docs: BEAT.docUpdated + 400,
 };
