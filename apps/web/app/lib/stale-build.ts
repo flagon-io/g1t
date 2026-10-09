@@ -37,5 +37,44 @@ export function reloadFixes({ error, status, clientNavigation, caughtByCatchAll 
   return STALE_MESSAGES.some((pattern) => pattern.test(message));
 }
 
+/**
+ * The key React Router gives the location a tab's document loaded at. It is
+ * the history entry's own key, and not "default": ScrollRestoration's inline
+ * script gives the entry a key before the app starts, so a key alone cannot
+ * tell a document load from a client navigation. Read when this module first
+ * runs, which is before the app hydrates; undefined on the server.
+ */
+const DOCUMENT_KEY: string | undefined =
+  typeof window === "undefined" ? undefined : ((window.history.state as { key?: string } | null)?.key ?? "default");
+
+/**
+ * Whether the page at this location key got there by a client navigation.
+ * The server, and the render that hydrates the server's page, always say
+ * no, so both render the same error page.
+ */
+export function clientNavigated(key: string, documentKey: string | undefined = DOCUMENT_KEY): boolean {
+  return documentKey !== undefined && key !== documentKey;
+}
+
 /** The session key that remembers which address was reloaded, so it is reloaded once. */
 export const RELOADED_KEY = "g1t-reloaded";
+
+/** Whether this address was already loaded again once, so another try would not help. */
+export function reloadedBefore(href: string, storage: Pick<Storage, "getItem"> | undefined = sessionStorageOrNone()): boolean {
+  try {
+    return storage?.getItem(RELOADED_KEY) === href;
+  } catch {
+    return false;
+  }
+}
+
+/** How long the page waits for the reload to start before it shows the error instead. */
+export const RELOAD_GIVE_UP_MS = 5000;
+
+function sessionStorageOrNone(): Storage | undefined {
+  try {
+    return typeof window === "undefined" ? undefined : window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}

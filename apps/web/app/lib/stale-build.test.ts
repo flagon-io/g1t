@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { reloadFixes } from "./stale-build.ts";
+import { RELOADED_KEY, clientNavigated, reloadFixes, reloadedBefore } from "./stale-build.ts";
 
 test("a client navigation that hits an older build reloads the page", () => {
   const seen = { clientNavigation: true, caughtByCatchAll: false };
@@ -21,4 +21,24 @@ test("a document load, or any other error, shows the error page", () => {
   assert.equal(reloadFixes({ error: {}, status: 404, clientNavigation: false, caughtByCatchAll: true }), false);
   assert.equal(reloadFixes({ error: new Error("D1_ERROR: no such table"), clientNavigation: true, caughtByCatchAll: false }), false);
   assert.equal(reloadFixes({ error: {}, status: 500, clientNavigation: true, caughtByCatchAll: false }), false);
+});
+
+test("the location a tab's document loaded at is no client navigation, whatever its key", () => {
+  // ScrollRestoration's inline script gives the first entry a random key.
+  assert.equal(clientNavigated("kvhli4udgd", "kvhli4udgd"), false);
+  assert.equal(clientNavigated("default", "default"), false);
+  assert.equal(clientNavigated("a1b2c3", "kvhli4udgd"), true);
+  // The server never navigated.
+  assert.equal(clientNavigated("default", undefined), false);
+  assert.equal(clientNavigated("a1b2c3", undefined), false);
+});
+
+test("an address loaded again once is not loaded again", () => {
+  const storage = (value: string | null) => ({ getItem: (key: string) => (key === RELOADED_KEY ? value : null) });
+  assert.equal(reloadedBefore("/flagon-io/-/docs", storage("/flagon-io/-/docs")), true);
+  assert.equal(reloadedBefore("/flagon-io/-/docs", storage("/flagon-io/g1t/nope")), false);
+  assert.equal(reloadedBefore("/flagon-io/-/docs", storage(null)), false);
+  // No storage, or storage that throws: nothing remembered.
+  assert.equal(reloadedBefore("/flagon-io/-/docs", undefined), false);
+  assert.equal(reloadedBefore("/flagon-io/-/docs", { getItem: () => { throw new Error("denied"); } }), false);
 });

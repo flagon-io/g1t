@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
   isRouteErrorResponse,
@@ -69,7 +69,7 @@ import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { useSignUpCopy } from "./lib/registration";
-import { RELOADED_KEY, reloadFixes } from "./lib/stale-build";
+import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
 import { isNeedsSignIn } from "./lib/website-token";
 import { LiveNotifications } from "./components/notifications/live-notifications";
@@ -658,25 +658,30 @@ export default function App() {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const location = useLocation();
   const matches = useMatches();
+  const href = location.pathname + location.search + location.hash;
   // A tab left open across a deploy: load the address again as a whole
-  // page, once, rather than show an error the reload fixes.
-  const reload = reloadFixes({
+  // page, once, rather than show an error the reload fixes. A document load
+  // never reloads, so the server and the hydrating client render the same.
+  const reloadable = reloadFixes({
     error,
     status: isRouteErrorResponse(error) ? error.status : undefined,
-    // The first page a tab loads has the key "default"; a client navigation's is its own.
-    clientNavigation: location.key !== "default",
+    clientNavigation: clientNavigated(location.key),
     caughtByCatchAll: matches.at(-1)?.id === "routes/not-found",
   });
-  const href = location.pathname + location.search + location.hash;
+  // Already loaded again once, or the reload never started: show the page.
+  const tried = useMemo(() => reloadable && reloadedBefore(href), [reloadable, href]);
+  const [gaveUp, setGaveUp] = useState<string | null>(null);
+  const reload = reloadable && !tried && gaveUp !== href;
   useEffect(() => {
     if (!reload) return;
     try {
-      if (sessionStorage.getItem(RELOADED_KEY) === href) return;
       sessionStorage.setItem(RELOADED_KEY, href);
     } catch {
       // No session storage: reload anyway; a document load never asks again.
     }
     window.location.assign(href);
+    const timer = window.setTimeout(() => setGaveUp(href), RELOAD_GIVE_UP_MS);
+    return () => window.clearTimeout(timer);
   }, [reload, href]);
   if (reload) {
     return (
