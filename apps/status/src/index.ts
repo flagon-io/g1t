@@ -47,6 +47,7 @@ import {
   fail,
   ok,
 } from "@g1t/contracts";
+import { LIMIT_PERIOD_SECONDS, type RateLimitBinding, clientAddress, isLimited, secretKey } from "@g1t/contracts/rate-limits";
 import bricolage from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2";
 import hanken from "@g1t/theme/fonts/hanken-grotesk-latin.woff2";
 import plexMono from "@g1t/theme/fonts/ibm-plex-mono-latin-400.woff2";
@@ -186,6 +187,13 @@ export interface Env extends Partial<Targets> {
    * it, deploys are not announced and detection does not hold off for them.
    */
   STATUS_DEPLOY_TOKEN?: string;
+  /**
+   * Asking for a subscription, per client address and per email address
+   * (RATE_LIMITS in packages/contracts). Without them, only the resend
+   * window (RESEND_AFTER_MS) holds back repeated emails to one address.
+   */
+  STATUS_SUBSCRIBE_LIMIT?: RateLimitBinding;
+  STATUS_EMAIL_LIMIT?: RateLimitBinding;
 }
 
 /** How long the edge keeps a page or the JSON. */
@@ -539,10 +547,18 @@ async function subscriptions(request: Request, env: Env, ctx: ExecutionContext, 
 
   if (path === "/subscribe" && post) {
     if (!emailOn(env)) return message("Email updates are not available", "Follow the Atom or JSON feed instead.", 503);
+    // Each request can send an email: limited per client, then per address.
+    const tooMany = () => {
+      const answer = message("Too many requests", "Wait a minute and try again.", 429);
+      answer.headers.set("retry-after", String(LIMIT_PERIOD_SECONDS));
+      return answer;
+    };
+    if (await isLimited(env.STATUS_SUBSCRIBE_LIMIT, `ip:${clientAddress(request)}`)) return tooMany();
     const data = await form(request);
     if (String(data.get("website") ?? "")) return message("Check your inbox", "If the address is right, a confirmation link is on its way.");
     const email = normalizeEmail(data.get("email"));
     if (!email) return message("That is not an email address", "Go back and check it.", 400);
+    if (await isLimited(env.STATUS_EMAIL_LIMIT, await secretKey("email", email))) return tooMany();
     const chosen = chosenParts(data.getAll("components").map(String), parts(env).map((p) => p.key));
     const token = newToken();
     const { send } = await requestSubscription(env.DB, email, chosen, await hashToken(token), new Date(), CONFIRM_TTL_MS, RESEND_AFTER_MS);

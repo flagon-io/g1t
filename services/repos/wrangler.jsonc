@@ -124,5 +124,13 @@
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1 }]
 	},
+	// What an anonymous clone can cost a repository's owner (src/limits.rs):
+	// packs written to GIT_PACKS, and anonymous fetches the git store
+	// answers, each per repository. Ids and limits: RATE_LIMITS in
+	// packages/contracts. Without them, nothing is limited.
+	"ratelimits": [
+		{ "name": "PACK_FILL_LIMIT", "namespace_id": "4301", "simple": { "limit": 30, "period": 60 } },
+		{ "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } }
+	],
 	"observability": { "enabled": true }
 }

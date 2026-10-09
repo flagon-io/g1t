@@ -42,5 +42,11 @@
 	// actions/cache entries (`c/`) and artifacts (`a/`), uploaded in parts. The actions
 	// service lists them and decides what is kept (services/actions/src/cache.rs).
 	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
+	// REST and MCP requests (src/limits.rs): per token, or per address
+	// without one. Ids and limits: RATE_LIMITS in packages/contracts.
+	"ratelimits": [
+		{ "name": "API_ANONYMOUS_LIMIT", "namespace_id": "4401", "simple": { "limit": 60, "period": 60 } },
+		{ "name": "API_TOKEN_LIMIT", "namespace_id": "4402", "simple": { "limit": 1000, "period": 60 } }
+	],
 	"observability": { "enabled": true }
 }

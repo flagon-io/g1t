@@ -43,6 +43,17 @@
 		// Production screenshots for a project's overview (services/og).
 		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
 	],
+	// The front door's limits (app/lib/front-door-limits.ts). Every id and
+	// limit is in RATE_LIMITS (packages/contracts/src/rate-limits.ts), which
+	// the tests check this against. Self-hosted, without them, nothing is limited.
+	"ratelimits": [
+		{ "name": "WEB_ANONYMOUS_LIMIT", "namespace_id": "4201", "simple": { "limit": 600, "period": 60 } },
+		{ "name": "WEB_HEAVY_LIMIT", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } },
+		{ "name": "WEB_SESSION_LIMIT", "namespace_id": "4203", "simple": { "limit": 1200, "period": 60 } },
+		{ "name": "WEB_ADDRESS_LIMIT", "namespace_id": "4204", "simple": { "limit": 3000, "period": 60 } },
+		{ "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
+		{ "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } }
+	],
 	"observability": { "enabled": true },
 	"upload_source_maps": true
 }

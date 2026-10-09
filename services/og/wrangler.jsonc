@@ -33,5 +33,8 @@
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "PROJECTS", "service": "g1t-projects" }
 	],
+	// Cards drawn for a cache miss, per address (src/index.ts). Past it,
+	// the brand card. Id and limit: RATE_LIMITS in packages/contracts.
+	"ratelimits": [{ "name": "OG_RENDER_LIMIT", "namespace_id": "4501", "simple": { "limit": 60, "period": 60 } }],
 	"observability": { "enabled": true }
 }

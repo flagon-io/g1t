@@ -30,6 +30,7 @@ export * from "./oauth";
 export * from "./og";
 export * from "./packages";
 export * from "./projects";
+export * from "./rate-limits";
 export * from "./repos";
 export * from "./result";
 export * from "./rules";
