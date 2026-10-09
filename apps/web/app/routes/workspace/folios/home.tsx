@@ -142,21 +142,21 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
         value={search.get("kind") ?? "any"}
         onValueChange={(v) => set({ kind: v === "any" ? null : v })}
         options={[{ value: "any", label: "Any kind" }, ...FOLIO_KINDS.map((k) => ({ value: k, label: FOLIO_KIND_UI[k].label }))]}
-        className="h-9 min-w-32"
+        className="h-9 w-36 max-md:w-full"
       />
       <SelectField
         aria-label="Space"
         value={search.get("space") ?? "any"}
         onValueChange={(v) => set({ space: v === "any" ? null : v })}
         options={[{ value: "any", label: "Any space" }, { value: "private", label: "Private" }, ...spaces.map((s) => ({ value: s.id, label: s.name }))]}
-        className="h-9 min-w-32"
+        className="h-9 w-36 max-md:w-full"
       />
       <SelectField
         aria-label="Owner"
         value={search.get("owner") ?? "any"}
         onValueChange={(v) => set({ owner: v === "any" ? null : v })}
         options={[{ value: "any", label: "Anyone" }, ...(layout?.mentionables ?? []).filter((m) => m.kind === "user").map((m) => ({ value: m.name, label: m.name === layout?.me.name ? "You" : m.display_name }))]}
-        className="h-9 min-w-32"
+        className="h-9 w-36 max-md:w-full"
       />
       {projects.length > 0 && (
         <SelectField
@@ -164,7 +164,7 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
           value={search.get("project") ?? "any"}
           onValueChange={(v) => set({ project: v === "any" ? null : v })}
           options={[{ value: "any", label: "Any project" }, ...projects.map((p) => ({ value: p, label: p }))]}
-          className="h-9 min-w-40"
+          className="h-9 w-44 max-md:w-full"
         />
       )}
     </>

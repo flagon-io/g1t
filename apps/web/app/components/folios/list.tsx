@@ -12,9 +12,16 @@ import { Link } from "react-router";
 import { dayGroups } from "../../lib/folios";
 import { TimeAgo } from "../ui";
 import { Hint } from "../ui/hint";
+import { useFoliosData } from "./actions";
 import { FolioThumbnail, KindIcon } from "./kinds";
 import { FolioMenu } from "./menu";
 import { AccessMark } from "./parts";
+
+/** Where it sits, in a word: its space; else your Private, or whose it is when it's someone else's. */
+function placeOf(folio: Folio, me: string | undefined): string {
+  if (folio.space) return folio.space.name;
+  return `user:${folio.owner.id}` === me ? "Private" : folio.owner.display_name;
+}
 
 function Edited({ folio }: { folio: Folio }) {
   const by = folio.edited_by?.display_name;
@@ -28,6 +35,7 @@ function Edited({ folio }: { folio: Folio }) {
 }
 
 export function FolioRow({ slug, folio, onError }: { slug: string; folio: Folio; onError?: (message: string) => void }) {
+  const me = useFoliosData()?.me.key;
   return (
     <li className="group relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-raised/60 sm:px-4">
       <KindIcon kind={folio.kind} />
@@ -45,7 +53,7 @@ export function FolioRow({ slug, folio, onError }: { slug: string; folio: Folio;
       <span className="relative hidden shrink-0 sm:flex">
         <AccessMark folio={folio} />
       </span>
-      <span className="hidden w-32 shrink-0 truncate text-xs text-faint md:block">{folio.space?.name ?? "Private"}</span>
+      <span className="hidden w-32 shrink-0 truncate text-xs text-faint md:block">{placeOf(folio, me)}</span>
       <span className="relative w-28 shrink-0 text-right max-sm:w-auto">
         <Edited folio={folio} />
       </span>
@@ -76,6 +84,7 @@ export function FolioDays({ slug, items, zone, onError }: { slug: string; items:
 }
 
 export function FolioCard({ slug, folio, onError }: { slug: string; folio: Folio; onError?: (message: string) => void }) {
+  const me = useFoliosData()?.me.key;
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-strong">
       <div className="pointer-events-none h-32 shrink-0 border-b border-line">
@@ -89,7 +98,7 @@ export function FolioCard({ slug, folio, onError }: { slug: string; folio: Folio
             {folio.title || "Untitled"}
           </Link>
           <span className="mt-0.5 flex items-center gap-1.5 text-[0.6875rem] text-faint">
-            <span className="truncate">{folio.space?.name ?? "Private"}</span>
+            <span className="truncate">{placeOf(folio, me)}</span>
             <span aria-hidden="true">·</span>
             <span className="relative">
               <Edited folio={folio} />
