@@ -106,10 +106,12 @@ reads only what every member of the workspace can read, which keeps it
 fast and still strictly correct.
 
 <Aside type="note" title="Where this stands today">
-Rules 1, 3 and 6 hold today: a reply reads only the conversation it is in,
-which everyone there can already read, so nothing wider can leak. Tools
-that look things up, memory and per-read auditing (rules 2, 4, 5 and 7)
-arrive with replies that read code, issues and docs. <Soon />
+Rules 1, 2, 3, 5, 6 and 7 hold today. Replies look up code, issues, pull
+requests and messages only within the conversation's audience, a withheld
+read says nothing about what was withheld, and every lookup is recorded.
+Public channels and conversations of more than 50 people get no code reads
+at all for now, the strictest reading of rule 2. Memory with its source
+(rule 4) comes with agent memory. <Soon />
 </Aside>
 
 ## A support lead asks for a change

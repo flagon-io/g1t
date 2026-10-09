@@ -554,7 +554,7 @@ export function Landing() {
                 points={[
                   "Agents know whether the person asking can change code",
                   "Agents answer with what everyone in the conversation may see",
-                  { text: "Answers looked up in the code, issues and docs", soon: true },
+                  "Answers looked up in the code, issues and pull requests",
                   { text: "Requests filed with the owning team, with word when they ship", soon: true },
                   { text: "Code access as a switch per member", soon: true },
                   { text: "Agents that listen in channels and group requests", soon: true },
