@@ -291,3 +291,10 @@ test("page ids come from ids or links", () => {
   assert.equal(pageId("https://g1t.sh/acme/-/docs/general/refunds-pag_01jabc?x=1"), "pag_01jabc");
   assert.equal(pageId("   "), null);
 });
+
+test("a technical writer's duties suggest keeping the docs current when a pull request merges", () => {
+  const inky = ["Update the docs after every change that makes them wrong", "Turn decisions made in chat into pages", "Write release notes and the weekly summary"];
+  const names = suggestRoutines(inky, []).map((s) => [s.routine.name, s.routine.events]);
+  assert.deepEqual(names[0], ["Keep the docs current", ["pull_merged"]]);
+  assert.ok(names.some(([name]) => name === "Weekly summary"));
+});
