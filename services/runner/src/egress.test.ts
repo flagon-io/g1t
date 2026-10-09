@@ -80,10 +80,14 @@ test("the harness is told the run's rules, caps and branch", () => {
     defaultBranch: "trunk",
   });
   assert.equal(restricted.NODE_EXTRA_CA_CERTS, "/etc/cloudflare/certs/cloudflare-containers-ca.crt");
+  // Tools that would report usage home are told not to: it would be refused.
+  assert.equal(restricted.WRANGLER_SEND_METRICS, "false");
+  assert.equal(restricted.DO_NOT_TRACK, "1");
   // Open, as the operator's switch makes it: no certificate to trust.
   const open = harnessEnv(guard, {}, false);
   assert.equal(JSON.parse(open.GUARDRAILS).restrictNetwork, false);
   assert.equal(open.NODE_EXTRA_CA_CERTS, undefined);
+  assert.equal(open.DO_NOT_TRACK, undefined);
 });
 
 test("each refused host is one step, up to a limit", () => {
