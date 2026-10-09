@@ -277,8 +277,15 @@
 			"kind": "react-router",
 			"worker": "g1t",
 			"stage": "front",
-			"secrets": [],
-			"setup": ["The R2 bucket g1t-downloads, for the self-hosted runner's releases: npx wrangler r2 bucket create g1t-downloads"],
+			// USERCONTENT_KEY signs the short-lived addresses of private
+			// repositories' files on g1tusercontent.com; without it they are
+			// served from g1t.sh instead.
+			"secrets": ["USERCONTENT_KEY"],
+			"setup": [
+				"The R2 bucket g1t-downloads, for the self-hosted runner's releases: npx wrangler r2 bucket create g1t-downloads",
+				"The zone g1tusercontent.com on the account; the Worker's custom domain on it is made by the deploy",
+				"The key for private files' addresses: `node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" | npx wrangler secret put USERCONTENT_KEY` in apps/web"
+			],
 			"self_host": "run"
 		},
 		"sudo": {

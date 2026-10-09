@@ -80,7 +80,7 @@ owner opens **Settings → General** and picks an image:
 
 The icon then shows wherever the workspace does, and on its link previews
 (PNG and JPEG icons only). Each image is served from
-`g1t.sh/avatars/<sha256>`, an address named after its contents, so an icon
+`g1tusercontent.com/avatars/<sha256>`, an address named after its contents, so an icon
 that changes gets a new address and nothing shows the old one.
 
 You can upload a picture of yourself the same way, under

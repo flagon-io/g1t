@@ -142,6 +142,8 @@ export default [
   route(":owner/:repo/add-ci", "routes/repo/add-ci.ts"),
   // A screenshot of a project's production, for its overview.
   route(":owner/:repo/production.jpg", "routes/repo/production-screenshot.ts"),
+  // A file as it is, sent on to the usercontent origin (lib/usercontent.ts).
+  route(":owner/:repo/raw/:ref/*", "routes/repo/raw.ts"),
   // A project: its overview first, its repository's code under Code. The
   // 1:1 project of a repository has the repository's name, so every
   // repository address below keeps working.

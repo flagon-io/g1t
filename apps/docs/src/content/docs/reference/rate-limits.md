@@ -22,6 +22,7 @@ client can sometimes get a few more through before it is limited.
 | Pages on g1t.sh, signed in | Session | 1,200 |
 | Pages on g1t.sh, signed out | Client IP address | 600 |
 | Archive downloads, workflow run pages, logs and search, signed out | Client IP address | 30 |
+| [Raw files](/guides/git/#raw-files) on g1tusercontent.com | Client IP address, together with pages signed out | 600 |
 | Container and package registries | See [storage and pull limits](/guides/containers/#storage-and-pull-limits) | |
 
 The REST API and the MCP server count apart: calls to one do not use up
@@ -50,7 +51,7 @@ Content-Type: application/json
 | --- | --- |
 | REST API and MCP server | JSON in the [error shape](/reference/api/#errors) every endpoint uses, with `code` `rate_limited`. Through MCP it comes back as the HTTP answer to the request, not as a tool result. |
 | Git over HTTPS | Plain text, which git prints after `remote:` or in its error. |
-| Pages on g1t.sh | Plain text. |
+| Pages on g1t.sh, and raw files | Plain text. |
 
 Branch on the `429` status or the `rate_limited` code, never on the
 message. The API sends `Access-Control-Expose-Headers: retry-after`, so a

@@ -11,7 +11,7 @@ import {
   secretKey,
 } from "@g1t/contracts/rate-limits";
 
-import { gitLimited, heavy, pageLimited, sessionCookie, unlimited } from "./front-door-limits.ts";
+import { gitLimited, heavy, pageLimited, sessionCookie, unlimited, usercontentLimited } from "./front-door-limits.ts";
 
 /** A binding that lets `allow` requests through per key, recording each key it was asked. */
 function binding(allow: number): RateLimitBinding & { keys: string[] } {
@@ -175,4 +175,13 @@ test("every wrangler.jsonc declares the rate limits RATE_LIMITS lists, and only 
     assert.ok(!ids.has(spec.namespaceId), `namespace id ${spec.namespaceId} is used once`);
     ids.add(spec.namespaceId);
   }
+});
+
+test("repository files on the usercontent origin count per address; avatars do not", async () => {
+  const env = { WEB_ANONYMOUS_LIMIT: binding(1) };
+  const raw = "/acme/rocket/raw/main/logo.png";
+  assert.equal(await usercontentLimited(env, request(raw), raw), null);
+  assert.equal((await usercontentLimited(env, request(raw), raw))?.status, 429);
+  assert.equal(await usercontentLimited(env, request("/avatars/" + "a".repeat(64)), "/avatars/" + "a".repeat(64)), null);
+  assert.deepEqual(env.WEB_ANONYMOUS_LIMIT.keys, ["ip:203.0.113.9", "ip:203.0.113.9"]);
 });

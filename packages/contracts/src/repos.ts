@@ -294,6 +294,9 @@ export interface ReposApi {
   /** Blobs' bytes as standard base64, at most 100; `data` is null for one missing or over `maxBytes`. No viewer. */
   rawBlobs(repoId: string, hashes: string[], maxBytes: number): Promise<RawBlob[]>;
 
+  /** One file's bytes at a branch, tag or commit; null when missing or over `maxBytes`. No viewer: check access first. */
+  rawFile(repoId: string, ref: string, path: string, maxBytes: number): Promise<RawFile | null>;
+
   /**
    * Writes one file on a new branch made from the default branch's head, as
    * one commit by `actor`, for a change g1t proposes on their behalf (a
@@ -399,6 +402,9 @@ export type FileList = { commit: string | null; files: { path: string; hash: str
 
 /** One blob's bytes, standard base64; null when missing or too large. */
 export type RawBlob = { hash: string; size: number; data: string | null };
+
+/** One file's bytes, standard base64. */
+export type RawFile = { size: number; data: string };
 
 /**
  * What came of bringing a pull request up to date with the default branch

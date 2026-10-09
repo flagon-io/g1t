@@ -2,6 +2,7 @@ import { redirect } from "react-router";
 
 import type { Route } from "./+types/actions-artifact";
 import { addresses } from "../../lib/addresses.server";
+import { contentDisposition } from "../../lib/content-safety";
 import { readArtifact } from "../../lib/artifacts.server";
 import { actions } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
@@ -25,7 +26,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return new Response(bytes.buffer as ArrayBuffer, {
     headers: {
       "content-type": "application/gzip",
-      "content-disposition": `attachment; filename="${params.name.replace(/"/g, "")}.tar.gz"`,
+      "content-disposition": contentDisposition(`${params.name}.tar.gz`),
     },
   });
 }

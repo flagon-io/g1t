@@ -11,7 +11,12 @@
 	// alternatives and `apply` changes every Worker's at once.
 	"placement": { "mode": "off" },
 	"main": "./workers/app.ts",
-	"routes": [{ "pattern": "g1t.sh", "custom_domain": true }],
+	// g1tusercontent.com: repository files and avatars, on an origin of
+	// their own that never sees g1t.sh's cookies (workers/usercontent.ts).
+	"routes": [
+		{ "pattern": "g1t.sh", "custom_domain": true },
+		{ "pattern": "g1tusercontent.com", "custom_domain": true }
+	],
 	// The site holds no data of its own; everything goes through services.
 	// GitHub Actions artifacts, as the API keeps them, for download from a run.
 	// Uploaded avatars (g1t-avatars), served at /avatars/<sha256>. Read

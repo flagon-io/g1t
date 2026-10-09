@@ -15,6 +15,7 @@ import { CodeLines } from "./code-lines";
 
 import { AgentSetup } from "./agent-setup";
 import { useAddresses } from "../lib/addresses";
+import { isImagePath } from "../lib/usercontent";
 import { CloneBox } from "./clone-box";
 import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
 import { type AboutData, RepoAboutPanel } from "./repo-about";
@@ -370,8 +371,10 @@ export function TreeView({
                 <Markdown
                   source={readme.text}
                   repo={{ namespace: repo.namespace, name: repo.name }}
-                  // Relative links in a README point into the repository.
+                  // Relative links in a README point into the repository,
+                  // and its pictures at the files of the commit shown.
                   base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
+                  rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
                 />
               ) : (
                 <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
@@ -419,6 +422,8 @@ export function BlobView({
   const { repo, ref, path, size, text } = blob;
   const lines = text?.replace(/\n$/, "").split("\n");
   const base = `/${repo.namespace}/${repo.name}`;
+  // The file as it is, on the usercontent origin (routes/repo/raw.ts).
+  const raw = `${base}/raw/${encodeURIComponent(ref)}/${encodePath(path)}`;
   const toggle = (label: string, on: boolean, search: string) => (
     <Link
       to={{ search }}
@@ -445,20 +450,33 @@ export function BlobView({
         <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs text-muted">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
           <span>{size.toLocaleString("en-US")} bytes</span>
-          {lines && (
-            <span className="ml-auto flex rounded-md border border-line p-0.5">
-              {toggle("Code", !blame, "")}
-              {toggle("Blame", Boolean(blame), "?blame=1")}
-            </span>
-          )}
+          <span className="ml-auto flex items-center gap-2">
+            {lines && (
+              <span className="flex rounded-md border border-line p-0.5">
+                {toggle("Code", !blame, "")}
+                {toggle("Blame", Boolean(blame), "?blame=1")}
+              </span>
+            )}
+            <a href={raw} className="rounded-md border border-line px-2 py-1 transition-colors hover:text-fg">
+              Raw
+            </a>
+          </span>
         </div>
         {blame && lines ? (
           <BlameView base={base} path={path} lines={lines} html={blame.lines} blame={blame.blame} />
         ) : lines ? (
           <CodeLines lines={lines} html={html} marked={marked} />
+        ) : isImagePath(path) ? (
+          <div className="flex justify-center bg-[repeating-conic-gradient(var(--color-raised)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-6">
+            <img src={raw} alt={path.split("/").pop() ?? path} className="max-h-[70vh] max-w-full" />
+          </div>
         ) : (
           <p className="p-6 text-sm text-muted">
-            This file is binary or too large to show.
+            This file is binary or too large to show.{" "}
+            <a href={raw} className="text-accent hover:underline">
+              View it raw
+            </a>
+            .
           </p>
         )}
       </div>
