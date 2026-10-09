@@ -184,6 +184,14 @@ and anyone with the Triage [role](/guides/access-and-roles/) or higher can
 move a pull request between these states. An
 [archived](/guides/managing-repositories/) repository refuses all of them.
 
+### Open a draft
+
+When you open a pull request from a branch, choose **Open as draft** to
+say it isn't ready yet. Push to the branch as often as you like; select
+**Mark ready for review** when it is. Routines that review pull requests
+(an agent's routine that runs when a pull request is ready for review) run
+then, not before. Through the API, send `"draft": true` when you open it.
+
 ### Convert to a draft
 
 To take a pull request that is ready for review back to a draft, select

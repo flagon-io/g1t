@@ -823,6 +823,11 @@ export type OpenPullInput = {
   runtime: Runtime;
   /** The branch to merge into: the default branch when left out. */
   base?: string;
+  /**
+   * Opened from a branch as a draft, still being worked on: it can't merge,
+   * and agents' review routines wait, until it is marked ready.
+   */
+  draft?: boolean;
 };
 
 /** One repository's pull requests from `pullsForRepos`, newest first. */

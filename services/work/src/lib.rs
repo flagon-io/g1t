@@ -1309,7 +1309,8 @@ impl Work {
         };
         // A branch already holds the work, so its pull request is ready for
         // review from the start; one with a fork starts as a draft.
-        let status = if branch.is_some() { "open" } else { "draft" };
+        // Asked for as a draft, it waits until it is marked ready.
+        let status = if branch.is_some() && !a.draft { "open" } else { "draft" };
         let body = Some(a.body.trim().to_owned()).filter(|body| !body.is_empty());
 
         let number = self.next_number(&repo.id).await?;

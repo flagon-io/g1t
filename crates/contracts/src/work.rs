@@ -1777,6 +1777,10 @@ pub struct OpenPullArgs {
     /// The branch to merge into: the default branch when absent.
     #[serde(default)]
     pub base: Option<String>,
+    /// Opened from a branch as a draft, still being worked on: it can't
+    /// merge, and agents' review routines wait, until it is marked ready.
+    #[serde(default)]
+    pub draft: bool,
 }
 
 /// `ready_pull`, `close_pull`, `reopen_pull`, `convert_pull_to_draft` and
