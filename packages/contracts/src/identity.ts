@@ -932,7 +932,7 @@ export interface IdentityApi extends AccessClient, TeamsClient, DeployKeysClient
    */
   createInvite(
     user: User,
-    options?: { email?: string | null; workspace?: string | null; join?: string | null },
+    options?: { email?: string | null; workspace?: string | null; join?: string | null; joinRole?: "owner" | "member" | null },
   ): Promise<Result<Invite>>;
   /** Its maker, or an owner of its workspace, revokes a pending invite; the invite comes back. */
   revokeInvite(user: User, id: string): Promise<Result<Invite>>;

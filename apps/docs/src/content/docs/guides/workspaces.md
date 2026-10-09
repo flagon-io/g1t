@@ -330,10 +330,26 @@ leave.
 
 Whoever creates a workspace is its owner. Nobody is added to a workspace
 without saying yes: an owner invites people, and each person accepts or
-declines. On the workspace's **People**, `g1t.sh/<workspace>/-/people` (in
-the sidebar):
+declines.
 
-1. Under **Invite someone**, type a username, a name or an email address.
+This is an invitation to join one workspace. It is not the same as an
+invite to g1t, which only lets someone make an account:
+
+| | Invite to a workspace | Invite to g1t |
+| --- | --- | --- |
+| Where | The workspace's **People** page, **Invite to** *workspace* | [Settings → Invites](https://g1t.sh/settings/invites) |
+| What they get | An invitation to join the workspace, to accept or decline | One new account, in no workspace but its own |
+| Without an account | The invitation lets them sign up first, while g1t is invite-only | It lets them sign up |
+| When | Always | Only while g1t is invite-only |
+
+To invite someone to g1t without adding them to your workspace, use
+[Settings → Invites](/guides/authentication/#making-invites); the People
+page links there while g1t is invite-only.
+
+On the workspace's **People**, `g1t.sh/<workspace>/-/people` (in the
+sidebar):
+
+1. Under **Invite to** *workspace name*, type a username, a name or an email address.
    As you type, people on g1t are offered by username and name, with their
    pictures; hover over one for their card. Only usernames, names and
    pictures are shown, never anyone's email address.
@@ -347,11 +363,12 @@ the sidebar):
   are told in your inbox. It costs nothing.
 - **By email address**: g1t emails an invite that only that address can
   use. With a g1t account, it is a workspace invitation like the one above
-  and costs nothing. Without one, the invite makes the account first, and
-  uses one of the workspace's granted invites, or else one of yours (see
-  [invites](/guides/authentication/#invites)); the new account is then
-  invited to the workspace, and joins when it accepts. The page never says
-  which it was.
+  and costs nothing. Without one, the invitation also lets them make the
+  account first; while g1t is invite-only that uses one of the workspace's
+  granted invites, or else one of yours (see
+  [invites](/guides/authentication/#invites)), and once anyone can sign up
+  it costs nothing. The new account is then invited to the workspace, and
+  joins when it accepts. The page never says which it was.
 
 The email names you and the workspace and links to the invite's page.
 Someone new signs up right there, with the invited address filled in; once

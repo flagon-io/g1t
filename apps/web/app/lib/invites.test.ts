@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import { ACCOUNT_SETTINGS } from "./account-settings.ts";
 import { CONTACT } from "./legal.ts";
 import {
+  G1T_INVITES,
   HAVE_AN_INVITE,
-  OWN_WORKSPACE,
   bringIntoChoices,
+  inviteDraft,
+  inviteKind,
+  invitePageCopy,
+  invitesPage,
+  peoplePages,
+  workspaceInviteCopy,
   INVITES_CONTACT,
   cleanCode,
   cleanProof,
@@ -110,8 +117,11 @@ test("each invite says where it stands and whom it is for", () => {
   assert.deepEqual(inviteState({ ...base, status: "expired" }), { label: "Expired", tone: "dead" });
   assert.deepEqual(inviteState({ ...base, status: "revoked" }), { label: "Revoked", tone: "dead" });
   assert.equal(inviteFor({ ...base, status: "pending" }), "Anyone with the link");
-  assert.equal(inviteFor({ ...base, status: "pending", email: "ada@example.com", workspace: "acme" }), "ada@example.com · invited to acme");
-  assert.equal(inviteFor({ ...base, status: "pending", invitee: "daweazl", workspace: "flagon-io" }), "@daweazl · invited to flagon-io");
+  assert.equal(inviteFor({ ...base, status: "pending", email: "ada@example.com", workspace: "acme" }), "ada@example.com");
+  assert.equal(inviteFor({ ...base, status: "pending", invitee: "daweazl", workspace: "flagon-io" }), "@daweazl");
+  // Which kind each is, beside whom it is for.
+  assert.deepEqual(inviteKind({ workspace: null }), { kind: "g1t", label: "Invite to g1t" });
+  assert.deepEqual(inviteKind({ workspace: "flagon-io" }), { kind: "workspace", label: "Invite to join flagon-io" });
   assert.deepEqual(inviteState({ ...base, status: "awaiting_answer", redeemedBy: "daweazl" }), { label: "Waiting for @daweazl to accept", tone: "pending" });
   assert.deepEqual(inviteState({ ...base, status: "declined", invitee: "daweazl" }), { label: "@daweazl declined", tone: "dead" });
 });
@@ -187,31 +197,114 @@ test("a shared link limited to domains says which, on the email field", () => {
   );
 });
 
-test("an own invite brings its person into a workspace you own that can add people, the current one first", () => {
+test("an invite to g1t can also invite its person to a workspace you own that can add people, never chosen for you", () => {
   const memberships = [
     { slug: "flagon-io", name: "Flagon, Inc.", role: "owner" as const },
     { slug: "side", name: "side", role: "owner" as const },
     { slug: "friends", name: "Friends", role: "member" as const },
   ];
-  // The current workspace is chosen; free ones and ones you only belong to are not offered.
+  // Free ones and ones you only belong to are not offered; nothing is chosen, not even the current one.
   const here = bringIntoChoices(memberships, ["side"], "flagon-io");
-  assert.deepEqual(here.options, [{ slug: "flagon-io", name: "Flagon, Inc." }]);
-  assert.equal(here.chosen, "flagon-io");
-  assert.equal(here.note, null);
-  // In a free workspace: not offered, and the form says why; no workspace is chosen.
-  const free = bringIntoChoices(memberships, ["side"], "side");
-  assert.equal(free.chosen, OWN_WORKSPACE);
-  assert.match(free.note ?? "", /side is on the free plan, so it cannot add people/);
+  assert.deepEqual(here, { options: [{ slug: "flagon-io", name: "Flagon, Inc." }], note: null });
+  assert.equal("chosen" in here, false);
+  // In a free workspace: not offered, and the form says why.
+  assert.match(bringIntoChoices(memberships, ["side"], "side").note ?? "", /side is on the free plan, so it cannot add people/);
   // In one you are only a member of.
   assert.match(bringIntoChoices(memberships, [], "friends").note ?? "", /Only the owners of friends/);
-  // No workspace at all: their own.
-  assert.deepEqual(bringIntoChoices([], [], null), { options: [], chosen: OWN_WORKSPACE, note: null });
+  assert.deepEqual(bringIntoChoices([], [], null), { options: [], note: null });
 });
 
-test("the invites form offers each workspace and no workspace, named for what it does", () => {
+/** A submitted form, as `inviteDraft` reads it. */
+const form = (fields: Record<string, string>) => ({ get: (name: string) => fields[name] ?? null });
+
+test("an invite to g1t sends no workspace unless its box is ticked", () => {
+  // Off by default: a form without the box sends no `join`, even with a workspace left in it.
+  assert.deepEqual(inviteDraft(form({ intent: "create-invite", email: " ada@example.com ", charge: "mine" })), {
+    email: "ada@example.com",
+    workspace: null,
+  });
+  const untickedButFilled = inviteDraft(form({ email: "", join: "flagon-io", join_role: "owner" }));
+  assert.equal("join" in untickedButFilled, false);
+  assert.equal("joinRole" in untickedButFilled, false);
+  assert.equal(untickedButFilled.email, null);
+  // Ticked: the workspace and its role go with it.
+  assert.deepEqual(inviteDraft(form({ also_join: "on", join: "flagon-io", join_role: "owner", charge: "flagon-io" })), {
+    email: null,
+    workspace: "flagon-io",
+    join: "flagon-io",
+    joinRole: "owner",
+  });
+  // Ticked with no workspace chosen: still none. Any role but owner is member.
+  assert.equal("join" in inviteDraft(form({ also_join: "on", join: "" })), false);
+  assert.equal(inviteDraft(form({ also_join: "on", join: "acme", join_role: "admin" })).joinRole, "member");
+});
+
+test("the invites form keeps the workspace behind an unticked box", () => {
   const section = readFileSync(new URL("../components/invites-section.tsx", import.meta.url), "utf8");
-  assert.match(section, /Bring them into/);
-  assert.match(section, /name="join"/);
-  assert.match(section, /No workspace — they'll get their own/);
-  assert.match(section, /defaultValue=\{bringInto\.chosen\}/);
+  assert.match(section, /useState\(false\)/);
+  assert.match(section, /name="also_join"/);
+  // The workspace and role fields are drawn only once the box is ticked, so nothing else is sent.
+  assert.match(section, /\{alsoJoin && \(\s*<div[^]*?name="join"[^]*?name="join_role"/);
+  assert.match(section, /<option value="" disabled>\s*Choose a workspace/);
+  assert.doesNotMatch(section, /bringInto\.chosen|Bring them into/);
+});
+
+test("invites to g1t are made only while sign-up takes one; after that only the list stays", () => {
+  assert.deepEqual(invitesPage("invite", 0), { form: true, listed: true });
+  assert.deepEqual(invitesPage(null, 0), { form: true, listed: true });
+  // Open: no form; the menus list the page only with invites to look back on.
+  assert.deepEqual(invitesPage("open", 0), { form: false, listed: false });
+  assert.deepEqual(invitesPage("open", 3), { form: false, listed: true });
+  assert.match(G1T_INVITES.open, /^Anyone can sign up for g1t now/);
+  assert.match(G1T_INVITES.open, /workspace's People page/);
+});
+
+test("the two invites say which they are", () => {
+  // Settings → Invites: an account, and no workspace.
+  assert.equal(G1T_INVITES.heading, "Invite people to g1t");
+  assert.equal(ACCOUNT_SETTINGS.invites.heading, G1T_INVITES.heading);
+  assert.equal(ACCOUNT_SETTINGS.invites.title, G1T_INVITES.nav);
+  assert.equal(ACCOUNT_SETTINGS.invites.about, G1T_INVITES.about);
+  assert.match(G1T_INVITES.about, /lets one person make an account\. It does not add them to any workspace/);
+  assert.equal(G1T_INVITES.alsoJoin, "Also invite them to a workspace");
+  // A workspace's People page: an invitation to accept or decline, which signs up whoever has no account.
+  const closed = workspaceInviteCopy("Flagon, Inc.", true);
+  assert.equal(closed.heading, "Invite to Flagon, Inc.");
+  assert.match(closed.hint, /invitation to join Flagon, Inc\..*join only if they accept/);
+  assert.match(closed.hint, /If they do not have a g1t account yet, the invitation also lets them sign up/);
+  assert.equal(closed.elsewhere, "To invite someone to g1t without adding them to Flagon, Inc., use Settings → Invites.");
+  // Once anyone can sign up, there is no invite to g1t to point to.
+  const open = workspaceInviteCopy("Flagon, Inc.", false);
+  assert.equal(open.elsewhere, null);
+  assert.doesNotMatch(open.hint, /one of yours/);
+  // Settings → Invites points to the People pages of the workspaces you own, the current one first.
+  assert.deepEqual(
+    peoplePages(
+      [
+        { slug: "side", name: null, role: "owner" },
+        { slug: "Flagon-io", name: "Flagon, Inc.", role: "owner" },
+        { slug: "friends", name: "Friends", role: "member" },
+      ],
+      "flagon-io",
+    ),
+    [
+      { slug: "flagon-io", name: "Flagon, Inc.", to: "/flagon-io/-/people" },
+      { slug: "side", name: "side", to: "/side/-/people" },
+    ],
+  );
+});
+
+test("an invite's page names the invite it is", () => {
+  const base = { kind: "account" as const, invitedBy: { username: "syntaqx" }, workspace: null, repository: null, hasAccount: false };
+  const g1t = invitePageCopy(base, false);
+  assert.equal(`${g1t.before}${g1t.place ?? ""}${g1t.after}`, "@syntaqx invited you to g1t");
+  assert.match(g1t.about, /lets you make an account\. It does not add you to anyone's workspace/);
+  const join = invitePageCopy({ ...base, workspace: { name: "Flagon, Inc." } }, false);
+  assert.equal(`${join.before}${join.place}${join.after}`, "@syntaqx invited you to join Flagon, Inc. on g1t");
+  assert.equal(join.place, "Flagon, Inc.");
+  assert.match(join.about, /invitation to join Flagon, Inc\., which you accept or decline/);
+  assert.match(join.about, /You do not have a g1t account yet, so it also lets you make one/);
+  // Someone with an account, or signed in, just accepts.
+  assert.match(invitePageCopy({ ...base, kind: "workspace", workspace: { name: "Flagon, Inc." }, hasAccount: true }, false).about, /Accepting joins you to Flagon, Inc\./);
+  assert.equal(invitePageCopy({ ...base, invitedBy: null }, false).before, "The g1t team invited you to g1t");
 });

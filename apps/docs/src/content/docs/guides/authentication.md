@@ -30,7 +30,7 @@ under **Your settings**; the sidebar then lists every page.
 | --- | --- | --- |
 | Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
-| Invites | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites](#invites). |
+| Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Making, copying and revoking invites to g1t](#making-invites), while g1t is invite-only; after that, the invites you made. |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): fine-grained and classic. |
 | GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
@@ -113,6 +113,21 @@ An owner can require it of everyone with access to a workspace. See
 Passkeys are not supported yet; they are next.
 
 ## Invites
+
+There are two kinds of invite, and they do different things:
+
+| | Invite to g1t | Invite to a workspace |
+| --- | --- | --- |
+| Made from | [Settings → Invites](https://g1t.sh/settings/invites), your own | The workspace's **People** page, by its owners |
+| What it gives | One new account. It adds them to no workspace: the account gets a workspace of its own | An invitation to join that workspace, which they accept or decline |
+| Someone without an account | Makes their account with it | Makes their account with it too, while g1t is invite-only, then answers the invitation |
+| Someone already on g1t | Nothing: they have an account | The invitation, in their inbox and by email |
+| Exists | Only while g1t is invite-only | Always |
+| What its page and email say | "@syntaqx invited you to g1t" | "@syntaqx invited you to join Flagon, Inc. on g1t" |
+
+So you can invite someone to g1t without inviting them into any
+workspace; an invite to g1t only adds them to a workspace when you tick
+**Also invite them to a workspace** (see [making invites](#making-invites)).
 
 While g1t is invite-only, every new account needs an invite code, such as
 `g1t-k7m2-q9xd-…`. People already on g1t make them, and g1t sends them to
@@ -221,21 +236,39 @@ of their own; group links are made by g1t staff only.
 
 ### Making invites
 
-1. Open [Settings → Invites](https://g1t.sh/settings/invites).
+These are invites to g1t. They let one person make an account, and add
+them to no workspace unless you say so.
+
+1. Open [Settings → Invites](https://g1t.sh/settings/invites) (**Invites
+   to g1t** in your settings and account menu).
 2. Optionally enter the email address of the person you are inviting.
    With one, g1t emails them the invite, and only that address can use it.
    Without one, anyone with the link can, once.
-3. Under **Bring them into**, choose the workspace they are invited to
-   join, or **No workspace — they'll get their own**. The workspace you
-   are in is chosen to start with, when you can bring people into it.
+3. Optionally tick **Also invite them to a workspace**, then choose the
+   workspace and the role (**Member** or **Owner**) they are invited with.
+   It is off to start with, and no workspace is chosen for you, not even
+   the one you are in.
 4. Select **Create invite**, then copy the link.
 
-**Bring them into** lists the workspaces you can add members to: the ones
+Left unticked, the invite is to g1t only: the new account gets a
+[workspace of its own](#your-first-workspace). Ticked, the new account
+gets a [workspace invitation](#workspace-invitations) to the workspace you
+chose once its address is confirmed, and is not given a workspace of its
+own. The list of workspaces holds the ones you can add members to: the ones
 you own that are on the g1t plan. A workspace on the free plan cannot add
 people, so it is not offered, and the form says so when it is the one you
-are in. With a workspace chosen, the new account gets a
-[workspace invitation](#workspace-invitations) to it, to join as a member,
-once its address is confirmed; it is not given a workspace of its own.
+are in.
+
+To bring someone into a workspace, you do not need an invite to g1t:
+invite them from the workspace's People page instead (see
+[inviting someone into a workspace](#inviting-someone-into-a-workspace)).
+Settings → Invites links to the People pages of the workspaces you own.
+
+Once anyone can sign up for g1t, there are no invites to g1t to make:
+Settings → Invites keeps only the list of invites you already made, and
+says that anyone can sign up now and that workspace invitations live on
+each workspace's People page. With no invites made, the page is not listed
+in your settings or account menu.
 
 Each person can have **5** invites out at a time. Pending and used invites
 count; an invite you revoke, or one that expires before anyone uses it,
@@ -253,10 +286,13 @@ An owner can invite someone into a workspace from its People page, by
 username or by email address, with the role they join as; see
 [add people](/guides/workspaces/#add-people). Nobody is added without
 saying yes: someone on g1t gets a [workspace invitation](#workspace-invitations)
-to accept or decline. When an address has no g1t account, the invite makes
-the account first, and the invitation follows once the account's address
-is confirmed (at once when it was made from the invite email's link); it
-uses one invite. Inviting someone who is already on g1t costs nothing.
+to accept or decline. When an address has no g1t account, the invitation
+also lets it make one first, and the invitation is answered once the
+account's address is confirmed (at once when it was made from the invite
+email's link). While g1t is invite-only, that uses one invite: one of the
+workspace's shared invites when it has any, otherwise one of yours. Once
+anyone can sign up, it costs nothing. Inviting someone who is already on
+g1t never costs anything.
 
 ### Workspace invitations
 

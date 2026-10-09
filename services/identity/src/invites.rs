@@ -18,8 +18,10 @@
 //! back. Staff grant more in sudo, to a person or to a workspace, whose
 //! owners share them. Owners of the workspaces in
 //! `INVITE_STAFF_WORKSPACES` (g1t's own) have no limit. Inviting an address
-//! into a workspace always makes an invite bound to it, and costs one only
-//! when the address has no account, so the answer never says which.
+//! into a workspace always makes an invite bound to it, and, while g1t is
+//! invite-only, costs one only when the address has no account (the
+//! invitation then lets it make one), so the answer never says which.
+//! Once registration is open it costs nothing.
 //!
 //! A code may instead be a shared invite link's, which staff hand to a
 //! group: it makes up to a set number of accounts, each its own, and is
@@ -1317,7 +1319,7 @@ impl Identity {
             charged_workspace_id: workspace_id.as_deref(),
             limit,
             invitee_id: None,
-            role: joins.as_ref().map(|_| "member"),
+            role: joins.as_ref().map(|_| if a.join_role == Some(Role::Owner) { "owner" } else { "member" }),
         };
         let Some(invite) = self.insert_invite(draft).await? else {
             return Ok(Self::out_of_invites());
@@ -1733,15 +1735,23 @@ impl Identity {
                 role: Some(role_name),
             }
         } else {
-            let shared = self.workspace_allowance(&workspace_id).await?;
-            let (charged_to, charged_workspace_id, limit) = if shared.remaining.is_some_and(|left| left > 0) {
-                ("workspace", Some(workspace_id.as_str()), shared.limit)
-            } else {
-                let own = self.user_allowance(&a.actor.id).await?;
-                if own.exhausted() {
-                    return Ok(Self::out_of_invites());
+            // While g1t is invite-only, the invitation also lets the address
+            // make its account, so it costs an invite: the workspace's shared
+            // ones first, then the owner's own. Once anyone can sign up, an
+            // account needs no invite and it costs nothing.
+            let (charged_to, charged_workspace_id, limit) = if self.invites_required() {
+                let shared = self.workspace_allowance(&workspace_id).await?;
+                if shared.remaining.is_some_and(|left| left > 0) {
+                    ("workspace", Some(workspace_id.as_str()), shared.limit)
+                } else {
+                    let own = self.user_allowance(&a.actor.id).await?;
+                    if own.exhausted() {
+                        return Ok(Self::out_of_invites());
+                    }
+                    ("user", None, own.limit)
                 }
-                ("user", None, own.limit)
+            } else {
+                ("none", None, None)
             };
             Draft {
                 email: Some(&email),

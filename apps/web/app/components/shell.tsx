@@ -39,7 +39,7 @@ import { VISITOR_LINKS, projectPages } from "../lib/chrome";
 import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
 import { GithubMark } from "./github";
 import { withNext } from "../lib/next";
-import { useSignUpCopy } from "../lib/registration";
+import { useInviteOnly, useSignUpCopy } from "../lib/registration";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
@@ -406,6 +406,8 @@ function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
   const me = details.data ?? null;
   // Still on its way: shapes where the words will be, the same size.
   const loading = details.data === undefined && details.state !== "idle";
+  // While anyone can sign up, listed once the data says there are invites to look back on.
+  const invitesListed = useInviteOnly() || me?.invites_page === true;
   const profile = `/u/${user.username}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -466,10 +468,11 @@ function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
               Your settings
             </Link>
           </DropdownMenuItem>
+          {invitesListed && (
           <DropdownMenuItem asChild className={MENU_ROW}>
             <Link to="/settings/invites">
               <Ticket />
-              Invites
+              {ACCOUNT_SETTINGS.invites.title}
               {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
               {me?.invites_left != null && (
                 <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
@@ -478,6 +481,7 @@ function AccountMenu({ user, rail = false }: { user: User; rail?: boolean }) {
               )}
             </Link>
           </DropdownMenuItem>
+          )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator className="my-1.5" />
         <DropdownMenuGroup>
@@ -1181,8 +1185,24 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   );
 }
 
+/**
+ * Whether the menus list Settings → Invites (invites to g1t): always while
+ * sign-up takes an invite; once anyone can sign up, only for someone with
+ * invites already made to look back on, which the account menu's data says.
+ */
+function useInvitesListed(): boolean {
+  const inviteOnly = useInviteOnly();
+  const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
+  useEffect(() => {
+    if (!inviteOnly && details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteOnly]);
+  return inviteOnly || details.data?.invites_page === true;
+}
+
 /** Your own settings, drilled into from Your settings: one page each. */
 function AccountSettingsMenu({ username }: { username: string }) {
+  const invites = useInvitesListed();
   const link = (page: AccountSettingsPage, icon: ReactNode) => (
     <SidebarLink to={`/settings/${page}`} icon={icon}>
       {ACCOUNT_SETTINGS[page].title}
@@ -1194,7 +1214,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
       <div className="mt-2 space-y-px">
         {link("profile", <CircleUserRound size={15} />)}
         {link("emails", <Mail size={15} />)}
-        {link("invites", <Ticket size={15} />)}
+        {invites && link("invites", <Ticket size={15} />)}
       </div>
       <Rule />
       <div className="space-y-px">

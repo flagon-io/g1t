@@ -89,7 +89,8 @@ export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
   const chosen = readCookie(request.headers.get("cookie"), WORKSPACE_COOKIE);
-  // Whether sign-up takes an invite: only the sign-up page says so.
+  // Whether sign-up takes an invite: the sign-up page says so, and
+  // Settings → Invites offers invites to g1t only then. Cached per isolate.
   const [shell, mode] = await Promise.all([
     // An account still confirming its address sees only the pages that
     // allows (lib/confirm-gate.ts), in the visitor's frame.
@@ -101,7 +102,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
           return bareShell(user, params, chosen);
         })
       : visitorShell(params, context),
-    user ? Promise.resolve(null) : registrationMode(),
+    registrationMode(),
   ]);
   // Where this g1t lives, for clone lines, agent setup and link previews.
   return { user, shell, inviteOnly: mode !== "open", addresses: addresses() };

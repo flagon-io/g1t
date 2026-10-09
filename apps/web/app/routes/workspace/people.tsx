@@ -40,7 +40,8 @@ import { Hint } from "../../components/ui/hint";
 import { forgetWorkspace } from "../../lib/workspace-choice";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { inviteLink, inviteState, moreInvitesMailto } from "../../lib/invites";
+import { inviteLink, inviteState, moreInvitesMailto, workspaceInviteCopy } from "../../lib/invites";
+import { registrationMode } from "../../lib/registration.server";
 import { billing, identity } from "../../lib/services.server";
 import { StartPlanToInvite } from "../../components/start-plan";
 import {
@@ -65,7 +66,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // someone a repository is shared with, gets nothing here.
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
-  const [members, invites, workspace, outside, teams, free] = await Promise.all([
+  const [members, invites, workspace, outside, teams, free, mode] = await Promise.all([
     identity.listMembers(params.owner, viewer),
     owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
     identity.getWorkspace(params.owner),
@@ -75,9 +76,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // A free workspace adds no one until it starts the plan; identity
     // refuses it either way, so a failure here only hides the note.
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
+    // Whether sign-up takes an invite: the invite form says what that means.
+    registrationMode(),
   ]);
   return {
     role,
+    name: workspace?.name?.trim() || params.owner,
+    inviteOnly: mode !== "open",
     free: free.includes(params.owner.toLowerCase()),
     members: unwrap(members),
     invites: invites?.ok ? invites.value : [],
@@ -308,8 +313,10 @@ function LeaveSection({ slug, soleOwner, error }: { slug: string; soleOwner: boo
 }
 
 export default function WorkspacePeople({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, invites, origin, base, outside, teams, free, me } = loaderData;
+  const { role, members, invites, origin, base, outside, teams, free, me, name, inviteOnly } = loaderData;
   const owner = role === "owner";
+  // The invitation to join this workspace, not an invite to g1t (Settings → Invites).
+  const inviteCopy = workspaceInviteCopy(name, inviteOnly);
   const owners = members.filter((member) => member.role === "owner").length;
   const rowError = (username: string) =>
     actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
@@ -372,17 +379,19 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
       )}
       {owner && !free && (
         // Empty again once the person is on the list; kept as typed when it failed.
+        <section aria-labelledby="invite-to-workspace" className="mt-6">
+        <h2 id="invite-to-workspace" className="text-sm font-medium">
+          {inviteCopy.heading}
+        </h2>
+        <p className="mt-1 text-xs text-faint">{inviteCopy.hint}</p>
         <Form
           method="post"
           key={`${members.length}:${pending.length}`}
-          className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start"
+          className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start"
         >
           <input type="hidden" name="action" value="add" />
           <div className="grow">
-            <Field
-              label="Invite someone"
-              hint="Search people on g1t by username or name, or enter an email address. They get an invitation in their inbox and by email, and join once they accept. An address without a g1t account gets an invite to make one, using one of your invites."
-            >
+            <Field label="Who">
               <PeoplePicker name="member" placeholder="username, name or name@example.com" />
             </Field>
           </div>
@@ -403,10 +412,20 @@ export default function WorkspacePeople({ loaderData, actionData, params }: Rout
             </SubmitButton>
           </div>
         </Form>
+        {inviteCopy.elsewhere && (
+          <p className="mt-2 text-xs text-faint">
+            {inviteCopy.elsewhere.replace(/Settings → Invites\.$/, "")}
+            <Link to="/settings/invites" className="text-muted underline underline-offset-4 hover:text-fg">
+              Settings → Invites
+            </Link>
+            .
+          </p>
+        )}
+        </section>
       )}
       {actionData && "invited" in actionData && actionData.invited && (
         <p className="text-sm text-muted" role="status">
-          Invitation sent to <span className="text-fg">{actionData.invited}</span>. They join once they accept.
+          Invitation to join {name} sent to <span className="text-fg">{actionData.invited}</span>. They join once they accept.
         </p>
       )}
       {actionData && "transferred" in actionData && (
