@@ -10,7 +10,7 @@ import { Link } from "react-router";
 import type { User } from "@g1t/contracts";
 
 import { Mark } from "./logo";
-import { COMPANY, FOUNDER, MAKER_PRODUCTS, copyright, listed } from "../lib/legal";
+import { COMPANY, MAKER_PRODUCTS, copyright, listed } from "../lib/legal";
 import { type OverallState, STATUS_JSON_URL, STATUS_URL, STATUS_WORDS, type StatusReport, dotClass } from "../lib/status";
 
 /** How long one fetched report is reused across the pages of one visit. */
@@ -156,27 +156,6 @@ function FlagonMark({ className = "" }: { className?: string }) {
   );
 }
 
-/** Who builds g1t, by name, with their photo and their own words. Nothing until FOUNDER is filled in. */
-function FounderBlock() {
-  if (!FOUNDER) return null;
-  return (
-    <figure className="mx-auto mb-6 flex max-w-xl flex-col items-center gap-4 text-center sm:flex-row sm:items-start sm:text-left">
-      <img src={FOUNDER.photo} alt="" width={56} height={56} className="size-14 shrink-0 rounded-full ring-1 ring-line" />
-      <div>
-        <blockquote className="text-sm leading-6 text-fg-soft">{FOUNDER.why}</blockquote>
-        <figcaption className="mt-2 text-sm text-muted">
-          <span className="font-medium text-fg">{FOUNDER.name}</span>, {FOUNDER.role}
-          {FOUNDER.links.map((link) => (
-            <a key={link.url} href={link.url} rel="me noopener" className="ml-3 hover:text-fg hover:underline hover:underline-offset-4">
-              {link.label}
-            </a>
-          ))}
-        </figcaption>
-      </div>
-    </figure>
-  );
-}
-
 /** "g1t is designed, built, and backed by Flagon, Inc., …" */
 export function MakerLine() {
   const products = MAKER_PRODUCTS.map((product) => product.name);
@@ -188,7 +167,7 @@ export function MakerLine() {
         <FlagonMark className="mr-1 inline-block size-[0.95em] -translate-y-px align-middle" />
         {COMPANY.name}
       </a>
-      {products.length > 0 ? `, the people behind ${listed(products)}.` : `, ${COMPANY.about}.`}
+      {products.length > 0 ? `, the people behind ${listed(products)}.` : `, ${COMPANY.about} founded by ${COMPANY.founder}.`}
     </p>
   );
 }
@@ -275,7 +254,6 @@ export function SiteFooter({ user }: { user: User | null | undefined }) {
       </nav>
       <div className="border-t border-line">
         <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 text-center">
-          <FounderBlock />
           <MakerLine />
           <LegalRow user={user} />
         </div>

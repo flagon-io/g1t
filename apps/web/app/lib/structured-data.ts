@@ -15,6 +15,7 @@ export function organization(): MetaDescriptor {
       "@type": "Organization",
       name: COMPANY.name,
       url: COMPANY.url,
+      founder: { "@type": "Person", name: COMPANY.founder },
       brand: { "@type": "Brand", name: "g1t", url: SITE },
     },
   };

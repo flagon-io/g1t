@@ -300,13 +300,6 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] = 
   },
 ];
 
-/**
- * What people using g1t say, each with their name, role, workspace and a
- * specific outcome. None yet: the section shows once real, permitted
- * quotes are here. Never write one on someone's behalf.
- */
-const TESTIMONIALS = [] as { quote: string; name: string; role: string; workspace: string; avatar: string }[];
-
 /** A workspace's org chart, read like a company's: g1t knows everyone; each department has its colleague. */
 const ORG: { team: string; who: string }[] = [
   { team: "Engineering", who: "Otto" },
@@ -700,29 +693,6 @@ export function Landing() {
         </div>
       </section>
 
-      {/* What people using it say. Nothing until there are real quotes. */}
-      {TESTIMONIALS.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 pb-24">
-          <Eyebrow>From the teams using it</Eyebrow>
-          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {TESTIMONIALS.map((item) => (
-              <li key={item.name} className="flex flex-col rounded-2xl bg-surface p-6 ring-1 ring-line">
-                <blockquote className="grow text-sm leading-6 text-fg-soft">&ldquo;{item.quote}&rdquo;</blockquote>
-                <p className="mt-5 flex items-center gap-3 text-sm">
-                  <img src={item.avatar} alt="" width={32} height={32} className="size-8 rounded-full ring-1 ring-line" />
-                  <span className="min-w-0 leading-tight">
-                    <span className="block font-medium text-fg">{item.name}</span>
-                    <span className="block truncate text-xs text-muted">
-                      {item.role}, {item.workspace}
-                    </span>
-                  </span>
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {/* How it flows */}
       <section id="how" className="scroll-mt-20 border-y border-line bg-surface/40">
         <div className="mx-auto max-w-6xl px-4 py-24">
@@ -993,7 +963,7 @@ export function Landing() {
                 </li>
               ))}
             </ul>
-            <p className="text-sm leading-6 text-muted">g1t is made by Flagon, Inc., a small, independent software company.</p>
+            <p className="text-sm leading-6 text-muted">g1t is made by Flagon, Inc., a small, independent software company founded by Chase Pierce.</p>
           </div>
         </div>
       </section>
