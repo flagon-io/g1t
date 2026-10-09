@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatLiveEvent } from "@g1t/contracts";
 
 import { backoff } from "../../lib/chat";
+import { openLive } from "../../lib/live-socket";
 import { heldOpen } from "../../lib/notify-store";
 
 /** How long a conversation's socket stays open after leaving it, while the next one opens. */
@@ -33,13 +34,26 @@ export function useChatLive(
     let timer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
     let opened = false;
+    // Between asking for a socket ticket and opening the socket (lib/live-socket.ts).
+    let opening = false;
     const connect = () => {
-      if (closed) return;
+      if (closed || opening) return;
       timer = null;
-      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+      opening = true;
+      openLive(
+        `/${slug}/-/chat/live`,
+        () => ({ channel: channelId }),
+        (address) => {
+          opening = false;
+          open(address);
+        },
+        () => closed,
+      );
+    };
+    const open = (address: string) => {
       let ws: WebSocket;
       try {
-        ws = new WebSocket(`${scheme}//${location.host}/${slug}/-/chat/live?channel=${encodeURIComponent(channelId)}`);
+        ws = new WebSocket(address);
       } catch {
         schedule();
         return;
@@ -76,7 +90,7 @@ export function useChatLive(
     };
     // Back now, not after the wait: the tab is shown, or the network returned.
     const now = () => {
-      if (closed || socket.current || document.visibilityState !== "visible") return;
+      if (closed || opening || socket.current || document.visibilityState !== "visible") return;
       if (timer) clearTimeout(timer);
       timer = null;
       attempt = 0;

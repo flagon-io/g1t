@@ -56,6 +56,9 @@ export default [
   // Live notifications: each tab's feed socket, and the person's
   // notification settings as JSON (services/notify).
   route("-/live", "routes/notify/live.ts"),
+  // A page opened with an access token asks here for each socket's
+  // short-lived ticket (lib/socket-ticket.ts).
+  route("-/live/ticket", "routes/notify/ticket.ts"),
   route("-/notify", "routes/notify/api.ts"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),

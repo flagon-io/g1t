@@ -58,7 +58,7 @@ next free id in the Worker's block; a new Worker takes the next block.
 | `WEB_ADDRESS_LIMIT` | 4204 | 3,000 | address | web: every request that reaches the Worker; stops made-up cookies getting round the signed-out limit |
 | `GIT_ANONYMOUS_LIMIT` | 4205 | 120 | address | web: git smart HTTP without `Authorization` (~40 clones) |
 | `GIT_SIGNED_LIMIT` | 4206 | 1,200 | `Authorization` hash | web: git smart HTTP with credentials, sandboxes' included |
-| `WEB_TOKEN_LIMIT` | 4207 | 1,000 | token hash | web: pages and data requests with `Authorization: Bearer` (a token used on the website, not checked there); the same limit as `API_TOKEN_LIMIT`, counted apart |
+| `WEB_TOKEN_LIMIT` | 4207 | 1,000 | token hash | web: pages, data requests and socket tickets with `Authorization: Bearer` (a token used on the website, not checked there); the same limit as `API_TOKEN_LIMIT`, counted apart. The live sockets such a page opens carry a ticket instead of the header (`app/lib/socket-ticket.ts`), so their upgrades count as signed out, by address |
 | `PACK_FILL_LIMIT` | 4301 | 30 | repository id | repos `src/limits.rs`: packs written to `GIT_PACKS`; past it the pack is streamed, not kept |
 | `ANONYMOUS_FETCH_LIMIT` | 4302 | 120 | repository id | repos: anonymous fetches the git store answers (cache hits never count) |
 | `API_ANONYMOUS_LIMIT` | 4401 | 60 | `rest:`/`mcp:` + address | api `src/limits.rs`: no token, or a wrong one |
@@ -103,3 +103,11 @@ The tradeoff: on a 0.1 Worker, a one-off error has a 90% chance of leaving
 no log line. Error counts in the dashboard still show it, and a recurring
 one shows up within a few occurrences. To chase a rare error on one of
 those Workers, raise its rate to 1 for the investigation and lower it after.
+
+A sampled invocation's log holds its full URL. The only credential g1t
+ever puts in a URL is a socket ticket (`?ticket=` on `/-/live`,
+`/<workspace>/-/chat/live` and `/<workspace>/-/artifacts/live`, for pages
+opened with an access token; `apps/web/app/lib/socket-ticket.ts`). The site
+never logs it or passes it on, and one found in Workers Logs is useless:
+it lasts 60 seconds, opens only that socket, and the token inside it is
+sealed and checked again when the socket opens.

@@ -72,6 +72,7 @@ import { useSignUpCopy } from "./lib/registration";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
 import { isNeedsSignIn } from "./lib/website-token";
+import { setLiveViaToken } from "./lib/live-socket";
 import { LiveNotifications } from "./components/notifications/live-notifications";
 
 
@@ -554,6 +555,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (loaded && inBrowser) lastRoot = loaded;
   const root = loaded ?? (inBrowser ? lastRoot : undefined);
   const user = root?.user;
+  // A page opened with an access token signs its live sockets in with tickets (lib/live-socket.ts).
+  if (inBrowser) setLiveViaToken(Boolean(user?.token?.website));
   const { pathname, search } = useLocation();
   // Drawn around the error page too: a 404 keeps the sidebar out of a
   // project or workspace the viewer cannot see.
