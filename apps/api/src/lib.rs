@@ -22,6 +22,7 @@ mod notifications;
 mod oauth;
 mod oidc;
 mod packages;
+mod folios;
 mod people;
 mod openapi;
 mod pins;

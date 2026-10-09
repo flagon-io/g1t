@@ -3,10 +3,10 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 18 tools, one per kind of
+The MCP server at `https://mcp.g1t.sh` exposes 19 tools, one per kind of
 thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
 `plan`, `memory`, `workflow`, `package`, `secret`, `security`, `webhook`, `access`,
-`team`, `workspace`, `billing`, `notifications` and `account`. Each tool takes an `action` that says what to do. Every
+`team`, `workspace`, `billing`, `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
 
@@ -169,7 +169,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, and changing runner settings. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, replacing model routes, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -768,6 +768,37 @@ email address gets `403` from every tool until it does; see
 | [`decline_repository_invitation`](/reference/api/access/decline-repo-invitation/) | Decline one. | `id` | `account:write` |
 
 
+## `artifact`
+
+A workspace's artifacts: its docs, and later its slides, designs and
+dashboards. Each action runs as you: it finds and opens only what you can
+open, and changes only what your role on it allows, whatever the token's
+scope. Name one by its id (`fol_…`) or its link as `artifact_id`, and its
+space by slug or id. Not workflow runs' artifacts, which are the
+`workflow` tool's. Slides, designs and dashboards answer `422` saying they
+are not here yet. A workspace's own token cannot use this tool. See
+[artifacts for agents](/guides/bring-your-own-agent/#artifacts).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list`](/reference/api/artifacts/list-workspace-artifacts/) | The artifacts you can open, most recently edited first, with your role on each. Narrow with `tab` (`all`, `yours`, `shared`), `kind`, `space`, `project` and `q`; page with `cursor`. `state` `trashed` lists what you can restore. | `workspace` | `artifacts:read` |
+| [`search`](/reference/api/artifacts/search-workspace-artifacts/) | Search them by words and meaning; each hit has the passage that matched (`snippet`, `heading`). | `workspace`, `q` | `artifacts:read` |
+| [`get`](/reference/api/artifacts/get-workspace-artifact/) | One artifact: kind, title, space, owner, your `viewer_role`, general access, whether it is private or stale, and `html_url`. | `workspace`, `artifact_id` | `artifacts:read` |
+| [`read`](/reference/api/artifacts/get-workspace-artifact-content/) | Its content: a doc's Markdown, its top-level `blocks` with ids, and `can` (read, suggest, edit). | `workspace`, `artifact_id` | `artifacts:read` |
+| [`versions`](/reference/api/artifacts/list-workspace-artifact-versions/) | Its saved versions, newest first, with who made each. | `workspace`, `artifact_id` | `artifacts:read` |
+| [`access`](/reference/api/artifacts/get-workspace-artifact-access/) | Who can open it: its owner, who it is shared with and how, general access, and whether you may change it. | `workspace`, `artifact_id` | `artifacts:read` |
+| [`templates`](/reference/api/artifacts/list-workspace-artifact-templates/) | Templates to start one from, built-in and the workspace's; narrow with `kind`. | `workspace` | `artifacts:read` |
+| [`spaces`](/reference/api/artifacts/list-workspace-artifact-spaces/) | The spaces in your Artifacts sidebar, with your role in each. | `workspace` | `artifacts:read` |
+| [`query_data`](/reference/api/artifacts/query-workspace-dataset/) | Run a dataset `query` as you, over what you can read. Answers that dashboards are not here yet until they ship. | `workspace`, `query` | `artifacts:read` |
+| [`create`](/reference/api/artifacts/create-workspace-artifact/) | Make one from `markdown` or a `template_id`, in a `space`, under a `parent_id`, or in your Private. `kind` is `doc`; the others are not here yet. | `workspace` | `artifacts:write` |
+| [`update`](/reference/api/artifacts/update-workspace-artifact/) | Change its `title` or `icon`, or move it to a `space` (`private` for your Private) or under a `parent_id`. | `workspace`, `artifact_id` | `artifacts:write` |
+| [`edit`](/reference/api/artifacts/edit-workspace-artifact/) | Change its content: `markdown` with a `target` (`append`, `document`, a `section` by `heading`, or `blocks`). Made with the edit role; a suggestion with the comment role or `suggest_only`. | `workspace`, `artifact_id` | `artifacts:write` |
+| [`trash`](/reference/api/artifacts/trash-workspace-artifact/) | Move it, and what is under it, to the trash; deleted for good after 30 days. | `workspace`, `artifact_id` | `artifacts:write` |
+| [`restore`](/reference/api/artifacts/restore-workspace-artifact/) | Bring it back from the trash. | `workspace`, `artifact_id` | `artifacts:write` |
+| [`restore_version`](/reference/api/artifacts/restore-workspace-artifact-version/) | Make an earlier version its content again, as a new version. | `workspace`, `artifact_id`, `version_id` | `artifacts:write` |
+| [`share`](/reference/api/artifacts/set-workspace-artifact-access/) | Share it with a `username`, `team` or `agent` at a `role` (`view`, `comment`, `edit`, `manage`, or `none` to take access away); set `general_access` and `general_role`, `inherit` or `agent_mode`. Takes full access to it. | `workspace`, `artifact_id` | `artifacts:admin` |
+| [`purge`](/reference/api/artifacts/purge-workspace-artifact/) | Delete one in the trash for good. Takes full access to it. | `workspace`, `artifact_id` | `artifacts:admin` |
+
 ## What g1t can use
 
 g1t works with a [run credential](/guides/working-with-g1t/#credentials):
@@ -792,7 +823,8 @@ transfers, deletes, restores or purges a repository, or dismisses or
 reopens a security alert, or the `security` actions that decide about
 security: `update_secret_alert`, `bypass`, `review_bypass`, the pattern
 changes, `update_code_alert`, `update_vulnerability_alert`, `fix`,
-`update_settings` and `update_workspace_settings`. Every repository it
+`update_settings` and `update_workspace_settings`, or `artifact` `share`
+and `purge`. Every repository it
 names must be its own. `tools/list` shows such a token only the tools and
 actions it may use; a call to any other is refused with the rule that
 refused it, and recorded in the workspace's [audit log](/guides/audit-log/),

@@ -44,7 +44,8 @@ pub enum Resource {
     Runners,
     Models,
     /// Artifacts mode's docs, slides, designs and dashboards (folios in
-    /// code). Not offered yet: see [`Resource::offered`].
+    /// code): the `artifact` MCP tool and `/workspaces/{ws}/artifacts`.
+    /// Not workflow runs' artifacts, which are `workflows:*`.
     Artifacts,
 }
 
@@ -129,14 +130,15 @@ impl Resource {
         }
     }
 
-    /// Whether tokens are offered it yet. A resource that is not is in the
-    /// table (so its scopes parse, and the TypeScript mirror lists it under
-    /// `UPCOMING_RESOURCES`) but nothing hands it out: presets, full
-    /// access, OAuth and the token form leave it out, and no operation
-    /// needs it. Artifacts is offered once its API ships (Phase 3 of
-    /// docs/ARTIFACTS_MODE.md).
+    /// Whether tokens are offered it yet. A resource being built can be in
+    /// the table before its API ships (so its scopes parse, and the
+    /// TypeScript mirror lists it under `UPCOMING_RESOURCES`) while nothing
+    /// hands it out: presets, full access, OAuth and the token form leave
+    /// it out, and no operation needs it. Every resource is offered now;
+    /// Artifacts was the last, until Phase 3 of docs/ARTIFACTS_MODE.md.
     pub fn offered(self) -> bool {
-        !matches!(self, Resource::Artifacts)
+        let _ = self;
+        true
     }
 }
 
@@ -1225,6 +1227,28 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // The AI Gateway. Sending a request to a model needs `models:write`,
     // checked by the model proxy at models.g1t.sh, not here.
     ("list_gateway_requests", Scope::ModelsRead),
+    // Artifacts mode's docs, slides, designs and dashboards (the `artifact`
+    // MCP tool). Reading takes artifacts:read, making and changing them
+    // artifacts:write, and sharing them or deleting them for good
+    // artifacts:admin. The docs service then checks the person's own role
+    // on each one.
+    ("list_workspace_artifacts", Scope::ArtifactsRead),
+    ("search_workspace_artifacts", Scope::ArtifactsRead),
+    ("get_workspace_artifact", Scope::ArtifactsRead),
+    ("get_workspace_artifact_content", Scope::ArtifactsRead),
+    ("list_workspace_artifact_versions", Scope::ArtifactsRead),
+    ("get_workspace_artifact_access", Scope::ArtifactsRead),
+    ("list_workspace_artifact_templates", Scope::ArtifactsRead),
+    ("list_workspace_artifact_spaces", Scope::ArtifactsRead),
+    ("query_workspace_dataset", Scope::ArtifactsRead),
+    ("create_workspace_artifact", Scope::ArtifactsWrite),
+    ("update_workspace_artifact", Scope::ArtifactsWrite),
+    ("edit_workspace_artifact", Scope::ArtifactsWrite),
+    ("trash_workspace_artifact", Scope::ArtifactsWrite),
+    ("restore_workspace_artifact", Scope::ArtifactsWrite),
+    ("restore_workspace_artifact_version", Scope::ArtifactsWrite),
+    ("set_workspace_artifact_access", Scope::ArtifactsAdmin),
+    ("purge_workspace_artifact", Scope::ArtifactsAdmin),
 ];
 
 /// Operations any token may use: saying who it is.
@@ -1496,28 +1520,42 @@ mod tests {
     }
 
     #[test]
-    fn artifacts_scopes_exist_but_are_not_offered_yet() {
+    fn artifacts_are_offered_read_by_presets_and_shared_only_with_admin() {
         for scope in [Scope::ArtifactsRead, Scope::ArtifactsWrite, Scope::ArtifactsAdmin] {
             assert_eq!(scope.resource(), Resource::Artifacts);
-            assert!(!scope.offered());
-            assert_eq!(Scope::parse(scope.as_str()), Some(scope));
-            // Nothing hands it out: not presets, full access, OAuth or the form.
-            for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
-                assert!(!preset.scopes().unwrap().contains(&scope), "{}", preset.as_str());
-            }
-            assert!(!everything().contains(&scope));
-            assert!(!offered_scopes().contains(&scope));
-            assert!(!oauth_default().contains(&scope));
-            assert!(parse_scopes(scope.as_str()).is_empty());
-            // And no operation needs it yet.
-            assert!(OPERATIONS.iter().all(|(_, needed)| *needed != scope));
+            assert!(scope.offered());
+            assert!(offered_scopes().contains(&scope));
+            assert_eq!(parse_scopes(scope.as_str()), vec![scope]);
+            assert!(OPERATIONS.iter().any(|(_, needed)| *needed == scope), "{scope:?} gates nothing");
         }
+        // Reading them is a read like any other; changing them is chosen.
+        for preset in [Preset::ReadOnly, Preset::Agent] {
+            let scopes = preset.scopes().unwrap();
+            assert!(scopes.contains(&Scope::ArtifactsRead), "{}", preset.as_str());
+            assert!(!scopes.contains(&Scope::ArtifactsWrite) && !scopes.contains(&Scope::ArtifactsAdmin), "{}", preset.as_str());
+        }
+        assert!(!Preset::Ci.scopes().unwrap().contains(&Scope::ArtifactsRead));
+        assert!(everything().contains(&Scope::ArtifactsAdmin));
         assert!(Scope::ArtifactsAdmin.includes(Scope::ArtifactsWrite));
         assert!(Scope::ArtifactsAdmin.dangerous());
+        assert!(!Scope::ArtifactsWrite.dangerous());
         assert_eq!(Resource::Artifacts.group(), ResourceGroup::Workspace);
-        let asked = std::collections::BTreeMap::from([("artifacts".to_owned(), "read".to_owned())]);
-        assert_eq!(resolve_permissions(&asked, true), Err("There is no permission called artifacts.".to_owned()));
-        assert_eq!(offered_scopes().len(), Scope::ALL.len() - 3);
+        let asked = std::collections::BTreeMap::from([("artifacts".to_owned(), "write".to_owned())]);
+        assert_eq!(resolve_permissions(&asked, true), Ok(vec![Scope::ArtifactsWrite]));
+        assert_eq!(offered_scopes().len(), Scope::ALL.len());
+        // Sharing and deleting for good need admin; editing needs write.
+        assert_eq!(scope_for("set_workspace_artifact_access"), Some(Scope::ArtifactsAdmin));
+        assert_eq!(scope_for("purge_workspace_artifact"), Some(Scope::ArtifactsAdmin));
+        assert_eq!(scope_for("edit_workspace_artifact"), Some(Scope::ArtifactsWrite));
+        assert_eq!(scope_for("get_workspace_artifact_content"), Some(Scope::ArtifactsRead));
+        let writer = token(&[Scope::ArtifactsWrite]);
+        assert!(decide(&writer, "edit_workspace_artifact", &json!({})).allowed);
+        assert!(decide(&writer, "list_workspace_artifacts", &json!({})).allowed, "write includes read");
+        assert!(decide(&writer, "set_workspace_artifact_access", &json!({})).reason.unwrap().contains("artifacts:admin"));
+        // Workflow runs' artifacts are another thing, with their own scope.
+        let reader = token(&[Scope::ArtifactsRead]);
+        assert!(!decide(&reader, "list_artifacts", &json!({ "repo": "acme/web" })).allowed);
+        assert!(!decide(&token(&[Scope::WorkflowsRead]), "list_workspace_artifacts", &json!({})).allowed);
     }
 
     #[test]
@@ -1791,7 +1829,7 @@ mod tests {
         let offered: Vec<String> = Scope::ALL.iter().filter(|scope| scope.offered()).map(|scope| scope.as_str().to_owned()).collect();
         let upcoming: Vec<String> = Scope::ALL.iter().filter(|scope| !scope.offered()).map(|scope| scope.as_str().to_owned()).collect();
         assert_eq!(names("export const SCOPES = ["), offered);
-        assert_eq!(names("export const UPCOMING_SCOPES = ["), upcoming);
+        assert_eq!(names("export const UPCOMING_SCOPES"), upcoming);
         let operations: Vec<(String, String)> = section("export const OPERATION_SCOPES = [")
             .lines()
             .filter_map(|line| {

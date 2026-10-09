@@ -13,6 +13,7 @@ use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
+use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::operations::Op;
@@ -536,6 +537,29 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ImportIssue,
         ],
     ),
+    (
+        "Artifacts",
+        "A workspace's docs, slides, designs and dashboards (Artifacts mode): listing and searching the ones you can open, reading and editing their content in Markdown, making, moving, trashing and restoring them, their versions, and who can open them. Each answers for your own role on it. Not workflow runs' artifacts, which are under Actions. Slides, designs and dashboards answer that they are not here yet.",
+        &[
+            Op::Folios(FoliosOp::List),
+            Op::Folios(FoliosOp::Search),
+            Op::Folios(FoliosOp::Get),
+            Op::Folios(FoliosOp::GetContent),
+            Op::Folios(FoliosOp::ListVersions),
+            Op::Folios(FoliosOp::GetAccess),
+            Op::Folios(FoliosOp::ListTemplates),
+            Op::Folios(FoliosOp::ListSpaces),
+            Op::Folios(FoliosOp::QueryDataset),
+            Op::Folios(FoliosOp::Create),
+            Op::Folios(FoliosOp::Update),
+            Op::Folios(FoliosOp::Edit),
+            Op::Folios(FoliosOp::Trash),
+            Op::Folios(FoliosOp::Restore),
+            Op::Folios(FoliosOp::RestoreVersion),
+            Op::Folios(FoliosOp::SetAccess),
+            Op::Folios(FoliosOp::Purge),
+        ],
+    ),
 ];
 
 /// The section of the API reference an operation is listed under.
@@ -752,6 +776,7 @@ fn title(op: Op) -> &'static str {
         Op::DeployKeys(op) => op.title(),
         Op::Mirrors(op) => op.title(),
         Op::Packages(op) => op.title(),
+        Op::Folios(op) => op.title(),
     }
 }
 

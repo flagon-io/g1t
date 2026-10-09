@@ -24,6 +24,7 @@ use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::packages::PackagesOp;
+use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::operations::Op;
@@ -525,6 +526,31 @@ pub const TOOLS: &[Tool] = &[
             a("decline_repository_invitation", Op::DeclineRepoInvitation, "Decline one"),
         ],
     },
+    Tool {
+        name: "artifact",
+        title: "Artifacts",
+        description: "A workspace's docs, slides, designs and dashboards (Artifacts mode), as you can open them: list, search and read them (a doc's content is Markdown, with block ids to target), make them, edit them (a change with the edit role, a suggestion with comment), move, trash and restore them, their versions, and who can open them. Name one by its id (fol_…) or its address. Not the `workflow` tool's run artifacts. Slides, designs and dashboards answer that they are not here yet.",
+        default_action: None,
+        actions: &[
+            a("list", Op::Folios(FoliosOp::List), "Artifacts you can open; tab, kind, space, q; state trashed for the trash"),
+            a("search", Op::Folios(FoliosOp::Search), "Search them by words and meaning, with the passage that matched"),
+            a("get", Op::Folios(FoliosOp::Get), "One artifact: kind, title, space, owner, your role, who it is shared with"),
+            a("read", Op::Folios(FoliosOp::GetContent), "Its content: a doc's Markdown and block ids, and what you may do"),
+            a("versions", Op::Folios(FoliosOp::ListVersions), "Its saved versions, newest first"),
+            a("access", Op::Folios(FoliosOp::GetAccess), "Who can open it, and how"),
+            a("templates", Op::Folios(FoliosOp::ListTemplates), "Templates to start one from"),
+            a("spaces", Op::Folios(FoliosOp::ListSpaces), "The spaces in your sidebar"),
+            a("query_data", Op::Folios(FoliosOp::QueryDataset), "Run a dataset query as you, over what you can read"),
+            a("create", Op::Folios(FoliosOp::Create), "Make one: in a space, under a doc, or in your Private"),
+            a("update", Op::Folios(FoliosOp::Update), "Rename it, change its icon, or move it"),
+            a("edit", Op::Folios(FoliosOp::Edit), "Change its content: append, replace it all, a section or blocks"),
+            a("trash", Op::Folios(FoliosOp::Trash), "Move it to the trash; restorable for 30 days"),
+            a("restore", Op::Folios(FoliosOp::Restore), "Bring it back from the trash"),
+            a("restore_version", Op::Folios(FoliosOp::RestoreVersion), "Make an earlier version its content again"),
+            a("share", Op::Folios(FoliosOp::SetAccess), "Share it, change general access, or take access away"),
+            a("purge", Op::Folios(FoliosOp::Purge), "Delete one in the trash for good"),
+        ],
+    },
 ];
 
 /// Operations that cannot be undone, or reach beyond g1t's own records:
@@ -561,6 +587,7 @@ fn destructive(op: Op) -> bool {
             | Op::RemoveRunner
             | Op::DeleteRunnerGroup
             | Op::UpdateRunnerSettings
+            | Op::Folios(FoliosOp::SetAccess | FoliosOp::Purge)
     )
 }
 
@@ -811,7 +838,7 @@ mod tests {
                 assert!(tool.action(default).is_some(), "{}", tool.name);
             }
         }
-        assert!(TOOLS.len() <= 18, "{} tools", TOOLS.len());
+        assert!(TOOLS.len() <= 19, "{} tools", TOOLS.len());
     }
 
     #[test]
@@ -990,6 +1017,50 @@ mod tests {
         assert_eq!(resolve(repository, &json!({ "action": "codeowners", "repo": "a/b" })), Ok(Op::GetCodeownersErrors));
         assert!(reads_only(Op::GetCodeownersErrors));
         assert!(!reads_only(Op::RequestReviewers));
+    }
+
+    /// The `artifact` tool offers each token only what its artifacts scope
+    /// allows: reading, then changing, then sharing and deleting for good.
+    /// Workflow runs' artifacts are the `workflow` tool's, under their own
+    /// scope, and neither scope reaches the other's.
+    #[test]
+    fn the_artifact_tool_offers_what_the_artifacts_scope_allows() {
+        let actions = |scopes: Vec<Scope>| -> Option<Value> {
+            let access = token(Some(scopes));
+            Tool::by_name("artifact").unwrap().listed(&Gate::Token(&access)).map(|tool| tool["inputSchema"]["properties"]["action"]["enum"].clone())
+        };
+        let reads = json!(["list", "search", "get", "read", "versions", "access", "templates", "spaces", "query_data"]);
+        assert_eq!(actions(vec![Scope::ArtifactsRead]), Some(reads.clone()));
+        let writes = actions(vec![Scope::ArtifactsWrite]).unwrap();
+        for action in ["create", "update", "edit", "trash", "restore", "restore_version"] {
+            assert!(writes.as_array().unwrap().contains(&json!(action)), "{action}");
+        }
+        assert!(!writes.as_array().unwrap().contains(&json!("share")) && !writes.as_array().unwrap().contains(&json!("purge")));
+        let admin = actions(vec![Scope::ArtifactsAdmin]).unwrap();
+        assert_eq!(admin.as_array().unwrap().len(), Tool::by_name("artifact").unwrap().actions.len());
+        // Without an artifacts scope there is no artifact tool at all.
+        assert_eq!(actions(vec![Scope::WorkflowsWrite, Scope::IssuesWrite]), None);
+        // And an artifacts scope shows nothing of workflow runs' artifacts.
+        let access = token(Some(vec![Scope::ArtifactsAdmin]));
+        assert!(Tool::by_name("workflow").unwrap().listed(&Gate::Token(&access)).is_none());
+        // The read-only and agent presets read artifacts and change none.
+        for preset in [Preset::ReadOnly, Preset::Agent] {
+            let access = token(preset.scopes());
+            let tool = Tool::by_name("artifact").unwrap().listed(&Gate::Token(&access)).unwrap();
+            assert_eq!(tool["inputSchema"]["properties"]["action"]["enum"], reads, "{}", preset.as_str());
+            assert_eq!(tool["annotations"]["readOnlyHint"], true);
+        }
+        // Sharing and deleting for good can't be undone the same way.
+        let tools = listed(&Gate::Everything);
+        let artifact = tools.iter().find(|tool| tool["name"] == "artifact").unwrap();
+        assert_eq!(artifact["annotations"]["destructiveHint"], true);
+        assert!(artifact["description"].as_str().unwrap().contains("Not the `workflow` tool's run artifacts"));
+        let tool = Tool::by_name("artifact").unwrap();
+        assert_eq!(resolve(tool, &json!({ "action": "read", "workspace": "acme" })), Err("artifact.read needs artifact_id.".to_owned()));
+        assert_eq!(
+            resolve(tool, &json!({ "action": "edit", "workspace": "acme", "artifact_id": "fol_1", "markdown": "x" })),
+            Ok(Op::Folios(FoliosOp::Edit))
+        );
     }
 
     /// How much smaller `tools/list` is than one tool per operation. Run
