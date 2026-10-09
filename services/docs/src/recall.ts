@@ -8,11 +8,15 @@
 
 /**
  * The least cosine similarity a passage needs to count as being about the
- * query. bge-base-en-v1.5 scores unrelated English around 0.4 to 0.55 and
- * a passage on the asked-about topic from about 0.65; 0.6 keeps recall
- * quiet when the docs say nothing about it.
+ * query. Measured on g1t's own docs folder (606 passages, chunked and
+ * embedded as here, bge-base-en-v1.5 with Workers AI's mean pooling): the
+ * best passage for 16 questions the docs answer scored 0.72 to 0.84, while
+ * the best for 16 they don't ("hello", a recipe, Postgres tuning, a
+ * vacation policy, SSO with Okta) scored 0.54 to 0.67. At 0.6, 11 of those
+ * 16 pulled in passages (up to 89 above it); 0.7 keeps every answer and
+ * keeps recall quiet when the docs say nothing about the question.
  */
-export const MEANING_FLOOR = 0.6;
+export const MEANING_FLOOR = 0.7;
 /** The score a passage found only by its words carries: below the floor, so callers can tell. */
 export const WORDS_SCORE = 0.5;
 /** Nearest passages asked of the index. */
